@@ -262,87 +262,6 @@ var WebsterPrefixRecovery []byte
 //go:embed webster/webster-body-implementer.md
 var WebsterBodyImplementer []byte
 
-// WebsterFragmentLocateQuarry is webster's shipped-default quarry locate fragment, filled into the shared implementer-job body's locate marker when the fork has no kick-start pack and for every recovery prompt.
-//
-//go:embed webster/webster-fragment-locate-quarry.md
-var WebsterFragmentLocateQuarry []byte
-
-// WebsterFragmentLocatePack is webster's shipped-default pack locate fragment, filled into the shared implementer-job body's locate marker when the fork prompt carries a kick-start pack in the file layout.
-//
-//go:embed webster/webster-fragment-locate-pack.md
-var WebsterFragmentLocatePack []byte
-
-// WebsterFragmentCardReadPlain is webster's shipped-default pack-off first step of each card, filled into the shared implementer-job body's card_read marker when the fork has no kick-start pack and for every recovery prompt.
-//
-//go:embed webster/webster-fragment-card-read-plain.md
-var WebsterFragmentCardReadPlain []byte
-
-// WebsterFragmentCardReadPack is webster's shipped-default pack-on first step of each card, filled into the shared implementer-job body's card_read marker when the fork prompt carries a kick-start pack in the file layout.
-//
-//go:embed webster/webster-fragment-card-read-pack.md
-var WebsterFragmentCardReadPack []byte
-
-// WebsterFragmentFreshReadPlain is webster's shipped-default pack-off FRESH-READ rule, filled into the shared implementer-job body's fresh_read marker when the fork has no kick-start pack and for every recovery prompt.
-//
-//go:embed webster/webster-fragment-fresh-read-plain.md
-var WebsterFragmentFreshReadPlain []byte
-
-// WebsterFragmentFreshReadPack is webster's shipped-default pack-on FRESH-READ rule, filled into the shared implementer-job body's fresh_read marker when the fork prompt carries a kick-start pack in the file layout.
-//
-//go:embed webster/webster-fragment-fresh-read-pack.md
-var WebsterFragmentFreshReadPack []byte
-
-// WebsterFragmentPackSection is webster's shipped-default kick-start pack file: the fork's one-turn read instruction followed by one subsection per card.
-//
-//go:embed webster/webster-fragment-pack-section.md
-var WebsterFragmentPackSection []byte
-
-// WebsterFragmentPackRead is webster's shipped-default pack read line, filled into the shared implementer-job body's kickstart_pack marker in the file layout alone so the fork prompt ends by sending the fork to its kick-start pack file.
-//
-//go:embed webster/webster-fragment-pack-read.md
-var WebsterFragmentPackRead []byte
-
-// WebsterFragmentPackCard is webster's shipped-default per-card subsection of the kick-start pack, one of which is filled into the pack section's pack_cards marker for each card of the batch.
-// Rendering one card alone is the output of `lyx loom card-pack`.
-//
-//go:embed webster/webster-fragment-pack-card.md
-var WebsterFragmentPackCard []byte
-
-// WebsterFragmentFreshReadPackCard is webster's shipped-default per-card FRESH-READ rule, filled into the shared implementer-job body's fresh_read marker when the fork prompt carries the per-card kick-start pack layout.
-//
-//go:embed webster/webster-fragment-fresh-read-pack-card.md
-var WebsterFragmentFreshReadPackCard []byte
-
-// WebsterFragmentCardReadPackCard is webster's shipped-default per-card first step of each card, filled into the shared implementer-job body's card_read marker when the fork prompt carries the per-card layout.
-//
-//go:embed webster/webster-fragment-card-read-pack-card.md
-var WebsterFragmentCardReadPackCard []byte
-
-// WebsterFragmentLocatePackCard is webster's shipped-default per-card locate fragment, filled into the shared implementer-job body's locate marker when the fork prompt carries the per-card layout.
-//
-//go:embed webster/webster-fragment-locate-pack-card.md
-var WebsterFragmentLocatePackCard []byte
-
-// WebsterFragmentPackStartCard is webster's shipped-default closing section of the per-card layout, filled into the shared implementer-job body's kickstart_pack marker so the fork prompt ends by sending the fork to its card files.
-//
-//go:embed webster/webster-fragment-pack-start-card.md
-var WebsterFragmentPackStartCard []byte
-
-// WebsterFragmentCardPackAllowed is webster's shipped-default sandbox-rule addition of the per-card layout, filled into the shared implementer-job body's card_pack_allowed marker so `lyx loom card-pack` joins the always-allowed commands.
-//
-//go:embed webster/webster-fragment-card-pack-allowed.md
-var WebsterFragmentCardPackAllowed []byte
-
-// WebsterFragmentPackUnresolved is webster's shipped-default unresolved list of a card's pack subsection, filled into the card subsection's pack_unresolved marker when the card has unresolved refs.
-//
-//go:embed webster/webster-fragment-pack-unresolved.md
-var WebsterFragmentPackUnresolved []byte
-
-// WebsterFragmentPackEmpty is webster's shipped-default empty-pack line, filled into a card's pack subsection when the card names no member glyph.
-//
-//go:embed webster/webster-fragment-pack-empty.md
-var WebsterFragmentPackEmpty []byte
-
 // OrchTemplateStart is orch's shipped-default fresh-launch prompt.
 //
 //go:embed orch/orch-template-start.md
@@ -580,22 +499,6 @@ var entries = []registryEntry{
 	{"webster-prefix-fork", &WebsterPrefixFork},
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},
-	{"webster-fragment-locate-quarry", &WebsterFragmentLocateQuarry},
-	{"webster-fragment-locate-pack", &WebsterFragmentLocatePack},
-	{"webster-fragment-card-read-plain", &WebsterFragmentCardReadPlain},
-	{"webster-fragment-card-read-pack", &WebsterFragmentCardReadPack},
-	{"webster-fragment-fresh-read-plain", &WebsterFragmentFreshReadPlain},
-	{"webster-fragment-fresh-read-pack", &WebsterFragmentFreshReadPack},
-	{"webster-fragment-pack-section", &WebsterFragmentPackSection},
-	{"webster-fragment-pack-read", &WebsterFragmentPackRead},
-	{"webster-fragment-pack-card", &WebsterFragmentPackCard},
-	{"webster-fragment-pack-unresolved", &WebsterFragmentPackUnresolved},
-	{"webster-fragment-pack-empty", &WebsterFragmentPackEmpty},
-	{"webster-fragment-fresh-read-pack-card", &WebsterFragmentFreshReadPackCard},
-	{"webster-fragment-card-read-pack-card", &WebsterFragmentCardReadPackCard},
-	{"webster-fragment-locate-pack-card", &WebsterFragmentLocatePackCard},
-	{"webster-fragment-pack-start-card", &WebsterFragmentPackStartCard},
-	{"webster-fragment-card-pack-allowed", &WebsterFragmentCardPackAllowed},
 	{"orch-template-start", &OrchTemplateStart},
 	{"orch-template-handoff", &OrchTemplateHandoff},
 	{"orch-template-resume", &OrchTemplateResume},

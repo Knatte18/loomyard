@@ -78,6 +78,10 @@ func (index) DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktree
 	return DoneChecks(plan, cards, worktreeRoot)
 }
 
+func (index) RebindResigns(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]Finding, error) {
+	return RebindResigns(plan, cards, worktreeRoot)
+}
+
 func (index) LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.Card, worktreeRoot string) ([]Finding, error) {
 	return LaterDeleteReferences(plan, deleting, later, worktreeRoot)
 }
@@ -92,10 +96,6 @@ func (index) Delta(worktree, fromSHA, toSHA string) (planindex.Delta, error) {
 	return batchDelta{answer: answer}, err
 }
 
-func (index) KickstartPack(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]planindex.CardPack, error) {
-	return KickstartPack(plan, cards, worktreeRoot)
-}
-
 // batchDelta is one batch's quarry delta behind planindex.Delta.
 type batchDelta struct {
 	answer quarry.GitDeltaAnswer
@@ -105,8 +105,8 @@ func (d batchDelta) BindHandles(plan *planparser.Plan, planDir string, cards []p
 	return BindHandles(plan, planDir, d.answer, cards)
 }
 
-func (d batchDelta) ScopeGuard(cards []planparser.Card) []Finding {
-	return ScopeGuard(cards, d.answer)
+func (d batchDelta) ScopeGuard(plan *planparser.Plan, cards []planparser.Card) []Finding {
+	return ScopeGuard(plan, cards, d.answer)
 }
 
 // DetectDrift checks the plan pending after completed, the same view PendingPlan builds.

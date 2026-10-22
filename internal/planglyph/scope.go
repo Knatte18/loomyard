@@ -37,6 +37,7 @@ func targetGlyphUnion(cards []planparser.Card) map[string]bool {
 // union, check ID scope-outside-plan, naming the symbol and the file it lives in.
 // The finding's File is that file.
 //
+// plan supplies the alphabet each target is read in, so under csharp a member glyph covers only its own symbol and a namespace self glyph covers no file.
 // A file target covers every symbol in that file, a package target every symbol in a file directly in its directory, and a member target only that member.
 // A symbol with several files is covered only when every one is.
 //
@@ -53,13 +54,13 @@ func targetGlyphUnion(cards []planparser.Card) map[string]bool {
 // DeltaGit infrastructure error and records its own guard-could-not-run notice instead), not
 // something this function detects on its own, since a zero-value delta is indistinguishable from a
 // real empty one.
-func ScopeGuard(cards []planparser.Card, delta quarry.GitDeltaAnswer) []Finding {
+func ScopeGuard(plan *planparser.Plan, cards []planparser.Card, delta quarry.GitDeltaAnswer) []Finding {
 	union := targetGlyphUnion(cards)
 
 	var findings []Finding
 	seen := make(map[string]bool)
 	report := func(id, file string, files []string) {
-		if union[id] || seen[id] || symbolFilesCovered(cards, files) {
+		if union[id] || seen[id] || symbolFilesCovered(plan, cards, files) {
 			return
 		}
 		seen[id] = true
@@ -111,7 +112,7 @@ func ScopeGuard(cards []planparser.Card, delta quarry.GitDeltaAnswer) []Finding 
 
 	symbolFiles := filesWithSymbols(delta)
 	for _, f := range delta.Files {
-		if symbolFiles[f.Path] || targetsCover(cards, f.Path) {
+		if symbolFiles[f.Path] || targetsCover(plan, cards, f.Path) {
 			continue
 		}
 		findings = append(findings, Finding{
@@ -153,7 +154,7 @@ func filesWithSymbols(delta quarry.GitDeltaAnswer) map[string]bool {
 // A member glyph or member `plan:` handle never covers, so it does not extend to its package's other members.
 // A file scope covers a path equal to it, and a directory scope covers a path directly in that directory, never one in a subdirectory.
 // An empty files covers nothing.
-func symbolFilesCovered(cards []planparser.Card, files []string) bool {
+func symbolFilesCovered(plan *planparser.Plan, cards []planparser.Card, files []string) bool {
 	if len(files) == 0 {
 		return false
 	}
@@ -161,10 +162,10 @@ func symbolFilesCovered(cards []planparser.Card, files []string) bool {
 		covered := false
 		for _, c := range cards {
 			for _, t := range c.Targets {
-				if _, isMember := planparser.RefMember(nil, t); isMember {
+				if _, isMember := planparser.RefMember(plan, t); isMember {
 					continue
 				}
-				scope, isFile, ok := planparser.RefScope(nil, t)
+				scope, isFile, ok := planparser.RefScope(plan, t)
 				if !ok {
 					continue
 				}
@@ -181,11 +182,11 @@ func symbolFilesCovered(cards []planparser.Card, files []string) bool {
 }
 
 // targetsCover reports whether some target of cards covers path: a file scope equal to path, or a package directory scope equal to the directory path lives in.
-func targetsCover(cards []planparser.Card, path string) bool {
+func targetsCover(plan *planparser.Plan, cards []planparser.Card, path string) bool {
 	dir := pathpkg.Dir(path)
 	for _, c := range cards {
 		for _, t := range c.Targets {
-			scope, isFile, ok := planparser.RefScope(nil, t)
+			scope, isFile, ok := planparser.RefScope(plan, t)
 			if !ok {
 				continue
 			}

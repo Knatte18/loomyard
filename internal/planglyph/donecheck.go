@@ -67,7 +67,7 @@ func resolveKeyFor(ref string) string {
 // never asked about — and it too returns a wrapped ErrQuarryUnavailable rather than skipping the
 // entry, which would silently pass whichever blocking check that target carried.
 func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]Finding, error) {
-	if _, ok := plan.GlyphLanguage(); !ok {
+	if !plan.GlyphLanguage() {
 		return nil, nil
 	}
 
@@ -214,6 +214,9 @@ func doneCheckVerdicts(worktreeRoot string, entries []doneCheckEntry, index map[
 		resolved := r.Status == quarry.StatusFound || r.Status == quarry.StatusMultipart || classified.Partitioned
 		stillExists := r.Status != quarry.StatusNotFound
 		lookup := lookupDescription(e.key, r.Status, r.Unit == quarry.StatusFound, classified.Candidates)
+		if crossDetail, crossAlphabet := crossAlphabetDetail(r); crossAlphabet {
+			lookup = fmt.Sprintf("looked up %q, quarry answered ambiguous: %s", e.key, crossDetail)
+		}
 
 		switch e.checkID {
 		case "create-not-done":

@@ -164,7 +164,7 @@ func RefFile(plan *Plan, ref string) (string, bool) {
 
 // RefScope returns the worktree scope a card ref covers, and false when the ref names no unit.
 // A unit or path with a file extension is that cleaned file and isFile is true, so a changed file is covered only by equality.
-// Any other unit is its package directory with isFile false, a glyph's or `plan:` handle's unit taken through goPackageDir, so an external test package's pseudo-unit names its package directory.
+// Any other unit is its package directory with isFile false, a glyph's or `plan:` handle's unit taken through goPackageDir under a Go plan only, so an external test package's pseudo-unit names its package directory.
 // A nil plan reads as the default language.
 func RefScope(plan *Plan, ref string) (scope string, isFile bool, ok bool) {
 	if plan == nil {
@@ -177,7 +177,7 @@ func RefScope(plan *Plan, ref string) (scope string, isFile bool, ok bool) {
 	if hasFileExtension(unit) {
 		return path.Clean(unit), true, true
 	}
-	if fromGlyph {
+	if fromGlyph && plan.GoToolchain() {
 		unit = goPackageDir(unit)
 	}
 	return path.Clean(unit), false, true
@@ -253,11 +253,10 @@ func RefMember(plan *Plan, ref string) (string, bool) {
 	if b, handle := HandleBody(ref); handle {
 		body = b
 	}
-	lang, ok := planLanguage(plan)
-	if !ok {
+	if _, ok := planLanguage(plan); !ok {
 		return "", false
 	}
-	g, err := parseGlyph(lang, body)
+	g, err := ParseRef(plan, body)
 	if err != nil || g.IsSelf() {
 		return "", false
 	}
@@ -271,7 +270,7 @@ func targetDir(plan *Plan, raw string) (dir string, namesGo, ok bool) {
 	if !ok {
 		return "", false, false
 	}
-	if fromGlyph {
+	if fromGlyph && plan.GoToolchain() {
 		unit = goPackageDir(unit)
 	}
 	return unitDir(unit, fromGlyph)
@@ -299,8 +298,8 @@ func refUnit(plan *Plan, raw string) (unit string, fromGlyph, ok bool) {
 		isHandle = true
 	}
 
-	if lang, langOK := planLanguage(plan); langOK {
-		if g, err := parseGlyph(lang, body); err == nil {
+	if _, langOK := planLanguage(plan); langOK {
+		if g, err := ParseRef(plan, body); err == nil {
 			unit, unitOK := g.UnitPath()
 			if !unitOK {
 				return "", false, false

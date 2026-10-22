@@ -91,7 +91,15 @@ var allowedStatusConsumers = []scankit.Entry{
 	{Key: "internal/planglyph/donecheck.go:doneCheckVerdicts", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/deleteorder.go:answerSymbols", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/handle.go:renameDeclSource", Why: "fail-closed status reader"},
-	{Key: "internal/planglyph/pack.go:appendPackAnswer", Why: "fail-closed status reader: found and multipart resolve, every other answer is listed unresolved"},
+	{Key: "internal/planglyph/resign.go:RebindResigns", Why: "fail-closed status reader: only found passes, every other answer is resign-not-done"},
+	{
+		Key: "internal/planglyph/resign.go:nameResigns",
+		Why: "reads Unit-named selectors that are NOT the status vocabulary -- glyph.Glyph.Unit, quarry.Declaration.Unit and quarry.NameResult.Unit, compared in its own echo guard -- so the reviewed function earns its row here rather than a carve-out in the matcher",
+	},
+	{
+		Key: "internal/planglyph/resign.go:sameMemberIgnoringParams",
+		Why: "reads glyph.Glyph.Unit, a name-shape match for the status vocabulary's Unit selector that is no resolve status",
+	},
 	{
 		Key: "internal/planglyph/handle.go:CanonicalizeHandles",
 		Why: "reads Unit-named selectors that are NOT the status vocabulary -- quarry.NameResult.Unit and quarry.Declaration.Unit, the batched Name call's echo pair, compared to each other in its own fail-closed echo guard -- but the scan is a name-shape check and cannot tell those apart from ResolveResult.Unit, so the reviewed function earns its row here rather than a carve-out in the matcher",

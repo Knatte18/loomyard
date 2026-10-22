@@ -1,7 +1,5 @@
 # PATTERN
 
-Structural invariants, one line per entry: when it applies and what it requires.
-
 ## Paths and geometry
 
 - `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd`. — [background](pattern/PATTERN-cwd-resolution.md)
@@ -20,6 +18,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of strict `Load` or `LoadOrTemplate`, bar `runprofile`. — [background](pattern/PATTERN-config-strictness.md)
 - `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files. — [background](pattern/PATTERN-config-layers.md)
+- `PATTERN-template-overlay` — Judging a config document against its template: only against `configengine`'s effective template, the overlay picked from the base layer.
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only via `hubreconcile.Ensure`, owner of the build stamp and hub lock.
 - `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: its message names the way forward; a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)
 - `PATTERN-no-denied-recovery` — Naming a step in a refusal, stencil or spec: never a command the agents' settings deny. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
@@ -61,7 +60,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-treadle-runner-seam` — Importing into `internal/treadleengine`: only its allowlist, never `burlerengine`, `lyxcwd` or an `internal/*cli` package.
 - `PATTERN-plan-generation` — Archiving a plan: `_lyx/plan/`'s top-level files hold one generation. — [background](pattern/PATTERN-plan-generation.md)
 - `PATTERN-ref-shape-registry` — Classifying a plan ref or `plan:` handle: `internal/planparser` alone declares and decides. (test) — [background](pattern/PATTERN-ref-shape-registry.md)
-- `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only via `glyph`. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
+- `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only via `glyph`; a ref's alphabet only `planparser`. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
 - `PATTERN-gate-self-check-parity` — Adding a mechanical gate: its closure and CLI self-check call one package function. — [background](pattern/PATTERN-gate-self-check-parity.md)
 - `PATTERN-verified-tree` — Running a verify command: only via `verifytree.Verify`, told its scope's pause hold. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running a gate build or test: only in held `internal/gateslot` slots. — [background](pattern/PATTERN-gate-slot.md)

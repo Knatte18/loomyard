@@ -320,7 +320,6 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	// exists to avoid.
 	c.env.AnchorPath = location.AnchorPath()
 	c.env.WorktreeRoot = location.WorktreePath()
-	c.env.StencilsDir = fabricengine.StencilsDir(location.HubPath)
 	c.env.DecisionRecordPath = loomengine.DiscussionDecisionRecord(location)
 	if c.recipe != shedrun.RecipeDarn {
 		c.env.PatternRecordPath = loomengine.DiscussionDecisionRecord(location)

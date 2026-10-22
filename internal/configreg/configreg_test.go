@@ -81,7 +81,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"deny_python", "run_dir"},
 		"loom":    {"alignment", "alignment_pr_approve", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "merge_auto_accept", "merge_fixer_fan", "merge_reviewer_fan", "parent_review_wait_min", "plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan", "skip_alignment", "webster_auto_accept", "webster_fixer_fan", "webster_reviewer_fan"},
-		"lenses":  {"fans", "lenses"},
+		"lenses":  {"fans", "lens_set", "lenses", "remove"},
 	}
 	for _, m := range Modules() {
 		t.Run(m.Name, func(t *testing.T) {
@@ -296,7 +296,7 @@ func TestLookup(t *testing.T) {
 	}
 }
 
-// TestFingerprint pins what the registry fingerprint is sensitive to: a module's template, flags, open maps, per-name maps and name, and not its Migrate hook.
+// TestFingerprint pins what the registry fingerprint is sensitive to: a module's template, flags, open maps, per-name maps, name and overlay documents, and not its Migrate hook or an empty overlay.
 func TestFingerprint(t *testing.T) {
 	t.Parallel()
 	base := func() []Module {
@@ -305,12 +305,23 @@ func TestFingerprint(t *testing.T) {
 			{Name: "beta", Template: func() string { return "b: 2\n" }},
 		}
 	}
+	withOverlayDocument := func(document string) func(m []Module) {
+		return func(m []Module) {
+			m[1].Spec = func() configengine.Spec {
+				return configengine.Spec{Overlay: configengine.Overlay{Selector: "pick", Documents: map[string][]byte{"x": []byte(document)}}}
+			}
+		}
+	}
 	tests := []struct {
 		name   string
 		mutate func(m []Module)
 		same   bool
 	}{
 		{"identical copy", func(m []Module) {}, true},
+		{"a Spec holding no overlay", func(m []Module) {
+			m[1].Spec = func() configengine.Spec { return configengine.Spec{} }
+		}, true},
+		{"a Spec holding an overlay document", withOverlayDocument("a: 1\n"), false},
 		{"changed template", func(m []Module) { m[1].Template = func() string { return "b: 3\n" } }, false},
 		{"flipped HubWide", func(m []Module) { m[0].HubWide = true }, false},
 		{"flipped SeedOnly", func(m []Module) { m[0].SeedOnly = true }, false},
@@ -332,6 +343,13 @@ func TestFingerprint(t *testing.T) {
 				t.Errorf("fingerprintOf equals base = %v, want %v", got == want, tt.same)
 			}
 		})
+	}
+
+	one, other := base(), base()
+	withOverlayDocument("a: 1\n")(one)
+	withOverlayDocument("a: 2\n")(other)
+	if fingerprintOf(one) == fingerprintOf(other) {
+		t.Errorf("fingerprintOf is equal for overlay documents that differ in bytes; want it to differ")
 	}
 
 	if got := Fingerprint(); got != fingerprintOf(Modules()) || got != Fingerprint() {

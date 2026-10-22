@@ -134,7 +134,7 @@ func TestHandleIndexes(t *testing.T) {
 }
 
 // TestCheckHandleMalformed_FileUnitRule asserts a handle whose unit half names a ".go" file is refused up front with a handle-malformed finding naming the package-directory fix: such a handle canonicalizes to a member spelling quarry's Resolve can never answer, so the plan would validate clean and then wedge at the creating card's own done-check.
-// The rule binds a handle whose unit half is actually read -- a Create declaration's -- and not one claimed only as a Rename pair's to-side, whose unit canonicalization takes from the resolved old side; it is gated off for language none.
+// The rule binds a handle whose unit half is actually read -- a Create declaration's -- and not one claimed only as a Rename pair's to-side, whose unit canonicalization takes from the resolved old side; it is gated off for every language but go.
 func TestCheckHandleMalformed_FileUnitRule(t *testing.T) {
 	t.Parallel()
 
@@ -161,6 +161,14 @@ func TestCheckHandleMalformed_FileUnitRule(t *testing.T) {
 			wantFindings: 1, wantDetail: []string{"greeter/farewell.go", `"greeter"`},
 		},
 		{name: "language none gates the rule off", language: "none", cards: []Card{fileUnitDeclared}},
+		{
+			name: "language csharp gates the rule off", language: "csharp",
+			cards: []Card{{
+				Number: 1, Slug: "one",
+				Targets:      []string{"plan:internal/x/file.go#Foo"},
+				Declarations: []CardDeclaration{{Handle: "plan:internal/x/file.go#Foo", Decl: "func Foo()"}},
+			}},
+		},
 		{
 			name: "package-unit handle", language: "go",
 			cards: []Card{{

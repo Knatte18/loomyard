@@ -114,7 +114,7 @@ func TestGlyphChain_Delta(t *testing.T) {
 				t.Run("create", func(t *testing.T) {
 					t.Parallel()
 					f, base := newGlyphChainRepo(t)
-					dir, plan := writeGlyphPlan(t, []string{createCard(row.create), editCard(row.create.draft)})
+					dir, plan := writeLanguagePlan(t, "go", []string{createCard(row.create), editCard(row.create.draft)})
 					assertPlanGate(t, plan, f.root, nil)
 
 					bound := bindCardOne(t, f, dir, base, f.commitEdits(row.createEdits))
@@ -134,7 +134,7 @@ func TestGlyphChain_Delta(t *testing.T) {
 				t.Run("rename", func(t *testing.T) {
 					t.Parallel()
 					f, base := newGlyphChainRepo(t)
-					dir, plan := writeGlyphPlan(t, []string{renameCard(row.glyph, row.rename.draft)}, renameMechanic)
+					dir, plan := writeLanguagePlan(t, "go", []string{renameCard(row.glyph, row.rename.draft)}, renameMechanic)
 					assertPlanGate(t, plan, f.root, nil)
 
 					bound := bindCardOne(t, f, dir, base, f.commitEdits(row.renameEdits))
@@ -151,7 +151,7 @@ func TestGlyphChain_Delta(t *testing.T) {
 				t.Run("delete", func(t *testing.T) {
 					t.Parallel()
 					f, _ := newGlyphChainRepo(t)
-					_, plan := writeGlyphPlan(t, []string{deleteCard(row.deleteGlyphs...)})
+					_, plan := writeLanguagePlan(t, "go", []string{deleteCard(row.deleteGlyphs...)})
 
 					f.commitEdits(row.deleteEdits)
 
@@ -167,7 +167,7 @@ func TestGlyphChain_UnreferencedHandle(t *testing.T) {
 	t.Parallel()
 
 	f, base := newGlyphChainRepo(t)
-	dir, plan := writeGlyphPlan(t, []string{createCard(&createLeg{"plan:shapes#draft", "func NewFunc() int", ""})})
+	dir, plan := writeLanguagePlan(t, "go", []string{createCard(&createLeg{"plan:shapes#draft", "func NewFunc() int", ""})})
 	// The plan gate's own verdict is TestGlyphChain_CrossCard's; here it only canonicalizes the draft handle the bind matches.
 	if _, err := ValidateFormat(plan, f.root); err != nil {
 		t.Fatalf("ValidateFormat(...) returned error: %v", err)
@@ -186,7 +186,7 @@ func TestGlyphChain_ReworkGenerations(t *testing.T) {
 	t.Parallel()
 
 	f, base := newGlyphChainRepo(t)
-	dir, plan := writeGlyphPlan(t, []string{
+	dir, plan := writeLanguagePlan(t, "go", []string{
 		"**Create:**\n- `plan:shapes#Told` -> `type Told struct{}`\n\n**Edit:**\n- `shapes/shapes.go`\n\n**Intent:** one\n\n**ImpactSummary:** none\n",
 		editCard("shapes/shapes.go", "plan:shapes#Told"),
 		editCard("shapes/shapes.go"),
@@ -250,7 +250,7 @@ func TestGlyphChain_RedundantPackage(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			f, base := newGlyphChainRepo(t)
-			dir, plan := writeGlyphPlan(t, tc.cards, tc.sections...)
+			dir, plan := writeLanguagePlan(t, "go", tc.cards, tc.sections...)
 			assertPlanGate(t, plan, f.root, tc.wantGate)
 
 			bound := bindCardOne(t, f, dir, base, f.commitEdits(tc.edits))
@@ -481,7 +481,7 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 				next = fatalTypesLoader{t}
 			}
 			loader := &countingTypesLoader{next: next}
-			_, plan := writeGlyphPlan(t, tc.cards)
+			_, plan := writeLanguagePlan(t, "go", tc.cards)
 
 			var findings []Finding
 			var err error
@@ -555,7 +555,7 @@ func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
 		t.Run(entry.name+": a slotted load waits for its slot and answers as the unslotted load", func(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
-			_, plan := writeGlyphPlan(t, []string{deleteCard("callees#Target")})
+			_, plan := writeLanguagePlan(t, "go", []string{deleteCard("callees#Target")})
 
 			want, err := entry.unslotted(plan, root)
 			if err != nil {
