@@ -904,7 +904,7 @@ func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err err
 		warnings = append(warnings, fmt.Sprintf("glyph scope guard could not run for batch %s: %v", in.Label, deltaErr))
 	} else {
 		deviationSet := map[string]bool{}
-		for _, f := range delta.ScopeGuard(in.Cards) {
+		for _, f := range delta.ScopeGuard(in.Plan, in.Cards) {
 			if f.File != "" && !deviationSet[f.File] {
 				deviationSet[f.File] = true
 				deviations = append(deviations, f.File)

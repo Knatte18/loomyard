@@ -134,7 +134,7 @@ type Delta interface {
 	// BindHandles binds the plan handles of cards to the symbols the delta created, and reports the outcome of each handle beside the findings.
 	BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]Finding, []BindOutcome, error)
 	// ScopeGuard reports the delta's changes outside the targets the cards declare.
-	ScopeGuard(cards []planparser.Card) []Finding
+	ScopeGuard(plan *planparser.Plan, cards []planparser.Card) []Finding
 	// DetectDrift reports the plan references the delta invalidates among the cards not in completed.
 	DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, planDir, worktreeRoot, sha, now string) ([]Finding, error)
 }

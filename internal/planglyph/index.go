@@ -105,8 +105,8 @@ func (d batchDelta) BindHandles(plan *planparser.Plan, planDir string, cards []p
 	return BindHandles(plan, planDir, d.answer, cards)
 }
 
-func (d batchDelta) ScopeGuard(cards []planparser.Card) []Finding {
-	return ScopeGuard(cards, d.answer)
+func (d batchDelta) ScopeGuard(plan *planparser.Plan, cards []planparser.Card) []Finding {
+	return ScopeGuard(plan, cards, d.answer)
 }
 
 // DetectDrift checks the plan pending after completed, the same view PendingPlan builds.
