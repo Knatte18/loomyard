@@ -42,6 +42,12 @@ const settleRecordsFileName = "go-settle.jsonl"
 // alignmentDirName is the segment under a run's directory that holds its alignment attempts, one directory per point.
 const alignmentDirName = "alignment"
 
+// gateFindingsDirName is the segment under a run's scratch directory that holds one gate findings file per row.
+const gateFindingsDirName = "gate-findings"
+
+// gateFindingsFileSuffix is the suffix of a row's gate findings file, whose path GateFindingsFile returns.
+const gateFindingsFileSuffix = ".md"
+
 // arbiterMarkerFileName is the filename of the arbiter in-flight marker, whose path ArbiterMarker returns.
 const arbiterMarkerFileName = "arbiter-inflight.json"
 
@@ -171,6 +177,14 @@ func ResumeReport(l *lyxcwd.Location, runID string) string {
 // BattenWatchedMarker returns the path to the ephemeral batten-watched marker, BattenWatchedFileName under ScratchDir(l, runID).
 func BattenWatchedMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), BattenWatchedFileName)
+}
+
+// GateFindingsFile returns the path to the ephemeral gate findings file of the row named row, under ScratchDir(l, runID).
+// There is one file per row: the row's producer writes it when its gate is exhausted,
+// and the row's next call whose gates pass removes it.
+// A goto, a resume and a pause leave the scratch directory alone, so the file outlives them.
+func GateFindingsFile(l *lyxcwd.Location, runID, row string) string {
+	return filepath.Join(ScratchDir(l, runID), gateFindingsDirName, row+gateFindingsFileSuffix)
 }
 
 // SeedRel returns the worktree-anchor-relative form of SeedFile's path: the join of

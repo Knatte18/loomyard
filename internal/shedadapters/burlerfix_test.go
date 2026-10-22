@@ -7,6 +7,7 @@ package shedadapters
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -22,7 +23,7 @@ import (
 // newFixProducer builds a BurlerFixProducer over runDir whose review row is named "burler-review", failing the test on constructor error.
 func newFixProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerFixProducer {
 	t.Helper()
-	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerFixProducer() error = %v; want nil", err)
 	}
@@ -255,10 +256,35 @@ func TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound(t
 		wantStuck  bool
 		wantErrIs  error
 		wantErrEnd string
+		// wantReason may hold {path}, which stands for the told findings path.
+		wantReason string
+		// keepFindings tells the producer a findings path through BurlerHalfDeps.GateFindingsPath.
+		keepFindings bool
+		// preWritten plants a file at the findings path before the call.
+		preWritten bool
+		// wantFindings is the findings file's wanted text, and "" means no file is left.
+		wantFindings string
+		// finished marks a fix whose gate passed: a hand-on that archives nothing.
+		finished bool
 	}{
 		{name: "a failed gate", result: burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Attempts: 3, Reason: "verify is red", Entries: []shuttleengine.GateEntryOutcome{
 			{Name: "verify", Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanGate, Start: time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC), End: time.Date(2026, 8, 16, 15, 0, 3, 0, time.UTC)}}},
-		}}}, wantStuck: true},
+		}}}, wantStuck: true, wantReason: "verify is red", keepFindings: true},
+		{
+			name:         "a failed non-terminal gate keeps its findings in the told file",
+			result:       burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Attempts: 3, Findings: "the gate's findings", Entries: []shuttleengine.GateEntryOutcome{{Name: "verify"}}}},
+			wantStuck:    true,
+			wantReason:   "gate did not pass after 3 attempts; findings: {path}",
+			keepFindings: true,
+			wantFindings: "the gate's findings",
+		},
+		{
+			name:         "a passed gate removes a findings file left by an earlier call",
+			result:       burlerengine.FixResult{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 1}},
+			keepFindings: true,
+			preWritten:   true,
+			finished:     true,
+		},
 		{name: "a changed review", err: burlerengine.ErrReviewChanged, wantErrIs: burlerengine.ErrReviewChanged, wantErrEnd: wayForwardToReview},
 	}
 	for _, tt := range tests {
@@ -268,17 +294,41 @@ func TestBurlerFixProducer_Call_GateFailedAndChangedReviewArchiveTheWholeRound(t
 			writeAcceptedRound(t, runDir, 1, "d1")
 			runner := &shedfake.BurlerHalfRunner{FixResults: []burlerengine.FixResult{tt.result}, FixErrs: []error{tt.err}}
 			runner.DuringFix = func(int) { writeRoundFile(t, roundFixerReportPath(runDir, 1)) }
-			p := newFixProducer(t, runDir, runner, newHalfSpec())
+			spec := newHalfSpec()
+			findingsPath := filepath.Join(t.TempDir(), "gate-findings", "burler-fix.md")
+			if tt.keepFindings {
+				spec.gateFindingsPath = findingsPath
+			}
+			if tt.preWritten {
+				writeRoundFile(t, findingsPath)
+			}
+			p := newFixProducer(t, runDir, runner, spec)
 
 			outcome, ptr, err := p.Call(context.Background())
 
-			if tt.wantStuck {
-				if err != nil || outcome != shedengine.Stuck || ptr.Path != "" || ptr.BudgetExempt || ptr.Reason != "verify is red" || ptr.GateAttempts == nil || *ptr.GateAttempts != 3 {
-					t.Errorf("Call() = %q, %+v, %v; want a counted Stuck with an empty Path, the gate's reason and 3 attempts", outcome, ptr, err)
+			got, readErr := os.ReadFile(findingsPath)
+			switch {
+			case tt.wantFindings == "" && readErr == nil:
+				t.Errorf("findings file holds %q; want none", got)
+			case tt.wantFindings != "" && string(got) != tt.wantFindings:
+				t.Errorf("findings file = %q (%v); want %q", got, readErr, tt.wantFindings)
+			}
+			if tt.finished {
+				if err != nil || outcome != shedengine.Stuck || ptr.Path != roundReviewPath(runDir, 1) || !ptr.BudgetExempt {
+					t.Errorf("Call() = %q, %+v, %v; want the BudgetExempt hand-on with round 1's review", outcome, ptr, err)
 				}
-				wantSpans := []shedengine.GateSpan{{Gate: "verify", Kind: shedengine.GateSpanKindGate, Start: "2026-08-16T15:00:00Z", End: "2026-08-16T15:00:03Z"}}
-				if !reflect.DeepEqual(ptr.GateSpans, wantSpans) {
-					t.Errorf("Call() pointer spans = %+v; want %+v", ptr.GateSpans, wantSpans)
+				return
+			}
+			if tt.wantStuck {
+				wantReason := strings.ReplaceAll(tt.wantReason, "{path}", findingsPath)
+				if err != nil || outcome != shedengine.Stuck || ptr.Path != "" || ptr.BudgetExempt || ptr.Reason != wantReason || ptr.GateAttempts == nil || *ptr.GateAttempts != 3 {
+					t.Errorf("Call() = %q, %+v, %v; want a counted Stuck with an empty Path, reason %q and 3 attempts", outcome, ptr, err, wantReason)
+				}
+				if tt.name == "a failed gate" {
+					wantSpans := []shedengine.GateSpan{{Gate: "verify", Kind: shedengine.GateSpanKindGate, Start: "2026-08-16T15:00:00Z", End: "2026-08-16T15:00:03Z"}}
+					if !reflect.DeepEqual(ptr.GateSpans, wantSpans) {
+						t.Errorf("Call() pointer spans = %+v; want %+v", ptr.GateSpans, wantSpans)
+					}
 				}
 			} else if !errors.Is(err, tt.wantErrIs) || !strings.HasSuffix(err.Error(), tt.wantErrEnd) {
 				t.Errorf("Call() error = %v; want it to wrap %v and end with %q", err, tt.wantErrIs, tt.wantErrEnd)

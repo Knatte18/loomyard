@@ -18,8 +18,9 @@ import (
 const (
 	retryPublishRow = "Publish"
 	retryMergeInRow = "Merge-In"
-	retryTarget     = "Webster"
-	retryHead       = "abc123"
+	// retryTarget is the default target of the harness's failure record.
+	retryTarget = "Webster"
+	retryHead   = "abc123"
 	// retryEarlier, retryHalting are the times of the history entries before the halt and of the halting entry.
 	retryEarlier = "2026-01-01T11:00:00Z"
 	retryHalting = "2026-01-01T11:30:00Z"
@@ -33,6 +34,8 @@ type retryHarness struct {
 	scratchDir string
 	clock      *fakeClock
 	producer   shedengine.ShedProducer
+	// target is the row the failure record routes the child to; the goto, the paused state and the marker all name it.
+	target string
 
 	status    shedengine.Status
 	record    *ChildPublishFailure
@@ -70,6 +73,7 @@ func newRetryHarness(t *testing.T) *retryHarness {
 		scratchDir: t.TempDir(),
 		clock:      &fakeClock{},
 		head:       retryHead,
+		target:     retryTarget,
 		record:     &ChildPublishFailure{Row: retryPublishRow, Head: retryHead, Target: retryTarget, WrittenAt: retryWritten},
 	}
 	h.blockedAtPublish()
@@ -120,7 +124,7 @@ func (h *retryHarness) blockedAt(row string) {
 }
 
 func (h *retryHarness) pausedAtTarget() {
-	h.status = shedengine.Status{State: shedengine.StatePaused, CurrentProducer: retryTarget, History: h.status.History}
+	h.status = shedengine.Status{State: shedengine.StatePaused, CurrentProducer: h.target, History: h.status.History}
 }
 
 // call runs one Call and returns the Stuck path, requiring an exempt Stuck.
@@ -143,7 +147,7 @@ func (h *retryHarness) marker() string {
 
 func (h *retryHarness) writeMarker(state string, started time.Time) {
 	h.t.Helper()
-	if err := os.WriteFile(publishRetryFile(h.scratchDir, "innerrun"), []byte(state+" "+started.UTC().Format(time.RFC3339)+" "+retryTarget+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(publishRetryFile(h.scratchDir, "innerrun"), []byte(state+" "+started.UTC().Format(time.RFC3339)+" "+h.target+"\n"), 0o644); err != nil {
 		h.t.Fatal(err)
 	}
 }
@@ -163,8 +167,8 @@ func (h *retryHarness) wantGotos(n int) {
 		h.t.Fatalf("goto calls = %v; want %d", h.gotoTargets, n)
 	}
 	for _, target := range h.gotoTargets {
-		if target != retryTarget {
-			h.t.Errorf("goto target = %q; want %q", target, retryTarget)
+		if target != h.target {
+			h.t.Errorf("goto target = %q; want %q", target, h.target)
 		}
 	}
 }
@@ -182,36 +186,57 @@ func (h *retryHarness) wantOneNotice(want ...string) {
 	}
 }
 
-// TestInnerRun_PublishRetrySendsTheChildToItsTargetAndResumesItOnce asserts a matching record sends the child to its target and resumes it, with no notice for the halt or the paused state,
-// and that a second Publish halt in the run gets the blocked notice saying the retry already ran, with no second goto.
+// TestInnerRun_PublishRetrySendsTheChildToItsTargetAndResumesItOnce asserts a matching record sends the child to the record's target and resumes it, with no notice for the halt or the paused state,
+// and that a second halt at the same row gets the blocked notice saying the retry already ran and carrying the child's not-owned reason, with no second goto.
+// The rows cover a Publish halt routed to Webster, a Merge-In halt routed to Merge-In, and a Publish halt routed to Merge-In, the route of a failure outside the task's impacted set.
 func TestInnerRun_PublishRetrySendsTheChildToItsTargetAndResumesItOnce(t *testing.T) {
 	t.Parallel()
-	h := newRetryHarness(t)
+	const notOwnedReason = `landing gate failed outside the task's impacted set, in github.com/Knatte18/loomyard/internal/x, after merging parent branch "main" (exit code 1)`
+	tests := []struct {
+		name   string
+		row    string
+		target string
+	}{
+		{"PublishHaltTargetsWebster", retryPublishRow, retryTarget},
+		{"MergeInHaltTargetsMergeIn", retryMergeInRow, retryMergeInRow},
+		{"PublishHaltTargetsMergeIn", retryPublishRow, retryMergeInRow},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newRetryHarness(t)
+			h.target = tt.target
+			h.record.Row = tt.row
+			h.record.Target = tt.target
+			h.blockedAt(tt.row)
 
-	if path := h.call(); !strings.Contains(path, "automatic Publish verify retry: sent the child to "+retryTarget) {
-		t.Errorf("goto Call path = %q; want it to name the automatic retry and the target", path)
-	}
-	h.wantGotos(1)
-	h.wantMarkerState(publishRetryGotoDone)
+			if path := h.call(); !strings.Contains(path, "automatic Publish verify retry: sent the child to "+tt.target) {
+				t.Errorf("goto Call path = %q; want it to name the automatic retry and the target", path)
+			}
+			h.wantGotos(1)
+			h.wantMarkerState(publishRetryGotoDone)
 
-	h.pausedAtTarget()
-	h.clock.advance(10 * time.Minute)
-	if path := h.call(); !strings.Contains(path, "automatic Publish verify retry: resumed the child at "+retryTarget) {
-		t.Errorf("resume Call path = %q; want it to name the automatic retry and the target", path)
-	}
-	if h.spawns != 1 {
-		t.Errorf("Spawn calls = %d; want 1", h.spawns)
-	}
-	h.wantMarkerState(publishRetryResumed)
-	if len(h.notices) != 0 {
-		t.Fatalf("notices after the goto and the resume = %q; want none", h.notices)
-	}
+			h.pausedAtTarget()
+			h.clock.advance(10 * time.Minute)
+			if path := h.call(); !strings.Contains(path, "automatic Publish verify retry: resumed the child at "+tt.target) {
+				t.Errorf("resume Call path = %q; want it to name the automatic retry and the target", path)
+			}
+			if h.spawns != 1 {
+				t.Errorf("Spawn calls = %d; want 1", h.spawns)
+			}
+			h.wantMarkerState(publishRetryResumed)
+			if len(h.notices) != 0 {
+				t.Fatalf("notices after the goto and the resume = %q; want none", h.notices)
+			}
 
-	h.blockedAtPublish()
-	h.status.History = append(h.status.History, shedengine.HistoryEntry{Producer: retryPublishRow, Outcome: shedengine.Stuck, At: "2026-01-01T11:50:00Z"})
-	h.call()
-	h.wantGotos(1)
-	h.wantOneNotice("blocked at "+retryPublishRow, "automatic Publish verify retry already ran")
+			h.blockedAt(tt.row)
+			h.status.Error = notOwnedReason
+			h.status.History = append(h.status.History, shedengine.HistoryEntry{Producer: tt.row, Outcome: shedengine.Stuck, At: "2026-01-01T11:50:00Z"})
+			h.call()
+			h.wantGotos(1)
+			h.wantOneNotice("blocked at "+tt.row, "automatic Publish verify retry already ran", "outside the task's impacted set")
+		})
+	}
 }
 
 // TestInnerRun_PublishRetryDeclinesRecordsThatDoNotMatchTheHalt asserts a halt gets no goto and the blocked notice when its record does not belong to it.

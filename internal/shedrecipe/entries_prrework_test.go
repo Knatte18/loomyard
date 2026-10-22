@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
@@ -87,6 +88,25 @@ func TestPRReworkEntry_HappyPath(t *testing.T) {
 	if producer == nil {
 		t.Fatalf("prReworkEntry() = nil producer; want non-nil")
 	}
+
+	// An exhausted gate's reason names the row's findings file, so an entry that drops the chain fails here.
+	env := withPendingRework(t, reworkTestEnv(t))
+	output := filepath.Join(env.Rework.ReworkDir, "coverage.md")
+	env.ReworkTable = func(loomshed.ReworkTold) (seatengine.Table, error) {
+		return seatengine.Table{
+			RolePrefix: "rework",
+			Segment:    segmentcolor.Webster,
+			Seats:      []seatengine.Seat{{Stencil: "loom-template-rework", Outputs: []string{output}}},
+		}, nil
+	}
+	withGateFindingsFile(&env, t.TempDir())
+	env.Seats = &shedfake.SeatRunner{Results: []seatengine.Result{failedGateResult(output)}}
+	producer, err = prReworkEntry(RowIdentity{Name: "Row"}, Config{}, env)
+	if err != nil {
+		t.Fatalf("prReworkEntry() error = %v; want nil", err)
+	}
+	pointer := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
+	requireNamesFindingsFile(t, env, "Row", pointer.Reason)
 }
 
 func TestPRReworkEntry_EvaluatesReworkTableWithToldValue(t *testing.T) {

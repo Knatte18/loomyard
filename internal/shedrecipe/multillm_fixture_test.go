@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
@@ -94,6 +95,38 @@ func TestMultiLLMFixtureRecipe_BuildsAndRunsAgainstFakeSeats(t *testing.T) {
 	if !reflect.DeepEqual(seats, want) {
 		t.Errorf("recorded seats = %+v; want %+v", seats, want)
 	}
+
+	// A chair whose gate is exhausted keeps its findings in the told file and names it, or names the gate's own path when no file is told.
+	exhausted := seatengine.Result{
+		Chair:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Attempts: 2, Findings: "the gate's findings", FindingsPath: "/gate/own-findings.md"}},
+		ChairOutputs: []string{chairOutput},
+	}
+	told := env.GateFindingsFile("Seat-Step")
+	if reason := callExhaustedChair(t, recipe, env, exhausted); reason != "gate did not pass after 2 attempts; findings: "+told {
+		t.Errorf("Call() reason with a told findings file = %q; want it to name %q", reason, told)
+	}
+	if got, err := os.ReadFile(told); err != nil || string(got) != "the gate's findings" {
+		t.Errorf("findings file = %q, %v; want the gate's findings", got, err)
+	}
+	env.GateFindingsFile = nil
+	if reason := callExhaustedChair(t, recipe, env, exhausted); reason != "gate did not pass after 2 attempts; findings: /gate/own-findings.md" {
+		t.Errorf("Call() reason with no told findings file = %q; want it to name the gate's own findings path", reason)
+	}
+}
+
+// callExhaustedChair builds recipe over env with a seat runner answering result, calls its one row and returns the Stuck reason.
+func callExhaustedChair(t *testing.T, recipe shedbuild.Recipe, env shedrecipe.Env, result seatengine.Result) string {
+	t.Helper()
+	env.Seats = &shedfake.SeatRunner{Results: []seatengine.Result{result}}
+	defs, err := shedbuild.Build(recipe, env)
+	if err != nil {
+		t.Fatalf("shedbuild.Build() error = %v; want nil", err)
+	}
+	outcome, pointer, err := defs[0].Producer.Call(context.Background())
+	if err != nil || outcome != shedengine.Stuck {
+		t.Fatalf("Call() = %q, %v; want Stuck", outcome, err)
+	}
+	return pointer.Reason
 }
 
 // writeFixtureStencil writes body as the stencil name in dir, where stencilstore reads it from.

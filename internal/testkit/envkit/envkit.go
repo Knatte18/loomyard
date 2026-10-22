@@ -36,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"gopkg.in/yaml.v3"
 )
@@ -59,6 +60,7 @@ var nilLegal = map[string]bool{
 	"Landing.Reconcile":                 true,
 	"Landing.VerifyCommand":             true,
 	"Landing.PublishSkip":               true,
+	"Landing.ClassifyVerifyFailure":     true,
 	"Landing.VerifyWaitMark":            true,
 	"Landing.FailingTests":              true,
 	"Landing.Registry":                  true,
@@ -273,6 +275,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		SpecsDir:           mustMkdir(t, filepath.Join(dir, "specs")),
 		RunRoot:            mustMkdir(t, filepath.Join(dir, "run-root")),
 		RunScratchDir:      mustMkdir(t, filepath.Join(dir, "run-scratch")),
+		GateFindingsFile:   func(row string) string { return filepath.Join(dir, "gate-findings", row+".md") },
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		PatternRecordPath:  filepath.Join(dir, "decision-record.md"),
 		RefuseRaw:          []string{"go test"},
@@ -379,7 +382,14 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			ClearRejection: func() error { return nil },
 			Commit:         func() error { return nil },
 			LatestOutcome:  func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
-			PublishFailure: func() (string, bool, error) { return "", false, nil },
+			PublishFailure: func() (string, verifytree.PublishFailure, bool, error) {
+				return "", verifytree.PublishFailure{}, false, nil
+			},
+			RunStart:   func() (time.Time, error) { return time.Time{}, nil },
+			TaskHead:   func() (string, error) { return "", nil },
+			Dirty:      func() ([]string, error) { return nil, nil },
+			ParentTips: func() ([]string, error) { return nil, nil },
+			IsAncestor: func(string) (bool, error) { return true, nil },
 		},
 		PlanIndex: noFindingsIndex{},
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 
@@ -47,6 +48,21 @@ func lookupEntry(t *testing.T, name string) Constructor {
 	return constructor
 }
 
+// writeFixRound writes the accepted round 1 a fix row works on into runDir: the review, its acceptance record and the usage record.
+func writeFixRound(t *testing.T, runDir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte("review\n"), 0o644); err != nil {
+		t.Fatalf("write the round-1 review: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(runDir, "round-1-acceptance.md"), []byte("---\nround: 1\ndigest: abc\n---\n"), 0o644); err != nil {
+		t.Fatalf("write the round-1 acceptance record: %v", err)
+	}
+	// A fix row told a fixer fan key reads the names its reviewer recorded, so the round carries a record with the flag.
+	if err := os.WriteFile(filepath.Join(runDir, "round-1-usage.yaml"), []byte("round: 1\nfan: \"\"\nfix_fan: \"\"\nfans_recorded: true\n"), 0o644); err != nil {
+		t.Fatalf("write the round-1 usage record: %v", err)
+	}
+}
+
 // captureReview constructs a BurlerReview entry from cfg and env, drives one Call so env.Burler's shedfake.BurlerHalfRunner records the Profile and RunOpts it was handed, and returns them.
 // Call's own return values are ignored:
 // the unscripted fake returns a zero burlerengine.ReviewResult with a nil error, which the producer's outcome switch does not recognise, so Call itself returns a non-nil error on every path here.
@@ -75,17 +91,7 @@ func captureFix(t *testing.T, name string, cfg Config, env Env) (burlerengine.Pr
 		t.Fatalf("burlerFixEntry() error = %v; want nil", err)
 	}
 
-	runDir := filepath.Join(env.RunRoot, cfg["run_subdir"].(string))
-	if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte("review\n"), 0o644); err != nil {
-		t.Fatalf("write the round-1 review: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(runDir, "round-1-acceptance.md"), []byte("---\nround: 1\ndigest: abc\n---\n"), 0o644); err != nil {
-		t.Fatalf("write the round-1 acceptance record: %v", err)
-	}
-	// A fix row told a fixer fan key reads the names its reviewer recorded, so the round carries a record with the flag.
-	if err := os.WriteFile(filepath.Join(runDir, "round-1-usage.yaml"), []byte("round: 1\nfan: \"\"\nfix_fan: \"\"\nfans_recorded: true\n"), 0o644); err != nil {
-		t.Fatalf("write the round-1 usage record: %v", err)
-	}
+	writeFixRound(t, filepath.Join(env.RunRoot, cfg["run_subdir"].(string)))
 	_, _, _ = producer.Call(context.Background())
 
 	fake := env.Burler.(*shedfake.BurlerHalfRunner)
@@ -696,6 +702,33 @@ func TestBurlerHalfEntries_RunDirectory(t *testing.T) {
 		})
 	}
 
+	t.Run("ReviewWhoseGatePassedRemovesTheRowsFindingsFile", func(t *testing.T) {
+		env := newTestEnv(t)
+		withGateFindingsFile(&env, t.TempDir())
+		env.Burler = &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{{
+			Outcome: shuttleengine.OutcomeDone,
+			Digest:  "digest-1",
+			Gate:    &shuttleengine.GateOutcome{Passed: true, Attempts: 1},
+		}}}
+		producer, err := burlerReviewEntry(reviewRow("review-row"), minimalReviewConfig(), env)
+		if err != nil {
+			t.Fatalf("burlerReviewEntry() error = %v; want nil", err)
+		}
+		findings := env.GateFindingsFile("review-row")
+		if err := os.MkdirAll(filepath.Dir(findings), 0o755); err != nil {
+			t.Fatalf("create the findings directory: %v", err)
+		}
+		if err := os.WriteFile(findings, []byte("an earlier call's findings"), 0o644); err != nil {
+			t.Fatalf("write the findings file: %v", err)
+		}
+
+		shedfake.RequireOutcome(t, producer, shedengine.Stuck)
+
+		if _, err := os.Stat(findings); !os.IsNotExist(err) {
+			t.Errorf("os.Stat(%q) error = %v; want the findings file removed", findings, err)
+		}
+	})
+
 	t.Run("SameSubdirAsBouncerResolvesToSameDir", func(t *testing.T) {
 		env := newTestEnv(t)
 		bouncerCfg := minimalBouncerConfig(t, env)
@@ -745,6 +778,25 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 		if !strings.Contains(result.Findings, "support log does not exist") {
 			t.Errorf("opts.Gate[0].Gate() Findings = %q; want it to name the missing support log, proving the discussion validator ran", result.Findings)
 		}
+	})
+
+	t.Run("ExhaustedGateNamesTheRowsFindingsFile", func(t *testing.T) {
+		env := newTestEnv(t)
+		withGateFindingsFile(&env, t.TempDir())
+		env.Burler = &shedfake.BurlerHalfRunner{FixResults: []burlerengine.FixResult{{
+			Outcome: shuttleengine.OutcomeDone,
+			Gate:    &shuttleengine.GateOutcome{Attempts: 2, Findings: "the gate's findings"},
+		}}}
+		producer, err := burlerFixEntry(reviewRow("fix-row"), minimalFixConfig(), env)
+		if err != nil {
+			t.Fatalf("burlerFixEntry() error = %v; want nil", err)
+		}
+		runDir := filepath.Join(env.RunRoot, "review-segment")
+		writeFixRound(t, runDir)
+
+		pointer := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
+
+		requireNamesFindingsFile(t, env, "fix-row", pointer.Reason)
 	})
 
 	t.Run("GatePlanResolvesToPlanValidator", func(t *testing.T) {

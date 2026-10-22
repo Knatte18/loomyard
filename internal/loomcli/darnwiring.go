@@ -4,6 +4,7 @@
 package loomcli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -14,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -73,8 +75,11 @@ func darnVerifySource(l *lyxcwd.Location) verifySource {
 			_, scoped, err := treeScope()
 			return scoped, err
 		},
-		failedWayForward: `run "lyx loom goto --to Darn-Write", then "lyx loom resume", in the task worktree; the Darn-Write spawn renders the Publish failure record and its gate runs the failing tests`,
+		failedWayForward: darnFailedWayForward,
 		failureTarget:    loomshed.NameDarnWrite,
+		classify: func(ctx context.Context, failure verifytree.PublishFailure) landingshed.FailureRoute {
+			return darnFailureRoute(ctx, failure, l.WorktreePath(), pairMergeBase(l), impactset.DeriveTargets)
+		},
 	}
 }
 
@@ -142,7 +147,7 @@ func latestDarnOutcome(statusPath, statusLockPath string) (loomshed.DarnOutcome,
 		return loomshed.DarnOutcome{}, false, nil
 	}
 	for i := len(st.History) - 1; i >= 0; i-- {
-		if st.History[i].Producer != loomshed.NameDarnWrite {
+		if st.History[i].Producer != loomshed.NameDarnWrite || st.History[i].Outcome == shedengine.OutcomeReroute {
 			continue
 		}
 		latest := loomshed.DarnOutcome{Outcome: st.History[i].Outcome}
@@ -173,12 +178,39 @@ func darnDeps(l *lyxcwd.Location, runID, verifyDir string) loomshed.DarnDeps {
 		LatestOutcome: func() (loomshed.DarnOutcome, bool, error) {
 			return latestDarnOutcome(shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID))
 		},
-		PublishFailure: func() (string, bool, error) {
-			_, found, err := verifytree.ReadPublishFailure(paths)
+		PublishFailure: func() (string, verifytree.PublishFailure, bool, error) {
+			record, found, err := verifytree.ReadPublishFailure(paths)
 			if err != nil || !found {
-				return "", false, err
+				return "", verifytree.PublishFailure{}, false, err
 			}
-			return paths.PublishFailure, true, nil
+			return paths.PublishFailure, record, true, nil
+		},
+		RunStart: func() (time.Time, error) { return seedRunStart(l) },
+		TaskHead: func() (string, error) {
+			handle, err := fabricengine.Open(l)
+			if err != nil {
+				return "", err
+			}
+			return handle.HeadSHA()
+		},
+		Dirty: func() ([]string, error) { return verifytree.DirtyPaths(l.WorktreePath()) },
+		ParentTips: func() ([]string, error) {
+			parent, err := readRecordedParentBranch(l)
+			if err != nil {
+				return nil, err
+			}
+			tips, err := parentTipsReader(l, parent)(false)
+			if err != nil {
+				return nil, err
+			}
+			return mergeableTips(tips, fabricengine.EnvSyncOptions().SkipPush), nil
+		},
+		IsAncestor: func(sha string) (bool, error) {
+			handle, err := fabricengine.Open(l)
+			if err != nil {
+				return false, err
+			}
+			return handle.IsAncestor(sha, "HEAD")
 		},
 	}
 }

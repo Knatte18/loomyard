@@ -14,6 +14,7 @@
 # Preflight, Merge-In, Publish and Finalize carry no on_stuck: nothing in the list produces what each of them
 # gates, so a human is the only thing that can fix them. Darn-Write and Describe carry none either:
 # an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget.
+# Darn-Write's one reroute edge sends a moved parent to Merge-In, the row that merges it.
 # PR-Align, like Friction-Reflect, carries none either, because it never returns Stuck.
 #
 # Darn-Bouncer, Darn-Burler-Review and Darn-Burler-Fix are the Darn-Review perch, wired like loom's
@@ -30,7 +31,7 @@
 # so ly:<slug>:darn-burler-review names its segment.
 #
 # Merge-In follows Describe and hands straight to Publish: darn has no Merge-Review perch.
-# Publish, PR-Gate and Finalize each declare on_reroute: Merge-In, the row a moved parent sends
+# Darn-Write, Publish, PR-Gate and Finalize each declare on_reroute: Merge-In, the row a moved parent sends
 # them back to. An in-flight run parked on a row whose name or edges changed with Merge-In is
 # restarted, not migrated.
 #
@@ -60,6 +61,9 @@ producers:
     segment: PR-Review
     # internal/loomrecipe rewrites this edge to Merge-In when darn.yaml's review_max_bounces is 0.
     on_done: Darn-Bouncer
+    # A Darn-Write call that finds this run's failure record, an unmoved task branch, a clean worktree
+    # and a moved parent reroutes to Merge-In before spawning the writer.
+    on_reroute: Merge-In
     config:
       # gates holds this row's handoff until it is mechanically valid: each entry names a gate and
       # re-prompts the live session up to its attempts times. The verify gate's attempts here is a

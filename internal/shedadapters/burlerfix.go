@@ -33,10 +33,12 @@ type BurlerFixProducer struct {
 	models    burlerengine.RoundModels
 	// requiresFans makes the producer read the round's recorded fixer fan and refuse a round that holds none.
 	requiresFans bool
-	profile      burlerengine.Profile
-	opts         burlerengine.RunOpts
-	runDir       string
-	now          func() time.Time
+	// gateFindingsPath, when non-empty, is the file an exhausted fixer gate's findings are kept in.
+	gateFindingsPath string
+	profile          burlerengine.Profile
+	opts             burlerengine.RunOpts
+	runDir           string
+	now              func() time.Time
 }
 
 // Compile-time proof that *BurlerFixProducer satisfies shedengine.ShedProducer.
@@ -59,7 +61,7 @@ func NewBurlerFixProducer(name, reviewRow string, deps BurlerHalfDeps, profile b
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerFixProducer{name: name, reviewRow: reviewRow, runner: deps.Runner, models: deps.Models, requiresFans: deps.RequiresFans, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	return &BurlerFixProducer{name: name, reviewRow: reviewRow, runner: deps.Runner, models: deps.Models, requiresFans: deps.RequiresFans, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
 }
 
 // wayForward is the way forward every refusal that needs the round reviewed again ends with.
@@ -254,7 +256,10 @@ func (p *BurlerFixProducer) fixedExit(ctx context.Context, round int, result bur
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		logger.Warn("shedadapters: burler fix's gate did not pass", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "attempts", result.Gate.Attempts, "findingsPath", result.Gate.FindingsPath)
-		return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate), Reason: gateFailedReason(result.Gate)}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{GateAttempts: gateAttemptsPointer(result.Gate), GateSpans: gateSpansOf(result.Gate), Reason: gateFailedReason(result.Gate, p.gateFindingsPath)}, nil
+	}
+	if result.Gate != nil {
+		clearGateFindings(p.gateFindingsPath)
 	}
 	if cerr := cancelErr(ctx, p.name, burlerFixEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr

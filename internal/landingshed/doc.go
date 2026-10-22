@@ -95,11 +95,13 @@
 // A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
 // Merge-In and Publish persist their verify failure; Finalize neither writes nor removes the record.
-// When a `landing` or `publish` call fails with a non-zero exit, Merge-In or Publish writes the verifytree Publish failure record with the failing gate as its kind, the failing tier, the row that ran the verify, the failing tests the told Deps.FailingTests parses from the log, HEAD, the told Deps.VerifyFailureTarget row, the write time in whole-second UTC, and the merge-in commit.
+// When a `landing` or `publish` call fails with a non-zero exit, Merge-In or Publish writes the verifytree Publish failure record with the failing gate as its kind, the failing tier, the row that ran the verify, the failing tests the told Deps.FailingTests parses from the log, HEAD, the target row, the write time in whole-second UTC, and the merge-in commit.
 // The tier is the last failing tier the log's `lyx gate test` summary lines name; a log without one, such as a refusal before the first tier, takes the highest tier of the gate's list, read through the told Deps.GateTiers.
 // The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Publish reads it from Merge-In's merge record.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
-// The Stuck reason of a failed verify ends with the way-forward clause the recipe tells in Deps.VerifyFailedWayForward only when the record was written; otherwise, and when none is told, it asks to fix forward on the task branch.
+// The record's target and the reason's way forward come from the told Deps.ClassifyVerifyFailure when it is set, and from Deps.VerifyFailureTarget and Deps.VerifyFailedWayForward otherwise.
+// A not-owned route's lead names the packages before the merge clause.
+// The Stuck reason of a failed verify ends with the way-forward clause only when the record was written; otherwise, and when none is told, it asks to fix forward on the task branch.
 // When the failed verify's log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, the reason names the window and says the goroutine stacks are in the log, before that clause.
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then resuming.
 // An unreadable log or one without the line leaves the reason unchanged, and the checks run no flake rerun.

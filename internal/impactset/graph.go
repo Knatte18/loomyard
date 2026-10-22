@@ -106,7 +106,7 @@ func (g moduleGraph) reaches(p pkg, changed map[string]bool) bool {
 }
 
 // impactedSet returns the import paths of the changed packages and every package that reaches one of them.
-// When a changed package is a dependency of the `cmd/lyx` command, it also returns every package whose tests import the binary builder.
+// When the changed packages include the `cmd/lyx` main package itself, which no test imports, it also returns every package whose tests import the binary builder.
 func (g moduleGraph) impactedSet(changed map[string]bool) map[string]bool {
 	set := map[string]bool{}
 	for _, p := range g.byImportPath {
@@ -114,30 +114,31 @@ func (g moduleGraph) impactedSet(changed map[string]bool) map[string]bool {
 			set[p.ImportPath] = true
 		}
 	}
-	if command, ok := g.byDir[commandDir]; ok {
-		for importPath := range g.closure([]string{command.ImportPath}) {
-			if changed[importPath] {
-				g.addBinaryBuildingTests(set)
-				break
-			}
-		}
+	if command, ok := g.byDir[commandDir]; ok && changed[command.ImportPath] {
+		g.addBinaryBuildingTests(set)
 	}
 	return set
 }
 
-// addBinaryBuildingTests adds every package whose test files import the binary builder.
-func (g moduleGraph) addBinaryBuildingTests(set map[string]bool) {
+// addBinaryBuildingTests adds every package whose test files import the binary builder to set.
+// It returns the sorted module-relative directories of those packages, empty when the module has no binary builder package.
+func (g moduleGraph) addBinaryBuildingTests(set map[string]bool) []string {
 	lyxbin, ok := g.byDir[lyxbinDir]
 	if !ok {
-		return
+		return nil
 	}
+	var dirs []string
 	for _, p := range g.byImportPath {
 		for _, imported := range p.TestImports {
 			if imported == lyxbin.ImportPath {
 				set[p.ImportPath] = true
+				dirs = append(dirs, p.Dir)
+				break
 			}
 		}
 	}
+	sort.Strings(dirs)
+	return dirs
 }
 
 // packageDirs returns the directories of the import paths, sorted.

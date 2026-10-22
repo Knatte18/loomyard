@@ -35,6 +35,14 @@ func requireNonEmpty(entry, field, value string) error {
 	return nil
 }
 
+// gateFindingsPath returns the gate findings file Env.GateFindingsFile tells the row named row, or "" when the seam is unset.
+func (e Env) gateFindingsPath(row string) string {
+	if e.GateFindingsFile == nil {
+		return ""
+	}
+	return e.GateFindingsFile(row)
+}
+
 // requireSeam errors when seam is nil, naming entry and field.
 //
 // It detects a typed-nil interface value as nil too, since Env.Shuttle and Env.Burler are

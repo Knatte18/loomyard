@@ -152,7 +152,11 @@ type GateOutcome struct {
 	// It is diagnostic text ONLY, never a path to dereference after Wait returns: the
 	// findings file lives in the run directory that finalize deletes on the Done cleanup every
 	// exhausted gate takes, so a producer that opens it is a defect.
+	// A producer that keeps the findings reads Findings.
 	FindingsPath string
+	// Findings is the findings text of the failing entry, empty when Passed.
+	// It rides the outcome because the findings file dies with the run directory, so it is the text a producer keeps.
+	Findings string
 	// Reason is the Findings text of the terminal failing result, empty otherwise.
 	// It rides the outcome because finalize deletes the run directory and the findings file with it, so a terminal entry's explanation reaches the producer only here.
 	Reason string
