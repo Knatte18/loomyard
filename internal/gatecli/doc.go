@@ -1,11 +1,13 @@
-// Package gatecli provides the cobra command tree for `lyx gate`, whose verb `test` is the sanctioned route for running the hub's test tiers and whose verb `card-verify` runs a plan card's `**Verify:**` line.
+// Package gatecli provides the cobra command tree for `lyx gate`, whose verb `test` is the sanctioned route for running the hub's test tiers, whose verb `status` shows who holds the hub's gate slots and whose verb `card-verify` runs a plan card's `**Verify:**` line.
 //
 // The module is not standalone-capable and does not go through internal/cliwire: it has no target directory, state, plan or stencils to wire, and it resolves hub membership itself.
 //
 // # Verb
 //
-// `lyx gate test [-C <dir>] [--tier N]... [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and stops at the first tier that fails.
-// `--tier` names a tier and may repeat; the default is tier0, and a tier another listed tier covers is dropped and named as covered on stderr.
+// `lyx gate test [-C <dir>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and stops at the first tier that fails.
+// `--tier` names a tier and may repeat; the default is tier0 when neither `--tier` nor `--upto` is given, and a tier another listed tier covers is dropped and named as covered on stderr.
+// `--upto N` adds every declared tier numbered 0 through N to the `--tier` values, skipping a gap in the numbers and a tier marked `manual`, which it names on stderr unless `--tier` names it.
+// A manual tier runs only when `--tier` names it, so a tier that spends tokens never starts from a range; a negative N is refused before hub resolution.
 // `--tags` stays a registered flag only to be refused before any slot, naming `--tier`: a tier's own command sets its build tags.
 // The words after `--` fill each tier's `{args}`.
 //
@@ -24,7 +26,7 @@
 // Explicit targets replace each run's `{targets}` verbatim and run in the `-C` directory, else in the tier's `dir`.
 // `--all` sets `{targets}` to the tier's `all_targets`, split at spaces, and runs in the tier's `dir`.
 // A command without `{targets}` runs once, whole, under explicit targets and under a non-empty narrower scope, and says so on stderr.
-// Flag-shape refusals need no config and run first, before hub resolution: `--tags`, naming `--tier`; `-C` without explicit targets, naming them; and more than one scope form.
+// Flag-shape refusals need no config and run first, before hub resolution: `--tags`, naming `--tier`; a negative `--upto`; `-C` without explicit targets, naming them; and more than one scope form.
 //
 // # Scoper
 //
@@ -75,6 +77,10 @@
 // The cap keeps one blocked Bash call under the prompt-cache lifetime, so an agent that re-runs the verb keeps its cache warm.
 // A tier with `slots: all` holds every slot and waits behind the pool's drain.
 // Outside a hub the tiers run unslotted.
+//
+// `lyx gate status` reads the pool of the hub that contains the working directory and changes nothing.
+// It answers an ok envelope with `in_hub`, the pool's `slots` count, `draining`, whether a multi-slot acquire holds the drain so new single-slot runs wait while a slot is free, and `held`, one entry per held slot, oldest first, with its `slot` number, `worktree`, `site`, `tier`, `pid` and `started` time.
+// Outside every hub it answers `in_hub: false` and nothing held.
 //
 // # Inheritance
 //

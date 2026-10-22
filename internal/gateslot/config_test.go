@@ -109,6 +109,14 @@ func TestLoadConfig(t *testing.T) {
 				c.Gates["push"] = []int{0, 1}
 			}), "",
 		},
+		{
+			"a manual tier above tier0 loads", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}, tier3: {command: y, timeout_min: 5, counter: vstest, manual: true}}`,
+			hubWith(func(c *Config) {
+				c.Tiers["tier0"] = Tier{Command: "x", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
+				c.Tiers["tier3"] = Tier{Command: "y", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1, Manual: true}
+			}), "",
+		},
+		{"a manual tier0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, manual: true}}`, Config{}, `gate config key "tiers.tier0.manual": true; want false, since tier0 is the tier a call with no tier flag runs` + fixIt},
 		{"tier without command", baseKeys + `tiers: {tier0: {timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.command": missing; want the shell command a run executes` + fixIt},
 		{"tier without timeout_min", baseKeys + `tiers: {tier0: {command: x, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.timeout_min": missing; want at least 1` + fixIt},
 		{"tier with timeout_min 0", baseKeys + `tiers: {tier0: {command: x, timeout_min: 0, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.timeout_min": 0; want at least 1` + fixIt},

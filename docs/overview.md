@@ -229,7 +229,7 @@ github.com/Knatte18/loomyard/
 ├── internal/cleanupcli/          the cleanup CLI command (`lyx cleanup`, the routine cleanups of the hub prime's leftover state, a dry run by default)
 ├── internal/fabriccli/           the fabric CLI command (git coordination of code and records)
 ├── internal/fabricengine/        the fabric domain kernel
-├── internal/gatecli/             the gate CLI command (`lyx gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged)
+├── internal/gatecli/             the gate CLI command (`lyx gate test`, the tier runner: the hub's test tiers over a scope, slotted, bounded, counted and logged; `lyx gate status`, the holders of the hub's gate slots)
 ├── internal/helpcli/             the help CLI command (`lyx help [<command>...]`, `lyx help index`)
 ├── internal/shortcutcli/         the top-level operator shortcuts (`lyx a`, `lyx attach`, `lyx prime`, `lyx pause`, `lyx p`, `lyx resume`, `lyx r`) from one embedded file
 ├── internal/idecli/              the ide CLI command

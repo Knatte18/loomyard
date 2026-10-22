@@ -139,6 +139,9 @@ func flagShapeRefusal(request testRequest) string {
 	if request.tags != "" {
 		return fmt.Sprintf("gate test: --tags %q is refused, since a tier's own command sets its build tags; way forward: name the tier that compiles them with --tier, for example --tier 1, and re-run the same command", request.tags)
 	}
+	if request.uptoGiven && request.upto < 0 {
+		return fmt.Sprintf("gate test: --upto %d names no tier; way forward: pass the highest tier number to run, 0 or more, then re-run the same command", request.upto)
+	}
 	forms := 0
 	for _, given := range []bool{len(request.targets) > 0, request.all, request.base != "", len(request.cards) > 0} {
 		if given {

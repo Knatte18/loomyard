@@ -19,7 +19,8 @@
 // The Holder record names the tier run that holds a slot, so a status reader can show it.
 //
 // An OS lock is released by process death, so a crashed holder never leaks a slot; its holder record stays on disk but Holders trusts a record only while its lock is held.
-// Holders reads every slot record in the directory, so a holder of a slot above a lowered count still shows.
+// Holders reads every slot record in the directory, so a holder of a slot above a lowered count still shows, and fills each Holder's slot number from its record's file name, which the record itself never carries.
+// Pool.Draining reports whether the drain lock is held, and creates no file in a pool that never had one.
 //
 // # Inheritance
 //
@@ -56,10 +57,11 @@
 // `gates` is a per-name map from a gate name to its list of tier numbers, so a hub file that sets one gate keeps the template's list for every other, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
 // `tiers` is an executable key, since a tier command runs any shell command in a task worktree, and `gates`, `scoper`, `guard_tier` and `refuse_raw` are guard keys, so all of them are hub-file only.
 // The machine override is a sibling map rather than a path under `tiers`, because an open map is one unit in the layer merge, so a machine layer holding part of `tiers` would replace the hub's tiers whole.
+// A tier's `manual: true` keeps it out of a `lyx gate test --upto` range, so it runs only when named by number.
 // A declared tier's effective Parallel is its `tier_parallel` entry when one is set, from whichever layer sets it, and 1 when neither sets one; a standalone worktree has no machine layer and sets the key in its own file.
 //
 // LoadConfig refuses at load, naming the key and `lyx config gate`: a tier lacking `command`, `timeout_min` or `counter`, or `all_targets` when its command holds `{targets}`;
-// `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1, a counter other than `go-json` or `vstest`, a scoper other than `go` or `none`;
+// `manual: true` on `tier0`, the tier a call with no tier flag runs; `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1, a counter other than `go-json` or `vstest`, a scoper other than `go` or `none`;
 // a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`, a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces, and a `tier_parallel` entry that is no integer of at least 1.
 // A `tier_parallel` entry for a tier the config does not declare is dropped with a logged warning, so a tier the hub removes leaves no entry that fails the load.
 // Cross-references are checked at use, never at load, so the template and a hub whose gate lists name an undeclared tier both load.

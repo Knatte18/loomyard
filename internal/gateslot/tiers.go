@@ -39,6 +39,8 @@ type Tier struct {
 	Slots int
 	// PrebuiltLyx makes a run of the tier prebuild lyx from the worktree first.
 	PrebuiltLyx bool
+	// Manual keeps the tier out of a tier range, so it runs only when named by number, such as a tier that spends tokens.
+	Manual bool
 }
 
 // tierFile is a tier as gate.yaml spells it, before defaults and validation.
@@ -54,6 +56,7 @@ type tierFile struct {
 	Covers      []int             `yaml:"covers"`
 	Slots       yaml.Node         `yaml:"slots"`
 	PrebuiltLyx bool              `yaml:"prebuilt_lyx"`
+	Manual      bool              `yaml:"manual"`
 }
 
 // goReadGates are the gate names the Go verify sites read, in the order TiersValue lists them.
@@ -106,6 +109,10 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 		Covers:      file.Covers,
 		Slots:       1,
 		PrebuiltLyx: file.PrebuiltLyx,
+		Manual:      file.Manual,
+	}
+	if tier.Manual && number == 0 {
+		return Tier{}, refuse("manual", "true; want false, since tier0 is the tier a call with no tier flag runs")
 	}
 	if tier.Dir == "" {
 		tier.Dir = "."
