@@ -18,7 +18,7 @@ import (
 const archiveTagSHALen = 12
 
 // archiveTagPushDelays returns the delays the archive-tag push sleeps between its attempts when the remote refuses it retryably: 2 s doubling to 32 s, six attempts in all.
-// The schedule is longer than a plain push's because a teardown runs once and holds no lock other writers wait on, so waiting out a remote hiccup of about a minute beats failing the row.
+// The schedule is longer than a plain push's because a teardown archives once and holds only the pair's own teardown lock, which only that pair's detached pushes wait on, so waiting out a remote hiccup of about a minute beats failing the row.
 func archiveTagPushDelays() []time.Duration {
 	return []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 32 * time.Second}
 }
