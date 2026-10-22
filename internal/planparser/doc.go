@@ -19,6 +19,8 @@
 // cmd/lyx/constraintchokepoint_test.go guards this mechanically.
 // goPackageDir (targetdirs.go) is the one sanctioned adjustment beside Glyph.UnitPath:
 // it maps quarry's external-test pseudo-unit `<dir>_test` to its package directory.
+// ParseRef (glyphref.go) is the one alphabet choice for a plan ref and for a `plan:` handle's body, so nothing outside this package passes a glyph.Language to a parse;
+// PATTERN-glyph-conversion-chokepoint states the rule.
 //
 // # Path ownership
 //
@@ -138,13 +140,29 @@
 //
 // # The language: key and the glyph alphabet
 //
-// The overview's optional `language:` frontmatter key names the alphabet a
-// plan's Targets/Uses/Pairs symbol-shaped entries are spelled in: "go" (the
-// default when the key is absent) enables glyph.Go's alphabet, and "none"
-// opts a plan out of it entirely, keeping every pre-glyph symbol-shaped
-// behavior unchanged. Under "go", ParsePlan canonicalizes every
-// canonicalizablePath-eligible path-shaped entry into its glyph string
-// immediately after root:/// resolution, and Plan.SurfaceRefs records EVERY one of a
-// canonicalized entry's pre-canonicalization surface lexemes, keyed by the
-// owning card's identity and the resulting canonical string.
+// The overview's optional `language:` frontmatter key names the alphabet a plan's Targets/Uses/Pairs symbol-shaped entries are spelled in.
+// "go", the default when the key is absent, enables glyph.Go's alphabet and "csharp" enables glyph.CSharp's.
+// "none" opts a plan out of glyphs entirely, keeping every pre-glyph symbol-shaped behavior unchanged.
+// Under "go" and "csharp", ParsePlan canonicalizes every canonicalizablePath-eligible path-shaped entry into its glyph string immediately after root:/// resolution.
+// Plan.SurfaceRefs records EVERY one of a canonicalized entry's pre-canonicalization surface lexemes, keyed by the owning card's identity and the resulting canonical string.
+// That canonicalization goes through the Go unit alphabet under both glyph languages, since quarry spells a path in that alphabet whatever the plan's language;
+// PathEntryPath is the one Go-alphabet reading of a canonicalized path entry back to its path, and its callers are the language-mismatch check and the rename-namespace-pair check.
+//
+// ParseRef parses a ref against the alphabet the plan's language selects, and follows three rules under csharp:
+// a ref the C# alphabet accepts is a C# glyph;
+// a ref only the Go alphabet accepts is returned only when it is a self glyph, which is how a canonicalized path entry reads;
+// any other ref returns the C# alphabet's parse error.
+// A ref both alphabets parse is therefore C#.
+// Under none it returns an error and parses nothing.
+// A slash-free self glyph such as `Glyphchain.Sharp#` reads as a namespace under csharp, so diskPathForRef gives it no disk path and the path checks that key on it skip it:
+// the bound is that a repository-root file or directory spelled without a slash is not checked against the disk under csharp.
+//
+// Plan.GlyphLanguage answers only whether the plan is glyph-enabled.
+// Plan.GoToolchain is true under go or an absent language and is the one test for the checks that read Go source or Go toolchain semantics:
+// the verify-chain checks verify-nested-module, verify-module-wide and verify-package-missing, the Go package-directory mapping of a unit in CardTargetDirs and RefScope, the external-test pseudo-unit reading in CheckFabricVocabularyName, and the delete-order and caller-coverage checks in internal/planglyph.
+// Each of them leaves a csharp or none plan alone.
+//
+// plan-language-mismatch refuses a plan whose Targets name only the other language's files, a `.cs` file under go or a `.go` file under csharp, unless a member glyph, a `plan:` handle or an extensionless self glyph shows the plan may name code of its own language.
+// Its resolve-backed half, in internal/planglyph, judges a go plan whose targets resolve only into `.cs` files.
+// rename-namespace-pair refuses, under csharp, a Rename pair of two self glyphs whose old side is slash-free and names nothing on disk, since such a pair is a file pair that runs `git mv` and a namespace is no path.
 package planparser

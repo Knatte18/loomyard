@@ -152,14 +152,14 @@ func ParsePlanFrom(planDir string, read func(name string) ([]byte, error)) (*Pla
 		language = *fm.Language
 	}
 
-	// lang/langOK map language to the glyph package's own Language type, applying the same
-	// absent-defaults-to-"go" rule as above. langOK is false for "none" and for any value this
-	// package does not recognize (checkLanguageRecognized reports that separately) — canonicalizeCard
-	// is simply never called for such a card, rather than called with a meaningless lang.
-	// planLanguage is deliberately not called here: it takes a *Plan and exists for the post-parse
-	// callers in validate.go, which run against a fully built plan; ParsePlan has no *Plan to hand it
-	// until after this loop finishes.
-	lang, langOK := glyph.Go, language == "go"
+	// langOK is true for "go" and "csharp", applying the same absent-defaults-to-"go" rule as above.
+	// It is false for "none" and for any value this package does not recognize, which checkLanguageRecognized reports separately.
+	// canonicalizeCard is simply never called for such a card.
+	// lang is glyph.Go under both, since quarry spells a path only in the Go unit alphabet.
+	// planLanguage is deliberately not called here:
+	// it takes a *Plan and exists for the post-parse callers in validate.go, which run against a fully built plan;
+	// ParsePlan has no *Plan to hand it until after this loop finishes.
+	lang, langOK := glyph.Go, language == "go" || language == "csharp"
 
 	surfaceRefs := make(map[string]map[string][]string)
 

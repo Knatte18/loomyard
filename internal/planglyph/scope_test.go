@@ -57,7 +57,7 @@ func TestScopeGuard_SymbolCoverage(t *testing.T) {
 			cards := []planparser.Card{{Number: 1, Slug: "one", Targets: tc.targets}}
 
 			var got []string
-			for _, f := range ScopeGuard(cards, quarry.GitDeltaAnswer{DeltaAnswer: tc.delta}) {
+			for _, f := range ScopeGuard(&planparser.Plan{Language: "go"}, cards, quarry.GitDeltaAnswer{DeltaAnswer: tc.delta}) {
 				if f.Check != "scope-outside-plan" || f.Severity != SeverityInformational {
 					t.Errorf("finding = %+v; want an informational scope-outside-plan", f)
 				}
@@ -74,11 +74,13 @@ func TestScopeGuard_SymbolCoverage(t *testing.T) {
 // A file carrying an out-of-target symbol is reported by that symbol's finding alone.
 func TestScopeGuard_FileLevelCoverage(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		targets []string
-		created []quarry.Symbol
-		path    string
-		want    []string
+		name string
+		// language is the plan's language, "go" when empty.
+		language string
+		targets  []string
+		created  []quarry.Symbol
+		path     string
+		want     []string
 	}{
 		{name: "import-only change in a target's package", targets: []string{"sub#Foo"}, path: "sub/a.go"},
 		{name: "import-only change in a subdirectory of a target's package", targets: []string{"sub#Foo"}, path: "sub/inner/a.go", want: []string{"sub/inner/a.go"}},
@@ -88,6 +90,8 @@ func TestScopeGuard_FileLevelCoverage(t *testing.T) {
 		{name: "non-Go file in a package target's directory", targets: []string{"sub#"}, path: "sub/README.md"},
 		{name: "file in another package", targets: []string{"sub#Foo"}, path: "other/x.go", want: []string{"other/x.go"}},
 		{name: "plan handle covers its package", targets: []string{"plan:sub#Bar"}, path: "sub/new.go"},
+		{name: "dot-free namespace self glyph is a package directory under go", language: "go", targets: []string{"Glyphchain#"}, path: "Glyphchain/notes.txt"},
+		{name: "namespace self glyph covers no file under csharp", language: "csharp", targets: []string{"Glyphchain#"}, path: "Glyphchain/notes.txt", want: []string{"Glyphchain/notes.txt"}},
 		{
 			name:    "file with an out-of-target symbol gets only the symbol finding",
 			targets: []string{"other#Z"},
@@ -104,7 +108,7 @@ func TestScopeGuard_FileLevelCoverage(t *testing.T) {
 			}}
 
 			var got []string
-			for _, f := range ScopeGuard(cards, delta) {
+			for _, f := range ScopeGuard(&planparser.Plan{Language: tc.language}, cards, delta) {
 				got = append(got, f.File)
 			}
 			if !reflect.DeepEqual(got, tc.want) {
@@ -123,7 +127,7 @@ func TestScopeGuard_DeletedAndModifiedAlsoChecked(t *testing.T) {
 		Modified: []quarry.ModifiedSymbol{{ID: "sub#Changed", After: []quarry.Symbol{{ID: "sub#Changed", File: "sub/d.go"}}}},
 	}}
 
-	got := ScopeGuard(cards, delta)
+	got := ScopeGuard(&planparser.Plan{Language: "go"}, cards, delta)
 	if len(got) != 2 {
 		t.Fatalf("ScopeGuard(deleted+modified outside) = %+v; want exactly two findings", got)
 	}
@@ -134,7 +138,7 @@ func TestScopeGuard_DeletedAndModifiedAlsoChecked(t *testing.T) {
 func TestScopeGuard_EmptyDeltaNoFindingsNoPanic(t *testing.T) {
 	cards := []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}}}
 
-	got := ScopeGuard(cards, quarry.GitDeltaAnswer{})
+	got := ScopeGuard(&planparser.Plan{Language: "go"}, cards, quarry.GitDeltaAnswer{})
 	if len(got) != 0 {
 		t.Errorf("ScopeGuard(zero-value delta) = %+v; want none", got)
 	}
@@ -153,7 +157,7 @@ func TestScopeGuard_RenamedPairOutsideTargetsIsReported(t *testing.T) {
 		To:   quarry.Symbol{ID: "sub#Renamed", File: "sub/e.go"},
 	}}
 
-	got := ScopeGuard(cards, delta)
+	got := ScopeGuard(&planparser.Plan{Language: "go"}, cards, delta)
 	if len(got) != 1 {
 		t.Fatalf("ScopeGuard(renamed outside) = %+v; want exactly one finding", got)
 	}
@@ -181,7 +185,7 @@ func TestScopeGuard_RenamedPairInsideTargetsIsNotReported(t *testing.T) {
 				To:   quarry.Symbol{ID: "sub#Bar", File: "sub/e.go"},
 			}}
 
-			if got := ScopeGuard(cards, delta); len(got) != 0 {
+			if got := ScopeGuard(&planparser.Plan{Language: "go"}, cards, delta); len(got) != 0 {
 				t.Fatalf("ScopeGuard(renamed inside, %s) = %+v; want no findings", tc.name, got)
 			}
 		})

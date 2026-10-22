@@ -47,6 +47,46 @@ func seedPlanDir(t *testing.T) string {
 	return dir
 }
 
+// csharpRendererSource is a C# file declaring one method, Draw, taking one parameter of paramType.
+func csharpRendererSource(paramType string) string {
+	return fmt.Sprintf("namespace Glyphchain.Sharp\n{\n    public class Renderer\n    {\n        public void Draw(%s count)\n        {\n        }\n    }\n}\n", paramType)
+}
+
+// csharpResignPlanDir writes a two-card csharp plan into a fresh directory and returns the directory with the parsed plan.
+// Card 1 re-signs Glyphchain.Sharp#Renderer.Draw(int) to take a long, and card 2 names the old glyph under Uses.
+func csharpResignPlanDir(t *testing.T) (string, *planparser.Plan) {
+	t.Helper()
+	dir := t.TempDir()
+	prosa := []plankit.Group{{Label: "Prosa", Targets: []string{"csharp/Renderer.cs"}}}
+	plankit.Write(t, dir, plankit.Plan{
+		Approved: true,
+		Language: "csharp",
+		Framing:  "A two-card fixture whose first card re-signs a member that its second card names.",
+		Cards: []plankit.Card{
+			{
+				Number:  1,
+				Slug:    "json-flag",
+				Summary: "re-sign Draw",
+				Groups:  []plankit.Group{{Label: "Edit", Targets: []string{"Glyphchain.Sharp#Renderer", "Glyphchain.Sharp#Renderer.Draw(int)` -> `public void Draw(long count)"}}},
+				Intent:  "Re-sign Draw to take a long, a change that modifies the Renderer type's body too.",
+			},
+			{
+				Number:  2,
+				Slug:    "pending",
+				Summary: "the not-yet-built card",
+				Groups:  prosa,
+				Uses:    []string{"Glyphchain.Sharp#Renderer.Draw(int)"},
+				Intent:  "The pending card that names Draw by its old glyph.",
+			},
+		},
+	})
+	plan, err := planparser.ParsePlan(dir)
+	if err != nil {
+		t.Fatalf("ParsePlan(%q) returned error: %v", dir, err)
+	}
+	return dir, plan
+}
+
 // mustFingerprint replicates fingerprint.go's own algorithm exactly
 // (SHA-256 over every "*.md" file's name and contents, sorted, NUL-
 // separated) so a test can seed a State.PlanFingerprint that matches what

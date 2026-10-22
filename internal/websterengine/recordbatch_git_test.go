@@ -8,12 +8,14 @@
 package websterengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -335,4 +337,71 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 			t.Error("State.PlanFingerprint was cleared rather than re-baselined")
 		}
 	})
+
+	// A C# re-sign whose edit landed is carried into the plan.
+	// The pending card that names the old glyph names the minted id, and the plan is re-baselined so the next begin-batch meets no fingerprint mismatch.
+	// Neither the scope guard nor drift detection holds the re-signed file against the batch.
+	// A re-sign whose edit did not land fails the batch.
+	// Each step runs over a repository of its own, whose base commit declares Draw(int count).
+	for _, step := range []struct {
+		name string
+		// workParam is the type Draw's parameter has in the work commit.
+		workParam string
+		landed    bool
+	}{
+		{name: "a landed C# re-sign rewrites the pending card to the minted id", workParam: "long", landed: true},
+		{name: "a C# re-sign whose edit did not land fails the batch", workParam: "int"},
+	} {
+		t.Run(step.name, func(t *testing.T) {
+			repo := newScratchRepo(t)
+			startSHA := gitkit.CommitFile(t, repo, "csharp/Renderer.cs", csharpRendererSource("int"), "base commit")
+			headSHA := gitkit.CommitFile(t, repo, "csharp/Renderer.cs", csharpRendererSource(step.workParam)+"\n", "01.1: edit Draw")
+			fx := (&recordScenario{repo: repo, startSHA: startSHA, headSHA: headSHA}).restart(t, forkReturned())
+
+			planDir, plan := csharpResignPlanDir(t)
+			fx.Deps.Geom.PlanDir = planDir
+			fx.Deps.Plan = plan
+			fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards[:1]}, {Cards: plan.Cards[1:]}}
+			if err := websterengine.RestampPlanBaseline(fx.Deps.State, planDir, fx.Deps.Geom.WebsterDir); err != nil {
+				t.Fatalf("RestampPlanBaseline() error = %v", err)
+			}
+			writeReport(t, fx.ReportsDir, validReport(headSHA))
+
+			result, err := websterengine.RecordBatch(fx.Deps, 1)
+			pending, readErr := os.ReadFile(filepath.Join(planDir, "02-pending.md"))
+			if readErr != nil {
+				t.Fatalf("read 02-pending.md: %v", readErr)
+			}
+
+			if !step.landed {
+				if !errors.Is(err, websterengine.ErrBatchFailed) || !strings.Contains(err.Error(), "resign-not-done") {
+					t.Fatalf("RecordBatch() error = %v; want a failed batch naming resign-not-done", err)
+				}
+				if !strings.Contains(string(pending), "Glyphchain.Sharp#Renderer.Draw(int)") {
+					t.Errorf("02-pending.md = %q; want it untouched when the re-sign is not done", pending)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("RecordBatch() error = %v; want nil", err)
+			}
+			if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+				t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+			}
+			if !strings.Contains(string(pending), "Glyphchain.Sharp#Renderer.Draw(long)") || strings.Contains(string(pending), "Renderer.Draw(int)") {
+				t.Errorf("02-pending.md = %q; want it to name the minted id and not the old glyph", pending)
+			}
+			if want, err := websterengine.Fingerprint(planDir); err != nil || fx.Deps.State.PlanFingerprint != want {
+				t.Errorf("State.PlanFingerprint = %q; want the plan directory's own %q (err %v), the one begin-batch compares", fx.Deps.State.PlanFingerprint, want, err)
+			}
+			if slices.Contains(result.Digest.Deviations, "csharp/Renderer.cs") {
+				t.Errorf("Digest.Deviations = %v; want no csharp/Renderer.cs entry", result.Digest.Deviations)
+			}
+			for _, w := range result.Warnings {
+				if strings.Contains(w, "later card:") {
+					t.Errorf("RecordResult.Warnings = %v; want no later card: warning", result.Warnings)
+				}
+			}
+		})
+	}
 }

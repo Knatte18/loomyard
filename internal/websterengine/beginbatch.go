@@ -473,7 +473,7 @@ func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Bat
 			}
 		}
 	}
-	if _, glyphLanguage := plan.GlyphLanguage(); !glyphLanguage {
+	if !plan.GlyphLanguage() {
 		logPack("language-none", nil)
 		return nil
 	}

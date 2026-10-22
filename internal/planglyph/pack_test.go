@@ -238,4 +238,30 @@ func TestKickstartPack(t *testing.T) {
 			t.Errorf("card 2 resolved %q; want %q", glyphs(got[1].Pack), want)
 		}
 	})
+
+	t.Run("a csharp plan selects a C# member glyph and lists it resolved with the declaration span", func(t *testing.T) {
+		t.Parallel()
+
+		const member = "Glyphchain.Sharp#Renderer.Draw(int)"
+		cards := []planparser.Card{card(1, nil, group(planparser.CardTypeEdit, member, "Glyphchain.Sharp#"))}
+		resolve := func(targets []string) ([]quarry.ResolveResult, error) {
+			results := make([]quarry.ResolveResult, len(targets))
+			for i := range targets {
+				results[i] = quarry.ResolveResult{Status: quarry.StatusFound, Symbols: []quarry.Symbol{{File: "csharp/Renderer.cs", Start: 7, End: 7, Signature: "public void Draw(int count)"}}}
+			}
+			return results, nil
+		}
+
+		got, err := kickstartPack(&planparser.Plan{Language: "csharp"}, cards, resolve)
+		if err != nil {
+			t.Fatalf("kickstartPack(csharp) returned error: %v", err)
+		}
+		want := planindex.Pack{Resolved: []planindex.PackEntry{{
+			Glyph:        member,
+			Declarations: []planindex.PackDeclaration{{File: "csharp/Renderer.cs", Start: 7, End: 7, Signature: "public void Draw(int count)"}},
+		}}}
+		if len(got) != 1 || !reflect.DeepEqual(got[0].Pack, want) {
+			t.Errorf("kickstartPack(csharp) = %+v; want one pack %+v", got, want)
+		}
+	})
 }

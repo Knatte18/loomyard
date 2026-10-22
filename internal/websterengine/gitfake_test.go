@@ -162,8 +162,8 @@ func (d fakeDelta) BindHandles(plan *planparser.Plan, planDir string, cards []pl
 	return planglyph.BindHandles(plan, planDir, d.answer, cards)
 }
 
-func (d fakeDelta) ScopeGuard(cards []planparser.Card) []planindex.Finding {
-	return planglyph.ScopeGuard(cards, d.answer)
+func (d fakeDelta) ScopeGuard(plan *planparser.Plan, cards []planparser.Card) []planindex.Finding {
+	return planglyph.ScopeGuard(plan, cards, d.answer)
 }
 
 func (d fakeDelta) DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, planDir, worktreeRoot, sha, now string) ([]planindex.Finding, error) {

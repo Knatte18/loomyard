@@ -1175,6 +1175,11 @@ func TestValidate_RedundantPackageTarget(t *testing.T) {
 			language: "none",
 			cards:    []planparser.Card{edit(1, "pkg/a#", "pkg/a#Thing")},
 		},
+		{
+			name:     "csharp: a namespace self glyph is no package container",
+			language: "csharp",
+			cards:    []planparser.Card{edit(1, "Glyphchain.Sharp#", "Glyphchain.Sharp#Renderer.Title")},
+		},
 	}
 
 	for _, tc := range tests {
@@ -1208,7 +1213,10 @@ func TestValidate_ResignNotMember(t *testing.T) {
 		language string
 		target   string
 		want     bool
+		// wantDetail is a substring the one finding's detail carries, when set.
+		wantDetail string
 	}{
+		{name: "csharp namespace self glyph", language: "csharp", target: "Glyphchain.Sharp#", want: true, wantDetail: "a namespace self glyph"},
 		{name: "member glyph", target: "pkg/a#Thing"},
 		{name: "method glyph", target: "pkg/a#Owner.Method"},
 		{name: "file path", target: "pkg/a/file.go", want: true},
@@ -1232,6 +1240,9 @@ func TestValidate_ResignNotMember(t *testing.T) {
 			for _, f := range planparser.Validate(plan, t.TempDir()) {
 				if f.Check == "resign-not-member" {
 					got = append(got, f.Ref)
+					if !strings.Contains(f.Detail, tc.wantDetail) {
+						t.Errorf("resign-not-member detail = %q; want it to contain %q", f.Detail, tc.wantDetail)
+					}
 				}
 			}
 			var want []string
@@ -1286,6 +1297,16 @@ func TestValidate_ProsaSymbolTarget(t *testing.T) {
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "prosa-symbol-target"); got != 0 {
 			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 0", got)
+		}
+	})
+
+	t.Run("csharp: file and namespace self glyphs are clean, a member glyph is the finding", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeProsa, []string{"src/Foo.cs#", "Glyphchain.Sharp#", "Glyphchain.Sharp#Renderer.Title"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "csharp", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "prosa-symbol-target"); got != 1 {
+			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 1 (only the member glyph)", got)
 		}
 	})
 
@@ -1403,6 +1424,16 @@ func TestValidate_PathMissing(t *testing.T) {
 					t.Errorf("countFor(findings, path-missing) = %d; want 1", got)
 				}
 			})
+		}
+	})
+
+	t.Run("csharp: a slash-free self glyph has no path to check", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"README.md#"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "csharp", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "path-missing"); got != 0 {
+			t.Errorf("countFor(findings, path-missing) = %d; want 0", got)
 		}
 	})
 
@@ -1697,7 +1728,8 @@ func TestValidate_VerifyNestedModule(t *testing.T) {
 			cards: []planparser.Card{createsModule(1, "go test ./x/pkg")},
 			want:  []string{"1-mod"},
 		},
-		{name: "language none still fires", cards: []planparser.Card{withVerify("go test ./nested/pkg")}, language: "none", want: []string{"1-a"}},
+		{name: "language none is silent", cards: []planparser.Card{withVerify("go test ./nested/pkg")}, language: "none"},
+		{name: "language csharp is silent", cards: []planparser.Card{withVerify("go test ./nested/pkg")}, language: "csharp"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1746,9 +1778,12 @@ func TestValidate_VerifyPackageMissing(t *testing.T) {
 		name       string
 		cards      []planparser.Card
 		overview   string
+		language   string
 		want       []finding
 		wantDetail string
 	}{
+		{name: "language csharp is not read", cards: []planparser.Card{withVerify(1, "lyx gate test --wait --tier 0 ./nowhere")}, language: "csharp"},
+		{name: "language go reads the same command", cards: []planparser.Card{withVerify(1, "lyx gate test --wait --tier 0 ./nowhere")}, want: []finding{{"1-a", "./nowhere"}}},
 		{name: "external test package names its package as the replacement", cards: []planparser.Card{withVerify(1, "lyx gate test ./internal/x_test")}, want: []finding{{"1-a", "./internal/x_test"}}, wantDetail: "pass ./internal/x"},
 		{name: "overview chain is not read", overview: "go test ./nope\ngo test ../outside"},
 		{name: "go build", cards: []planparser.Card{withVerify(1, "go build ./nope")}, want: []finding{{"1-a", "./nope"}}},
@@ -1793,7 +1828,11 @@ func TestValidate_VerifyPackageMissing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			plan := &planparser.Plan{Format: 5, Approved: true, Language: "go", Cards: tt.cards, Verify: tt.overview}
+			language := tt.language
+			if language == "" {
+				language = "go"
+			}
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: language, Cards: tt.cards, Verify: tt.overview}
 			var got []finding
 			for _, f := range planparser.ValidateFormat(plan, root) {
 				if f.Check != "verify-package-missing" {
@@ -1809,6 +1848,117 @@ func TestValidate_VerifyPackageMissing(t *testing.T) {
 			}
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("verify-package-missing findings = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestValidate_LanguageMismatch covers plan-language-mismatch's pure half over in-memory plans: the plan's language against the extensions of the files its cards' Targets name, and the refs that exempt a plan from the judgment.
+func TestValidate_LanguageMismatch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		language string
+		targets  []string
+		wantFire bool
+	}{
+		{name: "go with only a .cs file fires", language: "go", targets: []string{"src/Foo.cs#"}, wantFire: true},
+		{name: "csharp with only a .go file fires", language: "csharp", targets: []string{"internal/x/x.go#"}, wantFire: true},
+		{name: "csharp with only a root .go file fires", language: "csharp", targets: []string{"tool.go#"}, wantFire: true},
+		{name: "go with a .go file and a .cs file does not", language: "go", targets: []string{"a.go#", "src/Foo.cs#"}},
+		{name: "go with a member glyph and a .cs file does not", language: "go", targets: []string{"internal/x#Foo", "src/Foo.cs#"}},
+		{name: "go with a package self glyph and a .cs file does not", language: "go", targets: []string{"internal/x#", "src/Foo.cs#"}},
+		{name: "csharp with a .cs file does not", language: "csharp", targets: []string{"src/Foo.cs#"}},
+		{name: "csharp with a C# member glyph and a .go file does not", language: "csharp", targets: []string{"Glyphchain.Sharp#Renderer.Title", "tool.go#"}},
+		{name: "none with only a .cs file does not", language: "none", targets: []string{"src/Foo.cs#"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			card := cardOfType(1, "a", planparser.CardTypeEdit, tt.targets)
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: tt.language, Cards: []planparser.Card{card}}
+
+			var got []planparser.ValidationError
+			for _, f := range planparser.ValidateFormat(plan, t.TempDir()) {
+				if f.Check == "plan-language-mismatch" {
+					got = append(got, f)
+				}
+			}
+
+			if tt.wantFire != (len(got) == 1) || len(got) > 1 {
+				t.Fatalf("plan-language-mismatch findings = %+v; want fire = %v", got, tt.wantFire)
+			}
+			if !tt.wantFire {
+				return
+			}
+			for _, want := range []string{"language:", "language: none"} {
+				if !strings.Contains(got[0].Detail, want) {
+					t.Errorf("detail %q lacks %q", got[0].Detail, want)
+				}
+			}
+		})
+	}
+}
+
+// TestValidate_RenameNamespacePair covers rename-namespace-pair over a worktree holding Program.cs and docs/guide.md: under csharp a slash-free old side that names nothing on disk, and nothing an earlier card creates or renames into, is refused.
+func TestValidate_RenameNamespacePair(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	materializeFiles(t, root, "Program.cs", "docs/guide.md")
+
+	rename := func(number int, oldSide, newSide string) planparser.Card {
+		card := cardOfType(number, "r", planparser.CardTypeRename, []string{oldSide, newSide})
+		card.Pairs = []planparser.MovePair{{Old: oldSide, New: newSide}}
+		card.TargetGroups[0].Pairs = card.Pairs
+		return card
+	}
+
+	tests := []struct {
+		name     string
+		language string
+		cards    []planparser.Card
+		want     int
+	}{
+		{name: "a namespace pair is refused", language: "csharp", cards: []planparser.Card{rename(1, "Glyphchain.Sharp#", "Glyphchain.Core#")}, want: 1},
+		{name: "a root file pair on disk passes", language: "csharp", cards: []planparser.Card{rename(1, "Program.cs#", "App.cs#")}},
+		{
+			name:     "an old side an earlier card creates passes",
+			language: "csharp",
+			cards:    []planparser.Card{cardOfType(1, "c", planparser.CardTypeCreate, []string{"Tool.cs#"}), rename(2, "Tool.cs#", "Util.cs#")},
+		},
+		{
+			name:     "an old side an earlier card renames into passes",
+			language: "csharp",
+			cards:    []planparser.Card{rename(1, "Program.cs#", "Old.cs#"), rename(2, "Old.cs#", "New.cs#")},
+		},
+		{name: "a directory on disk passes", language: "csharp", cards: []planparser.Card{rename(1, "docs#", "guide#")}},
+		{name: "a slashed pair is not read", language: "csharp", cards: []planparser.Card{rename(1, "src/A.cs#", "src/B.cs#")}},
+		{name: "go leaves the pair to path-missing", language: "go", cards: []planparser.Card{rename(1, "Glyphchain.Sharp#", "Glyphchain.Core#")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: tt.language, Cards: tt.cards}
+
+			var got []planparser.ValidationError
+			for _, f := range planparser.Validate(plan, root) {
+				if f.Check == "rename-namespace-pair" {
+					got = append(got, f)
+				}
+			}
+
+			if len(got) != tt.want {
+				t.Fatalf("rename-namespace-pair findings = %+v; want %d", got, tt.want)
+			}
+			if tt.want == 0 {
+				return
+			}
+			for _, want := range []string{"Edit cards", "root file", "move the pair to a card after it"} {
+				if !strings.Contains(got[0].Detail, want) {
+					t.Errorf("detail %q lacks the way forward %q", got[0].Detail, want)
+				}
 			}
 		})
 	}
@@ -1895,7 +2045,7 @@ func TestValidate_CustomCardBoundByGenericChecks(t *testing.T) {
 	}
 }
 
-// TestValidate_LanguageRecognized covers plan-language-unrecognized: "go" and "none" are accepted, as is "" (the zero value, meaning absent — matching Plan.Language's own documented "absent defaults to go" rule), and any other value is exactly one finding.
+// TestValidate_LanguageRecognized covers plan-language-unrecognized: "go", "csharp" and "none" are accepted, as is "" (the zero value, meaning absent — matching Plan.Language's own documented "absent defaults to go" rule), and any other value is exactly one finding.
 //
 //testtiming:keep pins the plan-language-unrecognized finding, which its covering tests do not assert
 func TestValidate_LanguageRecognized(t *testing.T) {
@@ -1907,6 +2057,7 @@ func TestValidate_LanguageRecognized(t *testing.T) {
 		want     int
 	}{
 		{name: "go accepted", language: "go", want: 0},
+		{name: "csharp accepted", language: "csharp", want: 0},
 		{name: "none accepted", language: "none", want: 0},
 		{name: "absent defaulting to go", language: "", want: 0},
 		{name: "unknown value", language: "python", want: 1},
@@ -2104,6 +2255,31 @@ func TestValidate_GlyphMalformed(t *testing.T) {
 		}
 		if got := countFor(findings, "prosa-symbol-target"); got != 1 {
 			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 1", got)
+		}
+	})
+
+	t.Run("go: a C# member glyph is malformed and its detail names language csharp", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"Glyphchain.Sharp#Renderer.Draw(int)"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "go", Cards: []planparser.Card{card}}
+		var malformed []planparser.ValidationError
+		for _, f := range planparser.Validate(plan, t.TempDir()) {
+			if f.Check == "glyph-malformed" {
+				malformed = append(malformed, f)
+			}
+		}
+		if len(malformed) != 1 || !strings.Contains(malformed[0].Detail, "language: csharp") {
+			t.Errorf("glyph-malformed findings = %+v; want one whose detail names `language: csharp`", malformed)
+		}
+	})
+
+	t.Run("csharp: a slashed member glyph neither alphabet takes is malformed", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"a/b#Draw(int)"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "csharp", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 1 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 1", got)
 		}
 	})
 
@@ -2307,6 +2483,7 @@ func TestSymbolRenamePairs(t *testing.T) {
 		{"file self glyph pair is not returned", "go", []planparser.Card{cardWith(1, filePair)}, nil},
 		{"card with both returns only the symbol pair", "go", []planparser.Card{cardWith(1, filePair, symbolPair)}, []planparser.MovePair{symbolPair}},
 		{"plan with no Rename card returns nil", "go", []planparser.Card{cardWith(1)}, nil},
+		{"file self glyph pair under language csharp is not returned", "csharp", []planparser.Card{cardWith(1, planparser.MovePair{Old: "Program.cs#", New: "App.cs#"})}, nil},
 		{"two-path pair under language none is not returned", "none", []planparser.Card{cardWith(1, planparser.MovePair{Old: "a/old.txt", New: "a/new.txt"})}, nil},
 		{"bare symbols under language none are returned", "none", []planparser.Card{cardWith(1, planparser.MovePair{Old: "greeter.OldName", New: "greeter.NewName"})}, []planparser.MovePair{{Old: "greeter.OldName", New: "greeter.NewName"}}},
 		{"pairs of two cards keep card order", "go", []planparser.Card{cardWith(1, symbolPair), cardWith(2, otherSymbolPair)}, []planparser.MovePair{symbolPair, otherSymbolPair}},
