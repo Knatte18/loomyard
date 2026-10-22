@@ -293,6 +293,7 @@
 // any fork with AgentCalls > 0, WriteCalls > 0, or a git-mutating Bash command is a hard error;
 // a Bash command is git-mutating only when the subcommand word of one of its git invocations, the first non-option word after git's global options, mutates,
 // so a mutating verb named as an argument, as in git help cherry-pick or git log --grep merge, and a -h or --help request pass;
+// git tag alone is judged by its arguments too, and passes when bare or in list mode, as in git tag --points-at HEAD, with no option that creates, deletes or signs a tag;
 // any named spawn is a hard error.
 // A fork that ran clean but never returned a report is sloppiness no mechanism prevents in advance.
 // It is collected into ReviewResult.ClusterWarnings and never fails the round, since the handler's own consolidation phase already judges each fork's output on its merits.

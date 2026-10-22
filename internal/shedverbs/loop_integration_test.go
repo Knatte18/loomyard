@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -73,8 +74,11 @@ func executeHelperStep(dir string, args []string) int {
 	return clihelp.Execute(root, os.Stdout, args)
 }
 
-// runHelperChild is a step child that starts a grandchild, records its pid and never ends on its own.
+// runHelperChild is a step child that starts a grandchild, records its pid and the trace id it runs under, and never ends on its own.
 func runHelperChild(dir string) int {
+	if err := os.WriteFile(filepath.Join(dir, "trace.id"), []byte(os.Getenv(logger.TraceIDEnv)), 0o644); err != nil {
+		return 1
+	}
 	grandchild := exec.Command("sleep", "300")
 	if err := grandchild.Start(); err != nil {
 		return 1
@@ -150,6 +154,10 @@ func TestLoopIntegration_ChildTreeDiesWithLoop(t *testing.T) {
 		_ = proc.KillPID(record.Loop.PID)
 		_ = proc.KillPID(grandchild)
 	})
+	childTraceID, err := os.ReadFile(filepath.Join(dir, "trace.id"))
+	if err != nil || record.TraceID == "" || record.TraceID != string(childTraceID) {
+		t.Errorf("pid record trace id = %q; want the trace id the child ran under, %q (read error %v)", record.TraceID, childTraceID, err)
+	}
 
 	if err := waiter.Process.Kill(); err != nil {
 		t.Fatalf("kill the waiter: %v", err)
@@ -174,6 +182,11 @@ func TestLoopIntegration_ChildTreeDiesWithLoop(t *testing.T) {
 	}
 	if env["kind"] != KindInterrupted || !strings.Contains(env["error"].(string), "(loop-exited)") {
 		t.Errorf("second waiter kind/error = %v/%v; want the loop-exited stop", env["kind"], env["error"])
+	}
+	loopObj, _ := env["loop"].(map[string]any)
+	detail, _ := loopObj["detail"].(string)
+	if !strings.Contains(detail, "; step A was in flight under trace "+record.TraceID) || !strings.Contains(detail, "; its step tree was still running and was killed") {
+		t.Errorf("second waiter loop.detail = %q; want the in-flight step with its trace and the killed step tree", detail)
 	}
 	waitUntil(t, 30*time.Second, "the dead loop's step tree to be killed", func() bool { return processEnded(grandchild) })
 	if st, found, err := state.ReadJSONNoMkdir[shedengine.Status](spec.StatusPath, spec.StatusLockPath); err != nil || !found || st.State != shedengine.StateFailed {

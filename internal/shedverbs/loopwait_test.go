@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -467,6 +468,76 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 		}
 	})
 
+	t.Run("the interrupt hook gets a cause naming the in-flight step and that step's trace file", func(t *testing.T) {
+		tests := []struct {
+			name         string
+			traceID      string
+			traces       []string
+			statusMoved  bool
+			wantProducer string
+			wantCause    string
+			wantFile     func(w *waitWorld) string
+		}{
+			{
+				name:         "TraceKnown",
+				traceID:      "trace-7",
+				traces:       []string{"/logs/trace-7.log", "/logs/trace-7.1.log"},
+				wantProducer: "A",
+				wantCause:    "; step A was in flight under trace trace-7",
+				wantFile:     func(*waitWorld) string { return "/logs/trace-7.log" },
+			},
+			{
+				name:         "NoTraceID_LoopLog",
+				wantProducer: "A",
+				wantCause:    "; step A was in flight",
+				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
+			},
+			{
+				name:         "NoTraceFile_LoopLog",
+				traceID:      "trace-8",
+				wantProducer: "A",
+				wantCause:    "; step A was in flight under trace trace-8",
+				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
+			},
+			{
+				name:         "StatusMoved_NoInFlightClause_LoopLog",
+				traceID:      "trace-9",
+				traces:       []string{"/logs/trace-9.log"},
+				statusMoved:  true,
+				wantProducer: "B",
+				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				w := newWaitWorld(t)
+				if tt.statusMoved {
+					w.setStatus("B", shedengine.StateRunning, 1)
+				} else {
+					w.setStatus("A", shedengine.StateRunning, 0)
+				}
+				w.writePID(LoopPIDRecord{LoopID: "dead-1", Child: proc.TreeRecord{PID: 4242}, TraceID: tt.traceID, CurrentProducer: "A"})
+				w.traces[tt.traceID] = tt.traces
+				var producer, cause, file string
+				w.spec.Hooks.AfterInterrupt = func(_ context.Context, gotProducer, gotCause, gotFile string) string {
+					producer, cause, file = gotProducer, gotCause, gotFile
+					return "noted"
+				}
+
+				env, code := w.wait()
+
+				assertLoopExited(t, w, env, code)
+				wantCause := "loop-exited: loop dead-1 ended without an envelope; its output is in " + w.spec.Loop.LogPath + tt.wantCause
+				if producer != tt.wantProducer || cause != wantCause || file != tt.wantFile(w) {
+					t.Errorf("AfterInterrupt(%q, %q, %q); want (%q, %q, %q)", producer, cause, file, tt.wantProducer, wantCause, tt.wantFile(w))
+				}
+				if env["friction"] != "noted" {
+					t.Errorf("envelope friction = %v; want the hook's noted", env["friction"])
+				}
+			})
+		}
+	})
+
 	t.Run("a loop that dies while the watch emits nothing is seen at the next tick", func(t *testing.T) {
 		w := newWaitWorld(t)
 		live := w.startLiveLoop("live-1")
@@ -663,18 +734,29 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 
 	t.Run("a spawned loop that exits before any pid file names it is reported with its log", func(t *testing.T) {
 		w := newWaitWorld(t)
-		w.spec.Loop.Spawn = func([]string) (<-chan struct{}, error) {
+		var spawnedID atomic.Value
+		w.spec.Loop.Spawn = func(argv []string) (<-chan struct{}, error) {
+			spawnedID.Store(loopIDOf(argv))
 			done := make(chan struct{})
 			close(done)
 			return done, nil
 		}
 		w.setStatus("B", shedengine.StateRunning, 1)
+		var cause, file string
+		w.spec.Hooks.AfterInterrupt = func(_ context.Context, _, gotCause, gotFile string) string {
+			cause, file = gotCause, gotFile
+			return ""
+		}
 
 		env, code := w.wait()
 
 		assertLoopExited(t, w, env, code)
 		if detail := loopOf(t, env)["detail"].(string); !strings.Contains(detail, w.spec.Loop.LogPath) {
 			t.Errorf("detail = %q; want it naming the loop log %s", detail, w.spec.Loop.LogPath)
+		}
+		wantCause := "loop-exited: loop " + spawnedID.Load().(string) + " exited before it recorded itself; its output is in " + w.spec.Loop.LogPath
+		if cause != wantCause || file != w.spec.Loop.LogPath {
+			t.Errorf("AfterInterrupt cause/file = %q/%q; want %q/%q", cause, file, wantCause, w.spec.Loop.LogPath)
 		}
 		if fileExists(w.spec.Loop.EnvelopePath) || fileExists(w.spec.Loop.PIDPath) {
 			t.Errorf("want no loop envelope and no pid file written for a loop that never recorded itself")

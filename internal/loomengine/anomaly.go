@@ -10,10 +10,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// AnomalyKind identifies which of the four triggers classified an anomaly.
+// AnomalyKind identifies which trigger classified an anomaly.
 type AnomalyKind string
 
-// The four exported anomaly kinds and their exact wire spellings, each the kind token a friction note carries.
+// The exported anomaly kinds and their exact wire spellings, each the kind token a friction note carries.
 const (
 	// AnomalyCrashResume is trigger 1: an entry observation showing a running state, a live
 	// history, and no held run lock -- a driver process that died mid-run rather than exiting
@@ -26,6 +26,9 @@ const (
 	AnomalyBudgetExhausted AnomalyKind = "bounce-budget-exhausted"
 	// AnomalyProducerFailure is trigger 4: a failed halt, an engine-level producer error.
 	AnomalyProducerFailure AnomalyKind = "producer-hard-failure"
+	// AnomalyInterrupted is trigger 5: a failed halt of a step that ended without an envelope, from outside its producer:
+	// a killed or crashed step, a stalled one the watchdog killed, or a loop that died under it.
+	AnomalyInterrupted AnomalyKind = "interrupted-stop"
 )
 
 // EntryObservation carries the whole entry-time observation as data, told by the caller before
@@ -68,21 +71,23 @@ func DetectCrashResume(entry EntryObservation) bool {
 	return entry.Observed && !entry.RunLockHeld && entry.State == shedengine.StateRunning && entry.HistoryLength > 0 && !entry.Vouched
 }
 
-// ClassifyHalt evaluates the three halt-kind triggers (escalation, budget-exhausted,
-// producer-hard-failure) against a run's final state and the reason it persisted.
-// At most one fires, since the three triggers partition state:
-// blocked with shedengine.ReasonBounceBudgetExhausted, blocked with anything else, or failed.
+// ClassifyHalt evaluates the halt-kind triggers (escalation, budget-exhausted, producer-hard-failure, interrupted-stop) against a run's final state, the reason it persisted and whether the halt is an interrupted stop.
+// At most one fires, since the triggers partition state:
+// blocked with shedengine.ReasonBounceBudgetExhausted, blocked with anything else, failed by an interrupted stop, or failed otherwise.
+// interrupted is told by the caller that wrote the stop and changes no blocked kind.
 // shedengine persists StateBlocked from exactly two arms, so "blocked and not budget-exhausted" is exactly the
 // escalation arm whatever reason its producer supplied.
 // The one text the partition still matches is the budget prefix, matched with strings.HasPrefix because the persisted reason carries the exhausted row and the told resume way forward after it:
 // a producer reason starting with it would read as budget exhaustion, and no shipped producer returns one.
 // Any other state reports no kind.
-func ClassifyHalt(state shedengine.State, reason string) (AnomalyKind, bool) {
+func ClassifyHalt(state shedengine.State, reason string, interrupted bool) (AnomalyKind, bool) {
 	switch {
 	case state == shedengine.StateBlocked && strings.HasPrefix(reason, shedengine.ReasonBounceBudgetExhausted):
 		return AnomalyBudgetExhausted, true
 	case state == shedengine.StateBlocked:
 		return AnomalyEscalation, true
+	case state == shedengine.StateFailed && interrupted:
+		return AnomalyInterrupted, true
 	case state == shedengine.StateFailed:
 		return AnomalyProducerFailure, true
 	default:
