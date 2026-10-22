@@ -45,8 +45,7 @@ func TestDoneCheckVerdicts_UncoveredTargetIsInfrastructureNotAPass(t *testing.T)
 }
 
 // TestDoneCheckVerdicts_Rules pins the three done rules against a fully covering answer index, so the guard above cannot be satisfied by a version that simply always errors.
-// A blocking row also pins the detail's lookup: the key, quarry's status, the unit status of a missing member, each ambiguous candidate's file and build constraint,
-// and for a Create or Rename new side answered not_found the unit's files and the name's declarations elsewhere.
+// A blocking row also pins the detail's lookup: the key, quarry's status, the unit status of a missing member, each ambiguous candidate's file and build constraint, and for a Create or Rename new side answered not_found the unit's files and the name's declarations elsewhere.
 // An ambiguous row writes its candidate files under a temp root, where a pair partitioned by build constraints counts as resolved and so lands a Create and a Rename new side but still blocks a Delete and a Rename old side.
 //
 //testtiming:keep pins the ambiguous rows and the per-arm rule table, which the resolve-backed DoneChecks tests reach only for found and not_found

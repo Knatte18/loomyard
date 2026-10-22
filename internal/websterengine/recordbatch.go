@@ -57,8 +57,7 @@ func (e *ReportArchivedError) Unwrap() []error { return []error{ErrReportArchive
 var ErrCardNotDone = errors.New("webster: record-batch's done-checks reported a blocking finding")
 
 // cardNotDoneError is the error the post-batch done-checks return: it unwraps to ErrCardNotDone and its message carries the findings' text.
-// deleteNotDone is set when a finding is a Delete target that still resolves,
-// and glyphRejected when quarry rejected a card's target before resolving it.
+// deleteNotDone is set when a finding is a Delete target that still resolves, and glyphRejected when quarry rejected a card's target before resolving it.
 type cardNotDoneError struct {
 	reasons       []string
 	deleteNotDone bool

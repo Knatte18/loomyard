@@ -15,8 +15,7 @@ import (
 // TestDoneChecks_Verdicts covers the done-checks of Create, Delete and Rename groups against the tree the fork left behind: a landed Create, Delete or Rename passes, and a Create that never landed, a Delete that survived or a Rename never performed reports its blocking finding.
 // A Rename's new side carries the canonical plan: handle spelling a validated plan's symbol rename always has, proving resolveKeyFor strips it.
 // A fork that never performed its declared Rename leaves the old side still resolving and the new side still unresolvable, and BOTH halves must report rename-not-done — a check inspecting only Create and Delete groups recorded that card clean.
-// A target no glyph spells, a bare root filename or a path whose directory holds a space, is judged by whether its path exists,
-// and a missing Create names the unit's files and where else its name is declared.
+// A target no glyph spells, a bare root filename or a path whose directory holds a space, is judged by whether its path exists, and a missing Create names the unit's files and where else its name is declared.
 func TestDoneChecks_Verdicts(t *testing.T) {
 	t.Parallel()
 

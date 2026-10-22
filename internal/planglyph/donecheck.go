@@ -59,10 +59,9 @@ func resolveKeyFor(ref string) string {
 // delete-not-done; and a Rename pair whose old side is still anything but not_found, or whose new
 // side still does not resolve found or multipart, is check ID rename-not-done in either direction.
 // A Create target under the worktree root's .scratch/ is a transient draft and is neither resolved nor judged.
-// A target still path-shaped is a path canonicalization could not spell as a glyph, such as one whose directory holds a space:
-// quarry rejects it before resolution, so its worktree-relative path is checked on disk instead, existing for the Create direction and absent for the Delete direction.
-// A Create target or Rename new side quarry answers not_found also names, in its detail, the files declaring the looked-up unit
-// and every declaration elsewhere in the worktree carrying the looked-up name, so a missing declaration reads apart from one written somewhere the card did not say.
+// A target still path-shaped is a path canonicalization could not spell as a glyph, such as one whose directory holds a space.
+// Quarry rejects it before resolution, so its worktree-relative path is checked on disk instead, existing for the Create direction and absent for the Delete direction.
+// A Create target or Rename new side quarry answers not_found also names, in its detail, the files declaring the looked-up unit and every declaration elsewhere in the worktree carrying the looked-up name, so a missing declaration reads apart from one written somewhere the card did not say.
 // An answer outside quarry's four-value status vocabulary — a pre-resolution rejection, or a status
 // this policy has not been taught — is the blocking finding glyph-rejected for that entry, failing
 // closed exactly as statusFindings and createFindings do (see doneCheckVerdicts).
@@ -156,8 +155,7 @@ func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot str
 	return doneCheckVerdicts(plan, worktreeRoot, entries, index, declarations)
 }
 
-// anyMemberMissing reports whether a Create target or Rename new side among entries was answered not_found in index,
-// the one answer whose finding names the worktree's declarations.
+// anyMemberMissing reports whether a Create target or Rename new side among entries was answered not_found in index, the one answer whose finding names the worktree's declarations.
 func anyMemberMissing(entries []doneCheckEntry, index map[string]quarry.ResolveResult) bool {
 	for _, e := range entries {
 		if e.onDisk || (e.checkID != "create-not-done" && e.checkID != "rename-not-done-new") {
@@ -170,8 +168,7 @@ func anyMemberMissing(entries []doneCheckEntry, index map[string]quarry.ResolveR
 	return false
 }
 
-// searchedDescription names, for a key quarry answered not_found, the files among declarations that declare the key's unit,
-// and every declaration elsewhere whose own name is the key's member name, with its glyph and file.
+// searchedDescription names, for a key quarry answered not_found, the files among declarations that declare the key's unit and every declaration elsewhere whose own name is the key's member name, with its glyph and file.
 // It returns "" when the key does not parse as a member glyph in the plan's alphabet, since then there is no name to look for.
 func searchedDescription(plan *planparser.Plan, key string, declarations []quarry.Symbol) string {
 	wanted, err := planparser.ParseRef(plan, key)
@@ -203,8 +200,7 @@ func searchedDescription(plan *planparser.Plan, key string, declarations []quarr
 	return strings.Join(parts, "; ")
 }
 
-// diskLookup checks key, a worktree-relative path, on disk under worktreeRoot,
-// and reports whether anything exists there together with the lookup description a finding detail carries.
+// diskLookup checks key, a worktree-relative path, on disk under worktreeRoot and reports whether anything exists there together with the lookup description a finding detail carries.
 // An error other than the path not existing is returned, so an unreadable tree never passes a done-check.
 func diskLookup(worktreeRoot, key string) (bool, string, error) {
 	_, err := os.Lstat(filepath.Join(worktreeRoot, filepath.FromSlash(key)))

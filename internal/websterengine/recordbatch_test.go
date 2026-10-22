@@ -1633,8 +1633,7 @@ func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
 }
 
 // TestRecordBatch_DoneChecksBlockOnUnresolvedCreate proves card 33's wiring as card 10 reshaped it:
-// a Create target that still does not resolve against the worktree's actual post-card tree fails the batch terminally with its findings as reasons and the report archived,
-// and a target quarry rejects outright names the card amendment as the way forward.
+// a Create target that still does not resolve against the worktree's actual post-card tree fails the batch terminally with its findings as reasons and the report archived, and a target quarry rejects outright names the card amendment as the way forward.
 func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
