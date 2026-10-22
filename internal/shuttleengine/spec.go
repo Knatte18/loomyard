@@ -50,7 +50,7 @@ type Spec struct {
 	// only a caller that sets it gets the allowance.
 	AllowAgentTool bool
 	// PermissionMode, when non-empty, selects the run's permission mode;
-	// empty defers to the run mode's default.
+	// empty defers to the engine's default, its bypass mode.
 	// PermissionMode values are provider vocabulary, exactly like Effort — validate does NOT inspect this field at all;
 	// the engine is the sole validator, since only it knows which values its provider realizes.
 	// A value the engine cannot realize is a hard error from the engine (see claudeengine's validatePermissionMode), not from Spec.validate.
@@ -65,7 +65,7 @@ type Spec struct {
 	// Autonomous runs add the AskUserQuestion PreToolUse deny;
 	// interactive runs do not.
 	// Whether the launch carries --dangerously-skip-permissions follows the resolved PermissionMode,
-	// whose empty default skips in an autonomous run and prompts in an interactive one.
+	// whose empty default skips in both modes.
 	// The Agent tool deny and the python deny are included in both modes.
 	// The python deny is toggleable via the shuttle config's deny_python key;
 	// the Agent tool and AskUserQuestion denies are toggleable via the claude engine's own config.

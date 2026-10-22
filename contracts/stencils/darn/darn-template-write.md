@@ -75,8 +75,8 @@ A clean `validate-description` run is the last thing you do before you end your 
 
 ## A scope correction from your parent
 
-Your parent records a scope correction with `lyx loom decision add`, which appends an `Added after Discussion` entry to the decision record.
-When a message from your parent carries a correction, re-read the record's `Added after Discussion` entries and follow them over the board entry's body.
+Your parent records a scope correction with `lyx loom decision add`, which appends an `Added after Discussion` entry to the decision record and types a line into your pane naming the new entry.
+On that line, or when a message from your parent carries a correction, re-read the record's `Added after Discussion` entries and follow them over the board entry's body.
 When the message names a correction the record does not yet hold, ask your parent to record it, follow the message meanwhile, and name it as an unrecorded parent correction in the change description's design decisions.
 You never run `lyx loom decision add` yourself; the verb refuses a task session.
 

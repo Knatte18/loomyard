@@ -366,13 +366,13 @@ func TestOpenLaunch(t *testing.T) {
 				if !strings.HasPrefix(launch.Cmd, sh.Invoke("claude")) {
 					t.Errorf("Cmd = %q; want it to start with the invoked binary", launch.Cmd)
 				}
-				for _, banned := range []string{"--settings", "--dangerously-skip-permissions", "Read "} {
+				for _, banned := range []string{"--settings", "Read "} {
 					if strings.Contains(launch.Cmd, banned) {
 						t.Errorf("Cmd = %q; want no %q", launch.Cmd, banned)
 					}
 				}
-				if strings.Contains(launch.ResumeCmd, "--dangerously-skip-permissions") {
-					t.Errorf("ResumeCmd = %q; want no --dangerously-skip-permissions", launch.ResumeCmd)
+				if got := strings.Count(launch.ResumeCmd, "--dangerously-skip-permissions"); got != 2 {
+					t.Errorf("ResumeCmd = %q holds --dangerously-skip-permissions %d times; want 2, the empty mode's bypass default", launch.ResumeCmd, got)
 				}
 			},
 		},
@@ -606,7 +606,7 @@ func TestValidatePermissionMode(t *testing.T) {
 		wantErr     bool
 	}{
 		{"", false, true, false},
-		{"", true, false, false},
+		{"", true, true, false},
 		{"bypass", true, true, false},
 		{"bypass", false, true, false},
 		{"prompt", true, false, false},

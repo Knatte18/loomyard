@@ -60,7 +60,7 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 	if _, err := cfg.Tier(0); err != nil {
 		return nil, fmt.Errorf("gate test: %w", err)
 	}
-	numbers := listedTiers(request.tiers)
+	numbers := listedTiers(cfg, request)
 	tiers := make(map[int]gateslot.Tier, len(numbers))
 	for _, number := range numbers {
 		tier, err := cfg.Tier(number)
@@ -157,12 +157,31 @@ func configRefusal(format string, args ...any) error {
 	return fmt.Errorf("gate test: %s; way forward: fix it with \"lyx config gate\" from the prime%s", fmt.Sprintf(format, args...), roleClause)
 }
 
-// listedTiers returns the requested tier numbers ascending and without repeats, tier0 when none was requested.
-func listedTiers(requested []int) []int {
-	if len(requested) == 0 {
+// listedTiers returns the tier numbers request names, ascending and without repeats: the --tier values and, with --upto N, every tier cfg declares numbered 0 through N that is not manual.
+// Each manual tier --upto skips and --tier does not name is named on request.stderr when it has one.
+// With neither flag it returns tier0.
+func listedTiers(cfg gateslot.Config, request testRequest) []int {
+	if len(request.tiers) == 0 && !request.uptoGiven {
 		return []int{0}
 	}
-	numbers := slices.Clone(requested)
+	numbers := slices.Clone(request.tiers)
+	if request.uptoGiven {
+		var declared []int
+		for key := range cfg.Tiers {
+			if number, _ := strconv.Atoi(strings.TrimPrefix(key, "tier")); number <= request.upto {
+				declared = append(declared, number)
+			}
+		}
+		sort.Ints(declared)
+		for _, number := range declared {
+			switch {
+			case !cfg.Tiers[tierName(number)].Manual:
+				numbers = append(numbers, number)
+			case !slices.Contains(request.tiers, number) && request.stderr != nil:
+				fmt.Fprintf(request.stderr, "gate test: %s is manual and runs only when --tier names it\n", tierName(number))
+			}
+		}
+	}
 	sort.Ints(numbers)
 	return slices.Compact(numbers)
 }
