@@ -3,7 +3,9 @@
 package pairteardown
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -139,9 +141,13 @@ func (t *Teardown) battenRunState(slug string) (seeded bool, state string, err e
 	return true, string(status.State), nil
 }
 
-// readStatus reads the shed status file at path under its lock; found is false when the file is absent.
+// readStatus reads the shed status file at path under its lock; found is false when the file is absent, which includes a run directory that was never created.
 func readStatus(path, lockPath string) (shedengine.Status, bool, error) {
-	return state.ReadJSONNoMkdir[shedengine.Status](path, lockPath)
+	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](path, lockPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return shedengine.Status{}, false, nil
+	}
+	return status, found, err
 }
 
 // readBoardClaim reads the status of the slug's board entry through the hub's board.

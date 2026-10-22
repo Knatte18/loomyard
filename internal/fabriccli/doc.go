@@ -43,6 +43,7 @@
 // The way forward is the branch's own, never the entry's, since the entry can carry the text of a gone branch, which names the refused verb.
 // A stop made only by gone branches of the slug is no refusal: the removal is what clears a gone branch, so it runs the ordinary request.
 // A reconcile error refuses naming its cause and the re-run.
+// A hub whose warp or weft repository has no origin remote has nothing to reconcile against, so it reads as an unreachable origin and the local board decides.
 //
 // An ended or owned_elsewhere verdict removes the pair through the composite's local mode: no archive-tag push, no remote branch step, no board write, and no quiet wait, so a machine that does not own the run pushes no archive tag of stale records.
 // A `--remote` it drops is named in `remote_skipped_reason`.

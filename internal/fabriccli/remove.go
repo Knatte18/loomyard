@@ -8,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
@@ -194,8 +195,20 @@ func readLocalReading(prime *lyxcwd.Location, slug string) (localReading, error)
 }
 
 // reconcileForRemove runs the run-scope origin reconcile of slug from the prime, with the seams pairteardown builds for a hub, and logs each entry of its mutation record.
+// A hub whose warp or weft repository has no origin remote has nothing to judge against, so it reads as an unreachable origin and the local board decides.
 // The run scope tears no pair down, so the report never shows the slug's pair already removed.
 func reconcileForRemove(prime *lyxcwd.Location, td *pairteardown.Teardown, slug string) (fabricengine.OriginReport, error) {
+	recordsRoot, err := fabricengine.RecordsRepoRoot(prime)
+	if err != nil {
+		return fabricengine.OriginReport{}, err
+	}
+	for _, repoPath := range []string{prime.WorktreePath(), recordsRoot} {
+		if _, err := gitrepo.New(repoPath).RemoteURL("origin"); err != nil {
+			logger.Info("fabriccli: no origin remote to reconcile against", "slug", slug, "repo", repoPath, "cause", err)
+			return fabricengine.OriginReport{Unreachable: true}, nil
+		}
+	}
+
 	report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{Run: slug}, td.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("fabriccli: origin reconcile mutation", "slug", slug, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
