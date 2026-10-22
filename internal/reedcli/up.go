@@ -7,10 +7,17 @@
 package reedcli
 
 import (
+	"context"
+	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/spf13/cobra"
 )
 
@@ -65,6 +72,41 @@ Example:
 	}
 }
 
+// endPairProcesses ends the registered processes of the pair the invoking worktree is, before `down` kills its session, and returns what it ended.
+// The prime is no pair, so it ends nothing and returns an empty list; an unresolvable worktree is returned as an error.
+// It reads local state only and makes no network call.
+func (c *reedCLI) endPairProcesses(ctx context.Context) ([]runproc.Ended, error) {
+	location, err := lyxcwd.Resolve(c.anchorPath)
+	if err != nil {
+		return nil, err
+	}
+	primeName, err := fabricengine.PrimeName(location)
+	if err != nil {
+		return nil, fmt.Errorf("resolve the hub's prime: %w", err)
+	}
+	if primeName == location.WorktreeName {
+		return nil, nil
+	}
+	prime, err := lyxcwd.ResolveWorktree(filepath.Join(location.HubPath, primeName))
+	if err != nil {
+		return nil, fmt.Errorf("locate the hub's prime %q: %w", primeName, err)
+	}
+	teardown, err := pairteardown.New(prime)
+	if err != nil {
+		return nil, err
+	}
+	return teardown.EndBeforeSessionDown(ctx, location.WorktreeName)
+}
+
+// endedProcessesField renders the ended processes as the envelope's list of {pid, role}, empty when none.
+func endedProcessesField(ended []runproc.Ended) []map[string]any {
+	list := make([]map[string]any, len(ended))
+	for i, process := range ended {
+		list[i] = map[string]any{"pid": process.PID, "role": process.Role}
+	}
+	return list
+}
+
 // downCmd builds the `down` subcommand.
 func (c *reedCLI) downCmd() *cobra.Command {
 	return &cobra.Command{
@@ -80,6 +122,15 @@ to ten seconds for the daemon to leave, warning and still succeeding on
 timeout. down is idempotent: calling it again with no session up still
 succeeds.
 
+In a task pair, down first ends the pair's registered processes, its loom
+driver, step loop and batten among them, and lists each {pid, role} in
+ended_processes. It reads local state only and makes no network call. It does
+so when a pause covers the pair, when its board entry reads done, when it
+finished its Finalize and batten is no longer running, or when the run is not
+running. A run that is running and not paused is refused with the way forward
+"lyx tender pause <slug>", then "lyx reed down" again, and its session is left
+alone. The prime is no pair and is brought down as before.
+
 When this worktree's state was recorded against a DIFFERENT session that is
 still running on the hub's server — after the worktree directory was renamed,
 or a .lyx directory was copied here from another worktree — down does not kill
@@ -94,6 +145,16 @@ Example:
 				return nil
 			}
 			out := cmd.OutOrStdout()
+
+			endProcesses := c.endProcesses
+			if endProcesses == nil {
+				endProcesses = c.endPairProcesses
+			}
+			ended, err := endProcesses(cmd.Context())
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
 
 			result, err := c.strandEngine().Down()
 			if err != nil {
@@ -118,7 +179,7 @@ Example:
 				waitWatchdogLockFree(c.hubPath, wait, poll, probe, sleep)
 			}
 
-			payload := map[string]any{"session": result.Session}
+			payload := map[string]any{"session": result.Session, "ended_processes": endedProcessesField(ended)}
 			// Emitted only when there IS an abandoned session, so the ordinary teardown envelope is
 			// unchanged and the key's mere presence is the signal.
 			if result.AbandonedSession != "" {

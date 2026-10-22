@@ -1,5 +1,6 @@
 // skip.go decides which pairs skip the quiet wait and waits for such a pair's run lock before its owned processes are ended.
 // A holder a pause or a network-gate wait leaves behind passes the wait, since the owned-process end and the loop end reach it.
+// It also holds EndBeforeSessionDown, the local-state reading and owned-process end `lyx reed down` runs before it kills a pair's session.
 
 package pairteardown
 
@@ -12,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
@@ -45,6 +47,76 @@ func (t *Teardown) driverChecksSkipped(req Request) (bool, error) {
 	}
 	alive, err := t.battenAlive(req.Slug)
 	return !alive, err
+}
+
+// ErrRunRunning is the sentinel EndBeforeSessionDown's refusal wraps when the pair's run is running and no pause covers it.
+var ErrRunRunning = errors.New("the run is running and unpaused")
+
+// EndBeforeSessionDown ends the pair's registered processes ahead of a session end that is not part of a teardown, and returns the processes it ended.
+// It reads only local state, in order, and stops at the first reading that holds:
+// a live pause entry covers the slug, the slug's board entry reads done, the status history holds a Finalize Done with no registered batten alive,
+// or the run is not running, which is no Go-driver lock held, the loop lock free, no live driver strand and no registered batten alive.
+// It then waits for the run lock, which a holder a pause or a network-gate wait leaves passes, and ends the registered processes.
+// A run that is running and unpaused is refused with an error wrapping ErrRunRunning, nothing ended.
+// A refused run-lock wait is returned as it is, and processes that survive the end are returned wrapped with each survivor's pid.
+func (t *Teardown) EndBeforeSessionDown(ctx context.Context, slug string) ([]runproc.Ended, error) {
+	covered, hubEntry, err := t.paused(slug)
+	if err != nil {
+		return nil, err
+	}
+	settled := covered
+	if !settled {
+		settled, err = t.settledForSessionDown(slug)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if !settled {
+		return nil, fmt.Errorf("%w: pair %q; pause it with `lyx tender pause %s`, then run `lyx reed down` again", ErrRunRunning, slug, slug)
+	}
+
+	if err := t.awaitOrPass(ctx, slug, covered, hubEntry, "`lyx reed down`"); err != nil {
+		return nil, err
+	}
+	ended, err := t.endOwned(slug)
+	var survivors *runproc.SurvivorsError
+	if errors.As(err, &survivors) {
+		return ended, fmt.Errorf("processes of pair %q survived the end: %s; run `lyx reed down` again once they are gone: %w", slug, survivorNames(survivors.Survivors), err)
+	}
+	if err != nil {
+		return ended, fmt.Errorf("end the pair's registered processes: %w", err)
+	}
+	return ended, nil
+}
+
+// settledForSessionDown reports whether the run has nothing left to do without a pause: its board entry reads done, it finished a Finalize and no registered batten is alive, or it is not running.
+func (t *Teardown) settledForSessionDown(slug string) (bool, error) {
+	status, found, err := t.readClaim(slug)
+	if err != nil {
+		return false, err
+	}
+	if found && status != nil && *status == "done" {
+		return true, nil
+	}
+	landed, err := t.landed(slug)
+	if err != nil {
+		return false, err
+	}
+	alive, err := t.battenAlive(slug)
+	if err != nil {
+		return false, err
+	}
+	if alive {
+		return false, nil
+	}
+	if landed {
+		return true, nil
+	}
+	state, err := t.quiet(slug)
+	if err != nil {
+		return false, err
+	}
+	return !state.goDriver && !state.loop && state.driver == "", nil
 }
 
 // pausedIn reads the hub's pause record and reports whether a live entry covers the slug, and whether a hub entry is among the live entries.

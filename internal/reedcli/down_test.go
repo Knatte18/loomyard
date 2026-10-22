@@ -4,9 +4,11 @@ package reedcli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -36,6 +39,11 @@ func TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer(t *testing.T) {
 		wantSleeps   int
 		wantWarns    int
 		wantLockFree bool
+		// endErr is what the pre-step seam returns, and ended what it answers.
+		endErr error
+		ended  []runproc.Ended
+		// wantEnded is the ended_processes list the envelope carries, empty when nil; a refusing seam leaves Down uncalled, any other row calls it once.
+		wantEnded []any
 	}{
 		{
 			name:         "ended the server, real probe over a free lock",
@@ -75,6 +83,21 @@ func TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer(t *testing.T) {
 			free:    []bool{false},
 			wantErr: "tmux unavailable",
 		},
+		{
+			name:    "refusing seam leaves the session up",
+			down:    reedengine.DownResult{Session: "alpha", EndedServer: true},
+			endErr:  errors.New("the run is running and unpaused"),
+			wantErr: "the run is running and unpaused",
+		},
+		{
+			name:  "seam ended two processes",
+			down:  reedengine.DownResult{Session: "alpha"},
+			ended: []runproc.Ended{{PID: 11, Role: runproc.RoleDriver}, {PID: 12, Role: runproc.RoleBatten}},
+			wantEnded: []any{
+				map[string]any{"pid": float64(11), "role": runproc.RoleDriver},
+				map[string]any{"pid": float64(12), "role": runproc.RoleBatten},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -89,8 +112,12 @@ func TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer(t *testing.T) {
 			lockPath := filepath.Join(scratch, watchdogLockFileName)
 
 			probes, sleeps := 0, 0
+			strands := &fakeStrandOps{down: tt.down, downErr: tt.downErr}
 			c := &reedCLI{
-				strands:      &fakeStrandOps{down: tt.down, downErr: tt.downErr},
+				strands: strands,
+				endProcesses: func(context.Context) ([]runproc.Ended, error) {
+					return tt.ended, tt.endErr
+				},
 				hubPath:      hub,
 				downLockWait: time.Second,
 				downLockPoll: poll,
@@ -117,8 +144,25 @@ func TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer(t *testing.T) {
 
 			if tt.wantErr != "" {
 				envelope.RequireErr(t, out.String(), tt.wantErr)
-			} else if env := envelope.RequireOK(t, out.String()); env.Raw["session"] != tt.down.Session {
-				t.Errorf("envelope session = %v, want %q", env.Raw["session"], tt.down.Session)
+			} else {
+				env := envelope.RequireOK(t, out.String())
+				if env.Raw["session"] != tt.down.Session {
+					t.Errorf("envelope session = %v, want %q", env.Raw["session"], tt.down.Session)
+				}
+				wantEnded := tt.wantEnded
+				if wantEnded == nil {
+					wantEnded = []any{}
+				}
+				if got := env.Raw["ended_processes"]; !reflect.DeepEqual(got, wantEnded) {
+					t.Errorf("ended_processes = %#v, want %#v", got, wantEnded)
+				}
+			}
+			wantDownCalls := 1
+			if tt.endErr != nil {
+				wantDownCalls = 0
+			}
+			if strands.downCalls != wantDownCalls {
+				t.Errorf("Down calls = %d, want %d", strands.downCalls, wantDownCalls)
 			}
 			if probes != tt.wantProbes {
 				t.Errorf("probes = %d, want %d", probes, tt.wantProbes)

@@ -104,6 +104,16 @@
 // A pair whose task worktree is gone is quiet by exception: neither the run lock nor reed's strand table can be probed there, and the session is ended by exact name with no wait.
 // "Gone" means the task worktree path is not a registered linked worktree.
 //
+// # Ending before a bare session end
+//
+// EndBeforeSessionDown serves `lyx reed down`, which ends a session with no teardown.
+// It reads only local state and makes no network call, in this order and stopping at the first that holds:
+// a live pause entry covers the slug, the local board entry reads done, the status history holds a Finalize Done with no registered batten alive, or the run is not running.
+// Not running is no Go-driver lock held, the loop lock free, no live driver strand and no registered batten alive; there is no stopped reading, since that is a reconcile verdict.
+// It then waits for the run lock as a skipped teardown does, with the retry step `lyx reed down`, and ends the slug's registered processes.
+// A run that holds none of the readings is running and unpaused, and is refused with an error wrapping ErrRunRunning that names `lyx tender pause <slug>` and then `lyx reed down` again, with nothing ended.
+// A refusal of the run-lock wait is returned as it is, and survivors of the end are returned wrapped, each named by pid.
+//
 // # Caller policies
 //
 // `fabric remove` passes RemoveQuietWait with Request.RefuseWhenBusy: a driver still busy when the bound is spent is never ended, and EndSession returns ErrDriverBusy.

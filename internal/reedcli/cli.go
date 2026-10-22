@@ -14,6 +14,7 @@
 package reedcli
 
 import (
+	"context"
 	"io"
 	"os"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/spf13/cobra"
 )
@@ -56,6 +58,9 @@ type reedCLI struct {
 	// nil means the real engine and the real detached spawn.
 	strands     strandOps
 	spawnRemove func(guid string, recursive bool) error
+
+	// endProcesses is the test seam for the pre-step `down` runs in a pair; nil means endPairProcesses.
+	endProcesses func(ctx context.Context) ([]runproc.Ended, error)
 
 	// openTerminal is the test seam for the window verb; nil means termwindow.Resolve then Launcher.OpenAttach.
 	openTerminal func(dir, title, lyxPath string) error
