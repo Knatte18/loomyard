@@ -1901,6 +1901,69 @@ func TestValidate_LanguageMismatch(t *testing.T) {
 	}
 }
 
+// TestValidate_RenameNamespacePair covers rename-namespace-pair over a worktree holding Program.cs and docs/guide.md: under csharp a slash-free old side that names nothing on disk, and nothing an earlier card creates or renames into, is refused.
+func TestValidate_RenameNamespacePair(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	materializeFiles(t, root, "Program.cs", "docs/guide.md")
+
+	rename := func(number int, oldSide, newSide string) planparser.Card {
+		card := cardOfType(number, "r", planparser.CardTypeRename, []string{oldSide, newSide})
+		card.Pairs = []planparser.MovePair{{Old: oldSide, New: newSide}}
+		card.TargetGroups[0].Pairs = card.Pairs
+		return card
+	}
+
+	tests := []struct {
+		name     string
+		language string
+		cards    []planparser.Card
+		want     int
+	}{
+		{name: "a namespace pair is refused", language: "csharp", cards: []planparser.Card{rename(1, "Glyphchain.Sharp#", "Glyphchain.Core#")}, want: 1},
+		{name: "a root file pair on disk passes", language: "csharp", cards: []planparser.Card{rename(1, "Program.cs#", "App.cs#")}},
+		{
+			name:     "an old side an earlier card creates passes",
+			language: "csharp",
+			cards:    []planparser.Card{cardOfType(1, "c", planparser.CardTypeCreate, []string{"Tool.cs#"}), rename(2, "Tool.cs#", "Util.cs#")},
+		},
+		{
+			name:     "an old side an earlier card renames into passes",
+			language: "csharp",
+			cards:    []planparser.Card{rename(1, "Program.cs#", "Old.cs#"), rename(2, "Old.cs#", "New.cs#")},
+		},
+		{name: "a directory on disk passes", language: "csharp", cards: []planparser.Card{rename(1, "docs#", "guide#")}},
+		{name: "a slashed pair is not read", language: "csharp", cards: []planparser.Card{rename(1, "src/A.cs#", "src/B.cs#")}},
+		{name: "go leaves the pair to path-missing", language: "go", cards: []planparser.Card{rename(1, "Glyphchain.Sharp#", "Glyphchain.Core#")}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: tt.language, Cards: tt.cards}
+
+			var got []planparser.ValidationError
+			for _, f := range planparser.Validate(plan, root) {
+				if f.Check == "rename-namespace-pair" {
+					got = append(got, f)
+				}
+			}
+
+			if len(got) != tt.want {
+				t.Fatalf("rename-namespace-pair findings = %+v; want %d", got, tt.want)
+			}
+			if tt.want == 0 {
+				return
+			}
+			for _, want := range []string{"Edit cards", "root file", "move the pair to a card after it"} {
+				if !strings.Contains(got[0].Detail, want) {
+					t.Errorf("detail %q lacks the way forward %q", got[0].Detail, want)
+				}
+			}
+		})
+	}
+}
+
 // TestValidate_VerifyModuleWide covers verify-module-wide: a card's Verify: must not hold a module-wide go build, test or vet, or a go test selecting the tmux or llm tier; the overview's verify chain is never read.
 func TestValidate_VerifyModuleWide(t *testing.T) {
 	t.Parallel()

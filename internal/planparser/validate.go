@@ -1,6 +1,6 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (contracts/specs/loom-plan-spec.md), run in this fixed order.
-// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-language-mismatch (checkLanguageMismatch), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), resign-not-member (checkResignNotMember), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), commit-subject-mismatch (checkCommitSubjectMismatch), verify-nested-module (checkVerifyNestedModule, verifymodule.go), verify-module-wide (checkVerifyModuleWide, verifymodule.go), verify-package-missing (checkVerifyPackageMissing, verifypackage.go), and pattern-entry-line-cap (checkPatternEntryLineCap, patternentry.go).
+// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-language-mismatch (checkLanguageMismatch), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), resign-not-member (checkResignNotMember), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), rename-namespace-pair (checkRenameNamespacePair), commit-subject-mismatch (checkCommitSubjectMismatch), verify-nested-module (checkVerifyNestedModule, verifymodule.go), verify-module-wide (checkVerifyModuleWide, verifymodule.go), verify-package-missing (checkVerifyPackageMissing, verifypackage.go), and pattern-entry-line-cap (checkPatternEntryLineCap, patternentry.go).
 // The plan gate's context checks verify-raw-command, verify-gate-no-wait and plan-verify-retired are appended by loomshed outside both entry points, over VerifyCommands.
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
@@ -97,6 +97,7 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkProsaSymbolTarget(plan)...)
 	findings = append(findings, checkCardNumbering(plan)...)
 	findings = append(findings, checkPathMissing(plan, worktreeRoot)...)
+	findings = append(findings, checkRenameNamespacePair(plan, worktreeRoot)...)
 	findings = append(findings, checkCommitSubjectMismatch(plan)...)
 	findings = append(findings, checkVerifyNestedModule(plan, worktreeRoot)...)
 	findings = append(findings, checkVerifyModuleWide(plan)...)
@@ -1274,6 +1275,60 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 			case CardTypeCreate, CardTypeCustom:
 				// Create's refs are new by definition, and Custom is an explicit escape hatch
 				// exempt from path-missing on its own refs.
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkRenameNamespacePair implements rename-namespace-pair: under csharp, a Rename pair of two self glyphs whose old side is slash-free and names nothing on disk is refused.
+// Under csharp such a pair is a file pair and runs `git mv`, so a pair of namespace self glyphs such as `Glyphchain.Sharp# -> Glyphchain.Core#` would move a path that does not exist.
+// The old side is read through PathEntryPath, never through createTargetsUnion or renameTargetsUnion, whose diskPathForRef drops every slash-free self glyph under csharp.
+// It reads the disk rather than the extension, since a dotted namespace has a path extension too.
+// A path an earlier card creates or renames into is no finding.
+// It runs on pending cards only, since ValidateDispatch drops a finding against a done card, so a pair whose `git mv` landed is never rechecked.
+// Under go the same pair is path-missing's, so it stays silent there.
+func checkRenameNamespacePair(plan *Plan, worktreeRoot string) []ValidationError {
+	var findings []ValidationError
+	if lang, ok := planLanguage(plan); !ok || lang != glyph.CSharp {
+		return findings
+	}
+
+	earlier := make(map[string]bool)
+	for _, c := range plan.Cards {
+		for _, pair := range c.Pairs {
+			if !isFileRenamePair(plan, pair) {
+				continue
+			}
+			oldPath, ok := PathEntryPath(pair.Old)
+			if !ok || strings.Contains(oldPath, "/") || earlier[oldPath] || pathExistsOnDisk(worktreeRoot, oldPath) {
+				continue
+			}
+			findings = append(findings, ValidationError{
+				Check: "rename-namespace-pair",
+				Card:  cardID(c),
+				Ref:   pair.Old,
+				Detail: fmt.Sprintf(
+					"card %d Rename pair %q -> %q names no path on disk, and under csharp a pair of two self glyphs is a file pair that runs `git mv`, so a namespace cannot be renamed this way; rename the namespace through Edit cards on the files that declare it and the files that refer to it; when the old side is meant as a root file, correct it to a file that exists; or, when a later card creates the old side, move the pair to a card after it",
+					c.Number, pair.Old, pair.New,
+				),
+			})
+		}
+
+		for _, g := range c.TargetGroups {
+			if g.Type != CardTypeCreate {
+				continue
+			}
+			for _, ref := range g.Refs {
+				if created, ok := PathEntryPath(ref); ok {
+					earlier[created] = true
+				}
+			}
+		}
+		for _, pair := range c.Pairs {
+			if destination, ok := PathEntryPath(pair.New); ok {
+				earlier[destination] = true
 			}
 		}
 	}
