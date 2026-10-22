@@ -148,6 +148,13 @@
 // Keys are not lines: an interrupt, an inject and the pause's own Esc are delivered under a pause.
 // A runner told no pause geometry, as the orch runner is, reads every target uncovered.
 // The start's segment-color line is a send too, so a refusal drops it with a Warn as any color failure.
+// The start's prompt line, its typed skill-load line and the deferred task prompt wait out a refusing pause on the slug the refusal judged and send again, looping if a second pause lands first.
+//
+// Each Wait tick reads the coverage of the run's own session by that same slug, not the runner's.
+// A gated Done arrival that reaches the boundary while covered is recorded as reached and held: no gate closure runs and no pending or re-prompt send goes out, and the first uncovered tick evaluates it as if it had just arrived.
+// A re-prompt refused with ErrPaused is held like a busy one, spending no attempt.
+// The off-boundary expiry probes keep running under cover, since they send nothing, so an entry's own wait bound can still end a run.
+// The hold only delays an evaluation and changes no verdict or attempt count.
 //
 // # Awake deadline
 //

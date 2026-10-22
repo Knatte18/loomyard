@@ -341,8 +341,14 @@ type Run struct {
 	deadlineExcluded time.Duration
 	// sleeps is the machine sleeps Wait has seen, fed from an AwakeClock.
 	sleeps pauserecord.SleepWatch
-	// covered reports that the latest Wait tick read a pause covering the run's pair.
+	// covered reports that the latest Wait tick read a pause covering the run's own session.
 	covered bool
+	// sessionSlug is the slug of the run's strand name as reed's status first reported it, when the record held no name; sessionSlugKnown reports that it is set.
+	// A strand's name is fixed for its life, so one successful lookup serves every tick.
+	sessionSlug      string
+	sessionSlugKnown bool
+	// boundaryHeld marks a gated Done arrival that reached the boundary while covered, whose evaluation waits for the first uncovered tick.
+	boundaryHeld bool
 	// turnSince is the run clock's time when Wait last read a turn start, or began.
 	turnSince time.Time
 	// pauseReadError is the text of the pause record error last warned about, so a persistent error warns once.

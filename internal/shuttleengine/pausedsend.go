@@ -38,11 +38,17 @@ func (e *PausedError) Unwrap() error {
 // name is the strand name the caller already holds; only when it is empty does targetSlug ask reed for the strand's name by guid.
 // A name that does not parse and a strand reed does not list fall back to the runner's geometry slug, as does a failed reed status, which warns once per change of error.
 func (r *Runner) targetSlug(guid, name string) string {
+	slug, _ := r.resolveTargetSlug(guid, name)
+	return slug
+}
+
+// resolveTargetSlug is targetSlug that also reports whether the slug came from a parsed strand name rather than the runner's geometry slug.
+func (r *Runner) resolveTargetSlug(guid, name string) (slug string, resolved bool) {
 	if name == "" {
 		status, err := r.reed.Status()
 		r.warnOnChange(&r.statusReadWarned, "shuttle: reed status unreadable, judging a send's pause coverage by the runner's slug", err, "strandGUID", guid)
 		if err != nil {
-			return r.pause.Slug
+			return r.pause.Slug, false
 		}
 		for _, strand := range status.Strands {
 			if strand.GUID == guid {
@@ -53,9 +59,9 @@ func (r *Runner) targetSlug(guid, name string) string {
 	}
 	parsed, err := agentname.Parse(name)
 	if err != nil {
-		return r.pause.Slug
+		return r.pause.Slug, false
 	}
-	return parsed.Slug
+	return parsed.Slug, true
 }
 
 // pausedTarget returns a *PausedError when a live pause entry covers the strand guid names, judged by the strand's own slug at the runner's clock.

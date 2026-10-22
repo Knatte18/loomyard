@@ -457,17 +457,7 @@ func TestRunner_Start_WaitsWhileAPauseCoversItsPair(t *testing.T) {
 			fc := newFakeClock(time.Now())
 			live, refused := 0, false
 			resume := func() {
-				t.Helper()
-				_, err := pauserecord.Update(path, fc.Now(), func(record *pauserecord.Record) error {
-					entry := record.Live[0]
-					entry.ResumedAt = fc.Now()
-					record.Live = record.Live[1:]
-					record.Resumed = append(record.Resumed, entry)
-					return nil
-				})
-				if err != nil {
-					t.Fatalf("resume the pause: %v", err)
-				}
+				resumeOldestLive(t, path, fc.Now())
 				live--
 			}
 
