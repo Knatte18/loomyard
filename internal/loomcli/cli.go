@@ -111,6 +111,9 @@ type loomCLI struct {
 	// recordedParentBranch is the seam through which start and resume read the pair's recorded parent branch, to tell a parked merge-in of that branch from any other merge state.
 	// A test substitutes a canned branch or error.
 	recordedParentBranch func(*lyxcwd.Location) (string, error)
+	// parentCodeDirt is the seam through which the Finalize goto guard reads the parent pair's code checkout, its tracked dirty paths and whether fabric holds a merge record on that pair.
+	// An untagged test cannot build a real parent pair, so it substitutes canned answers.
+	parentCodeDirt func() (checkout string, paths []string, mergeRecord bool, err error)
 	// spec is the shedverbs.Spec the pre-run fills in place (arm.go) and the four shedverbs
 	// verbs read at run time. It is always non-nil after newLoomCLI, so Command() can hand the
 	// same pointer to shedverbs.Verbs before the pre-run has ever run.
@@ -184,6 +187,7 @@ func newLoomCLI() *loomCLI {
 		recordedParentBranch:  readRecordedParentBranch,
 		spec:                  &shedverbs.Spec{},
 	}
+	c.parentCodeDirt = c.parentCodeDirtFromFabric
 	c.ownerOf = func(l *lyxcwd.Location, slug string) (ownerVerdict, error) {
 		return runOwnerVerdict(l, slug, machinename.Name)
 	}

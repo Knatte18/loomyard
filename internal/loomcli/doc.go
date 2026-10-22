@@ -144,6 +144,12 @@
 // `lyx shed step <run-id> --until-stop --arbiter-attempt <N>` performs the verdict's goto under the run and status locks, once per attempt;
 // a run already paused at the verdict's goto target with only goto entries since the spawn, the last naming that target, is admitted with no second goto.
 // A guard refusal inside that re-launch refuses the attempt, and the driver hands back with the refusal text.
+//
+// The told goto guard has two arms, run in this order:
+// the Finalize arm refuses a goto onto the Finalize row while the parent's code checkout holds tracked dirt, naming the checkout, the paths and the goto and resume that retry it;
+// the settled-segment arm refuses a goto onto a review or fix row whose verdict is settled.
+// The Finalize arm admits the row when the parent pair cannot be read or holds a fabric merge record, since Finalize's own merge guard then words the problem.
+//
 // A pair's session end ends a live arbiter strand with the pair's other strands.
 //
 // The Go driver reaches the arbiter through its arbiter seam, which calls this same path in-process, so eligibility, `arbiter_max_spawns`, the attempts, the applied mark and the deadlines are shared;
