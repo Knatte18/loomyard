@@ -125,7 +125,7 @@ func TestLoad(t *testing.T) {
 
 	t.Run("remove drops a layer lens from the lenses, every fan and the hub's own fan", func(t *testing.T) {
 		boardDir, anchor := t.TempDir(), t.TempDir()
-		writeLensesYAML(t, boardDir, "lens_set: csharp\nremove: [numerics]\nfans:\n  mine: [numerics, generic]\n")
+		writeLensesYAML(t, boardDir, "lens_set: csharp\nremove: [numerics, numerics]\nfans:\n  mine: [numerics, generic]\n")
 
 		cfg, err := Load(configengine.Dirs{Anchor: anchor, Board: boardDir})
 		if err != nil {
@@ -144,9 +144,9 @@ func TestLoad(t *testing.T) {
 		}
 	})
 
-	t.Run("a remove name matching no lens loads and warns once per process", func(t *testing.T) {
+	t.Run("a remove name matching no lens loads and warns once per process, naming a repeated name once", func(t *testing.T) {
 		anchor := t.TempDir()
-		writeLensesYAML(t, anchor, "remove: [no-such-lens]\n")
+		writeLensesYAML(t, anchor, "remove: [no-such-lens, no-such-lens]\n")
 		logs := logcapture.CaptureVerbose(t)
 
 		for range 2 {
@@ -158,6 +158,9 @@ func TestLoad(t *testing.T) {
 		for _, line := range strings.Split(logs.String(), "\n") {
 			if strings.Contains(line, "no-such-lens") && strings.Contains(line, configengine.ConfigFile(anchor, "lenses")) {
 				warnings++
+				if strings.Contains(line, "no-such-lens,no-such-lens") {
+					t.Errorf("warning = %q; want the repeated name listed once", line)
+				}
 			}
 		}
 		if warnings != 1 {

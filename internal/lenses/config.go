@@ -7,6 +7,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -129,7 +130,9 @@ func applyRemove(cfg *Config) []string {
 			continue
 		}
 		if _, defined := cfg.Lenses[name]; !defined {
-			skipped = append(skipped, name)
+			if !slices.Contains(skipped, name) {
+				skipped = append(skipped, name)
+			}
 			continue
 		}
 		delete(cfg.Lenses, name)
