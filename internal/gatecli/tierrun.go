@@ -30,11 +30,14 @@ type tierResult struct {
 	log []byte
 	// refusal is set instead of an outcome when the tier could not run at all: no process started, a prebuild failed or a command could not be rendered.
 	refusal string
+	// trimpathNote is the line saying the tier built with `-trimpath`, empty when it did not or ran no command.
+	trimpathNote string
 }
 
 // runTier runs the tier of run in ctx with its slots held: it prebuilds `lyx` when the tier asks, then runs each invocation's command through the platform shell as a tied child, stopping at the first non-zero exit.
 // The tier's timeout_min bounds the prebuild and every invocation together, counted from the call; a tier that outlives it has its process tree killed, exits 1 and prints and logs gateslot.TierTimeoutLine.
 // env is the environment every command gets, before the tier's own env is added.
+// When the resulting GOFLAGS carries `-trimpath`, it logs a line saying so before the first command and returns the line for the caller to print.
 // A run with no invocation passes at once with nothing discovered.
 func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, request testRequest) tierResult {
 	started := time.Now()
@@ -50,7 +53,15 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 	tierCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	exit, commands, refusal := runInvocations(tierCtx, run, counter, slices.Concat(env, renderTierEnv(run.tier)), request)
+	tierEnv := slices.Concat(env, renderTierEnv(run.tier))
+	trimpathNote := ""
+	if len(run.invocations) > 0 {
+		trimpathNote = trimpathLine(tierName(run.number), tierEnv)
+	}
+	if trimpathNote != "" {
+		logBuffer.WriteString(trimpathNote + "\n")
+	}
+	exit, commands, refusal := runInvocations(tierCtx, run, counter, tierEnv, request)
 	if refusal != "" {
 		return tierResult{refusal: refusal}
 	}
@@ -81,7 +92,7 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 		record.Outcome = "failed"
 	}
 	record.Discovered, record.Passed, record.Failed, record.Skipped = counts.discovered, counts.passed, counts.failed, counts.skipped
-	return tierResult{record: record, log: logBuffer.Bytes()}
+	return tierResult{record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote}
 }
 
 // runInvocations prebuilds `lyx` when the tier asks, then runs each invocation of run in order under ctx, stopping at the first non-zero exit.

@@ -291,7 +291,7 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 	return e.report(run, body(env), waitStart)
 }
 
-// report writes the tier's run record and log, prints its summary line to stderr and returns its exit code; a refusal is answered instead.
+// report writes the tier's run record and log, prints its `-trimpath` line, when it has one, and its summary line to stderr and returns its exit code; a refusal is answered instead, so its stdout stays one JSON envelope.
 // A record that cannot be written is logged and decides nothing.
 func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) int {
 	if result.refusal != "" {
@@ -314,6 +314,9 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 		logger.Warn("gate test: could not write the tier's run record", "tier", tierName(run.number), "cause", err)
 	} else {
 		logPath = strings.TrimSuffix(path, ".json") + ".log"
+	}
+	if result.trimpathNote != "" {
+		printLine(e.request.stderr, result.trimpathNote)
 	}
 	printLine(e.request.stderr, gateslot.TierSummaryLine(record, logPath))
 	return record.ExitCode
