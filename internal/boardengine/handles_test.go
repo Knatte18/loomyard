@@ -155,8 +155,8 @@ func TestHandles_AssignedOnLoad(t *testing.T) {
 	}
 }
 
-// TestHandles_UndecidedLetterKeepsNoDuplicate pins that a note whose type label is no longer configured keeps its stored handle,
-// except when an entry of lower id already holds that handle, which leaves the note without one.
+// TestHandles_UndecidedLetterKeepsNoDuplicate pins that a note whose type label is no longer configured keeps its stored handle.
+// It pins that the note loses the handle when an entry of lower id already holds it.
 func TestHandles_UndecidedLetterKeepsNoDuplicate(t *testing.T) {
 	t.Parallel()
 	boardPath := t.TempDir()
