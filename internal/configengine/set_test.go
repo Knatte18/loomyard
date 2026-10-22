@@ -59,6 +59,8 @@ func TestSet(t *testing.T) {
 		errLacks []string
 		// fileLacks are substrings the written file must not hold.
 		fileLacks []string
+		// defaultFile is the hub default file's bytes before the call; empty leaves it absent. It needs board.
+		defaultFile string
 	}{
 		{
 			name:      "an overlay base scaffold holds no per-name entry and takes the selector",
@@ -109,6 +111,24 @@ func TestSet(t *testing.T) {
 			overlay:  true,
 			pairs:    []yamlengine.KV{{Key: "lenses.a", Value: "Y"}},
 			wantErr:  "delete the pick line from",
+		},
+		{
+			name:        "a hub worktree write of the selector with the default file's value saves",
+			state:       baseLyx,
+			board:       true,
+			overlay:     true,
+			defaultFile: "pick: x\n",
+			pairs:       []yamlengine.KV{{Key: "pick", Value: "x"}},
+			contains:    []string{"pick:"},
+		},
+		{
+			name:        "a hub worktree write under a default file holding an unknown selector value is refused and leaves no file",
+			state:       baseLyx,
+			board:       true,
+			overlay:     true,
+			defaultFile: "pick: nope\n",
+			pairs:       []yamlengine.KV{{Key: "lenses.a", Value: "Y"}},
+			wantErr:     "names no shipped layer",
 		},
 		{
 			name:      "hub default layer write into an absent file writes exactly the key set",
@@ -338,6 +358,13 @@ func TestSet(t *testing.T) {
 			}
 			if (tt.hubWide || tt.layer == configengine.LayerDefault) && !tt.boardWithoutLyx {
 				mustMkdirAll(t, configengine.ConfigDir(dirs.Board))
+			}
+			if tt.defaultFile != "" {
+				defaultPath := configengine.ConfigFile(dirs.Board, "testmod")
+				mustMkdirAll(t, filepath.Dir(defaultPath))
+				if err := os.WriteFile(defaultPath, []byte(tt.defaultFile), 0o644); err != nil {
+					t.Fatalf("write default file: %v", err)
+				}
 			}
 			if tt.boardOnly {
 				dirs.Anchor = ""

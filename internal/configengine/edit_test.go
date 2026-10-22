@@ -57,6 +57,8 @@ func TestEdit(t *testing.T) {
 		overlay bool
 		// existing is the worktree file's bytes before the call; empty keeps original.
 		existing string
+		// defaultFile is the hub default file's bytes before the call; empty leaves it absent. It needs board.
+		defaultFile string
 	}{
 		{
 			name:    "a hub worktree edit writing the selector into an absent file is refused and leaves no file",
@@ -94,6 +96,16 @@ func TestEdit(t *testing.T) {
 			existing: "lenses:\n  a: Z\n",
 			steps:    []editStep{{write: "lenses:\n  a: W\n"}},
 			wantFile: ptr("lenses:\n  a: W\n"),
+		},
+		{
+			name:        "a hub worktree edit writing the selector with the default file's value saves",
+			state:       baseWithFile,
+			board:       true,
+			overlay:     true,
+			existing:    "lenses:\n  a: Z\n",
+			defaultFile: "pick: x\n",
+			steps:       []editStep{{write: "pick: x\nlenses:\n  a: Z\n"}},
+			wantFile:    ptr("pick: x\nlenses:\n  a: Z\n"),
 		},
 		{
 			name:     "absent hub base shows the sparse header and a save leaving it keeps the header-only file",
@@ -256,6 +268,15 @@ func TestEdit(t *testing.T) {
 			if tt.hubWide || tt.layer == configengine.LayerDefault {
 				if err := os.MkdirAll(configengine.ConfigDir(dirs.Board), 0o755); err != nil {
 					t.Fatalf("mkdir: %v", err)
+				}
+			}
+			if tt.defaultFile != "" {
+				defaultPath := configengine.ConfigFile(dirs.Board, "testmod")
+				if err := os.MkdirAll(filepath.Dir(defaultPath), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(defaultPath, []byte(tt.defaultFile), 0o644); err != nil {
+					t.Fatalf("write default file: %v", err)
 				}
 			}
 			layer := tt.layer
