@@ -255,3 +255,33 @@ func renderTierEnv(tier gateslot.Tier) []string {
 	}
 	return entries
 }
+
+// trimpathLine returns the line that tells a test author the tier builds with `-trimpath`, or "" when the GOFLAGS that env gives a child carries no enabled `-trimpath`.
+// A child sees the last GOFLAGS entry of env, so that entry alone decides.
+// Under `-trimpath` `runtime.Caller` reports module-relative file paths, and the line names the way forward of locating the repository from the working directory or `go.mod`.
+func trimpathLine(tier string, env []string) string {
+	goFlags := ""
+	for _, entry := range env {
+		if value, ok := strings.CutPrefix(entry, "GOFLAGS="); ok {
+			goFlags = value
+		}
+	}
+	// go keeps the last occurrence of a repeated flag, so the last trimpath field decides.
+	enabled := false
+	for _, field := range strings.Fields(goFlags) {
+		name, value, hasValue := strings.Cut(strings.TrimLeft(field, "-"), "=")
+		if name != "trimpath" {
+			continue
+		}
+		if !hasValue {
+			enabled = true
+			continue
+		}
+		parsed, err := strconv.ParseBool(value)
+		enabled = err == nil && parsed
+	}
+	if !enabled {
+		return ""
+	}
+	return fmt.Sprintf("gate test: %s builds with GOFLAGS=%q, and -trimpath makes runtime.Caller report module-relative file paths; a test locates its repository from its working directory or go.mod, never from a runtime.Caller path alone", tier, goFlags)
+}

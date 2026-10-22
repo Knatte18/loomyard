@@ -107,6 +107,14 @@
 // A write failure is logged and decides nothing.
 // A tier that discovers no tests passes with zero counted, as a package with only a `TestMain` does.
 //
+// # Trimpath
+//
+// A hub's tiers set `-trimpath` in their GOFLAGS on purpose, as the example below does, so a fresh worktree reuses the build and test cache.
+// Under it `runtime.Caller` reports module-relative file paths, so a test that locates its repository from one fails, though a raw `go test` passes.
+// When the last GOFLAGS entry of a tier's environment, the inherited one or the tier's own, holds an enabled `-trimpath`, the verb writes a line naming the tier, that GOFLAGS value and the way forward of locating the repository from the working directory or `go.mod`.
+// The line opens the tier's log, before its first command's output, and goes to stderr just before the tier's summary line, so it sits beside a failing run's verdict.
+// A tier with an empty scope runs no command and gets no such line, and a refused tier prints only its JSON envelope.
+//
 // # Child lifetime
 //
 // A tier's shell runs through `internal/proc`'s tied child, which keeps its tree killable without signalling the shell that called the verb and ends it when the verb dies, a hard kill included.
