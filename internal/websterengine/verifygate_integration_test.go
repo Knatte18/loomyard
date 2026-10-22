@@ -8,10 +8,12 @@
 package websterengine
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -19,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // verifyGateRepo is a scratch repository whose gate.yaml `final` tier leaves a sentinel file outside the worktree when it runs.
@@ -182,6 +185,40 @@ func TestVerifyGate_CleanParentMergeAboveTheFixBasePasses(t *testing.T) {
 	}
 	if !res.Passed {
 		t.Fatalf("second gate() = %+v; want a pass once the tree is clean and verify succeeds", res)
+	}
+}
+
+// TestVerifyGate_TellsTheGeometryHoldOnTheFirstRunAndTheRerun pins that the gate tells geom.VerifyHold to every verify it runs:
+// a verify that fails on its first run and passes on the rerun waits out the pause once before each.
+func TestVerifyGate_TellsTheGeometryHoldOnTheFirstRunAndTheRerun(t *testing.T) {
+	r := newVerifyGateRepo(t)
+	failedOnce := filepath.ToSlash(filepath.Join(t.TempDir(), "failed-once"))
+	config := strings.Replace(verifyGateConfig(r.sentinel),
+		`": > '`+filepath.ToSlash(r.sentinel)+`'"`,
+		`"[ -e '`+failedOnce+`' ] || { : > '`+failedOnce+`'; exit 1; }"`, 1)
+	configRel, err := filepath.Rel(r.geom.WorktreeRoot, configengine.ConfigFile(r.geom.WorktreeRoot, "gate"))
+	if err != nil {
+		t.Fatalf("locate gate.yaml: %v", err)
+	}
+	gitkit.CommitFile(t, r.geom.WorktreeRoot, filepath.ToSlash(configRel), config, "failing-once gate config")
+
+	waits := 0
+	r.geom.VerifyHold = &verifytree.PauseHold{
+		PastGrace: func() bool { return false },
+		Wait: func(context.Context, func()) error {
+			waits++
+			return nil
+		},
+		Poll: time.Hour,
+	}
+	gate, _ := NewVerifyGate(r.geom, 3, nil, nil, "", testFixPromptPath)
+
+	res, err := gate()
+	if err != nil || !res.Passed {
+		t.Fatalf("gate() = %+v, %v; want a pass on rerun", res, err)
+	}
+	if waits != 2 {
+		t.Errorf("the hold waited %d time(s); want once before the first run and once before the rerun", waits)
 	}
 }
 
