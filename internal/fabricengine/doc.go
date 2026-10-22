@@ -1375,6 +1375,9 @@
 // a refusal there mutates nothing, while a refusal from the sync step can already have
 // fast-forwarded the other side.
 //
+// **The dirty guard decides on a path list.** `pairDirtyReason` reads the code checkout's tracked dirty paths once, worktree-relative, slash-separated and sorted, and reports the dirty reason only when that list is not empty.
+// A `MergeGuardError` carrying the dirty reason carries that checkout and those paths in `Checkout` and `DirtyPaths`, outside `Error()`, which stays the fixed path-free string.
+//
 // **The warp checkout must be on a branch.** A merge verb refuses with the guard reason `checkout is
 // not on a branch` while the warp checkout has HEAD pointing straight at a commit. A conclude-commit
 // landed on a detached HEAD is reachable from no ref and disappears at the next checkout, and the

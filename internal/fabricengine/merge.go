@@ -88,12 +88,12 @@ func (f *Fabric) recheckMergePreconditionsUnderLock() error {
 		return &ErrForeignMergeState{}
 	}
 
-	dirtyReasons, err := pairDirtyReason(f)
+	dirtyReasons, dirtyPaths, err := pairDirtyReason(f)
 	if err != nil {
 		return err
 	}
 	if len(dirtyReasons) > 0 {
-		return newMergeGuardError(dirtyReasons)
+		return newMergeGuardError(dirtyReasons).withDirt(f.warpPath, dirtyPaths)
 	}
 	return nil
 }
@@ -167,7 +167,7 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	}
 	reasons = append(reasons, inProgressReasons...)
 
-	dirtyReasons, err := pairDirtyReason(f)
+	dirtyReasons, dirtyPaths, err := pairDirtyReason(f)
 	if err != nil {
 		return MergeResult{}, err
 	}
@@ -183,7 +183,7 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	reasons = append(reasons, sourceReasons...)
 
 	if len(reasons) > 0 {
-		return MergeResult{}, newMergeGuardError(reasons)
+		return MergeResult{}, newMergeGuardError(reasons).withDirt(f.warpPath, dirtyPaths)
 	}
 
 	// Pre-lock already-up-to-date probe: no lock taken, no record written, empty mutation record —
@@ -373,7 +373,7 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	}
 	reasons = append(reasons, inProgressReasons...)
 
-	dirtyReasons, err := pairDirtyReason(f)
+	dirtyReasons, dirtyPaths, err := pairDirtyReason(f)
 	if err != nil {
 		return MergeResult{}, err
 	}
@@ -395,7 +395,7 @@ func (f *Fabric) Merge(source string, opts MergeOptions) (res MergeResult, err e
 	reasons = append(reasons, sourceReasons...)
 
 	if len(reasons) > 0 {
-		return MergeResult{}, newMergeGuardError(reasons)
+		return MergeResult{}, newMergeGuardError(reasons).withDirt(f.warpPath, dirtyPaths)
 	}
 
 	// The write lock is taken HERE, ahead of the sync step, because the sync step mutates both
