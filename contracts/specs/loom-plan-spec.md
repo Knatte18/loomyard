@@ -268,7 +268,7 @@ The handle's owner chain names the types that hold the member, and a head that d
 The qualifier is the trailing owner components, which the head writes itself, so the handle `plan:Glyphchain.Sharp#Renderer.IPair<string,int>.First` has the head `int IPair<string,int>.First { get; }`.
 A head, a handle's or a re-sign arrow's, spells the qualifier in the canonical C# spelling of its type arguments, with no space after a comma and the keyword for a built-in type, and a head with another spelling, such as `IPair<string, int>.`, is refused with the canonical one named.
 A body the C# alphabet rejects is `handle-name-failed`.
-A `Rename` pair under `csharp` has a handle `New` side like any symbol pair: its declaration is derived from the resolved old symbol with the declared name replaced by the new handle's name, and a member no identifier names, an operator, an indexer, a finalizer or a static constructor, cannot be renamed this way.
+A `Rename` pair under `csharp` has a handle `New` side like any symbol pair: its declaration is derived from the resolved old symbol with the declared name replaced by the new handle's name, and a member no identifier names, an operator, an indexer, a finalizer or a constructor, cannot be renamed this way.
 
 Once bound, a `Create` declaration bullet collapses to the plain `` - `<glyph>` `` ref form every other `Create` target uses: the declaration head existed only to compute the glyph that has now been computed, and keeping the arrow beside a non-handle left token would fail `handle-malformed`.
 

@@ -75,7 +75,7 @@
 //     When every minted id resolves found, one plan.RewriteRefs call rewrites each old glyph to its minted id plan-wide, so a later card naming the member by its old glyph names the minted id.
 //     A Go arrow, an arrow whose minted id is its target and a plan whose language opts out of glyphs do nothing.
 //   - plan-language-mismatch (blocking) — languageMismatchFindings (languagemismatch.go), the resolve-backed half of the check planparser also makes from plan text: a go plan whose targets resolve into `.cs` files and no `.go` file.
-//     It is plan-level, runs only when no card is done, and never fires when a card creates a declaration whose head opens with a Go keyword.
+//     It is plan-level, runs only when no card is done, and never fires when a card creates a declaration whose head opens with a Go keyword, or when a non-path target other than a Create target has no found or multipart answer, since that glyph's own finding stands.
 //   - redundant-file-target (blocking) — planGatePass (plangate.go), a card listing a file self glyph beside a member glyph that resolves into that file.
 //     A partitioned member's candidates are its declarations, so a file holding one of them counts.
 //     It runs at the plan gates only (ValidateFormat, ValidateFormatAfter over its cards not done, Validate and so ValidateRework), never at ValidateDispatch.

@@ -16,7 +16,7 @@ import (
 // The finding is blocking and attributed to no card.
 // Go evidence is a path target naming a .go file, a found or multipart answer with a symbol in a .go file, or a found self glyph whose listing holds a .go file.
 // C# evidence is the same three with .cs, and a .cs path target counts only beside a target that is not a file path, since a plan of file paths alone is the pure half's to judge.
-// It never fires when a non-path target has no found or multipart answer, since that glyph's own finding stands.
+// It never fires when a non-path target other than a Create target has no found or multipart answer, since that glyph's own finding stands.
 // It never fires when a card creates a declaration whose head begins with a Go keyword, since the batched resolve never sees a handle and such a handle names new Go code.
 // The caller runs it only when no card is done, so it judges the whole plan.
 func languageMismatchFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Finding {
@@ -30,10 +30,11 @@ func languageMismatchFindings(plan *planparser.Plan, results []quarry.ResolveRes
 
 	var goEvidence, csharpEvidence, csharpPath, nonPathTarget bool
 	nonPathGlyphs := map[string]bool{}
+	createTargets := createTargetSet(plan)
 	for _, c := range plan.Cards {
 		for _, target := range c.Targets {
 			file, isPath := planparser.PathEntryPath(target)
-			if planparser.IsHandleRef(target) {
+			if planparser.IsHandleRef(target) || createTargets[target] {
 				nonPathTarget = true
 				continue
 			}
