@@ -27,6 +27,8 @@ type haltNote struct {
 	Reason    string
 	History   []shedengine.HistoryEntry
 	TraceFile string
+	// Interrupted is true for the halt of a step that ended without an envelope.
+	Interrupted bool
 }
 
 // writeHistoryRows appends the history section of a friction note: one `- <producer> / <outcome> / <at>` row per entry, or a single line saying there are none.
@@ -60,7 +62,7 @@ func writeHaltNote(frictionDir string, n haltNote) error {
 		HistoryEntries: len(n.History),
 		TraceFile:      n.TraceFile,
 	}
-	if kind, ok := loomengine.ClassifyHalt(n.State, n.Reason); ok {
+	if kind, ok := loomengine.ClassifyHalt(n.State, n.Reason, n.Interrupted); ok {
 		note.Anomaly = string(kind)
 	}
 	for _, h := range n.History {
