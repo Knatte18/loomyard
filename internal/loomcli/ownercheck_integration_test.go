@@ -1,10 +1,10 @@
 //go:build integration
 
-// ownercheck_integration_test.go drives runOwnerVerdict over a hub forged by hubforge whose Bolt origin records the owners.
+// ownercheck_integration_test.go drives the run owner verdict over a hub forged by hubforge whose Bolt origin records the owners.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
 
-package loomcli
+package loomcli_test
 
 import (
 	"os"
@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -22,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 )
 
-// TestRunOwnerVerdict covers runOwnerVerdict with a fixed machine name over a hub whose Bolt origin records the owners, with a batten status file at the prime for the run's pair so the reconcile judges it:
+// TestRunOwnerVerdict covers the run owner verdict with a fixed machine name over a hub whose Bolt origin records the owners, with a batten status file at the prime for the run's pair so the reconcile judges it:
 // origin's Bolt recording another owner reads owned elsewhere with that owner, a run-held entry with no owner recorded reads owned here and writes nothing, and with both origins unreachable the local board's owner decides.
 func TestRunOwnerVerdict(t *testing.T) {
 	t.Parallel()
@@ -38,12 +39,12 @@ func TestRunOwnerVerdict(t *testing.T) {
 		runHeld  bool
 		// unreachable points both origin URLs at an address nothing answers before the verdict.
 		unreachable bool
-		want        ownerVerdict
+		want        loomcli.OwnerVerdict
 	}{
-		{name: "OriginRecordingAnotherOwnerReadsOwnedElsewhere", recorder: "there", ownEntry: true, want: ownerVerdict{Owner: "there", Elsewhere: true}},
+		{name: "OriginRecordingAnotherOwnerReadsOwnedElsewhere", recorder: "there", ownEntry: true, want: loomcli.OwnerVerdict{Owner: "there", Elsewhere: true}},
 		{name: "RunHeldEntryWithNoOwnerReadsOwnedHere", recorder: "there", runHeld: true},
-		{name: "UnreachableOriginReadsTheLocalBoardOwnedElsewhere", recorder: "there", ownEntry: true, unreachable: true, want: ownerVerdict{Owner: "there", Elsewhere: true}},
-		{name: "UnreachableOriginReadsTheLocalBoardOwnedHere", recorder: here, ownEntry: true, unreachable: true, want: ownerVerdict{Owner: here}},
+		{name: "UnreachableOriginReadsTheLocalBoardOwnedElsewhere", recorder: "there", ownEntry: true, unreachable: true, want: loomcli.OwnerVerdict{Owner: "there", Elsewhere: true}},
+		{name: "UnreachableOriginReadsTheLocalBoardOwnedHere", recorder: here, ownEntry: true, unreachable: true, want: loomcli.OwnerVerdict{Owner: here}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -96,13 +97,13 @@ func TestRunOwnerVerdict(t *testing.T) {
 				t.Fatalf("resolve the pair's worktree: %v", err)
 			}
 
-			got, err := runOwnerVerdict(taskLocation, slug, func() (string, error) { return here, nil })
+			got, err := loomcli.RunOwnerVerdict(taskLocation, slug, func() (string, error) { return here, nil })
 
 			if err != nil {
-				t.Fatalf("runOwnerVerdict() error = %v; want nil", err)
+				t.Fatalf("RunOwnerVerdict() error = %v; want nil", err)
 			}
 			if got != tt.want {
-				t.Errorf("runOwnerVerdict() = %+v; want %+v", got, tt.want)
+				t.Errorf("RunOwnerVerdict() = %+v; want %+v", got, tt.want)
 			}
 			if tt.runHeld {
 				owners, err := boardengine.ReadOwners(h.BoardDir())
