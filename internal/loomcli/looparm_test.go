@@ -4,12 +4,67 @@ package loomcli
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
+
+// TestRegisterRunProcess serves two roles: the loop's start hook and the driver's own call each register the test's pid under the slug, and a record directory that cannot be created registers nothing and warns once.
+// Each role runs over its own hub, since one process keeps one record per owner.
+// It stays serial because logcapture swaps the process-global logger.
+func TestRegisterRunProcess(t *testing.T) {
+	roles := []struct {
+		name     string
+		role     string
+		register func(loc *lyxcwd.Location)
+	}{
+		{"Loop", runproc.RoleLoop, func(loc *lyxcwd.Location) { loopSpecFor(loc, loc.WorktreeName, 0, nil).OnStart() }},
+		{"Driver", runproc.RoleDriver, func(loc *lyxcwd.Location) { registerRunProcess(loc, loc.WorktreeName, runproc.RoleDriver) }},
+	}
+	for _, tt := range roles {
+		t.Run(tt.name, func(t *testing.T) {
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "slug-1", AnchorRel: "."}
+
+			tt.register(loc)
+
+			records, err := runproc.List(fabricengine.RunProcDir(loc.HubPath), "slug-1")
+			if err != nil {
+				t.Fatalf("List() = %v; want nil", err)
+			}
+			if len(records) != 1 || records[0].Role != tt.role || records[0].PID != os.Getpid() {
+				t.Errorf("records = %+v; want one %s record of the test's pid", records, tt.role)
+			}
+		})
+	}
+
+	blocked := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "slug-2", AnchorRel: "."}
+	blockedDir := fabricengine.RunProcDir(blocked.HubPath)
+	if err := os.MkdirAll(filepath.Dir(blockedDir), 0o755); err != nil {
+		t.Fatalf("MkdirAll() = %v; want nil", err)
+	}
+	if err := os.WriteFile(blockedDir, nil, 0o644); err != nil {
+		t.Fatalf("WriteFile() = %v; want nil", err)
+	}
+	buf := logcapture.Capture(t)
+
+	registerRunProcess(blocked, blocked.WorktreeName, runproc.RoleDriver)
+
+	if warns := strings.Count(buf.String(), "could not register the run process"); warns != 1 {
+		t.Errorf("warnings = %d in %q; want exactly one", warns, buf.String())
+	}
+	if _, err := os.Stat(filepath.Join(blockedDir, "slug-2")); err == nil {
+		t.Errorf("a record owner directory exists under the blocked record path; want nothing registered")
+	}
+}
 
 func TestWatchdogKillNote_StopsTheKilledStepsRunsAndNamesTheRest(t *testing.T) {
 	tests := []struct {

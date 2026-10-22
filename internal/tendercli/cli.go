@@ -61,18 +61,27 @@ func refuseCaller(c caller, slug string) error {
 	return errors.New(`pause: an agent may pause, resume or revive only its own pair; way forward: ask your parent session, which runs "lyx pause", "lyx resume" or "lyx tender revive" for you`)
 }
 
-// Command returns the cobra command for `lyx tender`: the bare group and its pause, resume, revive and status verbs.
+// refuseReapCaller refuses an agent's reap: only the orch and an external caller end orphaned processes.
+func refuseReapCaller(c caller) error {
+	if !c.agent {
+		return nil
+	}
+	return errors.New(`reap: an agent may not end orphaned processes; way forward: ask your parent session, which runs "lyx tender reap" for you`)
+}
+
+// Command returns the cobra command for `lyx tender`: the bare group and its pause, resume, revive, status and reap verbs.
 func Command() *cobra.Command {
 	tender := &cobra.Command{
 		Use:   "tender",
-		Short: "hub-wide control over what runs: pause, resume, revive and status",
+		Short: "hub-wide control over what runs: pause, resume, revive, status and reap",
 		Long: `tender holds the hub-wide verbs over the agent and network work that runs:
 pause holds it, resume lifts the hold, revive gives a carry-on line to sessions
-stalled on an API error, and status shows the live entries, the holds and what
-runs. "lyx pause" and "lyx resume" are shortcuts for the first two.`,
+stalled on an API error, status shows the live entries, the holds and what
+runs, and reap ends the run processes no run owns any more.
+"lyx pause" and "lyx resume" are shortcuts for the first two.`,
 		RunE: clihelp.GroupRunE,
 	}
-	tender.AddCommand(pauseCmd(), resumeCmd(), reviveCmd(), statusCmd())
+	tender.AddCommand(pauseCmd(), resumeCmd(), reviveCmd(), statusCmd(), reapCmd())
 	return tender
 }
 
@@ -167,6 +176,12 @@ is not live or its guarded send is refused, as for a running turn, a draft, a
 dialog on screen or an open rewind picker; those are named with the reason. A
 session another live entry still covers moves to that entry with no line. The
 orchestrator's line comes from its own watcher.
+
+A lift also spawns what a pause deferred: the detached push of each pair the
+lifted entries covered, the prime's records push and the board sync. A pair a
+live entry still covers, one another machine owns and one that is gone is not
+pushed. The report's "spawned" lists the spawns and "spawn_failed" the ones that
+failed; neither fails the resume.
 
 Example:
   lyx resume
@@ -277,11 +292,15 @@ Example:
 func statusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "status",
-		Short:       "print the live pause entries, the network operations in flight, the parent locks held, every live session, the processes running a replaced binary and each pair's owner",
+		Short:       "print the live pause entries, the network operations in flight, the parent locks held, every live session, the processes running a replaced binary, the processes registered to runs and each pair's owner",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status prints the live pause entries, the network operations in flight and the
 parent locks held, then every live session in the hub with its state, cause and
 whether an entry covers it, and the lyx processes running a replaced binary.
+processes lists every live process registered to a run, by owner, with its role,
+pid and age and whether it is an orphan: its owner has no pair and no live batten,
+and it works outside every registered worktree.
+It also lists the lyx processes in a deleted hub directory that no record owns.
 owners lists each pair of this machine with the machine that owns it, then each
 run-held board entry owned by another machine that has no pair here, so a run
 owned elsewhere is never read as stalled or landed.
@@ -323,6 +342,64 @@ Example:
 				return fail(err)
 			}
 			clihelp.SetExit(ctx, output.Ok(out, map[string]any{"status": report, "failed_pushes": failedPushes}))
+			return nil
+		},
+	}
+}
+
+// reapCmd returns the `tender reap` verb.
+func reapCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "reap",
+		Short:       "end the run processes whose run is gone",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `reap takes one fresh reading of the processes part of "lyx tender status" and
+ends exactly the orphans it lists: every process of an owner with no pair and no
+live batten, each by SIGTERM and then SIGKILL, and each lyx process in a deleted
+directory of the hub that no record owns. A process is signalled only while its
+start time still matches the reading, so a reused pid is left alone.
+
+It never ends a process of the hub owner, of a pair that exists, of a run whose
+batten is running, or one working inside a registered worktree; the pair's own
+end verbs and "lyx batten cancel" end those. A process that survives SIGKILL is
+named with its role, and reap exits non-zero: run it again once it is gone.
+
+Only the orch and an external caller may run it; an agent asks its parent session.
+
+Example:
+  lyx tender reap`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			ctx := cmd.Context()
+			out := cmd.OutOrStdout()
+			fail := func(err error) error {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+			if err := refuseReapCaller(callerOf(os.Getenv(agentname.StrandNameEnv))); err != nil {
+				return fail(err)
+			}
+			cwd, err := lyxcwd.CwdFrom(ctx)
+			if err != nil {
+				return fail(err)
+			}
+			location, err := lyxcwd.Resolve(cwd)
+			if err != nil {
+				return fail(err)
+			}
+			deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
+			if err != nil {
+				return fail(err)
+			}
+			report, err := tenderengine.Reap(deps)
+			if err != nil {
+				clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"reap": report}))
+				return nil
+			}
+			clihelp.SetExit(ctx, output.Ok(out, map[string]any{"reap": report}))
 			return nil
 		},
 	}

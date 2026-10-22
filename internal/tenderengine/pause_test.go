@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -242,6 +243,21 @@ type env struct {
 	orchStrand string
 	// creel is the fake creel journal of tender's orch revive injects.
 	creel fakeCreel
+	// pushedPairs, primePushes and boardSyncs record the spawns a lift made through the recording seams.
+	pushedPairs []string
+	primePushes int
+	boardSyncs  int
+	// pushPairErr is what the pair push seam answers when set.
+	pushPairErr error
+	// owners and ownersErr are what the owners reading answers; a nil owners leaves the seam unset.
+	owners    []PairOwner
+	ownersErr error
+	// runProcs and runProcsErr are what the owner-record reading answers.
+	runProcs    map[string][]runproc.Record
+	runProcsErr error
+	// worktrees and worktreesErr are what the registered-worktree reading answers.
+	worktrees    []string
+	worktreesErr error
 }
 
 // fakeCreel is a mutex-guarded stand-in for the creel journal of tender's orch revive injects, safe for concurrent revives.
@@ -285,6 +301,8 @@ func (e *env) deps() Deps {
 		RecordPath: e.path,
 		Pairs:      pairs,
 		Processes:  func() ([]proc.Process, error) { return e.processes, e.processErr },
+		RunProcs:   func() (map[string][]runproc.Record, error) { return e.runProcs, e.runProcsErr },
+		Worktrees:  func() ([]string, error) { return e.worktrees, e.worktreesErr },
 		HubPath:    e.hubPath,
 		Executable: e.executable,
 		OrchStrand: func() (string, error) { return e.orchStrand, nil },
@@ -304,12 +322,27 @@ func (e *env) deps() Deps {
 			e.creel.pendingID = e.creel.nextID
 			return e.creel.nextID, nil
 		},
+		PushPair: func(slug string) error {
+			e.pushedPairs = append(e.pushedPairs, slug)
+			return e.pushPairErr
+		},
+		PushPrimeRecords: func() error {
+			e.primePushes++
+			return nil
+		},
+		SyncBoardIfOwed: func() error {
+			e.boardSyncs++
+			return nil
+		},
 		NetOps:          func() ([]pauserecord.NetOp, error) { return e.netOps, nil },
 		Locks:           func() ([]parentlock.Entry, error) { return e.locks, nil },
 		OrchWatcherLive: func() bool { return e.watcherLive },
 		Caller:          e.caller,
 		Now:             e.clock.Now,
 		Sleep:           e.clock.Sleep,
+	}
+	if e.owners != nil || e.ownersErr != nil {
+		deps.Owners = func() ([]PairOwner, error) { return e.owners, e.ownersErr }
 	}
 	// A nil *fakePair in the interface would read as a prime.
 	if e.prime != nil {

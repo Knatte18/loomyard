@@ -10,5 +10,7 @@
 // TreeCPU samples the user plus system CPU time of a process and each of its descendants.
 // IsAncestor reports whether a pid is one of the calling process's ancestors.
 // ListProcesses lists every process with its start time, exe and cwd links and command line.
-// All three read /proc, so they work on Linux only: on Windows TreeCPU and ListProcesses return errors.ErrUnsupported and IsAncestor is false.
+// ListStats lists every process with its parent, group, start time and zombie state, read from its stat alone, so it also lists a process whose links the caller cannot read.
+// SignalProcess and SignalGroup send SIGTERM, or SIGKILL when asked, to one pid or to one process group and return the raw syscall error.
+// All of these read /proc or signal by pid, so they work on Linux only: on Windows TreeCPU, ListProcesses and ListStats return errors.ErrUnsupported, IsAncestor is false, SignalProcess only kills and SignalGroup returns ErrNoProcessGroup.
 package proc

@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
 // coalescePush drives a caller-supplied step to completion under one absorbing lock,
@@ -108,6 +109,7 @@ func CoalescePushRequest(req PushSpawn, opts SyncOptions) (res PushResult, err e
 
 // coalescePushSides runs the two-sided rebase-free push of req under fabric.push.lock, acquired through acquire and flagged by the sides req carries.
 // caller names the public entry for the error of a missing weft path.
+// For the call's life it installs the deferral a detached child's gate fires when a pause covers it: the unpushed sides' flags go back and the process exits.
 func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire func(lockPath string) (*lock.FileLock, bool, error)) (res PushResult, err error) {
 	warpPath, weftPath := req.WarpPath, req.WeftPath
 	hubRoot := ""
@@ -130,12 +132,17 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire f
 	}
 	hubPath := filepath.Dir(weftPath)
 
-	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug}}
+	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: weftPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}}
 	if warpPath != "" {
-		owed[pushSideCode] = PushSpawn{WarpPath: warpPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug}
+		owed[pushSideCode] = PushSpawn{WarpPath: warpPath, PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}
 	}
 
+	// pushed holds the sides the running step has pushed, so a deferral puts back the flag of every owed side the step has not reached.
+	pushed := map[string]bool{}
+	defer pauserecord.SetGateDeferral(pushDeferral(lockDir, owed, pushed, exitDeferred))()
+
 	step := func() (progressed bool, err error) {
+		clear(pushed)
 		beforeWarp, err := headOrEmpty(warpPath)
 		if err != nil {
 			return false, err
@@ -153,12 +160,14 @@ func coalescePushSides(req PushSpawn, opts SyncOptions, caller string, acquire f
 				return false, err
 			}
 		}
+		pushed[pushSideCode] = true
 		if beforeWeft != "" {
 			retryWeft := func() (bool, error) { return retryWeftPush(rec, hubPath, weftPath) }
 			if err := pushSideDetached(rec, hubPath, failedPushSideRecords, weftPath, opts, retryWeft); err != nil {
 				return false, err
 			}
 		}
+		pushed[pushSideRecords] = true
 
 		afterWarp, err := headOrEmpty(warpPath)
 		if err != nil {

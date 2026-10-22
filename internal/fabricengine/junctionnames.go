@@ -184,6 +184,13 @@ func LogArchiveDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), "log-archive")
 }
 
+// RunProcDir returns the hub-level directory holding the owner record of the processes a run starts:
+// <hub>/_board/.lyx/runproc.
+// It is handed to internal/runproc, which derives no path of its own, and is never tracked.
+func RunProcDir(hub string) string {
+	return filepath.Join(HubScratchDir(hub), lyxdirs.RunProcDirName)
+}
+
 // HubPath returns the absolute path to the hub container directory for the given repo name inside
 // parent.
 func HubPath(parent, name string) string {

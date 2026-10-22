@@ -7,8 +7,10 @@ package tendercli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
@@ -206,6 +209,18 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) {
 	t.Setenv(agentname.StrandNameEnv, "")
 	h := newHub(t)
+	var ends []string
+	var endErr error
+	previous := endOwnedElsewhere
+	t.Cleanup(func() { endOwnedElsewhere = previous })
+	endOwnedElsewhere = func(location *lyxcwd.Location, slug string) ([]runproc.Ended, error) {
+		live, _ := liveEntries(t, h)
+		if len(live) != 1 {
+			t.Errorf("live entries at the end = %+v; want the pause written first", live)
+		}
+		ends = append(ends, slug)
+		return nil, endErr
+	}
 
 	for range 2 {
 		if err := PauseOwnedElsewhere(h.Location, pairSlug); err != nil {
@@ -215,6 +230,22 @@ func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) 
 
 	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Scope != pairSlug || live[0].Caller != pauserecord.OwnerCaller {
 		t.Errorf("live entries = %+v; want one entry of the pair under the owner caller", live)
+	}
+	if want := []string{pairSlug, pairSlug}; !reflect.DeepEqual(ends, want) {
+		t.Errorf("end calls = %q; want %q", ends, want)
+	}
+
+	for name, err := range map[string]error{
+		"an end error":    errors.New("signal refused"),
+		"a survivors one": &runproc.SurvivorsError{Survivors: []runproc.Ended{{PID: 7, Role: runproc.RoleDriver}}},
+	} {
+		endErr = err
+		if got := PauseOwnedElsewhere(h.Location, pairSlug); got != nil {
+			t.Errorf("PauseOwnedElsewhere() with %s = %v; want nil", name, got)
+		}
+		if live, _ := liveEntries(t, h); len(live) != 1 {
+			t.Errorf("live entries with %s = %+v; want the entry standing", name, live)
+		}
 	}
 }
 
@@ -241,6 +272,7 @@ func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 		{"a pause of another slug", Command(), []string{"pause", "other-pair"}},
 		{"a hub-wide revive", Command(), []string{"revive"}},
 		{"a revive of another slug", Command(), []string{"revive", "other-pair"}},
+		{"a reap", Command(), []string{"reap"}},
 	} {
 		env, code := verb(t, tc.command, prime, tc.args...)
 		if env.OK || code == 0 || !strings.Contains(env.Error, "ask your parent session") {
@@ -274,6 +306,9 @@ func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Scope != pauserecord.ScopeHub || live[0].Caller != orch {
 		t.Errorf("live entries = %+v; want the hub entry with the orch as caller", live)
 	}
+	if reaped, code := verb(t, Command(), prime, "reap"); !reaped.OK || code != 0 {
+		t.Errorf("orch reap: ok=%v error=%q; want no caller refusal", reaped.OK, reaped.Error)
+	}
 }
 
 func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *testing.T) {
@@ -288,7 +323,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	agentWorktree := filepath.Join(agentWorktrees, "agent")
 	gitkit.Git(t, h.PrimeWorktree(), "worktree", "add", "--detach", agentWorktree)
 	for _, outside := range []string{t.TempDir(), agentWorktree} {
-		InstallNetworkGate(lyxcwd.WithCwd(t.Context(), outside), nil)
+		InstallNetworkGate(lyxcwd.WithCwd(t.Context(), outside), nil, DetachedChild{})
 		_, probeDone := pauserecord.Network("probe")
 		probeDone()
 	}
@@ -300,7 +335,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 		t.Errorf("Stat(agent worktree's sibling _board) error = %v; want it absent", err)
 	}
 
-	InstallNetworkGate(lyxcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)), nil)
+	InstallNetworkGate(lyxcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)), nil, DetachedChild{})
 	pauserecord.Network("pair-probe")
 	geometry, err := hubgeom.PauseGeometry(h.Location)
 	if err != nil {
@@ -326,7 +361,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 			hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: tt.anchor})
 			slug := tt.pauseSlug
 			boardWorktree := fabricengine.BoardDir(hub.Location.HubPath)
-			InstallNetworkGate(lyxcwd.WithCwd(t.Context(), boardWorktree), &slug)
+			InstallNetworkGate(lyxcwd.WithCwd(t.Context(), boardWorktree), &slug, DetachedChild{})
 			pauserecord.Network("board-probe")
 			geometry, err := hubgeom.PauseGeometry(hub.Location)
 			if err != nil {
@@ -338,6 +373,51 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 			}
 		})
 	}
+
+	// A detached child's flags decide what the installed gate reads as covering it.
+	setLive := func(t *testing.T, recordPath string, entries ...pauserecord.Entry) {
+		t.Helper()
+		if _, err := pauserecord.Update(recordPath, time.Now(), func(r *pauserecord.Record) error {
+			r.Live = entries
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hubEntry := pauserecord.Entry{Scope: pauserecord.ScopeHub, Caller: "EXTERNAL", PausedAt: time.Now()}
+	ownerEntry := pauserecord.Entry{Scope: "child", Caller: pauserecord.OwnerCaller, PausedAt: time.Now()}
+	childTests := []struct {
+		name        string
+		cwd         func(hub *hubforge.Hub) string
+		pauseSlug   *string
+		child       DetachedChild
+		live        []pauserecord.Entry
+		wantCovered bool
+	}{
+		{"DeferrableUnderHubEntry", func(hub *hubforge.Hub) string { return fabricengine.BoardDir(hub.Location.HubPath) }, ptr("child"), DetachedChild{Deferrable: true}, []pauserecord.Entry{hubEntry}, true},
+		{"ParentLockedPassesOwnerEntry", func(hub *hubforge.Hub) string { return fabricengine.BoardDir(hub.Location.HubPath) }, ptr("child"), DetachedChild{Deferrable: true, ParentLocked: true}, []pauserecord.Entry{ownerEntry}, false},
+		{"HubScopeIgnoresTaskSlugEntry", func(hub *hubforge.Hub) string { return hub.PairCodeWorktree(pairSlug) }, nil, DetachedChild{Deferrable: true, HubScope: true}, []pauserecord.Entry{{Scope: pairSlug, Caller: "EXTERNAL", PausedAt: time.Now()}}, false},
+		{"HubScopeHeldByHubEntry", func(hub *hubforge.Hub) string { return hub.PairCodeWorktree(pairSlug) }, nil, DetachedChild{Deferrable: true, HubScope: true}, []pauserecord.Entry{{Scope: pairSlug, Caller: "EXTERNAL", PausedAt: time.Now()}, hubEntry}, true},
+	}
+	for _, tt := range childTests {
+		t.Run(tt.name, func(t *testing.T) {
+			hub := newHub(t)
+			geometry, err := hubgeom.PauseGeometry(hub.Location)
+			if err != nil {
+				t.Fatal(err)
+			}
+			setLive(t, geometry.RecordPath, tt.live...)
+			InstallNetworkGate(lyxcwd.WithCwd(t.Context(), tt.cwd(hub)), tt.pauseSlug, tt.child)
+			if got := pauserecord.GateCovered(); got != tt.wantCovered {
+				t.Errorf("GateCovered() = %v; want %v", got, tt.wantCovered)
+			}
+		})
+	}
+}
+
+// ptr returns a pointer to a copy of s.
+func ptr(s string) *string {
+	return &s
 }
 
 // TestNewShuttlePair_TellsTheHubsPauseGeometry pins that a pair's runner reads the hub's pause record with no slug of its own, so each send judges its target by the target's strand name.

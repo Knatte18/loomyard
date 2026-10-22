@@ -83,7 +83,7 @@ func reconcileExempt(deps Deps, owned *tenderengine.EntryRef) (WakeReconcile, er
 }
 
 // holdRuns adds a pair pause entry for each stopped run, each run owned by another machine and each busy ended one, not recorded as owned so it outlives the request, and returns the notice sentence naming each run's next step.
-// A run owned elsewhere is paused with the owner caller, so a slug entry already standing adds none.
+// A run owned elsewhere is paused with the owner caller, so a slug entry already standing adds none, and once paused has its owned processes ended through deps.EndOwned; an end error is logged at Warn and leaves the notice as it was.
 // A pair whose pause fails is left unheld and named with the step that holds it.
 func holdRuns(deps Deps, runs []WakeRun) string {
 	var steps, unheld, ended []string
@@ -101,6 +101,10 @@ func holdRuns(deps Deps, runs []WakeRun) string {
 				unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); the next wake or `lyx orch start` pauses it again", run.Slug, err))
 			} else {
 				unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); hold it with `lyx tender pause %s`", run.Slug, err, run.Slug))
+			}
+		} else if run.Owner != "" && deps.EndOwned != nil {
+			if err := deps.EndOwned(run.Slug); err != nil {
+				logger.Warn("hibernate: ending the processes of a run owned elsewhere failed", "slug", run.Slug, "error", err)
 			}
 		}
 		steps = append(steps, runStep(run))

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -57,6 +58,17 @@ func ReadSettleRecords(path string) ([]SettleRecord, error) {
 		logger.Warn("settle records: skipped a line that does not decode", "path", path, "error", skip)
 	}
 	return records, nil
+}
+
+// RestepRecorded reports whether a settle record re-stepped the stop status names: its stop key equals the status's and its action is a restep.
+func RestepRecorded(records []shedrun.SettleRecord, status shedengine.Status) bool {
+	key := StopKeyOf(status)
+	for _, record := range records {
+		if record.Action == shedrun.SettleRestep && record.StopKey == key {
+			return true
+		}
+	}
+	return false
 }
 
 // GoVerifyRetrySpent reports whether any record is a verify retry, the one read the Go driver and a publish retry share.

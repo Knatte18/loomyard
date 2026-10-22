@@ -21,7 +21,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 )
 
 const (
@@ -29,6 +31,8 @@ const (
 	PauseSlugFlag = "pause-slug"
 	// TeardownSlugFlag is the hidden fabric flag that tells a detached push child the pair whose teardown it yields to.
 	TeardownSlugFlag = "teardown-slug"
+	// ParentLockedFlag is the hidden fabric flag that tells a detached push child its pair's parent lock was held when it was spawned, so its gate never exits for coverage.
+	ParentLockedFlag = "parent-locked"
 )
 
 // ErrSpawnUnderTest is returned by SpawnDetachedPush in a test binary, where forking the running binary would re-run the test suite.
@@ -38,12 +42,14 @@ var ErrSpawnUnderTest = errors.New("fabricengine: detached push not spawned unde
 // WarpPath and WeftPath name the worktrees to push, either empty to leave that side out.
 // PauseSlug is the slug the child's network calls are held under, empty for the hub's prime.
 // TeardownSlug is the pair whose teardown the child yields to, empty when no teardown can remove what the child pushes.
+// ParentLocked reports that the pair's parent lock was held when the child was spawned, so the child never exits for a pause covering it.
 // WorkDir is the directory the child starts in.
 type PushSpawn struct {
 	WarpPath     string
 	WeftPath     string
 	PauseSlug    string
 	TeardownSlug string
+	ParentLocked bool
 	WorkDir      string
 }
 
@@ -61,6 +67,7 @@ type SpawnResult struct {
 // Returns ErrSpawnUnderTest, forking no child, in a test binary.
 // The child is started but never Waited,
 // and its stdin/stdout/stderr are left nil so no handle is inherited from the parent.
+// The started child is registered in the hub's owner record.
 func SpawnDetachedPush(req PushSpawn) error {
 	if os.Getenv("FABRIC_SKIP_GIT") == "1" || os.Getenv("FABRIC_SKIP_PUSH") == "1" {
 		return nil
@@ -77,7 +84,13 @@ func SpawnDetachedPush(req PushSpawn) error {
 		return err
 	}
 
-	args, dir := pushSpawnCommand(req)
+	return startDetachedPush(exe, req)
+}
+
+// startDetachedPush starts the detached push child of req from exe and registers it in the owner record.
+// A registration failure is logged and never fails the spawn, since the push is already running.
+func startDetachedPush(exe string, req PushSpawn) error {
+	args, dir, owner := pushSpawnCommand(req)
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = dir
 	proc.Detach(cmd)
@@ -86,13 +99,18 @@ func SpawnDetachedPush(req PushSpawn) error {
 		logger.Warn("fabricengine: spawn detached push failed", "exe", exe, "args", args, "dir", dir, "error", err)
 		return err
 	}
-	logger.Info("fabricengine: spawned detached push", "exe", exe, "args", args, "dir", dir, "pid", cmd.Process.Pid)
+	pid := cmd.Process.Pid
+	logger.Info("fabricengine: spawned detached push", "exe", exe, "args", args, "dir", dir, "pid", pid)
+	if err := runproc.Register(RunProcDir(filepath.Dir(dir)), owner, runproc.ChildRecord(pid, runproc.RolePush, args)); err != nil {
+		logger.Warn("fabricengine: detached push not registered", "owner", owner, "pid", pid, "error", err)
+	}
 	return nil // intentionally not Wait()ed
 }
 
-// pushSpawnCommand returns the arguments and working directory of the child req describes.
-// The path flags and the teardown flag are present only when set, and the pause flag always, written `--pause-slug=` when empty so the prime's empty slug reaches the child.
-func pushSpawnCommand(req PushSpawn) (args []string, dir string) {
+// pushSpawnCommand returns the arguments, working directory and owner of the child req describes.
+// The path flags, the teardown flag and the parent-locked flag are present only when set, and the pause flag always, written `--pause-slug=` when empty so the prime's empty slug reaches the child.
+// The owner is the teardown slug when set, so a pair's teardown ends its own pushes, and the hub owner otherwise, so it never ends a prime records push.
+func pushSpawnCommand(req PushSpawn) (args []string, dir, owner string) {
 	args = []string{"fabric"}
 	if req.WarpPath != "" {
 		args = append(args, "--warp-path", absoluteOrAsGiven(req.WarpPath))
@@ -103,8 +121,15 @@ func pushSpawnCommand(req PushSpawn) (args []string, dir string) {
 	if req.TeardownSlug != "" {
 		args = append(args, "--"+TeardownSlugFlag, req.TeardownSlug)
 	}
+	if req.ParentLocked {
+		args = append(args, "--"+ParentLockedFlag)
+	}
 	args = append(args, "--"+PauseSlugFlag+"="+req.PauseSlug, "push")
-	return args, req.WorkDir
+	owner = runproc.HubOwner
+	if req.TeardownSlug != "" {
+		owner = req.TeardownSlug
+	}
+	return args, req.WorkDir, owner
 }
 
 // absoluteOrAsGiven returns path made absolute, or path itself when the working directory it would be joined to cannot be read.
@@ -148,6 +173,7 @@ func statusPushRequest(l *lyxcwd.Location, gateSlug string) (req PushSpawn, loca
 		req.WarpPath = l.WorktreePath()
 		req.PauseSlug = l.WorktreeName
 		req.TeardownSlug = l.WorktreeName
+		req.ParentLocked = parentLockHeldBy(l)
 	}
 
 	for _, side := range []*string{&req.WarpPath, &req.WeftPath} {
@@ -164,6 +190,18 @@ func statusPushRequest(l *lyxcwd.Location, gateSlug string) (req PushSpawn, loca
 		}
 	}
 	return req, localSkipped, nil
+}
+
+// parentLockHeldBy reports whether a live parent lock record names l's pair slug, which holds exactly for the pushes a Finalize spawns past its parent-side merge.
+// A failed read is logged and reads as not held.
+func parentLockHeldBy(l *lyxcwd.Location) bool {
+	store := parentlock.Store{Dir: parentlock.Dir(BoardDir(l.HubPath))}
+	held, err := store.HeldBy(l.WorktreeName)
+	if err != nil {
+		logger.Warn("fabricengine: parent lock records unreadable; the push is spawned without the parent-locked mark", "slug", l.WorktreeName, "error", err)
+		return false
+	}
+	return held
 }
 
 // localMarkOfCurrentBranch returns the branch checked out at worktree and whether it carries the local-only mark.

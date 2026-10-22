@@ -3,7 +3,9 @@
 package pairteardown
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -25,13 +27,15 @@ const (
 	claimClear claimSettlement = "clear"
 	// claimHeld writes nothing and warns: batten's run for the slug is still running.
 	claimHeld claimSettlement = "held"
+	// claimHeldGone writes nothing and warns: batten's run for the slug reads running, but no registered batten process is alive.
+	claimHeldGone claimSettlement = "held-gone"
 )
 
 // settleClaim decides the settlement of a board entry with the given status.
 // An entry with no status, a done status or a status that is not a run status is kept.
 // A landed run is done.
-// Otherwise a run batten never seeded, or one batten halted, is cleared; a run batten finished is done; a running one is held.
-func settleClaim(status *string, landed, battenSeeded bool, battenState string) claimSettlement {
+// Otherwise a run batten never seeded, or one batten halted, is cleared; a run batten finished is done; a running one is held while a registered batten process is alive, and held with a gone-process warning when none is.
+func settleClaim(status *string, landed, battenSeeded bool, battenState string, battenAlive bool) claimSettlement {
 	if !boardengine.IsRunStatus(status) {
 		return claimKeep
 	}
@@ -47,6 +51,9 @@ func settleClaim(status *string, landed, battenSeeded bool, battenState string) 
 	case shedengine.StateDone:
 		return claimDone
 	case shedengine.StateRunning:
+		if !battenAlive {
+			return claimHeldGone
+		}
 		return claimHeld
 	}
 	return claimKeep
@@ -65,17 +72,29 @@ func (t *Teardown) settleBoardClaim(slug string, landed bool) {
 	}
 	var battenSeeded bool
 	var battenState string
+	var battenAlive bool
 	if !landed && boardengine.IsRunStatus(status) {
 		battenSeeded, battenState, err = t.battenRun(slug)
 		if err != nil {
 			logger.Warn("pairteardown: could not read batten's run, so the board claim is left alone", "slug", slug, "cause", err)
 			return
 		}
+		if battenState == string(shedengine.StateRunning) {
+			battenAlive, err = t.battenAlive(slug)
+			if err != nil {
+				logger.Warn("pairteardown: could not read the registered batten processes, so the board claim is left alone", "slug", slug, "cause", err)
+				return
+			}
+		}
 	}
 
 	var settled *string
-	switch settlement := settleClaim(status, landed, battenSeeded, battenState); settlement {
+	switch settlement := settleClaim(status, landed, battenSeeded, battenState, battenAlive); settlement {
 	case claimKeep:
+		return
+	case claimHeldGone:
+		logger.Warn("pairteardown: batten's run for the slug reads running but its process is gone, so the board claim is kept", "slug", slug,
+			"wayForward", fmt.Sprintf("check it with `lyx batten status %s`, and release the claim with `lyx board set-status %s`", slug, slug))
 		return
 	case claimHeld:
 		logger.Warn("pairteardown: batten's run for the slug is still running, so the board claim is kept", "slug", slug,
@@ -122,9 +141,13 @@ func (t *Teardown) battenRunState(slug string) (seeded bool, state string, err e
 	return true, string(status.State), nil
 }
 
-// readStatus reads the shed status file at path under its lock; found is false when the file is absent.
+// readStatus reads the shed status file at path under its lock; found is false when the file is absent, which includes a run directory that was never created.
 func readStatus(path, lockPath string) (shedengine.Status, bool, error) {
-	return state.ReadJSONNoMkdir[shedengine.Status](path, lockPath)
+	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](path, lockPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return shedengine.Status{}, false, nil
+	}
+	return status, found, err
 }
 
 // readBoardClaim reads the status of the slug's board entry through the hub's board.

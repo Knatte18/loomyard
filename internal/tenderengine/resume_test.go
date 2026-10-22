@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -324,13 +325,80 @@ func TestResume(t *testing.T) {
 				t.Errorf("report %+v, err %v, prime sends %v; want the prime session given its line", report, err, prime.sends)
 			}
 		}},
-		{"resuming nothing succeeds with nothing resumed", func(t *testing.T) {
+		{"resuming nothing succeeds with nothing resumed and spawns nothing", func(t *testing.T) {
 			e := newEnv(t, newPair("p1"))
 			for _, slug := range []string{"", "p1"} {
 				report, err := e.resume(slug)
-				if err != nil || len(report.Resumed) != 0 || len(report.Lines) != 0 {
+				if err != nil || len(report.Resumed) != 0 || len(report.Lines) != 0 || len(report.Spawned) != 0 || len(report.SpawnFailed) != 0 {
 					t.Errorf("resume(%q) = %+v, %v; want a no-op success", slug, report, err)
 				}
+			}
+			if len(e.pushedPairs) != 0 || e.primePushes != 0 || e.boardSyncs != 0 {
+				t.Errorf("spawns = %v, %d, %d; want none", e.pushedPairs, e.primePushes, e.boardSyncs)
+			}
+		}},
+		{"a lifted slug entry spawns that pair's push, the prime records push and the board sync", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"), newPair("p2"))
+			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
+
+			report, err := e.resume("p1")
+
+			if err != nil || !reflect.DeepEqual(report.Spawned, []string{"pair:p1", "prime-records", "board-sync"}) || len(report.SpawnFailed) != 0 {
+				t.Errorf("report %+v, err %v; want pair:p1, prime-records and board-sync spawned", report, err)
+			}
+			if !reflect.DeepEqual(e.pushedPairs, []string{"p1"}) || e.primePushes != 1 || e.boardSyncs != 1 {
+				t.Errorf("spawns = %v, %d, %d; want p1, one prime push and one sync", e.pushedPairs, e.primePushes, e.boardSyncs)
+			}
+		}},
+		{"a lifted hub entry spawns every pair's push but one a live entry covers, one owned elsewhere and one that is gone", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"), newPair("p2"), newPair("p3"), newPair("p4"))
+			e.owners = []PairOwner{
+				{Slug: "p1", Local: true, OwnedHere: true},
+				{Slug: "p2", Owner: "other", Local: true},
+				{Slug: "p3", Local: true, OwnedHere: true},
+				{Slug: "p4", Local: true, OwnedHere: true},
+			}
+			e.pairs = e.pairs[:3]
+			now := e.clock.Now()
+			e.seedLive(hubEntry(now), pauserecord.Entry{Scope: "p3", PausedAt: now, GraceEnd: now, Caller: "EXTERNAL"})
+
+			report, err := Lift(e.deps(), EntryRef{Scope: pauserecord.ScopeHub, Caller: "EXTERNAL", PausedAt: now})
+
+			if err != nil || !reflect.DeepEqual(e.pushedPairs, []string{"p1"}) || !reflect.DeepEqual(report.Spawned, []string{"pair:p1", "prime-records", "board-sync"}) {
+				t.Errorf("report %+v, err %v, pushed %v; want only p1 pushed", report, err, e.pushedPairs)
+			}
+		}},
+		{"a lifted entry whose pair is gone spawns no pair push", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"))
+			e.seedLive(pauserecord.Entry{Scope: "gone", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
+
+			report, err := e.resume("gone")
+
+			if err != nil || len(e.pushedPairs) != 0 || !reflect.DeepEqual(report.Spawned, []string{"prime-records", "board-sync"}) {
+				t.Errorf("report %+v, err %v, pushed %v; want no pair push", report, err, e.pushedPairs)
+			}
+		}},
+		{"a failing pair push is listed under spawn_failed and the lift still succeeds", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"))
+			e.pushPairErr = errors.New("spawn refused")
+			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
+
+			report, err := e.resume("p1")
+
+			want := []SessionNote{{"pair:p1", "p1", "spawn refused"}}
+			if err != nil || !reflect.DeepEqual(report.SpawnFailed, want) || !reflect.DeepEqual(report.Resumed, []string{"p1"}) {
+				t.Errorf("report %+v, err %v; want the push failure under spawn_failed and p1 resumed", report, err)
+			}
+		}},
+		{"an owners error spawns no pair push and is listed under spawn_failed", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"))
+			e.ownersErr = errors.New("board unreadable")
+			e.seedLive(hubEntry(e.clock.Now()))
+
+			report, err := e.resume("")
+
+			if err != nil || len(e.pushedPairs) != 0 || len(report.SpawnFailed) != 1 || !strings.Contains(report.SpawnFailed[0].Reason, "board unreadable") {
+				t.Errorf("report %+v, err %v, pushed %v; want no pair push and the owners error listed", report, err, e.pushedPairs)
 			}
 		}},
 	}
@@ -667,6 +735,26 @@ func TestStatus(t *testing.T) {
 		}
 	})
 
+	t.Run("a session busy on background work lists the kind of each outstanding task", func(t *testing.T) {
+		p := newPair("p1", "a")
+		p.states["g-a"] = shuttleengine.SessionState{
+			Name:  shuttleengine.SessionBusy,
+			Cause: shuttleengine.SessionCauseBackground,
+			Outstanding: []shuttleengine.BackgroundTask{
+				{Kind: shuttleengine.BackgroundShell, ID: "s1"},
+				{Kind: shuttleengine.BackgroundFork, ID: "f1"},
+			},
+		}
+		e := newEnv(t, p)
+		e.seedLive(hubEntry(e.clock.Now()))
+
+		sessions := read(t, e).Sessions
+
+		if len(sessions) != 1 || !reflect.DeepEqual(sessions[0].Background, []string{"shell", "fork"}) {
+			t.Errorf("sessions = %+v; want one session with background shell and fork", sessions)
+		}
+	})
+
 	t.Run("stale processes keep a replaced lyx inside the hub and nothing else", func(t *testing.T) {
 		e := newEnv(t)
 		e.hubPath = "/home/u/hub"
@@ -758,6 +846,134 @@ func TestStatus(t *testing.T) {
 					t.Errorf("report = %+v; want sessions and live entries still read", report)
 				}
 			})
+		}
+	})
+
+	t.Run("the processes part lists each registered process and marks the orphans", func(t *testing.T) {
+		registeredAt := newFakeClock().Now().Add(-90 * time.Second)
+		record := func(pid int, role string) runproc.Record {
+			return runproc.Record{PID: pid, Role: role, RegisteredAt: registeredAt}
+		}
+		listed := func(pid int, cwd string) proc.Process { return proc.Process{PID: pid, Cwd: cwd} }
+		tests := []struct {
+			name      string
+			runProcs  map[string][]runproc.Record
+			worktrees []string
+			processes []proc.Process
+			want      map[int]bool
+		}{
+			{"SlugWithRegisteredWorktreeIsKept", map[string][]runproc.Record{"gone": {record(10, runproc.RoleLoop)}}, []string{"/hub/gone"}, nil, map[int]bool{10: false}},
+			{"SlugWithNoWorktreeAndNoBattenIsOrphan", map[string][]runproc.Record{"gone": {record(10, runproc.RoleLoop)}}, []string{"/hub/other"}, nil, map[int]bool{10: true}},
+			{"SlugWithLiveBattenIsKept", map[string][]runproc.Record{"gone": {record(10, runproc.RoleLoop), record(11, runproc.RoleBatten)}}, nil, nil, map[int]bool{10: false, 11: false}},
+			{"RecordWorkingInsideAWorktreeIsKept", map[string][]runproc.Record{"gone": {record(10, runproc.RoleLoop), record(11, runproc.RoleDriver)}}, []string{"/hub/other"}, []proc.Process{listed(10, "/hub/other/sub"), listed(11, "/elsewhere")}, map[int]bool{10: false, 11: true}},
+			{"HubOwnerIsNeverOrphan", map[string][]runproc.Record{runproc.HubOwner: {record(10, runproc.RoleSync)}}, nil, nil, map[int]bool{10: false}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				e := newEnv(t)
+				e.runProcs, e.worktrees, e.processes, e.executable = tt.runProcs, tt.worktrees, tt.processes, "/bin/lyx"
+
+				report := read(t, e).Processes
+
+				got := map[int]bool{}
+				for _, owned := range report.Owned {
+					got[owned.PID] = owned.Orphan
+					if owned.AgeSeconds != 90 {
+						t.Errorf("process %+v; want age 90 seconds", owned)
+					}
+				}
+				if !reflect.DeepEqual(got, tt.want) || report.Error != "" {
+					t.Errorf("orphans = %v, error = %q; want %v", got, report.Error, tt.want)
+				}
+			})
+		}
+
+		e := newEnv(t)
+		e.runProcs = map[string][]runproc.Record{"b": {record(2, runproc.RoleLoop)}, "a": {record(1, runproc.RoleDriver)}}
+		e.worktrees = []string{"/hub/a", "/hub/b"}
+		want := []OwnedProcess{{Owner: "a", Role: runproc.RoleDriver, PID: 1, AgeSeconds: 90}, {Owner: "b", Role: runproc.RoleLoop, PID: 2, AgeSeconds: 90}}
+		if got := read(t, e).Processes.Owned; !reflect.DeepEqual(got, want) {
+			t.Errorf("owned = %+v; want %+v in owner order with owner, role, pid and age", got, want)
+		}
+	})
+
+	t.Run("a failed record or worktree reading lands in the processes error and the rest stands", func(t *testing.T) {
+		registeredAt := newFakeClock().Now()
+		runProcs := map[string][]runproc.Record{"gone": {{PID: 10, Role: runproc.RoleLoop, RegisteredAt: registeredAt}}}
+		tests := []struct {
+			name         string
+			runProcs     map[string][]runproc.Record
+			runProcsErr  error
+			worktreesErr error
+			wantOwned    int
+			wantError    string
+		}{
+			{"RunProcsFails", runProcs, errors.New("record unreadable"), nil, 0, "record unreadable"},
+			{"WorktreesFail", runProcs, nil, errors.New("git unreadable"), 1, "git unreadable"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				e := newEnv(t, newPair("p1", "a"))
+				e.seedLive(hubEntry(e.clock.Now()))
+				e.runProcs, e.runProcsErr, e.worktreesErr = tt.runProcs, tt.runProcsErr, tt.worktreesErr
+
+				report := read(t, e)
+
+				if report.Processes.Error != tt.wantError || len(report.Processes.Owned) != tt.wantOwned {
+					t.Errorf("processes = %+v; want error %q and %d owned", report.Processes, tt.wantError, tt.wantOwned)
+				}
+				for _, owned := range report.Processes.Owned {
+					if owned.Orphan {
+						t.Errorf("process %+v read as an orphan with the worktrees unread", owned)
+					}
+				}
+				if len(report.Sessions) != 1 || len(report.Live) != 1 {
+					t.Errorf("report = %+v; want sessions and live entries still read", report)
+				}
+			})
+		}
+	})
+
+	t.Run("unregistered lyx processes are those in a deleted hub directory outside every worktree that no record owns", func(t *testing.T) {
+		e := newEnv(t)
+		e.hubPath = "/home/u/hub"
+		e.executable = "/home/u/go/bin/lyx"
+		e.worktrees = []string{"/home/u/hub/live"}
+		e.runProcs = map[string][]runproc.Record{"p": {{PID: 4, Role: runproc.RoleLoop, RegisteredAt: e.clock.Now()}}}
+		listed := func(pid int, exe, cwd string) proc.Process {
+			return proc.Process{PID: pid, StartTime: "t" + fmt.Sprint(pid), Exe: exe, Cwd: cwd, Argv: []string{"lyx", "x"}}
+		}
+		const lyx = "/home/u/go/bin/lyx"
+		e.processes = []proc.Process{
+			listed(1, lyx, "/home/u/hub/gone (deleted)"),
+			listed(2, lyx, "/home/u/hub/live/sub (deleted)"),
+			listed(3, lyx, "/home/u/other (deleted)"),
+			listed(4, lyx, "/home/u/hub/gone (deleted)"),
+			listed(5, lyx+" (deleted)", "/home/u/hub/gone (deleted)"),
+			listed(6, lyx, "/home/u/hub/live"),
+			listed(7, "/usr/bin/other", "/home/u/hub/gone (deleted)"),
+		}
+
+		report := read(t, e).Processes
+
+		var pids []int
+		for _, process := range report.Unregistered {
+			pids = append(pids, process.PID)
+		}
+		if !report.UnregisteredSupported || !reflect.DeepEqual(pids, []int{1}) {
+			t.Errorf("unregistered = %+v; want only pid 1 on a supported platform", report)
+		}
+	})
+
+	t.Run("an unsupported process reading keeps the owned list and marks the unregistered part unsupported", func(t *testing.T) {
+		e := newEnv(t)
+		e.runProcs = map[string][]runproc.Record{"p": {{PID: 4, Role: runproc.RoleLoop, RegisteredAt: e.clock.Now()}}}
+		e.processErr = fmt.Errorf("proc: %w", errors.ErrUnsupported)
+
+		report := read(t, e).Processes
+
+		if report.UnregisteredSupported || report.Error != "" || len(report.Owned) != 1 || len(report.Unregistered) != 0 {
+			t.Errorf("processes = %+v; want the owned record listed, unregistered unsupported and no error", report)
 		}
 	})
 

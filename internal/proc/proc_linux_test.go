@@ -1,10 +1,12 @@
 package proc
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -144,10 +146,46 @@ func TestProcessTreeReads(t *testing.T) {
 		}
 	}
 
+	findStat := func(pid int) (StatEntry, bool) {
+		stats, err := ListStats()
+		if err != nil {
+			t.Fatalf("ListStats: %v", err)
+		}
+		for _, entry := range stats {
+			if entry.PID == pid {
+				return entry, true
+			}
+		}
+		return StatEntry{}, false
+	}
+	stat, found := findStat(childPID)
+	if !found || stat.PPID != os.Getpid() || stat.StartTime == "" || stat.StartTime != wantStart || stat.Zombie {
+		t.Errorf("ListStats child = %+v, found %v; want PPID %d, start time %q and no zombie", stat, found, os.Getpid(), wantStart)
+	}
+
+	if err := SignalProcess(childPID, false); err != nil {
+		t.Fatalf("SignalProcess(child pid, false): %v", err)
+	}
+	// The signal is delivered asynchronously, so poll until the unwaited child reads as a zombie.
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if stat, found := findStat(childPID); found && stat.Zombie {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("ListStats never read the signalled child %d as a zombie", childPID)
+		}
+	}
+
 	_ = child.Process.Kill()
 	_ = child.Wait()
 	if parent, ok := ParentPID(childPID); ok {
 		t.Errorf("ParentPID(waited-on child pid) = %d, true; want false", parent)
+	}
+	if err := SignalProcess(childPID, true); !errors.Is(err, syscall.ESRCH) {
+		t.Errorf("SignalProcess(reaped pid, true) = %v; want ESRCH", err)
+	}
+	if err := SignalGroup(childPID, false); !errors.Is(err, syscall.ESRCH) {
+		t.Errorf("SignalGroup(reaped pid, false) = %v; want ESRCH", err)
 	}
 }
 

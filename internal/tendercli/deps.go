@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/creelengine"
@@ -26,6 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -49,7 +52,13 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		pairs []tenderengine.Pair
 		slugs []string
 		prime *lyxcwd.Location
+		// pairLocations holds each task pair's location by slug, for the push a lift spawns.
+		pairLocations = map[string]*lyxcwd.Location{}
 	)
+	worktreePaths := make([]string, 0, len(worktrees))
+	for _, worktree := range worktrees {
+		worktreePaths = append(worktreePaths, worktree.Path)
+	}
 	for _, worktree := range worktrees {
 		if worktree.Prunable {
 			continue
@@ -69,6 +78,7 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		}
 		pairs = append(pairs, pair)
 		slugs = append(slugs, pairLocation.WorktreeName)
+		pairLocations[pairLocation.WorktreeName] = pairLocation
 	}
 
 	var primePair tenderengine.Pair
@@ -92,6 +102,16 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		Pairs:      pairs,
 		Prime:      primePair,
 		Processes:  proc.ListProcesses,
+		RunProcs: func() (map[string][]runproc.Record, error) {
+			return runproc.Owners(fabricengine.RunProcDir(location.HubPath))
+		},
+		Worktrees: func() ([]string, error) { return worktreePaths, nil },
+		EndOwner: func(owner string) ([]runproc.Ended, error) {
+			return runproc.End(fabricengine.RunProcDir(location.HubPath), owner, os.Getpid())
+		},
+		EndProcess: func(pid int, startTime string) ([]runproc.Ended, error) {
+			return runproc.EndProcess(pid, startTime, "")
+		},
 		HubPath:    location.HubPath,
 		Executable: executable,
 		OrchStrand: func() (string, error) {
@@ -136,6 +156,21 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 			return pairOwners(owners, slugs, here, func(slug string) (string, error) {
 				return fabricengine.ParentSlug(location, slug)
 			})
+		},
+		PushPair: func(slug string) error {
+			return fabricengine.SpawnPairPush(pairLocations[slug])
+		},
+		PushPrimeRecords: func() error {
+			if prime == nil {
+				return nil
+			}
+			_, err := fabricengine.SpawnStatusPush(prime, "")
+			return err
+		},
+		SyncBoardIfOwed: func() error {
+			boardDir := fabricengine.BoardDir(location.HubPath)
+			bolt := fabricengine.NewBolt(boardDir)
+			return syncBoardIfOwed(bolt.HasUnpushed, bolt.HasUncommitted, func() error { return boardengine.SpawnSync(boardDir) })
 		},
 		OrchWatcherLive: func() bool {
 			if prime == nil {
@@ -186,19 +221,147 @@ func pairOwners(owners boardengine.Owners, slugs []string, here string, parentOf
 	return listed, nil
 }
 
+// syncBoardIfOwed spawns the board sync when the board is ahead of its upstream or holds uncommitted changes, which is what a sync deferred at its start leaves.
+// A probe error is returned and nothing is spawned.
+func syncBoardIfOwed(ahead, uncommitted func() (bool, error), spawn func() error) error {
+	for _, owed := range []func() (bool, error){ahead, uncommitted} {
+		isOwed, err := owed()
+		if err != nil {
+			return err
+		}
+		if isOwed {
+			return spawn()
+		}
+	}
+	return nil
+}
+
 // ownerPauseGrace is how long the running turns of a run owned by another machine get to finish before the Esc.
 const ownerPauseGrace = 10 * time.Second
 
 // PauseOwnedElsewhere pauses the pair of slug in the hub location belongs to, because another machine owns its run.
 // The entry carries pauserecord.OwnerCaller, and the pair's running turns are interrupted after the grace.
 // A slug whose entry already stands adds none.
+// Once the pause stands it ends the run's owned processes on this machine, unless the run's Finalize is past its parent-side merge;
+// a failed end or a survivor is logged at Warn and never fails the pause.
 func PauseOwnedElsewhere(location *lyxcwd.Location, slug string) error {
 	deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
 	if err != nil {
 		return err
 	}
-	_, err = tenderengine.Pause(deps, tenderengine.PauseRequest{Slug: slug, Grace: ownerPauseGrace, Caller: pauserecord.OwnerCaller})
-	return err
+	if _, err = tenderengine.Pause(deps, tenderengine.PauseRequest{Slug: slug, Grace: ownerPauseGrace, Caller: pauserecord.OwnerCaller}); err != nil {
+		return err
+	}
+	ended, err := endOwnedElsewhere(location, slug)
+	if err != nil {
+		logger.Warn("tendercli: ending the processes of a run owned elsewhere failed", "slug", slug, "error", err)
+		return nil
+	}
+	if len(ended) > 0 {
+		logger.Info("tendercli: ended the processes of a run owned elsewhere", "slug", slug, "ended", len(ended))
+	}
+	return nil
+}
+
+// endOwnedElsewhere is the end PauseOwnedElsewhere runs after its pause.
+var endOwnedElsewhere = EndOwnedElsewhere
+
+// EndOwnedElsewhere ends the processes registered under slug in the hub location belongs to, because another machine owns its run.
+// A run whose Finalize is past its parent-side merge keeps them, since it finishes its landing on either machine, and so does a run whose reading fails.
+// The calling process and its ancestors are never ended.
+func EndOwnedElsewhere(location *lyxcwd.Location, slug string) ([]runproc.Ended, error) {
+	taskPath := fabricengine.WorktreePath(location, slug)
+	var taskLocation *lyxcwd.Location
+	locateTask := func() (*lyxcwd.Location, error) {
+		if taskLocation != nil {
+			return taskLocation, nil
+		}
+		resolved, err := lyxcwd.ResolveWorktree(taskPath)
+		taskLocation = resolved
+		return resolved, err
+	}
+	return ownedElsewhereEnder{
+		slug: slug,
+		readStatus: func() (shedengine.Status, bool, error) {
+			if _, err := os.Stat(taskPath); os.IsNotExist(err) {
+				return shedengine.Status{}, false, nil
+			} else if err != nil {
+				return shedengine.Status{}, false, err
+			}
+			task, err := locateTask()
+			if err != nil {
+				return shedengine.Status{}, false, err
+			}
+			statusPath := shedrun.StatusFile(task, shedrun.SelfRunID)
+			if _, err := os.Stat(statusPath); os.IsNotExist(err) {
+				return shedengine.Status{}, false, nil
+			}
+			lockPath := shedrun.StatusLock(task, shedrun.SelfRunID)
+			if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+				return shedengine.Status{}, false, err
+			}
+			return state.ReadJSONNoMkdir[shedengine.Status](statusPath, lockPath)
+		},
+		restepped: func(status shedengine.Status) (bool, error) {
+			task, err := locateTask()
+			if err != nil {
+				return false, err
+			}
+			records, err := sheddriver.ReadSettleRecords(shedrun.SettleRecords(task, shedrun.SelfRunID))
+			if err != nil {
+				return false, err
+			}
+			return sheddriver.RestepRecorded(records, status), nil
+		},
+		parentHolds: func() (bool, error) {
+			task, err := locateTask()
+			if err != nil {
+				return false, err
+			}
+			return fabricengine.ParentHoldsTaskWork(location, task, slug)
+		},
+		end: func() ([]runproc.Ended, error) {
+			return runproc.End(fabricengine.RunProcDir(location.HubPath), slug, os.Getpid())
+		},
+	}.run()
+}
+
+// ownedElsewhereEnder is one run's end of its owned processes, over the seams that read the run.
+type ownedElsewhereEnder struct {
+	slug string
+	// readStatus reads the task worktree's shed status; found is false when the worktree or its status file is absent.
+	readStatus func() (status shedengine.Status, found bool, err error)
+	// restepped reads whether the settle records re-stepped the stop the status names.
+	restepped func(status shedengine.Status) (bool, error)
+	// parentHolds reads whether the parent branch already holds the task's work.
+	parentHolds func() (bool, error)
+	// end ends the processes registered under the slug.
+	end func() ([]runproc.Ended, error)
+}
+
+// run ends the slug's owned processes and returns what it ended.
+// A run whose Finalize is past its parent-side merge ends nothing, and neither does a run whose status or Finalize reading fails, which returns that error.
+// A task worktree with no status file, or none at all, ends by slug, since no Finalize can be running there.
+// An end error and a *runproc.SurvivorsError come back wrapped with the commands that finish the end.
+func (e ownedElsewhereEnder) run() ([]runproc.Ended, error) {
+	status, found, err := e.readStatus()
+	if err != nil {
+		return nil, fmt.Errorf("read the status of %s before ending its processes: %w", e.slug, err)
+	}
+	if found {
+		past, err := battenshed.FinalizePastMerge(status, e.restepped, e.parentHolds)
+		if err != nil {
+			return nil, fmt.Errorf("read whether the Finalize of %s is past its parent-side merge: %w", e.slug, err)
+		}
+		if past {
+			return nil, nil
+		}
+	}
+	ended, err := e.end()
+	if err != nil {
+		return ended, fmt.Errorf("end the processes of %s: %w; run `lyx fabric remove %s`, or `lyx reed down` in the pair, while the pair exists, and `lyx tender reap` once it is gone", e.slug, err, e.slug)
+	}
+	return ended, nil
 }
 
 // tenderProgram is the program name tender signs its creel calls with.

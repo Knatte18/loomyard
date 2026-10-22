@@ -156,29 +156,36 @@ func (p *innerRunProducer) releaseChildLock(w *childWait, why string) {
 // That is a Finalize running, or failed on a transient cause with no re-step recorded for that stop, while the parent holds the task's work.
 // A failed read of either seam holds the lock until the next check, and any other state at Finalize does not hold it.
 func (p *innerRunProducer) keepsLockForFinalize(status shedengine.Status) bool {
-	if status.CurrentProducer != finalizeRow {
-		return false
-	}
-	switch {
-	case status.State == shedengine.StateRunning:
-	case status.State == shedengine.StateFailed && status.Transient != "":
-		restepped, err := p.deps.Restepped(status)
-		if err != nil {
-			p.seamFailed(failOwnerFinalizeRead, err)
-			return true
-		}
-		if restepped {
-			p.seamRecovered(failOwnerFinalizeRead)
-			return false
-		}
-	default:
-		return false
-	}
-	holds, err := p.deps.ParentHoldsTaskWork()
+	holds, err := FinalizePastMerge(status, p.deps.Restepped, p.deps.ParentHoldsTaskWork)
 	if err != nil {
 		p.seamFailed(failOwnerFinalizeRead, err)
 		return true
 	}
-	p.seamRecovered(failOwnerFinalizeRead)
+	if status.CurrentProducer == finalizeRow {
+		p.seamRecovered(failOwnerFinalizeRead)
+	}
 	return holds
+}
+
+// FinalizePastMerge reports whether status is a Finalize already past its parent-side merge, which finishes its landing.
+// That is a Finalize running, or failed on a transient cause with no re-step recorded for that stop, while the parent holds the task's work.
+// restepped reads the re-step record of the stop status names and parentHolds reads whether the parent holds the task's work; the error of either is returned.
+func FinalizePastMerge(status shedengine.Status, restepped func(shedengine.Status) (bool, error), parentHolds func() (bool, error)) (bool, error) {
+	if status.CurrentProducer != finalizeRow {
+		return false, nil
+	}
+	switch {
+	case status.State == shedengine.StateRunning:
+	case status.State == shedengine.StateFailed && status.Transient != "":
+		stepped, err := restepped(status)
+		if err != nil {
+			return false, err
+		}
+		if stepped {
+			return false, nil
+		}
+	default:
+		return false, nil
+	}
+	return parentHolds()
 }

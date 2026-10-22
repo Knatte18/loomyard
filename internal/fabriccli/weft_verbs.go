@@ -66,6 +66,8 @@ func addWeftVerbs(cmd *cobra.Command) {
 	cmd.PersistentFlags().MarkHidden(fabricengine.PauseSlugFlag) //nolint:errcheck
 	cmd.PersistentFlags().String(fabricengine.TeardownSlugFlag, "", "internal: the pair whose teardown the detached push child yields to")
 	cmd.PersistentFlags().MarkHidden(fabricengine.TeardownSlugFlag) //nolint:errcheck
+	cmd.PersistentFlags().Bool(fabricengine.ParentLockedFlag, false, "internal: the detached push child's pair held its parent lock when the child was spawned")
+	cmd.PersistentFlags().MarkHidden(fabricengine.ParentLockedFlag) //nolint:errcheck
 
 	fabricCmd := cmd
 	cmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
@@ -251,6 +253,7 @@ Related commands:
 				rec := fabricengine.NewMutations("")
 				pauseSlug, _ := cmd.Flags().GetString(fabricengine.PauseSlugFlag)
 				teardownSlug, _ := cmd.Flags().GetString(fabricengine.TeardownSlugFlag)
+				parentLocked, _ := cmd.Flags().GetBool(fabricengine.ParentLockedFlag)
 				// The child starts in the hub's board worktree, so the hub is the parent of the worktree root the ungated resolution finds there.
 				cwd, err := lyxcwd.CwdFrom(cmd.Context())
 				if err != nil {
@@ -268,6 +271,7 @@ Related commands:
 					WeftPath:     weftPath,
 					PauseSlug:    pauseSlug,
 					TeardownSlug: teardownSlug,
+					ParentLocked: parentLocked,
 				})
 				rec.Extend(res.Mutated())
 				if err != nil {

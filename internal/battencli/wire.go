@@ -466,17 +466,6 @@ func ownerVerdictOf(report fabricengine.OriginReport, slug string) battenshed.Ow
 	return battenshed.OwnerVerdict{}
 }
 
-// childRestepped reports whether a settle record re-stepped the stop status names: its stop key equals the status's and its action is a restep.
-func childRestepped(records []shedrun.SettleRecord, status shedengine.Status) bool {
-	key := sheddriver.StopKeyOf(status)
-	for _, record := range records {
-		if record.Action == shedrun.SettleRestep && record.StopKey == key {
-			return true
-		}
-	}
-	return false
-}
-
 // childRefusalKind returns the "kind" of the first line of a child bootstrap's output that is a refusal envelope carrying one, or "" when none is.
 // Each output line is tried as an envelope, since the child's stdout and stderr share one buffer.
 func childRefusalKind(childOutput string) string {
@@ -981,7 +970,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if err != nil {
 					return false, err
 				}
-				return childRestepped(records, status), nil
+				return sheddriver.RestepRecorded(records, status), nil
 			},
 			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: pauseRequested(location, slug),

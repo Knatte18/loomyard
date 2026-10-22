@@ -18,6 +18,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
+// DetachedChild describes the hidden flags a detached child process was spawned with, which decide how its network gate behaves.
+// The zero value is an ordinary process.
+type DetachedChild struct {
+	// Deferrable marks a detached push or board-sync child whose gate defers under a pause instead of waiting.
+	Deferrable bool
+	// ParentLocked marks a push child spawned while a parent lock record named its slug.
+	ParentLocked bool
+	// HubScope marks a board-sync child, held only by a hub entry whichever worktree spawned it.
+	HubScope bool
+}
+
 // InstallNetworkGate installs the pause gate that holds this process's network git and GitHub calls while a pause covers it.
 // The hub is the one the context's working directory resolves to; outside a hub nothing is installed.
 // A git worktree whose parent holds no board-level _lyx, such as an agent worktree nested in a repository, is outside a hub,
@@ -26,7 +37,14 @@ import (
 // A nil pauseSlug takes the slug from the working directory's worktree.
 // A non-nil pauseSlug is the slug the process is held under, empty for the prime's, and the working directory is resolved as a worktree root:
 // a detached push child starts in the hub's board worktree, which says nothing of the pair it serves and which the gated resolution refuses on a hub with a subpath anchor.
-func InstallNetworkGate(ctx context.Context, pauseSlug *string) {
+// With child.HubScope set and a nil pauseSlug the process is held under the empty slug and resolved the same way, so only a hub entry holds it.
+// A child that is Deferrable and not ParentLocked defers under a pause instead of waiting;
+// a ParentLocked child lets its own slug's owner entry pass, since the parent lock it was spawned under makes it the process that must finish the run's push.
+func InstallNetworkGate(ctx context.Context, pauseSlug *string, child DetachedChild) {
+	if pauseSlug == nil && child.HubScope {
+		hubSlug := ""
+		pauseSlug = &hubSlug
+	}
 	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
 		return
@@ -51,10 +69,12 @@ func InstallNetworkGate(ctx context.Context, pauseSlug *string) {
 	startTime, _ := proc.StartTime(pid)
 	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(location.HubPath))}
 	pauserecord.InstallGate(pauserecord.Gate{
-		Geometry:  geometry,
-		Strand:    os.Getenv(agentname.StrandNameEnv),
-		PID:       pid,
-		StartTime: startTime,
+		Geometry:         geometry,
+		Strand:           os.Getenv(agentname.StrandNameEnv),
+		PID:              pid,
+		StartTime:        startTime,
+		Defer:            child.Deferrable && !child.ParentLocked,
+		OwnerEntryExempt: child.ParentLocked,
 		HoldsParentLock: func(slug string) bool {
 			held, err := locks.HeldBy(slug)
 			if err != nil {

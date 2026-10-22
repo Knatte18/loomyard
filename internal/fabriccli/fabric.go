@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/weftname"
 	"github.com/spf13/cobra"
 )
@@ -178,6 +179,19 @@ command still exits 0.
 
 Reach for it when a task is landed or abandoned. It waits up to two minutes for
 the pair's loom driver to go quiet, and refuses while the driver stays busy.
+
+It first reconciles the run against origin, the run-scope reconcile of
+<slug>. A run whose entry origin reads stopped is refused, naming the branch
+that stopped it and the way forward, then "lyx fabric remove <slug>" again;
+the one exception is a run stopped only by a gone branch of its own, which the
+removal itself clears. A pair whose task worktree is already gone takes no
+reconcile: the local board decides, as it does when origin is unreachable.
+A run that origin reads ended, or owned by another machine, is removed locally:
+no archive tag, no remote branch step and no board write, and a --remote it
+drops is named in remote_skipped_reason. A run that is paused, or has nothing
+left to do, skips the quiet wait; its registered processes are ended and each
+{pid, role} is listed in ended_processes. The removal's own network calls pass
+under any pause.
 
 <slug> names the pair, as given to "lyx fabric add".
 
@@ -1091,13 +1105,13 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	res, err := td.Run(ctx, pairteardown.Request{
-		Slug:           slug,
-		Force:          force,
-		Remote:         remote,
-		QuietWait:      pairteardown.RemoveQuietWait,
-		RefuseWhenBusy: true,
-	})
+	res, err := remover{
+		exemptAll: pauserecord.SetGateExemptAll,
+		gone:      td.TaskWorktreeGone,
+		reconcile: func(slug string) (fabricengine.OriginReport, error) { return reconcileForRemove(l, td, slug) },
+		local:     func(slug string) (localReading, error) { return readLocalReading(l, slug) },
+		teardown:  td.Run,
+	}.run(ctx, slug, force, remote)
 	r := res.Removal
 	if err != nil {
 		return errWithRecord(out, r.Mutated(), err)
@@ -1124,6 +1138,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 // removeFields builds the envelope fields for a remove result.
 // New RemoveResult fields must be added here explicitly — the map is hand-built, not reflected.
 // code_branch_kept_reason, remote_code_branch_kept_reason, stray_path, local, local_mark_branch, dropped_records_tip and abandoned_session appear only when set.
+// ended_processes, the {pid, role} of each registered process the session end ended, is always present and empty when none.
 func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResult) map[string]any {
 	steps := r.Steps
 	if steps == nil {
@@ -1163,6 +1178,11 @@ func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResul
 	if session.AbandonedSession != "" {
 		fields["abandoned_session"] = session.AbandonedSession
 	}
+	endedProcesses := make([]map[string]any, len(session.EndedProcesses))
+	for i, ended := range session.EndedProcesses {
+		endedProcesses[i] = map[string]any{"pid": ended.PID, "role": ended.Role}
+	}
+	fields["ended_processes"] = endedProcesses
 	return fields
 }
 

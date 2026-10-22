@@ -157,9 +157,26 @@ func TestTeardown_OriginSeams(t *testing.T) {
 		}
 	})
 
-	t.Run("A busy driver comes back as the busy flag with nothing removed", func(t *testing.T) {
+	t.Run("The teardown seam carries the ended verdict, so a busy driver is skipped past and the removal runs", func(t *testing.T) {
 		t.Parallel()
 		f := &fakeSubstrates{quiets: []quietState{busy}}
+		td := f.teardown()
+		removal := &removeRecorder{}
+		removal.install(f, td)
+
+		report, err := td.OriginSeams(SeamOptions{}).Teardown(fabricengine.EndedTeardown{Slug: "slug"})
+
+		if err != nil || report.Busy {
+			t.Fatalf("Teardown() = %+v, %v; want a removed pair", report, err)
+		}
+		if removal.request.Verdict != fabricengine.EntryEnded || !slices.Contains(f.calls, "remove-local") || slices.Contains(f.calls, "quiet") {
+			t.Errorf("verdict = %q, calls = %v; want the ended verdict, no quiet probe and the local removal", removal.request.Verdict, f.calls)
+		}
+	})
+
+	t.Run("A driver lock still held after the owned end comes back as the busy flag with nothing removed", func(t *testing.T) {
+		t.Parallel()
+		f := &fakeSubstrates{quiets: []quietState{{quiet: true}}, driverLockHeld: true}
 		td := f.teardown()
 		removal := &removeRecorder{}
 		removal.install(f, td)

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -18,8 +19,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
 
-func sessionReading(strand, state string) tenderengine.SessionStatus {
-	return tenderengine.SessionStatus{Slug: "p1", Strand: strand, State: state, Cause: "test"}
+// sessionReading is one session's reading; with kinds it reads busy on background work of those kinds.
+func sessionReading(strand, state string, kinds ...string) tenderengine.SessionStatus {
+	reading := tenderengine.SessionStatus{Slug: "p1", Strand: strand, State: state, Cause: "test"}
+	if len(kinds) > 0 {
+		reading.State, reading.Cause, reading.Background = "busy", "background", kinds
+	}
+	return reading
 }
 
 // watchNow seeds a now request owned by the world's own daemon and runs Watch over it.
@@ -306,6 +312,72 @@ func TestWatch(t *testing.T) {
 				t.Errorf("got %+v, %v, elapsed %s, live %+v; want failed after exactly ten minutes with the entry lifted", got, err, w.elapsed(), w.liveEntries())
 			}
 			requireNotice(t, w, "The hibernate request failed: a reads busy", "its pause was lifted.")
+		}},
+		{"sessions busy only on background shells confirm at the first reading", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.readings = []statusReading{{sessions: []tenderengine.SessionStatus{sessionReading("a", "", "shell"), sessionReading("b", "", "shell", "shell")}}}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone || countSleeps(w, confirmInterval) != 0 || w.hibernates() != 1 {
+				t.Errorf("got %+v, %v; want done with no re-read", got, err)
+			}
+		}},
+		{"a session with a fork withholds past ten minutes and confirms once the fork reads idle before sixty", func(t *testing.T) {
+			w := newFakeWorld(t)
+			forkBusy := statusReading{sessions: []tenderengine.SessionStatus{sessionReading("a", "", "shell", "fork")}}
+			w.readings = slices.Repeat([]statusReading{forkBusy}, confirmRereads+30)
+			w.readings = append(w.readings, statusReading{})
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone || countSleeps(w, confirmInterval) != confirmRereads+30 || w.hibernates() != 1 {
+				t.Errorf("got %+v, %v, %d re-reads; want done after the fork's reading turned idle", got, err, countSleeps(w, confirmInterval))
+			}
+		}},
+		{"a fork still outstanding at sixty minutes fails the request naming it", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.readings = []statusReading{{sessions: []tenderengine.SessionStatus{sessionReading("a", "", "fork")}}}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseFailed || !strings.Contains(got.Reason, "a has a background fork outstanding") || w.elapsed() != time.Hour || w.hibernates() != 0 {
+				t.Errorf("got %+v, %v, elapsed %s; want failed naming the fork after exactly sixty minutes", got, err, w.elapsed())
+			}
+		}},
+		{"a fork beside an in-flight network operation fails at ten minutes", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.readings = []statusReading{{
+				sessions: []tenderengine.SessionStatus{sessionReading("a", "", "fork")},
+				netOps:   []tenderengine.NetOpReport{{Op: "push", Strand: "a", Slug: "p1"}},
+			}}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseFailed || w.elapsed() != 10*time.Minute || w.hibernates() != 0 {
+				t.Errorf("got %+v, %v, elapsed %s; want failed after exactly ten minutes", got, err, w.elapsed())
+			}
+		}},
+		{"the orch requester's own busy session is left out and another requester's is not", func(t *testing.T) {
+			orch := orchStrand(t)
+			for _, tc := range []struct {
+				name      string
+				requester string
+				wantDone  bool
+			}{
+				{"orch requester", orch, true},
+				{"non-orch requester", "lyx:p1:driver", false},
+			} {
+				w := newFakeWorld(t)
+				w.requester = tc.requester
+				w.readings = []statusReading{{sessions: []tenderengine.SessionStatus{sessionReading(orch, "busy")}}}
+
+				got, err := watchNow(t, w)
+
+				if err != nil || (got.Phase == PhaseDone) != tc.wantDone || (tc.wantDone && countSleeps(w, confirmInterval) != 0) {
+					t.Errorf("%s: got %+v, %v; want done=%v", tc.name, got, err, tc.wantDone)
+				}
+			}
 		}},
 		{"a hibernate error fails the request with the entry lifted", func(t *testing.T) {
 			w := newFakeWorld(t)
@@ -626,6 +698,9 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p2" {
 				t.Errorf("got %+v, %v, live %+v; want done with only p2 held", got, err, live)
 			}
+			if ended := w.endedOwnedList(); len(ended) != 0 {
+				t.Errorf("EndOwned calls = %q; want none for stopped runs", ended)
+			}
 			requireNotice(t, w, "its pause was lifted.", "fix p2; then `lyx resume p2`", "p1 could not be paused (tender down); hold it with `lyx tender pause p1`")
 		}},
 		{"a run owned elsewhere gets a pair pause entry with the owner label, lifts the daemon's entry and names the owner and the adopt", func(t *testing.T) {
@@ -638,7 +713,25 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" || live[0].Caller != pauserecord.OwnerCaller {
 				t.Errorf("got %+v, %v, live %+v; want done with only the pair entry live under the owner caller", got, err, live)
 			}
+			if ended := w.endedOwnedList(); !reflect.DeepEqual(ended, []string{"p1"}) {
+				t.Errorf("EndOwned calls = %q; want p1 once", ended)
+			}
 			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lyx adopt p1` from this machine's prime takes it over here")
+		}},
+		{"an EndOwned error leaves the notice as it was", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.endOwnedErr = errors.New("a process survived")
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "owned elsewhere", Owner: "laptop"}}}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone || len(w.liveEntries()) != 1 {
+				t.Errorf("got %+v, %v, live %+v; want done with the pair entry held", got, err, w.liveEntries())
+			}
+			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lyx adopt p1` from this machine's prime takes it over here")
+			if strings.Contains(w.noticeList()[0], "survived") {
+				t.Errorf("notice = %q; want the EndOwned error left out", w.noticeList()[0])
+			}
 		}},
 		{"a failed owner pause is named with the next wake or orch start, never the tender pause", func(t *testing.T) {
 			w := newFakeWorld(t)
@@ -649,6 +742,9 @@ func TestWatch(t *testing.T) {
 
 			if err != nil || got.Phase != PhaseDone || len(w.liveEntries()) != 0 {
 				t.Errorf("got %+v, %v, live %+v; want done with nothing held", got, err, w.liveEntries())
+			}
+			if ended := w.endedOwnedList(); len(ended) != 0 {
+				t.Errorf("EndOwned calls = %q; want none after a failed owner pause", ended)
 			}
 			requireNotice(t, w, "p1 could not be paused (tender down); the next wake or `lyx orch start` pauses it again")
 			if strings.Contains(w.noticeList()[0], "lyx tender pause") {

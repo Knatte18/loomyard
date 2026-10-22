@@ -22,9 +22,12 @@ type fakeStrandOps struct {
 	markErrs  map[bool]error
 	down      reedengine.DownResult
 	downErr   error
+	// downCalls counts the calls to Down.
+	downCalls int
 }
 
 func (f *fakeStrandOps) Down() (reedengine.DownResult, error) {
+	f.downCalls++
 	return f.down, f.downErr
 }
 

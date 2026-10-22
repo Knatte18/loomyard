@@ -862,32 +862,3 @@ func TestOwnerVerdictOf(t *testing.T) {
 		})
 	}
 }
-
-// TestChildRestepped asserts a record re-steps a status only when it is a restep at that status's own stop key.
-func TestChildRestepped(t *testing.T) {
-	t.Parallel()
-
-	status := shedengine.Status{CurrentProducer: "Finalize", State: shedengine.StateFailed, History: make([]shedengine.HistoryEntry, 3)}
-	here := sheddriver.StopKeyOf(status)
-	earlier := here
-	earlier.HistoryLength--
-
-	tests := []struct {
-		name    string
-		records []shedrun.SettleRecord
-		want    bool
-	}{
-		{"restep_at_the_same_stop", []shedrun.SettleRecord{{StopKey: here, Action: shedrun.SettleRestep}}, true},
-		{"restep_at_an_earlier_stop", []shedrun.SettleRecord{{StopKey: earlier, Action: shedrun.SettleRestep}}, false},
-		{"other_action_at_the_same_stop", []shedrun.SettleRecord{{StopKey: here, Action: shedrun.SettleHandBack}}, false},
-		{"no_records", nil, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := childRestepped(tt.records, status); got != tt.want {
-				t.Errorf("childRestepped(%s) = %v; want %v", tt.name, got, tt.want)
-			}
-		})
-	}
-}

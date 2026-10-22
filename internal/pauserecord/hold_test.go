@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -349,6 +350,111 @@ func TestNetwork(t *testing.T) {
 		}
 	})
 
+	t.Run("a waiting call leaves a waiting marker that is gone once the wait returns", func(t *testing.T) {
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		setLive(t, recordPath, Entry{Scope: ScopeHub, PausedAt: epoch})
+		defer InstallGate(Gate{
+			Geometry: Geometry{RecordPath: recordPath, Slug: "a"},
+			PID:      42, StartTime: "t0",
+			Notify: func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				waiting, err := ListWaiting(recordPath, alive)
+				if want := []WaitingMarker{{PID: 42, StartTime: "t0", Slug: "a"}}; err != nil || !reflect.DeepEqual(waiting, want) {
+					t.Errorf("ListWaiting while held = %+v, %v; want %+v", waiting, err, want)
+				}
+				if ops, err := ListNetOps(recordPath, alive); err != nil || len(ops) != 0 {
+					t.Errorf("ListNetOps while held = %+v, %v; want none", ops, err)
+				}
+				if gone, _ := ListWaiting(recordPath, dead); len(gone) != 0 {
+					t.Errorf("ListWaiting with a dead process = %+v; want none", gone)
+				}
+				if files, err := os.ReadDir(WaitingDir(recordPath)); err != nil || len(files) != 0 {
+					t.Errorf("waiting dir = %v, %v; want the dead marker removed", files, err)
+				}
+				resumeLive(t, recordPath)
+				return nil
+			},
+		})()
+
+		_, done := Network("push")
+
+		if waiting, err := ListWaiting(recordPath, alive); err != nil || len(waiting) != 0 {
+			t.Fatalf("ListWaiting after the wait = %+v, %v; want none", waiting, err)
+		}
+		if ops, err := ListNetOps(recordPath, alive); err != nil || len(ops) != 1 {
+			t.Fatalf("ListNetOps after the wait = %+v, %v; want the in-flight marker", ops, err)
+		}
+		done()
+	})
+
+	t.Run("a waiting directory path taken by a file leaves the call waiting and then passing", func(t *testing.T) {
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		setLive(t, recordPath, Entry{Scope: ScopeHub, PausedAt: epoch})
+		if err := os.WriteFile(WaitingDir(recordPath), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		sleeps := 0
+		defer InstallGate(Gate{
+			Geometry: Geometry{RecordPath: recordPath, Slug: "a"},
+			Notify:   func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				sleeps++
+				resumeLive(t, recordPath)
+				return nil
+			},
+		})()
+
+		_, done := Network("push")
+
+		if sleeps != 1 {
+			t.Fatalf("sleeps = %d, want the call held once with no marker written", sleeps)
+		}
+		if ops, err := ListNetOps(recordPath, alive); err != nil || len(ops) != 1 {
+			t.Fatalf("ListNetOps = %+v, %v; want the in-flight marker", ops, err)
+		}
+		done()
+	})
+
+	t.Run("exempt all passes a hub and a slug entry at once, and holds again once restored", func(t *testing.T) {
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		live := []Entry{{Scope: ScopeHub, PausedAt: epoch}, {Scope: "a", PausedAt: epoch.Add(time.Minute)}}
+		setLive(t, recordPath, live...)
+		sleeps := 0
+		defer InstallGate(Gate{
+			Geometry: Geometry{RecordPath: recordPath, Slug: "a"},
+			Notify:   func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				sleeps++
+				resumeLive(t, recordPath)
+				return nil
+			},
+		})()
+
+		restore := SetGateExemptAll()
+		_, done := Network("fetch")
+		done()
+		if sleeps != 0 {
+			t.Fatalf("sleeps = %d with exempt all, want the call to pass at once", sleeps)
+		}
+
+		restore()
+		_, done = Network("fetch")
+		done()
+		if sleeps != 1 {
+			t.Fatalf("sleeps = %d after the restore, want the entries to hold again", sleeps)
+		}
+	})
+
+	t.Run("SetGateExemptAll with no gate installed installs none", func(t *testing.T) {
+		restore := SetGateExemptAll()
+		restore()
+		if held, done := Network("fetch"); held != 0 || installedGate.Load() != nil {
+			t.Fatalf("held = %v, gate installed = %v; want zero and no gate", held, installedGate.Load() != nil)
+		} else {
+			done()
+		}
+	})
+
 	t.Run("SetGateExempt with no gate installed is a no-op", func(t *testing.T) {
 		restore := SetGateExempt(ScopeHub, epoch)
 		restore()
@@ -356,6 +462,129 @@ func TestNetwork(t *testing.T) {
 			t.Fatalf("held = %v with no gate, want zero", held)
 		} else {
 			done()
+		}
+	})
+
+	// networkInGoroutine runs Network on its own goroutine, so a deferral that ends it with runtime.Goexit stands in for a child's exit.
+	networkInGoroutine := func(t *testing.T) (inFlight bool) {
+		t.Helper()
+		finished := make(chan struct{})
+		go func() {
+			defer close(finished)
+			_, done := Network("push")
+			inFlight = true
+			done()
+		}()
+		<-finished
+		return inFlight
+	}
+
+	deferralRows := []struct {
+		name          string
+		live          []Entry
+		gate          Gate
+		deferral      func(calls *int) func()
+		wantCalls     int
+		wantSleeps    int
+		wantInFlight  bool
+		wantCoveredAt bool
+	}{
+		{
+			name:         "a Defer gate covered by a hub entry calls the deferral once and never sleeps",
+			live:         []Entry{{Scope: ScopeHub, PausedAt: epoch}},
+			gate:         Gate{Defer: true},
+			deferral:     func(calls *int) func() { return func() { *calls++; runtime.Goexit() } },
+			wantCalls:    1,
+			wantSleeps:   0,
+			wantInFlight: false, wantCoveredAt: true,
+		},
+		{
+			name:         "a Defer gate with nothing covering calls no deferral and marks its operation",
+			gate:         Gate{Defer: true},
+			deferral:     func(calls *int) func() { return func() { *calls++; runtime.Goexit() } },
+			wantInFlight: true,
+		},
+		{
+			name:          "a Defer gate with no deferral stored waits until the entry is lifted",
+			live:          []Entry{{Scope: ScopeHub, PausedAt: epoch}},
+			gate:          Gate{Defer: true},
+			wantSleeps:    1,
+			wantInFlight:  true,
+			wantCoveredAt: true,
+		},
+		{
+			name:          "a Defer gate whose deferral returns waits until the entry is lifted",
+			live:          []Entry{{Scope: ScopeHub, PausedAt: epoch}},
+			gate:          Gate{Defer: true},
+			deferral:      func(calls *int) func() { return func() { *calls++ } },
+			wantCalls:     1,
+			wantSleeps:    1,
+			wantInFlight:  true,
+			wantCoveredAt: true,
+		},
+		{
+			name:         "an OwnerEntryExempt gate passes its own slug's owner entry at once",
+			live:         []Entry{{Scope: "a", Caller: OwnerCaller, PausedAt: epoch}},
+			gate:         Gate{OwnerEntryExempt: true},
+			wantInFlight: true,
+		},
+		{
+			name:          "an OwnerEntryExempt gate still waits on a hub entry",
+			live:          []Entry{{Scope: ScopeHub, Caller: OwnerCaller, PausedAt: epoch}},
+			gate:          Gate{OwnerEntryExempt: true},
+			wantSleeps:    1,
+			wantInFlight:  true,
+			wantCoveredAt: true,
+		},
+		{
+			name:          "an OwnerEntryExempt gate still waits on an operator's entry of its own slug",
+			live:          []Entry{{Scope: "a", Caller: "EXTERNAL", PausedAt: epoch}},
+			gate:          Gate{OwnerEntryExempt: true},
+			wantSleeps:    1,
+			wantInFlight:  true,
+			wantCoveredAt: true,
+		},
+	}
+	for _, tt := range deferralRows {
+		t.Run(tt.name, func(t *testing.T) {
+			recordPath := filepath.Join(t.TempDir(), RecordFileName)
+			setLive(t, recordPath, tt.live...)
+			sleeps, calls := 0, 0
+			gate := tt.gate
+			gate.Geometry = Geometry{RecordPath: recordPath, Slug: "a"}
+			gate.Notify = func(string) {}
+			gate.Sleep = func(ctx context.Context, d time.Duration) error {
+				sleeps++
+				resumeLive(t, recordPath)
+				return nil
+			}
+			defer InstallGate(gate)()
+			if tt.deferral != nil {
+				defer SetGateDeferral(tt.deferral(&calls))()
+			}
+
+			if got := GateCovered(); got != tt.wantCoveredAt {
+				t.Errorf("GateCovered() = %v; want %v", got, tt.wantCoveredAt)
+			}
+			inFlight := networkInGoroutine(t)
+
+			if calls != tt.wantCalls || sleeps != tt.wantSleeps || inFlight != tt.wantInFlight {
+				t.Errorf("deferral calls, sleeps, in flight = %d, %d, %v; want %d, %d, %v", calls, sleeps, inFlight, tt.wantCalls, tt.wantSleeps, tt.wantInFlight)
+			}
+		})
+	}
+
+	t.Run("GateCovered reads false with no gate installed and over a record that does not decode", func(t *testing.T) {
+		if GateCovered() {
+			t.Fatal("GateCovered() = true with no gate installed; want false")
+		}
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		if err := os.WriteFile(recordPath, []byte("{not json"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		defer InstallGate(Gate{Geometry: Geometry{RecordPath: recordPath, Slug: "a"}, Defer: true})()
+		if GateCovered() {
+			t.Fatal("GateCovered() = true over an undecodable record; want false")
 		}
 	})
 }

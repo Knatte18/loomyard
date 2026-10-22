@@ -45,6 +45,13 @@
 // The orch's session is left to the orch watcher.
 // `Lift` runs the same sequence for the one live entry whose scope, caller and pause time equal an `EntryRef`, and lifts nothing for an entry no longer live.
 //
+// A lift that lifted at least one entry then spawns what a pause deferred, after the resume lines, through the `Deps.PushPair`, `Deps.PushPrimeRecords` and `Deps.SyncBoardIfOwed` seams, each nil spawning nothing.
+// `PushPair` runs once for each pair a lifted entry covered: every pair of `Deps.Pairs` for a hub entry, the pair of its slug for a slug entry.
+// A pair a live entry of the updated record still covers, a pair `Deps.Owners` reads owned by another machine and a pair no longer in `Deps.Pairs` is left out;
+// an owners reading that fails spawns no pair push, since an owner it cannot read may be another machine.
+// `PushPrimeRecords` and `SyncBoardIfOwed` run once each.
+// The report lists the spawns under `spawned` as `pair:<slug>`, `prime-records` and `board-sync`, and a failed spawn or owners reading under `spawn_failed`; neither fails the lift.
+//
 // # Revive
 //
 // An empty slug covers the whole hub; a slug covers that pair.
@@ -73,15 +80,33 @@
 //
 // Status reports the live entries, the network operations in flight with the ones run under a parent lock marked, and the holds:
 // each parent branch a covered run holds with the runs queued behind it, and each covered run waiting in a queue with the runs behind it.
-// It adds three read-only parts:
+// It adds four read-only parts:
 //
 //   - Every live session of every task pair and then of the prime, each with its state, cause and since, and whether a live entry covers its slug.
 //     A prime session is covered only by a hub entry.
+//     A session busy on background work lists the kind of each outstanding task under `background`.
 //     A session whose state reading fails is listed with the state `unknown` and the error as its cause.
 //   - The processes running a replaced binary: each process whose exe is a deleted file with the running lyx's own file name and whose cwd is the hub or inside it.
 //     A platform that cannot list processes reports the part unsupported, and any other failed reading is reported in the part; the rest of the report is unaffected either way.
+//   - The processes: each live process registered in the owner record, by owner, with its role, pid and age.
+//     A record reads as an orphan when its owner is a slug that no registered worktree carries as its base name and that has no live batten record, the hub owner never being one,
+//     unless the process's working directory lies inside a registered worktree.
+//     Also listed are the lyx processes in a deleted directory of the hub, outside every registered worktree, that no record registers and whose exe is not deleted.
+//     A platform that cannot list processes keeps the owned records and reports the unregistered list unsupported, and a failed record or worktree reading is reported in the part;
+//     with the worktrees unread no record reads as an orphan.
 //   - The owners: each local pair with the machine that owns it, then each run-held board entry owned by another machine that has no local pair, so the orch never reads a run owned elsewhere as stalled or landed.
 //     A seam that is not told reports none, and a failed reading is reported in the part.
 //
 // Status reads no transcript and no pane content and writes nothing, so any caller may run it.
+//
+// # Reap
+//
+// Reap takes one fresh reading of the processes part and ends exactly the orphans it lists, through the `Deps.EndOwner` and `Deps.EndProcess` seams, each nil ending nothing.
+// An orphan owner whose every record reads orphan is ended whole, one `EndOwner` call per owner.
+// An orphan record of an owner that keeps a record working inside a registered worktree is ended by `EndProcess` with its recorded start time.
+// Each unregistered orphan is ended the same way with the start time of the same reading, so a pid reused since is left alone.
+// The hub owner, a pair that exists, a process working inside a registered worktree and a slug whose batten reads running are never orphans, so a reap never ends them.
+// The report lists what it ended and what survived, and the processes reading it acted on.
+// A survivor returns the report with an error naming each survivor's pid and registered role and the way forward of running the verb again once it is gone;
+// any other end error is returned after the remaining orphans are tried.
 package tenderengine

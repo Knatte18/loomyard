@@ -35,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -66,6 +67,7 @@ once. It removes the park marker and the resume report on start.`,
 				return nil
 			}
 			ctx := cmd.Context()
+			registerRunProcess(c.location, c.location.WorktreeName, runproc.RoleDriver)
 			stale := []string{shedrun.ParkMarker(c.location, c.runID), shedrun.ResumeReport(c.location, c.runID)}
 			driveLock := sheddriver.DriveLock{
 				Path:        shedrun.DriverLock(c.location, c.runID),

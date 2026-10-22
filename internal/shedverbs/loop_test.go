@@ -277,10 +277,20 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fx := newLoopFixture(t, tt.scripts...)
+			startCalls, childrenAtStart := 0, -1
+			fx.spec.Loop.OnStart = func() {
+				startCalls++
+				fx.mu.Lock()
+				childrenAtStart = len(fx.requests)
+				fx.mu.Unlock()
+			}
 			env, code := fx.execute()
 
 			if code != tt.wantExit {
 				t.Errorf("exit code = %d; want %d (%v)", code, tt.wantExit, env)
+			}
+			if startCalls != 1 || childrenAtStart != 0 {
+				t.Errorf("OnStart ran %d times with %d children started; want once, before the first child step", startCalls, childrenAtStart)
 			}
 			loop := loopOf(t, env)
 			assertLoopKeys(t, loop, false)
@@ -726,6 +736,8 @@ func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
 			if tt.unarm {
 				fx.spec.Loop = LoopSpec{}
 			}
+			startCalls := 0
+			fx.spec.Loop.OnStart = func() { startCalls++ }
 			hookCalls := 0
 			if tt.args != nil && !tt.noHook {
 				fx.spec.StepBusyKind = KindBusy
@@ -749,6 +761,9 @@ func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
 			}
 			if _, present := env["loop"]; present || len(fx.requests) != 0 {
 				t.Errorf("envelope %v and %d children; want no loop object and no child, since the refusal ran no loop", env, len(fx.requests))
+			}
+			if startCalls != 0 {
+				t.Errorf("OnStart ran %d times; want never, since a refused loop runs no step", startCalls)
 			}
 			if hookCalls != tt.wantHookCalls {
 				t.Errorf("ConsumeAttempt called %d times; want %d", hookCalls, tt.wantHookCalls)
