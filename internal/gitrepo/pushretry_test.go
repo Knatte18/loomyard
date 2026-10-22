@@ -78,6 +78,7 @@ func TestPushWithRetry_RetriesOnlyRetryableRefusalsUpToTheBound(t *testing.T) {
 		{"cannot lock ref then success", []error{cannotLock, nil}, PushBackoffDelays(), nil, false, 2, []time.Duration{time.Second}},
 		{"persistent refusal stops at the bound", []error{failed, failed, failed, failed, failed}, PushBackoffDelays(), failed, true, pushMaxAttempts, PushBackoffDelays()},
 		{"persistent refusal sleeps the caller's delays", []error{failed, failed, failed, failed}, customDelays, failed, true, len(customDelays) + 1, customDelays},
+		{"empty delays make one attempt", []error{failed, failed}, nil, failed, true, 1, nil},
 		{"non-retryable error is attempted once and returned unchanged", []error{notFastForward, nil}, PushBackoffDelays(), notFastForward, false, 1, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
