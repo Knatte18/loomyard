@@ -70,6 +70,9 @@ type fakeWorld struct {
 	pauses  []tenderengine.PauseRequest
 	// pairPauseErr fails the pair pause of its slug.
 	pairPauseErr map[string]error
+	// endedOwned holds the slug of every EndOwned call, and endOwnedErr is what each answers.
+	endedOwned  []string
+	endOwnedErr error
 
 	// reconcileResult and reconcileErr are what the fake reconcile answers; onReconcile runs inside it, where the exemption stands.
 	reconcileResult WakeReconcile
@@ -356,6 +359,19 @@ func (w *fakeWorld) hibernates() int {
 	return w.hibernateCalls
 }
 
+func (w *fakeWorld) endOwned(slug string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.endedOwned = append(w.endedOwned, slug)
+	return w.endOwnedErr
+}
+
+func (w *fakeWorld) endedOwnedList() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]string(nil), w.endedOwned...)
+}
+
 func (w *fakeWorld) pauseCount() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -421,6 +437,7 @@ func (w *fakeWorld) deps() Deps {
 		TenderStatus:  w.tenderStatus,
 		Lift:          w.lift,
 		Reconcile:     w.reconcile,
+		EndOwned:      w.endOwned,
 		ExemptNetwork: w.exemptNetwork,
 		Hibernate:     w.hibernate,
 		Notify:        w.notify,

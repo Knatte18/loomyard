@@ -22,6 +22,15 @@
 // `HubDeps` fills the lift's spawn seams: a pair's detached push over the pair's location, the prime's records push, and the board sync, which `syncBoardIfOwed` spawns when Bolt is ahead of its upstream or holds uncommitted changes, the state a sync deferred at its start leaves.
 // The resume report names them under `spawned` and the failed ones under `spawn_failed`; a pair a live entry still covers, one another machine owns and one that is gone is not pushed.
 //
+// # Owned elsewhere
+//
+// `PauseOwnedElsewhere` pauses a run another machine owns, and `EndOwnedElsewhere` then ends the run's owned processes on this machine, so a driver chain parked under the owner pause never outlives an adoption.
+// The pause stands whatever the end does: a failed end or a survivor is logged at Warn, naming `lyx fabric remove <slug>`, or `lyx reed down` in the pair while it exists, and `lyx tender reap` once it is gone.
+// A run whose Finalize is past its parent-side merge keeps its processes, since it finishes its landing on either machine; its pair's removal ends them.
+// A task worktree with no status file, or none at all, is ended by slug, since no Finalize can be running there.
+// The end spares the calling process and its ancestors, so inside `lyx batten run` batten survives its own probe's end, keeping its owner hold and probe, and the pair's removal ends it.
+// The hibernate wake fills its own end seam with `EndOwnedElsewhere`.
+//
 // # Revive
 //
 // `revive` gives one fixed carry-on line to each session stalled on an API error, and the orch a checked creel inject, reported with its id.

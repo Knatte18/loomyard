@@ -7,8 +7,10 @@ package tendercli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
@@ -206,6 +209,18 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) {
 	t.Setenv(agentname.StrandNameEnv, "")
 	h := newHub(t)
+	var ends []string
+	var endErr error
+	previous := endOwnedElsewhere
+	t.Cleanup(func() { endOwnedElsewhere = previous })
+	endOwnedElsewhere = func(location *lyxcwd.Location, slug string) ([]runproc.Ended, error) {
+		live, _ := liveEntries(t, h)
+		if len(live) != 1 {
+			t.Errorf("live entries at the end = %+v; want the pause written first", live)
+		}
+		ends = append(ends, slug)
+		return nil, endErr
+	}
 
 	for range 2 {
 		if err := PauseOwnedElsewhere(h.Location, pairSlug); err != nil {
@@ -215,6 +230,22 @@ func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) 
 
 	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Scope != pairSlug || live[0].Caller != pauserecord.OwnerCaller {
 		t.Errorf("live entries = %+v; want one entry of the pair under the owner caller", live)
+	}
+	if want := []string{pairSlug, pairSlug}; !reflect.DeepEqual(ends, want) {
+		t.Errorf("end calls = %q; want %q", ends, want)
+	}
+
+	for name, err := range map[string]error{
+		"an end error":    errors.New("signal refused"),
+		"a survivors one": &runproc.SurvivorsError{Survivors: []runproc.Ended{{PID: 7, Role: runproc.RoleDriver}}},
+	} {
+		endErr = err
+		if got := PauseOwnedElsewhere(h.Location, pairSlug); got != nil {
+			t.Errorf("PauseOwnedElsewhere() with %s = %v; want nil", name, got)
+		}
+		if live, _ := liveEntries(t, h); len(live) != 1 {
+			t.Errorf("live entries with %s = %+v; want the entry standing", name, live)
+		}
 	}
 }
 

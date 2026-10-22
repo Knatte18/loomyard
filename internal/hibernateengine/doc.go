@@ -82,6 +82,8 @@
 // Otherwise each stopped run, and each ended run still busy, gets a plain pair pause entry through `Pause`, not recorded as owned so it outlives the request; the owned entry is then lifted.
 // A pair whose pause fails is left unheld and named with `lyx tender pause <slug>`.
 // A run whose `WakeRun.Owner` is set is owned by another machine: its pair pause carries the owner caller, so a slug entry already standing adds none, and the notice names the owner and `lyx adopt <slug>` from this machine's prime.
+// Once an owner pause is added, `Deps.EndOwned` ends the run's owned processes on this machine; the hub's wiring fills it with `tendercli.EndOwnedElsewhere`, which spares a Finalize past its parent-side merge and the calling process and its ancestors.
+// An end error is logged and leaves the notice as it was, and a nil `EndOwned` skips the end.
 // A failed owner pause is named with "the next wake or `lyx orch start` pauses it again", never with `lyx tender pause`, whose entry would carry no owner label.
 // The notice names per stopped run its way forward then `lyx resume <slug>`, only `lyx resume <slug>` for a pair busy on a parked push, and `lyx cleanup --apply` in place of the resume for a pair stopped as gone; a busy ended run is named with its landing or removal and `lyx cleanup --apply`, and the other ended runs are listed.
 // A `TenderStatus` error before the reconcile fails the request with the owned entry lifted.
