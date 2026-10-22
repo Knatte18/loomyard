@@ -72,7 +72,8 @@
 // A darn save that empties `tree_scope` while `tree_scope_verify` stays non-empty, over a hub file that held a tree, is told to run `lyx config darn --set tree_scope_verify=` first and then remove the trees in the editor again.
 //
 // `lyx config reconcile` drops or fills keys across every module against its template, carrying each module's open maps whole;
-// it is a dry run unless applied.
+// it judges a file against the template its base layer's picked overlay composes, so a lens entry equal to the picked layer's prose is dropped.
+// It is a dry run unless applied.
 // A per-name map entry holding the template's value is reported under `dropped` and left out of the written file, and applying rewrites a file whenever the reconcile adds, removes or drops anything.
 // A module that retires keys or floors a value declares a migration, which reconcile runs over its present file first;
 // the dry run lists each rewrite under the module's `migrated` key, and applying writes the migrated file, even when the reconcile itself adds, removes and drops nothing.

@@ -71,6 +71,51 @@ func burlerFixture(t *testing.T, edit func(cfg *lenses.Config)) string {
 	return string(out)
 }
 
+// loadLensesWith returns lenses.Load over a scratch anchor whose lenses.yaml holds content, none when content is empty.
+func loadLensesWith(t *testing.T, content string) lenses.Config {
+	t.Helper()
+	anchor := t.TempDir()
+	writeModuleFile(t, anchor, "lenses", content)
+	cfg, err := lenses.Load(configengine.Dirs{Anchor: anchor})
+	if err != nil {
+		t.Fatalf("lenses.Load over %q: %v", content, err)
+	}
+	return cfg
+}
+
+// decodeDocument decodes a YAML document into generic values, so two documents compare regardless of key order.
+func decodeDocument(t *testing.T, data []byte) any {
+	t.Helper()
+	var document any
+	if err := yaml.Unmarshal(data, &document); err != nil {
+		t.Fatalf("decode a resolved document: %v", err)
+	}
+	return document
+}
+
+// loadLensesAt returns lenses.Load over dirs, failing the test on an error.
+func loadLensesAt(t *testing.T, dirs configengine.Dirs) lenses.Config {
+	t.Helper()
+	cfg, err := lenses.Load(dirs)
+	if err != nil {
+		t.Fatalf("lenses.Load(%+v): %v", dirs, err)
+	}
+	return cfg
+}
+
+// lensSetFixture returns a sparse lenses.yaml document that picks lensSet, none when it is empty, and holds the given lens entries.
+func lensSetFixture(t *testing.T, lensSet string, entries map[string]string) string {
+	t.Helper()
+	out, err := yaml.Marshal(struct {
+		LensSet string            `yaml:"lens_set,omitempty"`
+		Lenses  map[string]string `yaml:"lenses"`
+	}{lensSet, entries})
+	if err != nil {
+		t.Fatalf("marshal the lens-set fixture: %v", err)
+	}
+	return string(out)
+}
+
 // moduleWant is what one ReconcileAll row expects of one module's Result and config file.
 type moduleWant struct {
 	applied bool
@@ -96,6 +141,8 @@ type moduleWant struct {
 	loadsAsBatcher bool
 	// wantLoadedLenses is what lenses.Load resolves after the run; nil skips the check.
 	wantLoadedLenses *lenses.Config
+	// loadUnchanged pins that lenses.Load over the base dir resolves the same before and after the run.
+	loadUnchanged bool
 }
 
 // TestReconcileAll pins what a run does to each module's file and Result: a dry run reports and writes nothing, an apply adds the template's missing keys and prunes stale ones, an absent file is seeded from the template, and a seed-only module ("models" today) is materialized verbatim exactly once and never rewritten after -- not even to resurrect a key the operator removed -- while a non-seed-only module in the same run is still pruned.
@@ -120,6 +167,11 @@ func TestReconcileAll(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(lensesWithHubLens), &hubLensConfig); err != nil {
 		t.Fatalf("decode the hub-lens fixture: %v", err)
 	}
+	csharpLenses, baseLenses := loadLensesWith(t, "lens_set: csharp\n").Lenses, loadLensesWith(t, "").Lenses
+	lensesCSharpPick := lensSetFixture(t, "csharp", map[string]string{
+		"concurrency":    csharpLenses["concurrency"],
+		"error-handling": baseLenses["error-handling"],
+	})
 
 	tests := []struct {
 		name  string
@@ -253,6 +305,18 @@ func TestReconcileAll(t *testing.T) {
 				wantLoadedLenses: &hubLensConfig,
 			}},
 		},
+		{
+			name:  "apply under a standalone lens_set drops a lens equal to the layer's prose and keeps one equal to the base's",
+			seed:  map[string]string{"lenses": lensesCSharpPick},
+			apply: true,
+			want: map[string]moduleWant{"lenses": {
+				applied:         true,
+				droppedAll:      []string{"lenses.concurrency"},
+				fileContains:    []string{"error-handling:", "lens_set: csharp"},
+				fileNotContains: []string{"concurrency:"},
+				loadUnchanged:   true,
+			}},
+		},
 	}
 
 	// Each floored module's below-floor key: a dry run reports the raise and writes nothing, an apply writes the key at its floor.
@@ -302,12 +366,22 @@ func TestReconcileAll(t *testing.T) {
 				writeModuleFile(t, baseDir, module, content)
 			}
 
+			var loadedBefore lenses.Config
+			if tt.want["lenses"].loadUnchanged {
+				loadedBefore = loadLensesAt(t, configengine.Dirs{Anchor: baseDir})
+			}
+
 			results, err := ReconcileAll(baseDir, "", Options{Apply: tt.apply})
 			if err != nil {
 				t.Fatalf("ReconcileAll(%v): %v", tt.apply, err)
 			}
 
 			for module, want := range tt.want {
+				if want.loadUnchanged {
+					if loadedAfter := loadLensesAt(t, configengine.Dirs{Anchor: baseDir}); !reflect.DeepEqual(loadedAfter, loadedBefore) {
+						t.Errorf("lenses.Load after the run differs from before: got %+v; want %+v", loadedAfter, loadedBefore)
+					}
+				}
 				result := findResult(results, module)
 				if result == nil {
 					t.Errorf("%s result not found", module)
@@ -453,6 +527,10 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		cfg.Fans["standard"] = []string{"hub-lens"}
 		cfg.Fans["hub-fan"] = []string{"generic"}
 	})
+	lensesCSharpPick := lensSetFixture(t, "csharp", map[string]string{
+		"concurrency":    loadLensesWith(t, "lens_set: csharp\n").Lenses["concurrency"],
+		"error-handling": loadLensesWith(t, "").Lenses["error-handling"],
+	})
 
 	tests := []struct {
 		name         string
@@ -474,7 +552,27 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		// wantDropped and wantNotDropped are names the applied result's Dropped must and must not hold.
 		wantDropped    []string
 		wantNotDropped []string
+		// loadUnchanged pins that lenses.Load over the board dir resolves the same before the dry run and after the apply.
+		loadUnchanged bool
 	}{
+		{
+			name:           "lenses default under lens_set drops a lens equal to the layer's prose and keeps one equal to the base's",
+			module:         "lenses",
+			hubFile:        lensesCSharpPick,
+			wantSeed:       SeedHub,
+			wantDropped:    []string{"lenses.concurrency"},
+			wantNotDropped: []string{"lenses.error-handling"},
+			loadUnchanged:  true,
+		},
+		{
+			name:         "lenses default absent is seeded from a prime holding lens_set and drops the layer-equal lens",
+			module:       "lenses",
+			primeFile:    lensesCSharpPick,
+			seedDefaults: true,
+			wantSeed:     SeedPrime,
+			wantContains: []string{"lens_set: csharp", "error-handling:"},
+			wantAbsent:   []string{"concurrency:"},
+		},
 		{
 			name:     "lenses default present keeps tuned and hub-only entries and drops template-equal ones",
 			module:   "lenses",
@@ -668,6 +766,10 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			}
 			writeModuleFile(t, boardDir, "warp", tt.legacyFirst)
 			hubPath := configengine.ConfigFile(boardDir, tt.module)
+			var loadedBefore lenses.Config
+			if tt.loadUnchanged {
+				loadedBefore = loadLensesAt(t, configengine.Dirs{Board: boardDir})
+			}
 
 			dry, err := ReconcileHubWideAt(boardDir, primeDir, HubWideOptions{SeedDefaults: tt.seedDefaults})
 			if err != nil {
@@ -710,6 +812,11 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			for _, name := range tt.wantNotDropped {
 				if slices.Contains(appliedResult.Dropped, name) {
 					t.Errorf("applied Dropped = %v; want it not to contain %q", appliedResult.Dropped, name)
+				}
+			}
+			if tt.loadUnchanged {
+				if loadedAfter := loadLensesAt(t, configengine.Dirs{Board: boardDir}); !reflect.DeepEqual(loadedAfter, loadedBefore) {
+					t.Errorf("lenses.Load after the apply differs from before: got %+v; want %+v", loadedAfter, loadedBefore)
 				}
 			}
 			if tt.wantNoFile {
@@ -1296,6 +1403,7 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 	batcherDiffering := strings.Replace(batcherTemplate, "orientation: 31400", "orientation: 31401", 1)
 	modelsTemplate := modelspec.ConfigTemplate()
 	migrate := Options{Apply: true, Migrate: true}
+	lensesCSharpConcurrency := lensSetFixture(t, "", map[string]string{"concurrency": loadLensesWith(t, "lens_set: csharp\n").Lenses["concurrency"]})
 
 	tests := []struct {
 		name         string
@@ -1376,6 +1484,11 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 			name: "a hub missing a repo default strips nothing", module: "loom", opts: migrate, noDefault: true,
 			worktreeFile: stripFile, wantFile: ptr(stripFile),
 		},
+		{
+			name: "a lens equal to the prose of the layer the default picks is stripped and the picked selector is inherited", module: "lenses", opts: migrate,
+			defaultFile: "lens_set: csharp\n", worktreeFile: lensesCSharpConcurrency,
+			wantStripped: []string{"lenses.concurrency"}, wantInherited: []string{"lens_set"}, wantDeleted: true, wantMarker: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1453,10 +1566,12 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Load after: %v", err)
 			}
-			if !tt.resolutionChanges && string(after) != string(before) {
+			// A stripped per-name entry resolves from the template, so the keys may come back in another order.
+			sameResolution := reflect.DeepEqual(decodeDocument(t, before), decodeDocument(t, after))
+			if !tt.resolutionChanges && !sameResolution {
 				t.Errorf("resolution changed by the migration:\nbefore:\n%s\nafter:\n%s", before, after)
 			}
-			if tt.resolutionChanges && string(after) == string(before) {
+			if tt.resolutionChanges && sameResolution {
 				t.Errorf("resolution unchanged by a strip of a former value:\n%s", after)
 			}
 		})
@@ -1523,12 +1638,21 @@ func findLayerResult(results []Result, module string, layer configengine.Layer) 
 func TestReconcile_FailureNamesItsFile(t *testing.T) {
 	t.Parallel()
 	const unparseable = "key: [unclosed\n"
+	const unknownLensSet = "lens_set: nope\n"
 	tests := []struct {
 		name       string
 		run        func(baseDir, boardDir string) error
 		module     string
 		wantInBase bool
 		hubFile    string
+		// content is the failing file's bytes; empty keeps unparseable.
+		content string
+		// wantErr are substrings the message must hold.
+		wantErr []string
+		// worktreeFile is written as the module's file in the base dir beside a content file at the board dir.
+		worktreeFile string
+		// burlerFile is written as the board's burler.yaml.
+		burlerFile string
 	}{
 		{
 			name: "ReconcileAll on an unparseable per-worktree file",
@@ -1566,6 +1690,61 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 			wantInBase: true,
 			hubFile:    "readme: README.md\n",
 		},
+		{
+			name: "ReconcileAll standalone on an unknown lens_set names its own file",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileAll(baseDir, "", Options{})
+				return err
+			},
+			module:     "lenses",
+			wantInBase: true,
+			content:    unknownLensSet,
+			wantErr:    []string{"names no shipped layer"},
+		},
+		{
+			name: "ReconcileAll in a hub on a worktree file under an unknown lens_set names the board file",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileAll(baseDir, boardDir, Options{})
+				return err
+			},
+			module:       "lenses",
+			content:      unknownLensSet,
+			worktreeFile: "fans:\n  mine:\n    - generic\n",
+			wantErr:      []string{"names no shipped layer"},
+		},
+		{
+			name: "ReconcileHubWideAt on a hub file holding an unknown lens_set names the hub file",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{})
+				return err
+			},
+			module:  "lenses",
+			content: unknownLensSet,
+			wantErr: []string{"names no shipped layer"},
+		},
+		{
+			name: "ReconcileHubWideAt seeding from a prime copy under an unknown lens_set names the prime's copy",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileHubWideAt(boardDir, baseDir, HubWideOptions{SeedDefaults: true})
+				return err
+			},
+			module:     "lenses",
+			wantInBase: true,
+			content:    unknownLensSet,
+			wantErr:    []string{"names no shipped layer", "delete the lens_set line from"},
+		},
+		{
+			name: "a key move seeding the board lenses.yaml from a prime copy under an unknown lens_set names the prime's copy",
+			run: func(baseDir, boardDir string) error {
+				_, err := ReconcileHubWideAt(boardDir, baseDir, HubWideOptions{SeedDefaults: true})
+				return err
+			},
+			module:     "lenses",
+			wantInBase: true,
+			content:    unknownLensSet,
+			burlerFile: "fans:\n  theirs:\n    - generic\n",
+			wantErr:    []string{"names no shipped layer", "delete the lens_set line from"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1575,8 +1754,16 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 			if tt.wantInBase {
 				fileDir = baseDir
 			}
-			writeModuleFile(t, fileDir, tt.module, unparseable)
+			content := tt.content
+			if content == "" {
+				content = unparseable
+			}
+			writeModuleFile(t, fileDir, tt.module, content)
 			writeModuleFile(t, boardDir, tt.module, tt.hubFile)
+			if tt.worktreeFile != "" {
+				writeModuleFile(t, baseDir, tt.module, tt.worktreeFile)
+			}
+			writeModuleFile(t, boardDir, "burler", tt.burlerFile)
 
 			err := tt.run(baseDir, boardDir)
 
@@ -1590,6 +1777,11 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 			}
 			if !strings.HasPrefix(err.Error(), wantPath+": ") {
 				t.Errorf("message = %q, want it to start with %q", err.Error(), wantPath+": ")
+			}
+			for _, want := range tt.wantErr {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("message = %q, want it to contain %q", err.Error(), want)
+				}
 			}
 		})
 	}
@@ -1617,6 +1809,7 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 	})
 	const sparseFans = "fans:\n  mine:\n    - generic\n"
 	const burlerFans = "fans:\n  theirs:\n    - generic\n"
+	csharpConcurrency := loadLensesWith(t, "lens_set: csharp\n").Lenses["concurrency"]
 	keptLenses := []string{"burler.fans dropped, lenses.fans kept", "burler.lenses dropped, lenses.lenses kept"}
 	movedLenses := []string{"burler.fans -> lenses.fans", "burler.lenses -> lenses.lenses"}
 	tests := []struct {
@@ -1642,6 +1835,8 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 		added []string
 		// noAdded lists modules none of whose results carries an Added line.
 		noAdded []string
+		// stripped lists entries some result's Stripped must hold; nil skips the check.
+		stripped []string
 		// loadContains is what claude's resolved base+worktree stack must hold after the run.
 		loadContains string
 		// checkLoadRefuses is the file name claude's loader must refuse naming after the run.
@@ -1818,6 +2013,18 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 			moved:    []string{"burler.lenses -> lenses.lenses"},
 			kept:     []string{"burler.fans dropped, lenses.fans kept"},
 		},
+		{
+			name: "moved lenses are judged under the lens_set of the lenses.yaml the move creates from the prime's seed",
+			files: map[string]string{
+				"prime:lenses": "lens_set: csharp\n",
+				"board:burler": lensSetFixture(t, "", map[string]string{"concurrency": csharpConcurrency, "hub-lens": "Hub emphasis.\n"}),
+			},
+			call:     "board",
+			contains: map[string][]string{"board:lenses": {"lens_set: csharp", "hub-lens:"}},
+			excludes: map[string][]string{"board:lenses": {"concurrency:"}},
+			stripped: []string{"lenses.concurrency"},
+			moved:    []string{"burler.lenses -> lenses.lenses"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1925,6 +2132,12 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 			for _, want := range tt.added {
 				if !slices.Contains(addedLines, want) {
 					t.Errorf("Added lines = %q; want one to be %q", addedLines, want)
+				}
+			}
+			strippedLines := lines(results, func(r Result) []string { return r.Stripped })
+			for _, want := range tt.stripped {
+				if !slices.Contains(strippedLines, want) {
+					t.Errorf("Stripped lines = %q; want one to be %q", strippedLines, want)
 				}
 			}
 			for _, module := range tt.noAdded {
