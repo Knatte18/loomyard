@@ -42,7 +42,9 @@
 package battencli
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -456,6 +458,30 @@ func (c *battenCLI) openWindowInPrimeSession(name string, lyxArgs []string) (ree
 		return reedengine.WindowResult{}, err
 	}
 	return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).OpenWindow(name, lyxArgs)
+}
+
+// ResumeInWindow runs "lyx batten run <slug> --window"'s body in this process, against the hub's prime worktree at location, and returns the envelope that verb prints.
+// It is the in-process resume an adopting verb runs for each slug it takes over.
+// A refusal, such as a done slug or one another machine owns, returns an envelope whose ok is false and whose error names the way forward;
+// the error result is reserved for a failure to arm the run or to read the envelope back.
+// The run's own driver lock, inside the window, refuses a second driver.
+func ResumeInWindow(location *lyxcwd.Location, slug string) (map[string]any, error) {
+	c := &battenCLI{spec: &shedverbs.Spec{}}
+	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug) }
+	armed, err := c.armAt(location, slug, true, "run")
+	if err != nil {
+		return nil, err
+	}
+	*c.spec = armed
+
+	cmd := &cobra.Command{Use: "run", RunE: func(cmd *cobra.Command, args []string) error { return c.runInWindow(cmd) }}
+	var out bytes.Buffer
+	clihelp.Execute(cmd, &out, []string{})
+	var envelope map[string]any
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		return nil, fmt.Errorf("battencli: the window resume of %q printed no envelope: %q: %w", slug, out.String(), err)
+	}
+	return envelope, nil
 }
 
 // windowRefusal words err from opening slug's window as a refusal that names its way forward.
