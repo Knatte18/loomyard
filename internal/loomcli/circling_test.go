@@ -223,7 +223,7 @@ func TestPerchHardCap(t *testing.T) {
 			seed: func(t *testing.T, loc *lyxcwd.Location) {
 				seedDarnHubConfig(t, loc.HubPath, "3")
 			},
-			wantHard:  4,
+			wantHard:  2,
 			wantRaise: []string{"lyx config darn --set review_hard_max_bounces=<n>"},
 		},
 		{

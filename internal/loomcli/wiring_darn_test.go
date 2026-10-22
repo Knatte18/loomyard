@@ -85,8 +85,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if got, want := c.env.GateFindingsFile("Darn-Write"), shedrun.GateFindingsFile(loc, c.runID, "Darn-Write"); got != want {
 			t.Errorf("c.env.GateFindingsFile(\"Darn-Write\") = %q; want %q", got, want)
 		}
-		if segment := c.env.Segments["Darn-Review"]; segment.MaxBounces != 1 || segment.HardMaxBounces != 4 || c.darnCfg == nil {
-			t.Errorf("Segments[Darn-Review] = %+v, c.darnCfg nil = %v; want the template's budget 1 and hard cap 4 and the loaded config", segment, c.darnCfg == nil)
+		if segment := c.env.Segments["Darn-Review"]; segment.MaxBounces != 1 || segment.HardMaxBounces != 2 || c.darnCfg == nil {
+			t.Errorf("Segments[Darn-Review] = %+v, c.darnCfg nil = %v; want the template's budget 1 and hard cap 2 and the loaded config", segment, c.darnCfg == nil)
 		}
 		if command, err := c.env.VerifyCommand(); err != nil || command != wantDarnLandingCall {
 			t.Errorf("c.env.VerifyCommand() = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
@@ -185,7 +185,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 				Bouncer:        c.env.Segments["Webster-Review"].Bouncer,
 				MaxBounces:     1,
 				MaxBouncesKey:  "review_max_bounces",
-				HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces",
+				HardMaxBounces: 2, HardMaxBouncesKey: "review_hard_max_bounces",
 				AmendMaxBounces: 1,
 				ConfigFile:      "darn.yaml",
 			}
