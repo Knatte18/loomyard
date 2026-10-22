@@ -413,8 +413,15 @@ func retireEnvelope(spec *Spec, file loopEnvelopeFile) {
 	}
 }
 
+// inFlightAt reports whether the record names a child that was still in flight when the status file read status:
+// the status file still reads the producer and history length recorded when that child started.
+func (r LoopPIDRecord) inFlightAt(status shedengine.Status) bool {
+	return r.hasChild() && r.CurrentProducer == status.CurrentProducer && r.HistoryLength == len(status.History)
+}
+
 // deadLoopStop reports a loop that is gone without an envelope, or the teardown's mark, as an interrupted stop with cause loop-exited.
 // It first kills what is left of the loop's step tree, then writes the run failed while the status file reads running.
+// The stop's detail names the step the pid file records in flight, with its trace id, only while the status file still reads that step, and says when its step tree was still running, which a loop killed from outside leaves behind.
 // For a dead loop it then writes the stop as the loop's envelope under its recorded id, delivers it and retires the pid file.
 // The teardown's mark writes no envelope and stays, so every invocation until the pair is removed stops the same way and spawns nothing.
 // Another holder of the run lock makes the stop busy: nothing is written and the pid file stays for the next invocation to retry.
@@ -423,8 +430,17 @@ func deadLoopStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, out io.Wri
 	detail := fmt.Sprintf("loop %s ended without an envelope; its output is in %s", rec.LoopID, spec.Loop.LogPath)
 	if teardown {
 		detail = "the pair's session end stopped the loop; no loop runs again until the pair is removed"
-	} else if killStepTree(rec) {
-		detail += "; its step tree was killed"
+	} else {
+		status, _ := readStatusFile(spec)
+		if rec.inFlightAt(status) {
+			detail += fmt.Sprintf("; step %s was in flight", rec.CurrentProducer)
+			if rec.TraceID != "" {
+				detail += " under trace " + rec.TraceID
+			}
+		}
+		if killStepTree(rec) {
+			detail += "; its step tree was still running and was killed"
+		}
 	}
 
 	envelope, busy := loopExitStop(ctx, spec, rec, detail)
@@ -452,6 +468,7 @@ func loopExitedEarlyStop(ctx context.Context, spec *Spec, loopID string, out io.
 
 // loopExitStop writes failed over a run a gone loop left reading running and builds the interrupted envelope of that stop.
 // A status file in any other state is left as it is and the stop is reported all the same.
+// The interrupt hook gets loop-exited and detail as the cause, and the first trace file of the step rec records in flight, or the loop log when there is none or the status file has moved past that step.
 // It reports busy, with the busy stop as its envelope, when another holder has the run lock; nothing is written then.
 func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail string) (envelope []byte, busy bool) {
 	before, _ := readStatusFile(spec)
@@ -476,7 +493,7 @@ func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail str
 		HistoryLength:   len(after.History),
 		State:           string(after.State),
 	}
-	obj.StatusMoved = rec.hasChild() && (rec.CurrentProducer != after.CurrentProducer || rec.HistoryLength != len(after.History))
+	obj.StatusMoved = rec.hasChild() && !rec.inFlightAt(after)
 	if spec.Hooks.InterruptPolicyFor != nil {
 		obj.InterruptPolicy = spec.Hooks.InterruptPolicyFor(after.CurrentProducer)
 	}
@@ -492,7 +509,13 @@ func loopExitStop(ctx context.Context, spec *Spec, rec LoopPIDRecord, detail str
 
 	friction := ""
 	if rec.LoopID != TeardownLoopID && spec.Hooks.AfterInterrupt != nil {
-		friction = spec.Hooks.AfterInterrupt(ctx, producer, "loop-exited", spec.Loop.LogPath)
+		traceFile := spec.Loop.LogPath
+		if rec.TraceID != "" && rec.inFlightAt(before) {
+			if files := traceFilesOf(spec.Loop, rec.TraceID); len(files) > 0 {
+				traceFile = files[0]
+			}
+		}
+		friction = spec.Hooks.AfterInterrupt(ctx, producer, "loop-exited: "+detail, traceFile)
 	}
 	locations := StepLocations{TraceFile: logger.TraceFile(), FrictionDir: spec.FrictionDir, ScratchDir: spec.ScratchDir, TraceID: logger.TraceID(), RunID: spec.RunID}
 	step := shortStepErrFields(stepErrFields(KindInterrupted, "", friction, locations), "")

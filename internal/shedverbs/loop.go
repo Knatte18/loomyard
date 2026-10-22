@@ -225,7 +225,7 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 			before = current
 			lastKnown = current.CurrentProducer
 			res = runChild(ctx, spec, argv, traceID, idleWindow, func(child proc.TreeRecord) {
-				pid.Child, pid.CurrentProducer, pid.HistoryLength = child, current.CurrentProducer, len(current.History)
+				pid.Child, pid.TraceID, pid.CurrentProducer, pid.HistoryLength = child, traceID, current.CurrentProducer, len(current.History)
 				if err := WriteLoopPIDRecord(loop.PIDPath, pid); err != nil {
 					logger.Warn("shed: loop could not update its pid file", "loop_id", loopID, "error", err.Error())
 				}

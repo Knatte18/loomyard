@@ -113,11 +113,12 @@ func TestDetectCrashResume(t *testing.T) {
 
 func TestClassifyHalt(t *testing.T) {
 	tests := []struct {
-		name     string
-		state    shedengine.State
-		reason   string
-		wantKind AnomalyKind
-		wantOK   bool
+		name        string
+		state       shedengine.State
+		reason      string
+		interrupted bool
+		wantKind    AnomalyKind
+		wantOK      bool
 	}{
 		{
 			name:     "BlockedGenericFallback_Escalation",
@@ -155,6 +156,27 @@ func TestClassifyHalt(t *testing.T) {
 			wantOK:   true,
 		},
 		{
+			name:        "FailedInterrupted_InterruptedStop",
+			state:       shedengine.StateFailed,
+			reason:      "loop-exited: loop 1 ended without an envelope",
+			interrupted: true,
+			wantKind:    AnomalyInterrupted,
+			wantOK:      true,
+		},
+		{
+			name:        "BlockedInterrupted_Escalation",
+			state:       shedengine.StateBlocked,
+			reason:      "webster stuck on batch 3",
+			interrupted: true,
+			wantKind:    AnomalyEscalation,
+			wantOK:      true,
+		},
+		{
+			name:        "RunningInterrupted_None",
+			state:       shedengine.StateRunning,
+			interrupted: true,
+		},
+		{
 			name:   "Running_None",
 			state:  shedengine.StateRunning,
 			reason: "",
@@ -178,9 +200,9 @@ func TestClassifyHalt(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			kind, ok := ClassifyHalt(tt.state, tt.reason)
+			kind, ok := ClassifyHalt(tt.state, tt.reason, tt.interrupted)
 			if kind != tt.wantKind || ok != tt.wantOK {
-				t.Errorf("ClassifyHalt(%q, %q) = (%q, %v); want (%q, %v)", tt.state, tt.reason, kind, ok, tt.wantKind, tt.wantOK)
+				t.Errorf("ClassifyHalt(%q, %q, %v) = (%q, %v); want (%q, %v)", tt.state, tt.reason, tt.interrupted, kind, ok, tt.wantKind, tt.wantOK)
 			}
 		})
 	}
