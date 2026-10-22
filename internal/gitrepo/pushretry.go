@@ -18,14 +18,14 @@ import (
 // The error also wraps the last push error, and never ErrPushRejected.
 var ErrPushRetriesExhausted = errors.New("gitrepo: push retries exhausted")
 
-// pushMaxAttempts is the total number of pushes a retryably refused push gets.
+// pushMaxAttempts is the total number of pushes the plain push primitives give a retryably refused push.
 const pushMaxAttempts = 4
 
-// pushBaseBackoff is the delay before the second attempt; each later delay doubles it.
+// pushBaseBackoff is the plain push primitives' delay before the second attempt; each later delay doubles it.
 const pushBaseBackoff = time.Second
 
-// PushBackoffDelays returns the delays PushWithRetry sleeps between its attempts, in order: pushBaseBackoff, then each doubled, one fewer than pushMaxAttempts.
-// A caller that retries a push on its own sleeps the same delays.
+// PushBackoffDelays returns the delays the plain push primitives sleep between their attempts, in order: pushBaseBackoff, then each doubled, one fewer than pushMaxAttempts.
+// A caller that retries a push on the same schedule passes or sleeps these delays.
 func PushBackoffDelays() []time.Duration {
 	delays := make([]time.Duration, 0, pushMaxAttempts-1)
 	delay := pushBaseBackoff
@@ -72,22 +72,27 @@ func retryablePushRefusal(err error, ref string) (line string, retryable bool) {
 }
 
 // namesRef reports whether name is ref in its short form or its full refs/heads/ or refs/tags/ form.
+// A ref given in full form also matches its short form, which is how git prints a pushed ref.
 func namesRef(name, ref string) bool {
+	for _, namespace := range []string{"refs/heads/", "refs/tags/"} {
+		if short, found := strings.CutPrefix(ref, namespace); found {
+			return name == ref || name == short
+		}
+	}
 	return name == ref || name == "refs/heads/"+ref || name == "refs/tags/"+ref
 }
 
-// PushWithRetry calls push up to pushMaxAttempts times in total, sleeping a doubling backoff between attempts, only while push fails with a retryable remote refusal of ref.
+// PushWithRetry calls push up to one time more than delays holds, sleeping each delay in order between attempts, only while push fails with a retryable remote refusal of ref.
 // A non-retryable error returns unchanged on its attempt; an exhausted retry returns an error wrapping ErrPushRetriesExhausted and the last push error.
 // A nil sleep sleeps the delay plus up to half of it as jitter.
 //
 // On the records repository the refusal `! [remote rejected] main -> main (failed)` is a ref-update race:
 // the remote refuses a ref update that raced another update of that repository's `main` (board writes and other runs' record pushes), and the local ref is not stale.
 // The retry is the intended path for it, and the Warn each retry logs is the signal that surfaced the race.
-func PushWithRetry(push func() error, ref string, sleep func(time.Duration)) error {
+func PushWithRetry(push func() error, ref string, delays []time.Duration, sleep func(time.Duration)) error {
 	if sleep == nil {
 		sleep = func(delay time.Duration) { time.Sleep(delay + rand.N(delay/2+1)) }
 	}
-	delay := pushBaseBackoff
 	for attempt := 1; ; attempt++ {
 		err := push()
 		if err == nil {
@@ -97,11 +102,10 @@ func PushWithRetry(push func() error, ref string, sleep func(time.Duration)) err
 		if !retryable {
 			return err
 		}
-		if attempt == pushMaxAttempts {
+		if attempt > len(delays) {
 			return fmt.Errorf("%w after %d attempts: %w", ErrPushRetriesExhausted, attempt, err)
 		}
 		logger.Warn("gitrepo: push refused, retrying", "ref", ref, "attempt", attempt, "stderr", line)
-		sleep(delay)
-		delay *= 2
+		sleep(delays[attempt-1])
 	}
 }

@@ -1,6 +1,8 @@
 //go:build integration
 
-// pushretry_integration_test.go pins, against a real bare remote that refuses every pushed branch with a remote "cannot lock ref", the ordering the fake push in pushretry_test.go cannot reach: the retry exhausts before the rebase-retry or the ErrPushRejected mapping is consulted.
+// pushretry_integration_test.go pins, against a real bare remote that refuses every pushed ref with a remote "cannot lock ref", what the fake push in pushretry_test.go cannot reach:
+// the retry exhausts before the rebase-retry or the ErrPushRejected mapping is consulted,
+// and a tag pushed by its full ref is retried on the short name git prints for it.
 
 package gitrepo
 
@@ -13,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 )
 
@@ -49,6 +52,40 @@ done
 printf '0000'
 `
 
+// newRefusingRemoteClone returns a clone, with one commit pushed to its bare origin's main, whose origin from then on refuses every pushed ref under refusedRefs with a remote "cannot lock ref".
+// It also returns the path of the log the refusing hook appends one line to per push.
+func newRefusingRemoteClone(t *testing.T, refusedRefs string) (clonePath, hookLog string) {
+	t.Helper()
+
+	container := t.TempDir()
+	bare := filepath.Join(container, "remote.git")
+	gitkit.MustRun(t, container, "git", "init", "--bare", "-b", "main", bare)
+	clonePath = filepath.Join(container, "clone")
+	gitkit.MustRun(t, container, "git", "clone", bare, clonePath)
+	gitkit.CommitFile(t, clonePath, "first.txt", "first", "first commit")
+	gitkit.Git(t, clonePath, "push", "origin", "HEAD:main")
+
+	hookLog = filepath.Join(container, "hook.log")
+	hook := filepath.Join(bare, "hooks", "proc-receive")
+	script := strings.ReplaceAll(procReceiveRefuseScript, hookLogPlaceholder, filepath.ToSlash(hookLog))
+	if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
+		t.Fatalf("write proc-receive hook: %v", err)
+	}
+	gitkit.Git(t, bare, "config", "receive.procReceiveRefs", refusedRefs)
+	return clonePath, hookLog
+}
+
+// hookRuns returns how many pushes the refusing hook logged at hookLog.
+func hookRuns(t *testing.T, hookLog string) int {
+	t.Helper()
+
+	logged, err := os.ReadFile(hookLog)
+	if err != nil {
+		t.Fatalf("read hook log: %v", err)
+	}
+	return strings.Count(string(logged), "run")
+}
+
 func TestPlainPushPrimitives_ExhaustedRetryWrapsSentinelAndNeverRebases(t *testing.T) {
 	t.Parallel()
 
@@ -62,21 +99,7 @@ func TestPlainPushPrimitives_ExhaustedRetryWrapsSentinelAndNeverRebases(t *testi
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			container := t.TempDir()
-			bare := filepath.Join(container, "remote.git")
-			gitkit.MustRun(t, container, "git", "init", "--bare", "-b", "main", bare)
-			clonePath := filepath.Join(container, "clone")
-			gitkit.MustRun(t, container, "git", "clone", bare, clonePath)
-			gitkit.CommitFile(t, clonePath, "first.txt", "first", "first commit")
-			gitkit.Git(t, clonePath, "push", "origin", "HEAD:main")
-
-			hookLog := filepath.Join(container, "hook.log")
-			hook := filepath.Join(bare, "hooks", "proc-receive")
-			script := strings.ReplaceAll(procReceiveRefuseScript, hookLogPlaceholder, filepath.ToSlash(hookLog))
-			if err := os.WriteFile(hook, []byte(script), 0o755); err != nil {
-				t.Fatalf("write proc-receive hook: %v", err)
-			}
-			gitkit.Git(t, bare, "config", "receive.procReceiveRefs", "refs/heads")
+			clonePath, hookLog := newRefusingRemoteClone(t, "refs/heads")
 
 			gitkit.CommitFile(t, clonePath, "second.txt", "second", "second commit")
 			headBefore := gitkit.RevParse(t, clonePath, "HEAD")
@@ -93,11 +116,7 @@ func TestPlainPushPrimitives_ExhaustedRetryWrapsSentinelAndNeverRebases(t *testi
 			if errors.Is(err, ErrPushRejected) {
 				t.Errorf("err = %v; must not map to ErrPushRejected", err)
 			}
-			logged, readErr := os.ReadFile(hookLog)
-			if readErr != nil {
-				t.Fatalf("read hook log: %v", readErr)
-			}
-			if runs := strings.Count(string(logged), "run"); runs != pushMaxAttempts {
+			if runs := hookRuns(t, hookLog); runs != pushMaxAttempts {
 				t.Errorf("hook ran %d times; want %d", runs, pushMaxAttempts)
 			}
 			wantSleeps := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}
@@ -113,5 +132,30 @@ func TestPlainPushPrimitives_ExhaustedRetryWrapsSentinelAndNeverRebases(t *testi
 				}
 			}
 		})
+	}
+}
+
+func TestPushWithRetry_RetriesARealRefusalOfATagPushedByItsFullRef(t *testing.T) {
+	t.Parallel()
+
+	clonePath, hookLog := newRefusingRemoteClone(t, "refs/tags")
+	const tagRef = "refs/tags/archive/slug/0123456789ab"
+	gitkit.Git(t, clonePath, "tag", strings.TrimPrefix(tagRef, "refs/tags/"))
+	delays := []time.Duration{time.Millisecond, 2 * time.Millisecond}
+
+	var sleeps []time.Duration
+	err := PushWithRetry(func() error {
+		_, err := gitexec.Run([]string{"push", "origin", tagRef}, clonePath)
+		return err
+	}, tagRef, delays, func(delay time.Duration) { sleeps = append(sleeps, delay) })
+
+	if !errors.Is(err, ErrPushRetriesExhausted) {
+		t.Errorf("err = %v; want it to wrap ErrPushRetriesExhausted", err)
+	}
+	if runs := hookRuns(t, hookLog); runs != len(delays)+1 {
+		t.Errorf("hook ran %d times; want %d", runs, len(delays)+1)
+	}
+	if !reflect.DeepEqual(sleeps, delays) {
+		t.Errorf("sleeps = %v; want %v", sleeps, delays)
 	}
 }
