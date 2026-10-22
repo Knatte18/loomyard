@@ -131,7 +131,7 @@ func (t *Topology) lockPairTeardown(rec *Mutations, l *lyxcwd.Location, slug str
 		return nil, fmt.Errorf("the teardown lock of the pair %q is held by a push or another removal: %w", slug, ErrPairBusy)
 	}
 	if !acquired {
-		return nil, fmt.Errorf("a push of the pair %q is still running or waiting under a pause; re-run `lyx fabric remove %s` once the push finishes or the pause is resumed, or end the stuck push child, whose pid its spawn logged: %w", slug, slug, ErrPairPushRunning)
+		return nil, fmt.Errorf("a push of the pair %q is still running or waiting under a pause; re-run `lyx fabric remove %s` once the push finishes or the pause is resumed, or end the stuck push child, whose pid `lyx tender status` lists under the pair's owner: %w", slug, slug, ErrPairPushRunning)
 	}
 	return func() { _ = held.Release() }, nil
 }

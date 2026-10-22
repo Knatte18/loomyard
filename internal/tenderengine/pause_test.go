@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -251,6 +252,12 @@ type env struct {
 	// owners and ownersErr are what the owners reading answers; a nil owners leaves the seam unset.
 	owners    []PairOwner
 	ownersErr error
+	// runProcs and runProcsErr are what the owner-record reading answers.
+	runProcs    map[string][]runproc.Record
+	runProcsErr error
+	// worktrees and worktreesErr are what the registered-worktree reading answers.
+	worktrees    []string
+	worktreesErr error
 }
 
 // fakeCreel is a mutex-guarded stand-in for the creel journal of tender's orch revive injects, safe for concurrent revives.
@@ -294,6 +301,8 @@ func (e *env) deps() Deps {
 		RecordPath: e.path,
 		Pairs:      pairs,
 		Processes:  func() ([]proc.Process, error) { return e.processes, e.processErr },
+		RunProcs:   func() (map[string][]runproc.Record, error) { return e.runProcs, e.runProcsErr },
+		Worktrees:  func() ([]string, error) { return e.worktrees, e.worktreesErr },
 		HubPath:    e.hubPath,
 		Executable: e.executable,
 		OrchStrand: func() (string, error) { return e.orchStrand, nil },

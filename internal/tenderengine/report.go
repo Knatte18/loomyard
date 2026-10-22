@@ -10,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -63,6 +64,10 @@ type Deps struct {
 	Prime Pair
 	// Processes lists the processes running on the machine.
 	Processes func() ([]proc.Process, error)
+	// RunProcs lists each owner's live registered run processes; nil reads none.
+	RunProcs func() (map[string][]runproc.Record, error)
+	// Worktrees lists the path of every worktree git still registers, prime and task alike; nil reads none.
+	Worktrees func() ([]string, error)
 	// HubPath is the hub directory.
 	HubPath string
 	// Executable is the running lyx's own executable path, empty when it is unknown.

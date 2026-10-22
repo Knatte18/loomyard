@@ -10,6 +10,7 @@
 // The orch and an external caller may run `pause`, `resume` and `revive` with or without a slug.
 // An agent may pause, resume or revive only its own pair, so a hub-wide call, or one naming another slug, is refused with the way forward of asking its parent session.
 // `status` takes no caller check, since it writes nothing.
+// Its processes part reads the hub's owner record and every worktree git still registers, prunable ones included, so a pair whose worktree exists keeps its slug's records out of the orphans.
 // The check guards against a mistaken call: the agents' settings deny any command naming the variable, so an agent cannot clear it to read as external.
 //
 // # Input

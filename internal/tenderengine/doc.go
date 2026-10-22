@@ -80,13 +80,19 @@
 //
 // Status reports the live entries, the network operations in flight with the ones run under a parent lock marked, and the holds:
 // each parent branch a covered run holds with the runs queued behind it, and each covered run waiting in a queue with the runs behind it.
-// It adds three read-only parts:
+// It adds four read-only parts:
 //
 //   - Every live session of every task pair and then of the prime, each with its state, cause and since, and whether a live entry covers its slug.
 //     A prime session is covered only by a hub entry.
 //     A session whose state reading fails is listed with the state `unknown` and the error as its cause.
 //   - The processes running a replaced binary: each process whose exe is a deleted file with the running lyx's own file name and whose cwd is the hub or inside it.
 //     A platform that cannot list processes reports the part unsupported, and any other failed reading is reported in the part; the rest of the report is unaffected either way.
+//   - The processes: each live process registered in the owner record, by owner, with its role, pid and age.
+//     A record reads as an orphan when its owner is a slug that no registered worktree carries as its base name and that has no live batten record, the hub owner never being one,
+//     unless the process's working directory lies inside a registered worktree.
+//     Also listed are the lyx processes in a deleted directory of the hub, outside every registered worktree, that no record registers and whose exe is not deleted.
+//     A platform that cannot list processes keeps the owned records and reports the unregistered list unsupported, and a failed record or worktree reading is reported in the part;
+//     with the worktrees unread no record reads as an orphan.
 //   - The owners: each local pair with the machine that owns it, then each run-held board entry owned by another machine that has no local pair, so the orch never reads a run owned elsewhere as stalled or landed.
 //     A seam that is not told reports none, and a failed reading is reported in the part.
 //

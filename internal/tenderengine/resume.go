@@ -51,6 +51,8 @@ type StatusReport struct {
 	Sessions []SessionStatus `json:"sessions"`
 	// Stale holds the processes running a replaced binary.
 	Stale StaleReport `json:"stale"`
+	// Processes holds the run processes registered in the owner record, the orphans among them, and the lyx processes no record owns.
+	Processes ProcessReport `json:"processes"`
 	// Owners holds each local pair with its effective owner, then each run-held entry owned by another machine that has no local pair.
 	Owners []PairOwner `json:"owners"`
 	// OwnersError is the error of a failed owners reading, empty when it read.
@@ -535,14 +537,14 @@ func describeState(state shuttleengine.SessionState) string {
 	return fmt.Sprintf("%s (%s)", state.Name, state.Cause)
 }
 
-// Status reads the live entries, the holds, every live session's state, the processes running a replaced binary and the owners of the pairs, changing nothing.
+// Status reads the live entries, the holds, every live session's state, the processes running a replaced binary, the processes registered to runs with the orphans among them and the owners of the pairs, changing nothing.
 // A failed state, process or owners reading is reported inside its own part and leaves the rest of the report intact.
 func Status(deps Deps) (StatusReport, error) {
 	record, err := pauserecord.Read(deps.RecordPath)
 	if err != nil {
 		return StatusReport{}, err
 	}
-	report := StatusReport{Live: append([]pauserecord.Entry{}, record.Live...), Stale: StaleReport{Supported: true, Processes: []StaleProcess{}}, Owners: []PairOwner{}}
+	report := StatusReport{Live: append([]pauserecord.Entry{}, record.Live...), Stale: StaleReport{Supported: true, Processes: []StaleProcess{}}, Processes: ProcessReport{Owned: []OwnedProcess{}, Unregistered: []StaleProcess{}, UnregisteredSupported: true}, Owners: []PairOwner{}}
 	if report.Sessions, err = sessionStatuses(deps, record); err != nil {
 		return report, err
 	}
@@ -554,17 +556,22 @@ func Status(deps Deps) (StatusReport, error) {
 			report.Owners = append(report.Owners, owners...)
 		}
 	}
+	var (
+		processes    []proc.Process
+		processesErr error
+	)
 	if deps.Processes != nil {
-		processes, err := deps.Processes()
+		processes, processesErr = deps.Processes()
 		switch {
-		case errors.Is(err, errors.ErrUnsupported):
+		case errors.Is(processesErr, errors.ErrUnsupported):
 			report.Stale.Supported = false
-		case err != nil:
-			report.Stale.Error = err.Error()
+		case processesErr != nil:
+			report.Stale.Error = processesErr.Error()
 		default:
 			report.Stale.Processes = staleProcesses(processes, deps.HubPath, deps.Executable)
 		}
 	}
+	report.Processes = readProcesses(deps, processes, processesErr)
 	if report.NetOps, err = netOpReports(deps, func(string) bool { return true }); err != nil {
 		return report, err
 	}

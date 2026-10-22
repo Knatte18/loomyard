@@ -55,6 +55,10 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		// pairLocations holds each task pair's location by slug, for the push a lift spawns.
 		pairLocations = map[string]*lyxcwd.Location{}
 	)
+	worktreePaths := make([]string, 0, len(worktrees))
+	for _, worktree := range worktrees {
+		worktreePaths = append(worktreePaths, worktree.Path)
+	}
 	for _, worktree := range worktrees {
 		if worktree.Prunable {
 			continue
@@ -98,6 +102,10 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		Pairs:      pairs,
 		Prime:      primePair,
 		Processes:  proc.ListProcesses,
+		RunProcs: func() (map[string][]runproc.Record, error) {
+			return runproc.Owners(fabricengine.RunProcDir(location.HubPath))
+		},
+		Worktrees:  func() ([]string, error) { return worktreePaths, nil },
 		HubPath:    location.HubPath,
 		Executable: executable,
 		OrchStrand: func() (string, error) {

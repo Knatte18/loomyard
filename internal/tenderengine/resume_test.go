@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -825,6 +826,134 @@ func TestStatus(t *testing.T) {
 					t.Errorf("report = %+v; want sessions and live entries still read", report)
 				}
 			})
+		}
+	})
+
+	t.Run("the processes part lists each registered process and marks the orphans", func(t *testing.T) {
+		registeredAt := newFakeClock().Now().Add(-90 * time.Second)
+		record := func(pid int, role string) runproc.Record {
+			return runproc.Record{PID: pid, Role: role, RegisteredAt: registeredAt}
+		}
+		listed := func(pid int, cwd string) proc.Process { return proc.Process{PID: pid, Cwd: cwd} }
+		tests := []struct {
+			name      string
+			runProcs  map[string][]runproc.Record
+			worktrees []string
+			processes []proc.Process
+			want      map[int]bool
+		}{
+			{"SlugWithRegisteredWorktreeIsKept", map[string][]runproc.Record{"gone": {record(10, runproc.RoleLoop)}}, []string{"/hub/gone"}, nil, map[int]bool{10: false}},
+			{"SlugWithNoWorktreeAndNoBattenIsOrphan", map[string][]runproc.Record{"gone": {record(10, runproc.RoleLoop)}}, []string{"/hub/other"}, nil, map[int]bool{10: true}},
+			{"SlugWithLiveBattenIsKept", map[string][]runproc.Record{"gone": {record(10, runproc.RoleLoop), record(11, runproc.RoleBatten)}}, nil, nil, map[int]bool{10: false, 11: false}},
+			{"RecordWorkingInsideAWorktreeIsKept", map[string][]runproc.Record{"gone": {record(10, runproc.RoleLoop), record(11, runproc.RoleDriver)}}, []string{"/hub/other"}, []proc.Process{listed(10, "/hub/other/sub"), listed(11, "/elsewhere")}, map[int]bool{10: false, 11: true}},
+			{"HubOwnerIsNeverOrphan", map[string][]runproc.Record{runproc.HubOwner: {record(10, runproc.RoleSync)}}, nil, nil, map[int]bool{10: false}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				e := newEnv(t)
+				e.runProcs, e.worktrees, e.processes, e.executable = tt.runProcs, tt.worktrees, tt.processes, "/bin/lyx"
+
+				report := read(t, e).Processes
+
+				got := map[int]bool{}
+				for _, owned := range report.Owned {
+					got[owned.PID] = owned.Orphan
+					if owned.AgeSeconds != 90 {
+						t.Errorf("process %+v; want age 90 seconds", owned)
+					}
+				}
+				if !reflect.DeepEqual(got, tt.want) || report.Error != "" {
+					t.Errorf("orphans = %v, error = %q; want %v", got, report.Error, tt.want)
+				}
+			})
+		}
+
+		e := newEnv(t)
+		e.runProcs = map[string][]runproc.Record{"b": {record(2, runproc.RoleLoop)}, "a": {record(1, runproc.RoleDriver)}}
+		e.worktrees = []string{"/hub/a", "/hub/b"}
+		want := []OwnedProcess{{Owner: "a", Role: runproc.RoleDriver, PID: 1, AgeSeconds: 90}, {Owner: "b", Role: runproc.RoleLoop, PID: 2, AgeSeconds: 90}}
+		if got := read(t, e).Processes.Owned; !reflect.DeepEqual(got, want) {
+			t.Errorf("owned = %+v; want %+v in owner order with owner, role, pid and age", got, want)
+		}
+	})
+
+	t.Run("a failed record or worktree reading lands in the processes error and the rest stands", func(t *testing.T) {
+		registeredAt := newFakeClock().Now()
+		runProcs := map[string][]runproc.Record{"gone": {{PID: 10, Role: runproc.RoleLoop, RegisteredAt: registeredAt}}}
+		tests := []struct {
+			name         string
+			runProcs     map[string][]runproc.Record
+			runProcsErr  error
+			worktreesErr error
+			wantOwned    int
+			wantError    string
+		}{
+			{"RunProcsFails", runProcs, errors.New("record unreadable"), nil, 0, "record unreadable"},
+			{"WorktreesFail", runProcs, nil, errors.New("git unreadable"), 1, "git unreadable"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				e := newEnv(t, newPair("p1", "a"))
+				e.seedLive(hubEntry(e.clock.Now()))
+				e.runProcs, e.runProcsErr, e.worktreesErr = tt.runProcs, tt.runProcsErr, tt.worktreesErr
+
+				report := read(t, e)
+
+				if report.Processes.Error != tt.wantError || len(report.Processes.Owned) != tt.wantOwned {
+					t.Errorf("processes = %+v; want error %q and %d owned", report.Processes, tt.wantError, tt.wantOwned)
+				}
+				for _, owned := range report.Processes.Owned {
+					if owned.Orphan {
+						t.Errorf("process %+v read as an orphan with the worktrees unread", owned)
+					}
+				}
+				if len(report.Sessions) != 1 || len(report.Live) != 1 {
+					t.Errorf("report = %+v; want sessions and live entries still read", report)
+				}
+			})
+		}
+	})
+
+	t.Run("unregistered lyx processes are those in a deleted hub directory outside every worktree that no record owns", func(t *testing.T) {
+		e := newEnv(t)
+		e.hubPath = "/home/u/hub"
+		e.executable = "/home/u/go/bin/lyx"
+		e.worktrees = []string{"/home/u/hub/live"}
+		e.runProcs = map[string][]runproc.Record{"p": {{PID: 4, Role: runproc.RoleLoop, RegisteredAt: e.clock.Now()}}}
+		listed := func(pid int, exe, cwd string) proc.Process {
+			return proc.Process{PID: pid, StartTime: "t" + fmt.Sprint(pid), Exe: exe, Cwd: cwd, Argv: []string{"lyx", "x"}}
+		}
+		const lyx = "/home/u/go/bin/lyx"
+		e.processes = []proc.Process{
+			listed(1, lyx, "/home/u/hub/gone (deleted)"),
+			listed(2, lyx, "/home/u/hub/live/sub (deleted)"),
+			listed(3, lyx, "/home/u/other (deleted)"),
+			listed(4, lyx, "/home/u/hub/gone (deleted)"),
+			listed(5, lyx+" (deleted)", "/home/u/hub/gone (deleted)"),
+			listed(6, lyx, "/home/u/hub/live"),
+			listed(7, "/usr/bin/other", "/home/u/hub/gone (deleted)"),
+		}
+
+		report := read(t, e).Processes
+
+		var pids []int
+		for _, process := range report.Unregistered {
+			pids = append(pids, process.PID)
+		}
+		if !report.UnregisteredSupported || !reflect.DeepEqual(pids, []int{1}) {
+			t.Errorf("unregistered = %+v; want only pid 1 on a supported platform", report)
+		}
+	})
+
+	t.Run("an unsupported process reading keeps the owned list and marks the unregistered part unsupported", func(t *testing.T) {
+		e := newEnv(t)
+		e.runProcs = map[string][]runproc.Record{"p": {{PID: 4, Role: runproc.RoleLoop, RegisteredAt: e.clock.Now()}}}
+		e.processErr = fmt.Errorf("proc: %w", errors.ErrUnsupported)
+
+		report := read(t, e).Processes
+
+		if report.UnregisteredSupported || report.Error != "" || len(report.Owned) != 1 || len(report.Unregistered) != 0 {
+			t.Errorf("processes = %+v; want the owned record listed, unregistered unsupported and no error", report)
 		}
 	})
 
