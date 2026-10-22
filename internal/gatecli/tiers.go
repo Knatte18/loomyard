@@ -266,11 +266,22 @@ func trimpathLine(tier string, env []string) string {
 			goFlags = value
 		}
 	}
+	// go keeps the last occurrence of a repeated flag, so the last trimpath field decides.
+	enabled := false
 	for _, field := range strings.Fields(goFlags) {
-		switch strings.TrimLeft(field, "-") {
-		case "trimpath", "trimpath=true":
-			return fmt.Sprintf("gate test: %s builds with GOFLAGS=%q, and -trimpath makes runtime.Caller report module-relative file paths; a test locates its repository from its working directory or go.mod, never from a runtime.Caller path alone", tier, goFlags)
+		name, value, hasValue := strings.Cut(strings.TrimLeft(field, "-"), "=")
+		if name != "trimpath" {
+			continue
 		}
+		if !hasValue {
+			enabled = true
+			continue
+		}
+		parsed, err := strconv.ParseBool(value)
+		enabled = err == nil && parsed
 	}
-	return ""
+	if !enabled {
+		return ""
+	}
+	return fmt.Sprintf("gate test: %s builds with GOFLAGS=%q, and -trimpath makes runtime.Caller report module-relative file paths; a test locates its repository from its working directory or go.mod, never from a runtime.Caller path alone", tier, goFlags)
 }
