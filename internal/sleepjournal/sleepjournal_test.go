@@ -66,26 +66,27 @@ func TestParse(t *testing.T) {
 		})
 	}
 
-	// Read gives the sleeps with an empty clause, or no sleeps and the clause saying why.
+	// Read gives the sleeps with an empty clause, or no sleeps and the clause saying why, and whether the journal was read.
 	reads := []struct {
 		name       string
 		out        []byte
 		runErr     error
 		wantClause string
 		wantLen    int
+		wantRead   bool
 	}{
 		{name: "journalctl absent", runErr: fmt.Errorf("start: %w", exec.ErrNotFound), wantClause: "journalctl is not on PATH"},
 		{name: "a failing journalctl", runErr: errors.New("exit status 1"), wantClause: "journalctl failed: exit status 1"},
 		{name: "a line that does not decode", out: []byte("{\n"), wantClause: "journal line \"{\" does not decode: unexpected end of JSON input"},
-		{name: "an empty journal", wantClause: "the journal records no systemd-sleep operation"},
-		{name: "a recorded sleep", out: []byte(enter(1, "b1", "hibernate") + "\n" + leave(9, "b1", "hibernate") + "\n"), wantLen: 1},
+		{name: "an empty journal", wantClause: "the journal records no systemd-sleep operation", wantRead: true},
+		{name: "a recorded sleep", out: []byte(enter(1, "b1", "hibernate") + "\n" + leave(9, "b1", "hibernate") + "\n"), wantLen: 1, wantRead: true},
 	}
 	for _, tt := range reads {
 		t.Run("read "+tt.name, func(t *testing.T) {
 			t.Parallel()
-			sleeps, clause := Read(tt.out, tt.runErr)
-			if clause != tt.wantClause || len(sleeps) != tt.wantLen {
-				t.Errorf("Read = %d sleeps, %q; want %d sleeps, %q", len(sleeps), clause, tt.wantLen, tt.wantClause)
+			sleeps, clause, read := Read(tt.out, tt.runErr)
+			if clause != tt.wantClause || len(sleeps) != tt.wantLen || read != tt.wantRead {
+				t.Errorf("Read = %d sleeps, %q, read %t; want %d sleeps, %q, read %t", len(sleeps), clause, read, tt.wantLen, tt.wantClause, tt.wantRead)
 			}
 		})
 	}

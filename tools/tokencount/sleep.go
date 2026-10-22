@@ -20,7 +20,7 @@ func journalSleeps() ([]Interval, string) {
 
 // sleepsFromJournal maps the output and exit error of the journalctl run to the sleeps and the report line journalSleeps returns.
 func sleepsFromJournal(out []byte, runErr error) ([]Interval, string) {
-	read, clause := sleepjournal.Read(out, runErr)
+	read, clause, _ := sleepjournal.Read(out, runErr)
 	if clause != "" {
 		return nil, sleepLeftOutPrefix + clause + ".\n"
 	}

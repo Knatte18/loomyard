@@ -89,22 +89,23 @@ func sleepOperation(message, prefix string) string {
 	return operation
 }
 
-// Read maps the output and exit error of one journalctl run, started with Args, to the sleeps and a reason clause.
+// Read maps the output and exit error of one journalctl run, started with Args, to the sleeps, a reason clause and whether the journal was read.
 // With a sleep found the clause is empty.
 // Otherwise there are no sleeps and the clause says why nothing is left out: journalctl absent, journalctl failing, output that does not parse, or a journal with no systemd-sleep operation.
-func Read(out []byte, runErr error) ([]Interval, string) {
+// The journal reads as read only in the last case and when a sleep is found, so a caller can tell a machine that did not sleep from one whose sleep is unknown.
+func Read(out []byte, runErr error) ([]Interval, string, bool) {
 	if runErr != nil {
 		if errors.Is(runErr, exec.ErrNotFound) {
-			return nil, "journalctl is not on PATH"
+			return nil, "journalctl is not on PATH", false
 		}
-		return nil, fmt.Sprintf("journalctl failed: %v", runErr)
+		return nil, fmt.Sprintf("journalctl failed: %v", runErr), false
 	}
 	sleeps, err := Parse(out)
 	if err != nil {
-		return nil, err.Error()
+		return nil, err.Error(), false
 	}
 	if len(sleeps) == 0 {
-		return nil, "the journal records no systemd-sleep operation"
+		return nil, "the journal records no systemd-sleep operation", true
 	}
-	return sleeps, ""
+	return sleeps, "", true
 }
