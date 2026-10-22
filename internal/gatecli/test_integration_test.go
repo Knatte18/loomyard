@@ -512,6 +512,61 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 	})
 
+	t.Run("status names each held slot's number, worktree, site, tier and start, the slot count and the drain", func(t *testing.T) {
+		acquire(t, "holder one")
+		lease, err := pool.AcquireSlots(context.Background(), gateslot.Holder{Worktree: "/tiered/worktree", Site: "lyx gate test tier1", Tier: "tier1"}, 1)
+		if err != nil {
+			t.Fatalf("AcquireSlots: %v", err)
+		}
+		t.Cleanup(func() { _ = lease.Release() })
+
+		var out bytes.Buffer
+		code := RunCLIIn(prime, &out, []string{"status"})
+		var envelope struct {
+			OK       bool `json:"ok"`
+			InHub    bool `json:"in_hub"`
+			Slots    int  `json:"slots"`
+			Draining bool `json:"draining"`
+			Held     []struct {
+				Slot     int       `json:"slot"`
+				Worktree string    `json:"worktree"`
+				Site     string    `json:"site"`
+				Tier     string    `json:"tier"`
+				PID      int       `json:"pid"`
+				Started  time.Time `json:"started"`
+			} `json:"held"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+			t.Fatalf("status output %q is not a JSON envelope: %v", out.String(), err)
+		}
+		if code != 0 || !envelope.OK || !envelope.InHub || envelope.Slots != 2 || envelope.Draining || len(envelope.Held) != 2 {
+			t.Fatalf("status = exit %d, %+v; want exit 0, ok, in_hub, 2 slots, no drain and both holders", code, envelope)
+		}
+		first, second := envelope.Held[0], envelope.Held[1]
+		if first.Slot != 1 || first.Worktree != "/other/worktree" || first.Site != "holder one" || first.Tier != "" || first.PID != os.Getpid() || first.Started.IsZero() {
+			t.Errorf("status held[0] = %+v; want slot 1 held by holder one with no tier, this pid and a start", first)
+		}
+		if second.Slot != 2 || second.Worktree != "/tiered/worktree" || second.Site != "lyx gate test tier1" || second.Tier != "tier1" || second.Started.Before(first.Started) {
+			t.Errorf("status held[1] = %+v; want slot 2 held by the tier1 run, started no earlier than slot 1", second)
+		}
+	})
+
+	t.Run("status outside every hub answers in_hub false", func(t *testing.T) {
+		var out bytes.Buffer
+		code := RunCLIIn(t.TempDir(), &out, []string{"status"})
+		var envelope struct {
+			OK    bool  `json:"ok"`
+			InHub *bool `json:"in_hub"`
+			Held  []any `json:"held"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+			t.Fatalf("status output %q is not a JSON envelope: %v", out.String(), err)
+		}
+		if code != 0 || !envelope.OK || envelope.InHub == nil || *envelope.InHub || len(envelope.Held) != 0 {
+			t.Errorf("status = exit %d, %q; want exit 0, ok, in_hub false and nothing held", code, out.String())
+		}
+	})
+
 	t.Run("--wait blocks past the cap until a slot frees", func(t *testing.T) {
 		first, second := acquire(t, "holder one"), acquire(t, "holder two")
 		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--wait", "./pkg"}, env: []string{helperSlotWaitEnv + "=50ms"}})

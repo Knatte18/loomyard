@@ -76,6 +76,8 @@ type Holder struct {
 	Started time.Time `yaml:"started"`
 	// Tier is the tier key, such as tier0, of the tier run that holds the slot; empty for a holder that is no tier run.
 	Tier string `yaml:"tier,omitempty"`
+	// Slot is the number of the held slot; Holders fills it from the record's file name, and the record never carries it.
+	Slot int `yaml:"-"`
 }
 
 // Pool is the hub-wide pool of gate slots, one OS file lock per slot in Dir.
@@ -315,7 +317,7 @@ func (p *Pool) tryAcquireSlot(number int, h Holder) (heldSlot, bool, error) {
 	return heldSlot{lock: fileLock, lockPath: lockPath, recordPath: recordPath}, true, nil
 }
 
-// Holders returns the holder records of the slots whose lock is held right now, oldest first.
+// Holders returns the holder records of the slots whose lock is held right now, oldest first, each with its slot number.
 // A record is trusted only while its lock is held, so a record a crashed holder left behind is dropped; it reads every slot record in the directory, so a holder of a slot above a lowered count still shows.
 func (p *Pool) Holders() ([]Holder, error) {
 	records, err := filepath.Glob(filepath.Join(p.Dir, holderGlobPattern))
@@ -343,10 +345,20 @@ func (p *Pool) Holders() ([]Holder, error) {
 		if err := yaml.Unmarshal(data, &h); err != nil {
 			return nil, fmt.Errorf("parse gate holder record %s: %w", recordPath, err)
 		}
+		h.Slot, _ = strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(filepath.Base(recordPath), slotPrefix), holderSuffix))
 		holders = append(holders, h)
 	}
 	sort.Slice(holders, func(i, j int) bool { return holders[i].Started.Before(holders[j].Started) })
 	return holders, nil
+}
+
+// Draining reports whether a multi-slot acquire holds the drain lock, which makes every new single-slot acquire wait even while a slot is free.
+// A pool whose drain lock file was never created is not draining, and the check creates no file there.
+func (p *Pool) Draining() (bool, error) {
+	if _, err := os.Stat(p.drainLockPath()); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return lockIsHeld(p.drainLockPath())
 }
 
 // Inherited reports whether slot names a lock file inside Dir whose lock is held.

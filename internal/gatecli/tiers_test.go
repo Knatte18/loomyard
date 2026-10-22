@@ -25,6 +25,14 @@ func planConfig() gateslot.Config {
 	}
 }
 
+// withManualTier3 makes tier1 cover nothing and declares a manual tier3, leaving tier2 undeclared.
+func withManualTier3(cfg *gateslot.Config) {
+	t1 := cfg.Tiers["tier1"]
+	t1.Covers = nil
+	cfg.Tiers["tier1"] = t1
+	cfg.Tiers["tier3"] = gateslot.Tier{Command: "llm {args}", Dir: ".", TimeoutMin: 1, Counter: "go-json", Parallel: 1, Slots: 1, Manual: true}
+}
+
 // describe renders a run as `tier<N> <scope> dir=<dir> <targets>`, one `dir=… …` per invocation joined by ` | ` and `none` for no invocation, with ` ignores` for a command that ignores the scope and ` guard` for the guard step.
 func describe(run tierRun) string {
 	parts := make([]string, len(run.invocations))
@@ -82,6 +90,31 @@ func TestPlanTierRuns(t *testing.T) {
 		{
 			name:       "a covered tier is dropped and named on stderr",
 			request:    testRequest{tiers: []int{0, 1}},
+			want:       []string{"tier1 all dir=sub ./... ./x/..."},
+			wantStderr: "tier0 is covered by tier1",
+		},
+		{
+			name:       "--upto runs the declared tiers through N and skips a manual one, naming it",
+			mutate:     withManualTier3,
+			request:    testRequest{upto: 5, uptoGiven: true},
+			want:       []string{"tier0 all dir=. ./...", "tier1 all dir=sub ./... ./x/..."},
+			wantStderr: "tier3 is manual and runs only when --tier names it",
+		},
+		{
+			name:    "--upto 0 runs tier0 alone",
+			mutate:  withManualTier3,
+			request: testRequest{upto: 0, uptoGiven: true},
+			want:    []string{"tier0 all dir=. ./..."},
+		},
+		{
+			name:    "--tier adds a manual tier beside --upto",
+			mutate:  withManualTier3,
+			request: testRequest{tiers: []int{3}, upto: 3, uptoGiven: true},
+			want:    []string{"tier0 all dir=. ./...", "tier1 all dir=sub ./... ./x/...", "tier3 all dir=."},
+		},
+		{
+			name:       "--upto drops a tier another tier in its range covers",
+			request:    testRequest{upto: 1, uptoGiven: true},
 			want:       []string{"tier1 all dir=sub ./... ./x/..."},
 			wantStderr: "tier0 is covered by tier1",
 		},
