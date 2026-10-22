@@ -1,0 +1,64 @@
+# csharp.yaml — the C# language layer of lenses.yaml, picked with lens_set: csharp.
+# Its lenses replace the base's by name and its fans replace the base's by name.
+
+lenses:
+  error-handling: |
+    Focus on how failures are handled in C#: nullable reference types
+    suppressed with ! or left unchecked where null can arrive, IDisposable
+    values created without using or a matching Dispose on every path, swallowed
+    or over-broad catch blocks, exceptions rethrown with throw ex instead of
+    throw, and failure paths that leave state inconsistent. Defer to the
+    repository's own rules on argument guards and exception handling: where
+    they forbid guards or try/catch around the repository's own code, ask for
+    none. Report anything else you notice too — emphasis, never exclusion.
+  test-gaps: |
+    Focus on test coverage in the xUnit or NUnit style: behavior with no test
+    at all, missing edge and negative cases in an otherwise-tested member, a
+    [Theory] or [TestCase] data set missing an obvious case, async code tested
+    without awaiting the result, and assertions weak enough to pass even if the
+    code under test regressed. Report anything else you notice too — emphasis,
+    never exclusion.
+  performance: |
+    Focus on performance: allocations on hot paths such as boxing, closures and
+    string concatenation in loops, LINQ chains that enumerate more than once or
+    materialize needlessly, quadratic work over collections that can grow,
+    blocking on a Task where await is available, and a hand-rolled path where
+    the base class library has a direct one. Report anything else you notice
+    too — emphasis, never exclusion.
+  api-design: |
+    Focus on the public surface: naming and signature consistency with the rest
+    of the assembly, XML documentation on public members, binary and source
+    compatibility of a changed public signature across assemblies, and whether
+    parameter and return shapes make the common call easy and misuse hard.
+    Report anything else you notice too — emphasis, never exclusion.
+  concurrency: |
+    Focus on concurrency: shared state touched without a lock or a thread-safe
+    type, races between Tasks, async void and un-awaited Tasks, blocking on
+    .Result or .Wait() that can deadlock a synchronization context, lock
+    ordering, and a CancellationToken accepted but not honored. Report anything
+    else you notice too — emphasis, never exclusion.
+  numerics: |
+    Focus on numerical stability and units: floating-point values compared with
+    ==, overflow and silent loss of precision in casts and arithmetic, units
+    mixed or converted inconsistently, and physical values accepted outside
+    their possible range. Defer to the repository's own rules on guards and
+    exception handling: where they forbid guards, ask for none. Report anything
+    else you notice too — emphasis, never exclusion.
+
+fans:
+  review-code:
+    - code-correctness
+    - code-affected-set
+    - code-tests
+    - code-pattern-fit
+    - numerics
+  full:
+    - correctness
+    - error-handling
+    - test-gaps
+    - security
+    - performance
+    - api-design
+    - concurrency
+    - docs-consistency
+    - numerics

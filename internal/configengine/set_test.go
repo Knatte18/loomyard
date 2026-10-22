@@ -53,7 +53,83 @@ func TestSet(t *testing.T) {
 		wantExact string
 		// seedOnly marks the spec seed-only, so a hub's default layer keeps its full scaffold.
 		seedOnly bool
+		// overlay swaps in overlaySpec renamed testmod, keeping the row's layer, board and state.
+		overlay bool
+		// errLacks are substrings the refusal must not hold.
+		errLacks []string
+		// fileLacks are substrings the written file must not hold.
+		fileLacks []string
+		// defaultFile is the hub default file's bytes before the call; empty leaves it absent. It needs board.
+		defaultFile string
 	}{
+		{
+			name:      "an overlay base scaffold holds no per-name entry and takes the selector",
+			state:     baseLyx,
+			overlay:   true,
+			pairs:     []yamlengine.KV{{Key: "pick", Value: "x"}},
+			contains:  []string{`pick: "x"`},
+			fileLacks: []string{"a: A"},
+		},
+		{
+			name:      "a write of the selector with a lens the picked layer holds leaves that lens out",
+			state:     baseLyx,
+			overlay:   true,
+			pairs:     []yamlengine.KV{{Key: "pick", Value: "x"}, {Key: "lenses.a", Value: "X"}},
+			contains:  []string{`pick: "x"`},
+			fileLacks: []string{"a: X"},
+		},
+		{
+			name:      "the selector is read from the file when no pair sets it",
+			state:     baseWithFile,
+			existing:  "pick: x\n",
+			overlay:   true,
+			pairs:     []yamlengine.KV{{Key: "lenses.a", Value: "X"}},
+			contains:  []string{"pick: x"},
+			fileLacks: []string{"a: X"},
+		},
+		{
+			name:    "an unknown selector value is refused and removes the scaffold",
+			state:   baseLyx,
+			overlay: true,
+			pairs:   []yamlengine.KV{{Key: "pick", Value: "nope"}},
+			wantErr: "names no shipped layer",
+		},
+		{
+			name:     "a hub worktree write of the selector into an absent file is refused without the line to delete",
+			state:    baseLyx,
+			board:    true,
+			overlay:  true,
+			pairs:    []yamlengine.KV{{Key: "pick", Value: "x"}},
+			wantErr:  "--layer default",
+			errLacks: []string{"delete the pick line"},
+		},
+		{
+			name:     "a hub worktree write into a file holding another selector value is refused naming the line to delete",
+			state:    baseWithFile,
+			existing: "pick: x\n",
+			board:    true,
+			overlay:  true,
+			pairs:    []yamlengine.KV{{Key: "lenses.a", Value: "Y"}},
+			wantErr:  "delete the pick line from",
+		},
+		{
+			name:        "a hub worktree write of the selector with the default file's value saves",
+			state:       baseLyx,
+			board:       true,
+			overlay:     true,
+			defaultFile: "pick: x\n",
+			pairs:       []yamlengine.KV{{Key: "pick", Value: "x"}},
+			contains:    []string{"pick:"},
+		},
+		{
+			name:        "a hub worktree write under a default file holding an unknown selector value is refused and leaves no file",
+			state:       baseLyx,
+			board:       true,
+			overlay:     true,
+			defaultFile: "pick: nope\n",
+			pairs:       []yamlengine.KV{{Key: "lenses.a", Value: "Y"}},
+			wantErr:     "names no shipped layer",
+		},
 		{
 			name:      "hub default layer write into an absent file writes exactly the key set",
 			state:     baseLyx,
@@ -283,6 +359,13 @@ func TestSet(t *testing.T) {
 			if (tt.hubWide || tt.layer == configengine.LayerDefault) && !tt.boardWithoutLyx {
 				mustMkdirAll(t, configengine.ConfigDir(dirs.Board))
 			}
+			if tt.defaultFile != "" {
+				defaultPath := configengine.ConfigFile(dirs.Board, "testmod")
+				mustMkdirAll(t, filepath.Dir(defaultPath))
+				if err := os.WriteFile(defaultPath, []byte(tt.defaultFile), 0o644); err != nil {
+					t.Fatalf("write default file: %v", err)
+				}
+			}
 			if tt.boardOnly {
 				dirs.Anchor = ""
 			}
@@ -310,12 +393,21 @@ func TestSet(t *testing.T) {
 				}
 			}
 			spec := configengine.Spec{Name: "testmod", Template: []byte(tt.template), OpenMaps: tt.openMaps, PerNameMaps: tt.perNameMaps, Categories: tt.categories, HubWide: tt.hubWide, JSONEntries: tt.jsonEntries, SeedOnly: tt.seedOnly}
+			if tt.overlay {
+				spec = overlaySpec()
+				spec.Name = "testmod"
+			}
 
 			preserved, err := configengine.Set(dirs, spec, layer, tt.pairs)
 
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Set() = %v; want an error containing %q", err, tt.wantErr)
+				}
+				for _, lacks := range tt.errLacks {
+					if strings.Contains(err.Error(), lacks) {
+						t.Errorf("Set() error = %q; want it to lack %q", err, lacks)
+					}
 				}
 				if scaffolded {
 					if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
@@ -339,6 +431,11 @@ func TestSet(t *testing.T) {
 			for _, want := range tt.contains {
 				if !strings.Contains(string(data), want) {
 					t.Errorf("Set() file = %q; want it to contain %q", data, want)
+				}
+			}
+			for _, lacks := range tt.fileLacks {
+				if strings.Contains(string(data), lacks) {
+					t.Errorf("Set() file = %q; want it to lack %q", data, lacks)
 				}
 			}
 			if tt.wantExact != "" && string(data) != tt.wantExact {

@@ -1,0 +1,31 @@
+lenses:
+  error-handling: |
+    Focus on how failures are handled: swallowed or discarded errors, wrong or
+    missing error wrapping/context, return values ignored where they carry a
+    failure signal, panics used where a returned error is more appropriate,
+    and failure paths that leave state inconsistent. Report anything else you
+    notice too — emphasis, never exclusion.
+  test-gaps: |
+    Focus on test coverage: behavior with no test at all, missing edge/negative
+    cases in an otherwise-tested function, table-driven tests missing an
+    obvious case their own table structure invites, and assertions weak enough
+    to pass even if the code under test regressed. Report anything else you
+    notice too — emphasis, never exclusion.
+  performance: |
+    Focus on performance: unnecessary allocations or copies in hot paths,
+    quadratic or worse patterns over data that can grow, blocking calls where a
+    non-blocking one is available, unbounded loops/memory/goroutines, and
+    inefficient use of the standard library where a direct alternative exists.
+    Report anything else you notice too — emphasis, never exclusion.
+  api-design: |
+    Focus on the public surface: naming and signature consistency with the rest
+    of the package, whether exported symbols are documented, backward
+    compatibility of any changed signature, and whether parameter/return
+    shapes make the common call easy and the misuse hard. Report anything else
+    you notice too — emphasis, never exclusion.
+  concurrency: |
+    Focus on concurrency: shared state touched without synchronization, races
+    between goroutines, goroutine or resource leaks on early return, deadlock
+    potential from lock ordering or blocking channel operations, and context
+    cancellation that is accepted but not actually honored. Report anything
+    else you notice too — emphasis, never exclusion.

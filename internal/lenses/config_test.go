@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -121,6 +123,71 @@ func TestLoad(t *testing.T) {
 		}
 	})
 
+	t.Run("remove drops a layer lens from the lenses, every fan and the hub's own fan", func(t *testing.T) {
+		boardDir, anchor := t.TempDir(), t.TempDir()
+		writeLensesYAML(t, boardDir, "lens_set: csharp\nremove: [numerics, numerics]\nfans:\n  mine: [numerics, generic]\n")
+
+		cfg, err := Load(configengine.Dirs{Anchor: anchor, Board: boardDir})
+		if err != nil {
+			t.Fatalf("Load() returned unexpected error: %v", err)
+		}
+		if _, defined := cfg.Lenses["numerics"]; defined {
+			t.Errorf("Load().Lenses holds numerics; want it removed")
+		}
+		for _, fanName := range []string{"review-code", "full"} {
+			if slices.Contains(cfg.Fans[fanName], "numerics") {
+				t.Errorf("Load().Fans[%s] = %v; want no numerics", fanName, cfg.Fans[fanName])
+			}
+		}
+		if want := []string{"generic"}; !slices.Equal(cfg.Fans["mine"], want) {
+			t.Errorf("Load().Fans[mine] = %v; want %v", cfg.Fans["mine"], want)
+		}
+	})
+
+	t.Run("a remove name matching no lens loads and warns once per process, naming a repeated name once", func(t *testing.T) {
+		anchor := t.TempDir()
+		writeLensesYAML(t, anchor, "remove: [no-such-lens, no-such-lens]\n")
+		logs := logcapture.CaptureVerbose(t)
+
+		for range 2 {
+			if _, err := Load(configengine.Dirs{Anchor: anchor}); err != nil {
+				t.Fatalf("Load() returned unexpected error: %v", err)
+			}
+		}
+		warnings := 0
+		for _, line := range strings.Split(logs.String(), "\n") {
+			if strings.Contains(line, "no-such-lens") && strings.Contains(line, configengine.ConfigFile(anchor, "lenses")) {
+				warnings++
+				if strings.Contains(line, "no-such-lens,no-such-lens") {
+					t.Errorf("warning = %q; want the repeated name listed once", line)
+				}
+			}
+		}
+		if warnings != 1 {
+			t.Errorf("Load() twice logged %d warnings naming no-such-lens and the file; want 1; log: %s", warnings, logs.String())
+		}
+	})
+
+	t.Run("the skipped-name warning names the highest layer file holding remove", func(t *testing.T) {
+		boardDir, anchor := t.TempDir(), t.TempDir()
+		writeLensesYAML(t, boardDir, "remove: [other-missing]\n")
+		writeLensesYAML(t, anchor, "lenses:\n  mine: prose\n")
+		logs := logcapture.CaptureVerbose(t)
+
+		if _, err := Load(configengine.Dirs{Anchor: anchor, Board: boardDir}); err != nil {
+			t.Fatalf("Load() returned unexpected error: %v", err)
+		}
+		var warning string
+		for _, line := range strings.Split(logs.String(), "\n") {
+			if strings.Contains(line, "other-missing") {
+				warning = line
+			}
+		}
+		if !strings.Contains(warning, configengine.ConfigFile(boardDir, "lenses")) || !strings.Contains(warning, "layer=default") || strings.Contains(warning, configengine.ConfigFile(anchor, "lenses")) {
+			t.Errorf("warning = %q; want it to name the board file and layer=default, never the worktree file", warning)
+		}
+	})
+
 	t.Run("a lens prose holding a bare dollar sign loads verbatim", func(t *testing.T) {
 		anchor := t.TempDir()
 		writeLensesYAML(t, anchor, "lenses:\n  cost: |\n    Check the $5 fee.\n")
@@ -148,7 +215,9 @@ func TestLoad(t *testing.T) {
 // TestConfigTemplate_DecodesAndIsSelfConsistent proves the embedded seed template is itself valid lenses.yaml content -- a load over dirs holding no lenses.yaml resolves it, so every template fan resolves -- and that its internal cross-references and lengths hold: every fan entry names a defined lens, and no lens carries hard-exclusion phrasing.
 // The spike (docs/research/session-fork-spike.md, Q2) found "ignore everything else" lenses measurably suppressed cross-category coverage, so every lens is emphasis-only by design.
 //
-//testtiming:keep pins the seeded lens and fan counts, the defined-lens cross-references and the no-"ignore " phrasing, which the ResolveFan test covering its blocks does not assert
+// It extends the same checks to every shipped language layer: each loads under its own lens_set, its lenses and fans replace or extend the base's by name, and a layer fan keeps the base fan's entries first.
+//
+//testtiming:keep pins the seeded lens and fan counts, the defined-lens cross-references and the no-"ignore " phrasing, which the ResolveFan test covering its blocks does not assert, and the per-layer load and superset checks
 func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 	t.Parallel()
 
@@ -241,6 +310,115 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		}
 		if strings.Contains(text, "ignore ") {
 			t.Errorf("lens %q text contains hard-exclusion phrasing (\"ignore \"): %q", name, text)
+		}
+	}
+
+	// The exemption from the emphasis line is computed from the base fans only, so a lens a layer adds to a review fan still ends with it.
+	baseProcedureLenses := map[string]bool{}
+	for fanName, entries := range cfg.Fans {
+		if strings.HasPrefix(fanName, "review-") || strings.HasPrefix(fanName, "fix-") {
+			for _, name := range entries {
+				baseProcedureLenses[name] = true
+			}
+		}
+	}
+	for layerName, document := range lensSets() {
+		t.Run("layer "+layerName, func(t *testing.T) {
+			var raw map[string]any
+			if err := yaml.Unmarshal(document, &raw); err != nil {
+				t.Fatalf("decode layer %s: %v", layerName, err)
+			}
+			for key := range raw {
+				if key != "lenses" && key != "fans" {
+					t.Errorf("layer %s holds top-level key %q; want only lenses and fans", layerName, key)
+				}
+			}
+			var layer Config
+			if err := yaml.Unmarshal(document, &layer); err != nil {
+				t.Fatalf("decode layer %s: %v", layerName, err)
+			}
+
+			anchor := t.TempDir()
+			writeLensesYAML(t, anchor, "lens_set: "+layerName+"\n")
+			dirs := configengine.Dirs{Anchor: anchor}
+			if err := CheckLoad(dirs); err != nil {
+				t.Fatalf("CheckLoad(lens_set: %s) = %v; want nil", layerName, err)
+			}
+			loaded, err := Load(dirs)
+			if err != nil {
+				t.Fatalf("Load(lens_set: %s): %v", layerName, err)
+			}
+
+			for name, text := range loaded.Lenses {
+				want, defined := layer.Lenses[name]
+				if !defined {
+					want = cfg.Lenses[name]
+				}
+				if text != want {
+					t.Errorf("lens %q under lens_set %s = %q; want %q", name, layerName, text, want)
+				}
+				if strings.Contains(text, "ignore ") {
+					t.Errorf("lens %q under lens_set %s contains hard-exclusion phrasing (\"ignore \")", name, layerName)
+				}
+			}
+			for name, entries := range loaded.Fans {
+				want, defined := layer.Fans[name]
+				if !defined {
+					want = cfg.Fans[name]
+				}
+				if !slices.Equal(entries, want) {
+					t.Errorf("fan %q under lens_set %s = %v; want %v", name, layerName, entries, want)
+				}
+			}
+			for name, text := range layer.Lenses {
+				if name != "generic" && !baseProcedureLenses[name] && !strings.HasSuffix(strings.Join(strings.Fields(text), " "), emphasisLine) {
+					t.Errorf("layer %s lens %q does not end with the emphasis line", layerName, name)
+				}
+			}
+			for name, entries := range layer.Fans {
+				baseEntries, inBase := cfg.Fans[name]
+				if !inBase {
+					continue
+				}
+				if len(entries) < len(baseEntries) || !slices.Equal(entries[:len(baseEntries)], baseEntries) {
+					t.Errorf("layer %s fan %q = %v; want it to start with the base fan %v", layerName, name, entries, baseEntries)
+					continue
+				}
+				for _, extra := range entries[len(baseEntries):] {
+					if slices.Contains(baseEntries, extra) {
+						t.Errorf("layer %s fan %q adds %q, which the base fan already holds", layerName, name, extra)
+					}
+				}
+			}
+			if layerName == "csharp" {
+				if _, ok := loaded.Lenses["numerics"]; !ok {
+					t.Errorf("lens numerics is undefined under lens_set csharp")
+				}
+				for _, fanName := range []string{"review-code", "full"} {
+					resolved, err := ResolveFan(loaded, fanName)
+					if err != nil {
+						t.Fatalf("ResolveFan(%s) under lens_set csharp: %v", fanName, err)
+					}
+					if last := resolved[len(resolved)-1].Name; last != "numerics" {
+						t.Errorf("ResolveFan(%s) under lens_set csharp ends with %q; want numerics", fanName, last)
+					}
+				}
+			}
+		})
+	}
+
+	var goConfig Config
+	if err := yaml.Unmarshal(lensSets()["go"], &goConfig); err != nil {
+		t.Fatalf("decode layer go: %v", err)
+	}
+	for _, name := range []string{"error-handling", "test-gaps", "performance", "api-design", "concurrency"} {
+		if cfg.Lenses[name] == goConfig.Lenses[name] {
+			t.Errorf("base lens %q equals the go layer's prose; want the base language-neutral", name)
+		}
+		for _, word := range []string{"goroutine", "panic"} {
+			if strings.Contains(cfg.Lenses[name], word) {
+				t.Errorf("base lens %q names %q; want no language named", name, word)
+			}
 		}
 	}
 }
@@ -357,6 +535,33 @@ func TestCheckLoad(t *testing.T) {
 		undefinedAt := strings.Index(text, `fan "b-undefined" names undefined lens "missing"`)
 		if emptyAt == -1 || undefinedAt == -1 || emptyAt > undefinedAt {
 			t.Errorf("CheckLoad() = %q; want the a-empty failure, then the b-undefined failure", text)
+		}
+	})
+
+	t.Run("a remove emptying a fan passes the check and the fan is refused at resolution", func(t *testing.T) {
+		t.Parallel()
+		anchor := t.TempDir()
+		writeLensesYAML(t, anchor, "remove: [code-correctness, code-affected-set, code-tests, code-pattern-fit]\n")
+		dirs := configengine.Dirs{Anchor: anchor}
+
+		if err := CheckLoad(dirs); err != nil {
+			t.Errorf("CheckLoad() = %v; want nil", err)
+		}
+		cfg, err := Load(dirs)
+		if err != nil {
+			t.Fatalf("Load() returned unexpected error: %v", err)
+		}
+		if _, held := cfg.Fans["review-code"]; held {
+			t.Errorf("Load().Fans holds review-code; want it moved to EmptiedFans")
+		}
+		_, err = ResolveFan(cfg, "review-code")
+		if err == nil {
+			t.Fatal("ResolveFan(review-code) = nil error; want the emptied-fan refusal")
+		}
+		for _, want := range []string{"remove", "code-correctness", "way forward"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("ResolveFan(review-code) = %q; want it to contain %q", err, want)
+			}
 		}
 	})
 

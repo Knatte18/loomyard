@@ -3,6 +3,7 @@
 package configsync
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -118,6 +119,9 @@ func moveKeys(dir, seedDir string, layer configengine.Layer, base, apply bool) (
 				if prime := primeConfig(seedDir, module); prime != nil {
 					_, markerErr := os.Stat(configengine.SparseMarker(seedDir))
 					if data, err = sparseSeed(registered, prime, os.IsNotExist(markerErr)); err != nil {
+						if errors.Is(err, configengine.ErrInvalid) {
+							return nil, primeSeedError(registered, seedDir, err)
+						}
 						return nil, &FileError{Module: module, Path: file.path, Err: fmt.Errorf("seed %s from the prime: %w", module, err)}
 					}
 				}

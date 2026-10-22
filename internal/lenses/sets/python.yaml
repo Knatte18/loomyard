@@ -1,0 +1,36 @@
+# python.yaml — the Python language layer of lenses.yaml, picked with lens_set: python.
+# Its lenses replace the base's by name.
+
+lenses:
+  error-handling: |
+    Focus on how failures are handled in Python: bare or over-broad except
+    clauses, exceptions swallowed with pass, raise inside except without from,
+    a return value of None or a sentinel ignored where it carries a failure,
+    context managers missing around resources, and failure paths that leave
+    state inconsistent. Report anything else you notice too — emphasis, never
+    exclusion.
+  test-gaps: |
+    Focus on test coverage in the pytest style: behavior with no test at all,
+    missing edge and negative cases, a parametrize table missing an obvious
+    case, fixtures that leak state between tests, and assertions weak enough to
+    pass even if the code under test regressed. Report anything else you
+    notice too — emphasis, never exclusion.
+  performance: |
+    Focus on interpreter-level performance: loops that a comprehension, a
+    builtin or a library call does faster, repeated attribute or global lookups
+    in hot loops, quadratic work over growing lists such as membership tests on
+    a list, string building by repeated concatenation, and whole files or
+    result sets loaded where a generator streams. Report anything else you
+    notice too — emphasis, never exclusion.
+  api-design: |
+    Focus on the public API and typing: naming and signature consistency with
+    the rest of the module, docstrings and type hints on the public surface,
+    mutable default arguments, backward compatibility of a changed signature,
+    and whether parameter shapes make the common call easy and misuse hard.
+    Report anything else you notice too — emphasis, never exclusion.
+  concurrency: |
+    Focus on concurrency: shared state touched from threads without a lock,
+    races between threads, asyncio tasks created and never awaited, blocking
+    calls inside a coroutine, CPU-bound work that threads cannot speed up under
+    the GIL, and cancellation accepted but not honored. Report anything else
+    you notice too — emphasis, never exclusion.

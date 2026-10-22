@@ -43,6 +43,21 @@ func layerSpec() configengine.Spec {
 	}
 }
 
+// overlaySpec is layerSpec with a selector key, pick, over a per-name map, lenses, and one overlay document, x, that replaces lens a and adds lens b.
+// pick and lenses are guard keys.
+func overlaySpec() configengine.Spec {
+	spec := layerSpec()
+	spec.Template = []byte(layerTemplate + "pick: \"\"\n" + perNameTail)
+	spec.PerNameMaps = []string{"lenses"}
+	spec.Categories["pick"] = configengine.CategoryGuard
+	spec.Categories["lenses"] = configengine.CategoryGuard
+	spec.Overlay = configengine.Overlay{
+		Selector:  "pick",
+		Documents: map[string][]byte{"x": []byte("lenses:\n  a: X\n  b: B\n")},
+	}
+	return spec
+}
+
 // machineSpec is a hub-wide spec classifying port as the machine key, name as free and run as executable.
 func machineSpec() configengine.Spec {
 	spec := layerSpec()
@@ -165,8 +180,95 @@ func TestLoad_LayerStack(t *testing.T) {
 		wantUnknown map[configengine.Layer]string
 		// perNameMaps is the spec's per-name maps; a row that sets it loads over the template with perNameTail appended.
 		perNameMaps []string
-		want        map[string]string
+		// overlay swaps in overlaySpec, which keeps its own template and per-name maps whatever perNameMaps holds.
+		overlay bool
+		// refusal is the substrings both loaders must refuse with, marked ErrInvalid, and refusalLacks those the refusal must not hold; a refusal row asserts nothing else.
+		refusal      []string
+		refusalLacks []string
+		want         map[string]string
 	}{
+		{
+			name:    "a hub default picking a layer resolves its names over the base",
+			files:   map[configengine.Layer]string{configengine.LayerDefault: "pick: x\n"},
+			overlay: true,
+			want:    map[string]string{"lenses": "map[a:X b:B]"},
+		},
+		{
+			name:     "a standalone worktree file picking a layer resolves its names and fills the one missing map",
+			geo:      geometryStandalone,
+			files:    map[configengine.Layer]string{configengine.LayerWorktree: fullDefault + "pick: x\n"},
+			overlay:  true,
+			wantFill: "lenses",
+			want:     map[string]string{"lenses": "map[a:X b:B]"},
+		},
+		{
+			name:    "a name the file holds beats the picked layer",
+			files:   map[configengine.Layer]string{configengine.LayerDefault: "pick: x\nlenses:\n  a: mine\n"},
+			overlay: true,
+			want:    map[string]string{"lenses": "map[a:mine b:B]"},
+		},
+		{
+			name: "a worktree name beats the picked layer and the layer fills the rest",
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault:  "pick: x\n",
+				configengine.LayerWorktree: "lenses:\n  b: wt\n",
+			},
+			overlay: true,
+			want:    map[string]string{"lenses": "map[a:X b:wt]"},
+		},
+		{
+			name:    "a default picking no layer resolves the base",
+			files:   map[configengine.Layer]string{configengine.LayerDefault: "name: d\n"},
+			overlay: true,
+			want:    map[string]string{"lenses": "map[a:A]"},
+		},
+		{
+			name: "a hub worktree file holding the base's value loads",
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault:  "name: d\n",
+				configengine.LayerWorktree: "pick: \"\"\n",
+			},
+			overlay: true,
+			want:    map[string]string{"lenses": "map[a:A]"},
+		},
+		{
+			name: "a hub worktree file picking a layer the base does not is refused",
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault:  "name: d\n",
+				configengine.LayerWorktree: "pick: x\n",
+			},
+			overlay: true,
+			refusal: []string{"mod.yaml holds pick, which only the base file", "delete the pick line from", "--layer default", "the orch runs it"},
+		},
+		{
+			name:    "a hub default picking an unknown layer is refused naming the shipped ones",
+			files:   map[configengine.Layer]string{configengine.LayerDefault: "pick: nope\n"},
+			overlay: true,
+			refusal: []string{"names no shipped layer (shipped: x)", "--layer default --set pick=<name>", "the orch runs it"},
+		},
+		{
+			name:         "a standalone worktree file picking an unknown layer is refused with a way forward that needs no prime",
+			geo:          geometryStandalone,
+			files:        map[configengine.Layer]string{configengine.LayerWorktree: "pick: nope\n"},
+			overlay:      true,
+			refusal:      []string{`"lyx config mod --set pick=<name>"`},
+			refusalLacks: []string{"the orch runs it"},
+		},
+		{
+			name:    "a hub default holding a list for the selector is refused",
+			files:   map[configengine.Layer]string{configengine.LayerDefault: "pick: [x]\n"},
+			overlay: true,
+			refusal: []string{"pick", "--layer default --set pick=<name>"},
+		},
+		{
+			name: "a hub worktree file holding a list for the selector is refused",
+			files: map[configengine.Layer]string{
+				configengine.LayerDefault:  "name: d\n",
+				configengine.LayerWorktree: "pick: [x]\n",
+			},
+			overlay: true,
+			refusal: []string{"mod.yaml holds pick", "delete the pick line from"},
+		},
 		{
 			name:    "a machine value wins over the hub file",
 			machine: true,
@@ -390,15 +492,40 @@ func TestLoad_LayerStack(t *testing.T) {
 				writeLayerFile(t, filepath.Join(fx.board, ".env"), tc.boardEnv)
 			}
 			spec := layerSpec()
+			if tc.overlay {
+				spec = overlaySpec()
+			}
 			if tc.machine {
 				spec = machineSpec()
 			}
 			spec.HubWide = tc.hubWide || tc.machine
 			spec.SeedOnly = tc.seedOnly
 			spec.RetiredKeys = tc.retired
-			spec.PerNameMaps = tc.perNameMaps
-			if len(tc.perNameMaps) > 0 {
-				spec.Template = append(spec.Template, perNameTail...)
+			if !tc.overlay {
+				spec.PerNameMaps = tc.perNameMaps
+				if len(tc.perNameMaps) > 0 {
+					spec.Template = append(spec.Template, perNameTail...)
+				}
+			}
+
+			if tc.refusal != nil {
+				for loader, load := range map[string]func(configengine.Dirs, configengine.Spec) ([]byte, error){"Load": configengine.Load, "LoadOrTemplate": configengine.LoadOrTemplate} {
+					_, err := load(fx.dirs, spec)
+					if err == nil || !errors.Is(err, configengine.ErrInvalid) {
+						t.Fatalf("%s error = %v; want one marked ErrInvalid", loader, err)
+					}
+					for _, want := range tc.refusal {
+						if !strings.Contains(err.Error(), want) {
+							t.Errorf("%s error = %q; want it to hold %q", loader, err, want)
+						}
+					}
+					for _, lacks := range tc.refusalLacks {
+						if strings.Contains(err.Error(), lacks) {
+							t.Errorf("%s error = %q; want it to lack %q", loader, err, lacks)
+						}
+					}
+				}
+				return
 			}
 
 			var resolved []byte
@@ -678,6 +805,30 @@ func TestLayers(t *testing.T) {
 			}
 		}
 
+		overlayFx := newLayerFixture(t, geometryHub, map[configengine.Layer]string{configengine.LayerDefault: "pick: x\n"})
+		below, err := configengine.BelowLayer(overlayFx.dirs, overlaySpec(), configengine.LayerWorktree)
+		if err != nil {
+			t.Fatalf("BelowLayer over the overlay spec: %v", err)
+		}
+		if got := decodeTopLevel(t, below)["lenses"]; got != "map[a:X b:B]" {
+			t.Errorf("BelowLayer over the overlay spec holds lenses %q; want map[a:X b:B]", got)
+		}
+		under, err := configengine.TemplateUnder(overlayFx.dirs, overlaySpec())
+		if err != nil {
+			t.Fatalf("TemplateUnder over the overlay spec: %v", err)
+		}
+		if got := decodeTopLevel(t, under)["lenses"]; got != "map[a:X b:B]" {
+			t.Errorf("TemplateUnder over the overlay spec holds lenses %q; want map[a:X b:B]", got)
+		}
+		noDefaultFx := newLayerFixture(t, geometryHub, nil)
+		bare, err := configengine.TemplateUnder(noDefaultFx.dirs, overlaySpec())
+		if err != nil {
+			t.Fatalf("TemplateUnder with no default file: %v", err)
+		}
+		if string(bare) != string(overlaySpec().Template) {
+			t.Errorf("TemplateUnder with no default file = %q; want the template %q", bare, overlaySpec().Template)
+		}
+
 		machineFx := newLayerFixture(t, geometryHub, allFour)
 		for _, tt := range []struct {
 			layer    configengine.Layer
@@ -871,11 +1022,19 @@ func TestProvenance(t *testing.T) {
 		name string
 		geo  geometry
 		// machine swaps in the hub-wide spec with the machine key port.
-		machine   bool
+		machine bool
+		// overlay swaps in overlaySpec.
+		overlay   bool
 		files     map[configengine.Layer]string
 		want      map[string]string
 		wantError string
 	}{
+		{
+			name:    "a unit only the picked overlay layer holds names it as the template layer's overlay",
+			overlay: true,
+			files:   map[configengine.Layer]string{configengine.LayerDefault: "pick: x\n"},
+			want:    map[string]string{"pick": "default", "a": "template:x", "b": "template:x", "name": "template", "port": "template", "deep": "template", "list": "template", "labels": "template", "run": "template"},
+		},
 		{
 			name:    "a machine-held unit names the machine layer",
 			machine: true,
@@ -909,6 +1068,9 @@ func TestProvenance(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fixture := newLayerFixture(t, tt.geo, tt.files)
 			spec := layerSpec()
+			if tt.overlay {
+				spec = overlaySpec()
+			}
 			if tt.machine {
 				spec = machineSpec()
 			}

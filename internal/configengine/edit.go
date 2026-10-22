@@ -4,11 +4,13 @@
 // YAML syntax, and loop on validation failure.
 // Scaffolds a missing hub base with the sparse header, and any other missing base from the template, and removes a scaffolded file on abort to leave the filesystem in its
 // pre-call state.
+// An overlay module's base scaffold holds empty per-name maps, and a hub worktree save holding the overlay selector with a value other than the base's is refused.
 // Injected EditorFunc allows tests to drive the editor without a real process.
 
 package configengine
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -103,12 +105,68 @@ func scaffoldIfMissing(path, configDir, template string) (scaffolded bool, err e
 }
 
 // BaseScaffold returns the bytes an absent base layer is scaffolded with:
-// [SparseBaseHeader] when the base is sparse over the template, else the spec's template.
+// [SparseBaseHeader] when the base is sparse over the template.
+// For a spec with an overlay selector it is the template with every per-name map emptied, else the spec's template.
+// An overlay module's scaffold holds no per-name entry, so no entry of the base template pins itself over the layer the base picks.
 func BaseScaffold(dirs Dirs, spec Spec) string {
 	if sparseBase(dirs, spec) {
 		return SparseBaseHeader
 	}
+	if spec.Overlay.Selector != "" {
+		return scaffoldWithoutPerNameEntries(spec)
+	}
 	return string(spec.Template)
+}
+
+// scaffoldWithoutPerNameEntries returns the spec's template with every per-name map emptied to {}, re-marshalled.
+// A template that fails to parse panics: an embedded template every loader parses cannot fail, so a failure is a wiring defect.
+func scaffoldWithoutPerNameEntries(spec Spec) string {
+	var template yaml.Node
+	if err := yaml.Unmarshal(spec.Template, &template); err != nil {
+		panic(fmt.Sprintf("%s config template does not parse: %v", spec.Name, err))
+	}
+	for _, path := range spec.PerNameMaps {
+		node := nodeAt(&template, path)
+		if node == nil || node.Kind != yaml.MappingNode {
+			continue
+		}
+		node.Content = nil
+		node.Style = yaml.FlowStyle
+	}
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&template); err != nil {
+		panic(fmt.Sprintf("%s config template does not marshal: %v", spec.Name, err))
+	}
+	if err := encoder.Close(); err != nil {
+		panic(fmt.Sprintf("%s config template does not marshal: %v", spec.Name, err))
+	}
+	return out.String()
+}
+
+// hubWorktreeGuardsSelector reports whether layer is the worktree layer of a hub for a spec with an overlay selector:
+// the one layer above the base a selector value must not differ in.
+func hubWorktreeGuardsSelector(dirs Dirs, spec Spec, layer Layer) bool {
+	return spec.Overlay.Selector != "" && layer == LayerWorktree && BaseLayer(dirs, spec) == LayerDefault
+}
+
+// worktreeSelectorRefusal returns the refusal of a hub worktree document holding the selector with a value other than the default file's, or nil when it holds none.
+// heldBefore says the file held the selector before the write or edit being judged.
+func worktreeSelectorRefusal(dirs Dirs, spec Spec, path string, document []byte, heldBefore bool) error {
+	defaultPath, _ := LayerFile(dirs, spec, LayerDefault)
+	defaultBytes, err := os.ReadFile(defaultPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read config file %s: %w", defaultPath, err)
+	}
+	other, err := worktreeSelectorOther(spec, document, defaultBytes)
+	if err != nil {
+		return err
+	}
+	if other {
+		return selectorRefusal(dirs, spec, path, heldBefore)
+	}
+	return nil
 }
 
 // Edit opens the layer's file of spec under dirs in an editor, validates the YAML syntax, and loops on validation
@@ -116,7 +174,9 @@ func BaseScaffold(dirs Dirs, spec Spec) string {
 // An absent base layer is scaffolded through [BaseScaffold], the header for a hub's sparse base and the template for a standalone or seed-only one; a layer above it is sparse, so an absent file is scaffolded empty.
 // On abort, removes any scaffolded file and returns ErrAborted.
 // Validation is syntactic only;
-// known keys are not enforced, except that a saved local override must pass [ValidateLocal] and a saved machine override [ValidateMachine], and a refused one is put back to its previous bytes, or removed when the call created it.
+// known keys are not enforced, except that a saved local override must pass [ValidateLocal] and a saved machine override [ValidateMachine],
+// and a saved hub worktree file may not hold a spec's overlay selector with a value other than the default file's.
+// A refused save is put back to its previous bytes, or removed when the call created it.
 func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
 	path, owner, err := layerPath(dirs, spec, layer)
 	if err != nil {
@@ -129,7 +189,8 @@ func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
 	if layer == BaseLayer(dirs, spec) {
 		return EditPath(path, BaseScaffold(dirs, spec), edit)
 	}
-	if layer != LayerLocal && layer != LayerMachine {
+	selectorGuarded := hubWorktreeGuardsSelector(dirs, spec, layer)
+	if layer != LayerLocal && layer != LayerMachine && !selectorGuarded {
 		return EditPath(path, "", edit)
 	}
 
@@ -144,13 +205,18 @@ func Edit(dirs Dirs, spec Spec, layer Layer, edit EditorFunc) error {
 	if err != nil {
 		return fmt.Errorf("read config file after edit: %w", err)
 	}
-	if err := validateOverride(spec, layer, saved); err != nil {
+	refusal := validateOverride(spec, layer, saved)
+	if refusal == nil && selectorGuarded {
+		_, previousHeld, _ := selectorValue(spec, previous)
+		refusal = worktreeSelectorRefusal(dirs, spec, path, saved, previousHeld)
+	}
+	if refusal != nil {
 		if readErr != nil {
 			_ = os.Remove(path)
 		} else {
 			_ = os.WriteFile(path, previous, 0o644)
 		}
-		return err
+		return refusal
 	}
 	return nil
 }
