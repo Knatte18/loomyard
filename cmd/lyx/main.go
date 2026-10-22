@@ -98,6 +98,20 @@ func pauseSlugOverride(cmd *cobra.Command) *string {
 	return &slug
 }
 
+// detachedChild reads the hidden flags a detached push or board-sync child was spawned with.
+// An undeclared or unset flag reads false.
+func detachedChild(cmd *cobra.Command) tendercli.DetachedChild {
+	changed := func(name string) bool {
+		flag := cmd.Flags().Lookup(name)
+		return flag != nil && flag.Changed
+	}
+	return tendercli.DetachedChild{
+		Deferrable:   changed(fabricengine.PauseSlugFlag) || changed(boardengine.DeferrableSyncFlag),
+		ParentLocked: changed(fabricengine.ParentLockedFlag),
+		HubScope:     changed(boardengine.DeferrableSyncFlag),
+	}
+}
+
 // newRoot builds the lyx cobra root with all module subcommands, --json flag, and JSON help.
 func newRoot() *cobra.Command {
 	var verbosity int
@@ -127,7 +141,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				logger.MintOrAdoptAndExport()
 				logger.Arm()
 				// The pause gate holds this process's network git and GitHub calls while a pause covers it.
-				tendercli.InstallNetworkGate(cmd.Context(), pauseSlugOverride(cmd))
+				tendercli.InstallNetworkGate(cmd.Context(), pauseSlugOverride(cmd), detachedChild(cmd))
 				// A push origin refuses reaches the prime orch as creel mail from FABRIC, whichever process pushed.
 				orchcli.InstallPushNotifier(cmd.Context())
 				// orch start pauses a run another machine owns through tender, which imports orchcli.

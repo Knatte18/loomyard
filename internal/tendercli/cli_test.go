@@ -288,7 +288,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	agentWorktree := filepath.Join(agentWorktrees, "agent")
 	gitkit.Git(t, h.PrimeWorktree(), "worktree", "add", "--detach", agentWorktree)
 	for _, outside := range []string{t.TempDir(), agentWorktree} {
-		InstallNetworkGate(lyxcwd.WithCwd(t.Context(), outside), nil)
+		InstallNetworkGate(lyxcwd.WithCwd(t.Context(), outside), nil, DetachedChild{})
 		_, probeDone := pauserecord.Network("probe")
 		probeDone()
 	}
@@ -300,7 +300,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 		t.Errorf("Stat(agent worktree's sibling _board) error = %v; want it absent", err)
 	}
 
-	InstallNetworkGate(lyxcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)), nil)
+	InstallNetworkGate(lyxcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)), nil, DetachedChild{})
 	pauserecord.Network("pair-probe")
 	geometry, err := hubgeom.PauseGeometry(h.Location)
 	if err != nil {
@@ -326,7 +326,7 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 			hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: tt.anchor})
 			slug := tt.pauseSlug
 			boardWorktree := fabricengine.BoardDir(hub.Location.HubPath)
-			InstallNetworkGate(lyxcwd.WithCwd(t.Context(), boardWorktree), &slug)
+			InstallNetworkGate(lyxcwd.WithCwd(t.Context(), boardWorktree), &slug, DetachedChild{})
 			pauserecord.Network("board-probe")
 			geometry, err := hubgeom.PauseGeometry(hub.Location)
 			if err != nil {
@@ -338,6 +338,51 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 			}
 		})
 	}
+
+	// A detached child's flags decide what the installed gate reads as covering it.
+	setLive := func(t *testing.T, recordPath string, entries ...pauserecord.Entry) {
+		t.Helper()
+		if _, err := pauserecord.Update(recordPath, time.Now(), func(r *pauserecord.Record) error {
+			r.Live = entries
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hubEntry := pauserecord.Entry{Scope: pauserecord.ScopeHub, Caller: "EXTERNAL", PausedAt: time.Now()}
+	ownerEntry := pauserecord.Entry{Scope: "child", Caller: pauserecord.OwnerCaller, PausedAt: time.Now()}
+	childTests := []struct {
+		name        string
+		cwd         func(hub *hubforge.Hub) string
+		pauseSlug   *string
+		child       DetachedChild
+		live        []pauserecord.Entry
+		wantCovered bool
+	}{
+		{"DeferrableUnderHubEntry", func(hub *hubforge.Hub) string { return fabricengine.BoardDir(hub.Location.HubPath) }, ptr("child"), DetachedChild{Deferrable: true}, []pauserecord.Entry{hubEntry}, true},
+		{"ParentLockedPassesOwnerEntry", func(hub *hubforge.Hub) string { return fabricengine.BoardDir(hub.Location.HubPath) }, ptr("child"), DetachedChild{Deferrable: true, ParentLocked: true}, []pauserecord.Entry{ownerEntry}, false},
+		{"HubScopeIgnoresTaskSlugEntry", func(hub *hubforge.Hub) string { return hub.PairCodeWorktree(pairSlug) }, nil, DetachedChild{Deferrable: true, HubScope: true}, []pauserecord.Entry{{Scope: pairSlug, Caller: "EXTERNAL", PausedAt: time.Now()}}, false},
+		{"HubScopeHeldByHubEntry", func(hub *hubforge.Hub) string { return hub.PairCodeWorktree(pairSlug) }, nil, DetachedChild{Deferrable: true, HubScope: true}, []pauserecord.Entry{{Scope: pairSlug, Caller: "EXTERNAL", PausedAt: time.Now()}, hubEntry}, true},
+	}
+	for _, tt := range childTests {
+		t.Run(tt.name, func(t *testing.T) {
+			hub := newHub(t)
+			geometry, err := hubgeom.PauseGeometry(hub.Location)
+			if err != nil {
+				t.Fatal(err)
+			}
+			setLive(t, geometry.RecordPath, tt.live...)
+			InstallNetworkGate(lyxcwd.WithCwd(t.Context(), tt.cwd(hub)), tt.pauseSlug, tt.child)
+			if got := pauserecord.GateCovered(); got != tt.wantCovered {
+				t.Errorf("GateCovered() = %v; want %v", got, tt.wantCovered)
+			}
+		})
+	}
+}
+
+// ptr returns a pointer to a copy of s.
+func ptr(s string) *string {
+	return &s
 }
 
 // TestNewShuttlePair_TellsTheHubsPauseGeometry pins that a pair's runner reads the hub's pause record with no slug of its own, so each send judges its target by the target's strand name.

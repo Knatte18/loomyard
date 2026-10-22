@@ -39,6 +39,24 @@ type Waiter struct {
 	ExemptEntry func(Entry) bool
 }
 
+// covering returns the oldest live entry of record that holds slug once the waiter's exemptions are applied.
+func (w Waiter) covering(record Record, slug string) (Entry, bool) {
+	coveredSlug := slug
+	if w.SlugEntryExempt != nil && w.SlugEntryExempt() {
+		coveredSlug = ""
+	}
+	if w.ExemptEntry != nil {
+		var holding []Entry
+		for _, live := range record.Live {
+			if !w.ExemptEntry(live) {
+				holding = append(holding, live)
+			}
+		}
+		record.Live = holding
+	}
+	return record.Covering(coveredSlug)
+}
+
 // WaitUncovered returns once no live entry in the record at path covers slug, and at once when none does.
 // It writes one line through the waiter when it starts waiting, polls with a delay doubling from one second to five while the covering entry is unchanged, and has no deadline of its own: it returns the context's error when ctx ends.
 // An unreadable record holds nothing: the wait writes one line naming the path and the error, then returns nil.
@@ -61,20 +79,7 @@ func WaitUncovered(ctx context.Context, path, slug string, w Waiter) error {
 			notify(fmt.Sprintf("lyx: pause record unreadable, not holding: %v", err))
 			return nil
 		}
-		coveredSlug := slug
-		if w.SlugEntryExempt != nil && w.SlugEntryExempt() {
-			coveredSlug = ""
-		}
-		if w.ExemptEntry != nil {
-			var holding []Entry
-			for _, live := range record.Live {
-				if !w.ExemptEntry(live) {
-					holding = append(holding, live)
-				}
-			}
-			record.Live = holding
-		}
-		entry, covered := record.Covering(coveredSlug)
+		entry, covered := w.covering(record, slug)
 		if !covered {
 			return nil
 		}
@@ -222,13 +227,77 @@ type Gate struct {
 	ExemptPausedAt time.Time
 	// ExemptAll lets every live entry pass, for the one process an operator's explicit verb runs in.
 	ExemptAll bool
+	// Defer makes a call that finds a live entry covering the process hand off to the deferral SetGateDeferral stored, before any wait.
+	Defer bool
+	// OwnerEntryExempt lets a live entry of the gate's own slug whose Caller is OwnerCaller pass.
+	OwnerEntryExempt bool
 }
 
 var (
 	installedGate  atomic.Pointer[Gate]
+	gateDeferral   atomic.Pointer[func()]
 	netOpCounter   atomic.Int64
 	waitingCounter atomic.Int64
 )
+
+// SetGateDeferral stores the function a deferring gate calls when a live entry covers its process, and returns the function that restores the previous one.
+// The function is a process's exit and does not return; when none is stored, or it returns, the gate waits as it does without Defer.
+func SetGateDeferral(onCovered func()) (restore func()) {
+	var stored *func()
+	if onCovered != nil {
+		stored = &onCovered
+	}
+	previous := gateDeferral.Swap(stored)
+	return func() { gateDeferral.Store(previous) }
+}
+
+// GateCovered reports whether a live entry covers the installed gate's process right now, under the exemptions the gate's waits apply.
+// It reports false with no gate installed or an unreadable record.
+func GateCovered() bool {
+	gate := installedGate.Load()
+	if gate == nil {
+		return false
+	}
+	record, err := Read(gate.Geometry.RecordPath)
+	if err != nil {
+		return false
+	}
+	_, covered := gate.waiter(nil).covering(record, gate.Geometry.Slug)
+	return covered
+}
+
+// waiter returns the Waiter that applies this gate's exemptions; onSleep, when non-nil, runs before every sleep of a wait.
+func (g *Gate) waiter(onSleep func()) Waiter {
+	slug := g.Geometry.Slug
+	sleep := g.Sleep
+	if sleep == nil {
+		sleep = sleepOnTimer
+	}
+	waiter := Waiter{
+		Notify: g.Notify,
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			if onSleep != nil {
+				onSleep()
+			}
+			return sleep(ctx, d)
+		},
+		SlugEntryExempt: func() bool { return g.HoldsParentLock != nil && g.HoldsParentLock(slug) },
+	}
+	switch {
+	case g.ExemptAll:
+		waiter.ExemptEntry = func(Entry) bool { return true }
+	case g.ExemptScope != "" || g.OwnerEntryExempt:
+		exemptScope, exemptPausedAt := g.ExemptScope, g.ExemptPausedAt
+		ownerEntryExempt := g.OwnerEntryExempt
+		waiter.ExemptEntry = func(entry Entry) bool {
+			if ownerEntryExempt && entry.Scope == slug && entry.Caller == OwnerCaller {
+				return true
+			}
+			return exemptScope != "" && entry.Scope == exemptScope && entry.PausedAt.Equal(exemptPausedAt)
+		}
+	}
+	return waiter
+}
 
 // InstallGate stores g as the process's network gate and returns a function that reinstates the previous one.
 func InstallGate(g Gate) (restore func()) {
@@ -320,26 +389,11 @@ func Network(op string) (held time.Duration, done func()) {
 	}
 	slug := gate.Geometry.Slug
 	holdsParentLock := func() bool { return gate.HoldsParentLock != nil && gate.HoldsParentLock(slug) }
-	sleep := gate.Sleep
-	if sleep == nil {
-		sleep = sleepOnTimer
-	}
 	slept := false
-	waiter := Waiter{
-		Notify: gate.Notify,
-		Sleep: func(ctx context.Context, d time.Duration) error {
-			slept = true
-			return sleep(ctx, d)
-		},
-		SlugEntryExempt: holdsParentLock,
-	}
-	switch {
-	case gate.ExemptAll:
-		waiter.ExemptEntry = func(Entry) bool { return true }
-	case gate.ExemptScope != "":
-		exemptScope, exemptPausedAt := gate.ExemptScope, gate.ExemptPausedAt
-		waiter.ExemptEntry = func(entry Entry) bool {
-			return entry.Scope == exemptScope && entry.PausedAt.Equal(exemptPausedAt)
+	waiter := gate.waiter(func() { slept = true })
+	if gate.Defer && GateCovered() {
+		if deferral := gateDeferral.Load(); deferral != nil {
+			(*deferral)()
 		}
 	}
 	entered := now()

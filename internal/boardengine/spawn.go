@@ -18,6 +18,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 )
 
+// DeferrableSyncFlag is the hidden flag that marks a detached board sync as one whose network gate defers under a pause instead of waiting, and holds it under the hub scope.
+const DeferrableSyncFlag = "deferrable"
+
 // SpawnSync starts the detached `lyx board sync` of the board at boardPath, the same sync every board write spawns.
 // In a test binary it returns nil without spawning, since forking the running binary would re-run the suite.
 func SpawnSync(boardPath string) error {

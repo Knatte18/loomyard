@@ -30,6 +30,8 @@ const (
 	PauseSlugFlag = "pause-slug"
 	// TeardownSlugFlag is the hidden fabric flag that tells a detached push child the pair whose teardown it yields to.
 	TeardownSlugFlag = "teardown-slug"
+	// ParentLockedFlag is the hidden fabric flag that tells a detached push child its pair's parent lock was held when it was spawned, so its gate never exits for coverage.
+	ParentLockedFlag = "parent-locked"
 )
 
 // ErrSpawnUnderTest is returned by SpawnDetachedPush in a test binary, where forking the running binary would re-run the test suite.

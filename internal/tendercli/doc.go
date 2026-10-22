@@ -31,5 +31,8 @@
 // It resolves the working directory and installs nothing outside a hub.
 // A git worktree whose parent holds no board-level `_lyx`, such as an agent worktree nested in the prime, is outside one.
 // A detached push child is told its pause slug by its hidden flag, empty included, and starts in the hub's board worktree, so a non-nil pause slug resolves the working directory as a worktree root and replaces the slug the directory would give.
+// A `DetachedChild` carries the hidden flags a detached child was spawned with.
+// A `Deferrable` child that is not `ParentLocked` installs a deferring gate, which exits the child under a pause instead of parking it; a `ParentLocked` child's gate lets its own slug's owner entry pass.
+// A `HubScope` child, the detached board sync, is held under the empty slug, so only a hub entry holds it whichever worktree spawned it.
 // The gate's waits write one line to stderr and the trace.
 package tendercli

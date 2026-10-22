@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -461,6 +462,129 @@ func TestNetwork(t *testing.T) {
 			t.Fatalf("held = %v with no gate, want zero", held)
 		} else {
 			done()
+		}
+	})
+
+	// networkInGoroutine runs Network on its own goroutine, so a deferral that ends it with runtime.Goexit stands in for a child's exit.
+	networkInGoroutine := func(t *testing.T) (inFlight bool) {
+		t.Helper()
+		finished := make(chan struct{})
+		go func() {
+			defer close(finished)
+			_, done := Network("push")
+			inFlight = true
+			done()
+		}()
+		<-finished
+		return inFlight
+	}
+
+	deferralRows := []struct {
+		name          string
+		live          []Entry
+		gate          Gate
+		deferral      func(calls *int) func()
+		wantCalls     int
+		wantSleeps    int
+		wantInFlight  bool
+		wantCoveredAt bool
+	}{
+		{
+			name:         "a Defer gate covered by a hub entry calls the deferral once and never sleeps",
+			live:         []Entry{{Scope: ScopeHub, PausedAt: epoch}},
+			gate:         Gate{Defer: true},
+			deferral:     func(calls *int) func() { return func() { *calls++; runtime.Goexit() } },
+			wantCalls:    1,
+			wantSleeps:   0,
+			wantInFlight: false, wantCoveredAt: true,
+		},
+		{
+			name:         "a Defer gate with nothing covering calls no deferral and marks its operation",
+			gate:         Gate{Defer: true},
+			deferral:     func(calls *int) func() { return func() { *calls++; runtime.Goexit() } },
+			wantInFlight: true,
+		},
+		{
+			name:          "a Defer gate with no deferral stored waits until the entry is lifted",
+			live:          []Entry{{Scope: ScopeHub, PausedAt: epoch}},
+			gate:          Gate{Defer: true},
+			wantSleeps:    1,
+			wantInFlight:  true,
+			wantCoveredAt: true,
+		},
+		{
+			name:          "a Defer gate whose deferral returns waits until the entry is lifted",
+			live:          []Entry{{Scope: ScopeHub, PausedAt: epoch}},
+			gate:          Gate{Defer: true},
+			deferral:      func(calls *int) func() { return func() { *calls++ } },
+			wantCalls:     1,
+			wantSleeps:    1,
+			wantInFlight:  true,
+			wantCoveredAt: true,
+		},
+		{
+			name:         "an OwnerEntryExempt gate passes its own slug's owner entry at once",
+			live:         []Entry{{Scope: "a", Caller: OwnerCaller, PausedAt: epoch}},
+			gate:         Gate{OwnerEntryExempt: true},
+			wantInFlight: true,
+		},
+		{
+			name:          "an OwnerEntryExempt gate still waits on a hub entry",
+			live:          []Entry{{Scope: ScopeHub, Caller: OwnerCaller, PausedAt: epoch}},
+			gate:          Gate{OwnerEntryExempt: true},
+			wantSleeps:    1,
+			wantInFlight:  true,
+			wantCoveredAt: true,
+		},
+		{
+			name:          "an OwnerEntryExempt gate still waits on an operator's entry of its own slug",
+			live:          []Entry{{Scope: "a", Caller: "EXTERNAL", PausedAt: epoch}},
+			gate:          Gate{OwnerEntryExempt: true},
+			wantSleeps:    1,
+			wantInFlight:  true,
+			wantCoveredAt: true,
+		},
+	}
+	for _, tt := range deferralRows {
+		t.Run(tt.name, func(t *testing.T) {
+			recordPath := filepath.Join(t.TempDir(), RecordFileName)
+			setLive(t, recordPath, tt.live...)
+			sleeps, calls := 0, 0
+			gate := tt.gate
+			gate.Geometry = Geometry{RecordPath: recordPath, Slug: "a"}
+			gate.Notify = func(string) {}
+			gate.Sleep = func(ctx context.Context, d time.Duration) error {
+				sleeps++
+				resumeLive(t, recordPath)
+				return nil
+			}
+			defer InstallGate(gate)()
+			if tt.deferral != nil {
+				defer SetGateDeferral(tt.deferral(&calls))()
+			}
+
+			if got := GateCovered(); got != tt.wantCoveredAt {
+				t.Errorf("GateCovered() = %v; want %v", got, tt.wantCoveredAt)
+			}
+			inFlight := networkInGoroutine(t)
+
+			if calls != tt.wantCalls || sleeps != tt.wantSleeps || inFlight != tt.wantInFlight {
+				t.Errorf("deferral calls, sleeps, in flight = %d, %d, %v; want %d, %d, %v", calls, sleeps, inFlight, tt.wantCalls, tt.wantSleeps, tt.wantInFlight)
+			}
+		})
+	}
+
+	t.Run("GateCovered reads false with no gate installed and over a record that does not decode", func(t *testing.T) {
+		if GateCovered() {
+			t.Fatal("GateCovered() = true with no gate installed; want false")
+		}
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		if err := os.WriteFile(recordPath, []byte("{not json"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		defer InstallGate(Gate{Geometry: Geometry{RecordPath: recordPath, Slug: "a"}, Defer: true})()
+		if GateCovered() {
+			t.Fatal("GateCovered() = true over an undecodable record; want false")
 		}
 	})
 }
