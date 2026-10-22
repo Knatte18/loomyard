@@ -29,6 +29,10 @@ func TestRetryablePushRefusal_ClassifiesByTheReasonOnThePushedRefsLine(t *testin
 		{"bare failed with remote lines around it", pushRejection(remoteNoise + " ! [remote rejected] feat -> feat (failed)\n" + remoteNoise + "error: failed to push some refs\n"), "feat", true},
 		{"failed in full branch form", pushRejection(" ! [remote rejected] refs/heads/feat -> refs/heads/feat (failed)\n"), "feat", true},
 		{"failed in full tag form", pushRejection(" ! [remote rejected] refs/tags/v1 -> refs/tags/v1 (failed)\n"), "v1", true},
+		{"failed in short form for a full tag ref", pushRejection(" ! [remote rejected] archive/s/abc -> archive/s/abc (failed)\n"), "refs/tags/archive/s/abc", true},
+		{"failed in short form for a full branch ref", pushRejection(" ! [remote rejected] feat -> feat (failed)\n"), "refs/heads/feat", true},
+		{"failed in full form for a full tag ref", pushRejection(" ! [remote rejected] refs/tags/v1 -> refs/tags/v1 (failed)\n"), "refs/tags/v1", true},
+		{"failed for a branch of a full tag ref's name", pushRejection(" ! [remote rejected] refs/heads/v1 -> refs/heads/v1 (failed)\n"), "refs/tags/v1", false},
 		{"remote cannot lock ref with a spaced reason", pushRejection(" ! [remote rejected] feat -> feat (cannot lock ref 'refs/heads/feat': is at abc but expected def)\n"), "feat", true},
 		{"remote cannot lock ref in full form", pushRejection(" ! [remote rejected] refs/heads/feat -> refs/heads/feat (cannot lock ref 'refs/heads/feat': reference already exists)\n"), "feat", true},
 		{"failed for another ref", pushRejection(" ! [remote rejected] other -> other (failed)\n"), "feat", false},
@@ -59,19 +63,22 @@ func TestPushWithRetry_RetriesOnlyRetryableRefusalsUpToTheBound(t *testing.T) {
 	failed := pushRejection(" ! [remote rejected] feat -> feat (failed)\n")
 	cannotLock := pushRejection(" ! [remote rejected] feat -> feat (cannot lock ref 'refs/heads/feat': busy)\n")
 	notFastForward := pushRejection(" ! [rejected] feat -> feat (non-fast-forward)\n")
+	customDelays := []time.Duration{3 * time.Second, 5 * time.Second}
 	for _, tc := range []struct {
 		name          string
 		results       []error
+		delays        []time.Duration
 		wantErr       error
 		wantExhausted bool
 		wantPushes    int
 		wantSleeps    []time.Duration
 	}{
-		{"success first try", []error{nil}, nil, false, 1, nil},
-		{"refusal then success", []error{failed, nil}, nil, false, 2, []time.Duration{time.Second}},
-		{"cannot lock ref then success", []error{cannotLock, nil}, nil, false, 2, []time.Duration{time.Second}},
-		{"persistent refusal stops at the bound", []error{failed, failed, failed, failed, failed}, failed, true, pushMaxAttempts, PushBackoffDelays()},
-		{"non-retryable error is attempted once and returned unchanged", []error{notFastForward, nil}, notFastForward, false, 1, nil},
+		{"success first try", []error{nil}, PushBackoffDelays(), nil, false, 1, nil},
+		{"refusal then success", []error{failed, nil}, PushBackoffDelays(), nil, false, 2, []time.Duration{time.Second}},
+		{"cannot lock ref then success", []error{cannotLock, nil}, PushBackoffDelays(), nil, false, 2, []time.Duration{time.Second}},
+		{"persistent refusal stops at the bound", []error{failed, failed, failed, failed, failed}, PushBackoffDelays(), failed, true, pushMaxAttempts, PushBackoffDelays()},
+		{"persistent refusal sleeps the caller's delays", []error{failed, failed, failed, failed}, customDelays, failed, true, len(customDelays) + 1, customDelays},
+		{"non-retryable error is attempted once and returned unchanged", []error{notFastForward, nil}, PushBackoffDelays(), notFastForward, false, 1, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -84,7 +91,7 @@ func TestPushWithRetry_RetriesOnlyRetryableRefusalsUpToTheBound(t *testing.T) {
 				return err
 			}
 
-			err := PushWithRetry(push, "feat", func(delay time.Duration) { sleeps = append(sleeps, delay) })
+			err := PushWithRetry(push, "feat", tc.delays, func(delay time.Duration) { sleeps = append(sleeps, delay) })
 
 			if pushes != tc.wantPushes {
 				t.Errorf("pushes = %d; want %d", pushes, tc.wantPushes)

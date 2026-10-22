@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -15,6 +16,12 @@ import (
 
 // archiveTagSHALen is how many leading hex digits of the tip SHA the archive tag name carries.
 const archiveTagSHALen = 12
+
+// archiveTagPushDelays returns the delays the archive-tag push sleeps between its attempts when the remote refuses it retryably: 2 s doubling to 32 s, six attempts in all.
+// The schedule is longer than a plain push's because a teardown runs once and holds no lock other writers wait on, so waiting out a remote hiccup of about a minute beats failing the row.
+func archiveTagPushDelays() []time.Duration {
+	return []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 32 * time.Second}
+}
 
 // ArchiveTagPrefix is the short-name prefix every archive tag carries.
 const ArchiveTagPrefix = "archive/"
@@ -45,6 +52,7 @@ var ErrArchiveFailed = errors.New("archiving the pair's records before teardown 
 // No origin remote returns no tag, a skippedReason and no error.
 // A branch present neither locally nor on origin returns no tag, no reason and no error, since there is nothing to archive.
 // An existing tag of that name pointing elsewhere, and any push failure, are returned errors.
+// A push the remote refuses with a bare "(failed)" or a remote "cannot lock ref" is retried on archiveTagPushDelays before it fails.
 // Every returned error wraps ErrArchiveFailed.
 // KindTagPushed is recorded on rec only after the push observably succeeded.
 func archiveWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string) (tag string, skippedReason string, err error) {
@@ -101,7 +109,7 @@ func archiveWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string)
 		_, err := gitexec.Run([]string{"push", originRemoteName, tagRef}, weftRoot)
 		return err
 	}
-	if err := gitrepo.PushWithRetry(pushTag, tagRef, nil); err != nil {
+	if err := gitrepo.PushWithRetry(pushTag, tagRef, archiveTagPushDelays(), nil); err != nil {
 		return "", "", fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
 	}
 	rec.Append(KindTagPushed, weftRoot, tag)
