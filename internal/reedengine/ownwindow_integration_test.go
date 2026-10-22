@@ -806,6 +806,50 @@ func TestOwnWindow_RealTmux(t *testing.T) {
 		assertShellWindowHoldsOnlySelvage(t)
 	})
 
+	t.Run("ShellOnlyStrandReadsDeadPastTheGraceAndResumeRelaunchesIt", func(t *testing.T) {
+		t.Cleanup(func() { e.paneAge = paneProcessAge })
+		selvageBefore := func() string {
+			st, err := LoadState(e.stateDir())
+			if err != nil || st == nil {
+				t.Fatalf("LoadState = (%+v, %v)", st, err)
+			}
+			return st.SelvagePaneID
+		}()
+		shellOnly, err := e.AddStrand(AddSpec{Role: "shell-only", Display: ownDisplay})
+		if err != nil {
+			t.Fatalf("AddStrand(shell-only): %v", err)
+		}
+
+		e.paneAge = func(pid int) (time.Duration, bool) { return time.Second, true }
+		if status, ok := statusOf(shellOnly.GUID); !ok || !status.Live {
+			t.Errorf("Status of the shell-only strand inside the grace = %+v (found %v), want it live", status, ok)
+		}
+
+		e.paneAge = func(pid int) (time.Duration, bool) { return 31 * time.Second, true }
+		if status, ok := statusOf(shellOnly.GUID); !ok || status.Live || !status.Present {
+			t.Fatalf("Status of the shell-only strand past the grace = %+v (found %v), want present and not live", status, ok)
+		}
+
+		if _, err := e.Resume(); err != nil {
+			t.Fatalf("Resume: %v", err)
+		}
+		status, ok := statusOf(shellOnly.GUID)
+		if !ok || status.PaneID == "" || status.PaneID == shellOnly.PaneID {
+			t.Fatalf("Status of the shell-only strand after Resume = %+v (found %v), want it bound to a pane other than %s", status, ok, shellOnly.PaneID)
+		}
+		out, err := e.tmux.output("list-panes", "-s", "-t", exactSessionTarget(e.SessionName()), "-F", "#{pane_id}")
+		if err != nil {
+			t.Fatalf("list panes: %v", err)
+		}
+		if slices.Contains(strings.Fields(out), shellOnly.PaneID) {
+			t.Errorf("old pane %s is still listed after Resume, want it killed", shellOnly.PaneID)
+		}
+		st, err := LoadState(e.stateDir())
+		if err != nil || st == nil || st.SelvagePaneID != selvageBefore {
+			t.Errorf("Selvage pane after Resume = %+v (err %v), want it kept at %s, since the Selvage is a shell by design", st, err, selvageBefore)
+		}
+	})
+
 	// This subtest tears the session down, so it runs last.
 	t.Run("SessionTeardownEndsTheShellBeforeTheChainRuns", func(t *testing.T) {
 		marker := filepath.Join(t.TempDir(), "chain-ran")

@@ -81,7 +81,7 @@ func (r *Runner) stopRecorded(runDir, guid string) error {
 	return removeStrandIfPresent(r.reed, guid)
 }
 
-// strandRemovable reports whether a stop removes strand: a live strand, or an own-window strand whose pane is present but dead.
+// strandRemovable reports whether a stop removes strand: a live strand, or an own-window strand whose pane is present but not live, a dead pane or one showing only its shell.
 // A window 0 strand with a dead pane is not removable, since reconcile kills its pane at the next reed op.
 func strandRemovable(strand reedengine.StrandStatus) bool {
 	return strand.Live || (strand.OwnWindow && strand.Present)

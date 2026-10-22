@@ -261,12 +261,12 @@ const (
 // classifyIfAbsent decides which of the four --if-absent branch rows AddStrand must take for name
 // against strands, given aliveIDs.
 //
-// aliveIDs must be the set aliveIDSet (apply.go) builds, never liveIDSet: a candidate is alive exactly
+// aliveIDs must be the engine judgment engineAliveIDSet (apply.go) builds, never liveIDSet: a candidate is alive exactly
 // when s.PaneID != "" && aliveIDs[s.PaneID] — both halves, copying planResumeLaunches in
 // lifecycle.go, whose own comment records why the empty-PaneID half carries its weight after a server
-// reboot clears every binding. liveIDSet would instead read a dead-but-present pane as live, so the
-// case most worth recovering (a strand whose pane died) would be exactly the one --if-absent refused
-// to fix.
+// reboot clears every binding.
+// liveIDSet would instead read a dead-but-present pane, or a shell-only pane whose engine exited, as live,
+// so the case most worth recovering (a strand whose engine died) would be exactly the one --if-absent refused to fix.
 //
 // It returns the decision and the index into strands the decision names; the index is -1 only for
 // ifAbsentAdd, since that row names no existing strand at all.
@@ -565,8 +565,8 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 			if err != nil {
 				return fmt.Errorf("list panes: %w", err)
 			}
-			// aliveIDSet, not liveIDSet: see classifyIfAbsent's own doc comment for why.
-			decision, idx := classifyIfAbsent(st.Strands, explicitName, aliveIDSet(presentPanes(st.Strands, live, windows)))
+			// engineAliveIDSet, not liveIDSet: see classifyIfAbsent's own doc comment for why.
+			decision, idx := classifyIfAbsent(st.Strands, explicitName, e.engineAliveIDSet(presentPanes(st.Strands, live, windows)))
 			switch decision {
 			case ifAbsentNoOpAlive, ifAbsentNoOpHidden:
 				// Neither no-op branch mutates anything: no SaveState, no reconcile/apply, and

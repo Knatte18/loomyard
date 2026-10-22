@@ -20,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -625,6 +626,33 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 			}
 		})
 	}
+
+	// A name-matched own-window strand whose pane lists only its start shell past the launch grace is not alive: the add relaunches it onto a new pane.
+	t.Run("ShellOnlyPaneIsRelaunched", func(t *testing.T) {
+		e := newTestEngine(t)
+		e.paneAge = func(pid int) (time.Duration, bool) { return 31 * time.Second, true }
+		fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321 t\x1fbash\x1f/bin/bash\n")
+		// The new pane shows up in the listings once it is created, so the reconcile after the launch keeps its binding.
+		fake.answerFunc("new-window", func(args []string) (string, error) {
+			fake.answer("list-panes", "%9 0 0 100 20 4399 t\x1fclaude\x1f/bin/bash\n", nil)
+			return "%9 @9\n", nil
+		})
+		persisted := Strand{GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}
+		if err := SaveState(e.stateDir(), &ReedState{Strands: []Strand{persisted}}); err != nil {
+			t.Fatalf("SaveState: %v", err)
+		}
+
+		got, err := e.AddStrand(AddSpec{IfAbsent: true, NameOverride: "claude", Cmd: "new-cmd", Display: render.Display{Anchor: render.AnchorOwnWindow}})
+		if err != nil {
+			t.Fatalf("AddStrand(--if-absent): %v", err)
+		}
+		if got.GUID != persisted.GUID || got.PaneID != "%9" {
+			t.Errorf("AddStrand(--if-absent) = guid %q pane %q, want guid %q bound to the new pane %%9", got.GUID, got.PaneID, persisted.GUID)
+		}
+		if fake.Count("new-window") == 0 {
+			t.Error("AddStrand(--if-absent) ran no new-window, want a relaunch of the shell-only strand")
+		}
+	})
 }
 
 // TestAddStrandUnless_NamedStrandSkips pins that a named strand skips the add whether it is live, dormant (its pane gone) or hidden, and that a skip saves, launches and moves nothing.

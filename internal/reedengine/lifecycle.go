@@ -838,10 +838,10 @@ func (e *Engine) Resume() (ResumeResult, error) {
 				return fmt.Errorf("list panes after reconcile: %w", err)
 			}
 		}
-		// aliveIDSet, not liveIDSet: a strand bound to a dead-but-present pane
-		// (e.g. the kept sole dead pane) is not live and must be relaunched.
+		// engineAliveIDSet, not liveIDSet: a strand bound to a dead-but-present pane
+		// (e.g. the kept sole dead pane), or to a shell-only pane past the launch grace, is not live and must be relaunched.
 		// The present set carries the own-window panes, so a live one is never relaunched beside itself.
-		toLaunch, toDrop, toHold := planResumeLaunches(st.Strands, aliveIDSet(presentPanes(st.Strands, live, windows)), pathExists, e.pairPaused())
+		toLaunch, toDrop, toHold := planResumeLaunches(st.Strands, e.engineAliveIDSet(presentPanes(st.Strands, live, windows)), pathExists, e.pairPaused())
 
 		// A finished strand has no live pane,
 		// so dropping it kills nothing.
@@ -1341,11 +1341,10 @@ func (e *Engine) Status() (StatusResult, error) {
 		}
 		present := presentPanes(st.Strands, live, windows)
 
-		// aliveIDSet, not liveIDSet: report a strand bound to a
-		// dead-but-present pane as not live — the operator asks status whether
-		// the strand's process is running, not whether tmux still lists a
-		// (dead) pane for it.
-		aliveIDs := aliveIDSet(present)
+		// engineAliveIDSet, not liveIDSet: report a strand bound to a dead-but-present pane, or to a pane showing only its start shell past the launch grace, as not live.
+		// The operator asks status whether the strand's engine is running, not whether tmux still lists a pane for it.
+		// Present, OwnWindow and PanePID stay pane-level.
+		aliveIDs := e.engineAliveIDSet(present)
 		presentIDs := liveIDSet(present)
 		alivePIDs := make(map[string]int, len(present))
 		for _, p := range present {

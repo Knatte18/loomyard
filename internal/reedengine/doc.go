@@ -292,6 +292,15 @@
 // parsePaneList keys a dead pane on the literal value "1", never a numeric
 // or boolean comparison.
 //
+// Strand liveness: a strand reads live (StrandStatus.Live) only when its pane is listed in this session, is not dead, and does not show only the shell the pane was started with.
+// engineAliveIDs (apply.go) is the one predicate.
+// The third rule holds when the pane's start command and foreground command are both known and name the same shell (shellBaseName compares the executable names, so the login shell "-bash" matches the pin "/bin/bash"), and the pane's first process is at least launchGrace (30 seconds) old.
+// The age is read from /proc through paneProcessAge, only for a pane whose commands match.
+// An empty start command (a pane spawned with no default-command pin), an empty foreground command and an age that cannot be read each read live, and so does every pane on Windows, where a PowerShell cmdlet runs inside the shell.
+// Status, Directory, Resume and the --if-absent path of AddStrand take the predicate; Resume therefore relaunches a shell-only strand and kills its old own-window pane.
+// StrandStatus.Present, OwnWindow and PanePID stay pane-level, and the pane-level checks (the Selvage pane's health, pane options and title repair) keep aliveIDSet, which reads only the first two rules, since the Selvage is a shell by design.
+// Two residuals remain: an engine that never takes the foreground, because a wrapper binary runs it as a child of a shell that does not exec it, reads dead; and a shell-only pane younger than the grace, or whose age is unreadable, reads live.
+//
 // Strand window: the strands live in one window of the session, and every op that enumerates, lays out or measures them addresses that window by its id ("@<n>"), never by the session's current window.
 // A second window in the session is therefore never read as the strands' window.
 // The one seam, windowtarget.go's TmuxCmd.strandWindowTarget, lists the session's own panes across all its windows (`list-panes -s -t '=<session>' -F "#{pane_id} #{window_id}"`).
