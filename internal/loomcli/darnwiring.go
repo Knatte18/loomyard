@@ -147,7 +147,7 @@ func latestDarnOutcome(statusPath, statusLockPath string) (loomshed.DarnOutcome,
 		return loomshed.DarnOutcome{}, false, nil
 	}
 	for i := len(st.History) - 1; i >= 0; i-- {
-		if st.History[i].Producer != loomshed.NameDarnWrite {
+		if st.History[i].Producer != loomshed.NameDarnWrite || st.History[i].Outcome == shedengine.OutcomeReroute {
 			continue
 		}
 		latest := loomshed.DarnOutcome{Outcome: st.History[i].Outcome}

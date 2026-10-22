@@ -413,6 +413,16 @@ func TestLatestDarnOutcome(t *testing.T) {
 			wantFound: true,
 			want:      loomshed.DarnOutcome{Outcome: shedengine.Stuck, Reason: "verify gate failed"},
 		},
+		{
+			name:      "a Darn-Write reroute entry is skipped for the last real halt",
+			status:    &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateBlocked, Error: "verify gate failed", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarnWrite, Outcome: shedengine.OutcomeReroute}}},
+			wantFound: true,
+			want:      loomshed.DarnOutcome{Outcome: shedengine.Stuck, Reason: "verify gate failed"},
+		},
+		{
+			name:   "a lone Darn-Write reroute entry reports not found",
+			status: &shedengine.Status{CurrentProducer: loomshed.NameMergeIn, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.OutcomeReroute}}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
