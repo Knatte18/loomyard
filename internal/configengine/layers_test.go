@@ -592,7 +592,7 @@ func TestLoad_LayerStack(t *testing.T) {
 	}
 }
 
-// TestValidateLocal pins the machine-layer rule, and that the local layer refuses a machine key, besides the local-layer rule: a key the template lacks, a shape mismatch, a category other than none and, for a hub-wide module, an unclassified key are refused naming the key; an open-map entry, a whole-entry alias, the longest covering entry and an empty document pass.
+// TestValidateLocal pins the machine-layer rule, and that the local layer refuses a machine key, besides the local-layer rule: a key the template lacks, a shape mismatch, a category other than none and, for a hub-wide module, an unclassified key are refused naming the key; an open-map entry, a whole-entry alias, a per-name key some template entry holds under any name, the longest covering entry and an empty document pass.
 func TestValidateLocal(t *testing.T) {
 	t.Parallel()
 	hubWide := layerSpec()
@@ -621,6 +621,13 @@ func TestValidateLocal(t *testing.T) {
 		"gone_guard":   configengine.CategoryGuard,
 	}
 	const removal = "remove it from the machine override"
+
+	profiles := configengine.Spec{
+		Name:        "profiles",
+		Template:    []byte("profiles:\n  plain:\n    kind: identity\n  costed:\n    kind: cost\n    budget: 200\n"),
+		PerNameMaps: []string{"profiles"},
+		Categories:  map[string]configengine.Category{"profiles": configengine.CategoryNone},
+	}
 
 	tests := []struct {
 		name string
@@ -666,6 +673,9 @@ func TestValidateLocal(t *testing.T) {
 		{name: "hub-wide unclassified key", spec: hubWide, doc: "port: 81\n", wantErr: "port"},
 		{name: "hub-wide executable key", spec: hubWide, doc: "run: evil\n", wantErr: "run"},
 		{name: "unparseable document", spec: layerSpec(), doc: "name: [unclosed\n", wantErr: "parse"},
+		{name: "per-name keys are judged against the template entry holding them whatever the name", spec: profiles, doc: "profiles:\n  wide:\n    kind: cost\n    budget: 5\n  plain:\n    budget: 9\n"},
+		{name: "per-name key no template entry holds", spec: profiles, doc: "profiles:\n  wide:\n    nope: 1\n", wantErr: "profiles.wide.nope"},
+		{name: "per-name key in another shape than the template entry's", spec: profiles, doc: "profiles:\n  wide:\n    budget:\n      a: 1\n", wantErr: "profiles.wide.budget"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

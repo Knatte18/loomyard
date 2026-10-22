@@ -220,6 +220,14 @@ func TestReconcile(t *testing.T) {
 			notContains: []string{"default a"},
 		},
 		{
+			name:        "per-name map emptied under a key carrying a line comment stays valid YAML",
+			template:    "name: tmpl\nlenses: # the lenses\n  a: default a\n",
+			existing:    "name: mine\nlenses:\n  a: default a\n",
+			perNameMaps: []string{"lenses"},
+			wantDropped: []string{"lenses.a"},
+			contains:    []string{"lenses: {} # the lenses\n"},
+		},
+		{
 			name:        "per-name map holding a list is refused with the way forward",
 			template:    perNameTemplate,
 			existing:    "name: mine\nlenses: [a]\n",

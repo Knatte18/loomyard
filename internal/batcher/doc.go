@@ -8,17 +8,18 @@
 //
 // batcher.yaml holds named profiles under profiles:, each a batchifier kind (identity or cost) with that kind's parameters;
 // its active: key names the profile in force (see contracts/specs/loom-plan-spec.md).
-// profiles: is an open map, keyed by names the operator chooses, so lyx config reconcile carries the operator's profiles whole;
-// the template's identity and cautious profiles fill in only when the file holds no profiles: key.
+// profiles: is a per-name map, keyed by names the operator chooses:
+// a layer's profiles add to or override the template's identity and cautious by name, each profile merging key by key, so a layer holds only the profiles and keys it tunes.
+// `lyx config batcher --set profiles.<name>.<key>=<value>` sets one key of any profile.
 // Active resolves the active profile at config-load time and builds it through the registry.
 // An empty active: and active: identity resolve to the identity batcher even when no profile of that name is configured, so a batcher.yaml without profiles: keeps working;
 // a configured profile named identity wins over that default.
 // A load error names batcher.yaml and the offending profile or key: an active: naming no profile, an unknown batchifier kind, or a cost profile with a missing or non-positive budget, a max_cards below 2, a missing, negative or unknown weights coefficient, or a retired key.
 // The retired keys are alone_above, and master_base and startup_context in weights:;
-// a retired-key error wraps ErrRetiredKey, names the layer file that carries the key and ends with the way forward that file calls for:
+// a retired-key error wraps ErrRetiredKey, names the highest layer file holding the profile and ends with the way forward that file calls for:
 // running "lyx config reconcile --apply", which migrates the profile, for a worktree or local file, and for the repo default, which only the hub-wide reconcile rewrites, running "lyx fabric reconcile", a verb a session lyx refuses it from reports status: FAILED for, so the orch runs it.
 // Active loads batcher.yaml through the layer stack under a configengine.Dirs, ConfigSpec classifying both keys as meeting no category, so any layer may hold them;
-// profiles is taken whole from the highest layer holding it, and a retired key in any layer reaches the retired-key refusal.
+// a retired key in any layer reaches the retired-key refusal.
 // Every load error is marked configengine.ErrInvalid, so a caller tells a file's content from an unreadable file.
 // MigrateConfig is that migration: a pure rewrite of a batcher.yaml document that drops the retired keys from every profile and adds weights.orientation at the template's value where a retired weights key stood and the profile had none.
 // It touches only those keys, carries every other entry and comment through yaml node editing, and is never called by the loader.
