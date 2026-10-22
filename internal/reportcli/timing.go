@@ -1,8 +1,9 @@
-// timing.go is the `report timing` verb: it validates its flags, resolves the prime and the hub's live pairs, reads the machine's sleep from the systemd journal and hands them to the report engine.
+// timing.go is the `report timing` verb: it validates its flags, resolves the prime and the hub's live pairs, reads the machine's sleep from the systemd journal, or the hub's pauses when the journal cannot be read, and hands them to the report engine.
 
 package reportcli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
@@ -11,9 +12,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reportengine"
 	"github.com/Knatte18/loomyard/internal/sleepjournal"
 	"github.com/spf13/cobra"
@@ -40,7 +43,9 @@ settled each stop. A phase a run holds no row of is reported absent, never as ze
   --format <form>     json (default) or markdown
 
 It runs from the hub's prime worktree only, reads git history and the systemd
-journal, and writes nothing.
+journal, and writes nothing. When the journal cannot be read, the hub's
+recorded pauses stand in for machine sleep, and the sleep note says the
+figures may include sleep.
 
 Example:
   lyx report timing --by week --format markdown`,
@@ -75,7 +80,11 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			options.Sleeps, options.SleepNote = journalSleeps(ctx)
+			pause, err := hubgeom.PauseGeometry(location)
+			if err != nil {
+				return fail(err)
+			}
+			options.Sleeps, options.SleepNote = machineSleeps(ctx, pause.RecordPath, time.Now().UTC())
 			report, err := reportengine.ComputeTiming(sources, options)
 			if err != nil {
 				return fail(err)
@@ -142,29 +151,50 @@ func livePairs(location *lyxcwd.Location) ([]string, error) {
 	return slugs, nil
 }
 
-// journalSleeps runs journalctl once for the machine's sleeps and returns them with the note sleepsFromJournal words.
+// machineSleeps runs journalctl once for the machine's sleeps and returns the idle intervals with the note sleepsFromJournal words.
 // A journalctl that is not on PATH is handed on as the run error without a spawn.
-func journalSleeps(ctx context.Context) ([]reportengine.Interval, string) {
+func machineSleeps(ctx context.Context, pauseRecordPath string, now time.Time) ([]reportengine.Interval, string) {
 	path, err := exec.LookPath("journalctl")
 	if err != nil {
-		return sleepsFromJournal(nil, err)
+		return sleepsFromJournal(nil, nil, err, pauseRecordPath, now)
 	}
 	logger.Info("report: spawning journalctl for the machine's sleep", "path", path)
-	out, err := exec.CommandContext(ctx, path, sleepjournal.Args()...).Output()
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, path, sleepjournal.Args()...)
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	logger.Info("report: journalctl finished", "bytes", len(out), "error", err)
-	return sleepsFromJournal(out, err)
+	return sleepsFromJournal(out, stderr.Bytes(), err, pauseRecordPath, now)
 }
 
-// sleepsFromJournal maps the output and exit error of one journalctl run to the sleeps and the note the report's sleep_note carries.
-// With sleeps the note says they are left out of every interval, and without them it says why no machine sleep is subtracted.
-func sleepsFromJournal(out []byte, runErr error) ([]reportengine.Interval, string) {
-	read, clause := sleepjournal.Read(out, runErr)
-	if clause != "" {
-		return nil, "No machine sleep is subtracted: " + clause + "."
+// sleepsFromJournal maps the output, standard error and exit error of one journalctl run to the intervals the report leaves out and the note its sleep_note carries.
+// A journal that was read gives its sleeps, and without them the note says why no machine sleep is subtracted.
+// A journal that could not be read gives the hub-wide pauses of the pause record at pauseRecordPath instead, a live one running to now, since a hub pause holds every run;
+// the note then names why the journal was not read and says the figures may include sleep no pause covers.
+func sleepsFromJournal(out, stderr []byte, runErr error, pauseRecordPath string, now time.Time) ([]reportengine.Interval, string) {
+	read, clause, journalRead := sleepjournal.Read(out, stderr, runErr)
+	if journalRead {
+		if clause != "" {
+			return nil, "No machine sleep is subtracted: " + clause + "."
+		}
+		sleeps := make([]reportengine.Interval, len(read))
+		for i, sleep := range read {
+			sleeps[i] = reportengine.Interval{From: sleep.From.UTC(), To: sleep.To.UTC()}
+		}
+		return sleeps, "Machine sleep, read from the systemd journal, is left out of every interval."
 	}
-	sleeps := make([]reportengine.Interval, len(read))
-	for i, sleep := range read {
-		sleeps[i] = reportengine.Interval{From: sleep.From.UTC(), To: sleep.To.UTC()}
+
+	unread := "Machine sleep could not be read from the systemd journal: " + clause
+	coverage, err := pauserecord.ReadCoverage(pauseRecordPath, "", now)
+	if err != nil {
+		return nil, unread + ", and the hub's pauses could not be read either (" + err.Error() + "), so nothing is left out and the figures may include sleep."
 	}
-	return sleeps, "Machine sleep, read from the systemd journal, is left out of every interval."
+	if len(coverage.Intervals) == 0 {
+		return nil, unread + ", and the hub records no pause, so nothing is left out and the figures may include sleep."
+	}
+	pauses := make([]reportengine.Interval, len(coverage.Intervals))
+	for i, pause := range coverage.Intervals {
+		pauses[i] = reportengine.Interval{From: pause.Start.UTC(), To: pause.End.UTC()}
+	}
+	return pauses, unread + ". The hub's recorded pauses stand in for it and are left out of every interval, so the figures may include sleep no hub pause covers."
 }
