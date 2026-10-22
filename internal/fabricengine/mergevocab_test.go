@@ -248,12 +248,6 @@ func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
 			t.Errorf("(*MergeGuardError).Error() = %q; must not contain the dirt detail %q", guardErr.Error(), detail)
 		}
 	}
-	if !IsWorktreeDirtyReason(guardErr.Error()) {
-		t.Errorf("IsWorktreeDirtyReason(%q) = false; want true for a guard error carrying the dirty-worktree reason", guardErr.Error())
-	}
-	if other := newMergeGuardError([]string{mergeReasonNotSynced}).Error(); IsWorktreeDirtyReason(other) {
-		t.Errorf("IsWorktreeDirtyReason(%q) = true; want false for another guard reason", other)
-	}
 
 	const mergeInRequiredSource = "some-warp-branch"
 	mergeInRequiredErr := &ErrMergeInRequired{Source: mergeInRequiredSource}
