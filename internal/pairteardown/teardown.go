@@ -607,6 +607,11 @@ func (t *Teardown) taskWorktreeGone(slug string) (bool, error) {
 	return true, nil
 }
 
+// TaskWorktreeGone reports whether the slug's task worktree path is not a registered linked worktree of the prime's repo, so a caller can tell a pair already removed by hand from a present one.
+func (t *Teardown) TaskWorktreeGone(slug string) (bool, error) {
+	return t.gone(slug)
+}
+
 // taskLocation resolves the present task worktree's own location.
 func (t *Teardown) taskLocation(slug string) (*lyxcwd.Location, error) {
 	return lyxcwd.ResolveWorktree(fabricengine.WorktreePath(t.prime, slug))

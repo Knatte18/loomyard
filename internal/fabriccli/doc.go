@@ -36,6 +36,24 @@
 // `lyx fabric remove` ends the pair's reed session before removing a worktree, so no strand outlives it;
 // `abandoned_session` names a foreign session reed did not kill.
 // Pending run records in the weft worktree are committed before the archive tag is pushed, so only changes outside the record paths need `--force`.
+// `ended_processes` lists the `{pid, role}` of each registered process the session end ended, and is empty when none.
+//
+// The removal first runs the run-scope origin reconcile of the slug, which `PATTERN-origin-reconcile` requires before acting on a run after an absence, and turns its report into a verdict on the slug's entry.
+// A stopped entry is refused naming the first branch that stops it, its way forward and the re-run of the removal, with nothing ended.
+// The way forward is the branch's own, never the entry's, since the entry can carry the text of a gone branch, which names the refused verb.
+// A stop made only by gone branches of the slug is no refusal: the removal is what clears a gone branch, so it runs the ordinary request.
+// A reconcile error refuses naming its cause and the re-run.
+//
+// An ended or owned_elsewhere verdict removes the pair through the composite's local mode: no archive-tag push, no remote branch step, no board write, and no quiet wait, so a machine that does not own the run pushes no archive tag of stale records.
+// A `--remote` it drops is named in `remote_skipped_reason`.
+// Any other verdict runs the ordinary request, with the quiet wait and the typed `--force` and `--remote`.
+//
+// A pair whose task worktree is already gone takes no reconcile, since a run-scope reconcile refuses a slug with no pair worktree.
+// The local board decides its verdict, as for an unreachable origin: an entry whose effective owner is another machine reads owned_elsewhere, and a done entry reads ended.
+// Either removes the pair through the local request, and a pair with neither reading runs the ordinary request.
+//
+// The removal exempts this process's network gate from every live pause for its duration, so its own network calls pass under any pause;
+// its detached children keep their own gates, and `--force` still answers dirtiness only.
 //
 // A pair whose task worktree was already removed by hand is finished: the remaining teardown runs, and the envelope reports `finished: true` and the `steps` performed.
 // A path at the task worktree's location that is not a registered linked worktree is reported in `stray_path` and never deleted, and a slug of which nothing remains is refused as pair not found.
