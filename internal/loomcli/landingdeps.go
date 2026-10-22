@@ -380,13 +380,9 @@ func parentRecordsCommitter(l *lyxcwd.Location, slug string) func() error {
 // The prime is resolved at call time, and the seams come from pairteardown over it with the hub's options.
 func runReconciler(l *lyxcwd.Location, slug string) func() (fabricengine.OriginReport, error) {
 	return func() (fabricengine.OriginReport, error) {
-		primeName, err := fabricengine.PrimeName(l)
+		prime, err := primeOfHub(l)
 		if err != nil {
-			return fabricengine.OriginReport{}, fmt.Errorf("resolve the hub's prime: %w", err)
-		}
-		prime, err := lyxcwd.ResolveWorktree(filepath.Join(l.HubPath, primeName))
-		if err != nil {
-			return fabricengine.OriginReport{}, fmt.Errorf("locate the hub's prime %q: %w", primeName, err)
+			return fabricengine.OriginReport{}, err
 		}
 		teardown, err := pairteardown.New(prime)
 		if err != nil {

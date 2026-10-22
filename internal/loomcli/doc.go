@@ -28,6 +28,8 @@
 // a landed resume or a fresh spawn removes the file.
 // A live loom driver over a run halted at a hand-back (awaiting, blocked, paused or failed) that has not yet written its park marker is still writing its stop report, so start refuses with the kind `driver_not_parked`;
 // a live driver over a running run is left working.
+// Before anything else, start and resume refuse a run whose status file exists and that another machine owns, with the kind `owned_elsewhere` and the owner's name, naming `lyx adopt <slug>`;
+// the owner is judged by a judge-only run-scope origin reconcile from the hub's prime, or from the local board when origin is unreachable, and nothing is written.
 // Before spawning or resuming a driver, start refuses with the kind `merge_in_progress` over an unfinished merge, naming the conflicted paths and the remedy, the fabric verbs for a fabric merge and git for one fabric did not start.
 // The exception is a run whose current producer is Merge-In or Finalize, which goes through over a parked fabric merge-in of its own parent branch, since that row aborts and redoes it.
 // A loom driver strand reed marked retiring is never adopted: start removes it and spawns a fresh driver.

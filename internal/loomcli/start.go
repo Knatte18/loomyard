@@ -489,6 +489,8 @@ It refuses with the kind "merge_in_progress" while the worktree holds an
 unfinished merge, naming the conflicted paths and the remedy, and with the
 kind "driver_not_parked" while a live loom driver over a halted run is still
 writing its stop report; retry that one a few seconds later.
+It refuses with the kind "owned_elsewhere" over a run another machine owns,
+naming the owner and "lyx adopt".
 While a pause covers this task it refuses and names "lyx resume".
 
 Example:
@@ -503,6 +505,9 @@ Example:
 
 			if err := c.refuseCovered(`run "lyx loom start" again`); err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+			if c.refuseOwnedElsewhere(ctx, out, `run "lyx loom start" again`) {
 				return nil
 			}
 
