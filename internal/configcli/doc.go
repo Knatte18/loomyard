@@ -61,6 +61,7 @@
 // A module whose spec sets `configengine.Spec.JSONEntries`, the run profiles of `profiles`, takes instead a top-level name and a JSON object, as in `lyx config profiles --set wide='{"darn":{"review_max_bounces":2}}'`:
 // the object replaces that entry whole or is appended as a new one, the other entries left as they are, and a value that is not a JSON object is refused.
 // An absent hub file starts from the template.
+// A module with a template overlay picks its layer through a selector key only the base file may hold, so a hub worktree write picking a layer the base does not pick is refused, naming `--layer default` from the prime worktree.
 //
 // Every `--set` write, on any layer, and every hub-wide editor save is then checked by loading the module through its own loader (`configreg.Module.CheckLoad`), and the written file is put back as it was when the load fails.
 // A board-dir write loads the board file alone, and any other write loads the worktree's stack.

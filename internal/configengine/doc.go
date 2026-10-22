@@ -105,6 +105,14 @@
 // Only the base layer picks: in a hub a worktree file holding the selector with a value other than the default file's is refused when read, naming the line to delete and the `--layer default` write from the prime worktree.
 // A worktree value equal to the base's changes no selection and loads.
 //
+// The write side follows the same rule.
+// [BaseScaffold] returns the template with every per-name map emptied for a spec with a selector, so no scaffolded entry pins itself over the picked layer.
+// [Set] judges a base-layer write against the template its own document picks.
+// The selector's value is the last pair setting it, else the one the file holds.
+// A write to a layer above the base is judged against [TemplateUnder], and an unknown value fails before anything is written.
+// [Set] and [Edit] refuse a hub worktree write or save that leaves the selector holding a value other than the default file's, writing nothing or putting the file back.
+// The refusal names the line to delete when the file held the selector before.
+//
 // # Per-name maps
 //
 // A [Spec] also carries `PerNameMaps`: the dotted paths of the module's per-name maps, mappings of names each carried whole as one unit.
