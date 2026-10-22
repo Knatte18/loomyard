@@ -4,7 +4,9 @@ package proc
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"time"
 )
 
 // ErrNoProcessGroup is the group-kill error ConfigureGroupKill reports where the platform has no process group to signal, so only the started process itself is killed.
@@ -17,4 +19,16 @@ var ErrNoProcessGroup = errors.New("proc: no process group on this platform")
 // proc cannot log, so the caller's report callback is where a kill is logged.
 func ConfigureGroupKill(cmd *exec.Cmd, report func(pid int, groupErr error)) {
 	configurePlatformGroupKill(cmd, report)
+}
+
+// ConfigureGroupTerminate makes a context cancel or expiry of cmd send SIGTERM to the command's whole process group, then SIGKILL to the same group after killAfter, so a descendant can shut down but cannot outlive the grace.
+// Where the platform has no process group the cancel kills the command alone and reports ErrNoProcessGroup.
+// It calls report with the command's pid, the signal sent and the signal's error after each send; a failed SIGTERM is returned from the cancel and starts no SIGKILL timer.
+// proc cannot log, so the caller's report callback is where a signal is logged.
+//
+// The returned awaitGone is called once cmd.Wait or cmd.Run has returned.
+// It returns at once when the cancel never sent a signal;
+// otherwise it returns once the group is empty, or once the SIGKILL has been sent, and stops the SIGKILL timer in the first case.
+func ConfigureGroupTerminate(cmd *exec.Cmd, killAfter time.Duration, report func(pid int, sig os.Signal, groupErr error)) (awaitGone func()) {
+	return configurePlatformGroupTerminate(cmd, killAfter, report)
 }
