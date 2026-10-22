@@ -35,7 +35,7 @@ func (e *Engine) Directory() ([]DirectoryRow, error) {
 				return err
 			}
 			if st != nil {
-				rows = directoryRows(st.Strands, nil)
+				rows = directoryRows(st.Strands, nil, nil)
 			}
 			return nil
 		}
@@ -47,20 +47,21 @@ func (e *Engine) Directory() ([]DirectoryRow, error) {
 		if err != nil {
 			return fmt.Errorf("list panes: %w", err)
 		}
-		rows = directoryRows(st.Strands, presentPanes(st.Strands, live, windows))
+		present := presentPanes(st.Strands, live, windows)
+		rows = directoryRows(st.Strands, present, e.engineAliveIDSet(present))
 		return nil
 	})
 	return rows, err
 }
 
 // directoryRows maps strands onto the live pane set; a nil live set makes every row dormant.
+// A row reads live, and carries its pane's title and drift, only when its pane is in alive, the set of panes whose engine still runs.
 // Drift is whatever planTitleRepairs would repair, so the two never disagree.
-func directoryRows(strands []Strand, live []LivePane) []DirectoryRow {
+func directoryRows(strands []Strand, live []LivePane, alive map[string]bool) []DirectoryRow {
 	titles := make(map[string]string, len(live))
 	for _, p := range live {
 		titles[p.ID] = p.Title
 	}
-	alive := aliveIDSet(live)
 	drifted := make(map[string]bool)
 	for _, r := range planTitleRepairs(strands, live) {
 		drifted[r.GUID] = true

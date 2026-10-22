@@ -27,6 +27,7 @@ func TestPlanReconcile(t *testing.T) {
 		strands                  []Strand
 		live                     []LivePane
 		windows                  []windowPane
+		elsewhere                map[string]string
 		selvagePaneID            string
 		wantCleared              []string
 		wantDeadPanesToKill      []string
@@ -276,12 +277,23 @@ func TestPlanReconcile(t *testing.T) {
 			strands: []Strand{ownWindowTestStrand("o", "%5")},
 			windows: []windowPane{{WindowID: "@3", Own: true, PaneID: "%5"}, {WindowID: "@3", Own: true, PaneID: "%6"}},
 		},
+		{
+			name:      "OwnWindowStrandFoundInAnotherSessionKeepsItsBinding",
+			strands:   []Strand{ownWindowTestStrand("o", "%5")},
+			elsewhere: map[string]string{"%5": "other:2"},
+		},
+		{
+			name:        "OwnWindowStrandAbsentFromEveryListingIsCleared",
+			strands:     []Strand{ownWindowTestStrand("o", "%5")},
+			elsewhere:   map[string]string{"%9": "other:2"},
+			wantCleared: []string{"o"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			policy := newReapPolicy(&ReedState{SelvagePaneID: tt.selvagePaneID}, tt.live)
-			gotPlan := planReconcile(tt.strands, tt.live, tt.windows, policy)
+			gotPlan := planReconcile(tt.strands, tt.live, tt.windows, policy, tt.elsewhere)
 			if !slices.Equal(gotPlan.ownWindowsToEnd, tt.wantOwnWindowsToEnd) {
 				t.Errorf("planReconcile() ownWindowsToEnd = %v, want %v", gotPlan.ownWindowsToEnd, tt.wantOwnWindowsToEnd)
 			}
@@ -337,6 +349,46 @@ func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *te
 	}
 	if got := findStrandPaneID(st.Strands, "present"); got != "%1" {
 		t.Errorf("present strand PaneID = %q, want kept", got)
+	}
+}
+
+// TestReconcileLocked_KeepsABindingFoundInAnotherSession pins that reconcile keeps an own-window strand's binding when the server-wide listing finds its pane in another session, kills nothing, and clears the binding when that lookup fails.
+func TestReconcileLocked_KeepsABindingFoundInAnotherSession(t *testing.T) {
+	tests := []struct {
+		name        string
+		serverList  string
+		serverErr   error
+		wantPaneID  string
+		wantLookups int
+	}{
+		{name: "FoundInAnotherSession", serverList: "%5 other 2\n%1 worktree 0\n", wantPaneID: "%5", wantLookups: 1},
+		{name: "LookupFails", serverErr: errors.New("list-panes -a failed"), wantPaneID: "", wantLookups: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newTestEngine(t)
+			fake := installFakeTmux(t, e)
+			fake.answer(serverListVerb, tt.serverList, tt.serverErr)
+
+			st := &ReedState{Strands: []Strand{ownWindowTestStrand("o", "%5")}}
+			killed, err := e.reconcileLocked(st, nil, nil)
+			if err != nil {
+				t.Fatalf("reconcileLocked: %v", err)
+			}
+			if len(killed) != 0 {
+				t.Errorf("killed = %v, want none", killed)
+			}
+			if got := findStrandPaneID(st.Strands, "o"); got != tt.wantPaneID {
+				t.Errorf("strand PaneID = %q, want %q", got, tt.wantPaneID)
+			}
+			if got := fake.Count(serverListVerb); got != tt.wantLookups {
+				t.Errorf("server-wide lookups = %d, want %d", got, tt.wantLookups)
+			}
+			if got := fake.Count("kill-pane"); got != 0 {
+				t.Errorf("kill-pane calls = %d, want none", got)
+			}
+		})
 	}
 }
 

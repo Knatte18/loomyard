@@ -667,18 +667,51 @@ func TestStart_NeverAttaches(t *testing.T) {
 func TestStart_DeadStrandRemovedBeforeStart(t *testing.T) {
 	t.Parallel()
 
-	h := newStartHarness(t, reedengine.StrandStatus{GUID: "corpse", Name: "orch", Live: false})
-	removedBeforeStart := false
-	h.cli.starter = starterFunc(func(spec shuttleengine.Spec) (startedSession, error) {
-		removedBeforeStart = len(h.strands.removed) == 1 && h.strands.removed[0] == "corpse"
-		return startedSession{GUID: "new-guid", SessionID: "minted-id"}, nil
-	})
-
-	if code, env := h.run(t); code != 0 {
-		t.Fatalf("exit = %d; env = %v", code, env)
+	tests := []struct {
+		name   string
+		strand reedengine.StrandStatus
+		// recordedSession is the session id saved in the state; empty saves none.
+		recordedSession string
+		args            []string
+		// wantResume is the session id the launch resumes.
+		wantResume string
+	}{
+		{name: "ADeadStrand", strand: reedengine.StrandStatus{GUID: "corpse", Name: "orch", Live: false}},
+		{
+			// A shell-only orch past the grace reads present, in its own window, and not live.
+			name:            "AShellOnlyStrandIsRelaunchedByContinueFromTheRecordedSession",
+			strand:          reedengine.StrandStatus{GUID: "corpse", Name: "orch", Live: false, Present: true, OwnWindow: true},
+			recordedSession: "sess-9", args: []string{"--continue"}, wantResume: "sess-9",
+		},
 	}
-	if !removedBeforeStart {
-		t.Error("the corpse strand was not removed before StartSession")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := newStartHarness(t, tt.strand)
+			if tt.recordedSession != "" {
+				if err := orchengine.SaveState(h.cli.paths, orchengine.State{Strand: "corpse", Phase: orchengine.PhaseIdle, SessionID: tt.recordedSession}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			removedBeforeStart := false
+			var launched shuttleengine.Spec
+			h.cli.starter = starterFunc(func(spec shuttleengine.Spec) (startedSession, error) {
+				removedBeforeStart = len(h.strands.removed) == 1 && h.strands.removed[0] == "corpse"
+				launched = spec
+				return startedSession{GUID: "new-guid", SessionID: "minted-id"}, nil
+			})
+
+			if code, env := h.run(t, tt.args...); code != 0 {
+				t.Fatalf("exit = %d; env = %v", code, env)
+			}
+			if !removedBeforeStart {
+				t.Error("the corpse strand was not removed before StartSession")
+			}
+			if len(h.strands.removed) != 1 || launched.ResumeSessionID != tt.wantResume {
+				t.Errorf("removed = %v, resumed session = %q; want one removal and %q", h.strands.removed, launched.ResumeSessionID, tt.wantResume)
+			}
+		})
 	}
 }
 

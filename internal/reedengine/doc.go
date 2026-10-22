@@ -189,6 +189,10 @@
 //
 // A strand's full name is formed once, in AddStrand under the state lock, from the prefix the told geometry carries and the strand's role (the grammar is PATTERN-agent-name).
 // A role already held in the worktree is numbered `-N`, and an explicit name that is held refuses.
+// Before naming, an ordinary add (not the `--if-absent` or unless-name paths) reclaims the name it asks for: the strand holding that exact name, the un-numbered role name or the explicit one, is removed with the ordinary removal when its engine is dead by the liveness predicate, it is not hidden, it has no children, and the pair is not paused.
+// A live holder, a holder inside the launch grace, and a numbered form (`fix-2` for a role add of `fix`) keep the name, and the ordinary numbering or refusal applies.
+// Reclaim kills the removed holder's pane only when this session lists it, so a pane placed in another session is never killed; the removal reaches reed.json with the add's own save, so a launch failure after it leaves the old record and only its dead pane gone.
+// Bound: a holder misread as dead under the liveness predicate's residual cases is killed with its engine; creel addresses receivers by strand name, so mail queued for the dead holder goes to the new strand of that name.
 // A role-less add takes the default role `strand`, and an empty told shortname refuses before anything boots, naming `lyx fabric shortname <shortname>`.
 // The name is a birth attribute and the only lookup key: it is stored in the strand record and every by-name lookup resolves through it, matching the full name, its role segment, or a legacy exact name.
 // An add can also name a strand whose presence in this worktree's state skips it (AddStrandUnless), matched by the same rule as an explicit name;
@@ -281,14 +285,25 @@
 //
 // Pane enumeration: listPanes (overlay.go) always runs
 //
-//	list-panes -t <strand window> -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}"
+//	list-panes -t <strand window> -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}\x1f#{pane_current_command}\x1f#{pane_start_command}"
 //
 // and parsePaneList (parse.go) parses each output line's first six whitespace-separated fields positionally, in that exact order, into a LivePane;
-// everything after the sixth field is LivePane.Title, so a title holding spaces survives.
+// everything after the sixth field is one tail field, which splitPaneTail splits on the ASCII unit separator paneTailSeparator into LivePane.Title, LivePane.CurrentCommand and LivePane.StartCommand.
+// All three can hold spaces, and a tail with no separator parses as the title alone, with both commands empty.
+// The session-wide window listing (windowPaneFormat) ends in the same tail, so both listings carry both commands.
 // The title is a display mirror of the strand's full name, never a lookup key.
 // #{pane_dead} is reported as the string "1" or "0";
 // parsePaneList keys a dead pane on the literal value "1", never a numeric
 // or boolean comparison.
+//
+// Strand liveness: a strand reads live (StrandStatus.Live) only when its pane is listed in this session, is not dead, and does not show only the shell the pane was started with.
+// engineAliveIDs (apply.go) is the one predicate.
+// The third rule holds when the pane's start command and foreground command are both known and name the same shell (shellBaseName compares the executable names, so the login shell "-bash" matches the pin "/bin/bash"), and the pane's first process is at least launchGrace (30 seconds) old.
+// The age is read from /proc through paneProcessAge, only for a pane whose commands match.
+// An empty start command (a pane spawned with no default-command pin), an empty foreground command and an age that cannot be read each read live, and so does every pane on Windows, where a PowerShell cmdlet runs inside the shell.
+// Status, Directory, Resume and the --if-absent path of AddStrand take the predicate; Resume therefore relaunches a shell-only strand and kills its old own-window pane.
+// StrandStatus.Present, OwnWindow and PanePID stay pane-level, and the pane-level checks (the Selvage pane's health, pane options and title repair) keep aliveIDSet, which reads only the first two rules, since the Selvage is a shell by design.
+// Two residuals remain: an engine that never takes the foreground, because a wrapper binary runs it as a child of a shell that does not exec it, reads dead; and a shell-only pane younger than the grace, or whose age is unreadable, reads live.
 //
 // Strand window: the strands live in one window of the session, and every op that enumerates, lays out or measures them addresses that window by its id ("@<n>"), never by the session's current window.
 // A second window in the session is therefore never read as the strands' window.
@@ -300,6 +315,11 @@
 // A session's first up has neither, so it falls back to the current window, and the Selvage pane created there defines the strand window from then on.
 // An own-window strand lives outside the strands' window: its pane is never read as that window, and its liveness is read through the session-wide listing (ownwindow.go's windowPane) instead.
 // Reconcile ends only a window carrying @lyx_own with no pane bound to a strand; a window without the marker is never ended.
+// Pane placement: an own-window strand's bound pane that the session listing lacks is looked up once across the whole server (`list-panes -a`, strandsElsewhereLocked); the lookup runs only when such a pane exists.
+// Found in another session, the strand reads dead, StrandStatus.Elsewhere names the placement as session:window, and reconcile keeps its binding instead of clearing it; nothing in another session is ever killed, since the kill sets read the session's own panes alone.
+// The binding ends when the pane leaves the server, which a later lookup finds nowhere, or when a removal drops it.
+// A failed lookup logs one episode and reads every such pane as found nowhere, so the binding is cleared as before; a pane in another tmux server is not listed and is cleared the same way.
+// Bound: a pane id reused after a server restart can name a sibling worktree's pane until the binding goes.
 // The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
 //
 // Window order (windoworder.go): a session's windows read, in index order, the overview window, the agents' own windows in start order, then the window named shell, then the hidden windows.

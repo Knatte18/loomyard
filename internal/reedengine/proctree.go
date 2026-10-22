@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ProcCmdline is one process's pid and parsed argv.
@@ -41,6 +42,43 @@ func parseStat(stat string) (ppid, session int, err error) {
 		return 0, 0, fmt.Errorf("parse stat line: non-numeric session %q: %w", fields[3], err)
 	}
 	return ppid, session, nil
+}
+
+// processAge returns how long a process has run, from the system uptime and the process's /proc/<pid>/stat line.
+// uptime is the content of /proc/uptime, whose first field is the seconds since boot;
+// the process start time is field 22 of stat, in clock ticks since boot, and ticksPerSecond converts it.
+// Anchors on the last ')' to handle comm with embedded parens/spaces.
+// It errors on input it cannot read, a non-positive ticksPerSecond and a start later than the uptime.
+func processAge(uptime, stat string, ticksPerSecond int64) (time.Duration, error) {
+	if ticksPerSecond <= 0 {
+		return 0, fmt.Errorf("process age: non-positive clock tick rate %d", ticksPerSecond)
+	}
+	uptimeFields := strings.Fields(uptime)
+	if len(uptimeFields) == 0 {
+		return 0, fmt.Errorf("process age: empty uptime")
+	}
+	uptimeSeconds, err := strconv.ParseFloat(uptimeFields[0], 64)
+	if err != nil {
+		return 0, fmt.Errorf("process age: non-numeric uptime %q: %w", uptimeFields[0], err)
+	}
+	idx := strings.LastIndex(stat, ")")
+	if idx == -1 {
+		return 0, fmt.Errorf("process age: no closing paren found in stat: %q", stat)
+	}
+	// Field 3 (state) is the first after comm, so field 22 is index 19.
+	fields := strings.Fields(stat[idx+1:])
+	if len(fields) < 20 {
+		return 0, fmt.Errorf("process age: expected 20 fields after comm, got %d: %q", len(fields), stat)
+	}
+	startTicks, err := strconv.ParseInt(fields[19], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("process age: non-numeric start time %q: %w", fields[19], err)
+	}
+	startSeconds := float64(startTicks) / float64(ticksPerSecond)
+	if startSeconds > uptimeSeconds {
+		return 0, fmt.Errorf("process age: start %.2fs is later than uptime %.2fs", startSeconds, uptimeSeconds)
+	}
+	return time.Duration((uptimeSeconds - startSeconds) * float64(time.Second)), nil
 }
 
 // descendantClosure returns roots plus every transitive descendant.

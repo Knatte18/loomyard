@@ -32,9 +32,10 @@ type reconcilePlan struct {
 // live holds window 0's panes and windows the whole session's.
 // The kill decisions and the survival rule read live alone.
 // An own-window strand's binding is judged against windows, and a window carrying the own marker with no bound pane is ended.
+// elsewhere holds the pane ids found in another session of the server: an own-window strand bound to one keeps its binding, and no pane in it is ever killed, since the kill sets read live alone.
 // Pure logic; unit-testable without a running server.
 // Keeps at least one pane alive (session-survival rule); spares Selvage.
-func planReconcile(strands []Strand, live []LivePane, windows []windowPane, policy reapPolicy) reconcilePlan {
+func planReconcile(strands []Strand, live []LivePane, windows []windowPane, policy reapPolicy, elsewhere map[string]string) reconcilePlan {
 	var plan reconcilePlan
 
 	liveByID := make(map[string]LivePane, len(live))
@@ -116,7 +117,7 @@ func planReconcile(strands []Strand, live []LivePane, windows []windowPane, poli
 		}
 		if isOwnWindow(s.Display) {
 			// A present own-window pane keeps its binding, alive or dead, and is never killed here.
-			if !listedByID[s.PaneID] {
+			if _, inOtherSession := elsewhere[s.PaneID]; !listedByID[s.PaneID] && !inOtherSession {
 				plan.clearedGUIDs = append(plan.clearedGUIDs, s.GUID)
 			}
 			continue
@@ -217,7 +218,7 @@ func clearConflictingPaneBindings(st *ReedState) []string {
 // It also ends the own windows no strand holds, moving a viewer on one to the relevant window first (the newest live agent, else the overview, never the shell); those windows are not in killed, since no window 0 pane went.
 // A viewer on any other window is never moved.
 func (e *Engine) reconcileLocked(st *ReedState, live []LivePane, windows []windowPane) (killed []string, err error) {
-	plan := planReconcile(st.Strands, live, windows, newReapPolicy(st, live))
+	plan := planReconcile(st.Strands, live, windows, newReapPolicy(st, live), e.strandsElsewhereLocked(st.Strands, windows))
 
 	// Accumulate the ids actually destroyed, separately for each kill reason,
 	// as the loops below progress -- never plan.deadPanesToKill /

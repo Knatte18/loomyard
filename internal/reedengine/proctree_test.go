@@ -5,9 +5,68 @@
 package reedengine
 
 import (
+	"os"
+	"runtime"
 	"sort"
+	"strings"
 	"testing"
+	"time"
 )
+
+func TestProcessAge(t *testing.T) {
+	t.Parallel()
+	// statWithStart builds a stat line whose field 22 is start, after a comm holding a space and a paren.
+	statWithStart := func(start string) string {
+		return "1234 (a) b) S " + strings.Repeat("0 ", 18) + start + " 0 0"
+	}
+	tests := []struct {
+		name    string
+		uptime  string
+		stat    string
+		ticks   int64
+		want    time.Duration
+		wantErr bool
+	}{
+		{"CommWithSpacesAndParens", "1000.50\n", statWithStart("50000"), 100, 500*time.Second + 500*time.Millisecond, false},
+		{"EmptyUptime", "", statWithStart("50000"), 100, 0, true},
+		{"NonNumericUptime", "soon", statWithStart("50000"), 100, 0, true},
+		{"NoClosingParen", "1000.50", "1234 S 0", 100, 0, true},
+		{"TooFewFields", "1000.50", "1234 (a) S 0 0 0", 100, 0, true},
+		{"NonNumericStart", "1000.50", statWithStart("later"), 100, 0, true},
+		{"ZeroTickRate", "1000.50", statWithStart("50000"), 0, 0, true},
+		{"NegativeTickRate", "1000.50", statWithStart("50000"), -100, 0, true},
+		{"StartLaterThanUptime", "10.00", statWithStart("50000"), 100, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := processAge(tt.uptime, tt.stat, tt.ticks)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("processAge(%q, %q, %d) error = %v; wantErr %v", tt.uptime, tt.stat, tt.ticks, err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("processAge(%q, %q, %d) = %v; want %v", tt.uptime, tt.stat, tt.ticks, got, tt.want)
+			}
+		})
+	}
+
+	t.Run("PlatformProbe", func(t *testing.T) {
+		t.Parallel()
+		age, ok := paneProcessAge(os.Getpid())
+		if runtime.GOOS == "linux" {
+			if !ok || age < 0 || age >= time.Hour {
+				t.Errorf("paneProcessAge(own pid) = %v, %v; want an age in [0, 1h) and true", age, ok)
+			}
+		} else if ok {
+			t.Errorf("paneProcessAge(own pid) = %v, %v; want false", age, ok)
+		}
+		for _, pid := range []int{0, -1} {
+			if _, ok := paneProcessAge(pid); ok {
+				t.Errorf("paneProcessAge(%d) = true; want false", pid)
+			}
+		}
+	})
+}
 
 func TestParseStat(t *testing.T) {
 	tests := []struct {

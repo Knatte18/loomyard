@@ -549,6 +549,7 @@ session.`,
 				if err := c.adoptListedStrand(st, strand); err != nil {
 					return fail(err)
 				}
+				logger.Info("orch: restarted a dead watcher", "strandGUID", strand.GUID, "previousExit", st.WatcherExit)
 				if err := c.spawnWatcher(); err != nil {
 					return fail(err)
 				}

@@ -165,8 +165,8 @@ func TestPeekState(t *testing.T) {
 //testtiming:keep pins the write, probe and clear round trip of the cycle request marker, which its covering test does not assert
 func TestCycleRequest_WriteProbeClear(t *testing.T) {
 	p := testPaths(t)
-	if err := ClearCycleRequest(p); err != nil {
-		t.Fatalf("clear absent: %v", err)
+	if withdrawn, err := WithdrawCycleRequest(p); err != nil || withdrawn {
+		t.Fatalf("withdraw absent = %v, %v; want false and no error", withdrawn, err)
 	}
 	if _, ok, err := CycleRequested(p); err != nil || ok {
 		t.Fatalf("CycleRequested before = %v, %v", ok, err)
@@ -182,11 +182,41 @@ func TestCycleRequest_WriteProbeClear(t *testing.T) {
 	if req.Mode != CycleCompact || !req.RequestedAt.Equal(at) {
 		t.Errorf("request = %+v, want mode %q at %v", req, CycleCompact, at)
 	}
-	if err := ClearCycleRequest(p); err != nil {
-		t.Fatalf("ClearCycleRequest: %v", err)
+	if withdrawn, err := WithdrawCycleRequest(p); err != nil || !withdrawn {
+		t.Fatalf("WithdrawCycleRequest with a marker = %v, %v; want true and no error", withdrawn, err)
 	}
 	if _, ok, _ := CycleRequested(p); ok {
-		t.Error("request still present after clear")
+		t.Error("request still present after withdraw")
+	}
+
+	removeIf := []struct {
+		name        string
+		written     *CycleRequest
+		asked       CycleRequest
+		wantRemoved bool
+	}{
+		{"MatchingRequestIsRemoved", &CycleRequest{Mode: CycleCompact, RequestedAt: at}, CycleRequest{Mode: CycleCompact, RequestedAt: at}, true},
+		{"OtherRequestedAtIsLeft", &CycleRequest{Mode: CycleCompact, RequestedAt: at.Add(time.Second)}, CycleRequest{Mode: CycleCompact, RequestedAt: at}, false},
+		{"OtherModeIsLeft", &CycleRequest{Mode: CycleClear, RequestedAt: at}, CycleRequest{Mode: CycleCompact, RequestedAt: at}, false},
+		{"AbsentMarkerAnswersFalse", nil, CycleRequest{Mode: CycleCompact, RequestedAt: at}, false},
+	}
+	for _, tt := range removeIf {
+		t.Run(tt.name, func(t *testing.T) {
+			q := testPaths(t)
+			if tt.written != nil {
+				if err := RequestCycle(q, tt.written.Mode, tt.written.RequestedAt); err != nil {
+					t.Fatalf("RequestCycle: %v", err)
+				}
+			}
+			removed, err := RemoveCycleRequestIf(q, tt.asked)
+			if err != nil || removed != tt.wantRemoved {
+				t.Fatalf("RemoveCycleRequestIf = %v, %v; want %v and no error", removed, err, tt.wantRemoved)
+			}
+			_, pending, _ := CycleRequested(q)
+			if wantPending := tt.written != nil && !tt.wantRemoved; pending != wantPending {
+				t.Errorf("marker pending after = %v, want %v", pending, wantPending)
+			}
+		})
 	}
 }
 

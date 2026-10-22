@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 )
@@ -49,6 +50,11 @@ $acc`, strings.Join(rootLiterals, ","))
 		return roots
 	}
 	return pids
+}
+
+// paneProcessAge answers 0 and false: the liveness rule that reads a pane's age is skipped on Windows, so nothing reads it.
+func paneProcessAge(pid int) (time.Duration, bool) {
+	return 0, false
 }
 
 // sessionMemberPIDs returns nil: Windows has no POSIX sessions, so a pane's processes are reaped through the descendant snapshot alone.

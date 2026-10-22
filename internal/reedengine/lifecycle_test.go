@@ -239,13 +239,17 @@ func TestStatus_ReportsSegmentColor(t *testing.T) {
 
 // TestStatus_ReportsOwnWindowStrandsFromTheSessionListing pins that Status reads an own-window strand's pane from the session-wide listing: alive is live, dead is present but not live, and one in no listing is neither.
 // It also pins the pane pid: the listed pid for a live pane, 0 for a dead pane and for one in no listing.
+// A pane the session lacks is looked up once across the server: found in another session, its row names the placement; found nowhere or on a failed lookup, the row names none, and the failure logs one Warn however often it repeats.
 func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
+	logs := logcapture.Capture(t)
 	e := newTestEngine(t)
 	fake := installFakeTmux(t, e)
+	fake.answer(serverListVerb, "%9 other 2\n%1 worktree 0\n", nil)
 	fake.answer("display-message", "$0|4321|1787000000", nil)
 	fake.answer("list-sessions", "worktree\n", nil)
 	fake.answer("list-panes", "%1 0 0 100 3 4322\n%2 0 3 100 20 4323\n", nil)
-	fake.answerWindowPanes("@0 0 - %1 0 4322 t\n@0 0 - %2 0 4323 t\n@3 1 - %5 0 4325 t\n@3 1 - %6 1 4326 t\n", nil)
+	fake.answerWindowPanes("@0 0 - %1 0 4322 t\n@0 0 - %2 0 4323 t\n@3 1 - %5 0 4325 t\n@3 1 - %6 1 4326 t\n@4 1 - %7 0 4327 t\x1fbash\x1f/bin/bash\n@5 1 - %8 0 4328 t\x1fclaude\x1f/bin/bash\n", nil)
+	e.paneAge = func(pid int) (time.Duration, bool) { return 31 * time.Second, true }
 	st := &ReedState{
 		SelvagePaneID:  "%1",
 		PaneGeneration: PaneGeneration{SessionName: "worktree", TmuxSessionID: "$0", ServerPID: "4321", Created: "1787000000"},
@@ -254,6 +258,9 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 			{GUID: "alive", Name: "alive", PaneID: "%5", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 			{GUID: "dead", Name: "dead", PaneID: "%6", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 			{GUID: "gone", Name: "gone", PaneID: "%9", Display: render.Display{Anchor: render.AnchorOwnWindow}},
+			{GUID: "shellonly", Name: "shellonly", PaneID: "%7", Display: render.Display{Anchor: render.AnchorOwnWindow}},
+			{GUID: "engine", Name: "engine", PaneID: "%8", Display: render.Display{Anchor: render.AnchorOwnWindow}},
+			{GUID: "nowhere", Name: "nowhere", PaneID: "%10", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 		},
 	}
 	if err := SaveState(e.stateDir(), st); err != nil {
@@ -264,19 +271,51 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
+	if got := fake.Count(serverListVerb); got != 1 {
+		t.Errorf("server-wide pane lookups = %d, want 1", got)
+	}
+	wantElsewhere := map[string]string{"gone": "other:2"}
+	for _, s := range result.Strands {
+		if s.Elsewhere != wantElsewhere[s.GUID] {
+			t.Errorf("Status Elsewhere of strand %q = %q, want %q", s.GUID, s.Elsewhere, wantElsewhere[s.GUID])
+		}
+	}
+
+	// A failed lookup reads every absent pane as found nowhere, and logs one Warn across repeats.
+	fake.answer(serverListVerb, "", errors.New("list-panes -a failed"))
+	for range 2 {
+		failed, err := e.Status()
+		if err != nil {
+			t.Fatalf("Status with a failing server-wide lookup: %v", err)
+		}
+		for _, s := range failed.Strands {
+			if s.Elsewhere != "" {
+				t.Errorf("Status Elsewhere of strand %q after a failed lookup = %q, want none", s.GUID, s.Elsewhere)
+			}
+		}
+	}
+	if got := strings.Count(logs.String(), "could not look up the panes of the whole server"); got != 1 {
+		t.Errorf("failed-lookup Warn count over two Status calls = %d, want 1\nlogs: %s", got, logs.String())
+	}
+
 	type shape struct{ live, present, own bool }
 	want := map[string]shape{
 		"w":     {live: true, present: true},
 		"alive": {live: true, present: true, own: true},
 		"dead":  {present: true, own: true},
 		"gone":  {own: true},
+		// A strand whose pane is in no listing is neither live nor present.
+		"nowhere": {own: true},
+		// A shell-only pane past the launch grace is present but not live; its engine in the foreground reads live.
+		"shellonly": {present: true, own: true},
+		"engine":    {live: true, present: true, own: true},
 	}
 	for _, s := range result.Strands {
 		if got := (shape{s.Live, s.Present, s.OwnWindow}); got != want[s.GUID] {
 			t.Errorf("Status of strand %q = %+v, want %+v", s.GUID, got, want[s.GUID])
 		}
 	}
-	wantPanePID := map[string]int{"w": 4323, "alive": 4325, "dead": 0, "gone": 0}
+	wantPanePID := map[string]int{"w": 4323, "alive": 4325, "dead": 0, "gone": 0, "nowhere": 0, "shellonly": 4327, "engine": 4328}
 	for _, s := range result.Strands {
 		if s.PanePID != wantPanePID[s.GUID] {
 			t.Errorf("Status PanePID of strand %q = %d, want %d", s.GUID, s.PanePID, wantPanePID[s.GUID])

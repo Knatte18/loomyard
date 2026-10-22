@@ -41,7 +41,7 @@ func (r *Runner) SetStepTie(tie StepTie) {
 }
 
 // StopStepRuns stops every run under the runner's run-directory root that is still running, has a removable strand and records tie as its step.
-// A strand is removable when it is live or an own-window strand whose pane is dead, so a step stop ends the window of a run whose own-window agent died.
+// A strand is removable when it is live or an own-window strand whose pane is present but not live, a dead pane or one showing only its shell, so a step stop ends the window of a run whose own-window agent died.
 // Each is stopped through the stop verb, which records the stop before removing the strand.
 // A removable running run with no step is listed under Untied without being touched, a run of another step and a run with a terminal record or a dead window 0 strand are left alone, and a record that does not decode is skipped.
 // A stop that fails is listed under Failed and the stop goes on with the next run.

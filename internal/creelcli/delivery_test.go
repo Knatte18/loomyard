@@ -21,12 +21,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
@@ -43,9 +45,19 @@ type stubOps struct {
 	sendErr      error
 	commandErr   error
 	interruptErr error
+	// onStatus, when set, runs first in Status, so a test can change the worktree between the resolve and the status step.
+	onStatus func()
+	// onWire, when set, runs when the worktree is wired, and wireErr is what the wiring then answers.
+	onWire  func()
+	wireErr error
 }
 
-func (s *stubOps) Status() (reedengine.StatusResult, error) { return s.status, s.statusErr }
+func (s *stubOps) Status() (reedengine.StatusResult, error) {
+	if s.onStatus != nil {
+		s.onStatus()
+	}
+	return s.status, s.statusErr
+}
 
 func (s *stubOps) SessionIdle(string) (shuttleengine.IdleProbe, error) {
 	return shuttleengine.IdleProbe{Idle: s.idle, TooShort: s.tooShort, Draft: s.draft, NoInputBox: s.noInputBox}, nil
@@ -170,6 +182,12 @@ func newStubbedDelivery(hub *hubforge.Hub, stubs map[string]*stubOps) *hubDelive
 		if !ok {
 			return nil, fmt.Errorf("no stub for %s", location.WorktreePath())
 		}
+		if stub.onWire != nil {
+			stub.onWire()
+		}
+		if stub.wireErr != nil {
+			return nil, stub.wireErr
+		}
 		return stub, nil
 	}
 	return delivery
@@ -280,25 +298,6 @@ func TestHubDelivery(t *testing.T) {
 		}
 	})
 
-	t.Run("Strands fails naming a worktree that does not resolve", func(t *testing.T) {
-		t.Parallel()
-		hub, prime, pair := newHub(t)
-		// An empty .git directory keeps git listing the worktree as live while it no longer resolves.
-		gitEntry := filepath.Join(pair, ".git")
-		if err := os.Remove(gitEntry); err != nil {
-			t.Fatalf("Remove(%q) = %v", gitEntry, err)
-		}
-		if err := os.Mkdir(gitEntry, 0o755); err != nil {
-			t.Fatalf("Mkdir(%q) = %v", gitEntry, err)
-		}
-		delivery := newStubbedDelivery(hub, map[string]*stubOps{prime: {}, pair: {}})
-
-		_, err := delivery.Strands()
-		if err == nil || !strings.Contains(err.Error(), pair) {
-			t.Errorf("Strands() with an unresolvable worktree = %v; want one naming %s", err, pair)
-		}
-	})
-
 	t.Run("wireShuttle tells the runner the hub's pause record with an empty slug", func(t *testing.T) {
 		t.Parallel()
 		_, _, pair := newHub(t)
@@ -332,6 +331,8 @@ func TestHubDelivery(t *testing.T) {
 			{"busy", fmt.Errorf("wrapped: %w", shuttleengine.ErrSessionBusy), creelengine.ErrBusy},
 			{"paused", fmt.Errorf("wrapped: %w", shuttleengine.ErrPaused), creelengine.ErrBusy},
 			{"not landed", fmt.Errorf("wrapped: %w", shuttleengine.ErrSubmissionNotLanded), creelengine.ErrNotLanded},
+			{"sent text in draft", fmt.Errorf("wrapped: %w", shuttleengine.ErrSentTextInDraft), creelengine.ErrNotLanded},
+			{"foreign box text", fmt.Errorf("wrapped: %w", shuttleengine.ErrForeignBoxText), creelengine.ErrNotLanded},
 			{"no running turn", fmt.Errorf("wrapped: %w", shuttleengine.ErrNoRunningTurn), creelengine.ErrNoRunningTurn},
 			{"other", other, other},
 			{"nil", nil, nil},
@@ -569,6 +570,186 @@ func TestHubDelivery(t *testing.T) {
 		}
 		if _, err := delivery.ClaimPause(orchStrand); err == nil {
 			t.Error("ClaimPause() on an undecodable pause record = nil error; want one")
+		}
+	})
+}
+
+// TestHubDelivery_SkipsAWorktreeThatNoLongerResolves pins that Strands skips a listed worktree that no longer resolves as a worktree and returns the others' strands.
+// It logs the first skip of a path at Info for a teardown and at Warn otherwise, and a repeated skip at Debug.
+// An unusable recorded anchor, which fails the resolve for another reason than not being a git repository, still fails the call.
+// It is not parallel: logcapture.CaptureVerbose swaps the process-global logger, and its rows assert on the captured lines.
+func TestHubDelivery_SkipsAWorktreeThatNoLongerResolves(t *testing.T) {
+	newHub := func(t *testing.T) (*hubforge.Hub, string, string) {
+		hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{pairSlug}})
+		return hub, hub.PrimeWorktree(), hub.PairCodeWorktree(pairSlug)
+	}
+	replaceGitEntry := func(t *testing.T, pair string, content *string) {
+		t.Helper()
+		gitEntry := filepath.Join(pair, ".git")
+		if err := os.Remove(gitEntry); err != nil {
+			t.Fatalf("Remove(%q) = %v", gitEntry, err)
+		}
+		if content == nil {
+			if err := os.Mkdir(gitEntry, 0o755); err != nil {
+				t.Fatalf("Mkdir(%q) = %v", gitEntry, err)
+			}
+			return
+		}
+		if err := os.WriteFile(gitEntry, []byte(*content), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v", gitEntry, err)
+		}
+	}
+	gitdirLine := func(dir string) *string {
+		line := "gitdir: " + dir + "\n"
+		return &line
+	}
+	countLines := func(output, level string) int {
+		count := 0
+		for _, line := range strings.Split(output, "\n") {
+			if strings.Contains(line, "level="+level) && strings.Contains(line, worktreeGoneMessage) {
+				count++
+			}
+		}
+		return count
+	}
+
+	tests := []struct {
+		name string
+		// arrange breaks the pair and returns the stubs of the worktrees.
+		arrange      func(t *testing.T, prime, pair string) map[string]*stubOps
+		wantLevel    string
+		wantInLog    []string
+		wantNotInLog []string
+		// directoryGone is set when the row removes the worktree's directory: git then lists the worktree prunable, so the second call never reaches its skip.
+		directoryGone bool
+	}{
+		{
+			name: "AnEmptyGitDirectoryWarnsAndNamesTheCauseOnly",
+			arrange: func(t *testing.T, prime, pair string) map[string]*stubOps {
+				replaceGitEntry(t, pair, nil)
+				return map[string]*stubOps{prime: {}, pair: {}}
+			},
+			wantLevel:    "WARN",
+			wantInLog:    []string{".git is a directory, not a worktree link"},
+			wantNotInLog: []string{"git worktree repair"},
+		},
+		{
+			name: "AGitfileNamingAnExistingEmptyDirectoryWarnsAndNamesTheRepairStep",
+			arrange: func(t *testing.T, prime, pair string) map[string]*stubOps {
+				replaceGitEntry(t, pair, gitdirLine(t.TempDir()))
+				return map[string]*stubOps{prime: {}, pair: {}}
+			},
+			wantLevel: "WARN",
+			wantInLog: []string{"git worktree repair PAIR"},
+		},
+		{
+			name: "AGitfileNamingAMissingDirectoryIsATeardownAtInfo",
+			arrange: func(t *testing.T, prime, pair string) map[string]*stubOps {
+				replaceGitEntry(t, pair, gitdirLine(filepath.Join(t.TempDir(), "gone")))
+				return map[string]*stubOps{prime: {}, pair: {}}
+			},
+			wantLevel:    "INFO",
+			wantNotInLog: []string{"git worktree repair"},
+		},
+		{
+			name: "ADirectoryRemovedBetweenTheResolveAndTheStatusIsATeardownAtInfo",
+			arrange: func(t *testing.T, prime, pair string) map[string]*stubOps {
+				seedReedState(t, pair, map[string]string{"ly:pair:impl": "guid-impl"})
+				return map[string]*stubOps{
+					prime: {},
+					pair: {
+						statusErr: errors.New("tmux exploded"),
+						onStatus: func() {
+							if err := os.RemoveAll(pair); err != nil {
+								t.Errorf("RemoveAll(%q) = %v", pair, err)
+							}
+						},
+					},
+				}
+			},
+			wantLevel: "INFO", directoryGone: true,
+		},
+		{
+			name: "ADirectoryRemovedWhileWiringIsATeardownAtInfo",
+			arrange: func(t *testing.T, prime, pair string) map[string]*stubOps {
+				seedReedState(t, pair, map[string]string{"ly:pair:impl": "guid-impl"})
+				return map[string]*stubOps{
+					prime: {},
+					pair: {
+						wireErr: errors.New("wire failed"),
+						onWire: func() {
+							if err := os.RemoveAll(pair); err != nil {
+								t.Errorf("RemoveAll(%q) = %v", pair, err)
+							}
+						},
+					},
+				}
+			},
+			wantLevel: "INFO", directoryGone: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hub, prime, pair := newHub(t)
+			seedReedState(t, prime, map[string]string{"ly:orch": "guid-orch"})
+			stubs := tt.arrange(t, prime, pair)
+			stubs[prime] = &stubOps{status: reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "guid-orch", Live: true, PanePID: 11}}}}
+			delivery := newStubbedDelivery(hub, stubs)
+			logs := logcapture.CaptureVerbose(t)
+			logger.SetVerbosity(2)
+
+			for call := 1; call <= 2; call++ {
+				got, err := delivery.Strands()
+				if err != nil {
+					t.Fatalf("Strands() call %d = %v; want the skip to leave the call whole", call, err)
+				}
+				want := []creelengine.Strand{{Name: "ly:orch", GUID: "guid-orch", Worktree: prime, Live: true, PanePID: 11}}
+				if diff := cmp.Diff(want, got); diff != "" {
+					t.Errorf("Strands() call %d mismatch (-want +got):\n%s", call, diff)
+				}
+			}
+
+			output := logs.String()
+			for _, level := range []string{"WARN", "INFO"} {
+				wantCount := 0
+				if level == tt.wantLevel {
+					wantCount = 1
+				}
+				if got := countLines(output, level); got != wantCount {
+					t.Errorf("%s skip lines over two calls = %d; want %d\nlog: %s", level, got, wantCount, output)
+				}
+			}
+			wantDebug := 1
+			if tt.directoryGone {
+				wantDebug = 0
+			}
+			if got := countLines(output, "DEBUG"); got != wantDebug {
+				t.Errorf("DEBUG skip lines over two calls = %d; want %d", got, wantDebug)
+			}
+			for _, want := range tt.wantInLog {
+				if want = strings.ReplaceAll(want, "PAIR", pair); !strings.Contains(output, want) {
+					t.Errorf("log lacks %q\nlog: %s", want, output)
+				}
+			}
+			for _, unwanted := range tt.wantNotInLog {
+				if strings.Contains(output, unwanted) {
+					t.Errorf("log holds %q, want it absent\nlog: %s", unwanted, output)
+				}
+			}
+		})
+	}
+
+	t.Run("AnUnusableRecordedAnchorFailsTheCall", func(t *testing.T) {
+		hub, prime, pair := newHub(t)
+		anchorFile := filepath.Join(hub.BoardDir(), lyxcwd.AnchorFileName)
+		if err := os.WriteFile(anchorFile, []byte("../escape\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v", anchorFile, err)
+		}
+		delivery := newStubbedDelivery(hub, map[string]*stubOps{prime: {}, pair: {}})
+
+		_, err := delivery.Strands()
+		if !errors.Is(err, lyxcwd.ErrInvalidAnchor) || errors.Is(err, errWorktreeGone) {
+			t.Errorf("Strands() with an unusable anchor = %v; want a failure wrapping ErrInvalidAnchor and not a skip", err)
 		}
 	})
 }

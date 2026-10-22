@@ -35,6 +35,34 @@ func TestParsePaneList(t *testing.T) {
 			},
 		},
 		{
+			name: "tail with a spaced title, current command and spaced start command",
+			out:  "%1 0 0 220 15 1717 tst:slug:my worker\x1fnode\x1f/bin/bash -l\n",
+			want: []LivePane{
+				{ID: "%1", Width: 220, Height: 15, PID: 1717, Title: "tst:slug:my worker", CurrentCommand: "node", StartCommand: "/bin/bash -l"},
+			},
+		},
+		{
+			name: "tail with an empty title and both commands",
+			out:  "%1 0 0 220 15 1717 \x1fbash\x1fbash\n",
+			want: []LivePane{
+				{ID: "%1", Width: 220, Height: 15, PID: 1717, CurrentCommand: "bash", StartCommand: "bash"},
+			},
+		},
+		{
+			name: "tail ending in an empty start command",
+			out:  "%1 0 0 220 15 1717 t\x1fbash\x1f\n",
+			want: []LivePane{
+				{ID: "%1", Width: 220, Height: 15, PID: 1717, Title: "t", CurrentCommand: "bash"},
+			},
+		},
+		{
+			name: "line with no separator is a title alone",
+			out:  "%1 0 0 220 15 1717 just a title\n",
+			want: []LivePane{
+				{ID: "%1", Width: 220, Height: 15, PID: 1717, Title: "just a title"},
+			},
+		},
+		{
 			name: "empty input is no panes",
 			out:  "   \n",
 			want: nil,
@@ -86,5 +114,24 @@ func TestParsePaneList(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseWindowPanes(t *testing.T) {
+	out := "@2 1 grp %5 0 4242 a title\x1fnode\x1f/bin/bash -l\n" +
+		"@3 0 - %6 1 99 only a title\n" +
+		"@4 0 - %7\n"
+	want := []windowPane{
+		{WindowID: "@2", Own: true, Group: "grp", PaneID: "%5", PID: 4242, Title: "a title", CurrentCommand: "node", StartCommand: "/bin/bash -l"},
+		{WindowID: "@3", PaneID: "%6", Dead: true, PID: 99, Title: "only a title"},
+	}
+	got := parseWindowPanes(out)
+	if len(got) != len(want) {
+		t.Fatalf("parseWindowPanes(%q) = %+v, want %+v", out, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("pane[%d] = %+v, want %+v", i, got[i], want[i])
+		}
 	}
 }
