@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -148,7 +150,9 @@ func TestLoad(t *testing.T) {
 // TestConfigTemplate_DecodesAndIsSelfConsistent proves the embedded seed template is itself valid lenses.yaml content -- a load over dirs holding no lenses.yaml resolves it, so every template fan resolves -- and that its internal cross-references and lengths hold: every fan entry names a defined lens, and no lens carries hard-exclusion phrasing.
 // The spike (docs/research/session-fork-spike.md, Q2) found "ignore everything else" lenses measurably suppressed cross-category coverage, so every lens is emphasis-only by design.
 //
-//testtiming:keep pins the seeded lens and fan counts, the defined-lens cross-references and the no-"ignore " phrasing, which the ResolveFan test covering its blocks does not assert
+// It extends the same checks to every shipped language layer: each loads under its own lens_set, its lenses and fans replace or extend the base's by name, and a layer fan keeps the base fan's entries first.
+//
+//testtiming:keep pins the seeded lens and fan counts, the defined-lens cross-references and the no-"ignore " phrasing, which the ResolveFan test covering its blocks does not assert, and the per-layer load and superset checks
 func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 	t.Parallel()
 
@@ -242,6 +246,93 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		if strings.Contains(text, "ignore ") {
 			t.Errorf("lens %q text contains hard-exclusion phrasing (\"ignore \"): %q", name, text)
 		}
+	}
+
+	// The exemption from the emphasis line is computed from the base fans only, so a lens a layer adds to a review fan still ends with it.
+	baseProcedureLenses := map[string]bool{}
+	for fanName, entries := range cfg.Fans {
+		if strings.HasPrefix(fanName, "review-") || strings.HasPrefix(fanName, "fix-") {
+			for _, name := range entries {
+				baseProcedureLenses[name] = true
+			}
+		}
+	}
+	for layerName, document := range lensSets() {
+		t.Run("layer "+layerName, func(t *testing.T) {
+			var raw map[string]any
+			if err := yaml.Unmarshal(document, &raw); err != nil {
+				t.Fatalf("decode layer %s: %v", layerName, err)
+			}
+			for key := range raw {
+				if key != "lenses" && key != "fans" {
+					t.Errorf("layer %s holds top-level key %q; want only lenses and fans", layerName, key)
+				}
+			}
+			var layer Config
+			if err := yaml.Unmarshal(document, &layer); err != nil {
+				t.Fatalf("decode layer %s: %v", layerName, err)
+			}
+
+			anchor := t.TempDir()
+			writeLensesYAML(t, anchor, "lens_set: "+layerName+"\n")
+			dirs := configengine.Dirs{Anchor: anchor}
+			if err := CheckLoad(dirs); err != nil {
+				t.Fatalf("CheckLoad(lens_set: %s) = %v; want nil", layerName, err)
+			}
+			loaded, err := Load(dirs)
+			if err != nil {
+				t.Fatalf("Load(lens_set: %s): %v", layerName, err)
+			}
+
+			for name, text := range loaded.Lenses {
+				want, defined := layer.Lenses[name]
+				if !defined {
+					want = cfg.Lenses[name]
+				}
+				if text != want {
+					t.Errorf("lens %q under lens_set %s = %q; want %q", name, layerName, text, want)
+				}
+				if strings.Contains(text, "ignore ") {
+					t.Errorf("lens %q under lens_set %s contains hard-exclusion phrasing (\"ignore \")", name, layerName)
+				}
+			}
+			for name, entries := range loaded.Fans {
+				want, defined := layer.Fans[name]
+				if !defined {
+					want = cfg.Fans[name]
+				}
+				if !slices.Equal(entries, want) {
+					t.Errorf("fan %q under lens_set %s = %v; want %v", name, layerName, entries, want)
+				}
+			}
+			for name, text := range layer.Lenses {
+				if name != "generic" && !baseProcedureLenses[name] && !strings.HasSuffix(strings.Join(strings.Fields(text), " "), emphasisLine) {
+					t.Errorf("layer %s lens %q does not end with the emphasis line", layerName, name)
+				}
+			}
+			for name, entries := range layer.Fans {
+				baseEntries, inBase := cfg.Fans[name]
+				if !inBase {
+					continue
+				}
+				if len(entries) < len(baseEntries) || !slices.Equal(entries[:len(baseEntries)], baseEntries) {
+					t.Errorf("layer %s fan %q = %v; want it to start with the base fan %v", layerName, name, entries, baseEntries)
+					continue
+				}
+				for _, extra := range entries[len(baseEntries):] {
+					if slices.Contains(baseEntries, extra) {
+						t.Errorf("layer %s fan %q adds %q, which the base fan already holds", layerName, name, extra)
+					}
+				}
+			}
+			if layerName == "go" {
+				for _, name := range []string{"error-handling", "test-gaps", "performance", "api-design", "concurrency"} {
+					if loaded.Lenses[name] != cfg.Lenses[name] {
+						t.Errorf("lens %q under lens_set go = %q; want the base template's %q", name, loaded.Lenses[name], cfg.Lenses[name])
+					}
+				}
+			}
+		})
 	}
 }
 

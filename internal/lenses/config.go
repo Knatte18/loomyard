@@ -4,7 +4,7 @@ package lenses
 
 import (
 	"bytes"
-	_ "embed"
+	"embed"
 	"errors"
 	"fmt"
 	"sort"
@@ -17,11 +17,36 @@ import (
 //go:embed template.yaml
 var configTemplate string
 
+// lensSetFiles holds the shipped language layers, one document per file under sets/.
+//
+//go:embed sets/*.yaml
+var lensSetFiles embed.FS
+
+// lensSets returns each shipped language layer's bytes keyed by its file's base name without .yaml.
+// It panics on a read error of the embedded tree, which cannot fail for an embedded path.
+func lensSets() map[string][]byte {
+	entries, err := lensSetFiles.ReadDir("sets")
+	if err != nil {
+		panic(fmt.Sprintf("lenses: read the embedded sets directory: %v", err))
+	}
+	sets := make(map[string][]byte, len(entries))
+	for _, entry := range entries {
+		data, err := lensSetFiles.ReadFile("sets/" + entry.Name())
+		if err != nil {
+			panic(fmt.Sprintf("lenses: read the embedded layer %s: %v", entry.Name(), err))
+		}
+		sets[strings.TrimSuffix(entry.Name(), ".yaml")] = data
+	}
+	return sets
+}
+
 // MaxFanLenses caps the number of lenses a single fan may resolve to, the upper bound on how many parallel fork reviewers one cluster round spawns.
 const MaxFanLenses = 16
 
 // Config is the decode shape of lenses.yaml.
 type Config struct {
+	// LensSet names the embedded language layer whose lenses and fans replace or add base entries by name; empty picks none.
+	LensSet string `yaml:"lens_set"`
 	// Lenses maps a lens name to its review prose.
 	Lenses map[string]string `yaml:"lenses"`
 	// Fans maps a fan name to an ordered list of lens names.
@@ -45,16 +70,20 @@ func ConfigPerNameMaps() []string {
 }
 
 // ConfigSpec returns lenses's layered-load spec.
-// Both keys are per-name maps and guard keys: a lens's prose and a fan's lens set are what every review fork is given, so no local override may hold them.
+// Both maps are per-name maps and guard keys: a lens's prose and a fan's lens set are what every review fork is given, so no local override may hold them.
+// lens_set is a guard key too, since the language layer it picks is the prose every review fork is given.
 // The module is per-worktree, not hub-wide.
+// The language layers are the template overlay lens_set picks, read from the base layer only.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:        "lenses",
 		Template:    []byte(ConfigTemplate()),
 		PerNameMaps: ConfigPerNameMaps(),
+		Overlay:     configengine.Overlay{Selector: "lens_set", Documents: lensSets()},
 		Categories: map[string]configengine.Category{
-			"lenses": configengine.CategoryGuard,
-			"fans":   configengine.CategoryGuard,
+			"lens_set": configengine.CategoryGuard,
+			"lenses":   configengine.CategoryGuard,
+			"fans":     configengine.CategoryGuard,
 		},
 	}
 }

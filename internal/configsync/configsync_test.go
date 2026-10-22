@@ -52,6 +52,25 @@ func lensesFixture(t *testing.T, edit func(cfg *lenses.Config)) string {
 	return string(out)
 }
 
+// burlerFixture returns a burler.yaml document: the template's lenses and fans decoded, changed by edit and marshalled back holding only those two keys.
+// Every key of such a document is one the burler-to-lenses moves take out, so the move leaves it empty.
+func burlerFixture(t *testing.T, edit func(cfg *lenses.Config)) string {
+	t.Helper()
+	var cfg lenses.Config
+	if err := yaml.Unmarshal([]byte(lenses.ConfigTemplate()), &cfg); err != nil {
+		t.Fatalf("decode the lenses template: %v", err)
+	}
+	edit(&cfg)
+	out, err := yaml.Marshal(struct {
+		Lenses map[string]string   `yaml:"lenses"`
+		Fans   map[string][]string `yaml:"fans"`
+	}{cfg.Lenses, cfg.Fans})
+	if err != nil {
+		t.Fatalf("marshal the burler fixture: %v", err)
+	}
+	return string(out)
+}
+
 // moduleWant is what one ReconcileAll row expects of one module's Result and config file.
 type moduleWant struct {
 	applied bool
@@ -1584,12 +1603,12 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 	const templateBinary = "${env:LYX_SHUTTLE_CLAUDE:-}"
 	const tunedGeneric = "Tuned for the hub."
 	const formerRoles = "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 1h\n"
-	burlerToday := lensesFixture(t, func(cfg *lenses.Config) {
+	burlerToday := burlerFixture(t, func(cfg *lenses.Config) {
 		delete(cfg.Lenses, "security")
 		delete(cfg.Fans, "full")
 		cfg.Lenses["generic"] = tunedGeneric + "\n"
 	})
-	burlerOldTemplate := lensesFixture(t, func(cfg *lenses.Config) {
+	burlerOldTemplate := burlerFixture(t, func(cfg *lenses.Config) {
 		cfg.Fans["twill-discussion"] = cfg.Fans["twill-discussion"][:6]
 	})
 	lensesEqualTemplate := lensesFixture(t, func(cfg *lenses.Config) {})

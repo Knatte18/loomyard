@@ -268,7 +268,7 @@ github.com/Knatte18/loomyard/
 ├── internal/landingshed/         landing's four general ShedProducers, Publish, PR-Align, PR-Gate and Finalize, shared by reference across producer lists
 ├── internal/darnengine/          the darn recipe's hub-wide `darn.yaml` config and the verify command every darn verify reads
 ├── internal/languageconfig/      the hub-wide `language.yaml` config: the skills every code role loads after its own, the verify tiers the plan, review and implementer prompts render, and the hub's structure-aware rename tools the Webster implementer prompt renders
-├── internal/lenses/              the `lenses.yaml` config: the lens and fan library burler, loom and darn read, holding only the names a repo tuned while the template supplies the rest, and the fan key grammar loom and darn share
+├── internal/lenses/              the `lenses.yaml` config: the lens and fan library burler, loom and darn read, holding only the names a repo tuned while the template, with the language layer a hub picks laid over it, supplies the rest, and the fan key grammar loom and darn share
 ├── internal/mergeresolve/        the merge-in + LLM conflict-resolution engine internal/landingshed's two producers each call
 ├── internal/frictionengine/      the aggregation-and-reflection step loom's terminal Friction-Reflect row runs, covering every note a halt left in the friction directory; no halt or stop runs a reflection of its own; it is re-entrant across a killed driving process
 ├── internal/hubgeom/             the hub-mode told-geometry teller that converts a resolved `lyxcwd.Location` into each engine's geometry struct
