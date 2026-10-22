@@ -35,11 +35,15 @@ func advisorNotStartedNotice(name string) string {
 	return fmt.Sprintf("Advisor %s did not start and never answers; decide without it.", name)
 }
 
+// pausedNoticeRetryCap bounds the wait between attempts at a line a pause holds.
+const pausedNoticeRetryCap = 5 * time.Second
+
 // noticeSender types queued notice lines into one chair's session, one line at a time.
 // Its single goroutine is the only writer to the chair's pane, so two lines are never interleaved.
 type noticeSender struct {
 	chairOutputs []string
 	retry        time.Duration
+	after        func(time.Duration) <-chan time.Time
 
 	mu      sync.Mutex
 	pending []string
@@ -54,10 +58,12 @@ type noticeSender struct {
 
 // newNoticeSender returns a sender that holds queued lines until start is called.
 // It stops delivering once every path in chairOutputs exists, and waits retry between attempts at a line the chair's session could not take.
-func newNoticeSender(chairOutputs []string, retry time.Duration) *noticeSender {
+// Each wait goes through after, which answers once the duration has passed.
+func newNoticeSender(chairOutputs []string, retry time.Duration, after func(time.Duration) <-chan time.Time) *noticeSender {
 	return &noticeSender{
 		chairOutputs: chairOutputs,
 		retry:        retry,
+		after:        after,
 		wake:         make(chan struct{}, 1),
 		stopping:     make(chan struct{}),
 		finished:     make(chan struct{}),
@@ -144,10 +150,12 @@ func (s *noticeSender) next() (string, bool) {
 	}
 }
 
-// deliver types line into the chair's session, retrying a busy or unlanded send after the retry interval.
+// deliver types line into the chair's session, retrying a busy, unlanded or paused send.
+// A paused chair holds the line until the resume: while the refusal is a pause the wait between attempts doubles from the retry interval up to pausedNoticeRetryCap, and any other held answer returns it to the retry interval.
 // It reports false when delivery is over: the chair's outputs all exist or the sender was stopped.
 // A line that never lands, or that fails for another reason, is logged and dropped.
 func (s *noticeSender) deliver(chair Handle, line string) bool {
+	wait := s.retry
 	for {
 		if allExist(s.chairOutputs) {
 			return false
@@ -159,17 +167,22 @@ func (s *noticeSender) deliver(chair Handle, line string) bool {
 			s.mu.Unlock()
 			return true
 		}
-		if !errors.Is(err, shuttleengine.ErrSessionBusy) && !errors.Is(err, shuttleengine.ErrSubmissionNotLanded) {
+		paused := errors.Is(err, shuttleengine.ErrPaused)
+		if !paused && !errors.Is(err, shuttleengine.ErrSessionBusy) && !errors.Is(err, shuttleengine.ErrSubmissionNotLanded) {
 			logger.Warn("seatengine: advisor notice dropped", "notice", line, "error", err)
 			return true
 		}
-		timer := time.NewTimer(s.retry)
+		if !paused {
+			wait = s.retry
+		}
 		select {
-		case <-timer.C:
+		case <-s.after(wait):
 		case <-s.stopping:
-			timer.Stop()
 			logger.Warn("seatengine: advisor notice never landed before the sender stopped", "notice", line)
 			return false
+		}
+		if paused {
+			wait = min(wait*2, max(pausedNoticeRetryCap, s.retry))
 		}
 	}
 }
