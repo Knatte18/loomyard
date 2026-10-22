@@ -7,11 +7,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -61,6 +64,8 @@ type Site struct {
 	Attempt int
 	// BaseCommand names the command whose record entry survives the pruning a pass performs; empty names none.
 	BaseCommand string
+	// Hold is the site's pause hold; nil runs Verify with no hold.
+	Hold *PauseHold
 }
 
 // Pass is one recorded pass of a command.
@@ -292,33 +297,83 @@ func parsePorcelainZ(out string) []string {
 // A non-zero exit is StatusFailed with the exit code, and a shell that could not start is StatusFailed with exit code -1 and the cause in Detail.
 // A failed command whose log holds a tier timeout line is also marked TimedOut, with the tier and its timeout in Detail and the command's own exit code.
 // A cancelled ctx is a returned error and writes no record.
+// With a site.Hold, a covering pause holds Verify before its command and stops a running command at the pause's grace end, then Verify starts over from the dirty check after the resume.
+// A held Verify removes its marker on every return, its dirty and skipped returns included.
 func Verify(ctx context.Context, p Paths, site Site, command string) (Result, error) {
-	dirty, err := DirtyPaths(p.Worktree)
-	if err != nil {
-		return Result{}, err
+	if site.Hold != nil {
+		if err := os.MkdirAll(filepath.Dir(p.Marker), 0o755); err != nil {
+			return Result{}, fmt.Errorf("verifytree: create verify directory: %w", err)
+		}
+		defer os.Remove(p.Marker)
 	}
-	if len(dirty) > 0 {
-		return Result{Status: StatusDirty, Dirty: dirty}, nil
-	}
+	for {
+		dirty, err := DirtyPaths(p.Worktree)
+		if err != nil {
+			return Result{}, err
+		}
+		if len(dirty) > 0 {
+			return Result{Status: StatusDirty, Dirty: dirty}, nil
+		}
 
-	tree, err := headTree(p.Worktree)
-	if err != nil {
-		return Result{}, err
-	}
-	commit, err := headCommit(p.Worktree)
-	if err != nil {
-		return Result{}, err
-	}
-	if e, ok := readRecord(p.Record).find(command); ok && e.Tree == tree {
-		return Result{Status: StatusSkipped, Tree: tree}, nil
-	}
+		tree, err := headTree(p.Worktree)
+		if err != nil {
+			return Result{}, err
+		}
+		commit, err := headCommit(p.Worktree)
+		if err != nil {
+			return Result{}, err
+		}
+		if e, ok := readRecord(p.Record).find(command); ok && e.Tree == tree {
+			return Result{Status: StatusSkipped, Tree: tree}, nil
+		}
 
+		if site.Hold != nil {
+			held, err := waitOutPause(ctx, p, site, command)
+			if err != nil {
+				return Result{}, err
+			}
+			if held {
+				continue
+			}
+		}
+
+		result, stopped, err := runAndRecord(ctx, p, site, command, tree, commit)
+		if !stopped {
+			return result, err
+		}
+		logger.Info("verifytree: pause stopped the verify command at its grace end; it reruns after the resume", "command", command, "log", result.Log)
+		if _, err := waitOutPause(ctx, p, site, command); err != nil {
+			return Result{}, err
+		}
+	}
+}
+
+// waitOutPause writes a paused marker and waits until no pause covers the site's scope, reporting whether it had to wait.
+// A marker is written only when the wait starts, so an uncovered scope costs nothing.
+func waitOutPause(ctx context.Context, p Paths, site Site, command string) (bool, error) {
+	held := false
+	var markerErr error
+	err := site.Hold.Wait(ctx, func() {
+		held = true
+		now := time.Now()
+		marker := Marker{Site: site.Label, Attempt: site.Attempt, Command: command, Started: now, PID: os.Getpid(), State: MarkerStatePaused, WaitStarted: now}
+		markerErr = writeMarker(p.Marker, marker)
+	})
+	if err != nil {
+		return false, fmt.Errorf("verifytree: verify cancelled: %w", err)
+	}
+	return held, markerErr
+}
+
+// runAndRecord runs command on the tree and commit the caller read, with the running marker written for the run and removed after it, and records a pass.
+// stopped is true when the site's hold stopped the command past a pause's grace end while ctx itself had not ended; the result then names only the stopped run's log.
+func runAndRecord(ctx context.Context, p Paths, site Site, command, tree, commit string) (result Result, stopped bool, err error) {
 	if err := os.MkdirAll(filepath.Dir(p.Marker), 0o755); err != nil {
-		return Result{}, fmt.Errorf("verifytree: create verify directory: %w", err)
+		return Result{}, false, fmt.Errorf("verifytree: create verify directory: %w", err)
 	}
 	marker := Marker{Site: site.Label, Attempt: site.Attempt, Command: command, Started: time.Now(), PID: os.Getpid(), State: MarkerStateRunning}
 	if err := writeMarker(p.Marker, marker); err != nil {
-		return Result{}, err
+		return Result{}, false, err
 	}
 	defer os.Remove(p.Marker)
 
@@ -328,11 +383,11 @@ func Verify(ctx context.Context, p Paths, site Site, command string) (Result, er
 
 	logPath, err := nextLogPath(p.Dir)
 	if err != nil {
-		return Result{}, err
+		return Result{}, false, err
 	}
 	logFile, err := os.Create(logPath)
 	if err != nil {
-		return Result{}, fmt.Errorf("verifytree: create verify log %s: %w", logPath, err)
+		return Result{}, false, fmt.Errorf("verifytree: create verify log %s: %w", logPath, err)
 	}
 	defer func() {
 		logFile.Close()
@@ -341,37 +396,76 @@ func Verify(ctx context.Context, p Paths, site Site, command string) (Result, er
 		}
 	}()
 
-	code, runErr := verifyrun.Run(ctx, command, p.Worktree, env, logFile)
+	code, pauseStopped, runErr := runUnderHold(ctx, site.Hold, command, p.Worktree, env, logFile)
 	if runErr != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return Result{}, fmt.Errorf("verifytree: verify cancelled: %w", ctxErr)
+			return Result{}, false, fmt.Errorf("verifytree: verify cancelled: %w", ctxErr)
 		}
-		return Result{Status: StatusFailed, ExitCode: -1, Tree: tree, Detail: runErr.Error(), Log: logPath}, nil
+		if pauseStopped {
+			return Result{Log: logPath}, true, nil
+		}
+		return Result{Status: StatusFailed, ExitCode: -1, Tree: tree, Detail: runErr.Error(), Log: logPath}, false, nil
 	}
 	if code != 0 {
 		failed := Result{Status: StatusFailed, ExitCode: code, Tree: tree, Log: logPath}
 		failed.TimedOut, failed.Detail = tierTimeoutDetail(logPath)
-		return failed, nil
+		return failed, false, nil
 	}
 
 	// A commit that landed mid-run means the command read a tree that was not the recorded one, so the pass is not recorded.
 	afterTree, err := headTree(p.Worktree)
 	if err != nil {
-		return Result{}, err
+		return Result{}, false, err
 	}
 	afterCommit, err := headCommit(p.Worktree)
 	if err != nil {
-		return Result{}, err
+		return Result{}, false, err
 	}
 	if afterTree != tree || afterCommit != commit {
-		return Result{Status: StatusPassed, Tree: tree, Log: logPath}, nil
+		return Result{Status: StatusPassed, Tree: tree, Log: logPath}, false, nil
 	}
 
 	next := readRecord(p.Record).withPass(command, site.BaseCommand, Pass{Tree: tree, Commit: commit, VerifiedAt: time.Now()})
 	if err := writeRecord(p.Record, next); err != nil {
-		return Result{}, err
+		return Result{}, false, err
 	}
-	return Result{Status: StatusPassed, Tree: tree, Log: logPath}, nil
+	return Result{Status: StatusPassed, Tree: tree, Log: logPath}, false, nil
+}
+
+// runUnderHold runs command through verifyrun.Run, and with a non-nil hold cancels it once hold.PastGrace reports true, polled every hold.Poll only while the command runs.
+// pauseStopped reports that the hold cancelled the run.
+func runUnderHold(ctx context.Context, hold *PauseHold, command, dir string, env []string, out io.Writer) (code int, pauseStopped bool, runErr error) {
+	if hold == nil {
+		code, runErr = verifyrun.Run(ctx, command, dir, env, out)
+		return code, false, runErr
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var stopped atomic.Bool
+	finished := make(chan struct{})
+	var watcher sync.WaitGroup
+	watcher.Add(1)
+	go func() {
+		defer watcher.Done()
+		ticker := time.NewTicker(hold.Poll)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-finished:
+				return
+			case <-ticker.C:
+				if hold.PastGrace() {
+					stopped.Store(true)
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	code, runErr = verifyrun.Run(runCtx, command, dir, env, out)
+	close(finished)
+	watcher.Wait()
+	return code, stopped.Load(), runErr
 }
 
 // tierTimeoutDetail reports whether the log at logPath holds a gate tier timeout line, and names the tier and its timeout when it does.

@@ -18,6 +18,14 @@
 // Bound: a test is code the fork writes, which could clear the variable itself.
 // A verify command never sees gateslot.PrebuiltLyxEnv: Verify strips an inherited value, so the command's own `go test` builds lyx once per test binary.
 //
+// A site tells Verify a PauseHold, built by NewPauseHold over the pause record, and a nil hold runs exactly as above.
+// The hold is two functions and two timing seams: PastGrace reports whether a covering live entry has passed its grace end, Wait returns once no live entry covers the scope, Poll is how often Verify asks PastGrace while the command runs, and Sleep spaces Wait's record reads.
+// A Verify entered under a covering pause writes a marker in the `paused` state and starts no command until the pause is resumed, then starts over from the dirty check, so a tree dirtied during the pause is reported dirty and a record written during it skips.
+// A command running when a covering entry passes its grace end gets SIGTERM on its process group and SIGKILL after the wait delay; the stopped run is neither a pass nor a failure, keeps its log, and reruns from the dirty check after the resume.
+// A pause resumed before its grace end lets the running command finish and record its result.
+// A held Verify removes its marker on every return, its dirty and skipped returns included.
+// The hold reads an unreadable record as uncovered, so a corrupt file never stops a verify, and while the site's slug-entry exemption reports true, as it does for a run holding its parent lock, only a hub entry holds it.
+//
 // Each run that spawns its command writes its own log, `verify-<n>.log` in the verify directory with n one above the highest existing number, and names it on Result.Log, so a later verify never overwrites an earlier run's evidence.
 // After each such run the directory keeps the newest verifyLogKeep logs plus the one the Publish failure record names, and removes the rest.
 //
