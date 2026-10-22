@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -356,10 +357,182 @@ func TestRunner_Start_HappyPath(t *testing.T) {
 	})
 }
 
+// scriptedIdleEngine is a startPasteEngine whose pane reads busy for the first busyReads idle readings and idle after.
+// onRead runs before each reading is answered, with the reading's number counted from one.
+type scriptedIdleEngine struct {
+	*startPasteEngine
+
+	busyReads int
+	onRead    func(read int)
+	reads     int
+}
+
+func (e *scriptedIdleEngine) IdleSession(string) bool {
+	e.reads++
+	if e.onRead != nil {
+		e.onRead(e.reads)
+	}
+	return e.reads > e.busyReads
+}
+
+// sleepHookClock runs onSleep after each Sleep of the clock it wraps, which must be an AwakeClock.
+type sleepHookClock struct {
+	Clock
+	onSleep func()
+}
+
+func (c *sleepHookClock) Awake() time.Duration { return c.Clock.(AwakeClock).Awake() }
+
+func (c *sleepHookClock) Sleep(d time.Duration) {
+	c.Clock.Sleep(d)
+	c.onSleep()
+}
+
+// pasteLoadReed is a skillReed that plays a skill-load turn when a load message is pasted, since the paste path never reaches SendText.
+// onPaste runs before each paste is recorded.
+type pasteLoadReed struct {
+	*skillReed
+
+	onPaste func(text string)
+}
+
+func (r *pasteLoadReed) PasteSubmit(guid, text string, submit bool) error {
+	if r.onPaste != nil {
+		r.onPaste(text)
+	}
+	if err := r.skillReed.PasteSubmit(guid, text, submit); err != nil {
+		return err
+	}
+	if list, ok := strings.CutPrefix(text, "LOAD:"); ok {
+		return r.playLoad(list)
+	}
+	return nil
+}
+
 // TestRunner_Start_WaitsWhileAPauseCoversItsPair pins that a start registers no strand while a pause covers the runner's pair,
 // and that the run it then returns counts its deadline from the resume, not from the call.
+// A pause landing after that wait, during the idle wait of a start's typed line, holds the line until the resume and types it once.
 func TestRunner_Start_WaitsWhileAPauseCoversItsPair(t *testing.T) {
 	t.Parallel()
+
+	const prompt = "do the task"
+	tests := []struct {
+		name string
+		// later is false for the start's own wait; true rows start with no entry and add one during a typed line's idle wait.
+		later      bool
+		runnerSlug string
+		strandName string
+		skills     bool
+		// adds maps an idle reading's number to the scope of the live entry added before that reading is answered.
+		adds       map[int]string
+		wantPastes []string
+	}{
+		{name: "the start's own wait registers no strand and counts the deadline from the resume"},
+		{
+			name: "a hub entry added during the prompt's idle wait types the prompt after the resume", later: true,
+			runnerSlug: "slug", adds: map[int]string{1: pauserecord.ScopeHub}, wantPastes: []string{prompt},
+		},
+		{
+			name: "a slug entry holds the prompt of a strand it covers under a runner of another slug", later: true,
+			runnerSlug: "other", strandName: "ly:p1:impl", adds: map[int]string{1: "p1"}, wantPastes: []string{prompt},
+		},
+		{
+			name: "a second entry landing before the resend holds the prompt again", later: true,
+			runnerSlug: "slug", adds: map[int]string{1: pauserecord.ScopeHub, 3: pauserecord.ScopeHub}, wantPastes: []string{prompt},
+		},
+		{
+			name: "a hub entry holds the typed skill-load line the same way", later: true, skills: true,
+			runnerSlug: "slug", adds: map[int]string{1: pauserecord.ScopeHub}, wantPastes: []string{"LOAD:a", prompt},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if !tt.later {
+				startWaitsItsOwnPause(t)
+				return
+			}
+
+			path := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+			fc := newFakeClock(time.Now())
+			live, refused := 0, false
+			resume := func() {
+				t.Helper()
+				_, err := pauserecord.Update(path, fc.Now(), func(record *pauserecord.Record) error {
+					entry := record.Live[0]
+					entry.ResumedAt = fc.Now()
+					record.Live = record.Live[1:]
+					record.Resumed = append(record.Resumed, entry)
+					return nil
+				})
+				if err != nil {
+					t.Fatalf("resume the pause: %v", err)
+				}
+				live--
+			}
+
+			engine := &scriptedIdleEngine{
+				startPasteEngine: &startPasteEngine{&startSendEngine{skillFakeEngine: &skillFakeEngine{
+					fakeEngine: &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1", PromptLine: prompt}, StartupScript: []StartupState{StartupReady}},
+					Timeout:    time.Minute,
+					Reports:    []SkillLoadReport{{Verified: true, Missing: []string{"a"}}, {Verified: true, Loaded: []string{"a"}}},
+				}}},
+				busyReads: 1,
+			}
+			engine.onRead = func(read int) {
+				if scope, add := tt.adds[read]; add {
+					addLiveEntry(t, path, scope, fc.Now())
+					live++
+				}
+				// An idle reading is followed at once by the coverage read, so a live entry refuses the send.
+				refused = read > engine.busyReads && live > 0
+			}
+			base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1", Name: tt.strandName}, StatusQueue: liveStrandStatus(true)}
+			var pasted []string
+			var liveAtPaste []int
+			reed := &pasteLoadReed{
+				skillReed: &skillReed{fakeReed: base, Hangs: map[int]bool{}, Dies: map[int]bool{}},
+				onPaste: func(text string) {
+					pasted = append(pasted, text)
+					liveAtPaste = append(liveAtPaste, live)
+				},
+			}
+			fx := newFixture(t, reed, engine, withConfig(fastConfig), withClock(&sleepHookClock{Clock: fc, onSleep: func() {
+				if refused {
+					refused = false
+					resume()
+				}
+			}}))
+			reed.EventsPath = func() string { return filepath.Join(soleStartupRunDir(t, fastConfig, fx.Anchor), eventsFileName) }
+			fx.Runner.SetPause(pauserecord.Geometry{RecordPath: path, Slug: tt.runnerSlug})
+			spec := Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}}
+			if tt.skills {
+				spec.Skills = []string{"a"}
+			}
+
+			run, err := fx.Runner.Start(spec)
+
+			if err != nil || run == nil {
+				t.Fatalf("Start() = (%v, %v), want a started run", run, err)
+			}
+			if !slices.Equal(pasted, tt.wantPastes) {
+				t.Errorf("pasted = %q, want %q, each once", pasted, tt.wantPastes)
+			}
+			for i, count := range liveAtPaste {
+				if count != 0 {
+					t.Errorf("live entries when %q was pasted = %d, want none", pasted[i], count)
+				}
+			}
+			if live != 0 {
+				t.Errorf("live entries after Start = %d, want every added entry resumed", live)
+			}
+		})
+	}
+}
+
+// startWaitsItsOwnPause runs a start under a hub entry from the call on, resumed at a later clock sleep.
+func startWaitsItsOwnPause(t *testing.T) {
+	t.Helper()
 
 	const timeout = 20 * time.Minute
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
@@ -407,8 +580,14 @@ func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testi
 		wantSent     bool
 		// wantOffset is the prompt offset the record holds afterwards.
 		wantOffset int64
+		// covered runs the send under a hub entry that a later clock sleep resumes.
+		covered bool
 	}{
 		{name: "a record with no prompt line sends nothing", events: loadTurns, promptOffset: int64(len(loadTurns)), wantOffset: int64(len(loadTurns))},
+		{
+			name: "a covering hub entry holds the prompt until its resume", promptLine: promptLine, events: loadTurns,
+			promptOffset: int64(len(loadTurns)), wantSent: true, wantOffset: int64(len(loadTurns)), covered: true,
+		},
 		{
 			name: "a turn start past the prompt offset means the prompt was taken", promptLine: promptLine, events: loadTurns + "START\n",
 			promptOffset: int64(len(loadTurns)), wantOffset: int64(len(loadTurns)),
@@ -427,9 +606,27 @@ func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testi
 			t.Parallel()
 			reed := &echoReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}, pane: "❯ "}
 			engine := &sessionFakeEngine{waitingEngine: waitingEngine{fakeEngine: fakeEngine{StartupScript: []StartupState{StartupReady}}}}
-			fx := newFixture(t, reed, engine, withConfig(gateConfig))
+			fixtureOpts := []fixtureOpt{withConfig(gateConfig)}
 			record := RunState{StrandGUID: "strand-1", PromptLine: tt.promptLine, PromptOffset: tt.promptOffset}
-			run := fx.newRun(Spec{}, withRunState(record), withRunEvents(tt.events))
+			runOpts := []runOpt{withRunState(record), withRunEvents(tt.events)}
+			var geometry pauserecord.Geometry
+			var typedAtResume []string
+			resumed := false
+			if tt.covered {
+				fc := newFakeClock(time.Now())
+				var resume func(time.Time)
+				geometry, resume = coverHub(t, fc.Now())
+				clock := &liftClock{Clock: fc, liftAfter: 2, lift: func() {
+					typedAtResume = slices.Clone(reed.typed)
+					resumed = true
+					resume(fc.Now())
+				}}
+				fixtureOpts = append(fixtureOpts, withClock(clock))
+				runOpts = append(runOpts, withRunClock(clock, time.Time{}))
+			}
+			fx := newFixture(t, reed, engine, fixtureOpts...)
+			fx.Runner.SetPause(geometry)
+			run := fx.newRun(Spec{}, runOpts...)
 			record.EventsPath = run.state.EventsPath
 			if err := saveRunState(run.runDir, record); err != nil {
 				t.Fatalf("saveRunState: %v", err)
@@ -441,6 +638,9 @@ func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testi
 			}
 			if sent != tt.wantSent {
 				t.Errorf("DeliverPendingPrompt() = %v, want %v", sent, tt.wantSent)
+			}
+			if tt.covered && (!resumed || len(typedAtResume) != 0) {
+				t.Errorf("resumed = %v and typed at the resume = %q, want a resume that found nothing typed", resumed, typedAtResume)
 			}
 			wantTyped := []string(nil)
 			if tt.wantSent {

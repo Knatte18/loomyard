@@ -107,13 +107,13 @@ func (r *Runner) PauseGeometry() pauserecord.Geometry {
 	return r.pause
 }
 
-// waitWhileCovered returns once no pause covers the runner's slug, at once for a runner told no pause geometry.
+// waitWhileCovered returns once no pause covers slug, at once for a runner told no pause geometry.
 // It writes its one line to stderr and to the trace, and sleeps on the runner's clock.
-func (r *Runner) waitWhileCovered() error {
+func (r *Runner) waitWhileCovered(slug string) error {
 	if r.pause.RecordPath == "" {
 		return nil
 	}
-	return pauserecord.WaitUncovered(context.Background(), r.pause.RecordPath, r.pause.Slug, pauserecord.Waiter{
+	return pauserecord.WaitUncovered(context.Background(), r.pause.RecordPath, slug, pauserecord.Waiter{
 		Notify: func(line string) {
 			fmt.Fprintln(os.Stderr, line)
 			logger.Info("shuttle: run start held by a pause", "line", line)
@@ -522,7 +522,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		return nil, Result{}, err
 	}
 
-	if err := r.waitWhileCovered(); err != nil {
+	if err := r.waitWhileCovered(r.pause.Slug); err != nil {
 		return nil, Result{}, fmt.Errorf("shuttle: wait for the pause to lift: %w", err)
 	}
 
@@ -737,13 +737,30 @@ func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color
 			return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: persist the prompt offset after loading skills: %w", err))
 		}
 	}
-	if err := sendVerified(run.newSendContext(), promptLine); err != nil {
+	if err := run.sendThroughPause(run.newSendContext(), promptLine); err != nil {
 		if errors.Is(err, ErrSubmissionNotLanded) && turnStartedSince(run.engine, run.state.EventsPath, sentAt) {
 			return Result{}, nil
 		}
 		return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err))
 	}
 	return Result{}, nil
+}
+
+// sendThroughPause sends text over sc through the verified send path and, when a pause refuses it with ErrPaused, waits out the pause and sends again.
+// The wait judges the slug the refusal judged, and each resend builds a fresh context, so a second pause landing before the resend holds it again.
+// Any other result returns as the send gave it, and a failed wait returns wrapped.
+func (run *Run) sendThroughPause(sc sendContext, text string) error {
+	for {
+		err := sendVerified(sc, text)
+		var paused *PausedError
+		if !errors.As(err, &paused) {
+			return err
+		}
+		if waitErr := run.runner.waitWhileCovered(paused.Slug); waitErr != nil {
+			return fmt.Errorf("shuttle: wait for the pause to lift: %w", waitErr)
+		}
+		sc = run.newSendContext()
+	}
 }
 
 // DeliverPendingPrompt types the run's deferred prompt line when the prompt's turn never started, and reports whether it did.
@@ -773,7 +790,7 @@ func (run *Run) DeliverPendingPrompt() (bool, error) {
 	}
 	run.sendMu.Lock()
 	defer run.sendMu.Unlock()
-	if err := sendVerified(run.newSendContext(), record.PromptLine); err != nil {
+	if err := run.sendThroughPause(run.newSendContext(), record.PromptLine); err != nil {
 		return false, fmt.Errorf("shuttle: deliver the pending prompt: %w", err)
 	}
 	return true, nil
@@ -824,7 +841,7 @@ func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.
 	reed := run.runner.reed
 	guid := run.state.StrandGUID
 	if typed {
-		if err := sendVerified(run.newSendContext(), loader.SkillLoadMessage(skills)); err != nil {
+		if err := run.sendThroughPause(run.newSendContext(), loader.SkillLoadMessage(skills)); err != nil {
 			return Event{}, false, false, fmt.Errorf("shuttle: load skills %v: %w", skills, err)
 		}
 	}
