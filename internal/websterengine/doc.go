@@ -306,6 +306,7 @@
 // when an unbegun later card's Edit code still references the target, the failure's reasons name that card and the reference,
 // and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the reset-to-start steps when the record also lists uncheckable entries, since recover-batch would repeat the same failure.
 // Only a reference resolved to the deleted member counts, which is the blocking finding; a method matched by name alone is informational, adds no reason and changes no way forward.
+// A glyph-rejected finding, a card target quarry rejects before resolving it, takes the same plan-edit way forward with the card's target amended instead of the delete moved, since recovery re-runs the same check on the same plan.
 // PersistRecoveryTerminal fails a recovered batch the same way, and recover-batch runs the same check before spawning:
 // while a blocking reference fires it refuses with ErrRecoveryDeleteReferenced, which the CLI maps to the `batch_failed` flag.
 // At run exit the audit cross-check drops dispositioned findings, records the rest of the policy findings as run-level warnings, appended to summary.md under "Audit warnings", and demotes Master's outcome done to stuck for an undispositioned correctness finding.

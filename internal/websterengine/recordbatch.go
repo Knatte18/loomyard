@@ -57,10 +57,11 @@ func (e *ReportArchivedError) Unwrap() []error { return []error{ErrReportArchive
 var ErrCardNotDone = errors.New("webster: record-batch's done-checks reported a blocking finding")
 
 // cardNotDoneError is the error the post-batch done-checks return: it unwraps to ErrCardNotDone and its message carries the findings' text.
-// deleteNotDone is set when a finding is a Delete target that still resolves.
+// deleteNotDone is set when a finding is a Delete target that still resolves, and glyphRejected when quarry rejected a card's target before resolving it.
 type cardNotDoneError struct {
 	reasons       []string
 	deleteNotDone bool
+	glyphRejected bool
 }
 
 func (e *cardNotDoneError) Error() string {
@@ -89,6 +90,15 @@ func deleteReferencedWayForward(number int, uncheckable bool) string {
 		return freshRestartSteps(stepRun)
 	}
 	return fmt.Sprintf("move the delete to a card after the one that still references it, run `lyx webster rebaseline --card NN` naming each card you edited, then `lyx webster recover-batch %02d`", number)
+}
+
+// glyphRejectedWayForward is the way forward for a batch whose card names a target quarry rejects before resolving it.
+// Recovery re-runs the same check on the same plan, so the way forward edits the card; a record recovery would refuse as uncheckable restarts the run instead.
+func glyphRejectedWayForward(number int, uncheckable bool) string {
+	if uncheckable {
+		return freshRestartSteps(stepRun)
+	}
+	return fmt.Sprintf("amend the card's target to a spelling `lyx quarry resolve` answers, run `lyx webster rebaseline --card NN` naming each card you edited, then `lyx webster recover-batch %02d`", number)
 }
 
 // laterDeleteReferenceReasons returns one reason per blocking reference an unbegun card still has to a symbol the cards in own delete.
@@ -131,13 +141,15 @@ type cardNotDoneInputs struct {
 // The reasons open with the batch's id and its card list, so a finding keyed on a later card of the batch reads as the batch's own.
 // When a finding is a Delete target that still resolves and an unbegun later card still references it, the reasons also name that reference,
 // and the way forward is the plan edit rather than recover-batch, which would only repeat the same failure.
+// A finding whose target quarry rejected before resolving it takes the card-amending plan edit as its way forward for the same reason.
 func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, error) {
 	var reasons []string
-	var deleteNotDone bool
+	var deleteNotDone, glyphRejected bool
 	var notDone *cardNotDoneError
 	if errors.As(cause, &notDone) {
 		reasons = notDone.reasons
 		deleteNotDone = notDone.deleteNotDone
+		glyphRejected = notDone.glyphRejected
 	} else {
 		reasons = strings.Split(strings.TrimPrefix(cause.Error(), ErrCardNotDone.Error()+": "), "; ")
 	}
@@ -158,6 +170,9 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 			reasons = append(append([]string(nil), reasons...), referenced...)
 			wayForward = deleteReferencedWayForward(in.Number, len(in.Batch.Uncheckable) > 0)
 		}
+	}
+	if wayForward == "" && glyphRejected {
+		wayForward = glyphRejectedWayForward(in.Number, len(in.Batch.Uncheckable) > 0)
 	}
 	return failBatch(failBatchInput{
 		State:      in.State,
@@ -811,8 +826,11 @@ func cardNotDoneFor(in postBatchInputs, findings []planindex.Finding) *cardNotDo
 	for _, f := range findings {
 		notDone.reasons = append(notDone.reasons, f.Error())
 		notDoneCards[f.Card] = true
-		if f.Check == "delete-not-done" {
+		switch f.Check {
+		case "delete-not-done":
 			notDone.deleteNotDone = true
+		case "glyph-rejected":
+			notDone.glyphRejected = true
 		}
 	}
 	logBindOutcomes(in.Number, failedBindOutcomes(in.Cards, func(c planparser.Card) planindex.BindReason {

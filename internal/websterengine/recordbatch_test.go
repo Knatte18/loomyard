@@ -1633,7 +1633,7 @@ func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
 }
 
 // TestRecordBatch_DoneChecksBlockOnUnresolvedCreate proves card 33's wiring as card 10 reshaped it:
-// a Create target that still does not resolve against the worktree's actual post-card tree fails the batch terminally with its findings as reasons and the report archived.
+// a Create target that still does not resolve against the worktree's actual post-card tree fails the batch terminally with its findings as reasons and the report archived, and a target quarry rejects outright names the card amendment as the way forward.
 func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
@@ -1692,6 +1692,50 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 		}
 		if strings.Contains(joined, "LaterA") || strings.Contains(joined, "LaterB") {
 			t.Errorf("reasons = %q; want no finding on the unbegun cards", reasons)
+		}
+	})
+
+	// A target quarry rejects before resolution fails again on every recovery of the same plan, so the way forward amends the card first.
+	t.Run("GlyphRejectedNamesThePlanEdit", func(t *testing.T) {
+		fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+		})
+		writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+		fx.Deps.Plan.Cards[0].TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeCreate, Refs: []string{"foo.Bar"}},
+		}
+
+		_, err := websterengine.RecordBatch(fx.Deps, 1)
+		if !errors.Is(err, websterengine.ErrBatchFailed) {
+			t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrBatchFailed)", err)
+		}
+		for _, want := range []string{"glyph-rejected", "way forward: amend the card's target", "lyx webster rebaseline --card NN", "lyx webster recover-batch 01"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+	})
+
+	// A record recovery would refuse as uncheckable cannot be recovered, so the way forward restarts the run.
+	t.Run("GlyphRejectedWithUncheckableNamesTheFreshRestart", func(t *testing.T) {
+		fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+		})
+		writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+		fx.Deps.Plan.Cards[0].TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeCreate, Refs: []string{"foo.Bar"}},
+		}
+		fx.Deps.State.Batches[1].Uncheckable = []string{"fabric-reference: Bash command references the fabric"}
+
+		_, err := websterengine.RecordBatch(fx.Deps, 1)
+		if !errors.Is(err, websterengine.ErrBatchFailed) {
+			t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrBatchFailed)", err)
+		}
+		if !strings.Contains(err.Error(), "way forward: 1) lyx webster reset --to start; 2) lyx webster run") {
+			t.Errorf("RecordBatch() error = %q; want it to contain the fresh-restart steps", err.Error())
+		}
+		if strings.Contains(err.Error(), "recover-batch") {
+			t.Errorf("RecordBatch() error = %q; want no recover-batch", err.Error())
 		}
 	})
 }

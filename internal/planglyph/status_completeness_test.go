@@ -78,7 +78,7 @@ func runDoneCheckVerdict(t *testing.T, checkID string, r quarry.ResolveResult) [
 	entries := []doneCheckEntry{{card: card, checkID: checkID, key: key, display: key}}
 	index := map[string]quarry.ResolveResult{key: r}
 
-	findings, err := doneCheckVerdicts("", entries, index)
+	findings, err := doneCheckVerdicts(&planparser.Plan{}, "", entries, index, nil)
 	if err != nil {
 		t.Fatalf("doneCheckVerdicts(%s) error = %v; want nil", checkID, err)
 	}
@@ -126,7 +126,7 @@ func TestStatusCompleteness_MatchesDoneCheckVerdicts(t *testing.T) {
 
 // TestStatusCompleteness_UnreadableStatusesFailClosed pins the two unreadable shapes — the zero-value status, quarry's pre-resolution rejection carrying Error and Reason, and a synthetic out-of-vocabulary status string — to exactly one blocking glyph-rejected finding for every one of the four checkID arms, with no create, delete or rename verdict, and confirms the two shapes render the two different Detail strings unreadableStatusDetail produces for them.
 //
-//testtiming:keep pins the two unreadable-status Detail strings on every check arm, which TestDoneChecks_RootFilenameCreateLanded and TestCreateFindings_UnreadableStatusFailsClosed do not assert
+//testtiming:keep pins the two unreadable-status Detail strings on every check arm, which TestCreateFindings_UnreadableStatusFailsClosed does not assert
 func TestStatusCompleteness_UnreadableStatusesFailClosed(t *testing.T) {
 	t.Parallel()
 

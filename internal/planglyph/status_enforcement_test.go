@@ -89,6 +89,8 @@ var allowedStatusConsumers = []scankit.Entry{
 	{Key: "internal/planglyph/resolve.go:unreadableStatusDetail", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/create.go:createFindings", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/donecheck.go:doneCheckVerdicts", Why: "fail-closed status reader"},
+	{Key: "internal/planglyph/donecheck.go:anyMemberMissing", Why: "decides only whether to list declarations for a finding's detail, never a verdict; any answer but not_found lists nothing"},
+	{Key: "internal/planglyph/donecheck.go:searchedDescription", Why: "reads glyph.Glyph.Unit, a name-shape match for the status vocabulary's Unit selector that is no resolve status"},
 	{Key: "internal/planglyph/deleteorder.go:answerSymbols", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/handle.go:renameDeclSource", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/resign.go:RebindResigns", Why: "fail-closed status reader: only found passes, every other answer is resign-not-done"},

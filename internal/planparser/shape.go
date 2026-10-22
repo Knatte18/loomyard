@@ -96,6 +96,8 @@ const (
 	gateEditTestFile refGate = "edit-test-file"
 	// gateUntypedFileRenamePair is SymbolRenamePairs' policy for a plan whose language has no glyph alphabet, applied identically to both sides of a Rename pair: only a path-shaped side is a candidate for a file-rename pair; every other kind is skipped, meaning "not a file-rename pair".
 	gateUntypedFileRenamePair refGate = "untyped-file-rename-pair"
+	// gateDiskCheckedTarget is IsDiskCheckedTarget's (glyphref.go) policy: a path-shaped done-check key, one canonicalization could not spell as a glyph, is judged on disk; every other kind is resolved and skipped here.
+	gateDiskCheckedTarget refGate = "disk-checked-target"
 )
 
 // allRefKinds is the canonical, complete list of every refKind classify.go's enum declares. The
@@ -198,6 +200,12 @@ var ledger = map[refGate]map[refKind]disposition{
 		refKindHandle: dispSkip,
 	},
 	gateUntypedFileRenamePair: {
+		refKindPath:   dispKeep,
+		refKindSymbol: dispSkip,
+		refKindGlyph:  dispSkip,
+		refKindHandle: dispSkip,
+	},
+	gateDiskCheckedTarget: {
 		refKindPath:   dispKeep,
 		refKindSymbol: dispSkip,
 		refKindGlyph:  dispSkip,

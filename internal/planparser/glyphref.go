@@ -108,3 +108,11 @@ func (p *Plan) GlyphLanguage() bool {
 	_, ok := planLanguage(p)
 	return ok
 }
+
+// IsDiskCheckedTarget reports whether key, a canonicalized card target with any plan: handle already stripped, is still path-shaped.
+// Canonicalization spells every path it can as a self glyph, so such a key is one no glyph spells, such as a path whose directory holds a space;
+// quarry rejects it before resolution, and a done-check judges it by whether the path exists on disk.
+func IsDiskCheckedTarget(key string) bool {
+	_, disp := lookup(gateDiskCheckedTarget, key)
+	return disp == dispKeep
+}

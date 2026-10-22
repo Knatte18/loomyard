@@ -81,3 +81,32 @@ func TestPlanGlyphLanguage(t *testing.T) {
 		})
 	}
 }
+
+// TestIsDiskCheckedTarget asserts IsDiskCheckedTarget keeps exactly the path-shaped keys and skips every glyph-spelled one.
+func TestIsDiskCheckedTarget(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		key  string
+		want bool
+	}{
+		{name: "slashed path", key: "internal/foo/a.go", want: true},
+		{name: "bare root filename", key: "LICENSE", want: true},
+		{name: "spaced path", key: "tree/with space/Spaced.cs", want: true},
+		{name: "self glyph", key: "internal/foo/a.go#", want: false},
+		{name: "member glyph", key: "internal/foo#Bar", want: false},
+		{name: "glyph half of a stripped plan handle", key: "internal/foo#Thing.Bar", want: false},
+		{name: "bare symbol", key: "Thing.Bar", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := IsDiskCheckedTarget(tt.key); got != tt.want {
+				t.Errorf("IsDiskCheckedTarget(%q) = %v; want %v", tt.key, got, tt.want)
+			}
+		})
+	}
+}
