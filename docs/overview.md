@@ -222,6 +222,7 @@ Records paths are computed on demand from geometry and do not require a registry
 github.com/Knatte18/loomyard/
 ├── cmd/lyx/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
+├── internal/adoptcli/            the adopt CLI command (`lyx adopt`, the takeover of tasks or the prime from another machine)
 ├── internal/agentname/           the sole former, parser and validator of agent names (`<shortname>:<slug>:<role>`), a stdlib-only leaf
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
@@ -426,6 +427,10 @@ User-facing modules each get one `lyx <module>` namespace:
   The segments run in order and each calls its owner's own cleanup in-process: `lyx batten cleanup`, `lyx board prune`, `lyx orch cleanup`, the prime's `.scratch/` children older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
+- **adopt** — the takeover of tasks or the prime from another machine of the operator, as one verb (`internal/adoptcli`; `lyx adopt <slug>...`, `lyx adopt --prime [<slug>...]` and `lyx adopt --all`, with `--keep-local` and `--drop-local`, prime only).
+  It reconciles the hub against origin, stops an entry whose pair holds local commits origin lacks or is live, adds the missing pair, records this machine as the owner in one pushed owner write, lifts the owner pause and resumes the run in its window.
+  It calls each owning module's function in-process and has no engine package of its own.
+  ✅ Implemented. See the `internal/adoptcli` package documentation.
 - **report** — the read-only convergence and timing reports (`internal/reportcli` + `internal/reportengine`; `lyx report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]` and `lyx report timing [--since <date>] [--by day|week] [--format json|markdown]`, prime only).
   The convergence report says, per finished run and per ISO week, what woke the orch, what stopped and repaired runs, how many review rounds each segment took and how landings fared.
   The timing report says where run time went, per run, per phase and per day or week, with machine sleep, waits and the time a run stood paused apart, and who settled each stop.
