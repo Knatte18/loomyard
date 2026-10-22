@@ -597,6 +597,32 @@ func stepStrictPayloadShapes(t *testing.T, f *cliFixture) {
 				}
 			},
 		},
+		// merge: set_status selects its target by handle
+		{
+			name: "merge_set_status_by_handle_succeeds",
+			setup: func(t *testing.T) {
+				f.reset(t)
+				runCLI(t, "upsert", `{"slug":"old-task","title":"Old","labels":["bug"]}`)
+			},
+			verb:         "merge",
+			payload:      `{"upsert":{"slug":"new-task","title":"New","labels":["bug"]},"set_status":{"handle":"T1","status":"active"}}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertResult: func(t *testing.T, _ map[string]any) {
+				_, out := runCLI(t, "get", `{"slug":"old-task"}`)
+				var r map[string]any
+				if err := json.Unmarshal([]byte(out), &r); err != nil {
+					t.Fatalf("parse: %v", err)
+				}
+				task, _ := r["task"].(map[string]any)
+				if task == nil {
+					t.Fatalf("old-task not found")
+				}
+				if task["status"] != "active" {
+					t.Errorf("expected status=active, got %v", task["status"])
+				}
+			},
+		},
 		// merge: a non-string upsert slug must produce an envelope error, not a
 		// store-level interface-conversion panic (which would crash the CLI).
 		{
