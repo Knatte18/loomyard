@@ -6,21 +6,30 @@
 //
 // # Sequence
 //
-// EndSession runs five steps in order and stops at the first failure:
+// EndSession runs six steps in order and stops at the first failure:
 //
 //  1. Quiet wait.
 //     It polls until the pair's driver is quiet, bounded by Request.QuietWait.
 //  2. Refusal probe.
 //     Topology.RemoveRefusal answers whether Remove would refuse, with nothing touched.
-//     A refusal is returned unchanged, so a refused removal leaves the session and its strands live.
-//  3. Loop end.
+//     A refusal is returned unchanged, so a refused removal leaves the session and its strands live and ends no registered process.
+//  3. Owned-process end.
+//     runproc.End ends every process registered under the pair's slug, batten, the driver, the step loop and the pair's pushes among them, and the processes below them, sparing the calling process and its ancestors.
+//     It runs for a present or a gone task worktree, so neither batten's strand revival nor the driver's re-step races what follows.
+//     A *runproc.SurvivorsError with Request.RefuseWhenBusy returns an ErrDriverBusy refusal naming each survivor's pid and role, with no loop end and no session end;
+//     without RefuseWhenBusy the survivors are logged at Warn, set on SessionResult.Survivors, and the sequence goes on.
+//     Any other error from the end is returned for every caller.
+//     With the task worktree present the driver lock is then probed: a lock still held means a process the owner record does not reach, such as one an older binary started.
+//     With RefuseWhenBusy that is an ErrDriverBusy refusal whose way forward is `lyx tender status` and `ps` on Linux, and on Windows, where the end signals nothing, the driver's recorded pid with `taskkill /PID <pid> /T /F` or, with no driver record, the lock path and Task Manager;
+//     without it SessionResult.DriverWasLive is set and the sequence goes on.
+//  4. Loop end.
 //     With the task worktree present, the pair's detached step loop and its in-flight step tree are killed, and the loop lock is taken and held through the session end.
 //     Taking the lock replaces the loop's pid file with the teardown's mark, which bars every later loop up to the removal, so no step starts once the session end begins.
 //     A loop spawned between the kill and the take is killed again and the take retried, for at most runLockWait.
-//  4. Run-lock wait.
+//  5. Run-lock wait.
 //     It waits, for at most runLockWait, for the run lock to be released, so the session ends only after the in-flight step is dead.
 //     A spent bound names the pid of the run's newest unfinished step as the holder, or an unknown holder.
-//  5. Session end.
+//  6. Session end.
 //     With the task worktree present it is Engine.Down, which also tears down the hub's tmux server after the last session.
 //     With the task worktree gone it is reedengine.EndSessionByName, so no path under the gone worktree is recreated.
 //     The loop lock is released after it; a failure before the session end puts the pid file back first, or removes the mark when there was no record.
@@ -43,6 +52,8 @@
 // An entry with no status, a done status or a status without the run form is kept.
 // A landed run's entry is marked done.
 // Otherwise an entry whose run batten never seeded, or whose batten run is paused, blocked, failed or awaiting, is cleared; a batten run that is done marks it done; a running one holds it, and the settle only warns, naming `lyx batten status <slug>` and `lyx batten pause <slug>`.
+// A running record holds the claim that way only while a registered batten process of the slug is alive;
+// with none alive the claim is kept all the same and the warning names `lyx board set-status <slug>` instead, since batten's own pause has no process to reach.
 // A board or status read failure warns and writes nothing, and a failed removal settles nothing.
 // A run whose Finalize merged but failed its done mark and stopped on its push holds no Finalize Done, so its entry ends cleared, for the operator to mark done with `lyx board set-status`.
 //

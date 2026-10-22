@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,8 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
@@ -43,13 +46,35 @@ type fakeSubstrates struct {
 	claim        *string
 	claimFound   bool
 	claimReadErr error
+
+	// endedProcs and endOwnedErr are what the owner-record end answers.
+	endedProcs  []runproc.Ended
+	endOwnedErr error
+	// driverLockHeld is whether the driver lock reads held after the owned end.
+	driverLockHeld bool
+	// battenAlive is whether a registered batten process reads alive.
+	battenAlive bool
+	// driverPID is the pid of the registered driver, when driverFound.
+	driverPID   int
+	driverFound bool
 }
 
 func (f *fakeSubstrates) teardown() *Teardown {
 	return &Teardown{
 		prime:    &lyxcwd.Location{HubPath: "/hub", AnchorRel: "."},
 		interval: time.Second,
-		gone:     func(string) (bool, error) { return false, nil },
+		goos:     "linux",
+		endOwned: func(string) ([]runproc.Ended, error) {
+			f.calls = append(f.calls, "endOwned")
+			return f.endedProcs, f.endOwnedErr
+		},
+		driverLockHeld: func(string) (bool, error) {
+			f.calls = append(f.calls, "driverLock")
+			return f.driverLockHeld, nil
+		},
+		battenAlive: func(string) (bool, error) { return f.battenAlive, nil },
+		driverPID:   func(string) (int, bool) { return f.driverPID, f.driverFound },
+		gone:        func(string) (bool, error) { return false, nil },
 		quiet: func(string) (quietState, error) {
 			f.calls = append(f.calls, "quiet")
 			st := f.quiets[0]
@@ -140,7 +165,8 @@ func TestTeardown_CallSequence(t *testing.T) {
 	refusal := errors.New("worktree has uncommitted changes")
 	text := func(s string) *string { return &s }
 	runClaim := text(boardengine.RunStatus("running", "Webster-Burler"))
-	const sessionEnd = "quiet,refusal,kill,seize,await,end,release(ended=true)"
+	const sessionEnd = "quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=true)"
+	survivors := []runproc.Ended{{PID: 4242, Role: runproc.RoleLoop}}
 	tests := []struct {
 		name string
 		// run selects Teardown.Run over Teardown.EndSession.
@@ -165,6 +191,17 @@ func TestTeardown_CallSequence(t *testing.T) {
 		claim        *string
 		claimFound   bool
 		claimReadErr error
+		// endedProcs and endOwnedErr script the owner-record end; driverLockHeld, goos, driverPID and driverFound script the driver-lock re-check; battenAlive scripts the registered batten read.
+		endedProcs     []runproc.Ended
+		endOwnedErr    error
+		driverLockHeld bool
+		goos           string
+		driverPID      int
+		driverFound    bool
+		battenAlive    bool
+		// wantEnded and wantSurvivors are the EndedProcesses and Survivors of the returned session result.
+		wantEnded     []runproc.Ended
+		wantSurvivors []runproc.Ended
 		// gone makes the task worktree read as gone.
 		gone    bool
 		request Request
@@ -194,7 +231,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:        "DriverTurningRetiringProceedsAfterCountedSleeps",
 			quiets:      []quietState{busy, busy, {quiet: true}},
 			request:     Request{Slug: "slug", QuietWait: time.Minute, RefuseWhenBusy: true},
-			wantCalls:   "quiet,quiet,quiet,refusal,kill,seize,await,end,release(ended=true)",
+			wantCalls:   "quiet,quiet,quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=true)",
 			wantSleeps:  2,
 			wantSession: &SessionResult{Ended: true, DriverWasLive: false},
 		},
@@ -202,7 +239,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:        "ZeroWaitWithoutRefuseProceedsAndReportsDriverWasLive",
 			quiets:      []quietState{busy},
 			request:     Request{Slug: "slug"},
-			wantCalls:   "quiet,refusal,kill,seize,await,end,release(ended=true)",
+			wantCalls:   sessionEnd,
 			wantSession: &SessionResult{Ended: true, DriverWasLive: true},
 		},
 		{
@@ -220,7 +257,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			endErr:       errors.New("tmux down"),
 			request:      Request{Slug: "slug"},
 			wantAnyError: true,
-			wantCalls:    "quiet,refusal,kill,seize,await,end,release(ended=false)",
+			wantCalls:    "quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=false)",
 		},
 		{
 			name:      "CallsQuietProbeLoopKillEndAndRemoveInOrderThenReadsTheClaim",
@@ -357,7 +394,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:     Request{Slug: "slug", RefuseWhenBusy: true},
 			claim:       runClaim,
 			claimFound:  true,
-			wantCalls:   "refusal,archive,remove,readClaim,battenRun,write=clear",
+			wantCalls:   "refusal,endOwned,end,archive,remove,readClaim,battenRun,write=clear",
 			wantSawGone: true,
 		},
 		{
@@ -385,7 +422,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			seizeErr:     errors.New("the loop lock is still held"),
 			request:      Request{Slug: "slug"},
 			wantAnyError: true,
-			wantCalls:    "quiet,refusal,kill,seize",
+			wantCalls:    "quiet,refusal,endOwned,driverLock,kill,seize",
 		},
 		{
 			name:         "RunLockHeldPastTheBoundNeverEndsTheSessionAndRestoresThePidFile",
@@ -393,15 +430,93 @@ func TestTeardown_CallSequence(t *testing.T) {
 			awaitErr:     errors.New("the run lock is still held by pid 42"),
 			request:      Request{Slug: "slug"},
 			wantAnyError: true,
-			wantCalls:    "quiet,refusal,kill,seize,await,release(ended=false)",
+			wantCalls:    "quiet,refusal,endOwned,driverLock,kill,seize,await,release(ended=false)",
 		},
 		{
 			name:        "GonePairSkipsQuietWaitAndEndsByName",
 			quiets:      []quietState{busy},
 			gone:        true,
 			request:     Request{Slug: "slug", RefuseWhenBusy: true},
-			wantCalls:   "refusal",
+			wantCalls:   "refusal,endOwned,end",
 			wantSawGone: true,
+		},
+		{
+			name:            "SurvivorsUnderRefuseWhenBusyRefuseNamingThePidWithNoLoopEndAndNoSessionEnd",
+			quiets:          []quietState{{quiet: true}},
+			endedProcs:      []runproc.Ended{{PID: 4100, Role: runproc.RolePush}},
+			endOwnedErr:     &runproc.SurvivorsError{Survivors: survivors},
+			request:         Request{Slug: "slug", RefuseWhenBusy: true},
+			wantErrIs:       ErrDriverBusy,
+			wantErrContains: []string{"4242", runproc.RoleLoop, "retry the removal"},
+			wantCalls:       "quiet,refusal,endOwned",
+			wantSession:     &SessionResult{},
+			wantEnded:       []runproc.Ended{{PID: 4100, Role: runproc.RolePush}},
+			wantSurvivors:   survivors,
+		},
+		{
+			name:          "SurvivorsWithoutRefuseWhenBusyGoOnToTheSessionEndAndAreReported",
+			quiets:        []quietState{{quiet: true}},
+			endOwnedErr:   &runproc.SurvivorsError{Survivors: survivors},
+			request:       Request{Slug: "slug"},
+			wantCalls:     sessionEnd,
+			wantSession:   &SessionResult{Ended: true},
+			wantSurvivors: survivors,
+		},
+		{
+			name:         "OwnedEndErrorThatIsNotSurvivorsIsReturnedForEveryCaller",
+			quiets:       []quietState{{quiet: true}},
+			endOwnedErr:  errors.New("record directory unreadable"),
+			request:      Request{Slug: "slug"},
+			wantAnyError: true,
+			wantCalls:    "quiet,refusal,endOwned",
+		},
+		{
+			name:        "EndedProcessesAreCarriedOnTheSessionResult",
+			quiets:      []quietState{{quiet: true}},
+			endedProcs:  []runproc.Ended{{PID: 4100, Role: runproc.RoleDriver}},
+			request:     Request{Slug: "slug"},
+			wantCalls:   sessionEnd,
+			wantSession: &SessionResult{Ended: true},
+			wantEnded:   []runproc.Ended{{PID: 4100, Role: runproc.RoleDriver}},
+		},
+		{
+			name:            "DriverLockStillHeldUnderRefuseWhenBusyRefusesOnLinuxNamingTenderStatus",
+			quiets:          []quietState{{quiet: true}},
+			driverLockHeld:  true,
+			request:         Request{Slug: "slug", RefuseWhenBusy: true},
+			wantErrIs:       ErrDriverBusy,
+			wantErrContains: []string{"lyx tender status"},
+			wantCalls:       "quiet,refusal,endOwned,driverLock",
+		},
+		{
+			name:            "DriverLockStillHeldOnWindowsNamesTaskkillWithTheRecordedDriverPid",
+			quiets:          []quietState{{quiet: true}},
+			driverLockHeld:  true,
+			goos:            "windows",
+			driverPID:       777,
+			driverFound:     true,
+			request:         Request{Slug: "slug", RefuseWhenBusy: true},
+			wantErrIs:       ErrDriverBusy,
+			wantErrContains: []string{"taskkill /PID 777 /T /F"},
+			wantCalls:       "quiet,refusal,endOwned,driverLock",
+		},
+		{
+			name:            "DriverLockStillHeldOnWindowsWithNoDriverRecordNamesTheLockPath",
+			quiets:          []quietState{{quiet: true}},
+			driverLockHeld:  true,
+			goos:            "windows",
+			request:         Request{Slug: "slug", RefuseWhenBusy: true},
+			wantErrIs:       ErrDriverBusy,
+			wantErrContains: []string{"Task Manager", "driver.lock"},
+			wantCalls:       "quiet,refusal,endOwned,driverLock",
+		},
+		{
+			name:           "DriverLockStillHeldWithoutRefuseWhenBusyGoesOnAndReportsDriverWasLive",
+			quiets:         []quietState{{quiet: true}},
+			driverLockHeld: true,
+			request:        Request{Slug: "slug"},
+			wantCalls:      sessionEnd,
+			wantSession:    &SessionResult{Ended: true, DriverWasLive: true},
 		},
 		{
 			name:       "LocalModeRemovesLocallyAndNeverTouchesTheBoard",
@@ -479,8 +594,13 @@ func TestTeardown_CallSequence(t *testing.T) {
 				quiets: tt.quiets, refusalErr: tt.refusalErr, endErr: tt.endErr, seizeErr: tt.seizeErr, awaitErr: tt.awaitErr,
 				removeErr: tt.removeErr, childLanded: tt.childLanded, battenSeeded: tt.battenSeeded, battenState: tt.battenState,
 				claim: tt.claim, claimFound: tt.claimFound, claimReadErr: tt.claimReadErr, snapshotErr: tt.snapshotErr,
+				endedProcs: tt.endedProcs, endOwnedErr: tt.endOwnedErr, driverLockHeld: tt.driverLockHeld,
+				driverPID: tt.driverPID, driverFound: tt.driverFound, battenAlive: tt.battenAlive,
 			}
 			td := f.teardown()
+			if tt.goos != "" {
+				td.goos = tt.goos
+			}
 			if tt.withAfterSnapshot {
 				tt.request.AfterSnapshot = func() error {
 					f.calls = append(f.calls, "after")
@@ -491,6 +611,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			if tt.gone {
 				td.gone = func(string) (bool, error) { return true, nil }
 				td.endSession = func(_ string, gone bool) (bool, string, error) {
+					f.calls = append(f.calls, "end")
 					sawGone = gone
 					return true, "", nil
 				}
@@ -536,8 +657,52 @@ func TestTeardown_CallSequence(t *testing.T) {
 			if tt.wantSession != nil && (session.Ended != tt.wantSession.Ended || session.DriverWasLive != tt.wantSession.DriverWasLive) {
 				t.Errorf("session = %+v, want Ended %v and DriverWasLive %v", session, tt.wantSession.Ended, tt.wantSession.DriverWasLive)
 			}
+			if tt.wantSession != nil {
+				if !slices.Equal(session.EndedProcesses, tt.wantEnded) {
+					t.Errorf("EndedProcesses = %v, want %v", session.EndedProcesses, tt.wantEnded)
+				}
+				if !slices.Equal(session.Survivors, tt.wantSurvivors) {
+					t.Errorf("Survivors = %v, want %v", session.Survivors, tt.wantSurvivors)
+				}
+			}
 			if sawGone != tt.wantSawGone {
 				t.Errorf("session end told the task worktree is gone = %v, want %v", sawGone, tt.wantSawGone)
+			}
+		})
+	}
+}
+
+// TestSettleBoardClaim_RunningBattenRecordWayForward pins which way forward the kept claim of a running batten record warns with:
+// batten's own pause while a registered batten is alive, and the board status verb once that process is gone.
+// It captures the process-global logger, so it is not parallel.
+func TestSettleBoardClaim_RunningBattenRecordWayForward(t *testing.T) {
+	tests := []struct {
+		name        string
+		battenAlive bool
+		want        string
+		notWant     string
+	}{
+		{"LiveRegisteredBattenKeepsThePauseWayForward", true, "lyx batten pause slug", "lyx board set-status"},
+		{"NoLiveRegisteredBattenNamesTheBoardStatusVerb", false, "lyx board set-status slug", "lyx batten pause"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf strings.Builder
+			logger.SetOutput(&buf)
+			t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
+
+			running := boardengine.RunStatus("running", "Webster-Burler")
+			f := &fakeSubstrates{battenSeeded: true, battenState: "running", claim: &running, claimFound: true, battenAlive: tt.battenAlive}
+			f.teardown().settleBoardClaim("slug", false)
+
+			if !strings.Contains(buf.String(), tt.want) {
+				t.Errorf("log = %q, want it to name %q", buf.String(), tt.want)
+			}
+			if strings.Contains(buf.String(), tt.notWant) {
+				t.Errorf("log = %q, want it not to name %q", buf.String(), tt.notWant)
+			}
+			if slices.Contains(f.calls, "write=clear") || slices.Contains(f.calls, "write=done") {
+				t.Errorf("calls = %v, want the claim kept", f.calls)
 			}
 		})
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -157,6 +158,9 @@ func (t *Teardown) teardownEnded(opts SeamOptions, ended fabricengine.EndedTeard
 	}
 
 	result, err := t.Run(context.Background(), request)
+	if len(result.Session.Survivors) > 0 {
+		logger.Warn("pairteardown: a forced teardown went on past surviving processes", "slug", ended.Slug, "survivors", survivorNames(result.Session.Survivors))
+	}
 	report := fabricengine.TeardownReport{MutationRecord: result.Removal.MutationRecord}
 	if result.Removal.SnapshotTag != "" {
 		report.Tags = append(report.Tags, result.Removal.SnapshotTag)
