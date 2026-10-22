@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/runproc"
 )
 
 // TestSpawnDetachedPush_SkipEnvAndEmptyPaths covers every case where SpawnDetachedPush must return
@@ -61,7 +63,7 @@ func TestPushWarpAt_Gating(t *testing.T) {
 	}
 }
 
-// TestPushSpawnCommand covers the child's arguments and working directory: a flag is present only when its field is set, except the pause flag, which is always present.
+// TestPushSpawnCommand covers the child's arguments, working directory and owner: the owner is the teardown slug when set and the hub owner otherwise, and a flag is present only when its field is set, except the pause flag, which is always present.
 func TestPushSpawnCommand(t *testing.T) {
 	t.Parallel()
 
@@ -70,40 +72,48 @@ func TestPushSpawnCommand(t *testing.T) {
 	board := filepath.Join(t.TempDir(), "_board")
 
 	tests := []struct {
-		name     string
-		req      PushSpawn
-		wantArgs []string
+		name      string
+		req       PushSpawn
+		wantArgs  []string
+		wantOwner string
 	}{
 		{
 			"EveryFieldSet",
 			PushSpawn{WarpPath: warp, WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", WorkDir: board},
 			[]string{"fabric", "--warp-path", warp, "--weft-path", weft, "--teardown-slug", "task", "--pause-slug=task", "push"},
+			"task",
 		},
 		{
 			"EmptyWarpPathOmitsItsFlagOnly",
 			PushSpawn{WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", WorkDir: board},
 			[]string{"fabric", "--weft-path", weft, "--teardown-slug", "task", "--pause-slug=task", "push"},
+			"task",
 		},
 		{
 			"EmptyTeardownSlugOmitsItsFlagOnly",
 			PushSpawn{WeftPath: weft, PauseSlug: "gate", WorkDir: board},
 			[]string{"fabric", "--weft-path", weft, "--pause-slug=gate", "push"},
+			runproc.HubOwner,
 		},
 		{
 			"EmptyPauseSlugIsStillWritten",
 			PushSpawn{WeftPath: weft, WorkDir: board},
 			[]string{"fabric", "--weft-path", weft, "--pause-slug=", "push"},
+			runproc.HubOwner,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			args, dir := pushSpawnCommand(tt.req)
+			args, dir, owner := pushSpawnCommand(tt.req)
 			if !slices.Equal(args, tt.wantArgs) {
 				t.Errorf("pushSpawnCommand(%+v) args = %q; want %q", tt.req, args, tt.wantArgs)
 			}
 			if dir != board {
 				t.Errorf("pushSpawnCommand(%+v) dir = %q; want %q", tt.req, dir, board)
+			}
+			if owner != tt.wantOwner {
+				t.Errorf("pushSpawnCommand(%+v) owner = %q; want %q", tt.req, owner, tt.wantOwner)
 			}
 		})
 	}

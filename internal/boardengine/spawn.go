@@ -12,8 +12,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 )
 
 // SpawnSync starts the detached `lyx board sync` of the board at boardPath, the same sync every board write spawns.
@@ -25,9 +27,13 @@ func SpawnSync(boardPath string) error {
 	return spawnSync(boardPath)
 }
 
-// spawnSync launches `lyx board sync` as a detached, windowless process.
+// syncExecutable names the binary spawnSync launches; a test points it at a harmless one.
+var syncExecutable = os.Executable
+
+// spawnSync launches `lyx board sync` as a detached, windowless process and registers it under the hub owner.
+// A registration failure is logged and never fails the spawn, since the sync is already running.
 func spawnSync(boardPath string) error {
-	exe, err := os.Executable()
+	exe, err := syncExecutable()
 	if err != nil {
 		return err
 	}
@@ -42,6 +48,11 @@ func spawnSync(boardPath string) error {
 	if err := cmd.Start(); err != nil { // intentionally not Wait()ed
 		logger.Warn("boardengine: board sync spawn failed", "exe", exe, "boardPath", abs, "cause", err)
 		return err
+	}
+	pid := cmd.Process.Pid
+	record := runproc.ChildRecord(pid, runproc.RoleSync, cmd.Args)
+	if err := runproc.Register(fabricengine.RunProcDir(filepath.Dir(abs)), runproc.HubOwner, record); err != nil {
+		logger.Warn("boardengine: board sync not registered", "pid", pid, "cause", err)
 	}
 	return nil
 }

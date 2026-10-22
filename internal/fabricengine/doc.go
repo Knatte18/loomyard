@@ -722,6 +722,9 @@
 // A `Remove` that fails after taking the lock and leaves a worktree of the pair in place respawns the pair's push once the lock is released:
 // through `SpawnStatusPush` over the pair's location while the task worktree stands, else a records-side-only request when only the records worktree stands and the pair is not local.
 // A push of the prime's records side carries no teardown slug, so it never delays a `Remove`.
+// Every detached push child registers in the owner record under `RunProcDir(hub)`, `<HubScratchDir>/runproc`, right after its start:
+// under its teardown slug when it carries one, so a pair's teardown ends its own pushes, and under `runproc.HubOwner` otherwise, so a prime records push is never ended by a pair's teardown.
+// A registration failure is logged at Warn and never fails the spawn.
 // A child run by hand with a wrong or empty teardown slug takes no lock of the pair and can race a removal.
 // A code-side rejected push is retried once, after a fetch, only when the fetched remote tip is already contained in local HEAD,
 // so a stale remote-tracking ref recovers by itself while a real divergence does not.

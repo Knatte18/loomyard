@@ -27,3 +27,6 @@ const CreelDirName = "creel"
 
 // FailedPushDirName is the directory under the hub's board-level DotLyxDirName that holds one failed-push record per repository side and branch.
 const FailedPushDirName = "failed-push"
+
+// RunProcDirName is the directory under the hub's board-level DotLyxDirName that holds the owner record of the processes a run starts.
+const RunProcDirName = "runproc"

@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 )
 
 const (
@@ -61,6 +62,7 @@ type SpawnResult struct {
 // Returns ErrSpawnUnderTest, forking no child, in a test binary.
 // The child is started but never Waited,
 // and its stdin/stdout/stderr are left nil so no handle is inherited from the parent.
+// The started child is registered in the hub's owner record.
 func SpawnDetachedPush(req PushSpawn) error {
 	if os.Getenv("FABRIC_SKIP_GIT") == "1" || os.Getenv("FABRIC_SKIP_PUSH") == "1" {
 		return nil
@@ -77,7 +79,13 @@ func SpawnDetachedPush(req PushSpawn) error {
 		return err
 	}
 
-	args, dir := pushSpawnCommand(req)
+	return startDetachedPush(exe, req)
+}
+
+// startDetachedPush starts the detached push child of req from exe and registers it in the owner record.
+// A registration failure is logged and never fails the spawn, since the push is already running.
+func startDetachedPush(exe string, req PushSpawn) error {
+	args, dir, owner := pushSpawnCommand(req)
 	cmd := exec.Command(exe, args...)
 	cmd.Dir = dir
 	proc.Detach(cmd)
@@ -86,13 +94,18 @@ func SpawnDetachedPush(req PushSpawn) error {
 		logger.Warn("fabricengine: spawn detached push failed", "exe", exe, "args", args, "dir", dir, "error", err)
 		return err
 	}
-	logger.Info("fabricengine: spawned detached push", "exe", exe, "args", args, "dir", dir, "pid", cmd.Process.Pid)
+	pid := cmd.Process.Pid
+	logger.Info("fabricengine: spawned detached push", "exe", exe, "args", args, "dir", dir, "pid", pid)
+	if err := runproc.Register(RunProcDir(filepath.Dir(dir)), owner, runproc.ChildRecord(pid, runproc.RolePush, args)); err != nil {
+		logger.Warn("fabricengine: detached push not registered", "owner", owner, "pid", pid, "error", err)
+	}
 	return nil // intentionally not Wait()ed
 }
 
-// pushSpawnCommand returns the arguments and working directory of the child req describes.
+// pushSpawnCommand returns the arguments, working directory and owner of the child req describes.
 // The path flags and the teardown flag are present only when set, and the pause flag always, written `--pause-slug=` when empty so the prime's empty slug reaches the child.
-func pushSpawnCommand(req PushSpawn) (args []string, dir string) {
+// The owner is the teardown slug when set, so a pair's teardown ends its own pushes, and the hub owner otherwise, so it never ends a prime records push.
+func pushSpawnCommand(req PushSpawn) (args []string, dir, owner string) {
 	args = []string{"fabric"}
 	if req.WarpPath != "" {
 		args = append(args, "--warp-path", absoluteOrAsGiven(req.WarpPath))
@@ -104,7 +117,11 @@ func pushSpawnCommand(req PushSpawn) (args []string, dir string) {
 		args = append(args, "--"+TeardownSlugFlag, req.TeardownSlug)
 	}
 	args = append(args, "--"+PauseSlugFlag+"="+req.PauseSlug, "push")
-	return args, req.WorkDir
+	owner = runproc.HubOwner
+	if req.TeardownSlug != "" {
+		owner = req.TeardownSlug
+	}
+	return args, req.WorkDir, owner
 }
 
 // absoluteOrAsGiven returns path made absolute, or path itself when the working directory it would be joined to cannot be read.
