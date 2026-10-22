@@ -349,6 +349,111 @@ func TestNetwork(t *testing.T) {
 		}
 	})
 
+	t.Run("a waiting call leaves a waiting marker that is gone once the wait returns", func(t *testing.T) {
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		setLive(t, recordPath, Entry{Scope: ScopeHub, PausedAt: epoch})
+		defer InstallGate(Gate{
+			Geometry: Geometry{RecordPath: recordPath, Slug: "a"},
+			PID:      42, StartTime: "t0",
+			Notify: func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				waiting, err := ListWaiting(recordPath, alive)
+				if want := []WaitingMarker{{PID: 42, StartTime: "t0", Slug: "a"}}; err != nil || !reflect.DeepEqual(waiting, want) {
+					t.Errorf("ListWaiting while held = %+v, %v; want %+v", waiting, err, want)
+				}
+				if ops, err := ListNetOps(recordPath, alive); err != nil || len(ops) != 0 {
+					t.Errorf("ListNetOps while held = %+v, %v; want none", ops, err)
+				}
+				if gone, _ := ListWaiting(recordPath, dead); len(gone) != 0 {
+					t.Errorf("ListWaiting with a dead process = %+v; want none", gone)
+				}
+				if files, err := os.ReadDir(WaitingDir(recordPath)); err != nil || len(files) != 0 {
+					t.Errorf("waiting dir = %v, %v; want the dead marker removed", files, err)
+				}
+				resumeLive(t, recordPath)
+				return nil
+			},
+		})()
+
+		_, done := Network("push")
+
+		if waiting, err := ListWaiting(recordPath, alive); err != nil || len(waiting) != 0 {
+			t.Fatalf("ListWaiting after the wait = %+v, %v; want none", waiting, err)
+		}
+		if ops, err := ListNetOps(recordPath, alive); err != nil || len(ops) != 1 {
+			t.Fatalf("ListNetOps after the wait = %+v, %v; want the in-flight marker", ops, err)
+		}
+		done()
+	})
+
+	t.Run("a waiting directory path taken by a file leaves the call waiting and then passing", func(t *testing.T) {
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		setLive(t, recordPath, Entry{Scope: ScopeHub, PausedAt: epoch})
+		if err := os.WriteFile(WaitingDir(recordPath), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		sleeps := 0
+		defer InstallGate(Gate{
+			Geometry: Geometry{RecordPath: recordPath, Slug: "a"},
+			Notify:   func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				sleeps++
+				resumeLive(t, recordPath)
+				return nil
+			},
+		})()
+
+		_, done := Network("push")
+
+		if sleeps != 1 {
+			t.Fatalf("sleeps = %d, want the call held once with no marker written", sleeps)
+		}
+		if ops, err := ListNetOps(recordPath, alive); err != nil || len(ops) != 1 {
+			t.Fatalf("ListNetOps = %+v, %v; want the in-flight marker", ops, err)
+		}
+		done()
+	})
+
+	t.Run("exempt all passes a hub and a slug entry at once, and holds again once restored", func(t *testing.T) {
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		live := []Entry{{Scope: ScopeHub, PausedAt: epoch}, {Scope: "a", PausedAt: epoch.Add(time.Minute)}}
+		setLive(t, recordPath, live...)
+		sleeps := 0
+		defer InstallGate(Gate{
+			Geometry: Geometry{RecordPath: recordPath, Slug: "a"},
+			Notify:   func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				sleeps++
+				resumeLive(t, recordPath)
+				return nil
+			},
+		})()
+
+		restore := SetGateExemptAll()
+		_, done := Network("fetch")
+		done()
+		if sleeps != 0 {
+			t.Fatalf("sleeps = %d with exempt all, want the call to pass at once", sleeps)
+		}
+
+		restore()
+		_, done = Network("fetch")
+		done()
+		if sleeps != 1 {
+			t.Fatalf("sleeps = %d after the restore, want the entries to hold again", sleeps)
+		}
+	})
+
+	t.Run("SetGateExemptAll with no gate installed installs none", func(t *testing.T) {
+		restore := SetGateExemptAll()
+		restore()
+		if held, done := Network("fetch"); held != 0 || installedGate.Load() != nil {
+			t.Fatalf("held = %v, gate installed = %v; want zero and no gate", held, installedGate.Load() != nil)
+		} else {
+			done()
+		}
+	})
+
 	t.Run("SetGateExempt with no gate installed is a no-op", func(t *testing.T) {
 		restore := SetGateExempt(ScopeHub, epoch)
 		restore()
