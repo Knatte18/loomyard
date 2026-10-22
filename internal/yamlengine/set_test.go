@@ -566,6 +566,14 @@ func TestSetValues_Refusals(t *testing.T) {
 			perNameMaps: perNameMappingMaps,
 			want:        []string{"profiles.wide", "flow mapping"},
 		},
+		{
+			name:        "entry key into a per-name mapping map that holds a list",
+			template:    perNameMappingTemplate,
+			existing:    "profiles:\n  - a\n",
+			pair:        KV{Key: "profiles.wide.budget", Value: "300"},
+			perNameMaps: perNameMappingMaps,
+			want:        []string{"profiles", "sequence"},
+		},
 	}
 
 	for _, tt := range tests {

@@ -141,6 +141,7 @@ func TestSetSparse(t *testing.T) {
 		{name: "one key of a per-name mapping entry the template lacks takes the template entry's tag", existing: "profiles:\n    wide:\n        kind: cost\n", pairs: []KV{{Key: "profiles.wide.budget", Value: "250"}, {Key: "profiles.plain.budget", Value: "9"}}, want: "profiles:\n    wide:\n        kind: cost\n        budget: 250\n    plain:\n        budget: 9\n"},
 		{name: "per-name mapping entry is written whole from a flow mapping", pairs: []KV{{Key: "profiles.wide", Value: "{kind: identity}"}}, want: "profiles:\n    wide:\n        kind: identity\n"},
 		{name: "per-name mapping entry refuses a plain value", pairs: []KV{{Key: "profiles.wide", Value: "identity"}}, wantErr: true, wantErrText: []string{"profiles.wide", "flow mapping"}},
+		{name: "per-name mapping entry key under a scalar entry is refused", existing: "profiles:\n    costed: x\n", pairs: []KV{{Key: "profiles.costed.budget", Value: "300"}}, wantErr: true, wantErrText: []string{"profiles.costed"}},
 		{name: "per-name mapping entry key no template entry holds is unknown", pairs: []KV{{Key: "profiles.wide.nope", Value: "1"}}, wantUnknown: []string{"profiles.wide.nope"}},
 	}
 	for _, tc := range tests {
