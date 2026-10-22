@@ -34,9 +34,14 @@ func TestLoad(t *testing.T) {
 		name        string
 		contents    *string
 		wantNames   []string
+		wantDarn    map[string]any
 		wantRefusal []string
 	}{
-		{name: "no file reads the template's starting profiles", wantNames: []string{"budget", "docs", "light"}},
+		{
+			name:      "no file reads the template's starting profiles",
+			wantNames: []string{"budget", "docs", "light"},
+			wantDarn:  map[string]any{"review_max_bounces": 1, "review_hard_max_bounces": 2},
+		},
 		{name: "a removed starting profile stays removed", contents: new("light:\n  loom: {plan_max_bounces: 1}\nwide:\n  darn: {review_max_bounces: 2}\n"), wantNames: []string{"light", "wide"}},
 		{name: "a comments-only file holds no profile", contents: new("# no profiles\n"), wantNames: []string{}},
 		{name: "a profile that is not a mapping is refused", contents: new("light: 3\n"), wantRefusal: []string{`profile "light"`, "mapping of module name"}},
@@ -66,6 +71,11 @@ func TestLoad(t *testing.T) {
 			}
 			if got := profiles.Names(); !slices.Equal(got, tt.wantNames) {
 				t.Errorf("Load() names = %v; want %v", got, tt.wantNames)
+			}
+			if tt.wantDarn != nil {
+				if got := profiles["light"]["darn"]; !reflect.DeepEqual(got, tt.wantDarn) {
+					t.Errorf("Load() light darn = %v; want %v", got, tt.wantDarn)
+				}
 			}
 		})
 	}

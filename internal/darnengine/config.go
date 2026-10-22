@@ -190,7 +190,7 @@ func ValidateLocalValues(document []byte) error {
 // It validates the writer key's model-spec grammar at load time and leaves verify_attempts and review_max_bounces to their readers.
 // darn_reviewer_model and darn_fixer_model, when set, are refused as an empty list, a value that is neither a model-spec nor a list of them, or an entry that is no model-spec.
 // darn_reviewer_fan and darn_fixer_fan are refused as an empty list, a value that is neither a fan name nor a list of them, or an entry naming a fan lenses.yaml does not resolve.
-// review_max_bounces and review_amend_max_bounces are refused below 0, and review_hard_max_bounces, default 4, below 1 and below review_max_bounces;
+// review_max_bounces and review_amend_max_bounces are refused below 0, and review_hard_max_bounces, default 2, below 1 and below review_max_bounces;
 // each refusal names the command that fixes it for the layer the value comes from.
 // It returns tree_scope keyed by trimmed tree path and refuses a malformed or repeated tree key wrapping ErrTreeScopeKey, a tree_scope_verify with no tree wrapping ErrTreeScopeWithoutTrees, a tree_scope_verify without {targets},
 // and a tree_scope_verify that is not exactly one `lyx gate test` call holding `--wait` and no shell control operator.

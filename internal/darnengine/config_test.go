@@ -34,7 +34,7 @@ func seedDarnConfig(t *testing.T, baseDir, contents string) {
 // templateConfig returns the Config the embedded template loads as, changed by mutate.
 func templateConfig(mutate func(*Config)) Config {
 	cfg := Config{
-		Writer: "opus[medium]", WriterTimeoutMin: 180, VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 4, ReviewAmendMaxBounces: 1,
+		Writer: "opus[medium]", WriterTimeoutMin: 180, VerifyAttempts: 3, ReviewMaxBounces: 1, ReviewHardMaxBounces: 2, ReviewAmendMaxBounces: 1,
 		ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"sonnet[medium]"},
 		ReviewerFan: lenses.FanList{"review-code", ""}, FixerFan: lenses.FanList{"fix-code"},
 		TreeScope: map[string]string{},
@@ -181,7 +181,7 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 			name: "hard cap below 1", seed: true,
-			contents: strings.Replace(ConfigTemplate(), "review_hard_max_bounces: 4", "review_hard_max_bounces: 0", 1),
+			contents: strings.Replace(ConfigTemplate(), "review_hard_max_bounces: 2", "review_hard_max_bounces: 0", 1),
 			wantErr:  []string{"review_hard_max_bounces", "must be at least 1", "lyx config darn --set"},
 		},
 		{
