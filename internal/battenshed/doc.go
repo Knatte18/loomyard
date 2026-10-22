@@ -153,6 +153,20 @@
 // A child awaiting at PR-Gate with no decision pending whose parent branch moved upstream is resumed through the same spawn as a decided one, so the gate's next call reroutes it to Merge-In under the lock, and its awaiting notice is suppressed.
 // The moved-parent read may fetch, so it runs only for a child awaiting at the gate row, at most once per probe.
 //
+// With deps.OwnerCheck wired, the wait also re-checks the run's owner (innerrun_owner.go), a judge-only reconcile of the run scope behind a seam.
+// The check is due when the producer's own sleep watch records a sleep of a minute or more, when a pause that covered the slug on the previous check no longer does, and on a probe check while an owner stands that no pause covers.
+// It runs after the check's status read and before any end that read gave, so a sleep and a state change seen together still run it; a failed stat or a vanished status file runs none and leaves it due for the next Call.
+// An unreachable verdict and a check error keep it due and hold nothing.
+// A verdict of another machine records that owner, releases the parent lock record naming the child's run, pauses the slug under the owner caller through deps.PauseOwned, and sends one notice per episode naming the owner and "lyx adopt <slug>".
+// A failed pause warns once per episode and is retried at the next probe while the owner stands.
+// A Finalize already past its parent-side merge keeps its record and finishes its landing: a Finalize running, or failed on a transient cause with no re-step recorded for that stop, while deps.ParentHoldsTaskWork reads true.
+// A failed read of either seam keeps the record until the next check, and any other state at Finalize, blocked included, releases it.
+// A pause held for an owner releases the record the same way on a probe check, with no check of its own.
+// Every spawn on an existing run reads a ChildOwnedElsewhereError as that verdict: the respawn of an unconfirmed running child returns a budget-exempt Stuck naming the owner, and the awaiting resume, the binary re-step and the Publish retry resume pause, write no marker and keep waiting.
+// While an owner stands every spawn waits, and the spawn hold re-runs the owner check once per probe until it reads the run as owned here, so a failed owner pause never makes the wait spawn and re-reconcile in a loop.
+// Bound: the child can act for up to one check interval after a wake before the check runs, and for as long as origin stays unreachable.
+// A Finalize past its parent-side merge finishes its landing here, and once it is done its batten waits under the owner pause until "lyx resume <slug>" lifts it, then goes on to Land.
+//
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the
 // whole-worktree teardown row cleans up, at the very end, by removing the worktree they live in.
