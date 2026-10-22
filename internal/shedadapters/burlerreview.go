@@ -52,6 +52,9 @@ type BurlerHalfDeps struct {
 	Fans *RoundFans
 	// RequiresFans makes the fix producer read the fan names the review producer recorded, and refuse a round that holds none.
 	RequiresFans bool
+	// GateFindingsPath is the file an exhausted gate's findings are kept in and the Stuck reason names; the producer removes it on a call whose gate passed.
+	// Empty keeps no findings file.
+	GateFindingsPath string
 }
 
 // checkHalfProducerArgs returns the constructor error of a half producer named name under label, or nil.
@@ -78,14 +81,16 @@ func checkHalfProducerArgs(name, label string, haveRunner bool, runDir string) e
 //
 // Every hand-back is BudgetExempt: the segment's budget on judged rounds is the Bouncer row's own check, and this row has no counted exit.
 type BurlerReviewProducer struct {
-	name    string
-	runner  BurlerHalfRunner
-	models  burlerengine.RoundModels
-	fans    *RoundFans
-	profile burlerengine.Profile
-	opts    burlerengine.RunOpts
-	runDir  string
-	now     func() time.Time
+	name   string
+	runner BurlerHalfRunner
+	models burlerengine.RoundModels
+	fans   *RoundFans
+	// gateFindingsPath, when non-empty, is the file cleared once the review's gate has passed.
+	gateFindingsPath string
+	profile          burlerengine.Profile
+	opts             burlerengine.RunOpts
+	runDir           string
+	now              func() time.Time
 }
 
 // Compile-time proof that *BurlerReviewProducer satisfies shedengine.ShedProducer.
@@ -104,7 +109,7 @@ func NewBurlerReviewProducer(name string, deps BurlerHalfDeps, profile burlereng
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
 }
 
 // roundProfile returns a fresh per-round copy of the stored template profile for round running under fan:
@@ -359,6 +364,9 @@ func (p *BurlerReviewProducer) acceptedExit(ctx context.Context, round int, resu
 	}
 	if cerr := cancelErr(ctx, p.name, burlerReviewEngineLabel); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
+	}
+	if result.Gate != nil && result.Gate.Passed {
+		clearGateFindings(p.gateFindingsPath)
 	}
 	review, _ := p.models.Pick(round)
 	half := reviewHalfUsage(review, result.Review)

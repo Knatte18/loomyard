@@ -30,6 +30,7 @@
 //     condition: a half producer has no independent notion of "finished," only the judge does.
 //     Every hand-on, a finished half and an unjudged highest round, is BudgetExempt, so the Bouncer row's own budget check is the segment's one budget on judged rounds.
 //     The fix row's gate-failed exit is counted against its own MaxBounces.
+//     Every gated producer told a findings path (MultiLLMProducer.KeepGateFindings, BurlerHalfDeps.GateFindingsPath) keeps an exhausted gate's findings in that file, names it in the Stuck reason, and removes it on a call whose gate passed.
 //     Both rows are gate carriers: the review row's hand-on pointer carries the gate count and spans of the reviewer's review-parse gate, for a spawned and a resumed review alike, and the fix row's gate-failed and finished-fix pointers carry the fixer's.
 //     A round names two strands, the reviewer's and the fixer's, one per row, and each attempt picks its half's model from BurlerHalfDeps.Models for the round.
 //     A runner error wrapping burlerengine.ErrHalfNotStopped returns without archiving and without the retry, since a live half may still write the round's files.
