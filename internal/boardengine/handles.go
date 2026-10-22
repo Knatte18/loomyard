@@ -76,7 +76,7 @@ func handleLetter(t Task, vocab *Vocabulary) (string, bool) {
 
 // assignHandles gives each entry of tasks whose handle is missing, of another letter or held by an entry of lower id the lowest number of its letter not in use, in id order, in place.
 // Every other handle stays, so adding or removing an entry changes no other entry's handle and a removed entry's number is given out again.
-// An entry whose letter handleLetter cannot decide keeps its stored handle, which still counts as in use.
+// An entry whose letter handleLetter cannot decide keeps its stored handle, which still counts as in use, unless an entry of lower id already holds it: then the handle is cleared.
 func assignHandles(tasks []Task, vocab *Vocabulary) {
 	order := make([]int, len(tasks))
 	for i := range order {
@@ -102,8 +102,8 @@ func assignHandles(tasks []Task, vocab *Vocabulary) {
 		stored, number, parsed := ParseHandle(tasks[i].Handle)
 		switch {
 		case !decided:
-			if parsed {
-				claim(stored, number)
+			if parsed && !claim(stored, number) {
+				tasks[i].Handle = ""
 			}
 		case parsed && stored == letter && claim(letter, number):
 		default:
