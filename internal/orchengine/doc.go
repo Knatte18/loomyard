@@ -124,6 +124,8 @@
 // The request marker is JSON holding the mode and the request time.
 // A pending request whose age is at least the handoff timeout is removed with a log entry naming its mode and age, and nothing is acted on;
 // a marker that does not parse counts as that old.
+// The age excludes the time a hub pause held the watcher's cycle machine, read from the pause record's hub entries;
+// a pause resumed longer ago than `pauserecord.Retention` no longer discounts, and a watcher told no record, or one that cannot read it, discounts nothing.
 // The time is on disk, so this covers a request whose cycle could not start, such as one creel kept refusing the hold for, and a marker a dead watcher left, across watcher restarts.
 // State records the cycle's mode as CycleMode and the request time as CycleRequestedAt, zero for an automatic trigger.
 //
@@ -180,7 +182,7 @@
 //     A `defer` body declines a soft cycle whose note is still unwritten: the watcher records the read time in State.LastDeferral and returns to idle with the abort reason `deferred`.
 //     In a hard or requested cycle, or once the note is written, `defer` is logged and ignored.
 //     A restarted watcher whose post was persisted with no id looks it up in creel's journal, and posts the stencil matching State.CycleTrigger again only when creel journaled none.
-//     A requested cycle's phase times out at the earlier of the phase entry and the request time plus the handoff timeout, and a session that asks a question during the note aborts it.
+//     A requested cycle's phase times out at the earlier of the phase entry and the request time plus the handoff timeout, not counting the time a hub pause held the watcher (bounded by `pauserecord.Retention`), and a session that asks a question during the note aborts it.
 //   - clearing: the resume prompt is rendered first, so a stencil failure aborts before anything is cleared.
 //     Then `/clear` is injected as a command, and the phase waits for creel to type it, however long the orch stays busy, with the stall creel reports shown in State.Stuck.
 //     An injected or unconfirmed `/clear` moves on to resuming, a withdrawn one returns to idle.

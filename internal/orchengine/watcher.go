@@ -972,17 +972,19 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	if requested && now.Sub(req.RequestedAt) >= w.cfg.HandoffTimeout() {
-		// The time is on disk, so this covers a marker a dead watcher left.
-		// Only the request this tick read is removed: one written since stays pending and the cycle start below finds it changed.
-		removed, err := RemoveCycleRequestIf(w.paths, req)
-		if err != nil {
-			return err
+	if requested {
+		if age := w.unpausedSince(req.RequestedAt, now); age >= w.cfg.HandoffTimeout() {
+			// The time is on disk, so this covers a marker a dead watcher left.
+			// Only the request this tick read is removed: one written since stays pending and the cycle start below finds it changed.
+			removed, err := RemoveCycleRequestIf(w.paths, req)
+			if err != nil {
+				return err
+			}
+			if removed {
+				logger.Warn("orch: stale cycle request removed", "mode", req.Mode, "age", age.String(), "strandGUID", st.Strand)
+			}
+			req, requested = CycleRequest{}, false
 		}
-		if removed {
-			logger.Warn("orch: stale cycle request removed", "mode", req.Mode, "age", now.Sub(req.RequestedAt).String(), "strandGUID", st.Strand)
-		}
-		req, requested = CycleRequest{}, false
 	}
 	// The trigger is chosen in a fixed order: the hard cap wins over a request, which wins over the soft threshold.
 	var trigger string
@@ -1073,6 +1075,19 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	return w.sendStep(&st, true, CreelStep{}, body, now)
 }
 
+// unpausedSince returns the time from to now less the time a hub pause held the watcher's cycle machine.
+// A watcher told no pause record, or one whose record cannot be read, discounts nothing.
+func (w *Watcher) unpausedSince(from, now time.Time) time.Duration {
+	if w.pause == nil {
+		return now.Sub(from)
+	}
+	record, err := pauserecord.Read(w.pause.RecordPath)
+	if err != nil {
+		return now.Sub(from)
+	}
+	return pauserecord.AwakeSince(from, now, record.CoverageOf("", now).Intervals)
+}
+
 // renderHandoffRequest renders the note template file, then the note request for trigger: the soft stencil for a soft cycle, the plain one otherwise.
 func (w *Watcher) renderHandoffRequest(trigger, handoffPath string) (string, error) {
 	if err := RenderNoteTemplateFile(w.stencilsDir, w.paths.NoteTemplatePath); err != nil {
@@ -1095,7 +1110,7 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if !st.CycleRequestedAt.IsZero() && st.CycleRequestedAt.Before(started) {
 		started = st.CycleRequestedAt
 	}
-	if now.Sub(started) >= w.cfg.HandoffTimeout() {
+	if w.unpausedSince(started, now) >= w.cfg.HandoffTimeout() {
 		return w.toIdle(st, "handoff timed out")
 	}
 	if st.Pending != nil || st.RequestID != 0 {
