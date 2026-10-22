@@ -117,6 +117,10 @@ edit as its way forward. If --wait elapses first it returns
 touching neither git nor the repo -- Master re-calls recover-batch. A call
 that spawns fabric-commits state.json at once, so the strand survives a crash.
 
+A call under a pause that covers the pair refuses first, before it reads or
+changes any state: it claims Master into the pause, so "lyx tender resume"
+gives Master its resume line, and the refusal names the way forward.
+
 Example:
   lyx webster recover-batch 3
   lyx webster recover-batch 3 --wait 8m`,
@@ -125,6 +129,11 @@ Example:
 			out := cmd.OutOrStdout()
 
 			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+
+			if refusal := c.refuseCoveredBatch("recover-batch", args[0]); refusal != "" {
+				clihelp.SetExit(cmd.Context(), output.Err(out, refusal))
 				return nil
 			}
 

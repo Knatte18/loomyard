@@ -225,6 +225,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	c.roles = roles
 	c.instructionFiles = websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster])
 	c.pause = pauseGeom
+	c.masterStrand = envMasterStrand(reedEngine.ResolveStrandGUID)
 	geom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 	c.geom = geom
 	c.anchorRel = loc.AnchorRel
@@ -359,6 +360,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	c.roles = roles
 	c.instructionFiles = websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster])
 	c.pause = pauseGeom
+	c.masterStrand = envMasterStrand(reedEngine.ResolveStrandGUID)
 	geom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 	c.geom = geom
 	c.anchorRel = ""
