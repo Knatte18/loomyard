@@ -186,7 +186,7 @@ func renameCSharpHead(plan *planparser.Plan, card, oldRef, newHandle string, sym
 		return "", Finding{
 			Check:    "rename-old-unresolved",
 			Card:     card,
-			Detail:   fmt.Sprintf("Rename pair's old side %q has no declared name an identifier spells, as an operator, an indexer, a finalizer or a static constructor has none; drop the pair, since such a member is renamed with its type or not at all", oldRef),
+			Detail:   fmt.Sprintf("Rename pair's old side %q has no declared name an identifier spells, as an operator, an indexer, a finalizer or a constructor has none; drop the pair, since such a member is renamed with its type or not at all", oldRef),
 			Severity: SeverityBlocking,
 		}, false
 	}

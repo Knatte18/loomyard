@@ -348,6 +348,32 @@ func TestRenameCSharpDecl(t *testing.T) {
 	}
 }
 
+func TestRenameCSharpDecl_ConstructorIsNamedByItsType(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		owner     string
+		symbol    string
+		signature string
+	}{
+		{"Plain", "Bar", "Bar", "public Bar(int x)"},
+		{"GenericOwner", "Bar<>", "Bar<>", "public Bar(T x)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			sym := quarry.Symbol{
+				Kind:      quarry.KindMethod,
+				Signature: tt.signature,
+				Glyph:     glyph.Glyph{Lang: glyph.CSharp, Owner: []string{tt.owner}, Name: tt.symbol},
+			}
+			if got, ok := renameCSharpDecl(sym, "Other"); ok {
+				t.Errorf("renameCSharpDecl(%q, %q) = %q, true; want false", tt.signature, "Other", got)
+			}
+		})
+	}
+}
+
 func TestCanonicalizeHandles_RenameOldUnresolved(t *testing.T) {
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Rename:**\n- `sub#DoesNotExist` -> `plan:sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",

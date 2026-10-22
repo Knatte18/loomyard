@@ -111,7 +111,7 @@
 //     An old side declared once per build-constraint set stays unresolved, since a rename derives from exactly one declaration;
 //     its detail names each candidate's file and constraint and the way forward: a Delete of the old member and one Create declaration of the new member's handle on a card that edits each of the old member's files, or an Edit of each file's body.
 //     A C# symbol's declaration is derived by renameCSharpHead from its signature, under the old symbol's unit and owner chain, with the declared name token replaced by the new handle's name without its generic arity suffix.
-//     A field, const or event gets a one-declarator head, and a member no identifier names, an operator, an indexer, a finalizer or a static constructor, is rename-old-unresolved with the way forward of dropping the pair.
+//     A field, const or event gets a one-declarator head, and a member no identifier names, an operator, an indexer, a finalizer or a constructor, is rename-old-unresolved with the way forward of dropping the pair.
 //   - bind-count-mismatch (blocking) — BindHandles (handle.go), a card whose own handles (its
 //     Create declarations AND any Rename pair's still-handle-shaped New side, per planparser.OwnedHandles)
 //     the record-batch delta matched fewer of than it owns.

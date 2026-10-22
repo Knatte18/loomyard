@@ -267,7 +267,7 @@ func qualifierMayStartAt(text string, start int) bool {
 // A field, const or event gets a one-declarator head, since a signature quarry gives every declarator of one declaration would declare several symbols once its name is replaced.
 // The head is then the signature cut before the first declarator's name, followed by identifier, with ` = default` appended for a const.
 // Every other kind has the declared name token replaced in place.
-// That token is kept only when it is the symbol's own name without its generic arity suffix, so an operator, an indexer, a finalizer and a static constructor, which no identifier names, report false.
+// That token is kept only when it is the symbol's own name without its generic arity suffix, so an operator, an indexer, a finalizer and a constructor, which no identifier names, report false.
 func renameCSharpDecl(sym quarry.Symbol, identifier string) (string, bool) {
 	switch sym.Kind {
 	case quarry.KindField, quarry.KindConst, quarry.KindEvent:
@@ -283,11 +283,14 @@ func renameCSharpDecl(sym quarry.Symbol, identifier string) (string, bool) {
 		return head, true
 	}
 
+	bare, _, _ := strings.Cut(sym.Glyph.Name, "<")
+	if isCSharpConstructor(sym.Glyph) {
+		return "", false
+	}
 	start, ok := declaredNameIndex(sym.Signature, sym.Glyph.Name)
 	if !ok {
 		return "", false
 	}
-	bare, _, _ := strings.Cut(sym.Glyph.Name, "<")
 	end := start
 	for end < len(sym.Signature) {
 		next, size := utf8.DecodeRuneInString(sym.Signature[end:])
@@ -300,6 +303,17 @@ func renameCSharpDecl(sym quarry.Symbol, identifier string) (string, bool) {
 		return "", false
 	}
 	return sym.Signature[:start] + identifier + sym.Signature[end:], true
+}
+
+// isCSharpConstructor reports whether g names a constructor, whose declared name is its owner's type name.
+// C# forbids any other member from bearing the name of its enclosing type.
+func isCSharpConstructor(g glyph.Glyph) bool {
+	if len(g.Owner) == 0 {
+		return false
+	}
+	ownerBare, _, _ := strings.Cut(g.Owner[len(g.Owner)-1], "<")
+	nameBare, _, _ := strings.Cut(g.Name, "<")
+	return ownerBare == nameBare
 }
 
 // canonicalQualifierWay returns the way forward for a C# Create handle quarry refused as an invalid container because its head spells the explicit-interface qualifier in a non-canonical spelling, or "" when the head does not.
