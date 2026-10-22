@@ -16,6 +16,7 @@ import (
 // The finding is blocking and attributed to no card.
 // Go evidence is a path target naming a .go file, a found or multipart answer with a symbol in a .go file, or a found self glyph whose listing holds a .go file.
 // C# evidence is the same three with .cs, and a .cs path target counts only beside a target that is not a file path, since a plan of file paths alone is the pure half's to judge.
+// It never fires when a non-path target has no found or multipart answer, since that glyph's own finding stands.
 // It never fires when a card creates a declaration whose head begins with a Go keyword, since the batched resolve never sees a handle and such a handle names new Go code.
 // The caller runs it only when no card is done, so it judges the whole plan.
 func languageMismatchFindings(plan *planparser.Plan, results []quarry.ResolveResult) []Finding {
@@ -28,11 +29,16 @@ func languageMismatchFindings(plan *planparser.Plan, results []quarry.ResolveRes
 	}
 
 	var goEvidence, csharpEvidence, csharpPath, nonPathTarget bool
+	nonPathGlyphs := map[string]bool{}
 	for _, c := range plan.Cards {
 		for _, target := range c.Targets {
 			file, isPath := planparser.PathEntryPath(target)
-			if planparser.IsHandleRef(target) || !isPath || path.Ext(file) == "" {
+			if planparser.IsHandleRef(target) {
 				nonPathTarget = true
+				continue
+			}
+			if !isPath || path.Ext(file) == "" {
+				nonPathGlyphs[target] = true
 				continue
 			}
 			switch path.Ext(file) {
@@ -44,8 +50,15 @@ func languageMismatchFindings(plan *planparser.Plan, results []quarry.ResolveRes
 		}
 	}
 
-	// Symbols and Listing are set only on a found or multipart answer, so no answer's status is read here.
+	// Symbols and Listing are set only on a found or multipart answer.
+	// A non-path target with any other answer is that glyph's own finding, and it hides what language the target belongs to, so no mismatch is judged.
 	for _, r := range results {
+		if nonPathGlyphs[r.Target] {
+			if len(r.Symbols) == 0 && r.Listing == nil && r.Listings == nil {
+				return nil
+			}
+			nonPathTarget = true
+		}
 		for _, s := range r.Symbols {
 			noteFileEvidence(s.File, &goEvidence, &csharpEvidence)
 		}

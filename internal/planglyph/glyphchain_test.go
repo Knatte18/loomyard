@@ -584,6 +584,13 @@ func TestGlyphChain_CSharp(t *testing.T) {
 			dispatch:     mismatch,
 		},
 		{
+			name:         "a go plan with an unresolved Go member beside a .cs path reports only the member's glyph-not-found",
+			language:     "go",
+			cards:        []string{editCard("shapes#Missing", "csharp/Renderer.cs")},
+			planFindings: []findingKey{{"glyph-not-found", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"glyph-not-found", "1-card1", SeverityBlocking}},
+		},
+		{
 			name:     "a go plan creating a Go declaration beside a .cs path is no mismatch",
 			language: "go",
 			cards: []string{
