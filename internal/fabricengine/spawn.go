@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
 )
@@ -41,12 +42,14 @@ var ErrSpawnUnderTest = errors.New("fabricengine: detached push not spawned unde
 // WarpPath and WeftPath name the worktrees to push, either empty to leave that side out.
 // PauseSlug is the slug the child's network calls are held under, empty for the hub's prime.
 // TeardownSlug is the pair whose teardown the child yields to, empty when no teardown can remove what the child pushes.
+// ParentLocked reports that the pair's parent lock was held when the child was spawned, so the child never exits for a pause covering it.
 // WorkDir is the directory the child starts in.
 type PushSpawn struct {
 	WarpPath     string
 	WeftPath     string
 	PauseSlug    string
 	TeardownSlug string
+	ParentLocked bool
 	WorkDir      string
 }
 
@@ -105,7 +108,7 @@ func startDetachedPush(exe string, req PushSpawn) error {
 }
 
 // pushSpawnCommand returns the arguments, working directory and owner of the child req describes.
-// The path flags and the teardown flag are present only when set, and the pause flag always, written `--pause-slug=` when empty so the prime's empty slug reaches the child.
+// The path flags, the teardown flag and the parent-locked flag are present only when set, and the pause flag always, written `--pause-slug=` when empty so the prime's empty slug reaches the child.
 // The owner is the teardown slug when set, so a pair's teardown ends its own pushes, and the hub owner otherwise, so it never ends a prime records push.
 func pushSpawnCommand(req PushSpawn) (args []string, dir, owner string) {
 	args = []string{"fabric"}
@@ -117,6 +120,9 @@ func pushSpawnCommand(req PushSpawn) (args []string, dir, owner string) {
 	}
 	if req.TeardownSlug != "" {
 		args = append(args, "--"+TeardownSlugFlag, req.TeardownSlug)
+	}
+	if req.ParentLocked {
+		args = append(args, "--"+ParentLockedFlag)
 	}
 	args = append(args, "--"+PauseSlugFlag+"="+req.PauseSlug, "push")
 	owner = runproc.HubOwner
@@ -167,6 +173,7 @@ func statusPushRequest(l *lyxcwd.Location, gateSlug string) (req PushSpawn, loca
 		req.WarpPath = l.WorktreePath()
 		req.PauseSlug = l.WorktreeName
 		req.TeardownSlug = l.WorktreeName
+		req.ParentLocked = parentLockHeldBy(l)
 	}
 
 	for _, side := range []*string{&req.WarpPath, &req.WeftPath} {
@@ -183,6 +190,18 @@ func statusPushRequest(l *lyxcwd.Location, gateSlug string) (req PushSpawn, loca
 		}
 	}
 	return req, localSkipped, nil
+}
+
+// parentLockHeldBy reports whether a live parent lock record names l's pair slug, which holds exactly for the pushes a Finalize spawns past its parent-side merge.
+// A failed read is logged and reads as not held.
+func parentLockHeldBy(l *lyxcwd.Location) bool {
+	store := parentlock.Store{Dir: parentlock.Dir(BoardDir(l.HubPath))}
+	held, err := store.HeldBy(l.WorktreeName)
+	if err != nil {
+		logger.Warn("fabricengine: parent lock records unreadable; the push is spawned without the parent-locked mark", "slug", l.WorktreeName, "error", err)
+		return false
+	}
+	return held
 }
 
 // localMarkOfCurrentBranch returns the branch checked out at worktree and whether it carries the local-only mark.

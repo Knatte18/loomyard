@@ -8,13 +8,19 @@ package fabricengine_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // TestSpawnStatusPush covers the request SpawnStatusPush builds from the prime, a task pair, a local pair and a pair whose code branch alone is marked and a pair whose records branch alone is marked.
@@ -42,8 +48,8 @@ func TestSpawnStatusPush(t *testing.T) {
 			t.Fatalf("recorded requests = %+v; want exactly one", calls)
 		}
 		got := calls[0]
-		if got.WarpPath != warp || got.WeftPath != weft || got.PauseSlug != pauseSlug || got.TeardownSlug != teardownSlug || got.WorkDir != boardDir {
-			t.Errorf("request = %+v; want warp %q, weft %q, pause %q, teardown %q, workdir %q", got, warp, weft, pauseSlug, teardownSlug, boardDir)
+		if got.WarpPath != warp || got.WeftPath != weft || got.PauseSlug != pauseSlug || got.TeardownSlug != teardownSlug || got.WorkDir != boardDir || got.ParentLocked {
+			t.Errorf("request = %+v; want warp %q, weft %q, pause %q, teardown %q, workdir %q and no parent-locked mark", got, warp, weft, pauseSlug, teardownSlug, boardDir)
 		}
 	}
 
@@ -78,6 +84,51 @@ func TestSpawnStatusPush(t *testing.T) {
 		t.Cleanup(func() { recorder.Err = nil })
 		if err := fabricengine.SpawnPairPush(l); !errors.Is(err, spawnErr) {
 			t.Errorf("SpawnPairPush with a failing spawn = %v; want %v", err, spawnErr)
+		}
+	})
+
+	t.Run("PairWhoseSlugHoldsAParentLockSpawnsParentLocked", func(t *testing.T) {
+		recorder.Reset()
+		l := resolve(t, h.PairCodeWorktree(pairSlug))
+		startTime, _ := proc.StartTime(os.Getpid())
+		store := &parentlock.Store{Dir: parentlock.Dir(boardDir)}
+		owner := parentlock.Owner{Slug: pairSlug, Pair: pairSlug, RunID: "run", PID: os.Getpid(), StartTime: startTime}
+		if attempt, err := store.TryAcquire("main", owner); err != nil || !attempt.Granted {
+			t.Fatalf("TryAcquire = (%+v, %v); want granted", attempt, err)
+		}
+		t.Cleanup(func() { store.Release("main", owner) }) //nolint:errcheck
+
+		if _, err := fabricengine.SpawnStatusPush(l, ""); err != nil {
+			t.Fatalf("SpawnStatusPush: %v", err)
+		}
+		calls := recorder.Calls()
+		if len(calls) != 1 || !calls[0].ParentLocked {
+			t.Errorf("recorded requests = %+v; want one with the parent-locked mark", calls)
+		}
+	})
+
+	t.Run("UnreadableParentLockRecordsLeaveItUnmarkedAndWarn", func(t *testing.T) {
+		recorder.Reset()
+		logged := logcapture.Capture(t)
+		l := resolve(t, h.PairCodeWorktree(pairSlug))
+		lockDir := parentlock.Dir(boardDir)
+		if err := os.RemoveAll(lockDir); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(lockDir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(lockDir, []byte("not a directory"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { os.Remove(lockDir) })
+
+		if _, err := fabricengine.SpawnStatusPush(l, ""); err != nil {
+			t.Fatalf("SpawnStatusPush: %v", err)
+		}
+		requireOneCall(t, h.PairCodeWorktree(pairSlug), h.PairRecordsSibling(pairSlug), pairSlug, pairSlug)
+		if got := logged.String(); strings.Count(got, "parent lock records unreadable") != 1 {
+			t.Errorf("log = %q; want one warning that the parent lock records are unreadable", got)
 		}
 	})
 

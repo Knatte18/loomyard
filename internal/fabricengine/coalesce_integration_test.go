@@ -13,10 +13,13 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -101,6 +104,52 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 	}
 	if got := fabricengine.BareBranchSHAForTest(t, weftFixture.RecordsBare, fabricengine.RecordsBranchName("main")); got != weftSHA {
 		t.Errorf("weft bare main = %q; want it advanced to local HEAD %q", got, weftSHA)
+	}
+}
+
+// TestCoalescePushRequest_CoveredCallDefers covers a detached child whose first gated push meets a covering pause:
+// the exit runs once at that push, both pending flags are back on disk, origin holds neither commit and no failed push is recorded.
+// Serial: it installs the process's network gate and swaps the deferral's exit.
+func TestCoalescePushRequest_CoveredCallDefers(t *testing.T) {
+	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
+	warpBare := addWarpBareRemote(t, t.TempDir(), warpPath)
+	warpSHA := gitkit.CommitFile(t, warpPath, "warp-file.txt", "warp change", "warp change")
+
+	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	weftPath := weftFixture.PrimeRecords()
+	weftSHA := gitkit.CommitFile(t, weftPath, "weft-file.txt", "weft change", "weft change")
+	weftBranch := fabricengine.RecordsBranchName("main")
+	warpBefore := fabricengine.BareBranchSHAForTest(t, warpBare, "main")
+
+	fabricengine.HoldHubPauseForTest(t, "")
+	exits := 0
+	t.Cleanup(fabricengine.SetExitDeferredForTest(func() { exits++; runtime.Goexit() }))
+
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		fabricengine.CoalescePushRequest(fabricengine.PushSpawn{WarpPath: warpPath, WeftPath: weftPath}, fabricengine.SyncOptions{}) //nolint:errcheck
+	}()
+	<-finished
+
+	if exits != 1 {
+		t.Errorf("deferral exits = %d; want 1, at the first gated push", exits)
+	}
+	lockDir := fabricengine.RecordsLockDirPath(weftPath)
+	for _, side := range []string{"code", "records"} {
+		if _, err := os.Stat(fabricengine.PendingFlagPathForTest(lockDir, side)); err != nil {
+			t.Errorf("pending flag of %s: %v; want it back on disk", side, err)
+		}
+	}
+	if got := fabricengine.BareBranchSHAForTest(t, warpBare, "main"); got != warpBefore || got == warpSHA {
+		t.Errorf("warp bare main = %q; want it unchanged at %q, short of %q", got, warpBefore, warpSHA)
+	}
+	// The records branch has never been pushed, so origin lists it only if the deferred push got through.
+	if got, _ := gitexec.Run([]string{"rev-parse", "--verify", "--quiet", "refs/heads/" + weftBranch}, weftFixture.RecordsBare); strings.TrimSpace(got) == weftSHA {
+		t.Errorf("records bare %s = %q; want it short of %q", weftBranch, strings.TrimSpace(got), weftSHA)
+	}
+	if failed, err := fabricengine.ListFailedPushes(weftFixture.Path); err != nil || len(failed) != 0 {
+		t.Errorf("ListFailedPushes() = (%+v, %v); want none", failed, err)
 	}
 }
 

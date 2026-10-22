@@ -726,6 +726,13 @@
 // under its teardown slug when it carries one, so a pair's teardown ends its own pushes, and under `runproc.HubOwner` otherwise, so a prime records push is never ended by a pair's teardown.
 // A registration failure is logged at Warn and never fails the spawn.
 // A child run by hand with a wrong or empty teardown slug takes no lock of the pair and can race a removal.
+// A detached push under a pause defers instead of waiting: it pushes nothing more, leaves its commits local and its pending flags in place, and exits with one Info line, since the push is deferred and not failed, so no failed-push record and no creel mail are written.
+// `DetachedPush` exits at once, before it takes the teardown lock or marks a flag, when `pauserecord.GateCovered` reads covered.
+// `coalescePushSides` installs a deferral for the call's life that puts back the flag of every owed side the running push step has not pushed, then exits through `exitDeferred`.
+// The deferral fires only in a process whose gate defers, which only the detached push and board sync children install, so `CoalescePushBothAt` in an ordinary process is unaffected.
+// `PushSpawn.ParentLocked` is set at spawn time by `statusPushRequest` for a task pair when a live parent lock record names the pair's slug, which holds exactly for the pushes a Finalize spawns past its parent-side merge.
+// It travels as the hidden `--parent-locked` flag and through the pending flags and their respawns, and a parent-locked child never exits for coverage and lets only its own slug's owner entry pass.
+// The mark covers only pushes spawned while that record stood.
 // A code-side rejected push is retried once, after a fetch, only when the fetched remote tip is already contained in local HEAD,
 // so a stale remote-tracking ref recovers by itself while a real divergence does not.
 // A caller treats the `gitrepo.ErrPushRejected` that remains, carried by a `*PushFailedError`, as a human-decidable condition.

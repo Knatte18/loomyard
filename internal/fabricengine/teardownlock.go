@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
 // teardownLockDirName is the directory under the hub scratch directory that holds one teardown lock file per pair slug.
@@ -64,7 +65,13 @@ func ensureTeardownLockDir(hubPath, slug string) error {
 // It exits with a warning and a nil error when a removal holds that lock.
 // Every child, teardown slug or none, exits the same way when a worktree path it was given is no longer a directory.
 // That check runs before the child creates anything, so it leaves nothing at a removed path.
+// A child whose pair's parent lock was not held at spawn (req.ParentLocked) exits with an Info line and a nil error, before it takes the teardown lock or marks any flag, when a pause covers it; the commits stay local for the next push.
 func DetachedPush(hubPath string, req PushSpawn) (PushResult, error) {
+	if !req.ParentLocked && pauserecord.GateCovered() {
+		logger.Info("fabricengine: a pause covers the push; exiting with the commits left local", "slug", req.TeardownSlug)
+		return PushResult{}, nil
+	}
+
 	if req.TeardownSlug != "" {
 		if err := ensureTeardownLockDir(hubPath, req.TeardownSlug); err != nil {
 			return PushResult{}, err

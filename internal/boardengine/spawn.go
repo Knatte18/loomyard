@@ -33,7 +33,8 @@ func SpawnSync(boardPath string) error {
 // syncExecutable names the binary spawnSync launches; a test points it at a harmless one.
 var syncExecutable = os.Executable
 
-// spawnSync launches `lyx board sync` as a detached, windowless process and registers it under the hub owner.
+// spawnSync launches `lyx board sync --deferrable` as a detached, windowless process in the board directory and registers it under the hub owner.
+// The board directory as working directory holds the child's gate under the hub scope, and the flag makes it exit under a pause instead of waiting.
 // A registration failure is logged and never fails the spawn, since the sync is already running.
 func spawnSync(boardPath string) error {
 	exe, err := syncExecutable()
@@ -44,7 +45,8 @@ func spawnSync(boardPath string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, "board", "--board-path", abs, "sync")
+	cmd := exec.Command(exe, "board", "--board-path", abs, "sync", "--"+DeferrableSyncFlag)
+	cmd.Dir = abs
 	proc.Detach(cmd)
 	// Leave stdin/stdout/stderr nil so no handles are inherited from the parent.
 	logger.Info("boardengine: spawning detached board sync", "exe", exe, "boardPath", abs)

@@ -63,7 +63,7 @@ func TestPushWarpAt_Gating(t *testing.T) {
 	}
 }
 
-// TestPushSpawnCommand covers the child's arguments, working directory and owner: the owner is the teardown slug when set and the hub owner otherwise, and a flag is present only when its field is set, except the pause flag, which is always present.
+// TestPushSpawnCommand covers the child's arguments, working directory and owner: the owner is the teardown slug when set and the hub owner otherwise, and a flag is present only when its field is set, parent-locked included, except the pause flag, which is always present.
 func TestPushSpawnCommand(t *testing.T) {
 	t.Parallel()
 
@@ -81,6 +81,12 @@ func TestPushSpawnCommand(t *testing.T) {
 			"EveryFieldSet",
 			PushSpawn{WarpPath: warp, WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", WorkDir: board},
 			[]string{"fabric", "--warp-path", warp, "--weft-path", weft, "--teardown-slug", "task", "--pause-slug=task", "push"},
+			"task",
+		},
+		{
+			"ParentLockedCarriesItsFlag",
+			PushSpawn{WarpPath: warp, WeftPath: weft, PauseSlug: "task", TeardownSlug: "task", ParentLocked: true, WorkDir: board},
+			[]string{"fabric", "--warp-path", warp, "--weft-path", weft, "--teardown-slug", "task", "--parent-locked", "--pause-slug=task", "push"},
 			"task",
 		},
 		{

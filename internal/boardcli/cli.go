@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -27,11 +28,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubissues"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/spf13/cobra"
 )
+
+// exitDeferredSync ends a deferrable board sync that a pause covers; a test swaps it for a recorder.
+var exitDeferredSync = func() { os.Exit(0) }
 
 // Command returns the cobra command tree for the board module.
 func Command() *cobra.Command {
@@ -303,17 +309,30 @@ Example:
 		}),
 	}
 
+	var deferrableSync bool
 	syncCmd := &cobra.Command{
 		Use:         "sync",
 		Short:       "commit and push pending board changes to the remote",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			if deferrableSync {
+				if pauserecord.GateCovered() {
+					logger.Info("boardcli: a pause covers the board sync; nothing committed or pushed, the change waits for the next sync")
+					return outputSuccess(out)
+				}
+				defer pauserecord.SetGateDeferral(func() {
+					logger.Info("boardcli: a pause covers the board sync's push; exiting with the commit left local")
+					exitDeferredSync()
+				})()
+			}
 			if err := b.Sync(); err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccess(out)
 		}),
 	}
+	syncCmd.Flags().BoolVar(&deferrableSync, boardengine.DeferrableSyncFlag, false, "internal: exit instead of waiting when a pause covers the sync")
+	syncCmd.Flags().MarkHidden(boardengine.DeferrableSyncFlag) //nolint:errcheck
 
 	labelsCmd := &cobra.Command{
 		Use:         "labels",

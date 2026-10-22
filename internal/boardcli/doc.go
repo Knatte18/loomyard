@@ -12,6 +12,9 @@
 // A `PersistentPreRunE` resolves configuration once: it loads the hub's `<hub>/_board/_lyx/config/board.yaml` through `boardengine.LoadConfig`, whatever worktree the verb runs in, and derives the board data dir from the worktree layout.
 // The hidden `--board-path` flag overrides the data dir for the detached sync child and skips both,
 // so the config is path-only.
+// `sync` takes the hidden `--deferrable` flag the detached sync child carries:
+// with a pause covering the process it logs one Info line and succeeds with nothing committed or pushed, before it takes any lock,
+// and a pause that arrives before its push's network call makes it exit instead of waiting, its commit staying local for the next sync.
 //
 // A payload command's `Use` names its keys in one `{…}` token, written in the grammar `payloadLegend` states once;
 // the `board` group's `Long` ends with that legend, and the operator command index's `board` line carries it as an index note.
