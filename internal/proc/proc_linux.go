@@ -175,6 +175,55 @@ func ListProcesses() ([]Process, error) {
 	return processes, nil
 }
 
+// ListStats returns every process in /proc with its parent, group, start time and zombie state, read from its stat alone.
+// A process that ends between the /proc listing and its read is skipped; an unreadable /proc is an error.
+func ListStats() ([]StatEntry, error) {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil, fmt.Errorf("proc: list /proc: %w", err)
+	}
+
+	var stats []StatEntry
+	for _, entry := range entries {
+		pid, err := strconv.Atoi(entry.Name())
+		if err != nil {
+			continue
+		}
+		fields, ok := statFieldsAfterName(pid)
+		if !ok {
+			continue
+		}
+		// The remainder starts at field 3, so the state is entry 0, the parent entry 1, the group entry 2 and field 22 (start time) entry 19.
+		parent, parentErr := strconv.Atoi(fields[1])
+		group, groupErr := strconv.Atoi(fields[2])
+		if parentErr != nil || groupErr != nil {
+			continue
+		}
+		stats = append(stats, StatEntry{PID: pid, PPID: parent, PGID: group, StartTime: fields[19], Zombie: fields[0] == "Z"})
+	}
+	return stats, nil
+}
+
+// SignalProcess sends SIGTERM, or SIGKILL when kill is set, to the process identified by pid.
+// It returns the raw syscall error, so a caller tells syscall.ESRCH (already gone) from a real failure.
+func SignalProcess(pid int, kill bool) error {
+	return syscall.Kill(pid, signalFor(kill))
+}
+
+// SignalGroup sends SIGTERM, or SIGKILL when kill is set, to every process of the group pgid.
+// It returns the raw syscall error, so a caller tells syscall.ESRCH (no such group) from a real failure.
+func SignalGroup(pgid int, kill bool) error {
+	return syscall.Kill(-pgid, signalFor(kill))
+}
+
+// signalFor returns SIGKILL when kill is set and SIGTERM otherwise.
+func signalFor(kill bool) syscall.Signal {
+	if kill {
+		return syscall.SIGKILL
+	}
+	return syscall.SIGTERM
+}
+
 // IsAncestor reports whether pid is a parent, grandparent or further ancestor of the calling process.
 // The process itself, pid 0 and a pid that is not alive are never ancestors.
 func IsAncestor(pid int) bool {

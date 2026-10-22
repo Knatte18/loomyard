@@ -3,9 +3,22 @@
 package proc
 
 import (
+	"errors"
 	"os/exec"
 	"testing"
 )
+
+func TestStatReadsUnsupportedOnWindows(t *testing.T) {
+	if _, err := ListStats(); !errors.Is(err, errors.ErrUnsupported) {
+		t.Errorf("ListStats() error = %v; want errors.ErrUnsupported", err)
+	}
+	if err := SignalProcess(1, false); !errors.Is(err, errors.ErrUnsupported) {
+		t.Errorf("SignalProcess(1, false) = %v; want errors.ErrUnsupported", err)
+	}
+	if err := SignalGroup(1, false); !errors.Is(err, ErrNoProcessGroup) {
+		t.Errorf("SignalGroup(1, false) = %v; want ErrNoProcessGroup", err)
+	}
+}
 
 func TestHideWindow(t *testing.T) {
 	cmd := exec.Command("cmd", "/c", "echo", "test")
