@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // intentionallyNil maps each shedrecipe.Env field path wire leaves nil to the reason.
@@ -353,6 +354,28 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	}
 
 	if err := os.Remove(filepath.Join(liveDir, "wait.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	verifyMarkerPath := verifytree.NewPaths(taskLocation.WorktreePath(), verifytree.Dir(taskLocation.AnchorPath())).Marker
+	if err := os.MkdirAll(filepath.Dir(verifyMarkerPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		state    string
+		wantLive bool
+	}{
+		{verifytree.MarkerStateRunning, true},
+		{verifytree.MarkerStatePaused, false},
+	} {
+		marker := fmt.Sprintf("site: Publish\nattempt: 0\ncommand: go test ./...\nstarted: 2026-01-01T10:00:00Z\npid: %d\nstate: %s\n", livePID, step.state)
+		if err := os.WriteFile(verifyMarkerPath, []byte(marker), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, waitLive, err := readAgentActivity(taskLocation); err != nil || waitLive != step.wantLive {
+			t.Errorf("readAgentActivity() waitLive = %v, error = %v with a live %s verify marker; want %v, nil", waitLive, err, step.state, step.wantLive)
+		}
+	}
+	if err := os.Remove(verifyMarkerPath); err != nil {
 		t.Fatal(err)
 	}
 	scratch := loomengine.LoomScratchDir(taskLocation)
