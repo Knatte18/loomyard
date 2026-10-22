@@ -25,7 +25,7 @@ import (
 var intakeImportPayload = payloadKeys{
 	required:  []string{"issue"},
 	optional:  []string{"title", "brief", "labels"},
-	exclusive: [][2]string{{"slug", "into"}},
+	exclusive: [][]string{{"slug", "into"}},
 }
 
 // intakeClosePayload is the payload of `intake close`.

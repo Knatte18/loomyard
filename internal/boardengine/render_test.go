@@ -217,29 +217,31 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 // readmeTypes is the type-label order the README goldens render Notes sections in.
 var readmeTypes = []string{"bug", "enhancement"}
 
-// readmeFixture holds tasks and notes with labels, two entries with dates and the rest without, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, a title with a pipe, a two-line brief, a note whose type label is not in readmeTypes, a high-priority task, a low-priority note listed before a normal one of the same type, and run settings on three tasks: two keys in one module, a nested key with a pipe in its value beside a list value, and one key with no brief.
+// readmeFixture holds tasks and notes with labels, two entries with dates and the rest without, plus a done task that another task depends on, an abandoned note, a body, an isolated task, a two-layer chain, a title with a pipe, a two-line brief, a note whose type label is not in readmeTypes, a high-priority note, a low-priority note listed before a normal one of the same type, and run settings on three tasks: two keys in one module, a nested key with a pipe in its value beside a list value, and one key with no brief.
 func readmeFixture() []boardengine.Task {
 	task, note := boardengine.KindTask, boardengine.KindNote
 	return []boardengine.Task{
-		{ID: 1, Slug: "base", Title: "Base work", Kind: task, Labels: []string{"enhancement"}, Brief: "The foundation.", Created: renderTime.AddDate(0, 0, -40), Revised: renderTime.AddDate(0, 0, -3), RunSettings: map[string]any{"loom": map[string]any{"review_max_bounces": 2.0, "review_hard_max_bounces": 3.0}}},
-		{ID: 2, Slug: "top", Title: "Top | work", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("running"), Brief: "Builds on base.\nSecond brief line.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}, RunSettings: map[string]any{"darn": map[string]any{"models": map[string]any{"writer": "opus|fast"}, "skip": []any{"a&b", "<c>"}, "note": "use `x`"}}},
-		{ID: 6, Slug: "alone", Title: "Alone work", Kind: task, Labels: []string{"enhancement"}, Isolated: true, Priority: boardengine.PriorityHigh, Recipe: "darn", Profile: "docs", RunSettings: map[string]any{"darn": map[string]any{"review_max_bounces": 1.0}}},
-		{ID: 3, Slug: "idea", Title: "An idea", Kind: note, Labels: []string{"enhancement", "undecided"}, Priority: boardengine.PriorityLow},
-		{ID: 8, Slug: "plain", Title: "Plain idea", Kind: note, Labels: []string{"enhancement"}},
-		{ID: 4, Slug: "dropped", Title: "Dropped idea", Kind: note, Labels: []string{"bug"}, Status: stringPtr("abandoned"), Brief: "No longer wanted."},
-		{ID: 7, Slug: "stray", Title: "Stray note", Kind: note, Labels: []string{"retired"}},
-		{ID: 5, Slug: "shipped", Title: "Shipped work", Kind: task, Labels: []string{"enhancement"}, Status: stringPtr("done"), Created: renderTime.AddDate(-1, 0, -10), Revised: renderTime.AddDate(0, -5, 0)},
+		{ID: 1, Handle: "T1", Slug: "base", Title: "Base work", Kind: task, Labels: []string{"enhancement"}, Brief: "The foundation.", Created: renderTime.AddDate(0, 0, -40), Revised: renderTime.AddDate(0, 0, -3), RunSettings: map[string]any{"loom": map[string]any{"review_max_bounces": 2.0, "review_hard_max_bounces": 3.0}}},
+		{ID: 2, Handle: "T2", Slug: "top", Title: "Top | work", Kind: task, Labels: []string{"bug", "area"}, Status: stringPtr("running"), Brief: "Builds on base.\nSecond brief line.", Body: "Design.\nSecond line.", DependsOn: []string{"base", "shipped"}, RunSettings: map[string]any{"darn": map[string]any{"models": map[string]any{"writer": "opus|fast"}, "skip": []any{"a&b", "<c>"}, "note": "use `x`"}}},
+		{ID: 6, Handle: "T3", Slug: "alone", Title: "Alone work", Kind: task, Labels: []string{"enhancement"}, Isolated: true, Recipe: "darn", Profile: "docs", RunSettings: map[string]any{"darn": map[string]any{"review_max_bounces": 1.0}}},
+		{ID: 3, Handle: "E2", Slug: "idea", Title: "An idea", Kind: note, Labels: []string{"enhancement", "undecided"}, Priority: boardengine.PriorityLow},
+		{ID: 8, Handle: "E1", Slug: "plain", Title: "Plain idea", Kind: note, Labels: []string{"enhancement"}},
+		{ID: 4, Handle: "B1", Slug: "dropped", Title: "Dropped idea", Kind: note, Labels: []string{"bug"}, Status: stringPtr("abandoned"), Brief: "No longer wanted.", Priority: boardengine.PriorityHigh},
+		{ID: 7, Handle: "R1", Slug: "stray", Title: "Stray note", Kind: note, Labels: []string{"retired"}},
+		{ID: 5, Handle: "T5", Slug: "shipped", Title: "Shipped work", Kind: task, Labels: []string{"enhancement"}, Status: stringPtr("done"), Created: renderTime.AddDate(-1, 0, -10), Revised: renderTime.AddDate(0, -5, 0)},
 	}
 }
 
 // TestRenderReadmeGolden pins the README tables for a fixture with tasks and notes, notes grouped by type in Outputs.Types order and an Other group, a done entry, an abandoned note, a slug linked to its design doc, only non-type labels, an After cell that leaves out a done dependency, an isolated task, and a Ready task with one in Layer A after it.
-// The same row pins that each open group splits into one table per priority present, under a `####` priority heading, high, normal, low, with no heading for an absent priority and the rows numbered on across the group's tables, that a low note follows a normal note with a higher ID, and that a pipe in a title is escaped and a line break in a brief becomes a space, so each row stays one table row.
+// The same row pins that every row opens with the entry's handle and that each group is one table sorted by handle, a note with a lower handle and a higher ID first.
+// It pins that only the Notes tables carry the priority column, H for high, L for low and blank for normal.
+// It pins that a pipe in a title is escaped and a line break in a brief becomes a space, so each row stays one table row.
 // The same row pins that each run setting stacks as a code-span bullet in the entry cell after any brief, sorted, a nested key as its dotted path, a non-string value as JSON and a pipe escaped, adding no column.
 // Every Tasks table pins a Recipe column after the slug, loom for an empty recipe and the stored name otherwise, and the Notes and Done tables pin its absence.
-// Every README pins the render time at its top, and every table pins the Age and Revised columns before Labels, as of that time and blank for an unknown date.
+// Every README pins the render time at its top, and every table pins the one column before Labels holding the age above the time since revision, as of that time and blank for unknown dates.
 // A second row pins that Ready renders _None._ when empty, and that the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
 // Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
-// A third row pins that a task with a run status renders under Running, before Ready and in no layer, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the recorded owner machine and blank when none is recorded.
+// A third row pins that a task with a run status renders under Running, before Ready and in no layer, ordered by handle over ID, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the recorded owner machine and blank when none is recorded.
 // The same row pins that a task waiting on a running one lands in Layer A, not Ready, still naming it under After, and that a task after that one lands in Layer B.
 func TestRenderReadmeGolden(t *testing.T) {
 	t.Parallel()
@@ -266,31 +268,25 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"Waits on nothing open; can start now.\n" +
 				"\n" +
-				"#### Normal priority\n" +
-				"\n" +
-				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Base work**<br>• The foundation.<br>• `loom: review_hard_max_bounces 3`<br>• `loom: review_max_bounces 2` | `base` | loom |  | 5w | 3d |  |\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T1 | **Base work**<br>• The foundation.<br>• `loom: review_hard_max_bounces 3`<br>• `loom: review_max_bounces 2` | `base` | loom |  | 5w<br>3d |  |\n" +
 				"\n" +
 				"### Layer A\n" +
 				"\n" +
 				"Waits only on Running or Ready entries.\n" +
 				"\n" +
-				"#### Normal priority\n" +
-				"\n" +
-				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Top \\| work**<br>• Builds on base. Second brief line.<br>• `darn: models.writer opus\\|fast`<br>• `` darn: note use `x` ``<br>• `darn: skip [\"a&b\",\"<c>\"]` | [`top`](design-top.md) | loom | `base` |  |  | area |\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T2 | **Top \\| work**<br>• Builds on base. Second brief line.<br>• `darn: models.writer opus\\|fast`<br>• `` darn: note use `x` ``<br>• `darn: skip [\"a&b\",\"<c>\"]` | [`top`](design-top.md) | loom | `base` |  | area |\n" +
 				"\n" +
 				"### Independent\n" +
 				"\n" +
 				"Depends on nothing and nothing depends on it, by design.\n" +
 				"\n" +
-				"#### High priority\n" +
-				"\n" +
-				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Alone work**<br>• `profile: docs`<br>• `darn: review_max_bounces 1` | `alone` | darn |  |  |  |  |\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T3 | **Alone work**<br>• `profile: docs`<br>• `darn: review_max_bounces 1` | `alone` | darn |  |  |  |\n" +
 				"\n" +
 				"## Notes\n" +
 				"\n" +
@@ -298,45 +294,34 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"### Bugs\n" +
 				"\n" +
-				"#### Normal priority\n" +
-				"\n" +
-				"| # | Note | Slug | Age | Revised | Labels |\n" +
+				"| # | P | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Dropped idea**<br>• No longer wanted. | `dropped` |  |  |  |\n" +
+				"| B1 | H | **Dropped idea**<br>• No longer wanted. | `dropped` |  |  |\n" +
 				"\n" +
 				"### Enhancements\n" +
 				"\n" +
-				"#### Normal priority\n" +
-				"\n" +
-				"| # | Note | Slug | Age | Revised | Labels |\n" +
+				"| # | P | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Plain idea** | `plain` |  |  |  |\n" +
-				"\n" +
-				"#### Low priority\n" +
-				"\n" +
-				"| # | Note | Slug | Age | Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 2 | **An idea** | `idea` |  |  | undecided |\n" +
+				"| E1 |  | **Plain idea** | `plain` |  |  |\n" +
+				"| E2 | L | **An idea** | `idea` |  | undecided |\n" +
 				"\n" +
 				"### Other\n" +
 				"\n" +
-				"#### Normal priority\n" +
-				"\n" +
-				"| # | Note | Slug | Age | Revised | Labels |\n" +
+				"| # | P | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Stray note** | `stray` |  |  | retired |\n" +
+				"| R1 |  | **Stray note** | `stray` |  | retired |\n" +
 				"\n" +
 				"## Done\n" +
 				"\n" +
 				"Finished, awaiting `lyx board prune --apply`.\n" +
 				"\n" +
-				"| # | Entry | Slug | Age | Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Shipped work** | `shipped` | 1y | 5mo |  |\n",
+				"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| T5 | **Shipped work** | `shipped` | 1y<br>5mo |  |\n",
 		},
 		{
 			name:  "no done section and no empty notes subsections",
-			tasks: []boardengine.Task{{ID: 1, Slug: "a", Title: "A", Kind: boardengine.KindNote, Labels: []string{"enhancement"}}},
+			tasks: []boardengine.Task{{ID: 1, Handle: "E1", Slug: "a", Title: "A", Kind: boardengine.KindNote, Labels: []string{"enhancement"}}},
 			want: "# Board\n" +
 				"\n" +
 				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
@@ -360,20 +345,18 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"### Enhancements\n" +
 				"\n" +
-				"#### Normal priority\n" +
-				"\n" +
-				"| # | Note | Slug | Age | Revised | Labels |\n" +
+				"| # | P | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **A** | `a` |  |  |  |\n",
+				"| E1 |  | **A** | `a` |  |  |\n",
 		},
 		{
 			name: "running task under Running before Ready and in no layer",
 			tasks: []boardengine.Task{
-				{ID: 1, Slug: "base", Title: "Base work", Kind: boardengine.KindTask, Labels: []string{"enhancement"}},
-				{ID: 2, Slug: "held", Title: "Held work", Kind: boardengine.KindTask, Labels: []string{"bug", "area"}, Status: stringPtr(boardengine.RunStatus("running", "Webster")), DependsOn: []string{"base"}, OwnerMachine: "box"},
-				{ID: 3, Slug: "next", Title: "Next work", Kind: boardengine.KindTask, DependsOn: []string{"held"}},
-				{ID: 4, Slug: "last", Title: "Last work", Kind: boardengine.KindTask, DependsOn: []string{"next"}},
-				{ID: 5, Slug: "halted", Title: "Halted work", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.RunStatus("paused", "Plan-Write")), Recipe: "darn"},
+				{ID: 1, Handle: "T1", Slug: "base", Title: "Base work", Kind: boardengine.KindTask, Labels: []string{"enhancement"}},
+				{ID: 2, Handle: "T5", Slug: "held", Title: "Held work", Kind: boardengine.KindTask, Labels: []string{"bug", "area"}, Status: stringPtr(boardengine.RunStatus("running", "Webster")), DependsOn: []string{"base"}, OwnerMachine: "box"},
+				{ID: 3, Handle: "T3", Slug: "next", Title: "Next work", Kind: boardengine.KindTask, DependsOn: []string{"held"}},
+				{ID: 4, Handle: "T4", Slug: "last", Title: "Last work", Kind: boardengine.KindTask, DependsOn: []string{"next"}},
+				{ID: 5, Handle: "T2", Slug: "halted", Title: "Halted work", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.RunStatus("paused", "Plan-Write")), Recipe: "darn"},
 			},
 			want: "# Board\n" +
 				"\n" +
@@ -390,42 +373,34 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"Held by a run; its scope is locked until the run ends.\n" +
 				"\n" +
-				"#### Normal priority\n" +
-				"\n" +
-				"| # | Task | Slug | Recipe | At | Owner | Age | Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Held work** | `held` | loom | Webster | box |  |  | area |\n" +
-				"| 2 | **Halted work** | `halted` | darn | paused · Plan-Write |  |  |  |  |\n" +
+				"| # | Task | Slug | Recipe | At | Owner | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T2 | **Halted work** | `halted` | darn | paused · Plan-Write |  |  |  |\n" +
+				"| T5 | **Held work** | `held` | loom | Webster | box |  | area |\n" +
 				"\n" +
 				"### Ready\n" +
 				"\n" +
 				"Waits on nothing open; can start now.\n" +
 				"\n" +
-				"#### Normal priority\n" +
-				"\n" +
-				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Base work** | `base` | loom |  |  |  |  |\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T1 | **Base work** | `base` | loom |  |  |  |\n" +
 				"\n" +
 				"### Layer A\n" +
 				"\n" +
 				"Waits only on Running or Ready entries.\n" +
 				"\n" +
-				"#### Normal priority\n" +
-				"\n" +
-				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Next work** | `next` | loom | `held` |  |  |  |\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T3 | **Next work** | `next` | loom | `held` |  |  |\n" +
 				"\n" +
 				"### Layer B\n" +
 				"\n" +
 				"Starts when every entry it names under After is done.\n" +
 				"\n" +
-				"#### Normal priority\n" +
-				"\n" +
-				"| # | Task | Slug | Recipe | After | Age | Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Last work** | `last` | loom | `next` |  |  |  |\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T4 | **Last work** | `last` | loom | `next` |  |  |\n" +
 				"\n" +
 				"## Notes\n" +
 				"\n" +

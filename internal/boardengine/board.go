@@ -50,7 +50,7 @@ type noWrite struct{ result any }
 type promoted struct{ task Task }
 
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method:
-// it acquires the lock, loads the store, calls fn to mutate it, stamps the entry dates, refuses a net change to a run-held entry's scope, saves board.json, runs afterSave when non-nil, renders outputs, and spawns a detached sync.
+// it acquires the lock, loads the store, calls fn to mutate it, stamps the entry dates, assigns the handles the mutation left missing or of another letter, refuses a net change to a run-held entry's scope, saves board.json, runs afterSave when non-nil, renders outputs, and spawns a detached sync.
 // fn returning a RenameResult judges the dates and the run lock against the loaded entries with that rename applied.
 // afterSave runs under the lock after the save and before the render.
 // fn returning a noWrite skips every step after the mutation.
@@ -102,7 +102,8 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		renameSlug(loaded, r.From, r.Task.Slug)
 	}
 	stampDates(loaded, store.tasks, now, promotedSlug)
-	// A returned entry was copied before the stamp, so it is read again to carry its dates.
+	assignHandles(store.tasks, store.vocab)
+	// A returned entry was copied before the stamp, so it is read again to carry its dates and handle.
 	switch r := result.(type) {
 	case Task:
 		result, _ = store.GetTask(r.Slug)

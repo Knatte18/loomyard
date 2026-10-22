@@ -34,7 +34,7 @@ type replayField struct {
 }
 
 // replayFields lists every entry field a replay merges, in the order a change reports them.
-// Id, created, revised and unknown keys are not merged as fields: the id is origin's, the dates follow the changes, and an unknown key stays as origin holds it.
+// Id, handle, created, revised and unknown keys are not merged as fields: the id and handle are origin's, the dates follow the changes, and an unknown key stays as origin holds it.
 var replayFields = []replayField{
 	{"title", func(t Task) any { return t.Title }, func(dst *Task, src Task) { dst.Title = src.Title }},
 	{"kind", func(t Task) any { return t.Kind }, func(dst *Task, src Task) { dst.Kind = src.Kind }},
@@ -146,6 +146,7 @@ type replayRun struct {
 // The hub's prime_owner record replays like an entry field, reported lost under the entry name prime.
 // Where both sides changed the same field of an entry or the same design file since the merge base, or the change touches an entry origin removed, origin's side is kept for that change and it is reported lost.
 // A change the board's own checks refuse, the run lock included, is reported refused and so is a later change that depends on an entry a refused change added; the rest of the commit still lands.
+// An added entry takes a handle free on origin's board, and a changed entry keeps origin's handle unless its letter changed.
 // It saves board.json and re-renders the board's output files when anything was applied, and writes nothing otherwise.
 // It takes no lock and spawns no sync, since its caller holds the board and push locks.
 func (FabricReplay) Apply(req fabricengine.BoardReplayRequest) (fabricengine.BoardReplayResult, error) {
@@ -219,6 +220,7 @@ func (FabricReplay) Apply(req fabricengine.BoardReplayRequest) (fabricengine.Boa
 		return run.result, nil
 	}
 	if run.applied {
+		assignHandles(store.tasks, store.vocab)
 		if err := store.Save(); err != nil {
 			return fabricengine.BoardReplayResult{}, fmt.Errorf("save store: %w", err)
 		}
@@ -257,7 +259,7 @@ func (r *replayRun) refusedDependency(entry Task) (string, bool) {
 	return "", false
 }
 
-// addEntry appends commit's entry with a fresh id when origin holds no entry of its slug.
+// addEntry appends commit's entry with a fresh id and no handle when origin holds no entry of its slug.
 // Where origin holds one, each field commit's entry carries differently is reported lost.
 func (r *replayRun) addEntry(commit Task) {
 	if origin, _, held := r.originEntry(commit.Slug); held {
@@ -270,6 +272,8 @@ func (r *replayRun) addEntry(commit Task) {
 	}
 	incoming := cloneTasks([]Task{commit})[0]
 	incoming.ID = r.store.nextID()
+	// The local handle may already be origin's for another entry; Apply assigns one free on origin's board.
+	incoming.Handle = ""
 	incoming.Labels, incoming.Issues, incoming.DependsOn = orEmpty(incoming.Labels), orEmpty(incoming.Issues), orEmpty(incoming.DependsOn)
 	if dep, refused := r.refusedDependency(incoming); refused {
 		r.refusedAdds[incoming.Slug] = true

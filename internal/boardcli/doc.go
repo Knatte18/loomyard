@@ -17,11 +17,14 @@
 // the `board` group's `Long` ends with that legend, and the operator command index's `board` line carries it as an index note.
 // The group's note-audience annotation names the operator, the audience of every payload-taking board verb, so no other audience's index prints the note.
 // Each parser validates against one `payloadKeys` declared beside its command, a test couples every token to its declaration, and an unknown key is refused.
-// The addressing verbs, `set-deps` included, take a `slug` or a numeric `id`.
+// The addressing verbs, `set-deps` and merge's `set_status` included, take exactly one of a `slug`, a numeric `id` or a `handle` such as `B4`, the selector group `entrySelector` declares.
+// A payload argument that is a bare handle, in either letter case, reads as `{"handle":…}`, so `lyx board get B4` works and a verb that needs further keys refuses it as missing them.
+// `depends_on`, merge's `remove_slugs` and intake's `into` stay slugs.
 // Every verb prints JSON through `internal/output`, one object per line, errors included.
 // `list` and `find` take `--text` to print the compact one-line-per-entry listing instead;
 // errors stay JSON.
-// The listing carries a priority column after the kind, `high`, `low` or blank, only when some listed entry is not normal.
+// The listing opens with the entry's handle, a column left out only when no listed entry has one.
+// It carries a priority column after the kind, `high`, `low` or blank, only when some listed entry is not normal.
 // Two age columns follow, the entry's age and the time since its last revision, computed as of the listing from the stored dates and blank for an unknown one;
 // each is left out when no listed entry has that date.
 // `list` takes `--sort age` to list the oldest entries first and `--sort revised` the longest unrevised first, with an entry lacking the date last and ties in README order.

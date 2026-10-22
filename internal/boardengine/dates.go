@@ -18,7 +18,7 @@ func entryTime(t time.Time) time.Time {
 // stampDates sets the dates on after, the entries a write leaves, judged against loaded, the entries it started from.
 // A new entry gets now for whichever of Created and Revised it does not carry.
 // An entry whose scope changed gets now as Revised unless the write set Revised itself;
-// a status change is no revision, and neither is promotedSlug, the entry a promote made a task, so a promote keeps the note's dates.
+// a status change is no revision, and neither is promotedSlug becoming a task and losing its priority, so a promote keeps the note's dates.
 // A dependency on a done entry that the same write removes is no revision either, so prune leaves the survivors' dates.
 // An existing entry without a Created keeps none, since its creation is unknown.
 func stampDates(loaded, after []Task, now time.Time, promotedSlug string) {
@@ -43,6 +43,7 @@ func stampDates(loaded, after []Task, now time.Time, promotedSlug string) {
 		judged := after[i]
 		if judged.Slug == promotedSlug {
 			judged.Kind = before.Kind
+			judged.Priority = before.Priority
 		}
 		if scopeChanged(before, judged, removedDone) && after[i].Revised.Equal(before.Revised) {
 			after[i].Revised = now

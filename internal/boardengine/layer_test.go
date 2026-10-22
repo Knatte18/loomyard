@@ -180,24 +180,23 @@ func TestRenderOrder(t *testing.T) {
 			},
 		},
 		{
-			name: "priority orders within a task layer, ahead of layer among notes, and within done",
+			name: "handle orders within a task layer, among notes regardless of layer and priority, and within done after tasks",
 			tasks: []boardengine.Task{
-				{ID: 1, Slug: "t-low", Kind: boardengine.KindTask, Priority: boardengine.PriorityLow},
-				{ID: 2, Slug: "t-normal", Kind: boardengine.KindTask},
-				{ID: 3, Slug: "t-high", Kind: boardengine.KindTask, Priority: boardengine.PriorityHigh},
-				{ID: 4, Slug: "t-after-high", Kind: boardengine.KindTask, Priority: boardengine.PriorityHigh, DependsOn: []string{"t-normal"}},
-				{ID: 5, Slug: "n-normal", Kind: boardengine.KindNote},
-				{ID: 6, Slug: "n-isolated-high", Kind: boardengine.KindNote, Isolated: true, Priority: boardengine.PriorityHigh},
-				{ID: 7, Slug: "n-low", Kind: boardengine.KindNote, Priority: boardengine.PriorityLow},
-				{ID: 8, Slug: "d-normal", Kind: boardengine.KindTask, Status: stringPtr("done")},
-				{ID: 9, Slug: "d-high", Kind: boardengine.KindTask, Status: stringPtr("done"), Priority: boardengine.PriorityHigh},
+				{ID: 1, Handle: "T3", Slug: "t3", Kind: boardengine.KindTask},
+				{ID: 2, Handle: "T10", Slug: "t10", Kind: boardengine.KindTask},
+				{ID: 3, Handle: "T1", Slug: "t1-after", Kind: boardengine.KindTask, DependsOn: []string{"t10"}},
+				{ID: 4, Handle: "E2", Slug: "e2", Kind: boardengine.KindNote, Priority: boardengine.PriorityHigh},
+				{ID: 5, Handle: "B5", Slug: "b5-isolated", Kind: boardengine.KindNote, Isolated: true, Priority: boardengine.PriorityLow},
+				{ID: 6, Handle: "E1", Slug: "e1", Kind: boardengine.KindNote},
+				{ID: 7, Handle: "B1", Slug: "b1-done", Kind: boardengine.KindNote, Status: stringPtr("done")},
+				{ID: 8, Handle: "T9", Slug: "t9-done", Kind: boardengine.KindTask, Status: stringPtr("done")},
 			},
 			check: func(t *testing.T, result []boardengine.TaskWithLayer) {
 				var got []string
 				for _, r := range result {
 					got = append(got, r.Slug)
 				}
-				want := []string{"t-high", "t-normal", "t-low", "t-after-high", "n-isolated-high", "n-normal", "n-low", "d-high", "d-normal"}
+				want := []string{"t3", "t10", "t1-after", "b5-isolated", "e1", "e2", "t9-done", "b1-done"}
 				if strings.Join(got, ",") != strings.Join(want, ",") {
 					t.Errorf("RenderOrder() order = %v, want %v", got, want)
 				}

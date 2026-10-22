@@ -8,7 +8,7 @@ import (
 )
 
 // payloadLegend states the grammar of a board payload command's `{…}` Use token.
-const payloadLegend = "A payload is one JSON object as a single quoted argument; ? marks an optional key, a|b exactly one of the two, <task> stands for upsert's payload, and an unknown key is refused."
+const payloadLegend = "A payload is one JSON object as a single quoted argument; ? marks an optional key, a|b exactly one of the keys, <task> stands for upsert's payload, and an unknown key is refused. A payload naming one entry by slug|id|handle may instead be the bare handle, such as B4."
 
 // payloadKeys declares the keys one payload object accepts, exactly as its command's Use token spells them.
 type payloadKeys struct {
@@ -16,8 +16,8 @@ type payloadKeys struct {
 	required []string
 	// optional keys may be present.
 	optional []string
-	// exclusive holds pairs of keys of which exactly one must be present.
-	exclusive [][2]string
+	// exclusive holds groups of keys of which exactly one must be present.
+	exclusive [][]string
 	// nested declares, for a key whose value is an object or an array of objects, that object's own keys.
 	nested map[string]payloadKeys
 }
@@ -27,8 +27,8 @@ func (k payloadKeys) accepts(key string) bool {
 	if slices.Contains(k.required, key) || slices.Contains(k.optional, key) {
 		return true
 	}
-	for _, pair := range k.exclusive {
-		if pair[0] == key || pair[1] == key {
+	for _, group := range k.exclusive {
+		if slices.Contains(group, key) {
 			return true
 		}
 	}

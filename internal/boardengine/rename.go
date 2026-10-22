@@ -19,8 +19,8 @@ type RenameResult struct {
 	Mentions []string
 }
 
-// Rename changes the slug of the entry selector names, a slug string or a numeric id, to to under the write lock, and replaces the old slug with to in every other entry's depends_on.
-// The entry keeps its id, position and every other field, and no entry's dates are revised by the rename.
+// Rename changes the slug of the entry selector names, a slug string, a numeric id or a Handle, to to under the write lock, and replaces the old slug with to in every other entry's depends_on.
+// The entry keeps its id, handle, position and every other field, and no entry's dates are revised by the rename.
 // It refuses an absent entry, an entry a run holds, and a target that is empty, longer than MaxSlugLength or already an entry's slug.
 // Body and brief text is never rewritten; the result names the entries that still mention the old slug.
 func (b *Board) Rename(selector any, to string) (RenameResult, error) {
@@ -39,7 +39,7 @@ func (b *Board) Rename(selector any, to string) (RenameResult, error) {
 func (s *Store) Rename(selector any, to string) (RenameResult, error) {
 	current, found := s.GetTask(selector)
 	if !found {
-		return RenameResult{}, fmt.Errorf("task not found: %v: check the slug or id with lyx board list", selector)
+		return RenameResult{}, fmt.Errorf("task not found: %v: check the slug, id or handle with lyx board list", selector)
 	}
 	if IsRunStatus(current.Status) {
 		return RenameResult{}, &RunLockedError{Slug: current.Slug, Status: *current.Status}

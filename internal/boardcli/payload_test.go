@@ -91,7 +91,7 @@ func parsePayloadToken(use string) (payloadKeys, error) {
 }
 
 // parsePayloadObject parses one `{…}` object, whose elements split on commas outside braces and brackets.
-// `key?` is optional, `a|b` an exclusive pair, `key: {…}` a nested object, and `<task>` or `[<task>]` the upsert declaration.
+// `key?` is optional, `a|b` an exclusive group, `key: {…}` a nested object, and `<task>` or `[<task>]` the upsert declaration.
 func parsePayloadObject(object string) (payloadKeys, error) {
 	if !strings.HasPrefix(object, "{") || !strings.HasSuffix(object, "}") {
 		return payloadKeys{}, fmt.Errorf("%q is not one {…} object", object)
@@ -113,8 +113,7 @@ func parsePayloadObject(object string) (payloadKeys, error) {
 			}
 			keys.nested[name] = nested
 		case strings.Contains(name, "|"):
-			first, second, _ := strings.Cut(name, "|")
-			keys.exclusive = append(keys.exclusive, [2]string{first, second})
+			keys.exclusive = append(keys.exclusive, strings.Split(name, "|"))
 			continue
 		}
 		if optional {
@@ -166,7 +165,7 @@ func diffPayloadKeys(at string, parsed, declared payloadKeys) []string {
 	}
 	compare("required", parsed.required, declared.required)
 	compare("optional", parsed.optional, declared.optional)
-	compare("exclusive", exclusivePairNames(parsed.exclusive), exclusivePairNames(declared.exclusive))
+	compare("exclusive", exclusiveGroupNames(parsed.exclusive), exclusiveGroupNames(declared.exclusive))
 
 	var nestedNames []string
 	for name := range parsed.nested {
@@ -185,13 +184,11 @@ func diffPayloadKeys(at string, parsed, declared payloadKeys) []string {
 	return diffs
 }
 
-// exclusivePairNames renders each exclusive pair as `a|b` with its two keys sorted, so pair order does not matter.
-func exclusivePairNames(pairs [][2]string) []string {
-	names := make([]string, 0, len(pairs))
-	for _, pair := range pairs {
-		sorted := []string{pair[0], pair[1]}
-		slices.Sort(sorted)
-		names = append(names, strings.Join(sorted, "|"))
+// exclusiveGroupNames renders each exclusive group as `a|b|…` with its keys sorted, so key order does not matter.
+func exclusiveGroupNames(groups [][]string) []string {
+	names := make([]string, 0, len(groups))
+	for _, group := range groups {
+		names = append(names, strings.Join(slices.Sorted(slices.Values(group)), "|"))
 	}
 	return names
 }

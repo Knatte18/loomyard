@@ -25,16 +25,27 @@
 // A write that carries a label in neither list is refused, naming the entry, the label and board.yaml.
 // A Board built from a bare path has no outputs configured, cannot write, and validates no label.
 //
+// # Handles
+//
+// Every entry carries a handle, a letter and a number such as T4, B2 or E7, stored in board.json as the handle key, so the operator can name an entry without its slug.
+// The letter is T for a task, and for a note the upper-cased first letter of its type label, so the hub's board.yaml types decide the note letters;
+// LoadConfig refuses type labels that do not begin with a letter, that share a first letter, or whose letter is T.
+// The board alone assigns handles, and an upsert payload carrying one is refused.
+// One assigner runs over the whole entry list on load, in the write critical section after the mutation and in the replay before its save:
+// an entry keeps a stored handle of its own letter that no entry of lower id holds, and every other entry, in id order, takes the lowest number of its letter not in use.
+// So a handle stays while its entry lives, a removed entry's number is given out again, a promote or a type change moves the entry to the lowest free number of its new letter, and a board.json written before handles gets them in id order on load, persisted by the next write.
+// A note whose letter cannot be decided, its type label no longer configured or the board path-only, keeps its stored handle unless an entry of lower id holds it, which clears it.
+// A handle is not scope: the run lock and the revised date ignore it.
+// Every Board and Store method that takes a selector takes a Handle beside a slug string and a numeric id, matching the letter case-insensitively.
+//
 // # Priority
 //
-// An entry may carry a priority, high, normal or low, and an entry without one is normal.
-// A normal priority is stored as no key, so board.json names a priority only on a high or low entry and existing entries need no migration;
+// A note may carry a priority, high, normal or low, and a note without one is normal; a task carries none.
+// A normal priority is stored as no key, so board.json names a priority only on a high or low note;
 // a write of "normal" clears the field, and a write of any other value is refused.
-// Within each README group, a task layer, a Notes type subsection or Done, entries order high, normal, low, then in their order without priority;
-// RenderOrder applies it, so `lyx board list` and `find` follow the same order.
-// The README splits each open group, Running, Ready, a dependency layer or a Notes type subsection, into one table per priority present, in the order high, normal, low, each under a fourth-level heading, `#### High priority`, `#### Normal priority` or `#### Low priority`, one level below the group's `###` heading;
-// a priority with no entry in the group gets no heading and no table, and Done stays one table.
-// Priority is part of an entry's scope, so the run lock refuses a change to it on a run-held entry.
+// A write that leaves a task with a priority is refused, Promote clears the note's priority, and a task stored with one loses it on load, so the next write drops it and a run-held such task is still writable.
+// The README shows a note's priority as H or L in the Notes tables' P column, and no view orders by it.
+// Priority is part of an entry's scope, so the run lock refuses a change to it on a run-held note.
 //
 // # Run settings
 //
@@ -106,8 +117,9 @@
 // Ready holds the open tasks with no open dependency, and is always written, as `_None._` when empty.
 // A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
 // Layer A holds the tasks that wait only on Running or Ready entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lyx board list`.
-// Each open subsection holds one markdown table per priority, as the Priority section describes, numbered on from 1 across them so each entry keeps one number in its subsection, and Done is one table numbered from 1.
-// A row holds the bold title, with the brief as a `• ` bullet under it in the same cell, then a `• ` bullet `profile: <name>` when the task names a run profile, and then one `• ` bullet per run setting, a code span such as `darn: review_max_bounces 1` with a nested key as its dotted path, sorted, so the settings stack in height and add no column, the slug linked to its design doc when the entry has a body, the Age and Revised cells, the entry's age and the time since its last revision, blank for an unknown date, and the labels that are not type labels.
+// Each subsection, Done included, is one markdown table in RenderOrder's order: a task subsection and a Notes type subsection by handle, and Done its tasks before its notes, each by handle, so `lyx board list` and `find` follow the same order.
+// A row opens with the entry's handle, and a Notes row adds the P column after it, H for a high priority, L for a low one and blank for normal.
+// The row then holds the bold title, with the brief as a `• ` bullet under it in the same cell, then a `• ` bullet `profile: <name>` when the task names a run profile, and then one `• ` bullet per run setting, a code span such as `darn: review_max_bounces 1` with a nested key as its dotted path, sorted, so the settings stack in height and add no column, the slug linked to its design doc when the entry has a body, the one `Age<br>Revised` cell, the entry's age above the time since its last revision, blank for an unknown date, and the labels that are not type labels.
 // The Running, Ready and layer tables add a Recipe column after the slug, the recipe the task runs, `loom` when its recipe field is empty; the Notes and Done tables have none.
 // Running adds an At column, the run status without the state when the state is `running`, and an Owner column, the entry's recorded owner machine, blank when none is recorded, and Ready and the layers add an After column, the open entries named in depends_on.
 // A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
@@ -137,7 +149,7 @@
 //
 // # Rename
 //
-// Rename changes one entry's slug in one write: the entry keeps its id, its position in board.json and every other field, kept keys included, and every other entry's depends_on names the new slug in place of the old one.
+// Rename changes one entry's slug in one write: the entry keeps its id, its handle, its position in board.json and every other field, kept keys included, and every other entry's depends_on names the new slug in place of the old one.
 // A dependency on the same entry under a new name is no scope change, so the write critical section judges the dates and the run lock against the loaded entries with the rename applied:
 // the rename revises no entry, and a held task that depends on the renamed entry takes the rewrite.
 // The renamed entry itself must not be held by a run, and the refusal is the run lock's *RunLockedError.
@@ -196,7 +208,7 @@
 //
 // FabricReplay implements the board seam fabricengine declares for a records replay, installed process-wide by the lyx root pre-run.
 // Apply re-applies a local board commit onto the board checked out at origin's tip, one change at a time: each added or removed entry, each changed entry's fields as one change, and each design file the commit touches.
-// A change passes the board's own checks, the run lock included, against the board as the kept changes before it left it, and an added entry takes the next id of origin's board.json.
+// A change passes the board's own checks, the run lock included, against the board as the kept changes before it left it, and an added entry takes the next id of origin's board.json and a handle free there, never its local one.
 // Where both sides changed the same field or design file since the merge base, or origin removed the entry, origin's side is kept and the local value is reported lost;
 // a change a check refuses is reported refused, and so is a later change depending on an entry a refused change added.
 // It takes neither the board lock nor the push lock, spawns no sync, and writes nothing when no change survives.

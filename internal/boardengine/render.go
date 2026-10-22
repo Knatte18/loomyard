@@ -2,9 +2,9 @@
 //
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderReadme, plus design-*.md for any entry with a body).
 // The README reads like a roadmap: Tasks split into Running, Ready, dependency layers and Independent, Notes with one subsection per type label, then Done.
-// Each open subsection holds one markdown table per priority present, high, normal, low, each under a `#### <Priority> priority` heading, numbered on from 1 across them, and Done one table numbered from 1;
+// Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes table adds the priority as H or L after it;
 // the README opens with the time it was rendered,
-// and the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug, the entry's age and time since its last revision as of that time, and the labels that are not type labels;
+// and the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
 // every Tasks table adds the recipe after the slug, loom for an empty one;
 // Running adds where its run stands and the entry's recorded owner machine, and Ready and the layers add the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
@@ -125,21 +125,24 @@ const otherNotesHeading = "Other"
 // emptySectionLine stands in for the table of a subsection that is always rendered and has no entry.
 const emptySectionLine = "_None._"
 
-// The README table columns: each table opens with the row number, the entry and the linked slug, and closes with the entry's age, the time since its last revision, and its labels.
+// The README table columns: each table opens with the handle, the entry and the linked slug, and closes with the entry's age above the time since its last revision, and its labels.
 const (
-	columnNumber  = "#"
-	columnSlug    = "Slug"
-	columnRecipe  = "Recipe"
-	columnTask    = "Task"
-	columnNote    = "Note"
-	columnEntry   = "Entry"
-	columnAt      = "At"
-	columnOwner   = "Owner"
-	columnAfter   = "After"
-	columnAge     = "Age"
-	columnRevised = "Revised"
-	columnLabels  = "Labels"
+	columnHandle     = "#"
+	columnPriority   = "P"
+	columnSlug       = "Slug"
+	columnRecipe     = "Recipe"
+	columnTask       = "Task"
+	columnNote       = "Note"
+	columnEntry      = "Entry"
+	columnAt         = "At"
+	columnOwner      = "Owner"
+	columnAfter      = "After"
+	columnAgeRevised = "Age" + cellBreak + "Revised"
+	columnLabels     = "Labels"
 )
+
+// cellBreak stacks two lines inside one table cell, where a newline would end the row.
+const cellBreak = "<br>"
 
 // renderedTimeLayout is the UTC date and time the README states it was rendered at.
 const renderedTimeLayout = "2006-01-02 15:04 UTC"
@@ -151,7 +154,7 @@ const defaultRecipe = "loom"
 const runningState = "running"
 
 // cellBullet starts one detail line under the title inside one table cell; a markdown list does not render in a table cell.
-const cellBullet = "<br>• "
+const cellBullet = cellBreak + "• "
 
 // kindName is the capitalised display name of an entry kind.
 func kindName(kind string) string {
@@ -192,9 +195,11 @@ func metaLine(t Task, middle ...string) string {
 }
 
 // readmeTable is one README subsection's table: its middle column headers, the entry column first, and the cells under them per entry.
+// priority adds the priority column after the handle.
 type readmeTable struct {
-	columns []string
-	cells   func(t Task) []string
+	columns  []string
+	cells    func(t Task) []string
+	priority bool
 }
 
 // renderReadme builds the README: a title, the render time, an intro, Tasks split into Running, Ready, dependency layers and Independent, Notes split by type label, then Done when any entry is done.
@@ -213,38 +218,27 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string, 
 	for _, twl := range ordered {
 		finished[twl.Slug] = isDone(twl.Task)
 	}
-	// writeTable writes one table whose rows are numbered from first.
-	writeTable := func(entries []TaskWithLayer, table readmeTable, first int) {
+	// writeTable writes one table, a row per entry in the order given.
+	writeTable := func(entries []TaskWithLayer, table readmeTable) {
+		lead := []string{columnHandle}
+		if table.priority {
+			lead = append(lead, columnPriority)
+		}
 		// The slug goes second among the middle columns, right after the entry.
-		header := append(append([]string{columnNumber}, slices.Insert(slices.Clone(table.columns), 1, columnSlug)...), columnAge, columnRevised, columnLabels)
+		header := append(append(lead, slices.Insert(slices.Clone(table.columns), 1, columnSlug)...), columnAgeRevised, columnLabels)
 		lines = append(lines, tableRow(header), tableRow(slices.Repeat([]string{"---"}, len(header))))
-		for i, twl := range entries {
-			row := append([]string{fmt.Sprint(first + i)}, slices.Insert(table.cells(twl.Task), 1, slugCell(twl.Task, designPrefix))...)
-			row = append(row, FormatAge(twl.Created, now), FormatAge(twl.Revised, now), labelsCell(twl.Task, types))
+		for _, twl := range entries {
+			row := []string{cellText(twl.Handle)}
+			if table.priority {
+				row = append(row, priorityCell(twl.Priority))
+			}
+			row = append(row, slices.Insert(table.cells(twl.Task), 1, slugCell(twl.Task, designPrefix))...)
+			row = append(row, ageCell(twl.Task, now), labelsCell(twl.Task, types))
 			lines = append(lines, tableRow(row))
 		}
 		lines = append(lines, "")
 	}
-	// writeGroup writes one table per priority present in an open group, high, normal, low, each under its priority heading;
-	// the rows number on across the group's tables, so each entry keeps the number it has in the group.
-	writeGroup := func(entries []TaskWithLayer, table readmeTable) {
-		first := 1
-		for _, priority := range []string{PriorityHigh, PriorityNormal, PriorityLow} {
-			var tier []TaskWithLayer
-			for _, twl := range entries {
-				if priorityRank(twl.Priority) == priorityRank(priority) {
-					tier = append(tier, twl)
-				}
-			}
-			if len(tier) == 0 {
-				continue
-			}
-			lines = append(lines, priorityHeading(priority), "")
-			writeTable(tier, table, first)
-			first += len(tier)
-		}
-	}
-	waitTable := readmeTable{[]string{columnTask, columnRecipe, columnAfter}, func(t Task) []string {
+	waitTable := readmeTable{columns: []string{columnTask, columnRecipe, columnAfter}, cells: func(t Task) []string {
 		var after []string
 		for _, dep := range t.DependsOn {
 			if !finished[dep] {
@@ -272,13 +266,13 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string, 
 	}
 	if running := byLayer(runningLayer); len(running) > 0 {
 		lines = append(lines, "### "+runningSection.name, "", runningSection.meaning, "")
-		writeGroup(running, readmeTable{[]string{columnTask, columnRecipe, columnAt, columnOwner}, func(t Task) []string {
+		writeTable(running, readmeTable{columns: []string{columnTask, columnRecipe, columnAt, columnOwner}, cells: func(t Task) []string {
 			return []string{entryCell(t), recipeCell(t), atCell(*t.Status), cellText(t.OwnerMachine)}
 		}})
 	}
 	lines = append(lines, "### "+readySection.name, "", readySection.meaning, "")
 	if ready := byLayer(readyLayer); len(ready) > 0 {
-		writeGroup(ready, waitTable)
+		writeTable(ready, waitTable)
 	} else {
 		lines = append(lines, emptySectionLine, "")
 	}
@@ -291,7 +285,7 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string, 
 		if layer := tasks[start].Layer; layer != runningLayer && layer != readyLayer {
 			section := layerSection(layer)
 			lines = append(lines, "### "+section.name, "", section.meaning, "")
-			writeGroup(tasks[start:end], waitTable)
+			writeTable(tasks[start:end], waitTable)
 		}
 		start = end
 	}
@@ -304,7 +298,7 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string, 
 			byType[typeLabel] = append(byType[typeLabel], twl)
 		}
 	}
-	noteTable := readmeTable{[]string{columnNote}, func(t Task) []string { return []string{entryCell(t)} }}
+	noteTable := readmeTable{columns: []string{columnNote}, cells: func(t Task) []string { return []string{entryCell(t)} }, priority: true}
 	for _, typeLabel := range append(slices.Clone(types), "") {
 		entries := byType[typeLabel]
 		if len(entries) == 0 {
@@ -315,7 +309,7 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string, 
 			heading = typeHeading(typeLabel)
 		}
 		lines = append(lines, "### "+heading, "")
-		writeGroup(entries, noteTable)
+		writeTable(entries, noteTable)
 	}
 
 	var done []TaskWithLayer
@@ -326,7 +320,7 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string, 
 	}
 	if len(done) > 0 {
 		lines = append(lines, "## "+doneSection.name, "", doneSection.meaning, "")
-		writeTable(done, readmeTable{[]string{columnEntry}, func(t Task) []string { return []string{entryCell(t)} }}, 1)
+		writeTable(done, readmeTable{columns: []string{columnEntry}, cells: func(t Task) []string { return []string{entryCell(t)} }})
 	}
 
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
@@ -363,9 +357,24 @@ func slugCell(t Task, designPrefix string) string {
 	return "`" + t.Slug + "`"
 }
 
-// priorityHeading is the heading over an open group's table of one priority, one level below the group's `###` heading.
-func priorityHeading(priority string) string {
-	return "#### " + strings.ToUpper(priority[:1]) + priority[1:] + " priority"
+// priorityCell is H for a high priority, L for a low one and empty for normal.
+func priorityCell(priority string) string {
+	switch priority {
+	case PriorityHigh:
+		return "H"
+	case PriorityLow:
+		return "L"
+	}
+	return ""
+}
+
+// ageCell is the entry's age as of now above the time since its last revision, empty when both dates are unknown.
+func ageCell(t Task, now time.Time) string {
+	age, revised := FormatAge(t.Created, now), FormatAge(t.Revised, now)
+	if age == "" && revised == "" {
+		return ""
+	}
+	return age + cellBreak + revised
 }
 
 // entryCell is the bold title, with the brief as one bullet under it when there is one, then a code-span bullet naming the run profile when there is one and one per run setting.

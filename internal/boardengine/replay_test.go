@@ -37,6 +37,10 @@ func withTitle(title string) func(*Task) {
 	return func(task *Task) { task.Title = title }
 }
 
+func withHandle(handle string) func(*Task) {
+	return func(task *Task) { task.Handle = handle }
+}
+
 func withBody(body string) func(*Task) {
 	return func(task *Task) { task.Body = body }
 }
@@ -259,15 +263,18 @@ func TestFabricReplay(t *testing.T) {
 			wantEntries: map[string]string{"b": "B2", "x": "x"},
 		},
 		{
-			name:        "AddedEntryTakesOriginsNextID",
+			name:        "AddedEntryTakesOriginsNextIDAndAFreeHandle",
 			base:        []Task{replayEntry("a")},
-			origin:      []Task{replayEntry("a"), replayEntry("b")},
+			origin:      []Task{replayEntry("a"), replayEntry("b", withHandle("T2"))},
 			parent:      []Task{replayEntry("a")},
-			commit:      []Task{replayEntry("a"), replayEntry("c")},
+			commit:      []Task{replayEntry("a"), replayEntry("c", withHandle("T2"))},
 			wantEntries: map[string]string{"a": "a", "b": "b", "c": "c"},
 			check: func(t *testing.T, _ string, got map[string]Task) {
 				if got["c"].ID != 2 {
 					t.Errorf("added entry id = %d; want 2, origin's next", got["c"].ID)
+				}
+				if got["b"].Handle != "T2" || got["c"].Handle != "T3" {
+					t.Errorf("handles b %q, c %q; want origin's T2 kept and the added entry on T3, free on origin", got["b"].Handle, got["c"].Handle)
 				}
 			},
 		},

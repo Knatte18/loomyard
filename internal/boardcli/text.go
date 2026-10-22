@@ -13,13 +13,15 @@ import (
 // columnGap separates the listing's columns.
 const columnGap = "  "
 
-// RenderCompact returns one line per entry, in the order given: kind, priority, age, time since last revision, slug, title and the labels joined by commas, each padded to the widest value in its column, then "[<status>]" when the entry's status is set.
+// RenderCompact returns one line per entry, in the order given: handle, kind, priority, age, time since last revision, slug, title and the labels joined by commas, each padded to the widest value in its column, then "[<status>]" when the entry's status is set.
+// The handle column is left out when no entry has a handle.
 // The priority column holds high or low and is blank for a normal entry, and it is left out when every entry is normal.
 // The ages are as of now, blank for an unknown date, and each age column is left out when no entry has that date.
 // Empty input renders as the empty string.
 func RenderCompact(tasks []boardengine.BriefTask, now time.Time) string {
-	var kindWidth, priorityWidth, ageWidth, revisedWidth, slugWidth, titleWidth, labelsWidth int
+	var handleWidth, kindWidth, priorityWidth, ageWidth, revisedWidth, slugWidth, titleWidth, labelsWidth int
 	for _, t := range tasks {
+		handleWidth = max(handleWidth, utf8.RuneCountInString(t.Handle))
 		kindWidth = max(kindWidth, utf8.RuneCountInString(t.Kind))
 		priorityWidth = max(priorityWidth, utf8.RuneCountInString(t.Priority))
 		ageWidth = max(ageWidth, len(boardengine.FormatAge(t.Created, now)))
@@ -31,7 +33,11 @@ func RenderCompact(tasks []boardengine.BriefTask, now time.Time) string {
 
 	var sb strings.Builder
 	for _, t := range tasks {
-		line := pad(t.Kind, kindWidth) + columnGap
+		line := ""
+		if handleWidth > 0 {
+			line += pad(t.Handle, handleWidth) + columnGap
+		}
+		line += pad(t.Kind, kindWidth) + columnGap
 		if priorityWidth > 0 {
 			line += pad(t.Priority, priorityWidth) + columnGap
 		}

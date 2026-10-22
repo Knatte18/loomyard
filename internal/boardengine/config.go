@@ -125,6 +125,7 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig loads and unmarshals the board module configuration strictly through the hub-wide layer stack under dirs.
 // An absent `_lyx/` under the hub's board dir and an absent board.yaml under a present one both refuse naming the file and the `lyx fabric reconcile` way forward.
+// Type labels that would share a handle letter, with each other or with tasks, refuse naming the label to rename.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -159,6 +160,9 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		return Config{}, err
 	}
 	if cfg.Labels, err = decodeLabels("labels", &raw.Labels); err != nil {
+		return Config{}, err
+	}
+	if err := validateTypeLetters(cfg.Types); err != nil {
 		return Config{}, err
 	}
 
