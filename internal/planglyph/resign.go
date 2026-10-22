@@ -97,7 +97,7 @@ func resignAccepted(target glyph.Glyph, res quarry.NameResult) bool {
 	if target.Lang != glyph.CSharp {
 		return res.ID == target.String()
 	}
-	minted, err := glyph.Parse(glyph.CSharp, res.ID)
+	minted, err := planparser.ParseMintedCSharpID(res.ID)
 	return err == nil && sameMemberIgnoringParams(target, minted) && (minted.Params == nil) == (target.Params == nil)
 }
 
@@ -135,7 +135,7 @@ func csharpResignWay(target glyph.Glyph, head string, res quarry.NameResult) str
 		}
 		return way
 	}
-	if minted, err := glyph.Parse(glyph.CSharp, res.ID); err == nil && sameMemberIgnoringParams(target, minted) {
+	if minted, err := planparser.ParseMintedCSharpID(res.ID); err == nil && sameMemberIgnoringParams(target, minted) {
 		return "keep the member's parameter list in the head, or change the member's kind through a Delete and a Create"
 	}
 	return "use a Rename pair for a name change, or write a head that declares the member"

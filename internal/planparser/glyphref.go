@@ -30,6 +30,12 @@ func ParseRef(plan *Plan, ref string) (glyph.Glyph, error) {
 	return glyph.Glyph{}, err
 }
 
+// ParseMintedCSharpID parses an id quarry minted for a C# member, which is a C# glyph whatever the plan around it says.
+// A caller reading a quarry answer uses it so that it never chooses an alphabet itself.
+func ParseMintedCSharpID(id string) (glyph.Glyph, error) {
+	return glyph.Parse(glyph.CSharp, id)
+}
+
 // PathEntryPath returns the worktree-relative path a canonicalized path entry names, and false when ref is not a self glyph.
 // It reads ref in the Go alphabet whatever the plan's language, since quarry spells a path in the Go unit alphabet under every language.
 // It is the one place a ref is read as a path regardless of language, so a caller that compares a ref's file extension never chooses an alphabet itself.
