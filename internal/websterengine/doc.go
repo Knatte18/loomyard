@@ -96,10 +96,17 @@
 // A batch reaches terminal down one of two paths — record-batch after an
 // ordinary in-session fork, or recover-batch after a cold recovery strand —
 // and both run the identical post-batch mechanical pass (postBatchChecks):
-// the card done-checks, one shared delta, handle binding, the informational
+// the card done-checks, the re-sign rebind, one shared delta, handle binding, the informational
 // glyph scope guard, and drift detection with its exact-tier auto-repair,
 // plus the plan-staleness re-baseline each rewrite among them requires.
 // The guard's result lands in the batch digest's deviation list, never in the warnings.
+//
+// The re-sign rebind runs right after the done-checks and before the delta.
+// It carries a recorded C# re-sign arrow of the batch's cards into the plan:
+// every later card naming the member by its old glyph then names the minted id, and an arrow whose edit is not in the tree fails the batch as resign-not-done.
+// When the rebind rewrote the plan, the pass restamps the plan fingerprint, re-parses the plan and re-reads the batch's cards from it.
+// The guard and drift detection then read the re-read plan.
+// The guard's targets are the cards as recorded and as re-read, so a re-signed member's old glyph and its minted id both count as the batch's own.
 // A batch that reached done through a recovery is exactly as done as one
 // that reached it through a fork, and Master's own failure ladder treats a
 // terminal recovery digest as "move on to the next batch" — so a recovery

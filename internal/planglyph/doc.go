@@ -45,6 +45,9 @@
 //     policy understands.
 //     A member whose every declaration sits in files no single build environment selects together is one member, so a partitioned ambiguous answer resolves;
 //     the detail of an unpartitioned one names each candidate's file and build constraint.
+//     Build-constraint partitioning reads `.go` candidate sets only: a candidate set holding any other file is never partitioned, and such a file is described as carrying no constraint, so a name such as `Foo_windows.cs` is never read as one.
+//     A self glyph that two alphabets both match is an ambiguous answer with no candidates and a non-empty list of languages, and its detail names those languages and the way forward in place of an empty candidate list:
+//     name the file as a slashed path self glyph, or a member as `lyx quarry glyphs` lists them.
 //     The passes that raise glyph-rejected are resolve.go, create.go, deleteorder.go and donecheck.go — one per fail-closed status policy in the package;
 //     each is named at its own bullet, and the double report one anomalous target can produce across two of them is accepted by design.
 //   - create-already-exists (blocking), create-new-unit (informational) — the Create inversion
@@ -60,6 +63,19 @@
 //     A member partitioned by build constraints is looked up through its candidates, which are its declarations.
 //   - resign-head-mismatch (blocking) — nameResigns (resign.go), an Edit re-sign arrow whose head quarry.Name cannot name or names as a member other than the arrow's own glyph.
 //     It reads plan text alone, so it runs wherever resolvePass does, ValidateDispatch included.
+//     nameResigns names every arrow before the plan's batched resolve, and nameDeclarations (handle.go) is the package's one quarry.Name site, shared with CanonicalizeHandles, while resolveTargets stays the one resolve site.
+//     A Go arrow is accepted when the minted id is its target's own.
+//     A C# arrow is accepted when the minted id is its target's apart from the parameter list, with both written with parentheses or both without, since a re-sign changes the parameter list and so the id.
+//     A C# arrow's way forward depends on how the head failed: correct the head to one quarry names under the owner chain, keep the parameter list or change the member's kind through a Delete and a Create, or use a Rename pair for a name change.
+//   - resign-overload-collision (blocking) — resignCollisionFindings (resign.go), an accepted C# arrow whose minted id differs from its target and collides with an existing overload that resolves found, with a Create or Rename handle that binds to the same id, or with another arrow's minted id on a different target.
+//     The finding is attributed to the later of the two cards and names the earlier, and it is lifted when a card in the span between the two declarations deletes the colliding member, renames it away or re-signs it away.
+//     A card names a re-signed C# member by its old glyph until the re-sign is recorded.
+//   - resign-not-done (blocking) — RebindResigns (resign.go), reached from the post-batch pass of record-batch and recover-batch: a recorded C# arrow whose minted id does not resolve found in the tree, so the card's edit does not match its arrow.
+//     Fail closed, only a found answer shows the edit declares the arrow's head, and nothing is rewritten.
+//     When every minted id resolves found, one plan.RewriteRefs call rewrites each old glyph to its minted id plan-wide, so a later card naming the member by its old glyph names the minted id.
+//     A Go arrow, an arrow whose minted id is its target and a plan whose language opts out of glyphs do nothing.
+//   - plan-language-mismatch (blocking) — languageMismatchFindings (languagemismatch.go), the resolve-backed half of the check planparser also makes from plan text: a go plan whose targets resolve into `.cs` files and no `.go` file.
+//     It is plan-level, runs only when no card is done, and never fires when a card creates a declaration whose head opens with a Go keyword.
 //   - redundant-file-target (blocking) — planGatePass (plangate.go), a card listing a file self glyph beside a member glyph that resolves into that file.
 //     A partitioned member's candidates are its declarations, so a file holding one of them counts.
 //     It runs at the plan gates only (ValidateFormat, ValidateFormatAfter over its cards not done, Validate and so ValidateRework), never at ValidateDispatch.
@@ -85,10 +101,17 @@
 //   - handle-name-failed, handle-canonical-collision (both blocking) — CanonicalizeHandles
 //     (handle.go), a declaration that fails to parse or two draft handles that canonicalize to the
 //     same glyph.
+//     A handle's alphabet is the Lang of planparser.ParseRef over its body.
+//     A C# Create handle is `plan:<namespace>#<owner.member>`, and its declaration is named under that namespace with the owner chain as `Owner`, less the explicit-interface qualifier the head writes.
+//     That qualifier is the longest trailing run of owner components the head spells, dotted and immediately before the declared name, compared in the canonical C# spelling of type arguments, so `IPair<string, int>.First` qualifies the owner component `IPair<string,int>`.
+//     A body the C# alphabet rejects is one handle-name-failed and quarry is not asked to name it;
+//     a head whose qualifier is spelled non-canonically and refused by quarry names the canonical spelling as the way forward.
 //   - rename-old-unresolved (blocking) — renameDeclSource (handle.go), a Rename pair's Old side
 //     that does not resolve found, so no declaration can be derived for its handle-shaped New side.
 //     An old side declared once per build-constraint set stays unresolved, since a rename derives from exactly one declaration;
 //     its detail names each candidate's file and constraint and the way forward: a Delete of the old member and one Create declaration of the new member's handle on a card that edits each of the old member's files, or an Edit of each file's body.
+//     A C# symbol's declaration is derived by renameCSharpHead from its signature, under the old symbol's unit and owner chain, with the declared name token replaced by the new handle's name without its generic arity suffix.
+//     A field, const or event gets a one-declarator head, and a member no identifier names, an operator, an indexer, a finalizer or a static constructor, is rename-old-unresolved with the way forward of dropping the pair.
 //   - bind-count-mismatch (blocking) — BindHandles (handle.go), a card whose own handles (its
 //     Create declarations AND any Rename pair's still-handle-shaped New side, per planparser.OwnedHandles)
 //     the record-batch delta matched fewer of than it owns.
@@ -99,6 +122,7 @@
 //     file, a package target every symbol in a file directly in its directory), and a changed file
 //     the delta gives no symbols for that no card target covers, file-granular: a target's file or
 //     package directory lets a symbol-less change through.
+//     ScopeGuard receives the plan, so it parses each target in the plan's alphabet.
 //   - create-not-done, delete-not-done, rename-not-done (all blocking) — DoneChecks (donecheck.go):
 //     a Create target that still does not resolve, a Delete target that still does, or a Rename
 //     pair whose old side still resolves or whose new side still does not, after the batch that was
