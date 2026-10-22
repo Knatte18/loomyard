@@ -12,6 +12,7 @@
 # A fan is turned off at the loom or darn fan key entry that names it, by pointing the entry at another fan or setting it to "".
 #
 # lens_set: names one embedded language layer under sets/ whose lenses and fans replace or add base entries by name; "" picks none.
+# The base names no language, and its rules lenses read the repository's own rules.
 # Only the base file may hold it: the hub file in a hub, set with "lyx config lenses --layer default --set lens_set=<name>" from the hub's prime worktree.
 # A name this file defines still beats the layer.
 #
@@ -54,17 +55,17 @@ lenses:
     doesn't actually handle the way it looks like it does. Report anything
     else you notice too — emphasis, never exclusion.
   error-handling: |
-    Focus on how failures are handled: swallowed or discarded errors, wrong or
-    missing error wrapping/context, return values ignored where they carry a
-    failure signal, panics used where a returned error is more appropriate,
+    Focus on how failures are handled: swallowed or discarded failures,
+    missing context on a propagated failure, a result that carries a failure
+    signal being ignored, a crash used where a reported failure fits better,
     and failure paths that leave state inconsistent. Report anything else you
     notice too — emphasis, never exclusion.
   test-gaps: |
-    Focus on test coverage: behavior with no test at all, missing edge/negative
-    cases in an otherwise-tested function, table-driven tests missing an
-    obvious case their own table structure invites, and assertions weak enough
-    to pass even if the code under test regressed. Report anything else you
-    notice too — emphasis, never exclusion.
+    Focus on test coverage: behavior with no test at all, missing edge and
+    negative cases in an otherwise-tested unit, a parameterized test missing
+    an obvious case its own table invites, and assertions weak enough to pass
+    even if the code under test regressed. Report anything else you notice
+    too — emphasis, never exclusion.
   security: |
     Focus on security-relevant issues: unchecked or unsanitized input, injection
     surfaces (command, path, query), unsafe deserialization, secrets or
@@ -72,26 +73,28 @@ lenses:
     trusts data it should verify. Report anything else you notice too —
     emphasis, never exclusion.
   performance: |
-    Focus on performance: unnecessary allocations or copies in hot paths,
-    quadratic or worse patterns over data that can grow, blocking calls where a
-    non-blocking one is available, unbounded loops/memory/goroutines, and
-    inefficient use of the standard library where a direct alternative exists.
-    Report anything else you notice too — emphasis, never exclusion.
+    Focus on performance: needless allocations or copies on hot paths,
+    quadratic or worse work over data that can grow, blocking calls where a
+    non-blocking one exists, unbounded loops, memory or concurrent tasks, and
+    a hand-rolled path where the platform's library has a direct one. Report
+    anything else you notice too — emphasis, never exclusion.
   api-design: |
-    Focus on the public surface: naming and signature consistency with the rest
-    of the package, whether exported symbols are documented, backward
-    compatibility of any changed signature, and whether parameter/return
-    shapes make the common call easy and the misuse hard. Report anything else
-    you notice too — emphasis, never exclusion.
+    Focus on the public surface: naming and signature consistency with the
+    rest of the code, whether the public surface is documented, backward
+    compatibility of any changed signature, and whether the shape of a call
+    makes the common case easy and misuse hard. Report anything else you
+    notice too — emphasis, never exclusion.
   concurrency: |
     Focus on concurrency: shared state touched without synchronization, races
-    between goroutines, goroutine or resource leaks on early return, deadlock
-    potential from lock ordering or blocking channel operations, and context
-    cancellation that is accepted but not actually honored. Report anything
-    else you notice too — emphasis, never exclusion.
+    between concurrent tasks, task or resource leaks on early return, deadlock
+    from lock ordering or blocking hand-offs, and cancellation that is
+    accepted but not honored. Report anything else you notice too — emphasis,
+    never exclusion.
   docs-consistency: |
     Focus on documentation drift: comments or docs that no longer match the
-    code they describe, module docs or PATTERN entries a behavior
+    code they describe, documents of the repository's own rules (the PATTERN.md
+    entries and pattern/ background files where the repository has a
+    PATTERN.md, otherwise the rules its CLAUDE.md files state) that a behavior
     change should have updated but didn't, stale references to removed or
     renamed symbols, and examples that would no longer compile or run as
     written. Report anything else you notice too — emphasis, never exclusion.
@@ -103,9 +106,11 @@ lenses:
     you notice too — emphasis, never exclusion.
   pattern-fit: |
     Focus on fit with the repo's rules: check every decision or card against
-    the PATTERN.md entries and the pattern/ background files it touches, and
-    flag a departure that does not name the entry it changes. Report anything
-    else you notice too — emphasis, never exclusion.
+    the repository's own rules it touches, the PATTERN.md entries and pattern/
+    background files where the repository has a PATTERN.md, otherwise the
+    rules its CLAUDE.md files state, and flag a departure that does not name
+    the rule it changes. Report anything else you notice too — emphasis,
+    never exclusion.
   scenarios: |
     Focus on scenarios: failure, restart and resume, concurrency, empty state
     and invalid input. Apply the Discussion-Review rubric's "The attack-surface
@@ -275,9 +280,11 @@ lenses:
     or row, open the existing tests of the same function. Apply the rubric's
     "Test economy". Your list: per behaviour, the test that pins it, or none.
   code-pattern-fit: |
-    Own the diff's fit with the repository's rules. Read the repository's
-    constraints document and the pattern files the diff touches, and check
-    every changed file against each rule that applies to it. Apply whichever
+    Own the diff's fit with the repository's rules. Read the repository's own
+    rules, the PATTERN.md entries and the pattern/ background files the diff
+    touches where the repository has a PATTERN.md, otherwise the rules its
+    CLAUDE.md files state, and check every changed file against each rule that
+    applies to it. Apply whichever
     of the rubric's "The repository's own rules", "Declared PATTERN changes
     landed", "Commit messages and departures", "A broken invariant" and "A
     pattern the parent changed" this round's rubric carries. Your list: each

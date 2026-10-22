@@ -325,14 +325,36 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 					}
 				}
 			}
-			if layerName == "go" {
-				for _, name := range []string{"error-handling", "test-gaps", "performance", "api-design", "concurrency"} {
-					if loaded.Lenses[name] != cfg.Lenses[name] {
-						t.Errorf("lens %q under lens_set go = %q; want the base template's %q", name, loaded.Lenses[name], cfg.Lenses[name])
+			if layerName == "csharp" {
+				if _, ok := loaded.Lenses["numerics"]; !ok {
+					t.Errorf("lens numerics is undefined under lens_set csharp")
+				}
+				for _, fanName := range []string{"review-code", "full"} {
+					resolved, err := ResolveFan(loaded, fanName)
+					if err != nil {
+						t.Fatalf("ResolveFan(%s) under lens_set csharp: %v", fanName, err)
+					}
+					if last := resolved[len(resolved)-1].Name; last != "numerics" {
+						t.Errorf("ResolveFan(%s) under lens_set csharp ends with %q; want numerics", fanName, last)
 					}
 				}
 			}
 		})
+	}
+
+	var goConfig Config
+	if err := yaml.Unmarshal(lensSets()["go"], &goConfig); err != nil {
+		t.Fatalf("decode layer go: %v", err)
+	}
+	for _, name := range []string{"error-handling", "test-gaps", "performance", "api-design", "concurrency"} {
+		if cfg.Lenses[name] == goConfig.Lenses[name] {
+			t.Errorf("base lens %q equals the go layer's prose; want the base language-neutral", name)
+		}
+		for _, word := range []string{"goroutine", "panic"} {
+			if strings.Contains(cfg.Lenses[name], word) {
+				t.Errorf("base lens %q names %q; want no language named", name, word)
+			}
+		}
 	}
 }
 
