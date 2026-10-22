@@ -546,8 +546,10 @@ func TestGlyphChain_CSharp(t *testing.T) {
 		dispatch     []findingKey
 		// completed is how many leading cards ValidateDispatch treats as already built.
 		completed int
-		// detail is a substring the single plan-gate finding's detail must hold, when set.
-		detail string
+		// details are substrings the single plan-gate finding's detail, and the done-check finding's when doneCheck is set, must each hold.
+		details []string
+		// doneCheck is the one finding DoneChecks over every card must report, when set.
+		doneCheck *findingKey
 	}{
 		{
 			name:         "a go plan editing a C# member that resolves into a .cs file only is a language mismatch",
@@ -555,7 +557,7 @@ func TestGlyphChain_CSharp(t *testing.T) {
 			cards:        []string{editCard(namespace + "#Renderer.Title")},
 			planFindings: mismatch,
 			dispatch:     mismatch,
-			detail:       "language:",
+			details:      []string{"language:"},
 		},
 		{
 			name:     "a go plan beside a Go member is no mismatch",
@@ -630,7 +632,32 @@ func TestGlyphChain_CSharp(t *testing.T) {
 			cards:        []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.Bad(Int32)", head: "public void Bad(int count)"})},
 			planFindings: []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}},
 			dispatch:     []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}},
-			detail:       "plan:<namespace>#<owner.member>",
+			details:      []string{"plan:<namespace>#<owner.member>"},
+		},
+		{
+			name:         "an Edit of a namespace self glyph that a directory also names is glyph-ambiguous at both gates",
+			cards:        []string{editCard(namespace + "#")},
+			files:        map[string]string{namespace + "/readme.txt": "readme\n"},
+			planFindings: []findingKey{{"glyph-ambiguous", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"glyph-ambiguous", "1-card1", SeverityBlocking}},
+			details:      crossAlphabetDetails,
+		},
+		{
+			name:         "a Create of a namespace self glyph that a directory also names is create-already-exists",
+			cards:        []string{"**Create:**\n- `" + namespace + "#`\n\n**Intent:** create\n"},
+			files:        map[string]string{namespace + "/readme.txt": "readme\n"},
+			planFindings: []findingKey{{"create-already-exists", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"create-already-exists", "1-card1", SeverityBlocking}},
+			details:      crossAlphabetDetails,
+		},
+		{
+			name:         "a Delete of a namespace self glyph that a directory also names is delete-not-done",
+			cards:        []string{deleteCard(namespace + "#")},
+			files:        map[string]string{namespace + "/readme.txt": "readme\n"},
+			planFindings: []findingKey{{"glyph-ambiguous", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"glyph-ambiguous", "1-card1", SeverityBlocking}},
+			details:      crossAlphabetDetails,
+			doneCheck:    &findingKey{"delete-not-done", "1-card1", SeverityBlocking},
 		},
 	}
 	for _, tt := range tests {
@@ -655,17 +682,41 @@ func TestGlyphChain_CSharp(t *testing.T) {
 			} else {
 				assertDispatch(t, plan, root, tt.dispatch)
 			}
-			if tt.detail == "" {
-				return
+			if len(tt.details) > 0 {
+				findings, err := ValidateFormat(plan, root)
+				if err != nil {
+					t.Fatalf("ValidateFormat(...) returned error: %v", err)
+				}
+				assertSingleFindingDetails(t, "ValidateFormat", findings, tt.details)
 			}
-			findings, err := ValidateFormat(plan, root)
-			if err != nil {
-				t.Fatalf("ValidateFormat(...) returned error: %v", err)
-			}
-			if len(findings) != 1 || !strings.Contains(findings[0].Detail, tt.detail) {
-				t.Errorf("ValidateFormat findings = %+v; want one whose detail contains %q", findings, tt.detail)
+			if tt.doneCheck != nil {
+				findings, err := DoneChecks(plan, plan.Cards, root)
+				if err != nil {
+					t.Fatalf("DoneChecks(...) returned error: %v", err)
+				}
+				if got := sortedKeys(findings); !slices.Equal(got, []findingKey{*tt.doneCheck}) {
+					t.Errorf("DoneChecks findings = %+v; want %+v", got, *tt.doneCheck)
+				}
+				assertSingleFindingDetails(t, "DoneChecks", findings, tt.details)
 			}
 		})
+	}
+}
+
+// crossAlphabetDetails are the phrases a cross-alphabet ambiguity's detail holds: both alphabets and the way forward.
+var crossAlphabetDetails = []string{"csharp", "go", "name the file"}
+
+// assertSingleFindingDetails fails unless findings is one finding whose detail holds every one of details.
+func assertSingleFindingDetails(t *testing.T, source string, findings []Finding, details []string) {
+	t.Helper()
+	if len(findings) != 1 {
+		t.Errorf("%s findings = %+v; want one", source, findings)
+		return
+	}
+	for _, detail := range details {
+		if !strings.Contains(findings[0].Detail, detail) {
+			t.Errorf("%s detail %q lacks %q", source, findings[0].Detail, detail)
+		}
 	}
 }
 

@@ -214,6 +214,9 @@ func doneCheckVerdicts(worktreeRoot string, entries []doneCheckEntry, index map[
 		resolved := r.Status == quarry.StatusFound || r.Status == quarry.StatusMultipart || classified.Partitioned
 		stillExists := r.Status != quarry.StatusNotFound
 		lookup := lookupDescription(e.key, r.Status, r.Unit == quarry.StatusFound, classified.Candidates)
+		if crossDetail, crossAlphabet := crossAlphabetDetail(r); crossAlphabet {
+			lookup = fmt.Sprintf("looked up %q, quarry answered ambiguous: %s", e.key, crossDetail)
+		}
 
 		switch e.checkID {
 		case "create-not-done":
