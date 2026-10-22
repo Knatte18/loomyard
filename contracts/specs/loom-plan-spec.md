@@ -59,7 +59,7 @@ _lyx/plan/
 format: 5
 approved: true
 root: <optional worktree-relative dir>   # optional; see Card path resolution below
-language: go                             # optional; "go" (default) or "none" — see The shape classifier below
+language: go                             # optional; "go" (default), "csharp" or "none" — see The shape classifier below
 first_card: 1                            # optional positive integer, default 1; see Numbering and commit subject below
 ```
 
@@ -98,6 +98,12 @@ Each card lives in its own file, and the file's content is:
 
    An `Edit` bullet may carry the re-sign arrow, `` `<glyph>` -> `<new declaration head>` ``, which marks a signature change and states the new head, parsed like a `Create` declaration head.
    The left token stays an ordinary `Edit` target, and it must name a member glyph: a file, a package or a handle has no prior signature to re-sign (`resign-not-member`).
+   Under `language: csharp` the head is C# source, and a re-sign obeys these bounds:
+   the head must declare the same member, with the same namespace, owner chain and name, and change only its parameter list;
+   a member with a parameter list stays one with a parameter list and a member without one stays without, so a change of kind goes through a `Delete` and a `Create`;
+   the head must not mint the id of an overload that already exists or that another card declares (`resign-overload-collision`);
+   and a later card names the re-signed member by its old glyph, the glyph left of the arrow, until the batch that re-signs it is recorded, after which webster rewrites that old glyph to the new one plan-wide.
+   A later card that names the member by its old glyph therefore runs in a later batch, and a re-sign whose edit the tree does not hold fails its batch as `resign-not-done`.
 
    A card carrying a `**Custom:**` group may carry no group of a different type — `Custom` groups may repeat, but never combine with any of the other six.
    A `Rename` label's sub-bullets instead carry `` `old` -> `new` `` pairs — see [Rename and Move](#rename-and-move) below.
@@ -162,7 +168,19 @@ A card's own target/`Uses`/`Rename`-pair entries mix **glyphs**, `plan:` handles
    Canonicalization carries the rule the rest of the way: a slash-free path-shaped entry is canonicalized to its self glyph even without a file extension (see the "Card path resolution" section below), so the spelling this rule admits is one every glyph-backed layer downstream can act on rather than a bare token `quarry` rejects before resolution.
 5. Otherwise, it is a **bare symbol** — the explicit default for an entry whose final dot-segment is not all-lowercase-alphanumeric (`shedrecipe.Lookup`).
 
-The overview frontmatter's optional `language:` key gates this alphabet: `"go"` (the default when the key is absent) enables `glyph.Go`'s grammar for rules 1-2 and the two hard rules below; `"none"` opts a plan out of the glyph alphabet entirely, keeping a bare-symbol entry legal exactly as it was before this alphabet existed.
+The overview frontmatter's optional `language:` key gates this alphabet: `"go"` (the default when the key is absent) enables `glyph.Go`'s grammar for rules 1-2 and the two hard rules below; `"csharp"` enables `glyph.CSharp`'s grammar for the same rules; `"none"` opts a plan out of the glyph alphabet entirely, keeping a bare-symbol entry legal exactly as it was before this alphabet existed.
+The planner sets `language: csharp` when the code the cards change is C#, read from the extension of the files the cards name, and leaves the default for Go code.
+
+**The alphabet under `language: csharp`.**
+Each ref of the plan, and each `plan:` handle's body, is read in the C# alphabet.
+A ref both alphabets parse is C#.
+A ref only the Go alphabet parses is accepted only when it is a self glyph, since a path is always spelled as a self glyph in the Go unit alphabet; any other such ref is a `glyph-malformed` finding.
+A C# member glyph has the shape `<namespace>#<owner.member>`, and a method's, constructor's or indexer's carries its parameter list, as in `Glyphchain.Sharp#Renderer.Draw(int)`.
+Copy a member glyph from a quarry answer with its parameter list, since a spelling without the list names a member that has none.
+A `.cs` file is written as a plain path such as `src/Renderer.cs`, which the parser canonicalizes to its file self glyph as it does a `.go` file.
+A slash-free self glyph such as `Glyphchain.Sharp#` names a namespace, never a path.
+A plan that names a repository-root file or directory without a slash is therefore not checked against the disk under `csharp`; spell it as a slashed path or a member.
+A ref that more than one alphabet matches is not guessed at: quarry answers it ambiguous with the matching languages, and the way forward the finding names is a slashed path self glyph for the file or a member glyph.
 
 **Two hard rules, both skipped under `language: none`:**
 
@@ -244,6 +262,13 @@ The left-hand token is the handle itself — `plan:<unit>#<member>`-shaped, the 
 **The declaration head is parsed as source, not read as prose, and must declare exactly one symbol.**
 `quarry.Name` wraps it in a synthetic file and parses it with the same grammar the walk uses, so a placeholder body (`type RowJSON struct{...}` — `...` is not Go) fails to parse and is the blocking finding `handle-name-failed`, and a head declaring several symbols (`const A, B = 1, 2`, an interface written out with its methods) is rejected for that instead.
 A bare head is complete and is the form to write: `type RowJSON struct`, `func newRowJSON(r Row) RowJSON`, `type Reader interface`, and — for a method, receiver included — `func (c *Cache) Get(k string) (Row, bool)`.
+
+Under `language: csharp` a handle is `plan:<namespace>#<owner.member>`, and its declaration head is C# source with the same one-symbol rule, such as `public void Draw(int width)` for `plan:Glyphchain.Sharp#Renderer.Draw(int)`.
+The handle's owner chain names the types that hold the member, and a head that declares the member through an explicit interface writes the interface as a qualifier before the member's name.
+The qualifier is the trailing owner components, which the head writes itself, so the handle `plan:Glyphchain.Sharp#Renderer.IPair<string,int>.First` has the head `int IPair<string,int>.First { get; }`.
+A head, a handle's or a re-sign arrow's, spells the qualifier in the canonical C# spelling of its type arguments, with no space after a comma and the keyword for a built-in type, and a head with another spelling, such as `IPair<string, int>.`, is refused with the canonical one named.
+A body the C# alphabet rejects is `handle-name-failed`.
+A `Rename` pair under `csharp` has a handle `New` side like any symbol pair: its declaration is derived from the resolved old symbol with the declared name replaced by the new handle's name, and a member no identifier names, an operator, an indexer, a finalizer or a static constructor, cannot be renamed this way.
 
 Once bound, a `Create` declaration bullet collapses to the plain `` - `<glyph>` `` ref form every other `Create` target uses: the declaration head existed only to compute the glyph that has now been computed, and keeping the arrow beside a non-handle left token would fail `handle-malformed`.
 
@@ -385,7 +410,7 @@ It runs only on a loom run, and an absent record adds nothing; a record whose se
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
 
 1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.
-2. `plan-language-unrecognized` — `language:` (when present) is `"go"` or `"none"`; else flagged, naming the offending value and the two legal ones. Absent defaults to `"go"` and is never flagged.
+2. `plan-language-unrecognized` — `language:` (when present) is `"go"`, `"csharp"` or `"none"`; else flagged, naming the offending value and the three legal ones. Absent defaults to `"go"` and is never flagged.
 3. `plan-unapproved` — `approved: true`; else refuse to run.
    This is a consumer guard, and its "else refuse to run" is deliberately not enforced by every caller: both plan gate sites — `Plan-Write`'s and `Plan-Burler-Fix`'s own gates — run only the format-only set, `ValidateFormat`, strictly before the review segment's approve seam ever writes the flag, so neither one re-checks it. Every standalone plan consumer (`internal/websterengine`, `internal/webstercli`, `internal/batcher`) still enforces it through `Validate`, the full entry point — the plan writer is forbidden from setting the flag, and the review segment (`Plan-Bouncer`'s approved settle) is what writes it, so a pre-review gate demanding it would be demanding something only review itself can produce, and no row in the recipe re-checks it once written.
 4. `index-file-mismatch` — Card Index ↔ card files consistent (numbering from `first_card` upward, slugs, no gaps, no orphaned file on disk).
@@ -451,6 +476,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     A `Move` of a `go.mod` is not counted, so its verdict on a later card can differ between the plan gate and dispatch.
 31. `resign-head-mismatch` — an `Edit` re-sign arrow whose head `quarry.Name` cannot name, or names as a member other than the arrow's own glyph; a changed receiver type names another member, while a value-to-pointer receiver change keeps the member path and matches.
     The finding names the head, the glyph and what `Name` answered; the way forward is to write the member's new declaration head, receiver included for a method.
+    Under `language: csharp` an arrow is accepted when `Name` answers the glyph's own namespace, owner chain and name, with the parameter list free to change, and the way forward depends on how the head failed: correct the head to one `Name` accepts under the owner chain, naming the canonical spelling of an explicit-interface qualifier when that is what `Name` refused; keep the member's parameter list in the head, or change the member's kind through a `Delete` and a `Create`; or use a `Rename` pair for a name change.
     Emitted by `internal/planglyph`'s resolve pass at every gate, `ValidateDispatch` included, since it reads plan text alone; skipped entirely under `language: "none"`.
 32. `delete-before-reference` — a `Delete:` target that is a member glyph or a package self glyph, while a card with a higher number still references it in its `Edit:` code (a member glyph's resolved span, or the whole file of a path or file self glyph).
     A reference is found through the computation of `caller-uncovered` (row 35), typed where its load answers and by the import-path scan elsewhere, never textually, and only in `.go` files outside the directories the go tool ignores (`testdata`, `vendor`, and names starting with `.` or `_`); a comment, a string literal and a non-Go `Edit:` target never match.
@@ -550,6 +576,27 @@ The rows below stay in one fixed order regardless of which entry point runs them
 46. `plan-verify-retired` (informational) — an overview carrying a `## verify:` section.
     No gate runs it; the parser keeps accepting the section, so an in-flight plan still parses.
     It is appended as `verify-raw-command` is and never blocks.
+47. `plan-language-mismatch` — a plan whose `language:` does not fit the files its cards target.
+    Under `go` it fires when the cards' file targets are `.cs` files and no `.go` file, or when the targets resolve into `.cs` files only; under `csharp` it fires when they are `.go` files and no `.cs` file.
+    A member glyph, a `plan:` handle or an extensionless self glyph shows the plan may name code of its own language and silences the plan-text half, and the resolve half runs only when no card is done and is silent when a card creates a declaration whose head opens with a Go keyword.
+    One blocking plan-level finding; its way forward is to set `language:` to the files' language, or to `none` for a plan that changes both.
+    It never fires under `language: none`; `internal/planparser` raises the plan-text half, and `internal/planglyph`'s resolve pass the resolve half.
+48. `rename-namespace-pair` — under `language: csharp`, a `Rename` pair of two self glyphs whose old side has no slash and names nothing on disk, such as `Glyphchain.Sharp# -> Glyphchain.Core#`.
+    Such a pair is a file pair that runs `git mv`, so a namespace cannot be renamed this way.
+    One blocking finding per pair, attributed to the card; its way forward is to rename the namespace through `Edit` cards on the files that declare it and the files that refer to it, to correct the old side to a root file that exists, or, when a later card creates the old side, to move the pair after that card.
+    A path an earlier card creates is no finding; under `go` the same pair is `path-missing`'s.
+49. `resign-overload-collision` — under `language: csharp`, an accepted `Edit` re-sign arrow whose new head mints the id of an overload that already exists, of a `Create` or `Rename` handle, or of another arrow.
+    One blocking finding attributed to the later of the two cards, naming the earlier one; it is lifted when a card between the two declarations deletes the colliding member, renames it away or re-signs it away.
+    Its way forward is to change the head to a free signature, or to remove or re-sign the other declaration on an earlier card.
+    Emitted by `internal/planglyph`'s resolve pass at every gate, since it reads plan text and the tree's overloads.
+50. `resign-not-done` — under `language: csharp`, a recorded `Edit` re-sign arrow whose minted id does not resolve in the tree, so the card's edit does not match its arrow.
+    One blocking finding attributed to the card; its way forward is to make the edit match the arrow's head, or to correct the head to the signature the card wrote and run `lyx webster rebaseline --card <N>` naming that card.
+    It is raised only at webster's record-batch and recover-batch, never at a plan gate, and when every arrow of the batch is done webster rewrites each old glyph to its new one plan-wide.
+
+`plan-language-mismatch` and `rename-namespace-pair` run in the position of their own place in the order, not of their numbers: the first right after `plan-language-unrecognized`, the second right after `path-missing`.
+
+A plan under `language: csharp` skips the checks that read Go source or Go toolchain semantics: `verify-nested-module`, `verify-module-wide`, `verify-package-missing`, the `.go` file-unit half of `handle-malformed`, `delete-before-reference`, `caller-uncovered`, and the Go package-directory mapping of a unit.
+The remaining checks run under it as they do under `go`.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.
