@@ -69,7 +69,10 @@ type SetResult struct {
 // P.<name> is known for any dot-free name, every name existing holds under P and the template lacks is carried onto the mapping, and the pair sets the name, appending it when absent.
 // Once the pairs apply, every name under P holding the template's value for it is left out of Merged, a name a pair set included.
 // Under a mapping of scalars the value is a string whatever its first character;
-// under a mapping of lists it is a YAML flow list, and a value that is no list is an error.
+// under a mapping of lists it is a YAML flow list, and a value that is no list is an error;
+// under a mapping of mappings it is a YAML flow mapping, and a value that is no flow mapping is an error.
+// A per-name map of mappings also knows P.<name>.<rest> for any name, where rest is a scalar or list path some template entry holds:
+// the pair sets that one key in the name's mapping, creating it, under the template entry's tag or as a flow list.
 // A pair under P whose existing value at P is neither a mapping nor null is an error naming P and its shape.
 func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, openMaps ...string) (SetResult, error) {
 	// Parse the template into the tree we will mutate and ultimately marshal.
@@ -78,8 +81,15 @@ func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, open
 		return SetResult{}, err
 	}
 
+	// The pristine template decides the per-name entry shapes and, once the pairs apply, which names hold the template's value;
+	// templateNode itself takes existing's values and names below.
+	var pristine yaml.Node
+	if err := yaml.Unmarshal(template, &pristine); err != nil {
+		return SetResult{}, err
+	}
 	scalarOrListPaths := scalarOrListOpenMapPaths(&templateNode, openMaps)
-	listPerNamePaths := listPerNameMapPaths(&templateNode, perNameMaps)
+	entryKinds := perNameEntryKinds(&pristine, perNameMaps)
+	entryLeaves := perNameEntryLeaves(&pristine, perNameMaps, entryKinds)
 
 	var existingNode yaml.Node
 	if len(existing) > 0 {
@@ -96,7 +106,7 @@ func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, open
 	templateSequences := make(map[string]*yaml.Node)
 	collectSequencePaths(&templateNode, "", templateSequences)
 
-	known := knownKeys(templateLeaves, templateSequences, openMaps, perNameMaps)
+	known := knownKeys(templateLeaves, templateSequences, openMaps, perNameMaps, entryLeaves)
 
 	// preserved collects the root-key-granularity graft step's key names
 	// (below), reported to the caller via SetResult.Preserved. It stays nil
@@ -128,11 +138,11 @@ func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, open
 	// Validate every requested key against the template's leaf set before
 	// mutating anything, so a single unknown key rejects the whole call
 	// rather than silently applying a partial write.
-	if unknown := unknownKeys(pairs, templateLeaves, templateSequences, openMaps, perNameMaps); len(unknown) > 0 {
+	if unknown := unknownKeys(pairs, templateLeaves, templateSequences, openMaps, perNameMaps, entryLeaves); len(unknown) > 0 {
 		return SetResult{Unknown: unknown, Known: known}, nil
 	}
 
-	// Every key is now guaranteed to have a real node in templateNode, since
+	// Every key but a per-name entry key is now guaranteed to have a real node in templateNode, since
 	// the working tree always contains every template leaf. Apply pairs in
 	// order so a repeated key's later value wins.
 	for _, pair := range pairs {
@@ -156,7 +166,18 @@ func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, open
 			if err := perNameShapeError(&existingNode, perName); err != nil {
 				return SetResult{}, err
 			}
-			if err := setPerNameEntry(&templateNode, perName, name, pair, slices.Contains(listPerNamePaths, perName)); err != nil {
+			if err := setPerNameEntry(&templateNode, perName, name, pair, entryKinds[perName]); err != nil {
+				return SetResult{}, err
+			}
+			continue
+		}
+		_, isLeaf := templateLeaves[pair.Key]
+		_, isSequence := templateSequences[pair.Key]
+		if perName, entryLeaf, ok := splitPerNameEntryKey(pair.Key, perNameMaps, entryLeaves); ok && !isLeaf && !isSequence {
+			if err := perNameShapeError(&existingNode, perName); err != nil {
+				return SetResult{}, err
+			}
+			if err := setPerNameEntryLeaf(documentRoot(&templateNode), pair, entryLeaf); err != nil {
 				return SetResult{}, err
 			}
 			continue
@@ -174,10 +195,6 @@ func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, open
 		leaf.Value = pair.Value
 	}
 
-	var pristine yaml.Node
-	if err := yaml.Unmarshal(template, &pristine); err != nil {
-		return SetResult{}, err
-	}
 	dropTemplateNames(&templateNode, &pristine, perNameMaps)
 
 	merged, err := yaml.Marshal(&templateNode)
@@ -285,17 +302,81 @@ func splitPerNameKey(key string, perNameMaps []string) (perName, name string, ok
 	return "", "", false
 }
 
-// listPerNameMapPaths returns the declared per-name map paths whose template entries are lists rather than scalars.
-// It reads the first entry, since a per-name map holds one kind of entry.
-func listPerNameMapPaths(template *yaml.Node, perNameMaps []string) []string {
-	var paths []string
+// perNameEntryKinds returns the kind of the template's entries at each declared per-name map path that holds one.
+// It reads the first entry, since a per-name map holds one kind of entry;
+// a path the result lacks has scalar entries.
+func perNameEntryKinds(template *yaml.Node, perNameMaps []string) map[string]yaml.Kind {
+	kinds := make(map[string]yaml.Kind, len(perNameMaps))
 	for _, path := range perNameMaps {
 		value := findValueNode(template, path)
-		if value != nil && value.Kind == yaml.MappingNode && len(value.Content) > 1 && value.Content[1].Kind == yaml.SequenceNode {
-			paths = append(paths, path)
+		if value != nil && value.Kind == yaml.MappingNode && len(value.Content) > 1 {
+			kinds[path] = value.Content[1].Kind
 		}
 	}
-	return paths
+	return kinds
+}
+
+// perNameEntryLeaves returns, for each declared per-name map path whose template entries are mappings, the scalar and list paths those entries hold, relative to an entry, each mapped to the node of the first entry holding it.
+// A key P.<name>.<rest> is written after the node at rest, whatever the name.
+func perNameEntryLeaves(template *yaml.Node, perNameMaps []string, entryKinds map[string]yaml.Kind) map[string]map[string]*yaml.Node {
+	leaves := make(map[string]map[string]*yaml.Node)
+	for _, path := range perNameMaps {
+		if entryKinds[path] != yaml.MappingNode {
+			continue
+		}
+		entries := findValueNode(template, path)
+		leaves[path] = make(map[string]*yaml.Node)
+		for i := 1; i < len(entries.Content); i += 2 {
+			entryLeaves := make(map[string]*yaml.Node)
+			collectLeafPaths(entries.Content[i], entryLeaves)
+			collectSequencePaths(entries.Content[i], "", entryLeaves)
+			for rest, node := range entryLeaves {
+				if _, seen := leaves[path][rest]; !seen && !strings.Contains(rest, "[") {
+					leaves[path][rest] = node
+				}
+			}
+		}
+	}
+	return leaves
+}
+
+// splitPerNameEntryKey splits a key P.<name>.<rest> into the declared per-name map P and the template node the key is written after, for a P whose entries are mappings and a rest some template entry holds as a scalar or a list.
+// ok is false for any other key.
+func splitPerNameEntryKey(key string, perNameMaps []string, entryLeaves map[string]map[string]*yaml.Node) (perName string, leaf *yaml.Node, ok bool) {
+	for _, path := range perNameMaps {
+		rest, found := strings.CutPrefix(key, path+".")
+		if !found {
+			continue
+		}
+		if _, rest, found = strings.Cut(rest, "."); !found {
+			continue
+		}
+		if leaf, ok := entryLeaves[path][rest]; ok {
+			return path, leaf, true
+		}
+	}
+	return "", nil, false
+}
+
+// setPerNameEntryLeaf writes pair, a key P.<name>.<rest>, into the mapping at P.<name> under root, creating every missing mapping on the way, after leaf, the template entry's node at rest:
+// a YAML flow list when leaf is a list, else a scalar under the tag a set over leaf takes.
+// A non-mapping value on the way is an error naming its path.
+func setPerNameEntryLeaf(root *yaml.Node, pair KV, leaf *yaml.Node) error {
+	parentPath, name := splitLastSegment(pair.Key)
+	parent, err := mappingAt(root, parentPath)
+	if err != nil {
+		return err
+	}
+	if leaf.Kind == yaml.SequenceNode {
+		sequence := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+		if err := replaceSequence(sequence, pair); err != nil {
+			return err
+		}
+		setEntry(parent, name, sequence)
+		return nil
+	}
+	setEntry(parent, name, &yaml.Node{Kind: yaml.ScalarNode, Tag: scalarSetTag(leaf.Tag, pair.Value), Value: pair.Value})
+	return nil
 }
 
 // perNameShapeError returns an error naming path and its shape when root holds there a value that is neither a mapping nor null, and nil otherwise.
@@ -307,23 +388,35 @@ func perNameShapeError(root *yaml.Node, path string) error {
 	return fmt.Errorf("%s holds a %s, not a map: rewrite %s as a map of name to value", path, nodeShape(value), path)
 }
 
-// perNameEntryNode returns the node pair.Value spells for an entry of a per-name map:
-// a YAML flow list when the map's entries are lists, else a string scalar whatever its first character.
-func perNameEntryNode(pair KV, listEntries bool) (*yaml.Node, error) {
-	if !listEntries {
+// perNameEntryNode returns the node pair.Value spells for an entry of a per-name map whose entries are of kind entryKind:
+// a YAML flow list when they are lists, a YAML flow mapping when they are mappings, else a string scalar whatever its first character.
+// A value that is not a flow mapping, for mapping entries, is an error naming the key.
+func perNameEntryNode(pair KV, entryKind yaml.Kind) (*yaml.Node, error) {
+	switch entryKind {
+	case yaml.SequenceNode:
+		sequence := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+		if err := replaceSequence(sequence, pair); err != nil {
+			return nil, err
+		}
+		return sequence, nil
+	case yaml.MappingNode:
+		entry, err := openMapEntryNode(pair)
+		if err != nil {
+			return nil, err
+		}
+		if entry.Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("value for %s is not a YAML flow mapping, got %q: write the entry as {key: value, ...}, or set one of its keys as %s.<key>", pair.Key, pair.Value, pair.Key)
+		}
+		return entry, nil
+	default:
 		return stringNode(pair.Value), nil
 	}
-	sequence := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
-	if err := replaceSequence(sequence, pair); err != nil {
-		return nil, err
-	}
-	return sequence, nil
 }
 
 // setPerNameEntry sets name in the per-name map at path perName to the entry pair spells, appending the key when absent.
 // A null value at the path becomes an empty mapping first.
 // The mapping is given block style, so an empty {} template value is written as a block.
-func setPerNameEntry(root *yaml.Node, perName, name string, pair KV, listEntries bool) error {
+func setPerNameEntry(root *yaml.Node, perName, name string, pair KV, entryKind yaml.Kind) error {
 	mapping := findValueNode(root, perName)
 	if mapping == nil {
 		return fmt.Errorf("per-name map %s is not in the template", perName)
@@ -334,7 +427,7 @@ func setPerNameEntry(root *yaml.Node, perName, name string, pair KV, listEntries
 	if mapping.Kind != yaml.MappingNode {
 		return fmt.Errorf("%s holds a %s, not a map: rewrite %s as a map of name to value", perName, nodeShape(mapping), perName)
 	}
-	value, err := perNameEntryNode(pair, listEntries)
+	value, err := perNameEntryNode(pair, entryKind)
 	if err != nil {
 		return err
 	}

@@ -88,13 +88,13 @@ func TestStrip(t *testing.T) {
 	}
 }
 
-const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nplan_max_bounces: ~\nrounds: \"\"\nnames:\n    a: default a\nlists:\n    l: [x]\n"
+const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nplan_max_bounces: ~\nrounds: \"\"\nnames:\n    a: default a\nlists:\n    l: [x]\nprofiles:\n    plain:\n        kind: identity\n    costed:\n        kind: cost\n        budget: 200\n"
 
-// TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry, as a per-name entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
+// TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry, as a per-name entry, as one key of a per-name mapping entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
 func TestSetSparse(t *testing.T) {
 	t.Parallel()
 	openMaps := []string{"labels", "rounds"}
-	perNameMaps := []string{"lists", "names"}
+	perNameMaps := []string{"lists", "names", "profiles"}
 	tests := []struct {
 		name        string
 		existing    string
@@ -137,6 +137,11 @@ func TestSetSparse(t *testing.T) {
 		{name: "per-name list entry refuses a plain value", pairs: []KV{{Key: "lists.m", Value: "plain"}}, wantErr: true},
 		{name: "per-name map holding a list is refused", existing: "names: [a]\n", pairs: []KV{{Key: "names.x", Value: "prose"}}, wantErr: true, wantErrText: []string{"names", "sequence", "rewrite names as a map of name to value"}},
 		{name: "per-name deeper key is unknown", pairs: []KV{{Key: "names.x.y", Value: "v"}}, wantUnknown: []string{"names.x.y"}},
+		{name: "one key of a per-name mapping entry the template holds is written alone", pairs: []KV{{Key: "profiles.costed.budget", Value: "300"}}, want: "profiles:\n    costed:\n        budget: 300\n"},
+		{name: "one key of a per-name mapping entry the template lacks takes the template entry's tag", existing: "profiles:\n    wide:\n        kind: cost\n", pairs: []KV{{Key: "profiles.wide.budget", Value: "250"}, {Key: "profiles.plain.budget", Value: "9"}}, want: "profiles:\n    wide:\n        kind: cost\n        budget: 250\n    plain:\n        budget: 9\n"},
+		{name: "per-name mapping entry is written whole from a flow mapping", pairs: []KV{{Key: "profiles.wide", Value: "{kind: identity}"}}, want: "profiles:\n    wide:\n        kind: identity\n"},
+		{name: "per-name mapping entry refuses a plain value", pairs: []KV{{Key: "profiles.wide", Value: "identity"}}, wantErr: true, wantErrText: []string{"profiles.wide", "flow mapping"}},
+		{name: "per-name mapping entry key no template entry holds is unknown", pairs: []KV{{Key: "profiles.wide.nope", Value: "1"}}, wantUnknown: []string{"profiles.wide.nope"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -156,7 +161,7 @@ func TestSetSparse(t *testing.T) {
 			if !slices.Equal(got.Unknown, tc.wantUnknown) {
 				t.Fatalf("Unknown = %v, want %v", got.Unknown, tc.wantUnknown)
 			}
-			for _, key := range []string{"labels.<name>", "list", "name", "nested.deep", "port"} {
+			for _, key := range []string{"labels.<name>", "list", "name", "nested.deep", "port", "profiles.<name>.budget"} {
 				if !slices.Contains(got.Known, key) {
 					t.Errorf("Known = %v, lacks %q", got.Known, key)
 				}
