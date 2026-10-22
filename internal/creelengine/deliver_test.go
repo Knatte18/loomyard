@@ -1238,6 +1238,19 @@ func TestScheduler_Injects(t *testing.T) {
 				t.Errorf("typed %q; want the inject retried at every probe", got)
 			}
 		}},
+		{"PausedStrandTypesNothingAndIsNotClaimedByTheWorker", func(t *testing.T, e *env) {
+			e.del.SetPaused(beta, true)
+			inject(t, e, program(batten), beta, "/clear", 0, false)
+			e.start(t)
+			e.probeWaits(1)
+			e.tick(time.Second)
+			if got := e.del.Sends(); len(got) != 0 {
+				t.Errorf("sent %v to a paused strand", got)
+			}
+			if got := e.del.Claims(); len(got) != 0 {
+				t.Errorf("claims = %v; the delivery worker under a pause must record no strand", got)
+			}
+		}},
 		{"PausedErrorTypesNothingAndLogsOneWarning", func(t *testing.T, e *env) {
 			logs := logcapture.Capture(t)
 			e.del.SetPausedError(errors.New("pause record is corrupt"))

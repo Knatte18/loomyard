@@ -488,6 +488,89 @@ func TestHubDelivery(t *testing.T) {
 			t.Error("Paused() on an undecodable pause record = nil error; want one")
 		}
 	})
+
+	t.Run("ClaimPause records the strand in the entry covering it", func(t *testing.T) {
+		t.Parallel()
+		hub, prime, pair := newHub(t)
+		recordPath := pauseRecordPath(t, prime)
+		orchStrand := creelengine.Strand{Name: "ly:orch", GUID: "g1", Worktree: prime}
+		scoutStrand := creelengine.Strand{Name: "ly:scout", GUID: "g3", Worktree: prime}
+		pairStrand := creelengine.Strand{Name: "ly:pair:impl", GUID: "g2", Worktree: pair, Slug: pairSlug}
+		delivery := newStubbedDelivery(hub, nil)
+
+		pausedAt := time.Now().Add(-time.Minute)
+		setLive := func(scope string) {
+			t.Helper()
+			_, err := pauserecord.Update(recordPath, time.Now(), func(record *pauserecord.Record) error {
+				*record = pauserecord.Record{Live: []pauserecord.Entry{{Scope: scope, PausedAt: pausedAt}}}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("Update() = %v", err)
+			}
+		}
+		sessions := func() []pauserecord.Session {
+			t.Helper()
+			record, err := pauserecord.Read(recordPath)
+			if err != nil {
+				t.Fatalf("Read() = %v", err)
+			}
+			var found []pauserecord.Session
+			for _, entry := range record.Live {
+				found = append(found, entry.Sessions...)
+			}
+			return found
+		}
+		claim := func(strand creelengine.Strand) creelengine.PauseClaim {
+			t.Helper()
+			got, err := delivery.ClaimPause(strand)
+			if err != nil {
+				t.Fatalf("ClaimPause(%s) = %v", strand.Name, err)
+			}
+			return got
+		}
+
+		setLive(pairSlug)
+		if got := claim(pairStrand); !got.Covered {
+			t.Errorf("ClaimPause(pair strand) under a pair entry = %+v; want covered", got)
+		}
+		if diff := cmp.Diff([]pauserecord.Session{{Strand: pairStrand.Name, GUID: "g2", Slug: pairSlug}}, sessions()); diff != "" {
+			t.Errorf("pair entry sessions mismatch (-want +got):\n%s", diff)
+		}
+		if got := claim(orchStrand); got.Covered || got.StillLive != nil || len(sessions()) != 1 {
+			t.Errorf("ClaimPause(prime strand) under a pair entry = %+v with sessions %v; want uncovered and nothing recorded", got, sessions())
+		}
+
+		setLive(pauserecord.ScopeHub)
+		claim(orchStrand)
+		claim(scoutStrand)
+		want := []pauserecord.Session{{GUID: "g1", Orch: true}, {Strand: "ly:scout", GUID: "g3"}}
+		if diff := cmp.Diff(want, sessions()); diff != "" {
+			t.Errorf("hub entry sessions mismatch (-want +got):\n%s", diff)
+		}
+
+		live := claim(pairStrand).StillLive
+		if got, err := live(); err != nil || !got {
+			t.Errorf("StillLive() on a live entry = (%v, %v); want (true, nil)", got, err)
+		}
+		_, err := pauserecord.Update(recordPath, time.Now(), func(record *pauserecord.Record) error {
+			record.Resumed, record.Live = record.Live, nil
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("Update() = %v", err)
+		}
+		if got, err := live(); err != nil || got {
+			t.Errorf("StillLive() on a resumed entry = (%v, %v); want (false, nil)", got, err)
+		}
+
+		if err := os.WriteFile(recordPath, []byte("{not json"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v", recordPath, err)
+		}
+		if _, err := delivery.ClaimPause(orchStrand); err == nil {
+			t.Error("ClaimPause() on an undecodable pause record = nil error; want one")
+		}
+	})
 }
 
 // sortStrands orders strands by name, since the seeded states hold them in map order.

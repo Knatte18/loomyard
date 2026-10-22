@@ -465,6 +465,8 @@ func (s *Store) checkMayAct(sender Sender, receiver, action string) error {
 
 // Interrupt sends the guarded interrupt to receiver at once, bypassing the queue, and reports whether a running turn was stopped.
 // A receiver with no running turn gets nothing and false.
+// A receiver a pause covers is claimed into that pause and then interrupted, so the pause's resume gives it its resume line;
+// an unreadable pause record and another sender's hold refuse the interrupt.
 func (s *Store) Interrupt(sender Sender, receiver string) (bool, error) {
 	target, err := s.strandTarget(receiver)
 	if err != nil {
@@ -476,17 +478,12 @@ func (s *Store) Interrupt(sender Sender, receiver string) (bool, error) {
 	return s.interruptTarget(sender, target)
 }
 
-// interruptTarget runs the checks that follow privilege and orch, in order, then the interrupt: a covering pause, an unreadable pause record, another sender's hold.
+// interruptTarget runs the checks that follow privilege and orch, in order, then the interrupt: another sender's hold, then the claim of a covering pause.
+// A strand a live pause covers is recorded in that pause before the key, so the pause's resume gives it its resume line;
+// an unreadable pause record refuses with nothing recorded, and so does a pause lifted before the key.
 // The interrupt runs under the receiver's pane lock, so no delivery reaches the receiver meanwhile, and the receiver's worker is woken once it ends.
 // An interrupt whose key was sent and whose clear failed counts as sent.
 func (s *Store) interruptTarget(sender Sender, target Strand) (bool, error) {
-	paused, err := s.delivery.Paused(target)
-	if err != nil {
-		return false, fmt.Errorf("creel: could not read the pause record for %s, so nothing was interrupted: %w", target.Name, err)
-	}
-	if paused {
-		return false, fmt.Errorf("creel: a pause covers %s; nothing was interrupted, lift the pause first", target.Name)
-	}
 	var holdErr error
 	_ = s.do(func() error {
 		if hold := s.liveHoldLocked(target.Name); hold != nil && hold.Owner != sender.Name {
@@ -497,8 +494,22 @@ func (s *Store) interruptTarget(sender Sender, target Strand) (bool, error) {
 	if holdErr != nil {
 		return false, holdErr
 	}
+	claim, err := s.delivery.ClaimPause(target)
+	if err != nil {
+		return false, unreadablePauseRefusal(target.Name, err)
+	}
 	lock := s.paneLock(target.Name)
 	lock.Lock()
+	if claim.Covered {
+		live, liveErr := claim.StillLive()
+		if liveErr != nil || !live {
+			lock.Unlock()
+			if liveErr != nil {
+				return false, unreadablePauseRefusal(target.Name, liveErr)
+			}
+			return false, fmt.Errorf("creel: the pause covering %s was lifted before the interrupt, so nothing was interrupted; way forward: run \"lyx creel interrupt %s\" again", target.Name, target.Name)
+		}
+	}
 	err = s.delivery.Interrupt(target)
 	lock.Unlock()
 	_ = s.do(func() error {
@@ -518,6 +529,10 @@ func (s *Store) interruptTarget(sender Sender, target Strand) (bool, error) {
 	default:
 		return false, err
 	}
+}
+
+func unreadablePauseRefusal(receiver string, err error) error {
+	return fmt.Errorf("creel: could not read the pause record for %s, so nothing was interrupted: %w", receiver, err)
 }
 
 func holdRefusal(receiver string, hold *holdEntry) error {
