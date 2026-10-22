@@ -88,7 +88,9 @@ type orchCLI struct {
 	// newCreel builds the creel seam the watcher and `start` call creel through, signing as the ORCHWATCH program.
 	newCreel     func() (orchengine.Creel, error)
 	spawnWatcher func() error
-	sleep        func(time.Duration)
+	// startLockWait is how long `stop` waits for start.lock before it refuses.
+	startLockWait time.Duration
+	sleep         func(time.Duration)
 	// indexRunner returns the output of `<bin> help index`.
 	indexRunner func(bin string) (string, error)
 	// executable returns the path of the running lyx binary, which the runs strand's command names.
@@ -200,6 +202,7 @@ Every verb runs from the hub's prime worktree only.`,
 				return creelSeam{client: client}, nil
 			}
 			c.spawnWatcher = c.spawnWatcherProcess
+			c.startLockWait = stopStartLockWait
 			c.sleep = time.Sleep
 			c.indexRunner = runHelpIndex
 			c.executable = os.Executable

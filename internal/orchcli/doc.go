@@ -24,6 +24,18 @@
 // With none pending it answers `withdrawn: false` with `phase`, and with `cycle_trigger` only when the phase is neither idle nor resuming, since `toIdle` does not reset the trigger and a reload start does not set it.
 // It never refuses: it removes only the marker, never a started cycle's state, and a marker present during a cycle has not started, because a cycle start consumes the marker it starts from under the orch state lock.
 //
+// # Status restarts a dead watcher
+//
+// `status` is what the orch and the operator run when the orch goes quiet, so a live strand with no watcher holding `watch.lock` gets a new watcher from it.
+// A strand counts as live by the engine liveness predicate, which a shell-only pane past the grace fails.
+// The restart takes `start.lock` with a try-lock and restarts nothing, adding a `hint` to rerun, when a `start` or `stop` holds it.
+// Holding the lock it reads the state, the strands and the watch lock again and spawns only when the recorded strand is still tracked and live with no watcher, then logs `orch: restarted a dead watcher` with the previous watcher's recorded exit.
+// A spawn failure is the error envelope with the way forward `lyx orch start`.
+// The envelope's `watcher_restarted` is true only when this call spawned one, `watcher_live` keeps what the probe found, and `strand_elsewhere` names the placement of a pane sitting in another session of reed's server.
+// A dead strand gets no watcher from `status`: `start` relaunches strand and watcher together, and a shell-only orch reads dead, so `start --continue` resumes its recorded session in one step.
+// Bound: `status` writes only this one spawn, and two calls in sequence, the second before the first one's watcher takes `watch.lock`, may spawn two watchers, of which `watch.lock` keeps one.
+// `stop` takes `start.lock` around its strand read and removal, waiting up to a minute for a running `start` and then refusing with a way forward, so a restart never binds a watcher to a strand `stop` removes.
+//
 // # The orch rules
 //
 // `lyx orch rules --from <file>` replaces the hub-wide rules file on Bolt with the file's content, pulling Bolt first and pushing before and after the commit.

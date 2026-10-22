@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/spf13/cobra"
@@ -50,11 +51,25 @@ type fakeStrands struct {
 	addErr error
 	// calls, when set, receives "add", "replace" and "remove" as they happen.
 	calls *[]string
+	// after, when non-nil, is the list Strands answers from its second call on.
+	after        []reedengine.StrandStatus
+	strandsCalls int
+	// onRemove, when set, runs in RemoveStrand before it records the removal.
+	onRemove func()
 }
 
-func (f *fakeStrands) Strands() ([]reedengine.StrandStatus, error) { return f.strands, nil }
+func (f *fakeStrands) Strands() ([]reedengine.StrandStatus, error) {
+	f.strandsCalls++
+	if f.after != nil && f.strandsCalls >= 2 {
+		return f.after, nil
+	}
+	return f.strands, nil
+}
 
 func (f *fakeStrands) RemoveStrand(guid string) error {
+	if f.onRemove != nil {
+		f.onRemove()
+	}
 	if f.calls != nil {
 		*f.calls = append(*f.calls, "remove")
 	}
@@ -98,11 +113,15 @@ func newTestCLI(t *testing.T, fake *fakeStrands) *orchCLI {
 		engines:         shuttleengine.NewEngineSet("claude", map[string]shuttleengine.Engine{"claude": claudeengine.New()}),
 		indexRunner:     func(string) (string, error) { return fakeRunnerIndex, nil },
 		newCreel:        func() (orchengine.Creel, error) { return &fakeCreel{}, nil },
+		spawnWatcher:    func() error { return nil },
+		// A short wait keeps a stop that finds start.lock held from waiting out the production minute.
+		startLockWait: 100 * time.Millisecond,
 		paths: orchengine.Paths{
 			Dir:              dir,
 			StatePath:        filepath.Join(dir, "state.json"),
 			StateLockPath:    filepath.Join(dir, "state.json.lock"),
 			WatchLockPath:    filepath.Join(dir, "watch.lock"),
+			StartLockPath:    filepath.Join(dir, "start.lock"),
 			CycleRequestPath: filepath.Join(dir, "cycle-request"),
 			PrimeRoot:        filepath.Dir(dir),
 			HubRulesPath:     filepath.Join(filepath.Dir(dir), "board", "rules", "hub.md"),
@@ -200,6 +219,7 @@ func TestStatus_Envelope(t *testing.T) {
 					"last_handoff": "h.md", "last_abort_reason": "why", "stuck": "busy", "watcher_exit": "gone",
 					"soft_threshold_tokens": float64(c.cfg.SoftThreshold()), "cycle_trigger": "soft",
 					"last_deferral": "2026-10-01T12:30:00Z", "session_id": "sess-1",
+					"watcher_restarted": true, "strand_elsewhere": "",
 				}
 			},
 		},
@@ -208,13 +228,21 @@ func TestStatus_Envelope(t *testing.T) {
 			strands: liveOrch,
 			state:   &orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle, Stuck: tooShort},
 			want: func(*orchCLI) map[string]any {
-				return map[string]any{"stuck": tooShort, "phase": "idle"}
+				return map[string]any{"stuck": tooShort, "phase": "idle", "watcher_restarted": true}
 			},
 		},
 		{
 			name: "unknown tokens are null",
 			want: func(*orchCLI) map[string]any {
-				return map[string]any{"context_tokens": nil, "strand_live": false, "last_deferral": nil, "cycle_trigger": "", "session_id": ""}
+				return map[string]any{"context_tokens": nil, "strand_live": false, "last_deferral": nil, "cycle_trigger": "", "session_id": "", "watcher_restarted": false, "strand_elsewhere": ""}
+			},
+		},
+		{
+			name:    "a pane in another session is named",
+			strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true, Elsewhere: "other:2"}},
+			state:   &orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle},
+			want: func(*orchCLI) map[string]any {
+				return map[string]any{"strand_elsewhere": "other:2"}
 			},
 		},
 		{
@@ -504,6 +532,15 @@ func TestStop(t *testing.T) {
 
 			fake := &fakeStrands{strands: tc.strands}
 			c := newTestCLI(t, fake)
+			// The removal runs under start.lock, so a try for it fails there.
+			fake.onRemove = func() {
+				if l, acquired, err := lock.TryAcquireWriteLock(c.paths.StartLockPath); err != nil || acquired {
+					if acquired {
+						_ = l.Release()
+					}
+					t.Errorf("start.lock free during the removal: acquired %v, err %v", acquired, err)
+				}
+			}
 			if tc.recorded != "" {
 				if err := orchengine.SaveState(c.paths, orchengine.State{Strand: tc.recorded, Phase: orchengine.PhaseIdle}); err != nil {
 					t.Fatal(err)
@@ -520,8 +557,137 @@ func TestStop(t *testing.T) {
 			if !slices.Equal(fake.removed, tc.wantCalls) {
 				t.Errorf("removed = %v; want %v", fake.removed, tc.wantCalls)
 			}
+			l, acquired, err := lock.TryAcquireWriteLock(c.paths.StartLockPath)
+			if err != nil || !acquired {
+				t.Fatalf("start.lock after stop: acquired %v, err %v; want it released", acquired, err)
+			}
+			_ = l.Release()
 		})
 	}
+
+	t.Run("a held start.lock refuses after the wait and removes nothing", func(t *testing.T) {
+		t.Parallel()
+
+		fake := &fakeStrands{strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch"}}}
+		c := newTestCLI(t, fake)
+		if err := orchengine.SaveState(c.paths, orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle}); err != nil {
+			t.Fatal(err)
+		}
+		held, acquired, err := lock.TryAcquireWriteLock(c.paths.StartLockPath)
+		if err != nil || !acquired {
+			t.Fatalf("hold start.lock: acquired %v, err %v", acquired, err)
+		}
+		defer held.Release()
+
+		code, env := runVerb(t, c.stopCmd())
+		msg, _ := env["error"].(string)
+		if code == 0 || !strings.Contains(msg, "start.lock") || !strings.Contains(msg, "lyx orch stop") {
+			t.Errorf("stop = exit %d, %v; want a refusal naming start.lock and the way forward", code, env)
+		}
+		if len(fake.removed) != 0 {
+			t.Errorf("removed = %v; want nothing removed", fake.removed)
+		}
+	})
+}
+
+// TestStatus_RestartsADeadWatcher pins that status spawns a watcher for a live strand whose watcher is dead, and only then.
+// It is not parallel: logcapture.CaptureVerbose swaps the process-global logger to read the Info line.
+func TestStatus_RestartsADeadWatcher(t *testing.T) {
+	liveOrch := []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true}}
+	recorded := orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle, WatcherExit: "strand gone before the reboot"}
+	tests := []struct {
+		name    string
+		strands []reedengine.StrandStatus
+		// after, when non-nil, is the strand list the second Strands call answers.
+		after []reedengine.StrandStatus
+		// state is the saved state; nil leaves none on disk.
+		state *orchengine.State
+		// holdStart and holdWatch have the test hold start.lock and watch.lock.
+		holdStart, holdWatch bool
+		spawnErr             error
+		wantSpawns           int
+		wantRestarted        bool
+		wantHint             bool
+		wantError            string
+	}{
+		{name: "ALiveStrandWithNoWatcherSpawnsOnce", strands: liveOrch, state: &recorded, wantSpawns: 1, wantRestarted: true},
+		{name: "AHeldStartLockSpawnsNothingAndHints", strands: liveOrch, state: &recorded, holdStart: true, wantHint: true},
+		{name: "ALiveWatcherSpawnsNothing", strands: liveOrch, state: &recorded, holdWatch: true},
+		{name: "AStrandThatIsNotLiveSpawnsNothing", strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: false}}, state: &recorded},
+		{name: "NoRecordedStrandSpawnsNothing", strands: liveOrch},
+		{name: "AStrandRemovedBeforeTheLockSpawnsNothing", strands: liveOrch, after: []reedengine.StrandStatus{}, state: &recorded},
+		{name: "AFailingSpawnIsTheErrorEnvelopeNamingStart", strands: liveOrch, state: &recorded, spawnErr: errors.New("no binary"), wantSpawns: 1, wantError: "lyx orch start"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := logcapture.CaptureVerbose(t)
+			c := newTestCLI(t, &fakeStrands{strands: tt.strands, after: tt.after})
+			spawns := 0
+			c.spawnWatcher = func() error {
+				spawns++
+				return tt.spawnErr
+			}
+			if tt.state != nil {
+				if err := orchengine.SaveState(c.paths, *tt.state); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.MkdirAll(c.paths.Dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for _, hold := range []struct {
+				held bool
+				path string
+			}{{tt.holdStart, c.paths.StartLockPath}, {tt.holdWatch, c.paths.WatchLockPath}} {
+				if !hold.held {
+					continue
+				}
+				l, acquired, err := lock.TryAcquireWriteLock(hold.path)
+				if err != nil || !acquired {
+					t.Fatalf("hold %s: acquired %v, err %v", hold.path, acquired, err)
+				}
+				defer l.Release()
+			}
+
+			code, env := runVerb(t, c.statusCmd())
+			if spawns != tt.wantSpawns {
+				t.Errorf("watcher spawns = %d; want %d", spawns, tt.wantSpawns)
+			}
+			if tt.wantError != "" {
+				if msg, _ := env["error"].(string); code == 0 || !strings.Contains(msg, tt.wantError) {
+					t.Errorf("status = exit %d, %v; want the error envelope naming %q", code, env, tt.wantError)
+				}
+				return
+			}
+			if code != 0 || env["watcher_restarted"] != tt.wantRestarted {
+				t.Fatalf("status = exit %d, %v; want watcher_restarted %v", code, env, tt.wantRestarted)
+			}
+			if _, hinted := env["hint"]; hinted != tt.wantHint {
+				t.Errorf("status hint present = %v; want %v; env %v", hinted, tt.wantHint, env)
+			}
+			if logged := strings.Contains(logs.String(), "orch: restarted a dead watcher"); logged != tt.wantRestarted {
+				t.Errorf("restart line logged = %v; want %v; logs: %s", logged, tt.wantRestarted, logs.String())
+			}
+			if tt.wantRestarted && !strings.Contains(logs.String(), recorded.WatcherExit) {
+				t.Errorf("logs do not carry the recorded exit %q: %s", recorded.WatcherExit, logs.String())
+			}
+		})
+	}
+
+	t.Run("StartSpawnsAWatcherForALiveStrandAndLogsTheRestart", func(t *testing.T) {
+		logs := logcapture.CaptureVerbose(t)
+		h := newStartHarness(t, reedengine.StrandStatus{GUID: "g1", Name: "orch", Live: true})
+		if err := orchengine.SaveState(h.cli.paths, orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle, WatcherExit: recorded.WatcherExit}); err != nil {
+			t.Fatal(err)
+		}
+		code, env := h.run(t)
+		if code != 0 || env["action"] != actionSpawnedWatcher || h.spawns != 1 {
+			t.Fatalf("start = exit %d, %v, spawns %d; want one spawned watcher", code, env, h.spawns)
+		}
+		if !strings.Contains(logs.String(), "orch: restarted a dead watcher") || !strings.Contains(logs.String(), recorded.WatcherExit) {
+			t.Errorf("logs do not carry the restart line with the recorded exit: %s", logs.String())
+		}
+	})
 }
 
 // TestOrchStrands_MatchesFullAndLegacyNames pins that the orchestrator lookup finds a full-name strand and a legacy exact-name strand, and nothing else.
