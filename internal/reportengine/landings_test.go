@@ -295,6 +295,33 @@ func TestCompute_Landings(t *testing.T) {
 			},
 		},
 		{
+			name: "runs with no trailer above their pair-opening commits skip the parent's trailer below it and map through the time join",
+			setup: func(w *world) landingExpectation {
+				w.parentCommit("P", 5, "parent landing")
+				w.parentCommit("A", 50, "a's landing")
+				w.parentCommit("B", 90, "b's landing")
+				w.boardCommit("bd1", 1, boardTask("a", "", "chore"), boardTask("b", "", "chore"))
+				w.boardCommit("bd2", 60, boardTask("a", "done", "chore"), boardTask("b", "", "chore"))
+				w.boardCommit("bd3", 95, boardTask("a", "done", "chore"), boardTask("b", "done", "chore"))
+				w.recordsCommit("r-sync", 10, "P")
+				w.pairOpening("open-a", 20, "a")
+				w.checkpoint("cp-a", 40, "a")
+				w.pairOpening("open-b", 70, "b")
+				w.checkpoint("cp-b", 80, "b")
+				status := statusJSON(w.t, shedengine.Status{State: shedengine.StateDone, History: finalizeDone})
+				w.tagOver("a", "ta", "cp-a", at(100), seedText("darn"), status, nil)
+				w.tagOver("b", "tb", "cp-b", at(110), seedText("darn"), status, nil)
+				return landingExpectation{
+					landings: []wantLanding{
+						{commit: "P", kind: "unmapped", fresh: "no-pre-image"},
+						{commit: "A", kind: "other", slug: "a", tag: tagName("a", "ta"), join: "time"},
+						{commit: "B", kind: "other", slug: "b", tag: tagName("b", "tb"), join: "time"},
+					},
+					runLandings: map[string]string{tagName("a", "ta"): "A", tagName("b", "tb"): "B"},
+				}
+			},
+		},
+		{
 			name: "two runs whose exact joins claim one commit are both unmapped and the clash is a finding",
 			setup: func(w *world) landingExpectation {
 				w.parentCommit("E", 50, "claimed twice")
