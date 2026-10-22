@@ -34,7 +34,7 @@
 // One assigner runs over the whole entry list on load, in the write critical section after the mutation and in the replay before its save:
 // an entry keeps a stored handle of its own letter that no entry of lower id holds, and every other entry, in id order, takes the lowest number of its letter not in use.
 // So a handle stays while its entry lives, a removed entry's number is given out again, a promote or a type change moves the entry to the lowest free number of its new letter, and a board.json written before handles gets them in id order on load, persisted by the next write.
-// A note whose letter cannot be decided, its type label no longer configured or the board path-only, keeps its stored handle.
+// A note whose letter cannot be decided, its type label no longer configured or the board path-only, keeps its stored handle unless an entry of lower id holds it, which clears it.
 // A handle is not scope: the run lock and the revised date ignore it.
 // Every Board and Store method that takes a selector takes a Handle beside a slug string and a numeric id, matching the letter case-insensitively.
 //
