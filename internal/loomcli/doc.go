@@ -156,6 +156,9 @@
 // It takes the run's driver lock without blocking and holds it for its whole life, so a settling driver reads as live while the run lock is free between steps, and a second driver refuses at once.
 // On start it removes the park marker and the resume report.
 //
+// The driver registers itself in the owner record under the run's slug with the role `driver`, before it takes the driver lock, and the run's step loop registers itself with the role `loop` once its pid file is written, through the loop's `OnStart` hook;
+// a driver the lock refuses exits at once and its record is pruned at the next read.
+//
 // The loop steps the run through the shared `--until-stop` body, saves each stop envelope under the run's drive-reports directory and decides the stop by a closed rule table over the envelope's fields and the facts it reads from disk, never over a row name or the reason text.
 // The table settles a done run, a busy exit, a re-step of an interrupted step under the `reinvoke` policy up to a cap of two per stop key, and the one verify goto to the Publish failure record's target;
 // it asks the tackler at a stop no rule settles, the arbiter at an awaiting stop with a pending hard-cap or circling escalation only, after a tackler `escalate` and when an applied tackler `resume` returns to the same stop, and hands over at a binary-eligible stop whose last step ran another build than the `lyx` on disk.

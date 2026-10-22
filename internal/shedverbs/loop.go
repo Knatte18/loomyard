@@ -73,6 +73,9 @@ type LoopSpec struct {
 	Pause func(now time.Time) (pauserecord.Coverage, error)
 	// OnWatchdogKill runs once after the watchdog killed a child, before the loop reads back what the child left, and returns a note the interrupted cause ends with; nil is skipped.
 	OnWatchdogKill func(kill WatchdogKill) string
+	// OnStart runs once in runLoop after the pid file is written and the start is logged, and before the first step; nil is skipped.
+	// A loop that refuses before its first step never runs it.
+	OnStart func()
 	// OnExit runs once in runLoop after the stop is final, with the stop and the status file as it then reads, and before the envelope is written; nil is skipped.
 	// A loop that refuses before its first step never runs it.
 	OnExit func(stop LoopStop, st shedengine.Status)
@@ -161,6 +164,7 @@ func (r childResult) ok() bool {
 // A transient error gets one immediate re-step; an error or interrupted stop on a run still reading running writes it failed.
 // The exception is a stop on the status read at an iteration's top, absent or unreadable: nothing can be written without destroying the evidence, so the file is left as found.
 // A read error that is not a decode failure gets the same one re-step, as a re-read.
+// LoopSpec.OnStart runs once after the start is logged and before the first step.
 // LoopSpec.OnExit runs once at every stop kind, after the stop is final and before the envelope is written.
 // A loop that cannot take the lock within the grace period, or that finds the teardown's mark, an undelivered envelope or a dead loop's pid file, returns 1 at once, before any step and without an envelope.
 func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out io.Writer) int {
@@ -196,6 +200,9 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 		return 1
 	}
 	logger.Info("shed: loop started", "loop_id", loopID, "pid", pid.Loop.PID)
+	if loop.OnStart != nil {
+		loop.OnStart()
+	}
 	idleWindow := idleWindowOf(loop)
 	obj := loopObject{FirstProducer: first.CurrentProducer}
 	readStatus := loop.ReadStatus

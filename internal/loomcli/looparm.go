@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -50,6 +51,7 @@ func loopSpecFor(loc *lyxcwd.Location, runID string, idle time.Duration, activit
 		Executable:  executable,
 		IdleTimeout: idle,
 		Activity:    activity,
+		OnStart:     func() { registerRunProcess(loc, loc.WorktreeName, runproc.RoleLoop) },
 		Pause: func(now time.Time) (pauserecord.Coverage, error) {
 			geometry, err := hubgeom.PauseGeometry(loc)
 			if err != nil {
@@ -57,6 +59,14 @@ func loopSpecFor(loc *lyxcwd.Location, runID string, idle time.Duration, activit
 			}
 			return pauserecord.ReadCoverage(geometry.RecordPath, geometry.Slug, now)
 		},
+	}
+}
+
+// registerRunProcess registers the calling process in the hub's owner record under owner with the given role.
+// A failure is logged at Warn and never fails the role, since the record only lets a teardown find the process.
+func registerRunProcess(loc *lyxcwd.Location, owner, role string) {
+	if err := runproc.Register(fabricengine.RunProcDir(loc.HubPath), owner, runproc.SelfRecord(role)); err != nil {
+		logger.Warn("loom: could not register the run process", "owner", owner, "role", role, "error", err.Error())
 	}
 }
 

@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -44,6 +45,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -220,6 +222,8 @@ func childDriverKind(dirs configengine.Dirs, recipe string) (string, error) {
 //
 // The refusal carries no "kind" field, keeping the five-value step refusal-kind vocabulary closed:
 // a missing run is not a sixth kind.
+//
+// On each successful return, a found agreeing seed or a freshly written one, the process registers as the run's batten (registerSeededRun); a refusal registers nothing.
 func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error {
 	if c.driverFlagSet {
 		if err := shedrun.ValidateDriver(c.driverFlag); err != nil {
@@ -240,7 +244,11 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 		return err
 	}
 	if found {
-		return refuseAdoptedSeed(seed, runID, c.driverFlag, c.driverFlagSet, c.childDriverFlag, c.childDriverFlagSet)
+		if err := refuseAdoptedSeed(seed, runID, c.driverFlag, c.driverFlagSet, c.childDriverFlag, c.childDriverFlagSet); err != nil {
+			return err
+		}
+		c.registerSeededRun(location, runID, verb)
+		return nil
 	}
 
 	if !battenAutoSeedVerbs(verb) {
@@ -265,11 +273,28 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 	if c.childDriverFlagSet {
 		params = map[string]string{"child_driver": c.childDriverFlag}
 	}
-	return shedrun.WriteSeed(location, runID, shedrun.Seed{
+	if err := shedrun.WriteSeed(location, runID, shedrun.Seed{
 		Recipe: shedrun.RecipeBatten,
 		Driver: driver,
 		Params: params,
-	})
+	}); err != nil {
+		return err
+	}
+	c.registerSeededRun(location, runID, verb)
+	return nil
+}
+
+// registerSeededRun registers the calling process in the hub's owner record under runID with the role batten, for verb "run" without --window only:
+// a window opener only opens the window and exits, and the in-window run it opens registers itself.
+// It is called once armSeed has found an agreeing seed or written one, so a start refused before or at the seed registers nothing.
+// A failed registration is logged and the run goes on.
+func (c *battenCLI) registerSeededRun(location *lyxcwd.Location, runID, verb string) {
+	if verb != "run" || c.windowFlag {
+		return
+	}
+	if err := runproc.Register(fabricengine.RunProcDir(location.HubPath), runID, runproc.SelfRecord(runproc.RoleBatten)); err != nil {
+		logger.Warn("battencli: could not register the batten process", "slug", runID, "error", err.Error())
+	}
 }
 
 // refuseBattenOwnDriverLLM refuses driver when it is shedrun.DriverLLM, reading BootstrapVerb
@@ -454,6 +479,7 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 
 // battenLoopSpec builds the loop arming of the batten run slug under location.
 // It leaves IdleTimeout zero and Activity nil: Run-Shed waits idle by design, so the watchdog stays disarmed and a wedged step is ended only by the operator's pause or by ending the detached loop job.
+// OnStart registers the loop process in the hub's owner record under slug with the role loop; a failed registration is logged and the loop runs on.
 func battenLoopSpec(location *lyxcwd.Location, slug string) shedverbs.LoopSpec {
 	executable, err := os.Executable()
 	if err != nil {
@@ -471,6 +497,11 @@ func battenLoopSpec(location *lyxcwd.Location, slug string) shedverbs.LoopSpec {
 		},
 		TraceFiles: func(traceID string) ([]string, error) { return logger.TraceFilesFor(logger.TraceDir(), traceID) },
 		Executable: executable,
+		OnStart: func() {
+			if err := runproc.Register(fabricengine.RunProcDir(location.HubPath), slug, runproc.SelfRecord(runproc.RoleLoop)); err != nil {
+				logger.Warn("battencli: could not register the loop process", "slug", slug, "error", err.Error())
+			}
+		},
 	}
 }
 
