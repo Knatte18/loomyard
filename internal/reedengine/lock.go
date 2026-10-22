@@ -45,7 +45,7 @@ type Engine struct {
 	activityFailures logger.Episode
 	// nameRepairFailures guards the session name repair's pane capture and rename typing failures, one episode per strand and step.
 	nameRepairFailures logger.EpisodeSet
-	// calleeFailures guards the tmux reads and writes the watch tick and the name-repair loop reach through their callees, one episode per read; both loops' goroutines share it.
+	// calleeFailures guards the tmux reads and writes the watch tick, the name-repair loop, Status and every public op's reconcile reach through their callees, one episode per read; the goroutines share it.
 	calleeFailures logger.EpisodeSet
 	// stateLoadNotices remembers the last binding clear a state load logged, since a clear is never saved and so repeats on every load.
 	stateLoadNotices stateLoadNotices

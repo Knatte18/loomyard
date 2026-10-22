@@ -17,6 +17,10 @@ import (
 // so the per-window list-panes calls stay countable apart from it.
 const sessionListVerb = "list-panes-session"
 
+// serverListVerb is the verb name the fake gives the server-wide pane listing (list-panes -a),
+// so a test scripts it apart from the session listings; unscripted, it answers empty, which reads as found nowhere.
+const serverListVerb = "list-panes-all"
+
 // markerListVerb is the verb name the fake gives the session's window listing in strandsMarkerFormat (list-windows),
 // so the marker fallback's listing stays countable and scriptable apart from the plain window listing.
 const markerListVerb = "list-windows-marker"
@@ -25,6 +29,9 @@ const markerListVerb = "list-windows-marker"
 func callVerb(args []string) string {
 	if args[0] == "list-panes" && containsArg(args, "-s") {
 		return sessionListVerb
+	}
+	if args[0] == "list-panes" && containsArg(args, "-a") {
+		return serverListVerb
 	}
 	if args[0] == "list-windows" && args[len(args)-1] == strandsMarkerFormat {
 		return markerListVerb

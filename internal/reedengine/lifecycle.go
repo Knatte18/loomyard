@@ -82,6 +82,8 @@ type StrandStatus struct {
 	// OwnWindow reports that the strand lives in a window of its own, own-window or overview.
 	// Shuttle's stop path decides on it whether the strand's window goes with it.
 	OwnWindow bool
+	// Elsewhere is the session:window placement of the strand's bound pane when it sits in another session of reed's server, empty when it does not.
+	Elsewhere string
 	// Retiring mirrors Strand.Retiring.
 	Retiring bool
 	// Color is the palette color the strand's segment resolves to, empty when it has none.
@@ -1357,9 +1359,10 @@ func (e *Engine) Status() (StatusResult, error) {
 		// ReedState.SelvagePaneID). Status still succeeds (the session is
 		// up) when st.Strands is empty but Selvage is alive; a future edit
 		// must not "fix" a missing Selvage row by appending one here.
+		elsewhere := e.strandsElsewhereLocked(st.Strands, windows)
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin, Provider: s.Provider}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Elsewhere: elsewhere[s.PaneID], Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin, Provider: s.Provider}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

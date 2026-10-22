@@ -311,6 +311,11 @@
 // A session's first up has neither, so it falls back to the current window, and the Selvage pane created there defines the strand window from then on.
 // An own-window strand lives outside the strands' window: its pane is never read as that window, and its liveness is read through the session-wide listing (ownwindow.go's windowPane) instead.
 // Reconcile ends only a window carrying @lyx_own with no pane bound to a strand; a window without the marker is never ended.
+// Pane placement: an own-window strand's bound pane that the session listing lacks is looked up once across the whole server (`list-panes -a`, strandsElsewhereLocked); the lookup runs only when such a pane exists.
+// Found in another session, the strand reads dead, StrandStatus.Elsewhere names the placement as session:window, and reconcile keeps its binding instead of clearing it; nothing in another session is ever killed, since the kill sets read the session's own panes alone.
+// The binding ends when the pane leaves the server, which a later lookup finds nowhere, or when a removal drops it.
+// A failed lookup logs one episode and reads every such pane as found nowhere, so the binding is cleared as before; a pane in another tmux server is not listed and is cleared the same way.
+// Bound: a pane id reused after a server restart can name a sibling worktree's pane until the binding goes.
 // The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
 //
 // Window order (windoworder.go): a session's windows read, in index order, the overview window, the agents' own windows in start order, then the window named shell, then the hidden windows.

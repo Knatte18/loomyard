@@ -89,6 +89,76 @@ func (p TmuxCmd) listWindowPanes(session string) ([]windowPane, error) {
 	return parseWindowPanes(out), nil
 }
 
+// panePlacementFormat is the server-wide listing format of panePlacement: pane id, session name, then window index.
+const panePlacementFormat = "#{pane_id} #{session_name} #{window_index}"
+
+// panePlacement is where a pane sits on reed's tmux server: the session holding it and its window index there.
+type panePlacement struct {
+	Session string
+	Window  string
+}
+
+// String renders the placement as session:window.
+func (p panePlacement) String() string {
+	return p.Session + ":" + p.Window
+}
+
+// panePlacements maps every pane id on reed's tmux server, across all its sessions, to its placement.
+// A line with fewer than three fields is skipped.
+func (p TmuxCmd) panePlacements() (map[string]panePlacement, error) {
+	out, err := p.output("list-panes", "-a", "-F", panePlacementFormat)
+	if err != nil {
+		return nil, err
+	}
+	placements := make(map[string]panePlacement)
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		placements[fields[0]] = panePlacement{Session: fields[1], Window: fields[2]}
+	}
+	return placements, nil
+}
+
+// strandsElsewhereLocked maps the pane id of each own-window strand whose bound pane windows does not list to the session:window of that pane when it sits in another session of reed's server.
+// It runs one server-wide lookup, and only when such a pane exists; with none it returns nil and runs no tmux command.
+// A failed lookup is logged as an episode and answers nil, so every such pane reads as found nowhere.
+func (e *Engine) strandsElsewhereLocked(strands []Strand, windows []windowPane) map[string]string {
+	listed := make(map[string]bool, len(windows))
+	for _, w := range windows {
+		listed[w.PaneID] = true
+	}
+	var absent []string
+	for _, s := range strands {
+		if s.PaneID != "" && isOwnWindow(s.Display) && !listed[s.PaneID] {
+			absent = append(absent, s.PaneID)
+		}
+	}
+	if len(absent) == 0 {
+		return nil
+	}
+	placements, err := e.tmux.panePlacements()
+	if err != nil {
+		e.calleeFailures.Fail("pane placements", "reed: could not look up the panes of the whole server, reading every pane the session lacks as found nowhere",
+			"socket", e.Socket(), "session", e.SessionName(), "err", err)
+		return nil
+	}
+	e.calleeFailures.Recover("pane placements", "reed: the server-wide pane lookup works again", "socket", e.Socket(), "session", e.SessionName())
+	var elsewhere map[string]string
+	for _, id := range absent {
+		placement, found := placements[id]
+		if !found || placement.Session == e.SessionName() {
+			continue
+		}
+		if elsewhere == nil {
+			elsewhere = make(map[string]string)
+		}
+		elsewhere[id] = placement.String()
+	}
+	return elsewhere
+}
+
 // unseenWindowOption is the display-only window option marking an own window the operator has not selected since it opened.
 const unseenWindowOption = "@lyx_unseen"
 
