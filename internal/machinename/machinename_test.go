@@ -1,10 +1,9 @@
-package machinename_test
+package machinename
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
@@ -25,7 +24,7 @@ func TestFromHostname(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := machinename.FromHostname(tt.host)
+			got, err := FromHostname(tt.host)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("FromHostname(%q) error = %v; wantErr %v", tt.host, err, tt.wantErr)
 			}
