@@ -121,6 +121,13 @@ func TestActive(t *testing.T) {
 			wantErrWith: []string{"batcher.yaml", "nope"},
 		},
 		{
+			name: "profilesThatIsAListErrors",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", "profiles:\n  - cautious\n")
+			},
+			wantErrWith: []string{"batcher.yaml"},
+		},
+		{
 			name: "operatorProfileAddsToTheTemplates",
 			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", "active: \"cautious\"\nprofiles:\n  mine:\n    batchifier: identity\n")
