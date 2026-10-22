@@ -77,6 +77,13 @@ func isUntypedFileRenamePair(p MovePair) bool {
 	return disp == dispKeep
 }
 
+// GoToolchain reports whether the plan's language is go or absent, so the checks that read Go source or Go toolchain semantics run.
+// It is false under csharp, none and an unrecognized language.
+func (p *Plan) GoToolchain() bool {
+	lang, ok := planLanguage(p)
+	return ok && lang == glyph.Go
+}
+
 // GlyphLanguage reports whether the plan's language selects a glyph alphabet, so glyph-side checks run.
 // It is false under none and under an unrecognized language.
 // The alphabet itself is never returned: a caller parses a ref through ParseRef.

@@ -51,6 +51,7 @@ func TestCheckFabricVocabularyName(t *testing.T) {
 			{name: "name failing both rules gets one finding", card: declare("plan:internal/foo#Type" + capitalized + ".hostBranch"), ref: "plan:internal/foo#Type" + capitalized + ".hostBranch", want: 1},
 			{name: "token in a non-configsync owner package", card: declare("plan:internal/fabricengine#" + capitalized + "Thing"), want: 0},
 			{name: "test name in an owner package's external test package", card: declare("plan:internal/fabricengine_test#Test" + capitalized + "Thing"), want: 0},
+			{name: "csharp keeps an owner package's external test unit as its directory", language: "csharp", card: declare("plan:internal/fabricengine_test#Test" + capitalized + "Thing"), ref: "plan:internal/fabricengine_test#Test" + capitalized + "Thing", want: 1},
 			{name: "token without test prefix outside internal and the doc roots", card: declare("plan:tools/x#" + capitalized + "Thing"), want: 0},
 			{name: "host geometry identifier under tools", card: declare("plan:tools/x#hostBranch"), want: 0},
 			{name: "name with no token", card: declare("plan:internal/foo#Thing"), want: 0},

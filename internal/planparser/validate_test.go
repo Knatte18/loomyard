@@ -1728,7 +1728,8 @@ func TestValidate_VerifyNestedModule(t *testing.T) {
 			cards: []planparser.Card{createsModule(1, "go test ./x/pkg")},
 			want:  []string{"1-mod"},
 		},
-		{name: "language none still fires", cards: []planparser.Card{withVerify("go test ./nested/pkg")}, language: "none", want: []string{"1-a"}},
+		{name: "language none is silent", cards: []planparser.Card{withVerify("go test ./nested/pkg")}, language: "none"},
+		{name: "language csharp is silent", cards: []planparser.Card{withVerify("go test ./nested/pkg")}, language: "csharp"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1777,9 +1778,12 @@ func TestValidate_VerifyPackageMissing(t *testing.T) {
 		name       string
 		cards      []planparser.Card
 		overview   string
+		language   string
 		want       []finding
 		wantDetail string
 	}{
+		{name: "language csharp is not read", cards: []planparser.Card{withVerify(1, "lyx gate test --wait --tier 0 ./nowhere")}, language: "csharp"},
+		{name: "language go reads the same command", cards: []planparser.Card{withVerify(1, "lyx gate test --wait --tier 0 ./nowhere")}, want: []finding{{"1-a", "./nowhere"}}},
 		{name: "external test package names its package as the replacement", cards: []planparser.Card{withVerify(1, "lyx gate test ./internal/x_test")}, want: []finding{{"1-a", "./internal/x_test"}}, wantDetail: "pass ./internal/x"},
 		{name: "overview chain is not read", overview: "go test ./nope\ngo test ../outside"},
 		{name: "go build", cards: []planparser.Card{withVerify(1, "go build ./nope")}, want: []finding{{"1-a", "./nope"}}},
@@ -1824,7 +1828,11 @@ func TestValidate_VerifyPackageMissing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			plan := &planparser.Plan{Format: 5, Approved: true, Language: "go", Cards: tt.cards, Verify: tt.overview}
+			language := tt.language
+			if language == "" {
+				language = "go"
+			}
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: language, Cards: tt.cards, Verify: tt.overview}
 			var got []finding
 			for _, f := range planparser.ValidateFormat(plan, root) {
 				if f.Check != "verify-package-missing" {

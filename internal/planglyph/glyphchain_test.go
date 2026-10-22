@@ -820,6 +820,12 @@ func deleteWithEdit(deleted, edited []string) string {
 	return "**Delete:**\n" + bullets(deleted) + "\n**Edit:**\n" + bullets(edited) + "\n**Intent:** delete\n\n**ImpactSummary:** none\n"
 }
 
+// nestedImporter is a nested package and a user of it, whose import of the first a card that deletes the first and a later card that edits the second makes a delete-before-reference.
+var nestedImporter = map[string]string{
+	"nested/inner/inner.go": "package inner\n\nfunc Help() {}\n",
+	"nested/user/user.go":   "package user\n\nimport \"example.com/glyphchain/nested/inner\"\n\nfunc Use() { inner.Help() }\n",
+}
+
 // skippedCaller is a Go file that calls callees.Target, written under a directory the reference scan skips.
 const skippedCaller = "package caller\n\nimport \"example.com/glyphchain/callees\"\n\nfunc use() { callees.Target() }\n"
 
@@ -836,7 +842,9 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 	covers := []string{"callees/local.go", tests}
 
 	cases := []struct {
-		name     string
+		name string
+		// language is the plan's language, go when empty.
+		language string
 		cards    []string
 		sections []plankit.Section
 		// files are extra Go files, by fixture-relative path, written into the fixture copy.
@@ -1043,6 +1051,26 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			},
 			wantDeleteOrder: []string{"blocking callees/callees.go:5"},
 		},
+		{
+			name:            "a deleted package's import in a later card's Go file is reported under go",
+			cards:           []string{deleteCard("nested/inner#"), editCard("nested/user/user.go")},
+			files:           nestedImporter,
+			wantDeleteOrder: []string{"blocking nested/user/user.go:3"},
+		},
+		{
+			name:     "a deleted package's import in a later card's Go file is not read under csharp",
+			language: "csharp",
+			cards:    []string{deleteCard("nested/inner#"), editCard("nested/user/user.go")},
+			files:    nestedImporter,
+		},
+		{
+			name:     "a deleted C# member beside Go code naming its identifier reports no caller-uncovered under csharp",
+			language: "csharp",
+			cards:    []string{deleteCard("Glyphchain.Sharp#Renderer.Title")},
+			files: map[string]string{
+				"callers/title.go": "package callers\n\nfunc title(t struct{ Title string }) string { return t.Title }\n",
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -1050,7 +1078,7 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
 			writeFixtureFiles(t, root, tc.files)
-			_, plan := writeLanguagePlan(t, "go", tc.cards, tc.sections...)
+			_, plan := writeLanguagePlan(t, cmp.Or(tc.language, "go"), tc.cards, tc.sections...)
 
 			findings, err := ValidateFormat(plan, root)
 			if tc.unusableGate {

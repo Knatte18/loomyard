@@ -584,7 +584,7 @@ func checkHandleConsistency(plan *Plan) []ValidationError {
 // checkHandleMalformed implements handle-malformed: every entry of a card's CreateRaw (a
 // "**Create:**" arrow bullet that failed the two-field declaration grammar), every handle-shaped
 // Targets/Uses entry whose text after HandlePrefix carries no "#" and therefore names no unit,
-// and — under a glyph-enabled plan.Language only — every handle whose unit half names a ".go"
+// and — under a go plan.Language only — every handle whose unit half names a ".go"
 // FILE rather than a package directory. The first two rules run under every plan.Language, for
 // the same reason checkHandleConsistency does; the file-unit rule is alphabet knowledge and so is
 // language-gated.
@@ -602,7 +602,7 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	claims := handleClaims(plan)
-	_, langOK := planLanguage(plan)
+	goToolchain := plan.GoToolchain()
 
 	for _, c := range plan.Cards {
 		for _, raw := range c.CreateRaw {
@@ -633,7 +633,7 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 					})
 					continue
 				}
-				if langOK && strings.HasSuffix(unit, ".go") && fileUnitRuleApplies(claims[r]) {
+				if goToolchain && strings.HasSuffix(unit, ".go") && fileUnitRuleApplies(claims[r]) {
 					findings = append(findings, ValidationError{
 						Check: "handle-malformed",
 						Card:  cardID(c),

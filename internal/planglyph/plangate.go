@@ -18,8 +18,8 @@ import (
 // planGatePass reports redundant-file-target: a card listing a file self glyph and a member glyph that resolves into that file.
 // One finding per file and member, attributed to the card, with Ref the member.
 // It also reports resign-interface-method: a re-sign arrow whose member resolves to an interface method.
-// It also reports caller-uncovered: a deleted or re-signed member that Go code still references, with no admissible card's target covering that code.
-// It also reports delete-before-reference: a deleted member whose reference a later card's Edit code holds, from the same computation, and a deleted package whose import a later card's Go Edit code holds.
+// Under go it also reports caller-uncovered: a deleted or re-signed member that Go code still references, with no admissible card's target covering that code.
+// Under go it also reports delete-before-reference: a deleted member whose reference a later card's Edit code holds, from the same computation, and a deleted package whose import a later card's Go Edit code holds.
 // A member that resolves not_found, ambiguous without being partitioned by build constraints, or unreadably is skipped, since the status policy already reports it.
 // Under a non-glyph language it returns nothing and opens no repository.
 // An infrastructure error is wrapped in ErrQuarryUnavailable; a failed type load is not one, since caller-uncovered then answers from its scan.
@@ -102,6 +102,10 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 				Ref:      r.Target,
 			})
 		}
+	}
+
+	if !plan.GoToolchain() {
+		return findings, nil
 	}
 
 	coverage, err := callerCoverageFindings(plan, worktreeRoot, answers, partitioned, loader)

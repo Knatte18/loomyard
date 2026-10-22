@@ -35,7 +35,7 @@ func CheckFabricVocabularyName(plan *Plan) []ValidationError {
 					last, _, _ = strings.Cut(parsed.Name, "<")
 				}
 			}
-			broken := brokenFabricVocabularyRule(unit, member, last)
+			broken := brokenFabricVocabularyRule(unit, member, last, plan.GoToolchain())
 			if broken == "" {
 				continue
 			}
@@ -54,10 +54,14 @@ func CheckFabricVocabularyName(plan *Plan) []ValidationError {
 
 // brokenFabricVocabularyRule names the rule a declared member breaks as a phrase, or returns "" when it breaks none.
 // unit is the handle's package half, member its whole member half and last the member's last dot-segment.
-func brokenFabricVocabularyRule(unit, member, last string) string {
+// goToolchain says whether the plan's language is Go, the only alphabet whose unit string carries the external-test pseudo-unit.
+func brokenFabricVocabularyRule(unit, member, last string, goToolchain bool) string {
 	first, _, _ := strings.Cut(unit, "/")
-	// An external test package sits in its package's directory, which is what the scan's owner check reads.
-	dir := goPackageDir(unit)
+	dir := unit
+	if goToolchain {
+		// An external test package sits in its package's directory, which is what the scan's owner check reads.
+		dir = goPackageDir(unit)
+	}
 	isTestName := hasTestPrefix(last)
 
 	bareScope := first == "internal" || fabricvocab.IsDocRoot(first) || isTestName

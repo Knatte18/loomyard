@@ -131,10 +131,10 @@ func buildEditRegions(edits []editTarget, index map[string]quarry.ResolveResult,
 // No type load runs, so a package-level reference is blocking and a method matched by name alone is informational, since its receiver is not resolved.
 // A package self glyph Delete is referenced by a quoted import of its path, which is blocking.
 // The fix every finding names, moving the delete to a card after the later one, is always available; code outside a later card's Edit targets is never searched.
-// Under a non-glyph language it returns no findings and opens no repository.
+// Unless the plan's language is go it returns no findings and opens no repository.
 // An infrastructure error is wrapped in ErrQuarryUnavailable.
 func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.Card, worktreeRoot string) ([]Finding, error) {
-	if !plan.GlyphLanguage() {
+	if !plan.GoToolchain() {
 		return nil, nil
 	}
 
