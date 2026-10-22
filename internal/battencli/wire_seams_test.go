@@ -49,6 +49,7 @@ var intentionallyNil = map[string]string{
 	"WebsterDeps.RefMatcher":      "loom-only seam, batten runs no webster",
 	"WebsterDeps.ReadOnly":        "loom-only seam, batten runs no webster",
 	"WebsterDeps.Geom.Index":      "loom-only seam, batten runs no webster",
+	"WebsterDeps.Geom.VerifyHold": "loom-only seam, batten runs no webster",
 	"PlanIndex":                   "loom-only seam, batten has no plan segment",
 	"CommitWebster":               "loom-only seam, batten runs no webster",
 	"Landing.PublishCommand":      "loom-only seam, batten lands no branch",
