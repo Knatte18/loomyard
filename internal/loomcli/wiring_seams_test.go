@@ -94,6 +94,7 @@ var intentionallyNil = map[string]string{
 	"PrimeLock.Acquire":                   "batten-only seam, filled by battencli",
 }
 
+// TestWire_EverySeamFilled pins that wire fills every shedrecipe.Env seam, VerifyHold among them, bar the batten-only ones.
 func TestWire_EverySeamFilled(t *testing.T) {
 	t.Parallel()
 

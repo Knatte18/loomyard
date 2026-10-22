@@ -36,6 +36,7 @@ import (
 var intentionallyNil = map[string]string{
 	"VerifyCommand":               "loom-only seam, batten runs no verify gate",
 	"Round":                       "loom-only seam, batten runs no verify gate",
+	"VerifyHold":                  "loom-only seam, batten runs no verify gate",
 	"GateFindingsFile":            "loom-only seam, batten has no gated row that keeps findings",
 	"Shuttle":                     "loom-only seam, batten drives no agent itself",
 	"Burler":                      "loom-only seam, batten runs no review round",

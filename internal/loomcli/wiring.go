@@ -719,6 +719,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Round:         roundGateSource(fabricengine.ConfigDirs(location)),
 		// VerifyMergeBase is nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
+		VerifyHold:      verifytree.NewPauseHold(pauseGeom, nil),
 		PublishFailure: func() string {
 			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath), gateTiersLookup(fabricengine.ConfigDirs(location)))
 		},
