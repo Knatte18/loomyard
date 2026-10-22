@@ -25,7 +25,10 @@ var csharpFixtureSkipDirs = map[string]bool{
 	".git":     true,
 	"_lyx":     true,
 	".lyx":     true,
+	"_mill":    true,
 	".scratch": true,
+	".wiki":    true,
+	"_raddle":  true,
 }
 
 // csharpFixtureProject is the throwaway class library one fixture directory compiles in.
@@ -43,7 +46,7 @@ const csharpFixtureProject = `<Project Sdk="Microsoft.NET.Sdk">
 `
 
 // TestCSharpFixtures_CompileWithDotnet builds each directory of `.cs` files under a `testdata/` directory as one C# project and fails on a compiler error.
-// It skips when `dotnet` is not on PATH, so a machine without .NET stays green.
+// It skips when `dotnet` is not on PATH or has no SDK installed, so a machine without .NET stays green.
 //
 //lyx:guard
 func TestCSharpFixtures_CompileWithDotnet(t *testing.T) {
@@ -108,11 +111,12 @@ func csharpFixtureDirs(t *testing.T, root string) map[string][]string {
 }
 
 // dotnetTargetFramework returns the target framework moniker of the installed SDK's major version, such as `net10.0` for SDK 10.0.113.
+// It skips the test when `dotnet --version` fails, which a host with the runtime but no SDK does.
 func dotnetTargetFramework(t *testing.T, dotnet string) string {
 	t.Helper()
 	output, err := runDotnet(dotnet, t.TempDir(), "--version")
 	if err != nil {
-		t.Fatalf("dotnet --version failed: %v\n%s", err, output)
+		t.Skipf("dotnet --version failed, so no .NET SDK is installed: %v\n%s", err, output)
 	}
 	version := strings.TrimSpace(string(output))
 	major, _, found := strings.Cut(version, ".")
