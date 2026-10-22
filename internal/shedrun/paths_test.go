@@ -60,6 +60,10 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lyxcwd.Location) string { return filepath.Join(StepsDir(l, "self"), "t1.stderr.log") }},
 		{"ScratchDir", func(l *lyxcwd.Location) string { return ScratchDir(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lyx", "shed", worktreeName) }},
+		{"GateFindingsFile", func(l *lyxcwd.Location) string { return GateFindingsFile(l, "self", "Darn-Write") },
+			func(l *lyxcwd.Location) string {
+				return filepath.Join(ScratchDir(l, "self"), "gate-findings", "Darn-Write.md")
+			}},
 		{"RunLock", func(l *lyxcwd.Location) string { return RunLock(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "run.lock") }},
 		{"StatusLock", func(l *lyxcwd.Location) string { return StatusLock(l, "self") },

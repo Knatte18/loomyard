@@ -7,8 +7,25 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/verifytree"
+)
+
+// The fixture's run starts at darnRunStart and its failure record is written at darnRecordWrittenAt, at the head darnRecordHead.
+var (
+	darnRunStart        = time.Date(2026, 1, 2, 9, 0, 0, 0, time.UTC)
+	darnRecordWrittenAt = darnRunStart.Add(time.Hour).Format(time.RFC3339)
+)
+
+const (
+	darnRecordHead   = "abc123"
+	darnRecordPath   = "/rec/publish-failure.md"
+	darnReadyTip     = "parent-tip"
+	darnRecordedWork = "An earlier spawn of this task already began the change, and its work is committed on the task branch.\n" +
+		"Read that work first and continue it instead of starting over.\n" +
+		"The failure record of the last Publish is at " + darnRecordPath + "; read it before you change anything."
 )
 
 // darnFixture is one Darn-Write producer setup: seams that log their calls and a fake session reporting a fixed verdict.
@@ -28,9 +45,32 @@ func newDarnFixture() *darnFixture {
 		ClearRejection: func() error { f.events = append(f.events, "clear"); return nil },
 		Commit:         func() error { f.events = append(f.events, "commit"); return nil },
 		LatestOutcome:  func() (DarnOutcome, bool, error) { return DarnOutcome{}, false, nil },
-		PublishFailure: func() (string, bool, error) { return "", false, nil },
+		PublishFailure: func() (string, verifytree.PublishFailure, bool, error) {
+			return "", verifytree.PublishFailure{}, false, nil
+		},
+		RunStart:   func() (time.Time, error) { return darnRunStart, nil },
+		TaskHead:   func() (string, error) { return darnRecordHead, nil },
+		Dirty:      func() ([]string, error) { return nil, nil },
+		ParentTips: func() ([]string, error) { return []string{darnReadyTip}, nil },
+		IsAncestor: func(string) (bool, error) { return true, nil },
 	}
 	return f
+}
+
+// rerouteReady presents this run's failure record, HEAD at its head, a clean tree and one parent tip outside HEAD, the state that reroutes.
+func rerouteReady(f *darnFixture) {
+	f.deps.PublishFailure = func() (string, verifytree.PublishFailure, bool, error) {
+		return darnRecordPath, verifytree.PublishFailure{WrittenAt: darnRecordWrittenAt, Head: darnRecordHead}, true, nil
+	}
+	f.deps.IsAncestor = func(string) (bool, error) { return false, nil }
+}
+
+// writerRunsFromReady returns a mutation that starts from rerouteReady and then applies flip, so the case fails if the fact flip changes were ignored.
+func writerRunsFromReady(flip func(*darnFixture)) func(*darnFixture) {
+	return func(f *darnFixture) {
+		rerouteReady(f)
+		flip(f)
+	}
 }
 
 func (f *darnFixture) session(told DarnTold) shedengine.ShedProducer {
@@ -57,8 +97,13 @@ func TestDarnWrite_Call(t *testing.T) {
 		wantResult shedengine.Outcome
 		wantErr    string
 		wantReason string
-		wantEvents string
-		wantTold   DarnTold
+		// wantReasonHas lists words the reason must hold beyond wantReason.
+		wantReasonHas []string
+		// wantReasonLacks is a text the reason must not hold.
+		wantReasonLacks string
+		wantReroute     bool
+		wantEvents      string
+		wantTold        DarnTold
 	}{
 		{
 			name:       "first spawn tells nothing and commits",
@@ -102,7 +147,9 @@ func TestDarnWrite_Call(t *testing.T) {
 				f.deps.LatestOutcome = func() (DarnOutcome, bool, error) {
 					return DarnOutcome{Outcome: shedengine.Stuck, Reason: "verify failed"}, true, nil
 				}
-				f.deps.PublishFailure = func() (string, bool, error) { return "/rec/publish-failure.md", true, nil }
+				f.deps.PublishFailure = func() (string, verifytree.PublishFailure, bool, error) {
+					return darnRecordPath, verifytree.PublishFailure{}, true, nil
+				}
 			},
 			session:    true,
 			wantResult: shedengine.Done,
@@ -119,11 +166,147 @@ func TestDarnWrite_Call(t *testing.T) {
 				f.outcome = shedengine.Stuck
 				f.pointer = shedengine.OutputPointer{Path: "/work/description.md", Reason: "verify gate failed: see /work/verify-1.log"}
 			},
+			session:       true,
+			wantResult:    shedengine.Stuck,
+			wantReason:    "verify gate failed: see /work/verify-1.log; " + darnResumeWayForward,
+			wantReasonHas: []string{"lyx loom resume", "Merge-In"},
+			wantEvents:    "session,commit",
+			wantTold:      DarnTold{RejectionFindings: "the reviewer's findings"},
+		},
+		{
+			name:            "this run's failure, an unmoved branch, a clean tree and a moved parent reroute to Merge-In without a writer",
+			mutate:          rerouteReady,
+			wantResult:      shedengine.Stuck,
+			wantReason:      "repair the parent pair as Merge-In's Stuck reason says",
+			wantReasonHas:   []string{darnRecordPath},
+			wantReasonLacks: "lyx loom resume",
+			wantReroute:     true,
+		},
+		{
+			name: "a second parent tip outside HEAD reroutes after the first is in it",
+			mutate: func(f *darnFixture) {
+				rerouteReady(f)
+				f.deps.ParentTips = func() ([]string, error) { return []string{"in-head", "outside"}, nil }
+				f.deps.IsAncestor = func(sha string) (bool, error) { return sha == "in-head", nil }
+			},
+			wantResult:  shedengine.Stuck,
+			wantReason:  "repair the parent pair",
+			wantReroute: true,
+		},
+		{
+			name: "no failure record runs the writer",
+			mutate: writerRunsFromReady(func(f *darnFixture) {
+				f.deps.PublishFailure = func() (string, verifytree.PublishFailure, bool, error) {
+					return "", verifytree.PublishFailure{}, false, nil
+				}
+			}),
 			session:    true,
-			wantResult: shedengine.Stuck,
-			wantReason: "verify gate failed: see /work/verify-1.log; " + darnResumeWayForward,
+			wantResult: shedengine.Done,
 			wantEvents: "session,commit",
-			wantTold:   DarnTold{RejectionFindings: "the reviewer's findings"},
+		},
+		{
+			name: "a record written before the run's start runs the writer",
+			mutate: writerRunsFromReady(func(f *darnFixture) {
+				f.deps.PublishFailure = func() (string, verifytree.PublishFailure, bool, error) {
+					return darnRecordPath, verifytree.PublishFailure{WrittenAt: darnRunStart.Add(-time.Hour).Format(time.RFC3339), Head: darnRecordHead}, true, nil
+				}
+			}),
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{PriorWork: darnRecordedWork},
+		},
+		{
+			name: "a record with no written_at runs the writer",
+			mutate: writerRunsFromReady(func(f *darnFixture) {
+				f.deps.PublishFailure = func() (string, verifytree.PublishFailure, bool, error) {
+					return darnRecordPath, verifytree.PublishFailure{Head: darnRecordHead}, true, nil
+				}
+			}),
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{PriorWork: darnRecordedWork},
+		},
+		{
+			name:       "a zero run start runs the writer",
+			mutate:     writerRunsFromReady(func(f *darnFixture) { f.deps.RunStart = func() (time.Time, error) { return time.Time{}, nil } }),
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{PriorWork: darnRecordedWork},
+		},
+		{
+			name:       "a HEAD past the record's head runs the writer",
+			mutate:     writerRunsFromReady(func(f *darnFixture) { f.deps.TaskHead = func() (string, error) { return "def456", nil } }),
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{PriorWork: darnRecordedWork},
+		},
+		{
+			name:       "a dirty tree runs the writer",
+			mutate:     writerRunsFromReady(func(f *darnFixture) { f.deps.Dirty = func() ([]string, error) { return []string{"a.go"}, nil } }),
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{PriorWork: darnRecordedWork},
+		},
+		{
+			name: "a failed status read runs the writer",
+			mutate: writerRunsFromReady(func(f *darnFixture) {
+				f.deps.Dirty = func() ([]string, error) { return nil, errors.New("status failed") }
+			}),
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{PriorWork: darnRecordedWork},
+		},
+		{
+			name: "a failed run-start read runs the writer",
+			mutate: writerRunsFromReady(func(f *darnFixture) {
+				f.deps.RunStart = func() (time.Time, error) { return time.Time{}, errors.New("seed unreadable") }
+			}),
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{PriorWork: darnRecordedWork},
+		},
+		{
+			name:       "a failed HEAD read runs the writer",
+			mutate:     writerRunsFromReady(func(f *darnFixture) { f.deps.TaskHead = func() (string, error) { return "", errors.New("no head") } }),
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{PriorWork: darnRecordedWork},
+		},
+		{
+			name:       "a parent tip already in HEAD runs the writer",
+			mutate:     writerRunsFromReady(func(f *darnFixture) { f.deps.IsAncestor = func(string) (bool, error) { return true, nil } }),
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{PriorWork: darnRecordedWork},
+		},
+		{
+			name: "a failed tip read runs the writer",
+			mutate: writerRunsFromReady(func(f *darnFixture) {
+				f.deps.ParentTips = func() ([]string, error) { return nil, errors.New("no tips") }
+			}),
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{PriorWork: darnRecordedWork},
+		},
+		{
+			name: "a failed ancestor read runs the writer",
+			mutate: writerRunsFromReady(func(f *darnFixture) {
+				f.deps.IsAncestor = func(string) (bool, error) { return false, errors.New("merge-base failed") }
+			}),
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit",
+			wantTold:   DarnTold{PriorWork: darnRecordedWork},
 		},
 		{
 			name: "Stuck without a pointer is neither committed nor amended",
@@ -154,7 +337,9 @@ func TestDarnWrite_Call(t *testing.T) {
 		{
 			name: "failure record read failure is an error",
 			mutate: func(f *darnFixture) {
-				f.deps.PublishFailure = func() (string, bool, error) { return "", false, errors.New("record unreadable") }
+				f.deps.PublishFailure = func() (string, verifytree.PublishFailure, bool, error) {
+					return "", verifytree.PublishFailure{}, false, errors.New("record unreadable")
+				}
 			},
 			wantErr: "record unreadable",
 		},
@@ -197,6 +382,31 @@ func TestDarnWrite_Call(t *testing.T) {
 			mutate:  func(f *darnFixture) { f.deps.LatestOutcome = nil },
 			wantErr: "no LatestOutcome seam wired",
 		},
+		{
+			name:    "unwired RunStart seam is named",
+			mutate:  func(f *darnFixture) { f.deps.RunStart = nil },
+			wantErr: "no RunStart seam wired",
+		},
+		{
+			name:    "unwired TaskHead seam is named",
+			mutate:  func(f *darnFixture) { f.deps.TaskHead = nil },
+			wantErr: "no TaskHead seam wired",
+		},
+		{
+			name:    "unwired Dirty seam is named",
+			mutate:  func(f *darnFixture) { f.deps.Dirty = nil },
+			wantErr: "no Dirty seam wired",
+		},
+		{
+			name:    "unwired ParentTips seam is named",
+			mutate:  func(f *darnFixture) { f.deps.ParentTips = nil },
+			wantErr: "no ParentTips seam wired",
+		},
+		{
+			name:    "unwired IsAncestor seam is named",
+			mutate:  func(f *darnFixture) { f.deps.IsAncestor = nil },
+			wantErr: "no IsAncestor seam wired",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -218,6 +428,17 @@ func TestDarnWrite_Call(t *testing.T) {
 			}
 			if tc.wantReason != "" && !strings.Contains(pointer.Reason, tc.wantReason) {
 				t.Errorf("Call() reason = %q; want it to contain %q", pointer.Reason, tc.wantReason)
+			}
+			for _, word := range tc.wantReasonHas {
+				if !strings.Contains(pointer.Reason, word) {
+					t.Errorf("Call() reason = %q; want it to contain %q", pointer.Reason, word)
+				}
+			}
+			if tc.wantReasonLacks != "" && strings.Contains(pointer.Reason, tc.wantReasonLacks) {
+				t.Errorf("Call() reason = %q; want it not to contain %q", pointer.Reason, tc.wantReasonLacks)
+			}
+			if pointer.Reroute != tc.wantReroute {
+				t.Errorf("Call() Reroute = %v; want %v", pointer.Reroute, tc.wantReroute)
 			}
 			if got := strings.Join(f.events, ","); got != tc.wantEvents {
 				t.Errorf("events = %q; want %q", got, tc.wantEvents)

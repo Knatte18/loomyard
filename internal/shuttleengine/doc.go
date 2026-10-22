@@ -361,6 +361,7 @@
 // A gated run's GateSpec entries answer passed, failed or pending (GateResult.Pending, PassOnCap or MayHold entries only).
 // An entry that sets GateEntry.Forked evaluates that closure in place of Gate for a run whose record carries fork authorization, copied from Spec.ForkSubagents at spawn; the record, not a later Call's Spec, also decides the fork audit.
 // A failing result flagged GateResult.Terminal finalizes the run at once with no re-prompt, and its findings text rides GateOutcome.Reason.
+// A failed outcome carries the failing entry's findings text on GateOutcome.Findings beside that terminal reason, because finalize removes the findings file with the run directory.
 // A failed entry with budget remaining is re-prompted with one default line naming the findings file, unless the entry sets GateEntry.Reprompt, whose rendered line is sent instead.
 // Every send validates its text, so a renderer returning several lines, or an empty or whitespace-only line, fails the send and ends the loop with the attempts spent so far.
 // A pending answer holds the run at a turn boundary without re-prompting or counting a failure:

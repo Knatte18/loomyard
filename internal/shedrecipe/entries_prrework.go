@@ -67,7 +67,7 @@ func prReworkEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 			table.Gate = gate
 			return table, nil
 		}
-		return shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, nil)
+		return shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, nil).KeepGateFindings(env.gateFindingsPath(row.Name))
 	}
 	return loomshed.NewPRRework(row.Name, session, rw), nil
 }

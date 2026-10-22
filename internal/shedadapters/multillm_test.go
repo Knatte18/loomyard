@@ -266,7 +266,14 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 		wantOutcome  shedengine.Outcome
 		wantAttempts *int
 		wantSpans    []shedengine.GateSpan
-		wantReason   string
+		// wantReason may hold {path}, which stands for the findings path the producer is told.
+		wantReason string
+		// keepFindings tells the producer a findings path through KeepGateFindings.
+		keepFindings bool
+		// preWritten plants a file at the findings path before the call.
+		preWritten bool
+		// wantFindings is the findings file's wanted text, and "" means no file is left.
+		wantFindings string
 		// wantErr is a substring of the error, and "" means no error.
 		wantErr        string
 		wantNotStarted bool
@@ -306,7 +313,25 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 				{Gate: "plan-parse", Kind: shedengine.GateSpanKindGate, Start: "2026-08-15T09:00:00Z", End: "2026-08-15T09:00:01Z"},
 				{Gate: "plan-parse", Kind: shedengine.GateSpanKindRework, Start: "2026-08-15T09:00:01Z", End: "2026-08-15T09:00:09Z"},
 			},
-			wantReason: "the gate said no",
+			wantReason:   "the gate said no",
+			keepFindings: true,
+		},
+		{
+			name:         "done with a failing non-terminal gate keeps its findings in the told file",
+			result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false, Attempts: 2, Findings: "the gate's findings"}},
+			wantOutcome:  shedengine.Stuck,
+			wantAttempts: &two,
+			wantReason:   "gate did not pass after 2 attempts; findings: {path}",
+			keepFindings: true,
+			wantFindings: "the gate's findings",
+		},
+		{
+			name:         "done with a passing gate removes a findings file left by an earlier call",
+			result:       shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true, Attempts: 1}},
+			wantOutcome:  shedengine.Done,
+			wantAttempts: &one,
+			keepFindings: true,
+			preWritten:   true,
 		},
 		{name: "died", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, wantErr: "shuttle run outcome died"},
 		{name: "timeout", result: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}, wantErr: "shuttle run outcome timeout"},
@@ -332,8 +357,29 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 			producer := NewMultiLLMProducer("multi", table, &shedfake.SeatRunner{
 				Results: []seatengine.Result{{Chair: tt.result, ChairOutputs: []string{output}}},
 			}, multiLLMFixedNow)
+			findingsPath := filepath.Join(t.TempDir(), "gate-findings", "multi.md")
+			if tt.keepFindings {
+				producer.KeepGateFindings(findingsPath)
+			}
+			if tt.preWritten {
+				if err := os.MkdirAll(filepath.Dir(findingsPath), 0o755); err != nil {
+					t.Fatalf("MkdirAll() error = %v", err)
+				}
+				if err := os.WriteFile(findingsPath, []byte("an earlier call's findings"), 0o644); err != nil {
+					t.Fatalf("WriteFile() error = %v", err)
+				}
+			}
 
 			outcome, pointer, err := producer.Call(context.Background())
+
+			got, readErr := os.ReadFile(findingsPath)
+			switch {
+			case tt.wantFindings == "" && readErr == nil:
+				t.Errorf("findings file holds %q, want none", got)
+			case tt.wantFindings != "" && string(got) != tt.wantFindings:
+				t.Errorf("findings file = %q (%v), want %q", got, readErr, tt.wantFindings)
+			}
+			tt.wantReason = strings.ReplaceAll(tt.wantReason, "{path}", findingsPath)
 
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {

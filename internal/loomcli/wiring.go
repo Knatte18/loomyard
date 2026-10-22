@@ -711,6 +711,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		WorktreeRoot: location.WorktreePath(),
 		// RunScratchDir is the directory the step envelope reports as scratch_dir.
 		RunScratchDir: shedrun.ScratchDir(location, c.runID),
+		GateFindingsFile: func(row string) string {
+			return shedrun.GateFindingsFile(location, c.runID, row)
+		},
 		VerifyDir:     verifytree.Dir(anchorPath),
 		VerifyCommand: planVerifySource(location).baseCommand,
 		Round:         roundGateSource(fabricengine.ConfigDirs(location)),

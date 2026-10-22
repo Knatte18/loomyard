@@ -546,6 +546,7 @@ User-facing modules each get one `lyx <module>` namespace:
   a darn run's tail is `Describe → Merge-In → Publish → PR-Align → PR-Gate → Finalize`, with no merge review.
   `Merge-In` merges the parent into the task, verifies the merged tree and writes the merge record, and the perch reviews how the task's code interacts with what the parent gained.
   `Publish`, `PR-Gate` and `Finalize` reroute to `Merge-In` when the parent moved since.
+  A darn run's `Darn-Write` also reroutes to `Merge-In` when this run's failure record is present, the branch and worktree are unchanged since it, and the parent moved.
   `Webster` reroutes to `Plan-Burler-Review` when begin-batch left a new plan conflict.
   `Publish` pushes the task branch after the hub's `landing` and `publish` gates, and returns Done once the PR is open, refreshing its title and body from the description.
   `Describe` writes the change description at `_lyx/landing/summary.md`, the single source for the PR title and body and for the landing commit, whose message ends in the trailer block Go appends: `landing.yaml`'s `trailer_text`, then the `engine_trailers` text of each engine that ran a session in the task, each copied verbatim and each switchable off by an empty value.
