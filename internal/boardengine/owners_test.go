@@ -1,12 +1,10 @@
 // owners_test.go — ParseOwners, Owners.Effective and OwnedElsewhere.
 
-package boardengine_test
+package boardengine
 
 import (
 	"errors"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/boardengine"
 )
 
 func TestOwnersEffective(t *testing.T) {
@@ -21,7 +19,7 @@ func TestOwnersEffective(t *testing.T) {
 		`{"id":0,"slug":"child","title":"c","kind":"task","labels":["bug"],"status":"idle"},` +
 		`{"id":1,"slug":"pair","title":"p","kind":"task","labels":["bug"],"owner_machine":"box"},` +
 		`{"id":2,"slug":"grand","title":"g","kind":"task","labels":["bug"]},` +
-		`{"id":3,"slug":"running","title":"r","kind":"task","labels":["bug"],"status":"` + boardengine.RunStatus("running", "Implementer") + `"}]`
+		`{"id":3,"slug":"running","title":"r","kind":"task","labels":["bug"],"status":"` + RunStatus("running", "Implementer") + `"}]`
 	board := func(prime string) []byte {
 		if prime == "" {
 			return []byte(`{"version":1,` + entries + `}`)
@@ -51,7 +49,7 @@ func TestOwnersEffective(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			owners, err := boardengine.ParseOwners(tt.board)
+			owners, err := ParseOwners(tt.board)
 			if tt.parseErr {
 				if err == nil {
 					t.Fatalf("ParseOwners(%q) error = nil; want an error", tt.board)
@@ -83,7 +81,7 @@ func TestOwnersEffective(t *testing.T) {
 	for _, tt := range elsewhere {
 		t.Run("OwnedElsewhere_"+tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := boardengine.OwnedElsewhere(tt.owner, tt.here); got != tt.want {
+			if got := OwnedElsewhere(tt.owner, tt.here); got != tt.want {
 				t.Errorf("OwnedElsewhere(%q, %q) = %v; want %v", tt.owner, tt.here, got, tt.want)
 			}
 		})
