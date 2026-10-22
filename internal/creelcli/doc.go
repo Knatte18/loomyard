@@ -29,4 +29,12 @@
 // The hub delivery in this package implements the engine's delivery seam over the hub's worktrees, reed's persisted state and shuttle.
 // Its Command operation runs a command inject through the worktree's shuttle runner: clear, compact with the argument as focus, reload-plugins, color with the argument as segment color, and load-skills with the argument's space-separated skills.
 // Shuttle's busy and not-confirmed answers map onto the engine's ErrBusy and ErrNotLanded, as they do for a typed line.
+// A send that failed after the paste, because its text was found in the operator's draft or foreign text stood in the input box, maps onto ErrNotLanded as well, since ErrBusy means nothing was typed and a requeue would type the line again.
+// Only a hold before the paste stays ErrBusy.
+// Bound: an inject left beside a draft is not retyped; shuttle's pending-send record resolves a draft-merged one at the next send, and a foreign-text or recordless one is lost rather than typed twice.
+// The hub delivery's strand listing skips a worktree that no longer resolves as a worktree instead of failing over a teardown mid-lookup, and its strands get no delivery until it resolves again.
+// A worktree is skipped when its resolve fails as not a git repository, whatever the cause, or when its reed state read, wiring or status fails (a missing session aside) after its directory is gone; any other failure still fails the call naming the worktree.
+// The skip logs at Info when the directory is gone or its .git file names a gitdir that is gone, and at Warn otherwise, with the path and the cause.
+// The Warn line of a worktree whose .git is a file names `git worktree repair <path>` as the step to try, and that of one whose .git is a directory names that cause and no repair step.
+// The delivery workers list the strands on every probe, so a path logs its first skip at that level and later skips at Debug, until the path resolves again or the listing no longer holds it.
 package creelcli

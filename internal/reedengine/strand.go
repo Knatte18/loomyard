@@ -241,6 +241,48 @@ func (e *Engine) strandNameLocked(st *ReedState, spec AddSpec) (string, error) {
 	return agentname.Format(shortname, slug, agentname.NumberRole(role, held))
 }
 
+// reclaimDeadNameLocked removes the strand holding the exact name spec asks for when its engine is dead, so the add forms that name instead of a numbered one or a refusal.
+// The asked-for name is explicitName when spec sets NameOverride, else the un-numbered role name; a numbered form is never reclaimed.
+// The holder keeps the name, with nothing changed, when it is hidden, when the pair is paused, when it has children, or when its engine reads live, a launch grace included.
+// Otherwise it is removed as the ordinary removal does, its pane killed only when this session lists it, and the removal reaches the state file with the add's own save.
+// A failed pane listing is returned, since the add lists panes again to launch and would fail the same way.
+func (e *Engine) reclaimDeadNameLocked(st *ReedState, spec AddSpec, explicitName string) error {
+	name := explicitName
+	if spec.NameOverride == "" {
+		role := spec.Role
+		if role == "" {
+			role = defaultRole
+		}
+		var err error
+		if name, err = agentname.Format(e.geom.NameShortname, e.geom.NameSlug, role); err != nil {
+			return err
+		}
+	}
+	idx := strandNamed(st.Strands, name)
+	if idx == -1 {
+		return nil
+	}
+	holder := st.Strands[idx]
+	if holder.Display.Anchor == render.AnchorHidden || e.pairPaused() || len(directChildren(st.Strands, holder.GUID)) > 0 {
+		return nil
+	}
+	live, windows, err := e.listStrandAndWindowPanes(st)
+	if err != nil {
+		return fmt.Errorf("list panes: %w", err)
+	}
+	if e.engineAliveIDSet(presentPanes(st.Strands, live, windows))[holder.PaneID] {
+		return nil
+	}
+	_, paneIDs, err := e.removeStrandLocked(st, holder.GUID, false)
+	if err != nil {
+		return err
+	}
+	reapPIDs, _, _ := e.killStrandPanes(st, paneIDs, false)
+	reapPaneChildren(reapPIDs, reapExitTimeout)
+	logger.Info("reed: reclaimed a dead strand's name", "socket", e.Socket(), "session", e.SessionName(), "name", name, "guid", holder.GUID)
+	return nil
+}
+
 // ifAbsentDecision is the closed set of branch rows AddStrand's --if-absent path chooses among for a
 // given name against the persisted strand table.
 type ifAbsentDecision int
@@ -261,12 +303,12 @@ const (
 // classifyIfAbsent decides which of the four --if-absent branch rows AddStrand must take for name
 // against strands, given aliveIDs.
 //
-// aliveIDs must be the set aliveIDSet (apply.go) builds, never liveIDSet: a candidate is alive exactly
+// aliveIDs must be the engine judgment engineAliveIDSet (apply.go) builds, never liveIDSet: a candidate is alive exactly
 // when s.PaneID != "" && aliveIDs[s.PaneID] — both halves, copying planResumeLaunches in
 // lifecycle.go, whose own comment records why the empty-PaneID half carries its weight after a server
-// reboot clears every binding. liveIDSet would instead read a dead-but-present pane as live, so the
-// case most worth recovering (a strand whose pane died) would be exactly the one --if-absent refused
-// to fix.
+// reboot clears every binding.
+// liveIDSet would instead read a dead-but-present pane, or a shell-only pane whose engine exited, as live,
+// so the case most worth recovering (a strand whose engine died) would be exactly the one --if-absent refused to fix.
 //
 // It returns the decision and the index into strands the decision names; the index is -1 only for
 // ifAbsentAdd, since that row names no existing strand at all.
@@ -565,8 +607,8 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 			if err != nil {
 				return fmt.Errorf("list panes: %w", err)
 			}
-			// aliveIDSet, not liveIDSet: see classifyIfAbsent's own doc comment for why.
-			decision, idx := classifyIfAbsent(st.Strands, explicitName, aliveIDSet(presentPanes(st.Strands, live, windows)))
+			// engineAliveIDSet, not liveIDSet: see classifyIfAbsent's own doc comment for why.
+			decision, idx := classifyIfAbsent(st.Strands, explicitName, e.engineAliveIDSet(presentPanes(st.Strands, live, windows)))
 			switch decision {
 			case ifAbsentNoOpAlive, ifAbsentNoOpHidden:
 				// Neither no-op branch mutates anything: no SaveState, no reconcile/apply, and
@@ -613,6 +655,10 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 				return nil
 			}
 			// ifAbsentAdd: no matching strand at all — fall through to the ordinary add path below.
+		}
+
+		if err := e.reclaimDeadNameLocked(st, spec, explicitName); err != nil {
+			return err
 		}
 
 		strand, err := e.addStrandLocked(st, spec)

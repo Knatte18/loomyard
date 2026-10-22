@@ -570,7 +570,7 @@ func driverWaitMark(
 
 // conflictSessionStopper returns the seam landingshed stops the run's conflict sessions through, built over two seams so a test needs no tmux:
 // status reads reed's strand table and stop ends one strand by guid.
-// The table is read at call time, and every live, non-retiring strand whose role is the conflict role or a numbered form of it is stopped.
+// The table is read at call time, and every non-retiring strand whose role is the conflict role or a numbered form of it is stopped when it is live or an own-window strand whose pane is present, such as one whose engine exited to its shell.
 // The first stop that fails ends the pass and is returned with that strand's guid;
 // a failed table read is returned with an empty guid, and a pass that stops every match, or finds none, returns an empty guid and nil.
 func conflictSessionStopper(
@@ -583,7 +583,7 @@ func conflictSessionStopper(
 			return "", err
 		}
 		for _, strand := range result.Strands {
-			if !strand.Live || strand.Retiring {
+			if !(strand.Live || strand.OwnWindow && strand.Present) || strand.Retiring {
 				continue
 			}
 			name, err := agentname.Parse(strand.Name)

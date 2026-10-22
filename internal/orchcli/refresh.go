@@ -14,8 +14,10 @@ import (
 
 // requestCycle writes the cycle request marker for mode, then checks for a live watcher.
 // With no watcher live it removes the marker again, so no later watcher acts on a request made while none ran, and reports false.
+// It removes only the request it wrote, so a request another caller wrote meanwhile stays.
 func (c *orchCLI) requestCycle(mode string) (watcherLive bool, err error) {
-	if err := orchengine.RequestCycle(c.paths, mode, time.Now()); err != nil {
+	request := orchengine.CycleRequest{Mode: mode, RequestedAt: time.Now()}
+	if err := orchengine.RequestCycle(c.paths, request.Mode, request.RequestedAt); err != nil {
 		return false, err
 	}
 	watcherLive, err = orchengine.WatcherLive(c.paths)
@@ -23,7 +25,7 @@ func (c *orchCLI) requestCycle(mode string) (watcherLive bool, err error) {
 		return false, err
 	}
 	if !watcherLive {
-		if err := orchengine.ClearCycleRequest(c.paths); err != nil {
+		if _, err := orchengine.RemoveCycleRequestIf(c.paths, request); err != nil {
 			return false, err
 		}
 	}
@@ -41,10 +43,15 @@ func (c *orchCLI) requestCmd(cmd *cobra.Command, mode string) error {
 		clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 		return nil
 	}
-	clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+	fields := map[string]any{
 		"requested":    true,
 		"watcher_live": watcherLive,
-	}))
+	}
+	if watcherLive && c.hubPauseHolds() {
+		fields["held_by_pause"] = true
+		fields["note"] = "the request waits for the hub pause to be resumed"
+	}
+	clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 	return nil
 }
 
@@ -58,8 +65,12 @@ func (c *orchCLI) refreshCmd() *cobra.Command {
 idle moment, whatever cycle_mode says. The session writes a note first; only
 then does the watcher clear it and resume it from the note. The envelope's
 watcher_live tells you at once when no watcher is running to act on it; the
-request is then withdrawn. A request the watcher has
-not finished within the handoff timeout is abandoned.`,
+request is then withdrawn. While a hub pause holds the watcher the request
+waits for the resume, and the envelope adds held_by_pause true with a note.
+A request the watcher has not finished within the handoff timeout is
+abandoned; the timeout counts no time a hub pause held the request.
+"lyx orch withdraw" removes a pending request, and "lyx orch status" shows it
+as cycle_request.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.requestCmd(cmd, orchengine.CycleClear)

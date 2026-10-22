@@ -1,5 +1,5 @@
 // watcher.go — the watcher's decision core: one poll of the persisted cycle, whose mode (State.CycleMode) picks between two machines.
-// Both modes start with the note gate: idle, then handoff-requested, which posts the note request as creel mail and waits for the orch's reply.
+// Both modes start with the note gate: idle, then handoff-requested, which posts the note request as creel mail and waits for a turn end with the note written.
 // Clear mode then runs clearing and resuming;
 // compact mode then runs compacting, which injects `/compact` with a focus text.
 // Neither clears or compacts before the note gate passed.
@@ -18,7 +18,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -44,9 +43,9 @@ const (
 	commandLoadSkills    = "load-skills"
 )
 
-// The two answers the orch gives the note request, as the bodies of its reply.
+// The two bodies of a reply to the note request the watcher recognises.
 const (
-	// replyWritten is followed by the note path once the note is written.
+	// replyWritten opens a reply the watcher only recognises to ignore: the note gate reads the note itself.
 	replyWritten = "written"
 	// replyDefer declines a soft cycle.
 	replyDefer = "defer"
@@ -54,6 +53,9 @@ const (
 
 // errNotBound reports that the watcher has not yet set its events cursor for the recorded strand, so it cannot act on a reply.
 var errNotBound = errors.New("orch: the watcher is not bound to the recorded strand yet")
+
+// errCompactWithdrawHeld reports that withdrawing the still-queued `/compact` was held by a creel failure, so the compacting phase keeps its boundary for the next tick.
+var errCompactWithdrawHeld = errors.New("orch: withdrawing the queued compact is held by a creel failure")
 
 // errResetPending reports that a phase belonging to another strand could not be reset because a creel call failed; the next tick runs the reset again.
 var errResetPending = errors.New("orch: resetting a phase of another strand is held by a creel failure")
@@ -515,9 +517,8 @@ func (w *Watcher) readMailbox(st State) (State, error) {
 
 // readReplies is the read handler of the watcher's mailbox: it runs before the client acknowledges the read, so a failure leaves the messages unread.
 // Only a reply from the orch strand whose reply_to is the pending note request counts; every other message is logged and dropped.
-// A `written <path>` body naming the requested note, written and non-empty, moves the phase on to clearing or compacting and persists the move;
-// any other body is logged and leaves the phase waiting.
 // A `defer` body declines a soft cycle whose note is still unwritten, and is ignored in any other cycle.
+// A body starting with `written` is logged and dropped, since the note gate reads the note itself; every other body is logged and dropped.
 func (w *Watcher) readReplies(messages []CreelMessage) error {
 	st, err := LoadState(w.paths)
 	if err != nil {
@@ -557,41 +558,13 @@ func (w *Watcher) readReplies(messages []CreelMessage) error {
 			st.LastDeferral = now
 			return w.toIdle(st, "deferred")
 		}
-		path, isWritten := strings.CutPrefix(body, replyWritten)
-		if !isWritten || (path != "" && strings.TrimSpace(path) == path) {
-			logger.Info("orch: reply left unanswered, it is neither `written <path>` nor `defer`", "messageID", message.ID)
+		if strings.HasPrefix(body, replyWritten) {
+			logger.Info("orch: a written reply is ignored, the note gate reads the note itself", "messageID", message.ID)
 			continue
 		}
-		path = strings.TrimSpace(path)
-		if !w.isRequestedNote(path, st) {
-			logger.Info("orch: reply left unanswered, it names another path", "messageID", message.ID, "path", path, "requested", st.PendingHandoff)
-			continue
-		}
-		written, err := handoffWritten(st.PendingHandoff)
-		if err != nil {
-			return err
-		}
-		if !written {
-			logger.Info("orch: reply left unanswered, the note is missing or empty", "messageID", message.ID, "path", st.PendingHandoff)
-			continue
-		}
-		if st.CycleMode == CycleCompact {
-			return w.startCompacting(st, now)
-		}
-		return w.startClearing(st, now)
+		logger.Info("orch: reply dropped, only `defer` is acted on", "messageID", message.ID)
 	}
 	return nil
-}
-
-// isRequestedNote reports whether path, resolved against the prime when relative, is the note the pending request asked for.
-func (w *Watcher) isRequestedNote(path string, st State) bool {
-	if path == "" {
-		return false
-	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(w.paths.PrimeRoot, path)
-	}
-	return filepath.Clean(path) == filepath.Clean(st.PendingHandoff)
 }
 
 // sendStep persists the step as State.Pending with no id, then posts it as mail (mail true, body as the mail body) or injects it into the orch strand, and saves the id creel answers.
@@ -972,13 +945,19 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	if requested && now.Sub(req.RequestedAt) >= w.cfg.HandoffTimeout() {
-		// The time is on disk, so this covers a marker a dead watcher left.
-		logger.Warn("orch: stale cycle request removed", "mode", req.Mode, "age", now.Sub(req.RequestedAt).String(), "strandGUID", st.Strand)
-		if err := ClearCycleRequest(w.paths); err != nil {
-			return err
+	if requested {
+		if age := w.unpausedSince(req.RequestedAt, now); age >= w.cfg.HandoffTimeout() {
+			// The time is on disk, so this covers a marker a dead watcher left.
+			// Only the request this tick read is removed: one written since stays pending and the cycle start below finds it changed.
+			removed, err := RemoveCycleRequestIf(w.paths, req)
+			if err != nil {
+				return err
+			}
+			if removed {
+				logger.Warn("orch: stale cycle request removed", "mode", req.Mode, "age", age.String(), "strandGUID", st.Strand)
+			}
+			req, requested = CycleRequest{}, false
 		}
-		requested = false
 	}
 	// The trigger is chosen in a fixed order: the hard cap wins over a request, which wins over the soft threshold.
 	var trigger string
@@ -1049,14 +1028,37 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	st.PendingHandoff = path
 	st.CycleTrigger = trigger
 	st.CycleMode, st.CycleRequestedAt = mode, requestedAt
-	if st, err = w.enter(st, PhaseHandoffRequested, now); err != nil {
-		return err
+	// The fields enter sets, saved together with the marker's removal so a withdrawn or replaced request is never consumed.
+	st.Phase = PhaseHandoffRequested
+	st.PhaseStrand = st.Strand
+	st.PhaseEnteredAt = now
+	st.PhaseEventsOffset = w.cursor
+	st.PhaseInjected = false
+	st.Pending, st.RequestID = nil, 0
+	st.Stuck, st.StuckByCreel = "", false
+	if err := saveCycleStart(w.paths, st, req, requested); err != nil {
+		if !errors.Is(err, errMarkerChanged) {
+			return err
+		}
+		logger.Info("orch: requested cycle not started, the request changed", "strandGUID", st.Strand)
+		return w.releaseHold(&st)
 	}
+	w.seen = phaseEvents{}
 	w.newest = nil
-	if err := ClearCycleRequest(w.paths); err != nil {
-		return err
-	}
 	return w.sendStep(&st, true, CreelStep{}, body, now)
+}
+
+// unpausedSince returns the time from to now less the time a hub pause held the watcher's cycle machine.
+// A watcher told no pause record, or one whose record cannot be read, discounts nothing.
+func (w *Watcher) unpausedSince(from, now time.Time) time.Duration {
+	if w.pause == nil {
+		return now.Sub(from)
+	}
+	record, err := pauserecord.Read(w.pause.RecordPath)
+	if err != nil {
+		return now.Sub(from)
+	}
+	return pauserecord.AwakeSince(from, now, record.CoverageOf("", now).Intervals)
 }
 
 // renderHandoffRequest renders the note template file, then the note request for trigger: the soft stencil for a soft cycle, the plain one otherwise.
@@ -1070,7 +1072,15 @@ func (w *Watcher) renderHandoffRequest(trigger, handoffPath string) (string, err
 	return RenderHandoffInstruction(w.stencilsDir, handoffPath, w.paths.NoteTemplatePath)
 }
 
-// tickHandoff waits for the orch's reply to the note request, which readReplies handles, and times the phase out.
+// notePassed reports whether the note gate passes: the newest session event read since the phase began is a turn end, and the requested note file exists and is not empty.
+func (w *Watcher) notePassed(st State) (bool, error) {
+	if w.newest == nil || !isTurnEnd(*w.newest) {
+		return false, nil
+	}
+	return handoffWritten(st.PendingHandoff)
+}
+
+// tickHandoff passes the note gate once the orch has ended a turn with the requested note written, and times the phase out.
 // A request not yet posted, because a restart came before the post was persisted, is posted again.
 func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if w.seen.ask {
@@ -1081,8 +1091,33 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if !st.CycleRequestedAt.IsZero() && st.CycleRequestedAt.Before(started) {
 		started = st.CycleRequestedAt
 	}
-	if now.Sub(started) >= w.cfg.HandoffTimeout() {
+	if w.unpausedSince(started, now) >= w.cfg.HandoffTimeout() {
 		return w.toIdle(st, "handoff timed out")
+	}
+	passed, err := w.notePassed(st)
+	if err != nil {
+		return err
+	}
+	if passed {
+		// The new phase's first tick runs in this call, as it did when the reply handler made the move before the phase switch.
+		start := w.startClearing
+		if st.CycleMode == CycleCompact {
+			start = w.startCompacting
+		}
+		if err := start(st, now); err != nil {
+			return err
+		}
+		w.newest = nil
+		if st, err = LoadState(w.paths); err != nil {
+			return err
+		}
+		switch st.Phase {
+		case PhaseClearing:
+			return w.tickClearing(st, now)
+		case PhaseCompacting:
+			return w.tickCompacting(st, now)
+		}
+		return nil
 	}
 	if st.Pending != nil || st.RequestID != 0 {
 		return nil
@@ -1156,8 +1191,12 @@ func (w *Watcher) removeSatisfiedRequest(mode string, effectAt time.Time) error 
 	if err != nil || !pending || req.Mode != mode || req.RequestedAt.After(effectAt) {
 		return err
 	}
+	removed, err := RemoveCycleRequestIf(w.paths, req)
+	if err != nil || !removed {
+		return err
+	}
 	logger.Info("orch: cycle request satisfied by the running cycle and removed", "mode", req.Mode, "requestedAt", req.RequestedAt)
-	return ClearCycleRequest(w.paths)
+	return nil
 }
 
 // startAutoReload reloads the plugins and the role after an auto-compaction read at a turn end, once the creel hold is taken.
@@ -1422,6 +1461,73 @@ func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 	return w.startReload(st, now, true)
 }
 
+// withdrawQueuedCompact withdraws the `/compact` inject still queued when the session compacted on its own, so it never compacts the session a second time.
+// The inject counts as still queued when its step is pending, not yet typed, and either creel never answered its send or creel reads it queued or sending.
+// The withdraw is receiver-wide: it also removes any other queued watcher item to the orch.
+// A resume line the withdraw removed has its pause-record mark cleared; a failed clear drops the withdrawn step, keeps the line in State.ResumeLineWithdrawn and fails the call,
+// and a later call clears the mark although no withdraw runs.
+// A creel failure is recorded through creelFailed and answered with errCompactWithdrawHeld, which leaves the phase as it was for the next call to retry.
+func (w *Watcher) withdrawQueuedCompact(st *State) error {
+	if st.Pending == nil || st.PhaseInjected {
+		return w.clearWithdrawnResumeLine(st)
+	}
+	queued := st.Pending.ID == 0
+	if !queued {
+		outcome, err := w.creel.InjectOutcome(st.Pending.ID)
+		if err != nil {
+			return w.holdOnCreelFailure(st, err)
+		}
+		queued = outcome.State == CreelQueued || outcome.State == CreelSending
+	}
+	if !queued {
+		return w.clearWithdrawnResumeLine(st)
+	}
+	name, err := w.orchName(*st)
+	if err != nil {
+		return w.holdOnCreelFailure(st, err)
+	}
+	withdrawn, err := w.creel.Withdraw(name)
+	if err != nil {
+		return w.holdOnCreelFailure(st, err)
+	}
+	st.Pending = nil
+	if w.pause != nil {
+		if st.ResumeLineWithdrawn {
+			withdrawn = append(withdrawn, CreelWithdrawn{Subject: pauserecord.ResumeLine})
+		}
+		if err := ClearResumeNoticed(w.pause.RecordPath, st.Strand, withdrawn, w.clock.Now()); err != nil {
+			st.ResumeLineWithdrawn = slices.ContainsFunc(withdrawn, func(message CreelWithdrawn) bool { return message.Subject == pauserecord.ResumeLine })
+			if saveErr := w.save(*st); saveErr != nil {
+				return saveErr
+			}
+			return err
+		}
+		st.ResumeLineWithdrawn = false
+	}
+	return nil
+}
+
+// clearWithdrawnResumeLine clears the pause-record mark of a resume line an earlier withdraw removed and whose clear failed, then unsets State.ResumeLineWithdrawn.
+// It does nothing when no such line is recorded.
+func (w *Watcher) clearWithdrawnResumeLine(st *State) error {
+	if !st.ResumeLineWithdrawn || w.pause == nil {
+		return nil
+	}
+	if err := ClearResumeNoticed(w.pause.RecordPath, st.Strand, []CreelWithdrawn{{Subject: pauserecord.ResumeLine}}, w.clock.Now()); err != nil {
+		return err
+	}
+	st.ResumeLineWithdrawn = false
+	return nil
+}
+
+// holdOnCreelFailure records a failed creel call through creelFailed and answers errCompactWithdrawHeld, or the failed save.
+func (w *Watcher) holdOnCreelFailure(st *State, err error) error {
+	if saveErr := w.creelFailed(st, err); saveErr != nil {
+		return saveErr
+	}
+	return errCompactWithdrawHeld
+}
+
 // tickCompacting searches the transcript State.ReadingTurnEnd names for a compaction boundary every tick, since a compaction ends without a turn end.
 // The boundary is searched for rather than read off the newest entry, because a message answered right after the boundary hides it there.
 // The phase completes on a boundary after the phase was entered, whatever follows it; an earlier boundary never completes it.
@@ -1450,6 +1556,12 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 
 	if qualifying {
 		logger.Info("orch: compaction boundary found", "strandGUID", st.Strand, "boundaryAt", boundary.At)
+		if err := w.withdrawQueuedCompact(&st); err != nil {
+			if errors.Is(err, errCompactWithdrawHeld) {
+				return nil
+			}
+			return err
+		}
 		if err := storeCurrentReading(); err != nil {
 			return err
 		}

@@ -82,6 +82,8 @@ type StrandStatus struct {
 	// OwnWindow reports that the strand lives in a window of its own, own-window or overview.
 	// Shuttle's stop path decides on it whether the strand's window goes with it.
 	OwnWindow bool
+	// Elsewhere is the session:window placement of the strand's bound pane when it sits in another session of reed's server, empty when it does not.
+	Elsewhere string
 	// Retiring mirrors Strand.Retiring.
 	Retiring bool
 	// Color is the palette color the strand's segment resolves to, empty when it has none.
@@ -838,10 +840,10 @@ func (e *Engine) Resume() (ResumeResult, error) {
 				return fmt.Errorf("list panes after reconcile: %w", err)
 			}
 		}
-		// aliveIDSet, not liveIDSet: a strand bound to a dead-but-present pane
-		// (e.g. the kept sole dead pane) is not live and must be relaunched.
+		// engineAliveIDSet, not liveIDSet: a strand bound to a dead-but-present pane
+		// (e.g. the kept sole dead pane), or to a shell-only pane past the launch grace, is not live and must be relaunched.
 		// The present set carries the own-window panes, so a live one is never relaunched beside itself.
-		toLaunch, toDrop, toHold := planResumeLaunches(st.Strands, aliveIDSet(presentPanes(st.Strands, live, windows)), pathExists, e.pairPaused())
+		toLaunch, toDrop, toHold := planResumeLaunches(st.Strands, e.engineAliveIDSet(presentPanes(st.Strands, live, windows)), pathExists, e.pairPaused())
 
 		// A finished strand has no live pane,
 		// so dropping it kills nothing.
@@ -1341,11 +1343,10 @@ func (e *Engine) Status() (StatusResult, error) {
 		}
 		present := presentPanes(st.Strands, live, windows)
 
-		// aliveIDSet, not liveIDSet: report a strand bound to a
-		// dead-but-present pane as not live — the operator asks status whether
-		// the strand's process is running, not whether tmux still lists a
-		// (dead) pane for it.
-		aliveIDs := aliveIDSet(present)
+		// engineAliveIDSet, not liveIDSet: report a strand bound to a dead-but-present pane, or to a pane showing only its start shell past the launch grace, as not live.
+		// The operator asks status whether the strand's engine is running, not whether tmux still lists a pane for it.
+		// Present, OwnWindow and PanePID stay pane-level.
+		aliveIDs := e.engineAliveIDSet(present)
 		presentIDs := liveIDSet(present)
 		alivePIDs := make(map[string]int, len(present))
 		for _, p := range present {
@@ -1358,9 +1359,10 @@ func (e *Engine) Status() (StatusResult, error) {
 		// ReedState.SelvagePaneID). Status still succeeds (the session is
 		// up) when st.Strands is empty but Selvage is alive; a future edit
 		// must not "fix" a missing Selvage row by appending one here.
+		elsewhere := e.strandsElsewhereLocked(st.Strands, windows)
 		strands := make([]StrandStatus, len(st.Strands))
 		for i, s := range st.Strands {
-			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin, Provider: s.Provider}
+			strands[i] = StrandStatus{GUID: s.GUID, Name: s.Name, PaneID: s.PaneID, PanePID: alivePIDs[s.PaneID], Live: aliveIDs[s.PaneID], Present: presentIDs[s.PaneID], OwnWindow: isOwnWindow(s.Display), Elsewhere: elsewhere[s.PaneID], Retiring: s.Retiring, Color: e.withColor(s).Color, LyxBin: s.LyxBin, Provider: s.Provider}
 		}
 
 		result = StatusResult{Session: session, Socket: e.Socket(), Strands: strands}

@@ -80,13 +80,17 @@ type orchCLI struct {
 	strands     strandOps
 	paths       orchengine.Paths
 	stencilsDir string
+	// pauseRecordPath is the hub's pause record, which `status`, `refresh` and `distill` read to tell a request held by a hub pause.
+	pauseRecordPath string
 
 	reedUp  func() error
 	starter sessionStarter
 	// newCreel builds the creel seam the watcher and `start` call creel through, signing as the ORCHWATCH program.
 	newCreel     func() (orchengine.Creel, error)
 	spawnWatcher func() error
-	sleep        func(time.Duration)
+	// startLockWait is how long `stop` waits for start.lock before it refuses.
+	startLockWait time.Duration
+	sleep         func(time.Duration)
 	// indexRunner returns the output of `<bin> help index`.
 	indexRunner func(bin string) (string, error)
 	// executable returns the path of the running lyx binary, which the runs strand's command names.
@@ -183,6 +187,11 @@ Every verb runs from the hub's prime worktree only.`,
 			c.strands = newReedStrandOps(reed)
 			c.paths = orchPaths(location)
 			c.stencilsDir = fabricengine.StencilsDir(location.HubPath)
+			pauseGeometry, err := hubgeom.PauseGeometry(location)
+			if err != nil {
+				return fail(err)
+			}
+			c.pauseRecordPath = pauseGeometry.RecordPath
 			c.reedUp = func() error { _, err := reed.Up(); return err }
 			c.starter = runnerSessionStarter{runner: c.runner}
 			c.newCreel = func() (orchengine.Creel, error) {
@@ -193,6 +202,7 @@ Every verb runs from the hub's prime worktree only.`,
 				return creelSeam{client: client}, nil
 			}
 			c.spawnWatcher = c.spawnWatcherProcess
+			c.startLockWait = stopStartLockWait
 			c.sleep = time.Sleep
 			c.indexRunner = runHelpIndex
 			c.executable = os.Executable
@@ -204,7 +214,7 @@ Every verb runs from the hub's prime worktree only.`,
 		},
 	}
 
-	parent.AddCommand(c.startCmd(), c.statusCmd(), c.refreshCmd(), c.distillCmd(), c.stopCmd(), c.rulesCmd(), c.watchCmd(), c.resumeContextCmd(), c.cleanupCmd())
+	parent.AddCommand(c.startCmd(), c.statusCmd(), c.refreshCmd(), c.distillCmd(), c.withdrawCmd(), c.stopCmd(), c.rulesCmd(), c.watchCmd(), c.resumeContextCmd(), c.cleanupCmd())
 	return parent
 }
 

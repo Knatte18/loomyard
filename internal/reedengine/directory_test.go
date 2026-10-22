@@ -46,7 +46,15 @@ func TestDirectory_MapsEachStrandToItsRow(t *testing.T) {
 	for i, s := range strands {
 		wantCold[i] = DirectoryRow{Name: s.Name, GUID: s.GUID, Worktree: s.Worktree, PaneID: s.PaneID, Retiring: s.Retiring}
 	}
-	if gotCold := directoryRows(strands, nil); !reflect.DeepEqual(gotCold, wantCold) {
+	if gotCold := directoryRows(strands, nil, nil); !reflect.DeepEqual(gotCold, wantCold) {
 		t.Errorf("cold rows:\n got %+v\nwant %+v", gotCold, wantCold)
+	}
+
+	// A pane present and not dead but missing from the alive set, such as a shell-only pane, reads dormant with an empty title.
+	shellOnly := []Strand{{GUID: "g5", Name: "tc:tslug:shell", Worktree: "tslug", PaneID: "%5"}}
+	shellOnlyLive := []LivePane{{ID: "%5", Title: "tc:tslug:shell"}}
+	wantShellOnly := []DirectoryRow{{Name: "tc:tslug:shell", GUID: "g5", Worktree: "tslug", PaneID: "%5"}}
+	if gotShellOnly := directoryRows(shellOnly, shellOnlyLive, map[string]bool{}); !reflect.DeepEqual(gotShellOnly, wantShellOnly) {
+		t.Errorf("shell-only rows:\n got %+v\nwant %+v", gotShellOnly, wantShellOnly)
 	}
 }

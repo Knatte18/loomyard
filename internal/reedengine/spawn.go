@@ -53,9 +53,9 @@ func sendKeysLiteralArg(text string) string {
 //     fresh record; updateStrandLocked launches a strand that has never held a pane), so reconcile
 //     can neither clear nor kill anything belonging to it.
 //   - On Resume that is not universally true: planResumeLaunches selects strands whose pane is
-//     absent from aliveIDSet, which includes a strand still bound to a dead-but-present pane. That is
-//     harmless here too — that binding names a corpse, so reconcile either kills it as a dead pane
-//     (clearing the binding) or spares it as the kept dead pane, and either way this function
+//     absent from engineAliveIDSet, which includes a strand still bound to a dead-but-present pane or to a shell-only pane past the launch grace.
+//     That is harmless here too — that binding names a corpse, so reconcile either kills it as a dead pane
+//     (clearing the binding), spares it as the kept dead pane, or leaves the shell-only pane for the own-window kill, and either way this function
 //     overwrites s.PaneID with the freshly created pane a few lines below. Strands Resume's per-strand
 //     loop already relaunched earlier in the same pass are bound to alive panes by the time this
 //     reconcile runs for the next strand, so they are exempt from the untracked reap, not merely

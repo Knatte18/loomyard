@@ -21,6 +21,28 @@ type LivePane struct {
 	PID    int    `json:"pid"`
 	// Title is the pane title, a display mirror of the strand's full name; empty when unset.
 	Title string `json:"title,omitempty"`
+	// CurrentCommand is the name of the pane's foreground process group leader; empty when the listing did not carry it.
+	CurrentCommand string `json:"current_command,omitempty"`
+	// StartCommand is the command tmux froze into the pane at spawn; empty when the session held no default-command pin.
+	StartCommand string `json:"start_command,omitempty"`
+}
+
+// paneTailSeparator joins the title, the current command and the start command in the last field of a pane listing line.
+// Each of the three can hold spaces, and tmux passes the ASCII unit separator through a format verbatim.
+const paneTailSeparator = "\x1f"
+
+// splitPaneTail splits the last field of a pane listing line into the title, the current command and the start command.
+// A part the tail does not carry reads empty, so a tail holding only a title parses with both commands empty.
+func splitPaneTail(tail string) (title, current, start string) {
+	parts := strings.SplitN(tail, paneTailSeparator, 3)
+	title = parts[0]
+	if len(parts) > 1 {
+		current = parts[1]
+	}
+	if len(parts) > 2 {
+		start = parts[2]
+	}
+	return title, current, start
 }
 
 // parsePaneList parses list-panes output into LivePane values.
@@ -38,15 +60,16 @@ func parsePaneList(out string) ([]LivePane, error) {
 			continue
 		}
 
-		// The title is the last field and may hold spaces, so everything after the sixth field is the title.
+		// The tail field may hold spaces, so everything after the sixth field is the tail.
 		parts := strings.SplitN(line, " ", 7)
 		if len(parts) < 6 {
 			return nil, fmt.Errorf("invalid pane format: %q", line)
 		}
-		title := ""
+		tail := ""
 		if len(parts) == 7 {
-			title = parts[6]
+			tail = parts[6]
 		}
+		title, currentCommand, startCommand := splitPaneTail(tail)
 
 		// tmux reports pane_dead as "1"/"0"; remain-on-exit keeps the pane
 		// entry around after its command exits, which is exactly the case
@@ -70,13 +93,15 @@ func parsePaneList(out string) ([]LivePane, error) {
 		}
 
 		panes = append(panes, LivePane{
-			ID:     parts[0],
-			Dead:   dead,
-			Top:    top,
-			Width:  width,
-			Height: height,
-			PID:    pid,
-			Title:  title,
+			ID:             parts[0],
+			Dead:           dead,
+			Top:            top,
+			Width:          width,
+			Height:         height,
+			PID:            pid,
+			Title:          title,
+			CurrentCommand: currentCommand,
+			StartCommand:   startCommand,
 		})
 	}
 

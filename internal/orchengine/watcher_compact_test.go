@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -31,12 +32,11 @@ func (e *watchEnv) compactFocus() string {
 	return focus
 }
 
-// finishNote writes the pending note and answers the request with `written <path>`, then ticks once: the note gate passes and the next step is sent.
+// finishNote writes the pending note and ends a turn, which ticks: the note gate passes and the next step is sent.
 func (e *watchEnv) finishNote() {
 	e.t.Helper()
-	path := e.writeHandoff()
-	e.reply("written " + path)
-	e.tick()
+	e.writeHandoff()
+	e.endTurn("note")
 }
 
 // reachCompacting makes one over-threshold turn end and ticks until `/compact` is sent, through the note gate.
@@ -121,15 +121,12 @@ func TestCompact_RenderFailureAfterNoteChangesNothing(t *testing.T) {
 	if err := os.WriteFile(stencilstore.Path(e.stDir, compactStencilName), []byte("one\ntwo\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	path := e.writeHandoff()
-	e.reply("written " + path)
+	e.writeHandoff()
+	e.s.events = append(e.s.events, stop("note"))
 	e.tickErr()
 	e.assertCompactCalls(0)
 	if st := e.state(); st.Phase != PhaseHandoffRequested || st.LastHandoff != "" {
 		t.Errorf("state = %+v, want the note phase kept and no LastHandoff", st)
-	}
-	if len(e.c.mailbox) != 1 {
-		t.Errorf("mailbox = %+v, want the reply left unread", e.c.mailbox)
 	}
 }
 
@@ -177,8 +174,155 @@ func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
 				t.Errorf("completion recorded an abort or lost the note: %+v", st)
 			}
 			e.assertCompactCalls(1)
+			if got := e.c.count("withdraw:"); got != 0 {
+				t.Errorf("withdraws = %d, want none for a compact typed before the boundary", got)
+			}
 		})
 	}
+}
+
+// TestCompact_BoundaryWithdrawsAStillQueuedCompact pins that a boundary found while the /compact inject has no outcome withdraws it, and that a typed one is left alone.
+func TestCompact_BoundaryWithdrawsAStillQueuedCompact(t *testing.T) {
+	t.Parallel()
+
+	withdrawCall := "withdraw:" + fakeOrchStrandName
+	// compactingEnv reaches compacting with the fake creel leaving every inject queued, and returns the time a boundary after the phase entry takes.
+	compactingEnv := func(t *testing.T) (*watchEnv, time.Time) {
+		e := newCompactEnv(t)
+		e.c.autoLand = false
+		e.reachCompacting()
+		return e, e.state().PhaseEnteredAt.Add(2 * time.Second)
+	}
+	// lockPauseRecord makes the pause record unwritable until the returned function runs.
+	lockPauseRecord := func(e *watchEnv) (unlock func()) {
+		lock := e.pausePath + ".lock"
+		if err := os.Remove(lock); err != nil {
+			e.t.Fatal(err)
+		}
+		if err := os.Mkdir(lock, 0o755); err != nil {
+			e.t.Fatal(err)
+		}
+		return func() {
+			if err := os.Remove(lock); err != nil {
+				e.t.Fatal(err)
+			}
+		}
+	}
+	resumeNoticed := func(e *watchEnv) bool {
+		sessions := e.orchSessions()
+		if len(sessions) != 1 {
+			e.t.Fatalf("orch sessions = %+v, want the one", sessions)
+		}
+		return sessions[0].ResumeNoticed
+	}
+
+	for _, state := range []CreelState{CreelQueued, CreelSending} {
+		t.Run("A"+string(state)+"CompactIsWithdrawnAndThePhaseCompletes", func(t *testing.T) {
+			t.Parallel()
+			e, boundaryAt := compactingEnv(t)
+			e.setOutcome(e.lastInjectID(), CreelOutcome{State: state})
+			e.landBoundary(boundaryAt, 150)
+			e.tick()
+			if got := e.c.count(withdrawCall); got != 1 {
+				t.Errorf("withdraws = %d, want 1; calls = %v", got, e.c.calls)
+			}
+			if st := e.state(); st.Phase != PhaseResuming || st.CycleCount != 1 {
+				t.Errorf("state = %+v, want resuming after the cycle", st)
+			}
+		})
+	}
+
+	t.Run("AnInjectedCompactMakesNoWithdraw", func(t *testing.T) {
+		t.Parallel()
+		e, boundaryAt := compactingEnv(t)
+		e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelInjected})
+		e.landBoundary(boundaryAt, 150)
+		e.tick()
+		if got := e.c.count("withdraw:"); got != 0 {
+			t.Errorf("withdraws = %d, want none; calls = %v", got, e.c.calls)
+		}
+		if st := e.state(); st.Phase != PhaseResuming {
+			t.Errorf("phase = %s, want resuming", st.Phase)
+		}
+	})
+
+	t.Run("AWithdrawnResumeLineHasItsNoticedMarkCleared", func(t *testing.T) {
+		t.Parallel()
+		e, boundaryAt := compactingEnv(t)
+		e.noticedResumedEntry()
+		e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+		e.landBoundary(boundaryAt, 150)
+		e.tick()
+		if resumeNoticed(e) {
+			t.Error("the resume-noticed mark is still set after the withdraw removed the resume line")
+		}
+	})
+
+	t.Run("AFailedMarkClearKeepsTheLineAndTheNextTickClearsItBeforeCompleting", func(t *testing.T) {
+		t.Parallel()
+		e, boundaryAt := compactingEnv(t)
+		e.noticedResumedEntry()
+		e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+		unlock := lockPauseRecord(e)
+		e.landBoundary(boundaryAt, 150)
+		e.tickErr()
+		st := e.state()
+		if st.Phase != PhaseCompacting || st.Pending != nil || !st.ResumeLineWithdrawn || st.CycleCount != 0 {
+			t.Fatalf("state = %+v, want compacting with no pending step and the withdrawn line kept", st)
+		}
+		unlock()
+		e.c.withdrawn = nil
+		e.tick()
+		if resumeNoticed(e) {
+			t.Error("the resume-noticed mark is still set after the retry")
+		}
+		if got := e.c.count(withdrawCall); got != 1 {
+			t.Errorf("withdraws = %d, want only the first tick's", got)
+		}
+		if st := e.state(); st.Phase != PhaseResuming || st.ResumeLineWithdrawn {
+			t.Errorf("state = %+v, want resuming with the withdrawn line cleared", st)
+		}
+	})
+
+	t.Run("ACompactWithNoIdIsWithdrawnWhenTheJournalLookupFails", func(t *testing.T) {
+		t.Parallel()
+		e := newCompactEnv(t)
+		e.c.autoLand = false
+		e.injectHandoff()
+		e.c.failNext("inject", errBoom)
+		e.finishNote()
+		if st := e.state(); st.Phase != PhaseCompacting || st.Pending == nil || st.Pending.ID != 0 {
+			t.Fatalf("state = %+v, want compacting with the compact pending and no id", st)
+		}
+		e.landBoundary(e.state().PhaseEnteredAt.Add(2*time.Second), 150)
+		e.c.failNext("sent", errBoom)
+		e.tick()
+		if got := e.c.count(withdrawCall); got != 1 {
+			t.Errorf("withdraws = %d, want 1; calls = %v", got, e.c.calls)
+		}
+		if st := e.state(); st.Phase != PhaseResuming {
+			t.Errorf("phase = %s, want resuming", st.Phase)
+		}
+	})
+
+	t.Run("AFailedWithdrawHoldsThePhaseAndTheNextTickRetries", func(t *testing.T) {
+		t.Parallel()
+		e, boundaryAt := compactingEnv(t)
+		e.c.failNext("withdraw", errBoom)
+		e.landBoundary(boundaryAt, 150)
+		e.tick()
+		st := e.state()
+		if st.Phase != PhaseCompacting || st.CycleCount != 0 || st.Stuck != errBoom.Error() || !st.StuckByCreel {
+			t.Fatalf("state = %+v, want compacting with the creel failure shown", st)
+		}
+		e.tick()
+		if got := e.c.count(withdrawCall); got != 2 {
+			t.Errorf("withdraws = %d, want the failed one and its retry", got)
+		}
+		if st := e.state(); st.Phase != PhaseResuming || st.CycleCount != 1 {
+			t.Errorf("state = %+v, want resuming after the retry", st)
+		}
+	})
 }
 
 func TestCompact_CompletionRemovesOnlyASatisfiedCompactRequest(t *testing.T) {
@@ -600,6 +744,145 @@ func TestCycleRequest_StaleMarkerRemovedAtFirstTick(t *testing.T) {
 				t.Errorf("phase = %s, want idle", st.Phase)
 			}
 		})
+	}
+}
+
+// TestCycleRequest_MarkerChangedDuringStart pins the cycle start's compare-and-remove of the marker inside the save of its first phase.
+// A requested start whose marker changed during the creel hold stays idle with the hold released and nothing posted.
+// A hard start enters its phase and leaves a newer marker pending, and a start bound to another strand saves nothing and leaves the marker pending.
+func TestCycleRequest_MarkerChangedDuringStart(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// usage is the context reading of the turn end; above the threshold it starts a hard cycle.
+		usage int
+		// marked writes a clear request before the first tick.
+		marked bool
+		// duringHold runs once, inside the creel hold the start takes, with a request time later than the clock's, so a request it writes differs from the one written before the first tick.
+		duringHold func(e *watchEnv, at time.Time)
+		check      func(t *testing.T, e *watchEnv, at time.Time)
+	}{
+		{
+			name: "WithdrawnRequestStaysIdleWithTheHoldReleased", usage: 10, marked: true,
+			duringHold: func(e *watchEnv, at time.Time) {
+				if _, err := WithdrawCycleRequest(e.paths); err != nil {
+					e.t.Fatal(err)
+				}
+			},
+			check: func(t *testing.T, e *watchEnv, at time.Time) {
+				assertIdleWithHoldReleased(t, e)
+				if _, pending, _ := CycleRequested(e.paths); pending {
+					t.Error("a marker is pending, want none")
+				}
+			},
+		},
+		{
+			name: "RefreshWrittenAfterAWithdrawRunsAsItsOwnCycleOnTheNextTick", usage: 10, marked: true,
+			duringHold: func(e *watchEnv, at time.Time) {
+				if _, err := WithdrawCycleRequest(e.paths); err != nil {
+					e.t.Fatal(err)
+				}
+				if err := RequestCycle(e.paths, CycleClear, at); err != nil {
+					e.t.Fatal(err)
+				}
+			},
+			check: func(t *testing.T, e *watchEnv, at time.Time) {
+				assertIdleWithHoldReleased(t, e)
+				if req, pending, _ := CycleRequested(e.paths); !pending || !req.RequestedAt.Equal(at) {
+					t.Fatalf("marker = %+v pending %v, want the new request pending", req, pending)
+				}
+				e.tick()
+				if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerRequested || !st.CycleRequestedAt.Equal(at) {
+					t.Errorf("state = %+v, want a requested cycle for the new request", st)
+				}
+			},
+		},
+		{
+			name: "HardStartWithARefreshWrittenDuringTheHoldLeavesItPending", usage: 2000,
+			duringHold: func(e *watchEnv, at time.Time) {
+				if err := RequestCycle(e.paths, CycleClear, at); err != nil {
+					e.t.Fatal(err)
+				}
+			},
+			check: func(t *testing.T, e *watchEnv, at time.Time) {
+				if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerHard {
+					t.Errorf("state = %+v, want a hard note request", st)
+				}
+				if req, pending, _ := CycleRequested(e.paths); !pending || !req.RequestedAt.Equal(at) {
+					t.Errorf("marker = %+v pending %v, want the refresh left pending", req, pending)
+				}
+			},
+		},
+		{
+			name: "HardStartConsumesTheMarkerPendingAtItsRead", usage: 2000, marked: true,
+			check: func(t *testing.T, e *watchEnv, at time.Time) {
+				if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerHard {
+					t.Errorf("state = %+v, want a hard note request", st)
+				}
+				if _, pending, _ := CycleRequested(e.paths); pending {
+					t.Error("the marker read at the start is still pending")
+				}
+			},
+		},
+		{
+			name: "StartBoundToAnotherStrandSavesNothingAndLeavesTheMarker", usage: 10, marked: true,
+			duringHold: func(e *watchEnv, at time.Time) {
+				e.setState(func(st *State) { st.Strand, st.WatcherStopping = "s2", true })
+			},
+			check: func(t *testing.T, e *watchEnv, at time.Time) {
+				if st := e.state(); st.Strand != "s2" || st.Phase != PhaseIdle || !st.WatcherStopping {
+					t.Errorf("state = %+v, want the rebinding untouched: strand s2, idle, WatcherStopping kept", st)
+				}
+				if _, pending, _ := CycleRequested(e.paths); !pending {
+					t.Error("the marker was removed, want it left pending")
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := newWatchEnv(t)
+			e.s.usage["a"] = tt.usage
+			e.s.events = []shuttleengine.Event{stop("a")}
+			if tt.marked {
+				if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
+					t.Fatal(err)
+				}
+			}
+			held := false
+			var at time.Time
+			e.c.onHold = func() {
+				if held {
+					return
+				}
+				held, at = true, e.clock.now.Add(time.Second)
+				if tt.duringHold != nil {
+					tt.duringHold(e, at)
+				}
+			}
+			for tick := 0; tick < 3 && !held; tick++ {
+				e.tick()
+				e.clock.advance(11 * time.Second)
+			}
+			if !held {
+				t.Fatal("the cycle start never took its creel hold")
+			}
+			tt.check(t, e, at)
+		})
+	}
+}
+
+// assertIdleWithHoldReleased fails unless the watcher stayed idle after taking its creel hold: the hold released and no note request or inject sent.
+func assertIdleWithHoldReleased(t *testing.T, e *watchEnv) {
+	t.Helper()
+	if st := e.state(); st.Phase != PhaseIdle {
+		t.Errorf("phase = %s, want idle", st.Phase)
+	}
+	if e.c.count("release:") != 1 || len(e.c.posts) != 0 {
+		t.Errorf("releases = %d note requests = %d, want the hold released and no note requested", e.c.count("release:"), len(e.c.posts))
 	}
 }
 

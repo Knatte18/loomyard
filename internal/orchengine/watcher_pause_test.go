@@ -476,3 +476,107 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 		})
 	}
 }
+
+// TestCycleRequest_HubPauseTimeIsNotAge pins that the time a hub pause held the watcher counts toward neither the stale age of a cycle request nor the handoff timeout.
+func TestCycleRequest_HubPauseTimeIsNotAge(t *testing.T) {
+	t.Parallel()
+
+	// pausedFor pauses the hub now, holds it for twice the handoff timeout with a tick held in the middle, and resumes it.
+	pausedFor := func(e *watchEnv) {
+		e.pauseHub("EXTERNAL", pauseGrace)
+		e.clock.advance(2 * e.cfg.HandoffTimeout())
+		e.tick()
+		e.resumeHub()
+	}
+	requested := func(e *watchEnv) {
+		e.s.usage["a"] = 10
+		e.s.events = []shuttleengine.Event{stop("a")}
+		if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
+			e.t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name string
+		run  func(t *testing.T, e *watchEnv)
+	}{
+		{"ARequestMadeUnderAPauseStartsItsCycleAtTheResume", func(t *testing.T, e *watchEnv) {
+			requested(e)
+			pausedFor(e)
+			e.tick()
+			if _, pending, _ := CycleRequested(e.paths); pending {
+				t.Error("request still pending after the cycle started")
+			}
+			if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerRequested {
+				t.Fatalf("state = %+v, want a requested note request", st)
+			}
+			e.clock.advance(e.cfg.HandoffTimeout() / 2)
+			e.tick()
+			if st := e.state(); st.Phase != PhaseHandoffRequested {
+				t.Fatalf("phase = %s, want handoff-requested within the timeout of unpaused time", st.Phase)
+			}
+			e.finishNote()
+			if st := e.state(); st.Phase != PhaseClearing {
+				t.Errorf("phase = %s, want clearing", st.Phase)
+			}
+		}},
+		{"AStaleRequestIsRemovedOnceTheTimeoutOfUnpausedTimePasses", func(t *testing.T, e *watchEnv) {
+			if err := RequestCycle(e.paths, CycleClear, e.clock.now); err != nil {
+				t.Fatal(err)
+			}
+			pausedFor(e)
+			e.tick()
+			if _, pending, _ := CycleRequested(e.paths); !pending {
+				t.Fatal("request removed at the resume, the pause time counted as age")
+			}
+			e.clock.advance(e.cfg.HandoffTimeout())
+			e.tick()
+			if _, pending, _ := CycleRequested(e.paths); pending {
+				t.Error("request still pending past the timeout of unpaused time")
+			}
+			e.assertNoCalls()
+		}},
+		{"AHandoffTimesOutOnlyAfterTheTimeoutOfUnpausedTime", func(t *testing.T, e *watchEnv) {
+			requested(e)
+			e.tick()
+			if st := e.state(); st.Phase != PhaseHandoffRequested {
+				t.Fatalf("phase = %s, want handoff-requested", st.Phase)
+			}
+			e.clock.advance(20 * time.Second)
+			pausedFor(e)
+			e.clock.advance(e.cfg.HandoffTimeout() - 21*time.Second)
+			e.tick()
+			if st := e.state(); st.Phase != PhaseHandoffRequested {
+				t.Fatalf("phase = %s, want handoff-requested, the pause time counted toward the timeout", st.Phase)
+			}
+			e.clock.advance(time.Second)
+			e.tick()
+			if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" {
+				t.Errorf("state = %+v, want idle after the handoff timed out", st)
+			}
+		}},
+		{"AnUnreadableRecordDiscountsNothing", func(t *testing.T, e *watchEnv) {
+			if err := os.MkdirAll(filepath.Dir(e.pausePath), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(e.pausePath, []byte("not json"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			e.s.usage["a"] = 10
+			e.s.events = []shuttleengine.Event{stop("a")}
+			if err := RequestCycle(e.paths, CycleClear, e.clock.now.Add(-e.cfg.HandoffTimeout()-time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			e.tick()
+			if _, pending, _ := CycleRequested(e.paths); pending {
+				t.Error("stale request was not removed")
+			}
+			e.assertNoCalls()
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tt.run(t, newWatchEnv(t))
+		})
+	}
+}
