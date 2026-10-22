@@ -2045,7 +2045,7 @@ func TestValidate_CustomCardBoundByGenericChecks(t *testing.T) {
 	}
 }
 
-// TestValidate_LanguageRecognized covers plan-language-unrecognized: "go" and "none" are accepted, as is "" (the zero value, meaning absent — matching Plan.Language's own documented "absent defaults to go" rule), and any other value is exactly one finding.
+// TestValidate_LanguageRecognized covers plan-language-unrecognized: "go", "csharp" and "none" are accepted, as is "" (the zero value, meaning absent — matching Plan.Language's own documented "absent defaults to go" rule), and any other value is exactly one finding.
 //
 //testtiming:keep pins the plan-language-unrecognized finding, which its covering tests do not assert
 func TestValidate_LanguageRecognized(t *testing.T) {
