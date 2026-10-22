@@ -289,6 +289,7 @@ github.com/Knatte18/loomyard/
 ├── internal/standalonestate/     target-path-to-hash8-and-state-directory derivation, a stdlib-only leaf
 ├── internal/segmentcolor/        the loom segments, lyx's color palette and its tmux colors, a stdlib-only leaf
 ├── internal/selfexec/            the self-re-exec helper a long-lived pane process calls on a changed binary, a leaf over the standard library and `internal/logger`
+├── internal/runproc/             the owner record of a run's detached and long-lived processes, one file per process under the run's slug or the hub scope, and the one sequence that ends them, a leaf over the standard library, `internal/proc`, `internal/state` and `internal/logger`
 ├── internal/fswatch/             the one file-change event source over fsnotify, a leaf
 ├── internal/configengine/        shared config resolution
 ├── internal/gitexec/             shared git operations

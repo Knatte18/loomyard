@@ -75,6 +75,11 @@ Imports only the standard library.
 
 Imports only the standard library.
 
+## `internal/runproc`
+
+Imports only the standard library, `internal/proc`, `internal/state` and `internal/logger`.
+It is told the record directory and derives no path.
+
 ## `internal/sleepjournal`
 
 Imports only the standard library.
