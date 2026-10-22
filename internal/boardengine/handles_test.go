@@ -131,8 +131,13 @@ func TestHandles_AssignedOnLoad(t *testing.T) {
 		t.Errorf("handles before a write = %v; want %v", got, want)
 	}
 	brief, err := b.ListTasksBrief(nil)
-	if err != nil || len(brief) == 0 || brief[0].Handle == "" {
-		t.Errorf("ListTasksBrief = %+v, err %v; want each entry listed with its handle", brief, err)
+	if err != nil || len(brief) != len(want) {
+		t.Fatalf("ListTasksBrief = %+v, err %v; want %d entries", brief, err, len(want))
+	}
+	for _, entry := range brief {
+		if entry.Handle != want[entry.Slug] {
+			t.Errorf("ListTasksBrief entry %s has handle %q; want %q", entry.Slug, entry.Handle, want[entry.Slug])
+		}
 	}
 
 	if err := b.Rerender(); err != nil {
@@ -147,5 +152,25 @@ func TestHandles_AssignedOnLoad(t *testing.T) {
 	}
 	if got := handlesOf(t, b); !sameHandles(got, want) {
 		t.Errorf("handles after a write = %v; want %v", got, want)
+	}
+}
+
+// TestHandles_UndecidedLetterKeepsNoDuplicate pins that a note whose type label is no longer configured keeps its stored handle,
+// except when an entry of lower id already holds that handle, which leaves the note without one.
+func TestHandles_UndecidedLetterKeepsNoDuplicate(t *testing.T) {
+	t.Parallel()
+	boardPath := t.TempDir()
+	stored := `{"version":1,"entries":[
+		{"id":1,"slug":"decided","kind":"note","labels":["bug"],"handle":"B1"},
+		{"id":2,"slug":"undecided-dup","kind":"note","labels":["removed-type"],"handle":"B1"},
+		{"id":3,"slug":"undecided-free","kind":"note","labels":["removed-type"],"handle":"R7"}]}`
+	if err := os.WriteFile(filepath.Join(boardPath, "board.json"), []byte(stored), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+	b := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+	want := map[string]string{"decided": "B1", "undecided-dup": "", "undecided-free": "R7"}
+
+	if got := handlesOf(t, b); !sameHandles(got, want) {
+		t.Errorf("handles = %v; want %v", got, want)
 	}
 }
