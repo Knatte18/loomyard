@@ -223,7 +223,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 
 	cfg := loadTemplateConfig(t)
 
-	const wantLenses = 40
+	const wantLenses = 38
 	if len(cfg.Lenses) != wantLenses {
 		t.Errorf("seeded template has %d lenses; want %d", len(cfg.Lenses), wantLenses)
 	}
@@ -238,7 +238,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			}
 		}
 	}
-	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 7, "twill-plan": 8, "review-discussion": 4, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4, "review-code": 4, "fix-code": 4} {
+	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 7, "twill-plan": 5, "review-discussion": 4, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4, "review-code": 4, "fix-code": 4} {
 		entries, ok := cfg.Fans[fanName]
 		if !ok {
 			t.Errorf("seeded template is missing fan %q", fanName)
@@ -251,7 +251,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		"discussion":        {"generic", "goal-scope", "pattern-fit", "scenarios", "leanness"},
 		"plan":              {"generic", "decision-coverage", "card-structure", "verify-tests", "pattern-fit"},
 		"twill-discussion":  {"interactions", "existing-paths", "bound-breaker", "walkthrough", "goal-scope", "board-fit", "leanness"},
-		"twill-plan":        {"affected-set", "guard-reach", "way-forward", "criteria-coverage", "branch-coverage", "row-reachability", "forced-edits", "test-economy"},
+		"twill-plan":        {"coverage", "row-validity", "forced-edits", "guard-reach", "way-forward"},
 		"review-discussion": {"interactions", "existing-paths", "bound-breaker", "walkthrough"},
 		"review-plan":       {"affected-set", "guard-reach", "way-forward"},
 		"fix-discussion":    {"fix-consistency", "fix-claims", "fix-proposal", "fix-way-forward"},
@@ -281,19 +281,20 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		}
 	}
 
-	// A perch's writer runs every procedure its reviewer judges it by.
+	// A perch's writer runs every procedure its reviewer judges it by, itself or through the writer lens that absorbed it.
+	absorbedBy := map[string]string{"affected-set": "forced-edits"}
 	for reviewerFan, writerFan := range map[string]string{"review-discussion": "twill-discussion", "review-plan": "twill-plan"} {
 		for _, lensName := range wantOrders[reviewerFan] {
-			if !slices.Contains(wantOrders[writerFan], lensName) {
+			if !slices.Contains(wantOrders[writerFan], lensName) && !slices.Contains(wantOrders[writerFan], absorbedBy[lensName]) {
 				t.Errorf("fan %q lacks lens %q of reviewer fan %q", writerFan, lensName, reviewerFan)
 			}
 		}
 	}
 
 	for lensName, wantSentence := range map[string]string{
-		"branch-coverage":   "A branch no planned row reaches is a finding.",
-		"forced-edits":      "a registration no card lists is a finding",
-		"criteria-coverage": "uses the operand the record names, not a near one",
+		"coverage":     "A branch no planned row reaches is a finding.",
+		"forced-edits": "a registration no card lists is a finding",
+		"row-validity": "a zero-value or nil seam of a new field has a stated meaning",
 	} {
 		if text := strings.Join(strings.Fields(cfg.Lenses[lensName]), " "); !strings.Contains(text, wantSentence) {
 			t.Errorf("lens %q text = %q; want it to contain %q", lensName, text, wantSentence)
