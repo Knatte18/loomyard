@@ -226,6 +226,12 @@
 // Restart: a saved `/compact` has its outcome read and is never sent again, and one with no saved id is looked up in creel's journal first.
 // A qualifying boundary found after a restart completes the phase without sending anything.
 //
+// A boundary found while the `/compact` inject is still queued, or while creel never answered its send, means the session compacted on its own;
+// before the phase completes the watcher withdraws its queued creel items to the orch strand, so a second compaction never follows.
+// A typed `/compact` is never withdrawn, and a creel failure leaves the phase compacting with the boundary unconsumed, for the next tick to retry.
+// The withdraw clears the resume-noticed mark of a hub-pause resume line it removed, as the reset for another strand does, and a failed clear is retried at the next tick's boundary before the phase completes.
+// Bound: the withdraw is receiver-wide, so it also removes any other queued watcher item to the orch, which the reload that follows queues again as it needs.
+//
 // A soft compact cycle keeps the `defer` handshake, so a session with a background task in flight can decline before `/compact`.
 //
 // A tick saves State only while the record still names the strand it loaded, checked under the state lock,

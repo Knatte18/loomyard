@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
@@ -173,8 +174,155 @@ func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
 				t.Errorf("completion recorded an abort or lost the note: %+v", st)
 			}
 			e.assertCompactCalls(1)
+			if got := e.c.count("withdraw:"); got != 0 {
+				t.Errorf("withdraws = %d, want none for a compact typed before the boundary", got)
+			}
 		})
 	}
+}
+
+// TestCompact_BoundaryWithdrawsAStillQueuedCompact pins that a boundary found while the /compact inject has no outcome withdraws it, and that a typed one is left alone.
+func TestCompact_BoundaryWithdrawsAStillQueuedCompact(t *testing.T) {
+	t.Parallel()
+
+	withdrawCall := "withdraw:" + fakeOrchStrandName
+	// compactingEnv reaches compacting with the fake creel leaving every inject queued, and returns the time a boundary after the phase entry takes.
+	compactingEnv := func(t *testing.T) (*watchEnv, time.Time) {
+		e := newCompactEnv(t)
+		e.c.autoLand = false
+		e.reachCompacting()
+		return e, e.state().PhaseEnteredAt.Add(2 * time.Second)
+	}
+	// lockPauseRecord makes the pause record unwritable until the returned function runs.
+	lockPauseRecord := func(e *watchEnv) (unlock func()) {
+		lock := e.pausePath + ".lock"
+		if err := os.Remove(lock); err != nil {
+			e.t.Fatal(err)
+		}
+		if err := os.Mkdir(lock, 0o755); err != nil {
+			e.t.Fatal(err)
+		}
+		return func() {
+			if err := os.Remove(lock); err != nil {
+				e.t.Fatal(err)
+			}
+		}
+	}
+	resumeNoticed := func(e *watchEnv) bool {
+		sessions := e.orchSessions()
+		if len(sessions) != 1 {
+			e.t.Fatalf("orch sessions = %+v, want the one", sessions)
+		}
+		return sessions[0].ResumeNoticed
+	}
+
+	for _, state := range []CreelState{CreelQueued, CreelSending} {
+		t.Run("A"+string(state)+"CompactIsWithdrawnAndThePhaseCompletes", func(t *testing.T) {
+			t.Parallel()
+			e, boundaryAt := compactingEnv(t)
+			e.setOutcome(e.lastInjectID(), CreelOutcome{State: state})
+			e.landBoundary(boundaryAt, 150)
+			e.tick()
+			if got := e.c.count(withdrawCall); got != 1 {
+				t.Errorf("withdraws = %d, want 1; calls = %v", got, e.c.calls)
+			}
+			if st := e.state(); st.Phase != PhaseResuming || st.CycleCount != 1 {
+				t.Errorf("state = %+v, want resuming after the cycle", st)
+			}
+		})
+	}
+
+	t.Run("AnInjectedCompactMakesNoWithdraw", func(t *testing.T) {
+		t.Parallel()
+		e, boundaryAt := compactingEnv(t)
+		e.setOutcome(e.lastInjectID(), CreelOutcome{State: CreelInjected})
+		e.landBoundary(boundaryAt, 150)
+		e.tick()
+		if got := e.c.count("withdraw:"); got != 0 {
+			t.Errorf("withdraws = %d, want none; calls = %v", got, e.c.calls)
+		}
+		if st := e.state(); st.Phase != PhaseResuming {
+			t.Errorf("phase = %s, want resuming", st.Phase)
+		}
+	})
+
+	t.Run("AWithdrawnResumeLineHasItsNoticedMarkCleared", func(t *testing.T) {
+		t.Parallel()
+		e, boundaryAt := compactingEnv(t)
+		e.noticedResumedEntry()
+		e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+		e.landBoundary(boundaryAt, 150)
+		e.tick()
+		if resumeNoticed(e) {
+			t.Error("the resume-noticed mark is still set after the withdraw removed the resume line")
+		}
+	})
+
+	t.Run("AFailedMarkClearKeepsTheLineAndTheNextTickClearsItBeforeCompleting", func(t *testing.T) {
+		t.Parallel()
+		e, boundaryAt := compactingEnv(t)
+		e.noticedResumedEntry()
+		e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+		unlock := lockPauseRecord(e)
+		e.landBoundary(boundaryAt, 150)
+		e.tickErr()
+		st := e.state()
+		if st.Phase != PhaseCompacting || st.Pending != nil || !st.ResumeLineWithdrawn || st.CycleCount != 0 {
+			t.Fatalf("state = %+v, want compacting with no pending step and the withdrawn line kept", st)
+		}
+		unlock()
+		e.c.withdrawn = nil
+		e.tick()
+		if resumeNoticed(e) {
+			t.Error("the resume-noticed mark is still set after the retry")
+		}
+		if got := e.c.count(withdrawCall); got != 1 {
+			t.Errorf("withdraws = %d, want only the first tick's", got)
+		}
+		if st := e.state(); st.Phase != PhaseResuming || st.ResumeLineWithdrawn {
+			t.Errorf("state = %+v, want resuming with the withdrawn line cleared", st)
+		}
+	})
+
+	t.Run("ACompactWithNoIdIsWithdrawnWhenTheJournalLookupFails", func(t *testing.T) {
+		t.Parallel()
+		e := newCompactEnv(t)
+		e.c.autoLand = false
+		e.injectHandoff()
+		e.c.failNext("inject", errBoom)
+		e.finishNote()
+		if st := e.state(); st.Phase != PhaseCompacting || st.Pending == nil || st.Pending.ID != 0 {
+			t.Fatalf("state = %+v, want compacting with the compact pending and no id", st)
+		}
+		e.landBoundary(e.state().PhaseEnteredAt.Add(2*time.Second), 150)
+		e.c.failNext("sent", errBoom)
+		e.tick()
+		if got := e.c.count(withdrawCall); got != 1 {
+			t.Errorf("withdraws = %d, want 1; calls = %v", got, e.c.calls)
+		}
+		if st := e.state(); st.Phase != PhaseResuming {
+			t.Errorf("phase = %s, want resuming", st.Phase)
+		}
+	})
+
+	t.Run("AFailedWithdrawHoldsThePhaseAndTheNextTickRetries", func(t *testing.T) {
+		t.Parallel()
+		e, boundaryAt := compactingEnv(t)
+		e.c.failNext("withdraw", errBoom)
+		e.landBoundary(boundaryAt, 150)
+		e.tick()
+		st := e.state()
+		if st.Phase != PhaseCompacting || st.CycleCount != 0 || st.Stuck != errBoom.Error() || !st.StuckByCreel {
+			t.Fatalf("state = %+v, want compacting with the creel failure shown", st)
+		}
+		e.tick()
+		if got := e.c.count(withdrawCall); got != 2 {
+			t.Errorf("withdraws = %d, want the failed one and its retry", got)
+		}
+		if st := e.state(); st.Phase != PhaseResuming || st.CycleCount != 1 {
+			t.Errorf("state = %+v, want resuming after the retry", st)
+		}
+	})
 }
 
 func TestCompact_CompletionRemovesOnlyASatisfiedCompactRequest(t *testing.T) {

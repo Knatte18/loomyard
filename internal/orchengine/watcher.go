@@ -54,6 +54,9 @@ const (
 // errNotBound reports that the watcher has not yet set its events cursor for the recorded strand, so it cannot act on a reply.
 var errNotBound = errors.New("orch: the watcher is not bound to the recorded strand yet")
 
+// errCompactWithdrawHeld reports that withdrawing the still-queued `/compact` was held by a creel failure, so the compacting phase keeps its boundary for the next tick.
+var errCompactWithdrawHeld = errors.New("orch: withdrawing the queued compact is held by a creel failure")
+
 // errResetPending reports that a phase belonging to another strand could not be reset because a creel call failed; the next tick runs the reset again.
 var errResetPending = errors.New("orch: resetting a phase of another strand is held by a creel failure")
 
@@ -1458,6 +1461,73 @@ func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 	return w.startReload(st, now, true)
 }
 
+// withdrawQueuedCompact withdraws the `/compact` inject still queued when the session compacted on its own, so it never compacts the session a second time.
+// The inject counts as still queued when its step is pending, not yet typed, and either creel never answered its send or creel reads it queued or sending.
+// The withdraw is receiver-wide: it also removes any other queued watcher item to the orch.
+// A resume line the withdraw removed has its pause-record mark cleared; a failed clear drops the withdrawn step, keeps the line in State.ResumeLineWithdrawn and fails the call,
+// and a later call clears the mark although no withdraw runs.
+// A creel failure is recorded through creelFailed and answered with errCompactWithdrawHeld, which leaves the phase as it was for the next call to retry.
+func (w *Watcher) withdrawQueuedCompact(st *State) error {
+	if st.Pending == nil || st.PhaseInjected {
+		return w.clearWithdrawnResumeLine(st)
+	}
+	queued := st.Pending.ID == 0
+	if !queued {
+		outcome, err := w.creel.InjectOutcome(st.Pending.ID)
+		if err != nil {
+			return w.holdOnCreelFailure(st, err)
+		}
+		queued = outcome.State == CreelQueued || outcome.State == CreelSending
+	}
+	if !queued {
+		return w.clearWithdrawnResumeLine(st)
+	}
+	name, err := w.orchName(*st)
+	if err != nil {
+		return w.holdOnCreelFailure(st, err)
+	}
+	withdrawn, err := w.creel.Withdraw(name)
+	if err != nil {
+		return w.holdOnCreelFailure(st, err)
+	}
+	st.Pending = nil
+	if w.pause != nil {
+		if st.ResumeLineWithdrawn {
+			withdrawn = append(withdrawn, CreelWithdrawn{Subject: pauserecord.ResumeLine})
+		}
+		if err := ClearResumeNoticed(w.pause.RecordPath, st.Strand, withdrawn, w.clock.Now()); err != nil {
+			st.ResumeLineWithdrawn = slices.ContainsFunc(withdrawn, func(message CreelWithdrawn) bool { return message.Subject == pauserecord.ResumeLine })
+			if saveErr := w.save(*st); saveErr != nil {
+				return saveErr
+			}
+			return err
+		}
+		st.ResumeLineWithdrawn = false
+	}
+	return nil
+}
+
+// clearWithdrawnResumeLine clears the pause-record mark of a resume line an earlier withdraw removed and whose clear failed, then unsets State.ResumeLineWithdrawn.
+// It does nothing when no such line is recorded.
+func (w *Watcher) clearWithdrawnResumeLine(st *State) error {
+	if !st.ResumeLineWithdrawn || w.pause == nil {
+		return nil
+	}
+	if err := ClearResumeNoticed(w.pause.RecordPath, st.Strand, []CreelWithdrawn{{Subject: pauserecord.ResumeLine}}, w.clock.Now()); err != nil {
+		return err
+	}
+	st.ResumeLineWithdrawn = false
+	return nil
+}
+
+// holdOnCreelFailure records a failed creel call through creelFailed and answers errCompactWithdrawHeld, or the failed save.
+func (w *Watcher) holdOnCreelFailure(st *State, err error) error {
+	if saveErr := w.creelFailed(st, err); saveErr != nil {
+		return saveErr
+	}
+	return errCompactWithdrawHeld
+}
+
 // tickCompacting searches the transcript State.ReadingTurnEnd names for a compaction boundary every tick, since a compaction ends without a turn end.
 // The boundary is searched for rather than read off the newest entry, because a message answered right after the boundary hides it there.
 // The phase completes on a boundary after the phase was entered, whatever follows it; an earlier boundary never completes it.
@@ -1486,6 +1556,12 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 
 	if qualifying {
 		logger.Info("orch: compaction boundary found", "strandGUID", st.Strand, "boundaryAt", boundary.At)
+		if err := w.withdrawQueuedCompact(&st); err != nil {
+			if errors.Is(err, errCompactWithdrawHeld) {
+				return nil
+			}
+			return err
+		}
 		if err := storeCurrentReading(); err != nil {
 			return err
 		}
