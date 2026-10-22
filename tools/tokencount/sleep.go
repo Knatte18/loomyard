@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"os/exec"
 
 	"github.com/Knatte18/loomyard/internal/sleepjournal"
@@ -12,15 +13,18 @@ import (
 const sleepLeftOutPrefix = "No machine sleep is left out of the time figures: "
 
 // journalSleeps returns the machine's sleeps from the systemd journal and a report line saying where they came from.
-// With journalctl absent or failing, or no sleep in its journal, it returns no sleeps and a line saying why nothing is left out.
+// With journalctl absent or failing, a journal the user may not read, or no sleep in its journal, it returns no sleeps and a line saying why nothing is left out.
 func journalSleeps() ([]Interval, string) {
-	out, err := exec.Command("journalctl", sleepjournal.Args()...).Output()
-	return sleepsFromJournal(out, err)
+	var stderr bytes.Buffer
+	cmd := exec.Command("journalctl", sleepjournal.Args()...)
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	return sleepsFromJournal(out, stderr.Bytes(), err)
 }
 
-// sleepsFromJournal maps the output and exit error of the journalctl run to the sleeps and the report line journalSleeps returns.
-func sleepsFromJournal(out []byte, runErr error) ([]Interval, string) {
-	read, clause, _ := sleepjournal.Read(out, nil, runErr)
+// sleepsFromJournal maps the output, standard error and exit error of the journalctl run to the sleeps and the report line journalSleeps returns.
+func sleepsFromJournal(out, stderr []byte, runErr error) ([]Interval, string) {
+	read, clause, _ := sleepjournal.Read(out, stderr, runErr)
 	if clause != "" {
 		return nil, sleepLeftOutPrefix + clause + ".\n"
 	}
