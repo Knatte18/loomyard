@@ -1185,6 +1185,10 @@ func TestGateTest_Scenario(t *testing.T) {
 			if got := g.tierArgs(t); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("tier invocations = %q; want %q", got, tc.want)
 			}
+			trimpath := trimpathLine("tier0", []string{"GOFLAGS=-trimpath -p=3"})
+			if count := strings.Count(g.stdout.String(), trimpath); count != 1 {
+				t.Errorf("gate output = %q; want the -trimpath line %q once, for the listed tier alone", g.stdout.String(), trimpath)
+			}
 			requireFree(t)
 		})
 	}
