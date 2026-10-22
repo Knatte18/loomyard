@@ -1787,19 +1787,22 @@ func TestReconcile_FailureNamesItsFile(t *testing.T) {
 	}
 }
 
-// TestPrimeSeedError pins that the extra "delete the selector line" step is added only to an invalid-config failure of a module that has an overlay selector.
+// TestPrimeSeedError pins that an invalid-config seed failure names the prime's copy, that the extra "delete the selector line" step is added only for a module that has an overlay selector, and that any other failure is returned unchanged.
 func TestPrimeSeedError(t *testing.T) {
 	t.Parallel()
 	invalid := configengine.MarkInvalid(errors.New("names no shipped layer"))
+	other := errors.New("disk full")
 	tests := []struct {
-		name      string
-		module    string
-		err       error
-		wantExtra bool
+		name   string
+		module string
+		err    error
+		// wantFileError says the result is a *FileError naming the prime's copy; otherwise it is err itself.
+		wantFileError bool
+		wantDelete    bool
 	}{
-		{"InvalidWithSelector", "lenses", invalid, true},
-		{"InvalidWithoutSelector", "batcher", invalid, false},
-		{"OtherFailureWithSelector", "lenses", errors.New("disk full"), false},
+		{"InvalidWithSelector", "lenses", invalid, true, true},
+		{"InvalidWithoutSelector", "batcher", invalid, true, false},
+		{"OtherFailureWithSelector", "lenses", other, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1808,15 +1811,26 @@ func TestPrimeSeedError(t *testing.T) {
 			if !ok {
 				t.Fatalf("Lookup(%q) found no module", tt.module)
 			}
-			got := primeSeedError(module, t.TempDir(), tt.err)
-			if !tt.wantExtra {
+			primeDir := t.TempDir()
+
+			got := primeSeedError(module, primeDir, tt.err)
+
+			if !tt.wantFileError {
 				if got != tt.err {
 					t.Errorf("primeSeedError() = %v; want the error unchanged", got)
 				}
 				return
 			}
-			if !errors.Is(got, configengine.ErrInvalid) || !strings.Contains(got.Error(), "also delete the lens_set line from") {
-				t.Errorf("primeSeedError() = %v; want an invalid error holding the delete step", got)
+			var fileErr *FileError
+			wantPath := configengine.ConfigFile(primeDir, tt.module)
+			if !errors.As(got, &fileErr) || fileErr.Module != tt.module || fileErr.Path != wantPath {
+				t.Fatalf("primeSeedError() = %v; want a *FileError for module %q at %q", got, tt.module, wantPath)
+			}
+			if !errors.Is(got, configengine.ErrInvalid) {
+				t.Errorf("primeSeedError() = %v; want it to keep ErrInvalid", got)
+			}
+			if hasDelete := strings.Contains(got.Error(), "also delete"); hasDelete != tt.wantDelete {
+				t.Errorf("primeSeedError() = %q; delete step present = %v, want %v", got, hasDelete, tt.wantDelete)
 			}
 		})
 	}

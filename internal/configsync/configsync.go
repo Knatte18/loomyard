@@ -291,13 +291,18 @@ func templateUnderBase(m configreg.Module, dirs configengine.Dirs) ([]byte, erro
 
 // primeSeedError names the prime's copy of m in a seed failure its selector caused, and adds the step the refusal's way forward lacks:
 // a prime worktree file holding a selector the base does not hold is refused at load, so its line must go too.
-// It returns err unchanged for any other failure, and for a module with no overlay selector.
+// The delete step is added only for a module with an overlay selector.
+// It returns err unchanged for any other failure.
 func primeSeedError(m configreg.Module, primeBaseDir string, err error) error {
-	if m.Spec().Overlay.Selector == "" || !errors.Is(err, configengine.ErrInvalid) {
+	if !errors.Is(err, configengine.ErrInvalid) {
 		return err
 	}
 	primePath := configengine.ConfigFile(primeBaseDir, m.Name)
-	return &FileError{Module: m.Name, Path: primePath, Err: fmt.Errorf("%w; also delete the %s line from %s in an editor", err, m.Spec().Overlay.Selector, primePath)}
+	selector := m.Spec().Overlay.Selector
+	if selector == "" {
+		return &FileError{Module: m.Name, Path: primePath, Err: err}
+	}
+	return &FileError{Module: m.Name, Path: primePath, Err: fmt.Errorf("%w; also delete the %s line from %s in an editor", err, selector, primePath)}
 }
 
 // leafValues flattens a decoded YAML document into dotted key path to leaf value.
