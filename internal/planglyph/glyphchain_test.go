@@ -896,26 +896,155 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 func TestGlyphChain_ResignScenarios(t *testing.T) {
 	t.Parallel()
 
+	const (
+		namespace = "Glyphchain.Sharp"
+		draw      = namespace + "#Renderer.Draw(int)"
+		drawText  = namespace + "#Renderer.Draw(string)"
+	)
 	mismatch := []findingKey{{"resign-head-mismatch", "1-card1", SeverityBlocking}}
+	collision := func(card string) []findingKey {
+		return []findingKey{{"resign-overload-collision", card, SeverityBlocking}}
+	}
+	// pairFile declares the explicit-interface member the IPair row re-signs, which the fixture does not hold.
+	pairFiles := map[string]string{"csharp/Pair.cs": "namespace Glyphchain.Sharp\n{\n    public class Renderer\n    {\n        int IPair<string, int>.First { get { return 0; } }\n    }\n}\n"}
 	tests := []struct {
 		name string
-		leg  resignLeg
+		// language is the plan's language, go when empty.
+		language string
+		cards    []string
 		// files are written into the fixture copy before the plan is checked.
 		files map[string]string
 		// planGate is what ValidateFormat reports, and dispatch what ValidateDispatch reports.
 		planGate, dispatch []findingKey
+		// detail are the substrings the detail of every finding ValidateFormat reports must hold.
+		detail []string
 	}{
-		{name: "a head naming another member", leg: resignLeg{"shapes#Func", "func Other() int"}, planGate: mismatch, dispatch: mismatch},
-		{name: "a head that fails to parse", leg: resignLeg{"shapes#Func", "func ("}, planGate: mismatch, dispatch: mismatch},
-		{name: "a changed receiver type", leg: resignLeg{"shapes#Struct.ValueMethod", "func (s Plain) ValueMethod() int"}, planGate: mismatch, dispatch: mismatch},
+		{name: "a head naming another member", cards: []string{resignCard(resignLeg{"shapes#Func", "func Other() int"})}, planGate: mismatch, dispatch: mismatch},
+		{name: "a head that fails to parse", cards: []string{resignCard(resignLeg{"shapes#Func", "func ("})}, planGate: mismatch, dispatch: mismatch},
+		{name: "a changed receiver type", cards: []string{resignCard(resignLeg{"shapes#Struct.ValueMethod", "func (s Plain) ValueMethod() int"})}, planGate: mismatch, dispatch: mismatch},
 		{
-			name: "an interface method partitioned by build constraints",
-			leg:  resignLeg{"parted#Measurer.Measure", "func (Measurer) Measure(count int) int"},
+			name:  "an interface method partitioned by build constraints",
+			cards: []string{resignCard(resignLeg{"parted#Measurer.Measure", "func (Measurer) Measure(count int) int"})},
 			files: map[string]string{
 				"parted/a.go": "//go:build linux\n\npackage parted\n\ntype Measurer interface {\n\tMeasure() int\n}\n",
 				"parted/b.go": "//go:build !linux\n\npackage parted\n\ntype Measurer interface {\n\tMeasure() int\n}\n",
 			},
 			planGate: []findingKey{{"resign-interface-method", "1-card1", SeverityBlocking}},
+		},
+		{
+			name:     "a C# method re-signed to another parameter type is clean and no interface method",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public void Draw(long count)"})},
+		},
+		{
+			name:     "a C# head dropping the parameter list is a mismatch naming the parameter list",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public int Draw"})},
+			planGate: mismatch,
+			dispatch: mismatch,
+			detail:   []string{"keep the member's parameter list"},
+		},
+		{
+			name:     "a C# head adding a parameter list is a mismatch naming the parameter list",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{namespace + "#Renderer.Title", "public string Title()"})},
+			planGate: mismatch,
+			dispatch: mismatch,
+			detail:   []string{"keep the member's parameter list"},
+		},
+		{
+			name:     "a C# head naming another member is a mismatch naming a Rename pair",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public void Other(int count)"})},
+			planGate: mismatch,
+			dispatch: mismatch,
+			detail:   []string{"Rename pair"},
+		},
+		{
+			name:     "a C# head that fails to name is a mismatch asking to correct the head",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public void Draw("})},
+			planGate: mismatch,
+			dispatch: mismatch,
+			detail:   []string{"correct the head"},
+		},
+		{
+			name:     "a C# head minting an existing overload is a collision",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public void Draw(string text)"})},
+			planGate: collision("1-card1"),
+			dispatch: collision("1-card1"),
+			detail:   []string{drawText, "free signature"},
+		},
+		{
+			name:     "a C# head minting an overload an earlier card deletes is clean",
+			language: "csharp",
+			cards:    []string{deleteCard(drawText), resignCard(resignLeg{draw, "public void Draw(string text)"})},
+		},
+		{
+			name:     "a C# head minting an overload the same card re-signs away is clean",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public void Draw(string text)"}, resignLeg{drawText, "public void Draw(char c)"})},
+		},
+		{
+			name:     "a C# head minting an overload an earlier card renames away is clean",
+			language: "csharp",
+			cards:    []string{renameCard(drawText, "plan:"+namespace+"#Renderer.Write"), resignCard(resignLeg{draw, "public void Draw(string text)"})},
+		},
+		{
+			name:     "a C# head minting the id of an earlier Create handle is a collision on the later card",
+			language: "csharp",
+			cards: []string{
+				createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.Draw(long)", head: "public void Draw(long count)"}),
+				resignCard(resignLeg{draw, "public void Draw(long count)"}),
+			},
+			planGate: collision("2-card2"),
+			dispatch: collision("2-card2"),
+			detail:   []string{"1-card1", "free signature"},
+		},
+		{
+			name:     "a C# head minting the id of an earlier Rename new handle is a collision on the later card",
+			language: "csharp",
+			cards: []string{
+				renameCard(drawText, "plan:"+namespace+"#Renderer.Fill"),
+				resignCard(resignLeg{namespace + "#Renderer.Fill(int)", "public void Fill(string text)"}),
+			},
+			planGate: collision("2-card2"),
+			dispatch: collision("2-card2"),
+			detail:   []string{"1-card1", "free signature"},
+		},
+		{
+			name:     "two C# arrows on different members minting one id collide on the later card",
+			language: "csharp",
+			cards: []string{
+				resignCard(resignLeg{draw, "public void Draw(long count)"}),
+				resignCard(resignLeg{drawText, "public void Draw(long other)"}),
+			},
+			planGate: collision("2-card2"),
+			dispatch: collision("2-card2"),
+			detail:   []string{"1-card1", "free signature"},
+		},
+		{
+			name:     "one C# arrow written on two cards never collides with itself",
+			language: "csharp",
+			cards: []string{
+				resignCard(resignLeg{draw, "public void Draw(long count)"}),
+				resignCard(resignLeg{draw, "public void Draw(long count)"}),
+			},
+		},
+		{
+			name:     "an explicit-interface C# member re-signed keeps its own id",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{namespace + "#Renderer.IProvider<int>.Value", "int IProvider<int>.Value { get; }"})},
+		},
+		{
+			name:     "a C# qualifier spelled with a space is a mismatch quoting the canonical qualifier",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{namespace + "#Renderer.IPair<string,int>.First", "int IPair<string, int>.First { get; }"})},
+			files:    pairFiles,
+			planGate: mismatch,
+			dispatch: mismatch,
+			detail:   []string{"invalid_container", "`IPair<string,int>.`"},
 		},
 	}
 	for _, tc := range tests {
@@ -923,9 +1052,25 @@ func TestGlyphChain_ResignScenarios(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
 			writeFixtureFiles(t, root, tc.files)
-			_, plan := writeLanguagePlan(t, "go", []string{resignCard(tc.leg)})
+			var sections []plankit.Section
+			if strings.Contains(strings.Join(tc.cards, ""), "**Rename:**") {
+				sections = append(sections, renameMechanic)
+			}
+			_, plan := writeLanguagePlan(t, cmp.Or(tc.language, "go"), tc.cards, sections...)
 			assertPlanGate(t, plan, root, tc.planGate)
 			assertDispatch(t, plan, root, tc.dispatch)
+
+			findings, err := ValidateFormat(plan, root)
+			if err != nil {
+				t.Fatalf("ValidateFormat(...) returned error: %v", err)
+			}
+			for _, finding := range findings {
+				for _, detail := range tc.detail {
+					if !strings.Contains(finding.Detail, detail) {
+						t.Errorf("%s detail %q lacks %q", finding.Check, finding.Detail, detail)
+					}
+				}
+			}
 		})
 	}
 

@@ -58,7 +58,7 @@
 //     A member reference that an Edit target of the deleting card or an earlier card also covers is not reported, since that card rewrites the code before the later card runs; the quoted import-path match keeps no such exemption.
 //     glyph-rejected is additionally its own fail-closed arm of LaterDeleteReferences, for a Delete or Edit member whose answer it cannot read.
 //     A member partitioned by build constraints is looked up through its candidates, which are its declarations.
-//   - resign-head-mismatch (blocking) — CanonicalizeHandles (handle.go), an Edit re-sign arrow whose head quarry.Name cannot name or names as a member other than the arrow's own glyph.
+//   - resign-head-mismatch (blocking) — nameResigns (resign.go), an Edit re-sign arrow whose head quarry.Name cannot name or names as a member other than the arrow's own glyph.
 //     It reads plan text alone, so it runs wherever resolvePass does, ValidateDispatch included.
 //   - redundant-file-target (blocking) — planGatePass (plangate.go), a card listing a file self glyph beside a member glyph that resolves into that file.
 //     A partitioned member's candidates are its declarations, so a file holding one of them counts.

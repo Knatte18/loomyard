@@ -310,6 +310,12 @@ func canonicalQualifierWay(plan *planparser.Plan, handle, head string) string {
 	if err != nil {
 		return ""
 	}
+	return canonicalQualifierWayOf(g, head)
+}
+
+// canonicalQualifierWayOf returns the way forward for a C# head under the glyph g whose explicit-interface qualifier is written in a non-canonical spelling, or "" when it is not.
+// It quotes the qualifier in canonical spelling.
+func canonicalQualifierWayOf(g glyph.Glyph, head string) string {
 	run, written := explicitQualifier(g, head)
 	if run == 0 {
 		return ""

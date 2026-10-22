@@ -6,6 +6,7 @@ package planglyph
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -284,7 +285,8 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 // returns nil findings and a nil error immediately, opening no repository at all — language: none
 // degrades to today's path-only behaviour, with no quarry call whatsoever.
 //
-// Otherwise it canonicalizes every draft plan: handle first (card 19's CanonicalizeHandles).
+// Otherwise it runs in this order: re-sign naming (nameResigns), the batched resolve, handle canonicalization (CanonicalizeHandles), the re-sign collision check (resignCollisionFindings), then the passes below.
+// Every draft plan: handle is canonicalized before the passes run.
 // Two passes follow: the resolve status policy (card 17's statusFindings) and the Create inversion (card 18's createFindings).
 // Both see the canonical spellings rather than the draft ones, over the single batched Resolve call they share.
 // Under go with no card done, the batched answers also feed languageMismatchFindings.
@@ -321,7 +323,14 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 		return nil, err
 	}
 
-	targets := collectGlyphTargets(pending)
+	resigns, resignFindings, err := nameResigns(pending)
+	if err != nil {
+		return nil, err
+	}
+
+	targets := append(collectGlyphTargets(pending), mintedResignIDs(resigns)...)
+	slices.Sort(targets)
+	targets = slices.Compact(targets)
 	results, err := resolveTargets(repo, targets)
 	if err != nil {
 		return nil, err
@@ -363,6 +372,8 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 	forthcomingCards := cardsByID(forthcomingSource, forthcoming)
 
 	findings := append([]Finding{}, handleFindings...)
+	findings = append(findings, resignFindings...)
+	findings = append(findings, resignCollisionFindings(current, resigns, resultByTarget(results))...)
 
 	// Rename pairs' New sides are excluded from the status policy exactly as Create targets are,
 	// and for the same reason: both name something that only exists AFTER the card runs. A symbol

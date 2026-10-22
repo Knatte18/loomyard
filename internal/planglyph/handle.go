@@ -1,9 +1,8 @@
-// handle.go implements CanonicalizeHandles, the batched-Name boundary that turns every draft
-// plan: handle a plan declares — from a Create sub-bullet, or from a Rename pair's computed
-// to-side — into its canonical plan:<expected-glyph> form, and rewrites every occurrence across
-// the plan on disk in one planparser.RewriteRefs pass. quarry.Name is never called from a
-// planning-loop caller and never exposed through the CLI: resolvePass, which calls
-// CanonicalizeHandles once, is this function's only caller.
+// handle.go implements CanonicalizeHandles, the batched-Name boundary that turns every draft plan: handle a plan declares into its canonical plan:<expected-glyph> form.
+// A handle comes from a Create sub-bullet or from a Rename pair's computed to-side.
+// Every occurrence across the plan is rewritten on disk in one planparser.RewriteRefs pass.
+// quarry.Name is never called from a planning-loop caller and never exposed through the CLI:
+// nameDeclarations is its one call site, and CanonicalizeHandles and nameResigns, which resolvePass calls once each, are its only callers.
 
 package planglyph
 
@@ -29,8 +28,6 @@ type declSource struct {
 	handle string
 	card   string
 	decl   quarry.Declaration
-	// resign marks a source built from an Edit card's re-sign arrow rather than from a handle: handle is then the arrow's member glyph, and the answer is only compared with it.
-	resign bool
 }
 
 // identifierPattern caches one compiled word-boundary matcher per identifier, so renameSignature
@@ -221,10 +218,6 @@ func partitionedRenameOldDetail(oldRef string, candidates []constrainedCandidate
 // declaration head verbatim), and every Rename pair whose New side is a handle (its declaration
 // computed via renameDeclSource, never trusted from the planner's draft spelling).
 //
-// Every re-sign arrow whose target is a member glyph adds a third source to the same call: the glyph's own unit and the arrow's head.
-// Its answer is compared with the glyph and discarded, never entering the canonical-owner bookkeeping or the rewrite, since the head names an existing member rather than a handle.
-// A naming error, or an ID other than the glyph's own, is the blocking resign-head-mismatch.
-//
 // Under plan.Language "none" this function returns nil findings and performs no call and no
 // rewrite.
 //
@@ -274,21 +267,6 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 			src.card = card
 			sources = append(sources, src)
 		}
-		for _, r := range c.Resigns {
-			if planparser.IsHandleRef(r.Target) {
-				continue
-			}
-			g, err := planparser.ParseRef(plan, r.Target)
-			if err != nil || g.IsSelf() {
-				continue // resign-not-member and glyph-malformed already report these.
-			}
-			sources = append(sources, declSource{
-				handle: g.String(),
-				card:   card,
-				decl:   quarry.Declaration{Lang: g.Lang, Unit: g.Unit, Decl: r.Decl},
-				resign: true,
-			})
-		}
 	}
 
 	if len(sources) == 0 {
@@ -299,15 +277,9 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 	for i, s := range sources {
 		decls[i] = s.decl
 	}
-	nameResults := quarry.Name(decls)
-	// quarry.Name's contract is one positionally-matched result per declaration, and the per-result
-	// echo check below is what catches a MISALIGNED answer — but it can only run after sources[i]
-	// has already been indexed, so a longer answer panics before reaching it. A batched boundary
-	// this file cannot see inside is exactly where a length guard belongs, and reporting the
-	// mismatch as an infrastructure error keeps it out of the plan-finding vocabulary: nobody should
-	// read "quarry answered a different number of declarations" as a defect in the plan.
-	if len(nameResults) != len(sources) {
-		return findings, false, fmt.Errorf("%w: quarry.Name returned %d result(s) for %d declaration(s)", ErrQuarryUnavailable, len(nameResults), len(sources))
+	nameResults, err := nameDeclarations(decls)
+	if err != nil {
+		return findings, false, err
 	}
 
 	canonicalOwners := make(map[string][]string) // canonical form -> every draft handle claiming it
@@ -320,12 +292,6 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 				Detail:   fmt.Sprintf("Name result for handle %q did not echo its own input", src.handle),
 				Severity: SeverityBlocking,
 			})
-			continue
-		}
-		if src.resign {
-			if res.Error != "" || res.ID != src.handle {
-				findings = append(findings, resignHeadMismatch(src, res))
-			}
 			continue
 		}
 		if res.Error != "" {
@@ -424,22 +390,16 @@ func createDeclarationLanguage(plan *planparser.Plan, card, handle string) (glyp
 	}, false
 }
 
-// resignHeadMismatch is the blocking resign-head-mismatch finding for a re-sign arrow whose head quarry.Name could not name, or named as a member other than the arrow's own glyph.
-func resignHeadMismatch(src declSource, res quarry.NameResult) Finding {
-	answer := fmt.Sprintf("answered %q", res.ID)
-	if res.Error != "" {
-		answer = fmt.Sprintf("failed: %s (%s)", res.Error, res.Reason)
+// nameDeclarations names decls in one batched quarry.Name call and returns its results, one per declaration in order.
+// It is the package's one quarry.Name call site, and owns the length guard:
+// the callers' per-result echo checks catch a misaligned answer, but only after indexing a result, so a longer answer would panic before reaching them.
+// A length mismatch is reported as an ErrQuarryUnavailable-wrapped error rather than a plan finding, since no plan defect makes quarry answer a different number of declarations.
+func nameDeclarations(decls []quarry.Declaration) ([]quarry.NameResult, error) {
+	results := quarry.Name(decls)
+	if len(results) != len(decls) {
+		return nil, fmt.Errorf("%w: quarry.Name returned %d result(s) for %d declaration(s)", ErrQuarryUnavailable, len(results), len(decls))
 	}
-	return Finding{
-		Check: "resign-head-mismatch",
-		Card:  src.card,
-		Detail: fmt.Sprintf(
-			"re-sign head %q does not name the member %q: naming it %s; write the member's new declaration head, receiver included for a method",
-			src.decl.Decl, src.handle, answer,
-		),
-		Severity: SeverityBlocking,
-		Ref:      src.handle,
-	}
+	return results, nil
 }
 
 // BindHandles turns a handle into the real glyph the card actually created or renamed to, from the
