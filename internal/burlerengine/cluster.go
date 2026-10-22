@@ -32,9 +32,26 @@ var gitValuedGlobalOptions = map[string]bool{
 	"-C": true, "-c": true, "--git-dir": true, "--work-tree": true, "--namespace": true, "--config-env": true, "--attr-source": true,
 }
 
+// gitTagListOptions holds the git tag options that put it in list mode, where it only reads tags.
+var gitTagListOptions = map[string]bool{
+	"-l": true, "--list": true, "--points-at": true, "--contains": true, "--no-contains": true,
+	"--merged": true, "--no-merged": true, "-n": true,
+}
+
+// gitTagWritingOptions holds the git tag options that create, delete or sign a tag.
+var gitTagWritingOptions = map[string]bool{
+	"-d": true, "--delete": true, "-a": true, "--annotate": true, "-s": true, "--sign": true,
+	"-u": true, "--local-user": true, "-f": true, "--force": true, "-m": true, "--message": true,
+	"-F": true, "--file": true, "-e": true, "--edit": true,
+}
+
+// gitTagValuedListOptions holds the git tag list-output options whose value may be the following word, so a value such as -version:refname is never read as an option.
+var gitTagValuedListOptions = map[string]bool{"--sort": true, "--format": true}
+
 // commandRunsMutatingGit reports whether a Bash command string invokes git with a state-mutating subcommand.
 // The command is split into segments at ;, &, | and newlines, and a segment counts when its first word is git, bare or path-prefixed.
 // Only the subcommand word decides, so a mutating verb named as an argument, as in git help cherry-pick, never counts.
+// The one exception is git tag, which counts only when it does not merely list tags.
 // A -h or --help among the global options or directly after the subcommand only prints usage and never counts either;
 // further along it is an option value or an operand, as in git commit -m -h.
 func commandRunsMutatingGit(cmd string) bool {
@@ -46,11 +63,56 @@ func commandRunsMutatingGit(cmd string) bool {
 		if helpRequested || len(rest) > 0 && isHelpFlag(rest[0]) {
 			continue
 		}
+		if subcommand == "tag" && gitTagListsOnly(rest) {
+			continue
+		}
 		if mutatingGitSubcommands[subcommand] {
 			return true
 		}
 	}
 	return false
+}
+
+// gitTagListsOnly reports whether args, the words after git tag, only list tags.
+// Bare git tag lists, and otherwise a list-mode option must stand before any -- with no tag-writing option beside it.
+// A long option counts in its --name=value form too, and -n also with its line count attached, as in -n5.
+// Any other short-option cluster, such as -ln, is not parsed and keeps the command mutating.
+func gitTagListsOnly(args []string) bool {
+	if len(args) == 0 {
+		return true
+	}
+	listMode := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		name, _, _ := strings.Cut(arg, "=")
+		switch {
+		case arg == "--":
+			return listMode
+		case gitTagWritingOptions[name]:
+			return false
+		case gitTagListOptions[name] || isGitTagLineCount(arg):
+			listMode = true
+		case gitTagValuedListOptions[arg]:
+			i++
+		case len(arg) > 2 && arg[0] == '-' && arg[1] != '-':
+			return false
+		}
+	}
+	return listMode
+}
+
+// isGitTagLineCount reports whether word is git tag's -n option with its line count attached, as in -n5.
+func isGitTagLineCount(word string) bool {
+	count, found := strings.CutPrefix(word, "-n")
+	if !found || count == "" {
+		return false
+	}
+	for _, r := range count {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // splitShellSegments splits cmd into segments at unquoted ;, &, | and newlines, each segment a list of words.

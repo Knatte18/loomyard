@@ -6,6 +6,7 @@ package planglyph
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -14,6 +15,7 @@ import (
 // TestDoneChecks_Verdicts covers the done-checks of Create, Delete and Rename groups against the tree the fork left behind: a landed Create, Delete or Rename passes, and a Create that never landed, a Delete that survived or a Rename never performed reports its blocking finding.
 // A Rename's new side carries the canonical plan: handle spelling a validated plan's symbol rename always has, proving resolveKeyFor strips it.
 // A fork that never performed its declared Rename leaves the old side still resolving and the new side still unresolvable, and BOTH halves must report rename-not-done — a check inspecting only Create and Delete groups recorded that card clean.
+// A target no glyph spells, a bare root filename or a path whose directory holds a space, is judged by whether its path exists, and a missing Create names the unit's files and where else its name is declared.
 func TestDoneChecks_Verdicts(t *testing.T) {
 	t.Parallel()
 
@@ -23,6 +25,8 @@ func TestDoneChecks_Verdicts(t *testing.T) {
 		group planparser.TargetGroup
 		// wantChecks is the check of each expected finding, all on card 1-one; empty means no finding.
 		wantChecks []string
+		// wantDetail holds substrings of the first finding's detail.
+		wantDetail []string
 	}{
 		{
 			name:  "Create symbol landed",
@@ -34,6 +38,88 @@ func TestDoneChecks_Verdicts(t *testing.T) {
 			files:      map[string]string{"sub/a.go": "package sub\n"},
 			group:      planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"sub#Foo"}},
 			wantChecks: []string{"create-not-done"},
+			wantDetail: []string{"no declaration named Foo exists anywhere in the worktree"},
+		},
+		{
+			// The finding names the unit's files and where the name was declared instead, so a misplaced declaration reads apart from a missing one.
+			name: "Create symbol declared in another unit",
+			files: map[string]string{
+				"sub/a.go":   "package sub\n\nfunc Bar() {}\n",
+				"other/b.go": "package other\n\nfunc Foo() {}\n",
+			},
+			group:      planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"sub#Foo"}},
+			wantChecks: []string{"create-not-done"},
+			wantDetail: []string{"quarry searched the unit's files sub/a.go; Foo is declared as other#Foo in other/b.go"},
+		},
+		{
+			name: "Create test in external test package landed",
+			files: map[string]string{
+				"sub/a.go":      "package sub\n",
+				"sub/a_test.go": "package sub_test\n\nimport \"testing\"\n\nfunc TestFoo(t *testing.T) {}\n",
+			},
+			group: planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:sub_test#TestFoo"}},
+		},
+		{
+			name:  "Create root filename self glyph landed",
+			files: map[string]string{"sub/a.go": "package sub\n", "LICENSE": "licence text\n"},
+			group: planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"LICENSE#"}},
+		},
+		{
+			// A path-shaped key that reached the done-check uncanonicalized is judged on disk.
+			name:  "Create bare root filename landed",
+			files: map[string]string{"sub/a.go": "package sub\n", "LICENSE": "licence text\n"},
+			group: planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"LICENSE"}},
+		},
+		{
+			// No glyph spells a path whose directory holds a space, so it is checked on disk.
+			name:  "Create spaced path landed",
+			files: map[string]string{"sub/a.go": "package sub\n", "tree/with space/Spaced.cs": "namespace Tree;\n"},
+			group: planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"tree/with space/Spaced.cs"}},
+		},
+		{
+			name:       "Create spaced path missing",
+			files:      map[string]string{"sub/a.go": "package sub\n"},
+			group:      planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"tree/with space/Spaced.cs"}},
+			wantChecks: []string{"create-not-done"},
+			wantDetail: []string{`checked "tree/with space/Spaced.cs" on disk, since no glyph spells it, and nothing exists there`},
+		},
+		{
+			name:  "Delete spaced path gone",
+			files: map[string]string{"sub/a.go": "package sub\n"},
+			group: planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"tree/with space/Spaced.cs"}},
+		},
+		{
+			// A parent component that is now a regular file stats as not-a-directory, which reads as nothing existing there.
+			name:  "Delete spaced path under a file parent gone",
+			files: map[string]string{"sub/a.go": "package sub\n", "tree/with space": "now a file\n"},
+			group: planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"tree/with space/Spaced.cs"}},
+		},
+		{
+			name:       "Delete spaced path survives",
+			files:      map[string]string{"sub/a.go": "package sub\n", "tree/with space/Spaced.cs": "namespace Tree;\n"},
+			group:      planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"tree/with space/Spaced.cs"}},
+			wantChecks: []string{"delete-not-done"},
+			wantDetail: []string{`checked "tree/with space/Spaced.cs" on disk, since no glyph spells it, and it exists`},
+		},
+		{
+			name:  "Rename spaced path landed",
+			files: map[string]string{"sub/a.go": "package sub\n", "tree/with space/New.cs": "namespace Tree;\n"},
+			group: planparser.TargetGroup{
+				Type:  planparser.CardTypeRename,
+				Refs:  []string{"tree/with space/Old.cs", "tree/with space/New.cs"},
+				Pairs: []planparser.MovePair{{Old: "tree/with space/Old.cs", New: "tree/with space/New.cs"}},
+			},
+		},
+		{
+			name:  "Rename spaced path skipped",
+			files: map[string]string{"sub/a.go": "package sub\n", "tree/with space/Old.cs": "namespace Tree;\n"},
+			group: planparser.TargetGroup{
+				Type:  planparser.CardTypeRename,
+				Refs:  []string{"tree/with space/Old.cs", "tree/with space/New.cs"},
+				Pairs: []planparser.MovePair{{Old: "tree/with space/Old.cs", New: "tree/with space/New.cs"}},
+			},
+			wantChecks: []string{"rename-not-done", "rename-not-done"},
+			wantDetail: []string{`checked "tree/with space/Old.cs" on disk, since no glyph spells it, and it exists`},
 		},
 		{
 			// The canonical plan: handle resolves via its stripped expected-glyph half, not the literal token.
@@ -117,6 +203,11 @@ func TestDoneChecks_Verdicts(t *testing.T) {
 					t.Errorf("finding %+v; want Check %s on card 1-one", f, tc.wantChecks[i])
 				}
 			}
+			for _, want := range tc.wantDetail {
+				if !strings.Contains(got[0].Detail, want) {
+					t.Errorf("finding detail = %q; want it to contain %q", got[0].Detail, want)
+				}
+			}
 		})
 	}
 }
@@ -135,50 +226,5 @@ func TestDoneChecks_QuarryUnavailable(t *testing.T) {
 	_, err := DoneChecks(&planparser.Plan{}, cards, missing)
 	if !errors.Is(err, ErrQuarryUnavailable) {
 		t.Errorf("DoneChecks(...) error = %v; want errors.Is(err, ErrQuarryUnavailable)", err)
-	}
-}
-
-// TestDoneChecks_RootFilenameCreateLanded is R9-1's planglyph-side regression: a Create group
-// target naming a repository-root extensionless file must reach DoneChecks already canonicalized
-// to its self glyph, which quarry resolves found once the file exists.
-//
-// Spelled as the bare token "LICENSE" — which is what the parser produced before R9-1's fix, and
-// which classifyRef rule 4 explicitly admits as a legal card ref — quarry rejects the target
-// BEFORE resolution ("a glyph needs a \"#\""), and the card is blocked forever, on every retry,
-// even though it created exactly what it said it would. This test pins both halves: the glyph
-// spelling passes, and the bare token is still the blocking refusal it always was, so the
-// parser-side canonicalization is the thing keeping this correct. Since crucible round
-// fable-high-r10's F1, the refusal is glyph-rejected — the fail-closed arm naming the rejection
-// itself — rather than create-not-done misreading the rejection as "did not resolve".
-func TestDoneChecks_RootFilenameCreateLanded(t *testing.T) {
-	t.Parallel()
-
-	root := writeFixtureRepo(t, map[string]string{
-		"sub/a.go": "package sub\n",
-		"LICENSE":  "licence text\n",
-	})
-
-	landed := []planparser.Card{{
-		Number: 1, Slug: "one",
-		TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"LICENSE#"}}},
-	}}
-	got, err := DoneChecks(&planparser.Plan{}, landed, root)
-	if err != nil {
-		t.Fatalf("DoneChecks(canonicalized root filename) returned error: %v", err)
-	}
-	if len(got) != 0 {
-		t.Errorf("DoneChecks(canonicalized root filename) = %+v; want no findings", got)
-	}
-
-	bare := []planparser.Card{{
-		Number: 1, Slug: "one",
-		TargetGroups: []planparser.TargetGroup{{Type: planparser.CardTypeCreate, Refs: []string{"LICENSE"}}},
-	}}
-	stale, err := DoneChecks(&planparser.Plan{}, bare, root)
-	if err != nil {
-		t.Fatalf("DoneChecks(bare root filename) returned error: %v", err)
-	}
-	if len(stale) != 1 || stale[0].Check != "glyph-rejected" {
-		t.Fatalf("DoneChecks(bare root filename) = %+v; want exactly one glyph-rejected — this is the failure canonicalization now prevents, named as the rejection it is", stale)
 	}
 }
