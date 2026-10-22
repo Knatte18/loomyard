@@ -15,6 +15,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -375,6 +376,27 @@ func TestMerge_ForeignStateAppearingWhileWaitingForLock_Refuses(t *testing.T) {
 	assertForeignRefusalUnderLock(t, f, h.PrimeWorktree(), statusBefore, held, done)
 }
 
+// assertGuardDirt asserts guardErr carries wantCheckout and exactly wantPaths as its dirt detail.
+// The checkout is compared after EvalSymlinks on both sides, since a temp root may be a symlink.
+func assertGuardDirt(t *testing.T, guardErr *fabricengine.MergeGuardError, wantCheckout string, wantPaths []string) {
+	t.Helper()
+
+	gotCheckout, err := filepath.EvalSymlinks(guardErr.Checkout)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", guardErr.Checkout, err)
+	}
+	want, err := filepath.EvalSymlinks(wantCheckout)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", wantCheckout, err)
+	}
+	if gotCheckout != want {
+		t.Errorf("guard error Checkout = %q; want %q", gotCheckout, want)
+	}
+	if !slices.Equal(guardErr.DirtyPaths, wantPaths) {
+		t.Errorf("guard error DirtyPaths = %q; want %q", guardErr.DirtyPaths, wantPaths)
+	}
+}
+
 // TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt pins the dirty half of
 // recheckMergePreconditionsUnderLock on MergeIn, on the destructive shape: the mid-wait tracked
 // edit lands on a file the merge source also touches, so pre-fix the MergeStart refusal ("local
@@ -406,6 +428,7 @@ func TestMergeIn_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *te
 	if len(guardErr.Reasons) != 1 || guardErr.Reasons[0] != "worktree dirty" {
 		t.Errorf("guard reasons = %v; want exactly [\"worktree dirty\"]", guardErr.Reasons)
 	}
+	assertGuardDirt(t, guardErr, h.PrimeWorktree(), []string{"overlap.txt"})
 	got, err := os.ReadFile(filepath.Join(h.PrimeWorktree(), "overlap.txt"))
 	if err != nil || string(got) != dirtyContent {
 		t.Errorf("overlap.txt after the refusal = (%q, %v); want the operator's edit preserved", got, err)
@@ -444,6 +467,7 @@ func TestMerge_PairTurningDirtyWhileWaitingForLock_RefusesPreservingDirt(t *test
 	if len(guardErr.Reasons) != 1 || guardErr.Reasons[0] != "worktree dirty" {
 		t.Errorf("guard reasons = %v; want exactly [\"worktree dirty\"]", guardErr.Reasons)
 	}
+	assertGuardDirt(t, guardErr, h.PrimeWorktree(), []string{"overlap.txt"})
 	if entries := mergeRes.Mutated().Entries(); len(entries) != 0 {
 		t.Errorf("Merge().Mutated() = %v; want empty — the re-check must refuse before the pre-merge sync step records anything", entries)
 	}

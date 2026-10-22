@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +50,8 @@ type parentMerger interface {
 	PushBranch(opts fabricengine.SyncOptions) (fabricengine.PushResult, error)
 	// HeadSHA reads the parent pair's own current head commit. See fabricengine.Fabric.HeadSHA.
 	HeadSHA() (string, error)
+	// MidMerge reads the merge the parent pair has parked, if any. See fabricengine.Fabric.MidMerge.
+	MidMerge() (fabricengine.MidMergeState, error)
 }
 
 // The compile-time assertion that *fabricengine.Fabric satisfies parentMerger.
@@ -267,9 +270,82 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	// never retry. Any other merge error is stuck with the error surfaced.
 	var guardErr *fabricengine.MergeGuardError
 	if errors.As(mergeErr, &guardErr) && guardErr.WorktreeDirty() {
-		return fz.stuckOrCancelled(ctx, guardErr.Error())
+		return fz.stuckOrCancelled(ctx, fz.dirtyParentReason(parentHandle, guardErr))
 	}
 	return fz.stuckOrCancelled(ctx, fmt.Sprintf("parent-side merge failed: %v", mergeErr), "error", mergeErr)
+}
+
+// maxListedDirtyPaths caps how many dirty paths a refusal lists before it counts the rest.
+const maxListedDirtyPaths = 20
+
+// gotoResumeWayForward is the closing step every dirty-parent way forward ends in.
+const gotoResumeWayForward = `"lyx loom goto --to Finalize" and "lyx loom resume" in the task worktree`
+
+// dirtyPathList renders paths Go-quoted and joined by ", ", the first maxListedDirtyPaths of them, ending in ", and N more" when there are more.
+// Quoting keeps a path holding a space or a comma one item, and the form holds no line break.
+func dirtyPathList(paths []string) string {
+	shown := paths
+	if len(shown) > maxListedDirtyPaths {
+		shown = shown[:maxListedDirtyPaths]
+	}
+	quoted := make([]string, len(shown))
+	for i, p := range shown {
+		quoted[i] = strconv.Quote(p)
+	}
+	list := strings.Join(quoted, ", ")
+	if more := len(paths) - len(shown); more > 0 {
+		list += fmt.Sprintf(", and %d more", more)
+	}
+	return list
+}
+
+// dirtyParentSubject names the parent's code checkout and the tracked paths dirty in it.
+func dirtyParentSubject(checkout string, paths []string) string {
+	return fmt.Sprintf("the parent's code checkout %s has uncommitted tracked paths: %s", checkout, dirtyPathList(paths))
+}
+
+// DirtyParentRefusal words a refusal that the parent's code checkout holds uncommitted tracked paths:
+// the checkout, the paths (capped, quoted) and the way forward when the dirt is the only obstacle.
+func DirtyParentRefusal(checkout string, paths []string) string {
+	return fmt.Sprintf("%s; way forward: commit or discard them in %s with plain git, then %s",
+		dirtyParentSubject(checkout, paths), checkout, gotoResumeWayForward)
+}
+
+// dirtyParentReason words the Stuck reason for a parent-side merge the dirty guard refused, in one of four forms by the other reasons the guard error carries:
+// a merge already in progress, a detached HEAD, a branch not synced to its upstream, or dirt alone.
+func (fz *Finalize) dirtyParentReason(parentHandle parentMerger, guardErr *fabricengine.MergeGuardError) string {
+	checkout := guardErr.Checkout
+	text := guardErr.Error()
+	switch {
+	case guardErr.AlreadyInProgress():
+		reason := fmt.Sprintf("%s; the parent's code checkout is %s", text, checkout)
+		wayForward := gotoResumeWayForward
+		state, err := parentHandle.MidMerge()
+		switch {
+		case err != nil:
+			logger.Warn("landingshed: read the parent pair's parked merge failed", "producer", finalizeName, "cause", err)
+			wayForward = fz.parkedMergeWayForward(checkout)
+		case state.Kind == fabricengine.MidMergeParked:
+			reason += fmt.Sprintf("; the parked fabric merge is a %s of %s in the parent pair", state.Verb, state.Source)
+			wayForward = fz.parkedMergeWayForward(checkout)
+		}
+		return reason + "; way forward: " + wayForward
+	case guardErr.DetachedHead():
+		return fmt.Sprintf("%s: %s; way forward: check out the parent branch %q in %s with plain git, and when the checkout refuses to carry the changes, set them aside first with plain git and restore them on the branch after it; then commit them on the parent branch or discard them in %s with plain git; then %s",
+			text, dirtyParentSubject(checkout, guardErr.DirtyPaths), fz.deps.ParentBranch, checkout, checkout, gotoResumeWayForward)
+	case guardErr.NotSynced():
+		return fmt.Sprintf("%s: %s; way forward: commit them on the parent branch or discard them in %s with plain git; then push or reconcile the parent branch %q in its own pair; then %s",
+			text, dirtyParentSubject(checkout, guardErr.DirtyPaths), checkout, fz.deps.ParentBranch, gotoResumeWayForward)
+	default:
+		return text + ": " + DirtyParentRefusal(checkout, guardErr.DirtyPaths)
+	}
+}
+
+// parkedMergeWayForward words the way forward out of a fabric merge parked in the parent pair.
+// "--abort" hard-resets the parent's code checkout, and a plain git commit or stash there would take the staged merge with it, so the operator saves a copy of their own change outside the checkout first.
+func (fz *Finalize) parkedMergeWayForward(checkout string) string {
+	return fmt.Sprintf(`the party that started that merge, or the orch or the operator when that party is gone, concludes it with "lyx fabric merge --continue" or discards it with "lyx fabric merge --abort" in the parent pair, then %s; "--abort" hard-resets the parent's code checkout to the merge's start, so the operator first saves a copy of any change of their own in %s outside it, since a plain git commit or stash there would take the staged merge with it; a session lyx refuses the verb from reports status: FAILED and the orch runs it`,
+		gotoResumeWayForward, checkout)
 }
 
 // configChangeNotice composes the one-line notice about the task's per-worktree config changes, or "" when there is nothing to report or no seam is wired.

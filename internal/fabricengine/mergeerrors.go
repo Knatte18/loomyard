@@ -2,6 +2,7 @@
 // Every message is fixed and side-free: none interpolates a branch name, path, or git error, and
 // where a caller needs the offending branch it travels in a typed error's own field
 // (ErrMergeInRequired.Source), never inside an Error() string.
+// MergeGuardError.Checkout and MergeGuardError.DirtyPaths carry the dirty guard's detail the same way.
 // The closed reason set backing MergeGuardError is pinned verbatim from the discussion's
 // safety-guards-are-aggregated-and-side-free decision; adding a member is a same-commit change to
 // the constant list and to the vocabulary assertion covering it (mergevocab_test.go, batch 5), and
@@ -47,11 +48,29 @@ const (
 // The list is aggregated rather than first-failure so two scenarios differing only in which
 // precondition failed on which side produce byte-identical errors — no failure ordering ever
 // discloses that two subjects were checked.
-type MergeGuardError struct{ Reasons []string }
+// Checkout and DirtyPaths carry the detail of the dirty-worktree reason, outside Error():
+// Checkout is the absolute path of the code checkout the guard read.
+// DirtyPaths lists its tracked dirty paths relative to it, slash-separated and sorted.
+// Both are set only beside that reason, and DirtyPaths is then never empty.
+type MergeGuardError struct {
+	Reasons    []string
+	Checkout   string
+	DirtyPaths []string
+}
 
 // Error implements the error interface, joining the aggregated reasons with "; ".
 func (e *MergeGuardError) Error() string {
 	return "fabricengine: merge preconditions failed: " + strings.Join(e.Reasons, "; ")
+}
+
+// has reports whether e's aggregated reasons include reason.
+func (e *MergeGuardError) has(reason string) bool {
+	for _, r := range e.Reasons {
+		if r == reason {
+			return true
+		}
+	}
+	return false
 }
 
 // WorktreeDirty reports whether e's aggregated reasons include the dirty-worktree guard reason.
@@ -62,18 +81,31 @@ func (e *MergeGuardError) Error() string {
 // drifting later. WorktreeDirty keeps the coupling inside the package that owns the constant, where
 // the existing pinning tests already cover it.
 func (e *MergeGuardError) WorktreeDirty() bool {
-	for _, r := range e.Reasons {
-		if r == mergeReasonWorktreeDirty {
-			return true
-		}
-	}
-	return false
+	return e.has(mergeReasonWorktreeDirty)
 }
 
-// IsWorktreeDirtyReason reports whether text contains the dirty-worktree guard reason.
-// It is for a caller holding a reason as plain text, such as a halt reason, and keeps the guard-reason constant inside this package like WorktreeDirty does.
-func IsWorktreeDirtyReason(text string) bool {
-	return strings.Contains(text, mergeReasonWorktreeDirty)
+// AlreadyInProgress reports whether e's aggregated reasons include the merge-already-in-progress guard reason.
+func (e *MergeGuardError) AlreadyInProgress() bool {
+	return e.has(mergeReasonAlreadyInProgress)
+}
+
+// NotSynced reports whether e's aggregated reasons include the branch-not-synced-to-upstream guard reason.
+func (e *MergeGuardError) NotSynced() bool {
+	return e.has(mergeReasonNotSynced)
+}
+
+// DetachedHead reports whether e's aggregated reasons include the checkout-is-not-on-a-branch guard reason.
+func (e *MergeGuardError) DetachedHead() bool {
+	return e.has(mergeReasonDetachedHead)
+}
+
+// withDirt records the code checkout the dirty guard read and its dirty paths on e, when paths is not empty, and returns e.
+func (e *MergeGuardError) withDirt(checkout string, paths []string) *MergeGuardError {
+	if len(paths) > 0 {
+		e.Checkout = checkout
+		e.DirtyPaths = paths
+	}
+	return e
 }
 
 // newMergeGuardError builds a *MergeGuardError from reasons, sorting and deduplicating them first

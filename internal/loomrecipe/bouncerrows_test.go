@@ -136,6 +136,24 @@ func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 	}
 }
 
+func TestIsFinalizeRow(t *testing.T) {
+	tests := []struct {
+		row  string
+		want bool
+	}{
+		{loomshed.NameFinalize, true},
+		{loomshed.NameMergeIn, false},
+		{loomshed.NamePRGate, false},
+		{"No-Such-Row", false},
+	}
+	for _, tt := range tests {
+		got, err := IsFinalizeRow(tt.row)
+		if err != nil || got != tt.want {
+			t.Errorf("IsFinalizeRow(%q) = %v, %v; want %v, nil", tt.row, got, err, tt.want)
+		}
+	}
+}
+
 func TestBouncerRunSubdir(t *testing.T) {
 	bouncers := map[string]string{
 		loomshed.NameDiscussionBouncer: "discussion",
