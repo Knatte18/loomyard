@@ -168,6 +168,9 @@ func TestGateTest_Scopes(t *testing.T) {
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.Discovered != 0 || run.ExitCode != 0 || !strings.Contains(g.stdout.String(), "the scope is empty, so tier0 runs no command") {
 			t.Errorf("tier0 run record = %+v, stdout %q; want an empty-scope pass with nothing discovered", run, g.stdout.String())
 		}
+		if trimpath := trimpathLine("tier0", []string{"GOFLAGS=-trimpath -p=3"}); strings.Contains(g.stdout.String(), trimpath) {
+			t.Errorf("stdout = %q; want no -trimpath line for a tier that runs no command", g.stdout.String())
+		}
 		requireFree(t)
 	})
 
