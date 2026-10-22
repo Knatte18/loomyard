@@ -877,7 +877,9 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 		entry func(evals *int, add func()) GateEntry
 		// wantEvalsAtResume and wantSendsAtResume are the closure runs and typed texts when the resume happens, -1 for unchecked.
 		wantEvalsAtResume, wantSendsAtResume int
-		wantSends                            []string
+		// wantEvalsSoonAfterResume is the closure runs two seconds after the resume, inside gateRecheckEvery, zero for unchecked.
+		wantEvalsSoonAfterResume int
+		wantSends                []string
 		// wantAttempts is the attempts the result reports spent, -1 for unchecked.
 		wantAttempts int
 		// wantCachedSlug is the slug the run caches from reed's status, empty for none.
@@ -943,6 +945,18 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 			},
 			wantEvalsAtResume: -1, wantSendsAtResume: -1, wantAttempts: 0,
 		},
+		{
+			name: "a gated arrival on the first uncovered tick evaluates the boundary once, not again for the arrival held while covered", events: "STOP:turn1\n",
+			runnerSlug: "slug", initialScope: pauserecord.ScopeHub, appendAt: 5 * time.Second, resumeAt: 5 * time.Second,
+			entry: func(evals *int, _ func()) GateEntry {
+				pending := func() (GateResult, error) {
+					*evals++
+					return GateResult{Pending: true}, nil
+				}
+				return GateEntry{Attempts: 3, PassOnCap: true, Gate: pending, Final: func() (GateResult, error) { return GateResult{Passed: true}, nil }}
+			},
+			wantEvalsAtResume: -1, wantSendsAtResume: -1, wantEvalsSoonAfterResume: 1, wantAttempts: -1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -965,9 +979,12 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 			}
 
 			added, appended, resumed := tt.addAt == 0, tt.appendAt == 0, tt.resumeAt == 0
-			evalsAtResume, sendsAtResume := -1, -1
+			evalsAtResume, sendsAtResume, evalsSoonAfterResume := -1, -1, -1
 			rig.clock.onSleep = func(now time.Time) {
 				elapsed := now.Sub(rig.start)
+				if resumed && tt.resumeAt > 0 && evalsSoonAfterResume < 0 && elapsed >= tt.resumeAt+2*time.Second {
+					evalsSoonAfterResume = evals
+				}
 				if !added && elapsed >= tt.addAt {
 					added = true
 					addLiveEntry(t, path, pauserecord.ScopeHub, now)
@@ -994,6 +1011,9 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 			if tt.wantSendsAtResume >= 0 && sendsAtResume != tt.wantSendsAtResume {
 				t.Errorf("texts typed at the resume = %d, want %d", sendsAtResume, tt.wantSendsAtResume)
 			}
+			if tt.wantEvalsSoonAfterResume != 0 && evalsSoonAfterResume != tt.wantEvalsSoonAfterResume {
+				t.Errorf("closure runs two seconds after the resume = %d, want %d", evalsSoonAfterResume, tt.wantEvalsSoonAfterResume)
+			}
 			var sent []string
 			for _, call := range rig.reed.SendTextCalls {
 				sent = append(sent, call.Text)
@@ -1003,6 +1023,7 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 				if !reflect.DeepEqual(sent, tt.wantSends) {
 					t.Errorf("texts typed = %q, want %q", sent, tt.wantSends)
 				}
+			case tt.wantEvalsSoonAfterResume != 0:
 			case tt.resumeAt > 0:
 				if len(sent) != 1 || rig.reed.typedAt.Sub(rig.start) < tt.resumeAt {
 					t.Errorf("texts typed = %q, first at %v, want one re-prompt at or after the resume at %v", sent, rig.reed.typedAt.Sub(rig.start), tt.resumeAt)

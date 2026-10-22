@@ -336,6 +336,7 @@ func (run *Run) Wait() (Result, error) {
 				run.gateAtBoundary = true
 				run.startCleared = false
 				run.unsentReprompt = false
+				run.boundaryHeld = false
 				if run.covered {
 					// A pause covers the session: nothing is evaluated or sent until the first uncovered tick.
 					run.boundaryHeld = true
@@ -525,6 +526,7 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 		}
 		run.failures.Recover(pendingKey, "shuttle: gate: pending send delivered again", "strandGUID", run.state.StrandGUID, "gate", run.gate[run.gatePendingAt].Name)
 		run.gateAtBoundary = false
+		run.boundaryHeld = false
 		return Result{}, false, nil
 	}
 	failed := run.gateFailedAt
@@ -558,6 +560,7 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	}
 	run.unsentReprompt = false
 	run.gateAtBoundary = false
+	run.boundaryHeld = false
 	run.gateFails[failed]++
 	run.gateSent[failed]++
 	run.gateReworkSince[failed] = run.clock.Now()

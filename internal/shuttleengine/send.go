@@ -856,6 +856,7 @@ func (run *Run) boundaryIdle() bool {
 		return true
 	}
 	run.gateAtBoundary = false
+	run.boundaryHeld = false
 	run.unsentReprompt = false
 	run.startCleared = true
 	run.startHold = turnStartHold{}
