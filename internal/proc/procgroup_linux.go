@@ -30,6 +30,7 @@ func configurePlatformGroupKill(cmd *exec.Cmd, report func(pid int, groupErr err
 
 // configurePlatformGroupTerminate starts cmd in its own process group and makes a cancel SIGTERM the whole group and arm a SIGKILL of it after killAfter.
 // The SIGKILL goes out whether or not the shell has exited, since a descendant may still hold the group.
+// A SIGTERM that fails for a reason other than the group being gone kills the command alone and arms no timer.
 func configurePlatformGroupTerminate(cmd *exec.Cmd, killAfter time.Duration, report func(pid int, sig os.Signal, groupErr error)) (awaitGone func()) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
@@ -44,8 +45,11 @@ func configurePlatformGroupTerminate(cmd *exec.Cmd, killAfter time.Duration, rep
 		groupPid := cmd.Process.Pid
 		termErr := syscall.Kill(-groupPid, syscall.SIGTERM)
 		report(groupPid, syscall.SIGTERM, termErr)
-		if termErr != nil {
+		if errors.Is(termErr, syscall.ESRCH) {
 			return termErr
+		}
+		if termErr != nil {
+			return cmd.Process.Kill()
 		}
 		mutex.Lock()
 		defer mutex.Unlock()
