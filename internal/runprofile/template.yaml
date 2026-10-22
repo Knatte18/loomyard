@@ -10,6 +10,7 @@
 
 light:
   loom: {discussion_max_bounces: 2, discussion_hard_max_bounces: 3, plan_max_bounces: 1, plan_hard_max_bounces: 2, webster_max_bounces: 1, merge_max_bounces: 1}
+  darn: {review_max_bounces: 1, review_hard_max_bounces: 2}
 budget:
   loom: {discussion_max_bounces: 2, discussion_hard_max_bounces: 3, plan_max_bounces: 2, plan_hard_max_bounces: 3, webster_max_bounces: 2, merge_max_bounces: 2}
   darn: {review_max_bounces: 1}
