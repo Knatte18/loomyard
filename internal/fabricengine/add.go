@@ -420,7 +420,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		if runRecordsTracked {
 			commitPaths = append(commitPaths, shedrun.RunsRootRel())
 		}
-		if _, _, err := CommitRecordsPaths(rec, weftPath, l.AnchorRel, commitPaths, "fabric: record parent branch for "+slug, opts); err != nil {
+		if _, _, err := CommitRecordsPaths(rec, weftPath, l.AnchorRel, commitPaths, OriginRecordSubject(slug), opts); err != nil {
 			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("commit parent branch record: %w", err)
 		}

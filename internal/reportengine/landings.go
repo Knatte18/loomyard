@@ -150,15 +150,20 @@ func readLandings(src Sources, opts Options, report *Report) error {
 	return j.judgeFreshness()
 }
 
-// taskCommitBelow returns the task commit named by the newest trailer in the first-parent history of tagCommit.
-// It walks in growing pages, re-reading from the tag, until a trailer is found or a page comes back short.
-func (j *landingJoiner) taskCommitBelow(tagCommit string) (string, bool, error) {
+// taskCommitBelow returns the task commit named by the newest trailer in the first-parent history of tagCommit, down to the commit that opened slug's pair.
+// A trailer below that commit is the parent's and names one of the parent's landings, so the walk never reads it.
+// It walks in growing pages, re-reading from the tag, until a trailer or the pair's opening commit is found or a page comes back short.
+func (j *landingJoiner) taskCommitBelow(tagCommit, slug string) (string, bool, error) {
 	for limit := firstTrailerPage; ; limit *= 2 {
 		commits, err := j.src.Records.Log(tagCommit, gitrepo.LogQuery{FirstParent: true, Limit: limit})
 		if err != nil {
 			return "", false, fmt.Errorf("reportengine: walk the history of %s: %w", tagCommit, err)
 		}
 		for _, commit := range commits {
+			subject, _, _ := strings.Cut(commit.Message, "\n")
+			if opened, ok := fabricengine.OriginRecordSlug(subject); ok && opened == slug {
+				return "", false, nil
+			}
 			if sha, ok := fabricengine.TaskCommitOf(commit.Message); ok {
 				return sha, true, nil
 			}
@@ -200,7 +205,7 @@ func (j *landingJoiner) joinExact() (map[int]bool, error) {
 	claims := map[int][]int{}
 	var order []int
 	for i, selected := range j.report.inputs.selected {
-		task, found, err := j.taskCommitBelow(selected.tag.Commit)
+		task, found, err := j.taskCommitBelow(selected.tag.Commit, selected.slug)
 		if err != nil {
 			return nil, err
 		}
