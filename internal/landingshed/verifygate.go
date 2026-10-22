@@ -33,13 +33,25 @@ type verifyGate struct {
 	tiers            func(gate string) ([]int, error)
 	failedWayForward string
 	failureTarget    string
-	waitMark         func(label string, start time.Time) error
-	paths            verifytree.Paths
-	dirty            func(worktree string) ([]string, error)
-	verify           func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
-	now              func() time.Time
+	// classify, when set, chooses the failure record's target and the reason's way forward per failure, in place of failedWayForward and failureTarget.
+	classify func(ctx context.Context, failure verifytree.PublishFailure) FailureRoute
+	waitMark func(label string, start time.Time) error
+	paths    verifytree.Paths
+	dirty    func(worktree string) ([]string, error)
+	verify   func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
+	now      func() time.Time
 	// recorder is set only by Publish: nil leaves a failed verify unrecorded.
 	recorder *failureRecorder
+}
+
+// FailureRoute is a classifier's answer for one failed verify: where the failure record sends the run and what the Stuck reason says about it.
+type FailureRoute struct {
+	// Target is the row written into the failure record's target.
+	Target string
+	// WayForward is the whole clause the Stuck reason ends with after `way forward: `.
+	WayForward string
+	// Lead is text the reason puts between `<gate> failed` and ` after merging parent branch`; empty for a failure the task owns.
+	Lead string
 }
 
 // failureRecorder holds what the gate needs to write the Publish failure record.
@@ -54,17 +66,17 @@ type failureRecorder struct {
 // The kind is the name of the gate that failed, and the record's tier is the last failing tier the log's summary lines name;
 // a log without one, such as a refusal before the first tier, takes the highest tier of the gate's list.
 // A result that is not a failed run, a timeout and a shell that could not start write none, since none of them names a failing test.
-// It reports whether it wrote the record: a write failure is logged, reported as false and changes nothing else.
-func (g verifyGate) recordFailure(kind verifytree.FailureKind, row string, result verifytree.Result) bool {
+// The record's target and the returned route come from the told classifier, called with the record as written except its target, and from the told target and way-forward clause when there is none.
+// It returns the route and whether it wrote the record: a write failure is logged, reported as false and changes nothing else, and a result that writes no record returns the zero route.
+func (g verifyGate) recordFailure(ctx context.Context, kind verifytree.FailureKind, row string, result verifytree.Result) (FailureRoute, bool) {
 	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.ExitCode < 0 {
-		return false
+		return FailureRoute{}, false
 	}
 	failure := verifytree.PublishFailure{
 		Kind:        kind,
 		Row:         row,
 		LogPath:     result.Log,
 		MergeCommit: g.recorder.mergeCommit,
-		Target:      g.failureTarget,
 		WrittenAt:   g.now().UTC().Format(time.RFC3339),
 	}
 	if g.recorder.head != nil {
@@ -87,15 +99,20 @@ func (g verifyGate) recordFailure(kind verifytree.FailureKind, row string, resul
 		list, err := g.tiers(string(kind))
 		if err != nil || len(list) == 0 {
 			logger.Warn("landingshed: could not read the gate's tiers for the publish failure record", "gate", kind, "tiers", len(list), "cause", err)
-			return false
+			return FailureRoute{}, false
 		}
 		failure.Tier = slices.Max(list)
 	}
+	route := FailureRoute{Target: g.failureTarget, WayForward: g.failedWayForward}
+	if g.classify != nil {
+		route = g.classify(ctx, failure)
+	}
+	failure.Target = route.Target
 	if err := verifytree.WritePublishFailure(g.paths, failure); err != nil {
 		logger.Warn("landingshed: could not write the publish failure record", "kind", kind, "cause", err)
-		return false
+		return FailureRoute{}, false
 	}
-	return true
+	return route, true
 }
 
 // clearFailure removes the Publish failure record of an earlier failed verify.
@@ -118,6 +135,7 @@ func newVerifyGate(deps Deps) verifyGate {
 		tiers:            deps.GateTiers,
 		failedWayForward: deps.VerifyFailedWayForward,
 		failureTarget:    deps.VerifyFailureTarget,
+		classify:         deps.ClassifyVerifyFailure,
 		waitMark:         deps.VerifyWaitMark,
 		paths:            verifytree.NewPaths(deps.WorktreeRoot, deps.VerifyDir),
 		dirty:            verifytree.DirtyPaths,
@@ -220,8 +238,8 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
-	recorded := g.recordFailure(verifytree.FailureKindLanding, producer, result)
-	return g.verdict(result, "landing gate", producer, parentBranch, recorded)
+	route, recorded := g.recordFailure(ctx, verifytree.FailureKindLanding, producer, result)
+	return g.verdict(result, "landing gate", producer, parentBranch, route, recorded)
 }
 
 // checkPublishVerify runs the `publish` gate's call for producer after the landing call passed.
@@ -250,8 +268,8 @@ func (g verifyGate) checkPublishVerify(ctx context.Context, producer, parentBran
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
-	recorded := g.recordFailure(verifytree.FailureKindPublish, producer, result)
-	return g.verdict(result, "publish gate", producer, parentBranch, recorded)
+	route, recorded := g.recordFailure(ctx, verifytree.FailureKindPublish, producer, result)
+	return g.verdict(result, "publish gate", producer, parentBranch, route, recorded)
 }
 
 // watchdogClause returns the clause a failed verify's reason carries when the log at logPath holds the CPU watchdog's line, and empty for an unreadable log or one without it.
@@ -270,9 +288,10 @@ func watchdogClause(logPath string) string {
 
 // verdict maps a verify result to the producer's decision, naming the gate whose call ran as what.
 // It returns a non-empty Stuck reason for a dirty tree or a failed command, an error for an unknown status, and ("", nil) when the producer may proceed.
-// recorded says the failure record was written; a failed command with an exit code then ends with the told way-forward clause, and otherwise, or with no clause told, asks to fix forward on the task branch.
+// recorded says the failure record was written; a failed command with an exit code then ends with route's way-forward clause, and otherwise, or with an empty clause, asks to fix forward on the task branch.
+// The route's lead follows the gate's name in that reason.
 // After a CPU watchdog quit the reason names the window and the busy_quit_sec way forward before that clause.
-func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBranch string, recorded bool) (string, error) {
+func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBranch string, route FailureRoute, recorded bool) (string, error) {
 	switch result.Status {
 	case verifytree.StatusPassed:
 		logger.Info("landingshed: post-merge "+what+" passed", "producer", producer, "parentBranch", parentBranch)
@@ -288,8 +307,8 @@ func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBran
 			return fmt.Sprintf("%s could not start after merging parent branch %q: %s; output: %s", what, parentBranch, result.Detail, result.Log), nil
 		}
 		watchdog := watchdogClause(result.Log)
-		if recorded && g.failedWayForward != "" {
-			return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s%s; way forward: %s", what, parentBranch, result.ExitCode, result.Log, watchdog, g.failedWayForward), nil
+		if recorded && route.WayForward != "" {
+			return fmt.Sprintf("%s failed%s after merging parent branch %q (exit code %d); output: %s%s; way forward: %s", what, route.Lead, parentBranch, result.ExitCode, result.Log, watchdog, route.WayForward), nil
 		}
 		return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s%s; fix forward on the task branch, then resume", what, parentBranch, result.ExitCode, result.Log, watchdog), nil
 	default:
