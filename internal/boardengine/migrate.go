@@ -73,7 +73,8 @@ func legacyTypeLabels(typ *string) []string {
 }
 
 // migrateEntries converts every entry to the kind-and-labels shape.
-// An entry with kind is untouched, an entry with tier migrates, and an entry with neither loads as a note with no labels.
+// An entry with kind keeps its fields, an entry with tier migrates, and an entry with neither loads as a note with no labels.
+// Every task loses its priority, since only a note carries one.
 // A migrated task's dependency on an entry that migrated to a note is dropped, since a task may depend only on a task.
 // vocab may be nil, as in store-level tests.
 func migrateEntries(entries []storedEntry, vocab *Vocabulary) []Task {
@@ -96,7 +97,12 @@ func migrateEntries(entries []storedEntry, vocab *Vocabulary) []Task {
 		}
 	}
 	for i := range out {
-		if !migrated[i] || out[i].Kind != KindTask {
+		if out[i].Kind != KindTask {
+			continue
+		}
+		// Only a note carries a priority, so a task stored with one loses it here and at the next write.
+		out[i].Priority = ""
+		if !migrated[i] {
 			continue
 		}
 		out[i].DependsOn = slices.DeleteFunc(slices.Clone(out[i].DependsOn), func(dep string) bool {

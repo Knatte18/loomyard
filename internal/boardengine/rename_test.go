@@ -27,7 +27,7 @@ func newRenameBoard(t *testing.T, now *time.Time) (*boardengine.Board, string) {
 		Clock: func() time.Time { return *now }})
 	entries := []map[string]any{
 		{"slug": "other", "title": "Other", "kind": boardengine.KindTask, "labels": bugLabels},
-		{"slug": "old", "title": "Old", "kind": boardengine.KindTask, "labels": []string{"bug", "undecided"}, "priority": "high", "issues": []int{3},
+		{"slug": "old", "title": "Old", "kind": boardengine.KindTask, "labels": []string{"bug", "undecided"}, "issues": []int{3},
 			"brief": "short", "body": "The body names old here.", "recipe": "darn", "short_name": "o", "status": "active",
 			"run_settings": map[string]any{"darn": map[string]any{"review_max_bounces": 1}}, "profile": "light"},
 		{"slug": "waiter", "title": "Waiter", "kind": boardengine.KindTask, "labels": bugLabels, "depends_on": []string{"other", "old"}},

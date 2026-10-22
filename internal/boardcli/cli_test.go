@@ -759,7 +759,7 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 			payload:      `{}`,
 			wantExitCode: 1,
 			wantOK:       false,
-			wantError:    "one of slug or id is required",
+			wantError:    "one of slug, id or handle is required",
 		},
 		{
 			name: "get_both_keys_errors",
@@ -767,10 +767,67 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 				f.reset(t)
 			},
 			verb:         "get",
-			payload:      `{"slug":"x","id":1}`,
+			payload:      `{"slug":"x","handle":"T1"}`,
 			wantExitCode: 1,
 			wantOK:       false,
-			wantError:    "only one of slug or id may be given",
+			wantError:    "only one of slug, id or handle may be given",
+		},
+		{
+			name: "get_by_handle_key",
+			setup: func(t *testing.T) {
+				f.reset(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","kind":"task","labels":["bug"]}`)
+				runCLI(t, "upsert", `{"slug":"note-b","title":"B","labels":["bug"]}`)
+			},
+			verb:         "get",
+			payload:      `{"handle":"B1"}`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertResult: func(t *testing.T, result map[string]any) {
+				task, _ := result["task"].(map[string]any)
+				if task["slug"] != "note-b" || task["handle"] != "B1" {
+					t.Errorf("get handle B1: got %v; want note-b carrying handle B1", task)
+				}
+			},
+		},
+		{
+			name: "get_by_bare_handle_in_any_case",
+			setup: func(t *testing.T) {
+				f.reset(t)
+				runCLI(t, "upsert", `{"slug":"task-a","title":"A","kind":"task","labels":["bug"]}`)
+			},
+			verb:         "get",
+			payload:      `t1`,
+			wantExitCode: 0,
+			wantOK:       true,
+			assertResult: func(t *testing.T, result map[string]any) {
+				task, _ := result["task"].(map[string]any)
+				if task["slug"] != "task-a" {
+					t.Errorf("get t1: got %v; want task-a", task)
+				}
+			},
+		},
+		{
+			name: "set_status_bare_handle_lacks_status",
+			setup: func(t *testing.T) {
+				f.reset(t)
+			},
+			verb:         "set-status",
+			payload:      `T1`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    "missing required field: status",
+		},
+		{
+			name: "get_malformed_handle_errors",
+			setup: func(t *testing.T) {
+				f.reset(t)
+			},
+			verb:         "get",
+			payload:      `{"handle":"T01"}`,
+			wantExitCode: 1,
+			wantOK:       false,
+			wantError:    `handle "T01" is not a letter followed by a number`,
 		},
 		{
 			name: "get_fractional_id_errors",
@@ -940,7 +997,7 @@ func stepLookupContract(t *testing.T, f *cliFixture) {
 			payload:      `{"slug":"x","id":1,"depends_on":[]}`,
 			wantExitCode: 1,
 			wantOK:       false,
-			wantError:    "only one of slug or id may be given",
+			wantError:    "only one of slug, id or handle may be given",
 		},
 		{
 			name:         "get_prints_kept_keys",

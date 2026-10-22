@@ -50,7 +50,7 @@ func TestRunLock(t *testing.T) {
 		{name: "upsert title", refused: true, act: upsertLocked(map[string]any{"title": "new"})},
 		{name: "upsert kind", refused: true, act: upsertLocked(map[string]any{"kind": "note"})},
 		{name: "upsert recipe", refused: true, act: upsertLocked(map[string]any{"recipe": "other-recipe"})},
-		{name: "upsert priority", refused: true, act: upsertLocked(map[string]any{"priority": "high"})},
+		{name: "upsert priority on a held note", refused: true, locked: map[string]any{"kind": "note"}, act: upsertLocked(map[string]any{"priority": "high"})},
 		{name: "upsert depends_on", refused: true, extra: []map[string]any{other}, act: upsertLocked(map[string]any{"depends_on": []string{"other"}})},
 		{name: "upsert status and body", refused: true, act: upsertLocked(map[string]any{"status": "done", "body": "new"})},
 		{name: "status blocked", refused: true, locked: map[string]any{"status": "blocked · X"}, act: upsertLocked(map[string]any{"body": "new"})},
