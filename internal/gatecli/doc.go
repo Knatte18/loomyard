@@ -5,7 +5,7 @@
 // # Verb
 //
 // `lyx gate test [-C <dir>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and stops at the first tier that fails.
-// `--tier` names a tier and may repeat; the default is tier0, and a tier another listed tier covers is dropped and named as covered on stderr.
+// `--tier` names a tier and may repeat; the default is tier0 when neither `--tier` nor `--upto` is given, and a tier another listed tier covers is dropped and named as covered on stderr.
 // `--upto N` adds every declared tier numbered 0 through N to the `--tier` values, skipping a gap in the numbers and a tier marked `manual`, which it names on stderr unless `--tier` names it.
 // A manual tier runs only when `--tier` names it, so a tier that spends tokens never starts from a range; a negative N is refused before hub resolution.
 // `--tags` stays a registered flag only to be refused before any slot, naming `--tier`: a tier's own command sets its build tags.
