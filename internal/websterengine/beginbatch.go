@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -21,7 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/gateslot"
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -89,7 +87,7 @@ func cardNumberOf(name string) string {
 }
 
 // ErrPlanConflict is the sentinel a *PlanConflictError unwraps to: the dispatch-boundary re-resolution (planindex.Index.ValidateDispatch, called against deps.Geom.WorktreeRoot with the completed cards excluded) reported a non-empty blocking findings set — webster's own sentinel, per the webster-owns-its-own-domain-types decision, so a caller distinguishes this refusal from ErrFingerprintMismatch via errors.Is.
-// Dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
+// Dispatching a fork on a re-resolve that failed is strictly worse than not dispatching.
 var ErrPlanConflict = errors.New("webster: plan re-resolution at begin-batch reported a blocking finding")
 
 // The two causes a PlanConflictError carries, and the only values its Cause takes.
@@ -430,67 +428,7 @@ func existingReportRemedy(number int, recorded *BatchState, retry bool) (string,
 	return fmt.Sprintf("`lyx webster recover-batch %d`", number), false
 }
 
-// buildKickstartPack builds the kick-start pack of batch's cards for the fork prompt, one pack per card in the batch's declared order, or returns nil when the prompt renders without one, and logs one Info line saying which.
-// A nil pack is returned with deps.Config.KickstartPack false, for a plan whose language opts out of glyphs, and when no card of the batch has a resolved or unresolved entry.
-// The plan is parsed afresh, since the dispatch re-resolution may have canonicalized handles on disk;
-// a parse error degrades to deps.Plan and batch.Cards instead, with a Warn, so building the pack never refuses the batch.
-// An index error is a Warn too, and the degraded pack the index returned is kept.
-// The logged resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once.
-// The line's last key, pack_layout, is the PackLayout packLayoutOf picks (`file` or `card`) when a pack is built, and `none` on every line where none is.
-// A per-card batch still builds the batch pack, so the off, language-none and empty outcomes and the counts keep their batch-start meaning; the prompt just never carries it.
-func buildKickstartPack(deps BeginDeps, index planindex.Index, batch batcher.Batch, number int) []planindex.CardPack {
-	logPack := func(state string, pack []planindex.CardPack) {
-		resolved, unresolved := make(map[string]bool), make(map[string]bool)
-		for _, cp := range pack {
-			for _, e := range cp.Pack.Resolved {
-				resolved[e.Glyph] = true
-			}
-			for _, u := range cp.Pack.Unresolved {
-				unresolved[u.Ref] = true
-			}
-		}
-		layout := "none"
-		if state == "on" {
-			layout = string(packLayoutOf(deps.Config, deps.Geom))
-		}
-		logger.Info("webster: kickstart pack", "batch", number, "kickstart_pack", state, "resolved", len(resolved), "unresolved", len(unresolved), "pack_layout", layout)
-	}
-	if !deps.Config.KickstartPack {
-		logPack("off", nil)
-		return nil
-	}
-
-	plan, cards := deps.Plan, batch.Cards
-	fresh, err := planparser.ParsePlan(deps.Plan.Dir)
-	if err != nil {
-		logger.Warn("webster: kickstart pack could not re-parse the plan, building it from the loaded plan", "batch", number, "error", err)
-	} else {
-		plan = fresh
-		cards = nil
-		for _, b := range batch.Cards {
-			if i := slices.IndexFunc(fresh.Cards, func(c planparser.Card) bool { return c.Number == b.Number }); i >= 0 {
-				cards = append(cards, fresh.Cards[i])
-			}
-		}
-	}
-	if !plan.GlyphLanguage() {
-		logPack("language-none", nil)
-		return nil
-	}
-
-	pack, err := index.KickstartPack(plan, cards, deps.Geom.WorktreeRoot)
-	if err != nil {
-		logger.Warn("webster: kickstart pack index failed, keeping the degraded pack", "batch", number, "error", err)
-	}
-	if !slices.ContainsFunc(pack, func(cp planindex.CardPack) bool { return len(cp.Pack.Resolved) > 0 || len(cp.Pack.Unresolved) > 0 }) {
-		logPack("empty", nil)
-		return nil
-	}
-	logPack("on", pack)
-	return pack
-}
-
-// BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself, preceded by the kick-start pack file beside it only when the batch has a pack and packLayoutOf picks the file layout.
+// BeginBatch drives one begin-batch call to completion, immediately before Master forks batchNumber's implementer: the fingerprint gate, start-SHA capture, the previous batch's persisted digest rendered into the fork prompt, and the prompt file write itself.
 // The caller holds the state-mutation lease across this whole call and is responsible for
 // persisting deps.State via SaveState once BeginBatch returns successfully — BeginBatch itself
 // never calls SaveState and never touches fabric.
@@ -519,11 +457,11 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		}
 	}
 
-	// Re-resolve the plan against the current tree before a pack is built, never from a cache.
+	// Re-resolve the plan against the current tree before the fork prompt is written, never from a cache.
 	// deps.Geom.WorktreeRoot is the same root BeginBatch already reads for its head-SHA capture
 	// below, so this adds no path derivation and no internal/lyxcwd import. An infrastructure error
 	// (errors.Is(err, planindex.ErrQuarryUnavailable)) blocks exactly like a blocking finding does:
-	// dispatching a pack built on a re-resolve that failed is strictly worse than not dispatching.
+	// dispatching a fork on a re-resolve that failed is strictly worse than not dispatching.
 	// Scoped to the cards still to be built: a card already built contradicts the tree by design, and
 	// re-resolving it reports the plan working correctly as a blocking defect.
 	// DispatchScope, not completedCards: the batch record is written further down,
@@ -648,12 +586,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve prompt path: %w", err)
 	}
-	packPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, batchName+"-pack.md"))
-	if err != nil {
-		return nil, fmt.Errorf("webster: resolve pack path: %w", err)
-	}
-	pack := buildKickstartPack(deps, index, batch, number)
-	prompt, packFile, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, packPath, packLayoutOf(deps.Config, deps.Geom), pack)
+	prompt, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath)
 	if err != nil {
 		return nil, err
 	}
@@ -661,15 +594,9 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	if err := os.MkdirAll(deps.Geom.PromptsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("webster: create prompts dir %s: %w", deps.Geom.PromptsDir, err)
 	}
-	// The prompt and pack files are re-renderable artifacts, never durable records —
+	// The prompt file is a re-renderable artifact, never a durable record —
 	// overwriting an existing one (a re-run begin-batch for the same batch)
 	// is expected, not an error.
-	// The pack file is written first, so the prompt never names a file that is not there yet.
-	if packFile != nil {
-		if err := os.WriteFile(packPath, packFile, 0o644); err != nil {
-			return nil, fmt.Errorf("webster: write kick-start pack %s: %w", packPath, err)
-		}
-	}
 	if err := os.WriteFile(promptPath, prompt, 0o644); err != nil {
 		return nil, fmt.Errorf("webster: write fork prompt %s: %w", promptPath, err)
 	}
