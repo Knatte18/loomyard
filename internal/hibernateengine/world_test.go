@@ -253,7 +253,11 @@ func (w *fakeWorld) pause(req tenderengine.PauseRequest) (tenderengine.PauseRepo
 				return nil
 			}
 		}
-		entry = pauserecord.Entry{Scope: scope, PausedAt: now, GraceEnd: now.Add(req.Grace), Caller: PauseCaller, Sessions: []pauserecord.Session{}}
+		caller := PauseCaller
+		if req.Caller != "" {
+			caller = req.Caller
+		}
+		entry = pauserecord.Entry{Scope: scope, PausedAt: now, GraceEnd: now.Add(req.Grace), Caller: caller, Sessions: []pauserecord.Session{}}
 		record.Live = append(record.Live, entry)
 		return nil
 	})

@@ -129,6 +129,8 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				tendercli.InstallNetworkGate(cmd.Context(), pauseSlugOverride(cmd))
 				// A push origin refuses reaches the prime orch as creel mail from FABRIC, whichever process pushed.
 				orchcli.InstallPushNotifier(cmd.Context())
+				// orch start pauses a run another machine owns through tender, which imports orchcli.
+				orchcli.InstallOwnerPause(tendercli.PauseOwnedElsewhere)
 				// A records replay, in the detached push child as in Bolt's pull-first, merges the board by entry through boardengine.
 				fabricengine.InstallBoardReplay(boardengine.FabricReplay{})
 			}

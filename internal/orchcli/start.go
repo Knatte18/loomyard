@@ -257,6 +257,46 @@ func reconcileHub(location *lyxcwd.Location) (fabricengine.OriginReport, error) 
 	return fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
 }
 
+// claimPrimeNotes claims the hub's prime for this machine and returns the warning lines that report a claim, a claim another machine won or a failure.
+// It returns nothing when the board already records a prime owner or no claim is wired.
+func (c *orchCLI) claimPrimeNotes() []string {
+	if c.claimPrime == nil {
+		return nil
+	}
+	claimed, lostTo, err := c.claimPrime()
+	switch {
+	case err != nil:
+		return []string{fmt.Sprintf("the prime could not be claimed for this machine: %v", err)}
+	case lostTo != "":
+		return []string{fmt.Sprintf("the prime is owned by machine %s, which claimed it first", lostTo)}
+	case claimed != "":
+		return []string{fmt.Sprintf("the prime was claimed for machine %s, which had no prime owner recorded", claimed)}
+	}
+	return nil
+}
+
+// pauseOwnedRuns pauses the pair of each owned_elsewhere entry of report and returns the paused slugs with their owners, and a warning line per entry that could not be paused.
+// An unwired pause names every such entry in a warning, since nothing holds it.
+func (c *orchCLI) pauseOwnedRuns(report fabricengine.OriginReport) ([]map[string]string, []string) {
+	paused := []map[string]string{}
+	var warnings []string
+	for _, entry := range report.Entries {
+		if entry.State != fabricengine.EntryOwnedElsewhere {
+			continue
+		}
+		if c.pauseOwned == nil {
+			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and was not paused; re-run `lyx orch start`, which pauses it again", entry.Slug, entry.Owner))
+			continue
+		}
+		if err := c.pauseOwned(c.location, entry.Slug); err != nil {
+			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and could not be paused (%v); re-run `lyx orch start`, which pauses it again", entry.Slug, entry.Owner, err))
+			continue
+		}
+		paused = append(paused, map[string]string{"slug": entry.Slug, "owner": entry.Owner})
+	}
+	return paused, warnings
+}
+
 // reconcileNote renders the line a fresh launch's prompt gains: the report's summary and the outstanding failed pushes with their branches.
 // It is empty when the reconcile moved, stopped and ended nothing and no push is outstanding.
 func reconcileNote(report fabricengine.OriginReport, failedPushes []map[string]any) string {
@@ -381,6 +421,10 @@ session.`,
 				failedPushes = []map[string]any{}
 				reconcileWarnings = append(reconcileWarnings, fmt.Sprintf("failed-push records could not be read: %v", failedPushesErr))
 			}
+
+			reconcileWarnings = append(reconcileWarnings, c.claimPrimeNotes()...)
+			ownerPauses, pauseWarnings := c.pauseOwnedRuns(report)
+			reconcileWarnings = append(reconcileWarnings, pauseWarnings...)
 
 			if err := c.reedUp(); err != nil {
 				return fail(err)
@@ -521,6 +565,7 @@ session.`,
 			fields := startFields(envAction, guid, promptSource, hint, joinFailures(append([]string{warning}, reconcileWarnings...)...))
 			fields["reconcile"] = report
 			fields["failed_pushes"] = failedPushes
+			fields["owner_pauses"] = ownerPauses
 			fields["mutations"] = report.Mutations.Entries()
 			fields["partial"] = false
 			if continueFlag {

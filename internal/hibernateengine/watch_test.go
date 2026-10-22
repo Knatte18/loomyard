@@ -628,6 +628,33 @@ func TestWatch(t *testing.T) {
 			}
 			requireNotice(t, w, "its pause was lifted.", "fix p2; then `lyx resume p2`", "p1 could not be paused (tender down); hold it with `lyx tender pause p1`")
 		}},
+		{"a run owned elsewhere gets a pair pause entry with the owner label, lifts the daemon's entry and names the owner and the adopt", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "origin's board records another machine as the owner", Owner: "laptop"}}}
+
+			got, err := watchNow(t, w)
+
+			live := w.liveEntries()
+			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" || live[0].Caller != pauserecord.OwnerCaller {
+				t.Errorf("got %+v, %v, live %+v; want done with only the pair entry live under the owner caller", got, err, live)
+			}
+			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lyx adopt p1` from this machine's prime takes it over here")
+		}},
+		{"a failed owner pause is named with the next wake or orch start, never the tender pause", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.pairPauseErr = map[string]error{"p1": errors.New("tender down")}
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "owned elsewhere", Owner: "laptop"}}}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone || len(w.liveEntries()) != 0 {
+				t.Errorf("got %+v, %v, live %+v; want done with nothing held", got, err, w.liveEntries())
+			}
+			requireNotice(t, w, "p1 could not be paused (tender down); the next wake or `lyx orch start` pauses it again")
+			if strings.Contains(w.noticeList()[0], "lyx tender pause") {
+				t.Errorf("notice = %q; want no tender pause for an owner pause", w.noticeList()[0])
+			}
+		}},
 		{"an agent caller and a non-Linux platform are refused with no pause", func(t *testing.T) {
 			w := newFakeWorld(t)
 			w.caller = agentStrand(t)
