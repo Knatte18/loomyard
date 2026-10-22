@@ -1,6 +1,6 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (contracts/specs/loom-plan-spec.md), run in this fixed order.
-// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), resign-not-member (checkResignNotMember), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), commit-subject-mismatch (checkCommitSubjectMismatch), verify-nested-module (checkVerifyNestedModule, verifymodule.go), verify-module-wide (checkVerifyModuleWide, verifymodule.go), verify-package-missing (checkVerifyPackageMissing, verifypackage.go), and pattern-entry-line-cap (checkPatternEntryLineCap, patternentry.go).
+// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-language-mismatch (checkLanguageMismatch), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), resign-not-member (checkResignNotMember), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), commit-subject-mismatch (checkCommitSubjectMismatch), verify-nested-module (checkVerifyNestedModule, verifymodule.go), verify-module-wide (checkVerifyModuleWide, verifymodule.go), verify-package-missing (checkVerifyPackageMissing, verifypackage.go), and pattern-entry-line-cap (checkPatternEntryLineCap, patternentry.go).
 // The plan gate's context checks verify-raw-command, verify-gate-no-wait and plan-verify-retired are appended by loomshed outside both entry points, over VerifyCommands.
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
@@ -14,10 +14,13 @@ package planparser
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/Knatte18/quarry/glyph"
 )
 
 // RecognizedFormat is the only plan-format version Validate currently understands.
@@ -67,6 +70,7 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 
 	findings = append(findings, checkFormatRecognized(plan)...)
 	findings = append(findings, checkLanguageRecognized(plan)...)
+	findings = append(findings, checkLanguageMismatch(plan)...)
 	if requireApproved {
 		findings = append(findings, checkApproved(plan)...)
 	}
@@ -135,6 +139,67 @@ func checkLanguageRecognized(plan *Plan) []ValidationError {
 	})
 
 	return findings
+}
+
+// checkLanguageMismatch implements plan-language-mismatch's pure half: the plan's language must fit the extensions of the files its cards' Targets name.
+// Targets are read as paths through PathEntryPath.
+// Under go it fires when they name a .cs file and no .go file, unless some Target is a member glyph, a `plan:` handle or a self glyph with no file extension, since such a ref may name .go code and is the resolve half's to judge.
+// Under csharp it fires when they name a .go file and no .cs file, unless some Target is a member glyph or a `plan:` handle, since under csharp such a ref names C# code.
+// It never fires under none or an unrecognized language, and reads no disk.
+// The one finding is plan-level, and its way forward is to set `language:` to the files' language or to none.
+func checkLanguageMismatch(plan *Plan) []ValidationError {
+	lang, ok := planLanguage(plan)
+	if !ok {
+		return nil
+	}
+
+	var goFiles, csharpFiles int
+	for _, c := range plan.Cards {
+		for _, target := range c.Targets {
+			if IsHandleRef(target) {
+				return nil
+			}
+			parsed, err := ParseRef(plan, target)
+			if err != nil {
+				continue
+			}
+			if !parsed.IsSelf() {
+				return nil
+			}
+			file, isPath := PathEntryPath(target)
+			if !isPath {
+				continue
+			}
+			switch path.Ext(file) {
+			case ".go":
+				goFiles++
+			case ".cs":
+				csharpFiles++
+			case "":
+				if lang == glyph.Go {
+					return nil
+				}
+			}
+		}
+	}
+
+	var filesLanguage, wantLanguage string
+	switch {
+	case lang == glyph.Go && csharpFiles > 0 && goFiles == 0:
+		filesLanguage, wantLanguage = "C# (.cs)", "csharp"
+	case lang == glyph.CSharp && goFiles > 0 && csharpFiles == 0:
+		filesLanguage, wantLanguage = "Go (.go)", "go"
+	default:
+		return nil
+	}
+
+	return []ValidationError{{
+		Check: "plan-language-mismatch",
+		Detail: fmt.Sprintf(
+			"the plan's language is %q but the files its cards target are %s only; set `language:` to %s, the language of the files, or to `language: none` for a plan that changes both",
+			plan.Language, filesLanguage, wantLanguage,
+		),
+	}}
 }
 
 // checkApproved implements plan-unapproved: plan.Approved must be true.
@@ -468,6 +533,7 @@ func checkDirectoryTarget(plan *Plan) []ValidationError {
 //
 // Without this check a malformed-but-"#"-shaped entry (a doubled "#", an empty unit, a member carrying a paren or a keyword) is invisible end to end outside a Prosa group: classifyRef sends it to refKindGlyph on shape alone and never calls glyph.Parse itself (by design -- see classify.go's own doc comment), bare-symbol-target/directory-target skip it (wrong shape), card-path-malformed/path-missing skip it (diskPathForRef returns not-ok on a parse error), and internal/planglyph's collectGlyphTargets silently drops it before it ever enters the batched Resolve call -- so it never even reaches a glyph-not-found/glyph-ambiguous/glyph-rejected verdict either.
 // The plan would validate 100% clean while carrying a target no execution engine can ever act on, discovered only deep into a batch's own done-check, not up front at the plan gate where every other malformed-entry class is caught (crucible round sonnet-xhigh-r8, PG-1).
+// Under go, a ref the C# alphabet accepts gets the way forward `language: csharp` appended to its detail.
 func checkGlyphMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
@@ -482,13 +548,17 @@ func checkGlyphMalformed(plan *Plan) []ValidationError {
 					continue
 				}
 				if _, err := ParseRef(plan, t); err != nil {
+					detail := fmt.Sprintf(
+						"card %d entry %q looks like a glyph (contains \"#\") but fails to parse: %v",
+						c.Number, t, err,
+					)
+					if _, csharpErr := glyph.Parse(glyph.CSharp, t); csharpErr == nil && plan.GoToolchain() {
+						detail += "; it is a C# glyph, so set the plan's `language: csharp`"
+					}
 					findings = append(findings, ValidationError{
-						Check: "glyph-malformed",
-						Card:  cardID(c),
-						Detail: fmt.Sprintf(
-							"card %d entry %q looks like a glyph (contains \"#\") but fails to parse: %v",
-							c.Number, t, err,
-						),
+						Check:  "glyph-malformed",
+						Card:   cardID(c),
+						Detail: detail,
 					})
 				}
 			}

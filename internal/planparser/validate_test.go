@@ -1853,6 +1853,54 @@ func TestValidate_VerifyPackageMissing(t *testing.T) {
 	}
 }
 
+// TestValidate_LanguageMismatch covers plan-language-mismatch's pure half over in-memory plans: the plan's language against the extensions of the files its cards' Targets name, and the refs that exempt a plan from the judgment.
+func TestValidate_LanguageMismatch(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		language string
+		targets  []string
+		wantFire bool
+	}{
+		{name: "go with only a .cs file fires", language: "go", targets: []string{"src/Foo.cs#"}, wantFire: true},
+		{name: "csharp with only a .go file fires", language: "csharp", targets: []string{"internal/x/x.go#"}, wantFire: true},
+		{name: "csharp with only a root .go file fires", language: "csharp", targets: []string{"tool.go#"}, wantFire: true},
+		{name: "go with a .go file and a .cs file does not", language: "go", targets: []string{"a.go#", "src/Foo.cs#"}},
+		{name: "go with a member glyph and a .cs file does not", language: "go", targets: []string{"internal/x#Foo", "src/Foo.cs#"}},
+		{name: "go with a package self glyph and a .cs file does not", language: "go", targets: []string{"internal/x#", "src/Foo.cs#"}},
+		{name: "csharp with a .cs file does not", language: "csharp", targets: []string{"src/Foo.cs#"}},
+		{name: "csharp with a C# member glyph and a .go file does not", language: "csharp", targets: []string{"Glyphchain.Sharp#Renderer.Title", "tool.go#"}},
+		{name: "none with only a .cs file does not", language: "none", targets: []string{"src/Foo.cs#"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			card := cardOfType(1, "a", planparser.CardTypeEdit, tt.targets)
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: tt.language, Cards: []planparser.Card{card}}
+
+			var got []planparser.ValidationError
+			for _, f := range planparser.ValidateFormat(plan, t.TempDir()) {
+				if f.Check == "plan-language-mismatch" {
+					got = append(got, f)
+				}
+			}
+
+			if tt.wantFire != (len(got) == 1) || len(got) > 1 {
+				t.Fatalf("plan-language-mismatch findings = %+v; want fire = %v", got, tt.wantFire)
+			}
+			if !tt.wantFire {
+				return
+			}
+			for _, want := range []string{"language:", "language: none"} {
+				if !strings.Contains(got[0].Detail, want) {
+					t.Errorf("detail %q lacks %q", got[0].Detail, want)
+				}
+			}
+		})
+	}
+}
+
 // TestValidate_VerifyModuleWide covers verify-module-wide: a card's Verify: must not hold a module-wide go build, test or vet, or a go test selecting the tmux or llm tier; the overview's verify chain is never read.
 func TestValidate_VerifyModuleWide(t *testing.T) {
 	t.Parallel()
@@ -2144,6 +2192,21 @@ func TestValidate_GlyphMalformed(t *testing.T) {
 		}
 		if got := countFor(findings, "prosa-symbol-target"); got != 1 {
 			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 1", got)
+		}
+	})
+
+	t.Run("go: a C# member glyph is malformed and its detail names language csharp", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"Glyphchain.Sharp#Renderer.Draw(int)"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "go", Cards: []planparser.Card{card}}
+		var malformed []planparser.ValidationError
+		for _, f := range planparser.Validate(plan, t.TempDir()) {
+			if f.Check == "glyph-malformed" {
+				malformed = append(malformed, f)
+			}
+		}
+		if len(malformed) != 1 || !strings.Contains(malformed[0].Detail, "language: csharp") {
+			t.Errorf("glyph-malformed findings = %+v; want one whose detail names `language: csharp`", malformed)
 		}
 	})
 

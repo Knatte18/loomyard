@@ -287,6 +287,7 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 // Otherwise it canonicalizes every draft plan: handle first (card 19's CanonicalizeHandles).
 // Two passes follow: the resolve status policy (card 17's statusFindings) and the Create inversion (card 18's createFindings).
 // Both see the canonical spellings rather than the draft ones, over the single batched Resolve call they share.
+// Under go with no card done, the batched answers also feed languageMismatchFindings.
 //
 // Its second return is a non-nil error whenever the pass could not reach a verdict at all — a
 // category distinct from every per-target verdict those passes report, so an outage is never
@@ -401,6 +402,9 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 
 	findings = append(findings, statusFindings(current, worktreeRoot, nonCreateResults)...)
 	findings = append(findings, createFindings(current, worktreeRoot, createIndex)...)
+	if plan.GoToolchain() && len(done) == 0 {
+		findings = append(findings, languageMismatchFindings(current, results)...)
+	}
 
 	return findings, nil
 }

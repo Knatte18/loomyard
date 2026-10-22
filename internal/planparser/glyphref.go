@@ -30,6 +30,17 @@ func ParseRef(plan *Plan, ref string) (glyph.Glyph, error) {
 	return glyph.Glyph{}, err
 }
 
+// PathEntryPath returns the worktree-relative path a canonicalized path entry names, and false when ref is not a self glyph.
+// It reads ref in the Go alphabet whatever the plan's language, since quarry spells a path in the Go unit alphabet under every language.
+// It is the one place a ref is read as a path regardless of language, so a caller that compares a ref's file extension never chooses an alphabet itself.
+func PathEntryPath(ref string) (string, bool) {
+	parsed, err := glyph.Parse(glyph.Go, ref)
+	if err != nil || !parsed.IsSelf() {
+		return "", false
+	}
+	return parsed.UnitPath()
+}
+
 // planLanguage maps plan.Language to the glyph.Language the glyph package's alphabet uses.
 // "go" maps to glyph.Go and "csharp" to glyph.CSharp;
 // "" (the Go zero value, meaning the language: key was absent from a plan built outside ParsePlan) is treated identically to "go", matching Plan.Language's own documented "absent defaults to go" rule.

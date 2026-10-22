@@ -531,16 +531,87 @@ func TestGlyphChain_CSharp(t *testing.T) {
 	t.Parallel()
 
 	const namespace = "Glyphchain.Sharp"
+	mismatch := []findingKey{{"plan-language-mismatch", "", SeverityBlocking}}
 	tests := []struct {
-		name  string
-		cards []string
+		name string
+		// language is the plan's language, csharp when empty.
+		language string
+		// noLanguageKey writes the plan with no language: key at all.
+		noLanguageKey bool
+		cards         []string
+		sections      []plankit.Section
 		// files are written into the fixture copy before the plan is checked.
 		files        map[string]string
 		planFindings []findingKey
 		dispatch     []findingKey
+		// completed is how many leading cards ValidateDispatch treats as already built.
+		completed int
 		// detail is a substring the single plan-gate finding's detail must hold, when set.
 		detail string
 	}{
+		{
+			name:         "a go plan editing a C# member that resolves into a .cs file only is a language mismatch",
+			language:     "go",
+			cards:        []string{editCard(namespace + "#Renderer.Title")},
+			planFindings: mismatch,
+			dispatch:     mismatch,
+			detail:       "language:",
+		},
+		{
+			name:     "a go plan beside a Go member is no mismatch",
+			language: "go",
+			cards:    []string{editCard(namespace+"#Renderer.Title", "shapes#Func")},
+		},
+		{
+			name:     "a go plan beside a Go file path is no mismatch",
+			language: "go",
+			cards:    []string{editCard(namespace+"#Renderer.Title", "shapes/shapes.go")},
+		},
+		{
+			name:     "a go plan beside a package self glyph listing a Go file is no mismatch",
+			language: "go",
+			cards:    []string{editCard(namespace+"#Renderer.Title", "shapes#")},
+		},
+		{
+			name:         "a go plan editing a directory self glyph listing only a .cs file is a language mismatch",
+			language:     "go",
+			cards:        []string{editCard("csharp#")},
+			planFindings: mismatch,
+			dispatch:     mismatch,
+		},
+		{
+			name:     "a go plan creating a Go declaration beside a .cs path is no mismatch",
+			language: "go",
+			cards: []string{
+				createCard(&createLeg{draft: "plan:shapes#NewThing", head: "func NewThing()"}),
+				editCard("csharp/Renderer.cs"),
+			},
+		},
+		{
+			name:          "a plan with no language key creating a C# member beside a C# edit is a language mismatch",
+			noLanguageKey: true,
+			cards: []string{
+				editCard(namespace + "#Renderer.Title"),
+				createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.Name", head: "public string Name { get; }"}),
+			},
+			// The Go alphabet cannot name the C# handle, which is one more finding of the same wrong language.
+			planFindings: []findingKey{{"handle-name-failed", "2-card2", SeverityBlocking}, mismatch[0]},
+			dispatch:     []findingKey{{"handle-name-failed", "2-card2", SeverityBlocking}, mismatch[0]},
+		},
+		{
+			name:         "a go plan renaming a C# member whose old side resolves into a .cs file is a language mismatch",
+			language:     "go",
+			cards:        []string{renameCard(namespace+"#Renderer.Title", "plan:"+namespace+"#Renderer.Name")},
+			sections:     []plankit.Section{renameMechanic},
+			planFindings: []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}, mismatch[0]},
+			dispatch:     []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}, mismatch[0]},
+		},
+		{
+			name:      "a go plan with the Go card done judges no mismatch at dispatch",
+			language:  "go",
+			cards:     []string{editCard("shapes#Func"), editCard(namespace + "#Renderer.Title")},
+			completed: 1,
+		},
 		{
 			name:  "a member and the namespace self glyph parse as C# and resolve found",
 			cards: []string{editCard(namespace+"#Renderer.Draw(int)", namespace+"#")},
@@ -567,9 +638,23 @@ func TestGlyphChain_CSharp(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
 			writeFixtureFiles(t, root, tt.files)
-			_, plan := writeLanguagePlan(t, "csharp", tt.cards)
+			language := cmp.Or(tt.language, "csharp")
+			if tt.noLanguageKey {
+				language = ""
+			}
+			_, plan := writeLanguagePlan(t, language, tt.cards, tt.sections...)
 			assertPlanGate(t, plan, root, tt.planFindings)
-			assertDispatch(t, plan, root, tt.dispatch)
+			if tt.completed > 0 {
+				findings, err := ValidateDispatch(plan, root, plan.Cards[:tt.completed], nil)
+				if err != nil {
+					t.Fatalf("ValidateDispatch(...) returned error: %v", err)
+				}
+				if got := sortedKeys(findings); len(got) != 0 {
+					t.Errorf("ValidateDispatch with %d completed findings = %+v; want none", tt.completed, got)
+				}
+			} else {
+				assertDispatch(t, plan, root, tt.dispatch)
+			}
 			if tt.detail == "" {
 				return
 			}
