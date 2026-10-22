@@ -19,6 +19,9 @@
 // `revive` refuses a slug with no pair as `pause` does.
 // The envelope carries the engine's report verbatim under `pause`, `status`, `resume` or `revive`.
 //
+// `HubDeps` fills the lift's spawn seams: a pair's detached push over the pair's location, the prime's records push, and the board sync, which `syncBoardIfOwed` spawns when Bolt is ahead of its upstream or holds uncommitted changes, the state a sync deferred at its start leaves.
+// The resume report names them under `spawned` and the failed ones under `spawn_failed`; a pair a live entry still covers, one another machine owns and one that is gone is not pushed.
+//
 // # Revive
 //
 // `revive` gives one fixed carry-on line to each session stalled on an API error, and the orch a checked creel inject, reported with its id.

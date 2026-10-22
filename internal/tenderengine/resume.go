@@ -33,6 +33,10 @@ type ResumeReport struct {
 	NoLine []SessionNote `json:"no_line"`
 	// OrchLeftToWatcher reports that a resumed entry owned the orch's session, which the orch watcher gives its line.
 	OrchLeftToWatcher bool `json:"orch_left_to_watcher"`
+	// Spawned holds the detached pushes and sync the lift spawned: `pair:<slug>`, `prime-records` and `board-sync`.
+	Spawned []string `json:"spawned"`
+	// SpawnFailed holds the spawns that failed or could not be judged, each with the reason; none fails the lift.
+	SpawnFailed []SessionNote `json:"spawn_failed"`
 }
 
 // StatusReport is what a pause currently holds and what runs, waits, stalls or runs stale in the hub.
@@ -147,10 +151,10 @@ func Lift(deps Deps, ref EntryRef) (ResumeReport, error) {
 // liftEntries moves the entries pick selects and removes from the record to the resumed list under the record lock, then gives their remaining sessions the resume line.
 // pick may refuse, which ends the lift with its error and changes nothing.
 func liftEntries(deps Deps, pick func(record *pauserecord.Record) ([]pauserecord.Entry, error)) (ResumeReport, error) {
-	report := ResumeReport{Resumed: []string{}, Moved: []string{}, Lines: []string{}, NoLine: []SessionNote{}}
+	report := ResumeReport{Resumed: []string{}, Moved: []string{}, Lines: []string{}, NoLine: []SessionNote{}, Spawned: []string{}, SpawnFailed: []SessionNote{}}
 	now := deps.Now()
 	var resumed []pauserecord.Entry
-	_, err := pauserecord.Update(deps.RecordPath, now, func(record *pauserecord.Record) error {
+	updated, err := pauserecord.Update(deps.RecordPath, now, func(record *pauserecord.Record) error {
 		targets, err := pick(record)
 		if err != nil {
 			return err
@@ -193,7 +197,68 @@ func liftEntries(deps Deps, pick func(record *pauserecord.Record) ([]pauserecord
 			}
 		}
 	}
+	if len(resumed) > 0 {
+		spawnOwed(deps, updated, resumed, &report)
+	}
 	return report, nil
+}
+
+// spawnOwed spawns the detached pushes and the board sync a pause deferred, which the lift of lifted uncovers, and records each spawn in report.
+// A pair is pushed when a lifted entry covered it, no live entry of record still covers it, no other machine owns it and the hub still holds it;
+// a pair that is gone had its owed push go with it.
+// An owners reading that fails spawns no pair push, since an owner it cannot read may be another machine.
+// A seam error is recorded under SpawnFailed and never fails the lift.
+func spawnOwed(deps Deps, record pauserecord.Record, lifted []pauserecord.Entry, report *ResumeReport) {
+	var slugs []string
+	if deps.PushPair != nil {
+		slugs = pairsToPush(deps, record, lifted, report)
+	}
+	for _, slug := range slugs {
+		recordSpawn(report, "pair:"+slug, slug, deps.PushPair(slug))
+	}
+	if deps.PushPrimeRecords != nil {
+		recordSpawn(report, "prime-records", "", deps.PushPrimeRecords())
+	}
+	if deps.SyncBoardIfOwed != nil {
+		recordSpawn(report, "board-sync", "", deps.SyncBoardIfOwed())
+	}
+}
+
+// pairsToPush returns the slugs of the hub's pairs a lifted entry covered and nothing still holds back, in deps.Pairs order.
+// An owners error is recorded in report and returns no pair.
+func pairsToPush(deps Deps, record pauserecord.Record, lifted []pauserecord.Entry, report *ResumeReport) []string {
+	var owners []PairOwner
+	if deps.Owners != nil {
+		var err error
+		if owners, err = deps.Owners(); err != nil {
+			report.SpawnFailed = append(report.SpawnFailed, SessionNote{Strand: "pair-pushes", Reason: "the owners reading failed: " + err.Error()})
+			return nil
+		}
+	}
+	var slugs []string
+	for _, pair := range deps.Pairs {
+		slug := pair.Slug()
+		if !slices.ContainsFunc(lifted, func(entry pauserecord.Entry) bool { return entry.Scope == pauserecord.ScopeHub || entry.Scope == slug }) {
+			continue
+		}
+		if _, stillCovered := record.Covering(slug); stillCovered {
+			continue
+		}
+		if slices.ContainsFunc(owners, func(owner PairOwner) bool { return owner.Slug == slug && owner.Local && !owner.OwnedHere }) {
+			continue
+		}
+		slugs = append(slugs, slug)
+	}
+	return slugs
+}
+
+// recordSpawn adds name to report.Spawned when err is nil, and otherwise a note carrying err under report.SpawnFailed.
+func recordSpawn(report *ResumeReport, name, slug string, err error) {
+	if err != nil {
+		report.SpawnFailed = append(report.SpawnFailed, SessionNote{Strand: name, Slug: slug, Reason: err.Error()})
+		return
+	}
+	report.Spawned = append(report.Spawned, name)
 }
 
 // moveToCoveringEntry hands held to the oldest live entry of record that covers its pair, and reports whether one did.

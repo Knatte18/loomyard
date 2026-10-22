@@ -700,6 +700,7 @@
 // and `LockWaitUnbounded` blocks.
 //
 // `fabric.push.lock` alone follows the pending-flag protocol; `board.push.lock` of `Bolt.Sync` does not.
+// `Bolt.HasUncommitted` reads whether the board worktree holds changed files, so a lift can tell that a board sync deferred at its start still owes its commit.
 // A pusher writes one flag per side it owes, `pending.records` or `pending.code` beside the lock, before it tries the lock, so a commit always precedes its flag.
 // A flag holds that side's path and the pause and teardown slugs of the push it serves, so any holder can respawn it.
 // The detached push child (`CoalescePushRequest`) try-locks and exits at once when the lock is held, leaving its commits to the holder.

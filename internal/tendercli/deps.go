@@ -49,6 +49,8 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		pairs []tenderengine.Pair
 		slugs []string
 		prime *lyxcwd.Location
+		// pairLocations holds each task pair's location by slug, for the push a lift spawns.
+		pairLocations = map[string]*lyxcwd.Location{}
 	)
 	for _, worktree := range worktrees {
 		if worktree.Prunable {
@@ -69,6 +71,7 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		}
 		pairs = append(pairs, pair)
 		slugs = append(slugs, pairLocation.WorktreeName)
+		pairLocations[pairLocation.WorktreeName] = pairLocation
 	}
 
 	var primePair tenderengine.Pair
@@ -137,6 +140,21 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 				return fabricengine.ParentSlug(location, slug)
 			})
 		},
+		PushPair: func(slug string) error {
+			return fabricengine.SpawnPairPush(pairLocations[slug])
+		},
+		PushPrimeRecords: func() error {
+			if prime == nil {
+				return nil
+			}
+			_, err := fabricengine.SpawnStatusPush(prime, "")
+			return err
+		},
+		SyncBoardIfOwed: func() error {
+			boardDir := fabricengine.BoardDir(location.HubPath)
+			bolt := fabricengine.NewBolt(boardDir)
+			return syncBoardIfOwed(bolt.HasUnpushed, bolt.HasUncommitted, func() error { return boardengine.SpawnSync(boardDir) })
+		},
 		OrchWatcherLive: func() bool {
 			if prime == nil {
 				return false
@@ -184,6 +202,21 @@ func pairOwners(owners boardengine.Owners, slugs []string, here string, parentOf
 		}
 	}
 	return listed, nil
+}
+
+// syncBoardIfOwed spawns the board sync when the board is ahead of its upstream or holds uncommitted changes, which is what a sync deferred at its start leaves.
+// A probe error is returned and nothing is spawned.
+func syncBoardIfOwed(ahead, uncommitted func() (bool, error), spawn func() error) error {
+	for _, owed := range []func() (bool, error){ahead, uncommitted} {
+		isOwed, err := owed()
+		if err != nil {
+			return err
+		}
+		if isOwed {
+			return spawn()
+		}
+	}
+	return nil
 }
 
 // ownerPauseGrace is how long the running turns of a run owned by another machine get to finish before the Esc.

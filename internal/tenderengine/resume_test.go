@@ -324,13 +324,80 @@ func TestResume(t *testing.T) {
 				t.Errorf("report %+v, err %v, prime sends %v; want the prime session given its line", report, err, prime.sends)
 			}
 		}},
-		{"resuming nothing succeeds with nothing resumed", func(t *testing.T) {
+		{"resuming nothing succeeds with nothing resumed and spawns nothing", func(t *testing.T) {
 			e := newEnv(t, newPair("p1"))
 			for _, slug := range []string{"", "p1"} {
 				report, err := e.resume(slug)
-				if err != nil || len(report.Resumed) != 0 || len(report.Lines) != 0 {
+				if err != nil || len(report.Resumed) != 0 || len(report.Lines) != 0 || len(report.Spawned) != 0 || len(report.SpawnFailed) != 0 {
 					t.Errorf("resume(%q) = %+v, %v; want a no-op success", slug, report, err)
 				}
+			}
+			if len(e.pushedPairs) != 0 || e.primePushes != 0 || e.boardSyncs != 0 {
+				t.Errorf("spawns = %v, %d, %d; want none", e.pushedPairs, e.primePushes, e.boardSyncs)
+			}
+		}},
+		{"a lifted slug entry spawns that pair's push, the prime records push and the board sync", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"), newPair("p2"))
+			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
+
+			report, err := e.resume("p1")
+
+			if err != nil || !reflect.DeepEqual(report.Spawned, []string{"pair:p1", "prime-records", "board-sync"}) || len(report.SpawnFailed) != 0 {
+				t.Errorf("report %+v, err %v; want pair:p1, prime-records and board-sync spawned", report, err)
+			}
+			if !reflect.DeepEqual(e.pushedPairs, []string{"p1"}) || e.primePushes != 1 || e.boardSyncs != 1 {
+				t.Errorf("spawns = %v, %d, %d; want p1, one prime push and one sync", e.pushedPairs, e.primePushes, e.boardSyncs)
+			}
+		}},
+		{"a lifted hub entry spawns every pair's push but one a live entry covers, one owned elsewhere and one that is gone", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"), newPair("p2"), newPair("p3"), newPair("p4"))
+			e.owners = []PairOwner{
+				{Slug: "p1", Local: true, OwnedHere: true},
+				{Slug: "p2", Owner: "other", Local: true},
+				{Slug: "p3", Local: true, OwnedHere: true},
+				{Slug: "p4", Local: true, OwnedHere: true},
+			}
+			e.pairs = e.pairs[:3]
+			now := e.clock.Now()
+			e.seedLive(hubEntry(now), pauserecord.Entry{Scope: "p3", PausedAt: now, GraceEnd: now, Caller: "EXTERNAL"})
+
+			report, err := Lift(e.deps(), EntryRef{Scope: pauserecord.ScopeHub, Caller: "EXTERNAL", PausedAt: now})
+
+			if err != nil || !reflect.DeepEqual(e.pushedPairs, []string{"p1"}) || !reflect.DeepEqual(report.Spawned, []string{"pair:p1", "prime-records", "board-sync"}) {
+				t.Errorf("report %+v, err %v, pushed %v; want only p1 pushed", report, err, e.pushedPairs)
+			}
+		}},
+		{"a lifted entry whose pair is gone spawns no pair push", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"))
+			e.seedLive(pauserecord.Entry{Scope: "gone", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
+
+			report, err := e.resume("gone")
+
+			if err != nil || len(e.pushedPairs) != 0 || !reflect.DeepEqual(report.Spawned, []string{"prime-records", "board-sync"}) {
+				t.Errorf("report %+v, err %v, pushed %v; want no pair push", report, err, e.pushedPairs)
+			}
+		}},
+		{"a failing pair push is listed under spawn_failed and the lift still succeeds", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"))
+			e.pushPairErr = errors.New("spawn refused")
+			e.seedLive(pauserecord.Entry{Scope: "p1", PausedAt: e.clock.Now(), GraceEnd: e.clock.Now(), Caller: "EXTERNAL"})
+
+			report, err := e.resume("p1")
+
+			want := []SessionNote{{"pair:p1", "p1", "spawn refused"}}
+			if err != nil || !reflect.DeepEqual(report.SpawnFailed, want) || !reflect.DeepEqual(report.Resumed, []string{"p1"}) {
+				t.Errorf("report %+v, err %v; want the push failure under spawn_failed and p1 resumed", report, err)
+			}
+		}},
+		{"an owners error spawns no pair push and is listed under spawn_failed", func(t *testing.T) {
+			e := newEnv(t, newPair("p1"))
+			e.ownersErr = errors.New("board unreadable")
+			e.seedLive(hubEntry(e.clock.Now()))
+
+			report, err := e.resume("")
+
+			if err != nil || len(e.pushedPairs) != 0 || len(report.SpawnFailed) != 1 || !strings.Contains(report.SpawnFailed[0].Reason, "board unreadable") {
+				t.Errorf("report %+v, err %v, pushed %v; want no pair push and the owners error listed", report, err, e.pushedPairs)
 			}
 		}},
 	}

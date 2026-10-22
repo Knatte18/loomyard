@@ -189,3 +189,37 @@ func TestPairOwners(t *testing.T) {
 		})
 	}
 }
+
+func TestSyncBoardIfOwed(t *testing.T) {
+	t.Parallel()
+	probe := func(owed bool, err error) func() (bool, error) {
+		return func() (bool, error) { return owed, err }
+	}
+	probeFailure := errors.New("probe failed")
+	tests := []struct {
+		name        string
+		ahead       func() (bool, error)
+		uncommitted func() (bool, error)
+		wantSpawns  int
+		wantErr     error
+	}{
+		{"Ahead_Spawns", probe(true, nil), probe(false, nil), 1, nil},
+		{"LevelWithUncommittedChanges_Spawns", probe(false, nil), probe(true, nil), 1, nil},
+		{"LevelAndClean_SpawnsNothing", probe(false, nil), probe(false, nil), 0, nil},
+		{"AheadProbeError_ReturnedWithNothingSpawned", probe(false, probeFailure), probe(true, nil), 0, probeFailure},
+		{"UncommittedProbeError_ReturnedWithNothingSpawned", probe(false, nil), probe(false, probeFailure), 0, probeFailure},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			spawns := 0
+			err := syncBoardIfOwed(tt.ahead, tt.uncommitted, func() error {
+				spawns++
+				return nil
+			})
+			if !errors.Is(err, tt.wantErr) || spawns != tt.wantSpawns {
+				t.Errorf("syncBoardIfOwed() = %v with %d spawns; want %v with %d", err, spawns, tt.wantErr, tt.wantSpawns)
+			}
+		})
+	}
+}

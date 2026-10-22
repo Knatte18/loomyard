@@ -45,6 +45,13 @@
 // The orch's session is left to the orch watcher.
 // `Lift` runs the same sequence for the one live entry whose scope, caller and pause time equal an `EntryRef`, and lifts nothing for an entry no longer live.
 //
+// A lift that lifted at least one entry then spawns what a pause deferred, after the resume lines, through the `Deps.PushPair`, `Deps.PushPrimeRecords` and `Deps.SyncBoardIfOwed` seams, each nil spawning nothing.
+// `PushPair` runs once for each pair a lifted entry covered: every pair of `Deps.Pairs` for a hub entry, the pair of its slug for a slug entry.
+// A pair a live entry of the updated record still covers, a pair `Deps.Owners` reads owned by another machine and a pair no longer in `Deps.Pairs` is left out;
+// an owners reading that fails spawns no pair push, since an owner it cannot read may be another machine.
+// `PushPrimeRecords` and `SyncBoardIfOwed` run once each.
+// The report lists the spawns under `spawned` as `pair:<slug>`, `prime-records` and `board-sync`, and a failed spawn or owners reading under `spawn_failed`; neither fails the lift.
+//
 // # Revive
 //
 // An empty slug covers the whole hub; a slug covers that pair.

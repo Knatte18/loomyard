@@ -81,6 +81,12 @@ type Deps struct {
 	InjectOrchRevive func(line string) (int64, error)
 	// Owners lists each local pair with its effective owner and each run-held entry owned elsewhere; nil reports none.
 	Owners func() ([]PairOwner, error)
+	// PushPair spawns the detached push of the pair slug names; nil spawns none.
+	PushPair func(slug string) error
+	// PushPrimeRecords spawns the detached push of the prime's records; nil spawns none.
+	PushPrimeRecords func() error
+	// SyncBoardIfOwed spawns the board sync when the board holds changes a deferred sync left; nil spawns none.
+	SyncBoardIfOwed func() error
 	// Caller is the caller's strand name, empty for an external caller.
 	Caller string
 	// Now is the clock.

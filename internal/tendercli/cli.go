@@ -168,6 +168,12 @@ dialog on screen or an open rewind picker; those are named with the reason. A
 session another live entry still covers moves to that entry with no line. The
 orchestrator's line comes from its own watcher.
 
+A lift also spawns what a pause deferred: the detached push of each pair the
+lifted entries covered, the prime's records push and the board sync. A pair a
+live entry still covers, one another machine owns and one that is gone is not
+pushed. The report's "spawned" lists the spawns and "spawn_failed" the ones that
+failed; neither fails the resume.
+
 Example:
   lyx resume
   lyx resume my-task`,
