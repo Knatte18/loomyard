@@ -186,10 +186,11 @@
 // push before recording that SHA anywhere.
 // Push, PushCoalesced and PushRebaseFree also retry a push the remote refuses on the pushed branch.
 // The two retryable forms are `! [remote rejected] <ref> -> <ref> (failed)` and a remote reason containing `cannot lock ref`.
+// A ref given in full `refs/heads/` or `refs/tags/` form also matches the short form git prints it in.
 // A push is tried up to four times in total with a doubling backoff from one second, inside whatever lock the caller holds and without rebasing or forcing.
 // A retryable refusal never triggers the rebase-retry.
 // A push that exhausts the attempts returns an error wrapping ErrPushRetriesExhausted and the last push error, never ErrPushRejected.
-// PushWithRetry exposes the same loop for a caller that runs its own push.
+// PushWithRetry exposes the same loop for a caller that runs its own push, on the backoff delays the caller passes.
 // PushCoalesced adds cross-process coalescing on top: it acquires a
 // single-pusher lock file, .gitrepo-push.lock, in the repo's
 // worktree root before checking whether anything is actually unpushed, so a

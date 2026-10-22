@@ -607,7 +607,7 @@
 // A plain `Add` adopts a marked warp branch too, instead of refusing `ErrBranchExists`, and as its last step clears the mark of each adopted branch, listing it in `AddResult.LocalMarkCleared`, so the adopted pair is ordinary.
 // A rollback never deletes an adopted warp branch, and a clear that fails after an earlier one succeeded restores the earlier mark before the rollback.
 // Every plain fabric push retries a push the server refuses on the pushed ref with a bare `(failed)` or a remote `cannot lock ref`, through gitrepo's bounded retry with exponential backoff;
-// the archive tag push included, and every other push failure returns on the first attempt.
+// the archive tag push included, on its own longer schedule of six attempts from two seconds doubling, and every other push failure returns on the first attempt.
 // The coalesced push logs a Warn and leaves the commits unpushed once the attempts run out.
 // `SkipPush`/`SkipGit` skip every probe and the replacement: the pair is then live only by a local weft branch,
 // and the warp branch forks from `HEAD`.

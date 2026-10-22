@@ -136,7 +136,7 @@ func (r *Repo) pushPlainWithRetry() error {
 	return PushWithRetry(func() error {
 		_, err := r.runChecked("-c", "push.autoSetupRemote=true", "push")
 		return err
-	}, branch, r.pushSleep)
+	}, branch, PushBackoffDelays(), r.pushSleep)
 }
 
 // PushRebaseFree runs git push without rebasing, establishing upstream via
