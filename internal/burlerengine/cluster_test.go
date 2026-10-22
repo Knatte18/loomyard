@@ -323,6 +323,7 @@ func TestCommandRunsMutatingGit(t *testing.T) {
 		{"tag -n is not mutating", "git tag -n", false},
 		{"tag -n with an attached count is not mutating", "git tag -n5", false},
 		{"tag --sort value starting with a dash is not mutating", "git tag -l --sort -version:refname", false},
+		{"tag --format value starting with a dash is not mutating", "git tag -l --format -x", false},
 		{"git log is not mutating", "git log --oneline", false},
 		{"git diff is not mutating", "git diff HEAD~1", false},
 		{"git status is not mutating", "git status", false},
