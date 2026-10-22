@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -32,7 +33,9 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 		statusExists bool
 		verdict      ownerVerdict
 		verdictErr   error
-		wantCalls    int
+		// ownerPause records the live pause entry that holds a run owned elsewhere.
+		ownerPause bool
+		wantCalls  int
 		// wantKind is the refusal's kind, empty when the verb must go on past the owner check.
 		wantKind string
 		// wantMessage lists substrings of the refusal's error.
@@ -45,6 +48,13 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 			wantCalls:    1,
 			wantKind:     shedrun.StartOwnedElsewhereKind,
 			wantMessage:  []string{`"there"`, "lyx adopt pair"},
+		},
+		{
+			name:         "OwnerPauseRefusesWithTheResumeWayBeforeTheOwnerVerdict",
+			statusExists: true,
+			verdict:      ownerVerdict{Owner: "there", Elsewhere: true},
+			ownerPause:   true,
+			wantMessage:  []string{"pause:", `"lyx resume`},
 		},
 		{
 			name:         "VerdictErrorRefusesNamingTheRerun",
@@ -76,6 +86,9 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 				c.ownerOf = func(*lyxcwd.Location, string) (ownerVerdict, error) {
 					calls++
 					return tt.verdict, tt.verdictErr
+				}
+				if tt.ownerPause {
+					coverRunBy(t, c, "", pauserecord.OwnerCaller)
 				}
 				if tt.statusExists {
 					if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, shedengine.Status{State: shedengine.StateDone}); err != nil {
