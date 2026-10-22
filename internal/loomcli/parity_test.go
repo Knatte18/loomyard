@@ -248,16 +248,16 @@ var fabricReferenceCommand = "cat " + fabricengine.RecordsWorktree(&lyxcwd.Locat
 // verifySectionPlanFixture writes a language: none plan under <anchorPath>/_lyx/plan/ whose verify: section runs verifyBody, and returns a *loomCLI wired with anchorPath and worktreeRoot.
 func verifySectionPlanFixture(t *testing.T, anchorPath, worktreeRoot, verifyBody string) *loomCLI {
 	t.Helper()
-	return verifyPlanFixture(t, anchorPath, worktreeRoot, verifyBody, "")
+	return verifyPlanFixture(t, anchorPath, worktreeRoot, "none", verifyBody, "")
 }
 
-// verifyPlanFixture is verifySectionPlanFixture with the sole card's `**Verify:**` set to cardVerify.
-func verifyPlanFixture(t *testing.T, anchorPath, worktreeRoot, verifyBody, cardVerify string) *loomCLI {
+// verifyPlanFixture is verifySectionPlanFixture with the plan's language and the sole card's `**Verify:**` set to cardVerify.
+func verifyPlanFixture(t *testing.T, anchorPath, worktreeRoot, language, verifyBody, cardVerify string) *loomCLI {
 	t.Helper()
 
 	plankit.Write(t, filepath.Join(anchorPath, "_lyx", "plan"), plankit.Plan{
 		Approved: true,
-		Language: "none",
+		Language: language,
 		Sections: []plankit.Section{{Heading: "verify:", Body: verifyBody}},
 		Cards: []plankit.Card{{
 			Number:  1,
@@ -424,7 +424,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			name: "VerifyNestedModule",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
 				plankit.WriteTree(t, worktreeRoot, map[string]string{"nested/go.mod": "module nested\n"})
-				return verifyPlanFixture(t, anchorPath, worktreeRoot, "", "go test ./nested/...")
+				return verifyPlanFixture(t, anchorPath, worktreeRoot, "go", "", "go test ./nested/...")
 			},
 			wantGate:    verdictStuck,
 			wantCLI:     verdictStuck,
@@ -434,7 +434,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 			// VerifyModuleWide gives the card a module-wide Verify: the gate and the verb both report verify-module-wide.
 			name: "VerifyModuleWide",
 			build: func(t *testing.T, anchorPath, worktreeRoot string) *loomCLI {
-				return verifyPlanFixture(t, anchorPath, worktreeRoot, "go build ./internal/x", "go test ./...")
+				return verifyPlanFixture(t, anchorPath, worktreeRoot, "none", "go build ./internal/x", "go test ./...")
 			},
 			wantGate:    verdictStuck,
 			wantCLI:     verdictStuck,
