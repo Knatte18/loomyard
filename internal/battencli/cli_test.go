@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -189,6 +190,7 @@ func TestRunInWindow(t *testing.T) {
 		driverSet    bool
 		childSet     bool
 		noLauncher   bool
+		owned        bool
 		opened       reedengine.WindowResult
 		openErr      error
 		wantNoOpen   bool
@@ -257,6 +259,13 @@ func TestRunInWindow(t *testing.T) {
 			wantErr:    []string{"has already completed", "lyx batten cleanup --apply", "different slug"},
 		},
 		{
+			name:       "RunOwnedElsewhereIsRefusedBeforeAnyWindowOpens",
+			status:     shedengine.StateBlocked,
+			owned:      true,
+			wantNoOpen: true,
+			wantErr:    []string{"there", "lyx adopt some-slug"},
+		},
+		{
 			name:         "BlockedStatusOpensTheWindowAsBefore",
 			status:       shedengine.StateBlocked,
 			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
@@ -292,6 +301,11 @@ func TestRunInWindow(t *testing.T) {
 					}
 					return "konsole", nil
 				},
+			}
+			if tt.owned {
+				c.reconcile = func(string) (fabricengine.OriginReport, error) {
+					return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: c.slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there"}}}, nil
+				}
 			}
 			wantArgs := tt.wantArgs
 			if !tt.noLauncher && wantArgs != nil {

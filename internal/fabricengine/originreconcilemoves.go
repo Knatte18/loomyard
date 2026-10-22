@@ -256,6 +256,8 @@ type originMover struct {
 	live     map[string]bool
 	// ownedByEnded holds the slugs of pairs the ended-entries step already judged, whose branches no move touches.
 	ownedByEnded map[string]bool
+	// owners maps the slug of each entry another machine owns to that owner; such an entry's records branch is never replayed.
+	owners map[string]string
 }
 
 // moveAll moves every judged branch that is behind origin: Bolt first, then the prime's branches, the prime's records before its code, then each pair's.
@@ -351,6 +353,7 @@ func (m *originMover) movePrime(indexes []int) error {
 
 // move moves the judged branch at index i when it needs a move and nothing stops it, and records the result on its outcome.
 // A busy lock name stops the move and marks the branch busy.
+// A records branch both sides moved, of an entry another machine owns, is left where it is and reported needs_replay, so only a fast-forward moves such an entry's branches.
 func (m *originMover) move(i int, busy string) error {
 	outcome := &m.outcomes[i]
 	target := m.targets[i]
@@ -361,6 +364,9 @@ func (m *originMover) move(i int, busy string) error {
 		return nil
 	}
 	if m.ownedByEnded[target.slug] {
+		return nil
+	}
+	if _, elsewhere := m.owners[target.slug]; elsewhere && outcome.State == BranchNeedsReplay {
 		return nil
 	}
 

@@ -171,6 +171,11 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 			wantOutcome: shedengine.Done, wantEvents: proceeds, wantLock: true,
 		},
 		{
+			name:        "a run owned elsewhere proceeds to the lock and the merge",
+			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryOwnedElsewhere, Owner: "desk"}}},
+			wantOutcome: shedengine.Done, wantEvents: proceeds, wantLock: true,
+		},
+		{
 			name:        "an ended run that landed halts naming the landing",
 			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryEnded, How: "done"}}},
 			wantOutcome: shedengine.Stuck, wantEvents: "commit-status,reconcile", wantHalt: true,

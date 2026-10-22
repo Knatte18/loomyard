@@ -52,6 +52,10 @@ var excludedModules = []scankit.Entry{
 		Key: "hibernate",
 		Why: "its daemon hibernates the host machine, which no sandbox scenario may do",
 	},
+	{
+		Key: "adopt",
+		Why: "takes over runs from another machine, which needs a second clone of the hub that no sandbox scenario builds",
+	},
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.

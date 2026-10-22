@@ -49,7 +49,7 @@ func wakeReconcile(location *lyxcwd.Location) (hibernateengine.WakeReconcile, er
 
 // wakeReconcileFromReport maps a reconcile report onto the engine's view.
 // The stop is the way forward of the first branch every pair shares, Bolt or the prime's records branch, that stops and is not merely busy.
-// A run is each stopped entry and each ended entry that has a local pair; its way forward is the report's, never composed here.
+// A run is each stopped entry, each ended entry that has a local pair and each owned_elsewhere entry, which always has a local pair; its way forward is the report's, never composed here.
 // Mutations are rendered as kind and target, with the detail in parentheses when there is one.
 func wakeReconcileFromReport(report fabricengine.OriginReport) hibernateengine.WakeReconcile {
 	wake := hibernateengine.WakeReconcile{Unreachable: report.Unreachable}
@@ -82,6 +82,8 @@ func wakeReconcileFromReport(report fabricengine.OriginReport) hibernateengine.W
 					run.Gone = true
 				}
 			}
+		case fabricengine.EntryOwnedElsewhere:
+			run.Owner = entry.Owner
 		default:
 			continue
 		}

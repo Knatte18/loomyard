@@ -146,7 +146,8 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 //
 // Before its catch-up merge-in, Finalize takes the parent lock and tests that the parent did not move since Merge-In merged it:
 // a moved parent is a reroute Stuck, a paused lock wait or an unreadable lock record is a halting Stuck, and a landing that reaches Done releases the lock.
-// Under that lock it runs the run-scope origin reconcile: a run origin ended or stopped is Stuck, and an unreachable origin proceeds.
+// Under that lock it runs the owner checks: a run origin ended or stopped is Stuck, and a run or parent another machine owns, an unreachable origin and a failed owner read halt.
+// A parent already holding the task's work skips the owner checks and the unreachable halt, and an unreachable origin then proceeds.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
 // changes -- an operator squash-merged the pull request on GitHub, or an earlier Finalize landed and
@@ -199,9 +200,9 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return outcome, out, err
 	}
 
-	// Step 1b3: judge the run against origin under the lock.
-	// A run whose Finalize already merged into the local parent here is never read as ended, so a Finalize re-entered after its done mark proceeds.
-	if outcome, out, err, stop := reconcileVerdict(ctx, finalizeName, fz.deps.Reconcile); stop {
+	// Step 1b3: judge the run against origin under the lock, and halt unless this machine owns the run and its parent.
+	// A run whose Finalize already merged into the local parent here is never read as ended or owned elsewhere, so a Finalize re-entered after its done mark proceeds.
+	if outcome, out, err, stop := fz.ownerChecks(ctx); stop {
 		return outcome, out, err
 	}
 
@@ -313,6 +314,7 @@ func (fz *Finalize) markTaskDone() {
 // the re-step's parent-side Merge reports AlreadyUpToDate and goes straight to the push.
 // Any other failed push is Stuck: the merge has already landed locally, so a human pushes (or reconciles a diverged remote) by hand,
 // and a failure recorded as a failed push carries the way forward of its class in the reason instead.
+// When origin's parent already holds the task's work, the reason also carries the repair of an adopter-first landing.
 // Deps.PushSkipped suppresses the push, exactly as it does for the task branch.
 //
 // On its Done return only, a non-empty notice is queued through Deps.Notify, and a failure there is a logged warning that never changes the verdict.
@@ -331,6 +333,7 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 		if !errors.As(err, &failed) {
 			reason += "; push it by hand"
 		}
+		reason += fz.adopterFirstRepair(parentHandle)
 		return fz.stuckOrCancelled(ctx, reason, "error", err)
 	}
 	if !fz.deps.PushSkipped && contains(fz.deps.Config.RequirePRToBase, fz.deps.ParentBranch) {

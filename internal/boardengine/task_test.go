@@ -154,6 +154,23 @@ func TestNewTask(t *testing.T) {
 		}
 	})
 
+	t.Run("a note payload carrying owner_machine stores none and a task keeps it", func(t *testing.T) {
+		note, err := boardengine.NewTask(map[string]any{"slug": "n", "owner_machine": "neve"}, 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if note.OwnerMachine != "" {
+			t.Errorf("note OwnerMachine = %q; want none", note.OwnerMachine)
+		}
+		task, err := boardengine.NewTask(map[string]any{"slug": "t", "kind": boardengine.KindTask, "labels": []string{"bug"}, "owner_machine": "neve"}, 2)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if task.OwnerMachine != "neve" {
+			t.Errorf("task OwnerMachine = %q; want neve", task.OwnerMachine)
+		}
+	})
+
 	t.Run("an unknown kind is refused", func(t *testing.T) {
 		_, err := boardengine.NewTask(map[string]any{"slug": "my-task", "kind": "epic"}, 1)
 		if err == nil || !strings.Contains(err.Error(), "kind") {

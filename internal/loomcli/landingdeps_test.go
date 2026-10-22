@@ -112,6 +112,10 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		t.Errorf("landingDeps(...).LanguageSkills = %v; want the told language skills %v", deps.LanguageSkills, languageSkills)
 	}
 
+	if deps.Slug != "pair" {
+		t.Errorf("landingDeps(...).Slug = %q; want the worktree's slug %q", deps.Slug, "pair")
+	}
+
 	v := reflect.ValueOf(deps)
 	typ := v.Type()
 	// The loom source leaves the Publish skip and failure classifier seams nil, so the walk skips them.

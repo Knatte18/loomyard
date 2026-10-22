@@ -114,6 +114,7 @@ An entry whose status reads `<state> · <producer>`, such as `running · Webster
 A claimed entry takes no scope edits: a write that changes anything but its status, or removes it, is refused.
 Record a new finding as a note of its own with `lyx board upsert` and `"kind":"note"`.
 The refusal names the way to unlock an abandoned run's entry.
+A claimed entry's owner machine changes only through `lyx adopt`; an upsert naming another owner is refused.
 
 ## Intake
 

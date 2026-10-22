@@ -11,6 +11,7 @@
 package reedengine
 
 import (
+	"fmt"
 	"runtime"
 	"strconv"
 	"strings"
@@ -167,4 +168,21 @@ func (e *Engine) warnMismatchedClientsLocked(cols, rows int) (anotherClient bool
 		logger.Warn("reed: another client is attached at a different size; tmux must pick one window size, so the mismatched client shows tmux padding until it is resized or detached", "socket", e.Socket(), "session", e.SessionName(), "client", client.Name, "clientWidth", client.Width, "clientHeight", client.Height, "toldCols", cols, "toldRows", rows)
 	}
 	return len(clients) > 0
+}
+
+// ClientAttached reports whether any client is attached to this worktree's reed session.
+// A missing session reads false with no error, and any other multiplexer failure is returned.
+func (e *Engine) ClientAttached() (bool, error) {
+	up, err := e.tmux.hasSession(e.SessionName())
+	if err != nil {
+		return false, fmt.Errorf("check session: %w", err)
+	}
+	if !up {
+		return false, nil
+	}
+	out, err := e.tmux.output("list-clients", "-t", exactSessionTarget(e.SessionName()), "-F", "#{client_name} #{client_width} #{client_height}")
+	if err != nil {
+		return false, fmt.Errorf("list clients: %w", err)
+	}
+	return len(parseClientList(out)) > 0, nil
 }

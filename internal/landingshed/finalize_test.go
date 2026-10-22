@@ -120,6 +120,7 @@ func TestNewFinalize_Refusals(t *testing.T) {
 // --- Call behaviour ---
 
 // TestFinalize_MergeMarkPushOrderAndVerdict pins that a landed merge is marked done on the board and then pushed to the parent's upstream before Done, honouring Deps.PushSkipped, that a failed push is Stuck rather than Done, and that neither a failing push nor a failing board seam changes what the other is called for.
+// A failed push also carries the adopter-first repair note only when origin's parent holds the work and a parent commit is listed: a reset for the squash alone, a rebase dropping it when another commit is listed.
 func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 	failedPush := func(record fabricengine.FailedPush, cause error) *fabricengine.PushFailedError {
 		return &fabricengine.PushFailedError{Record: record, Err: cause}
@@ -127,6 +128,14 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 	rewound := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/parent", Branch: "parent", Class: fabricengine.PushFailureRewound, OriginHead: "abc123", Commits: []string{"def456"}}, errors.New("push held back"))
 	primeDiverged := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/main", Branch: "main", Prime: true, Class: fabricengine.PushFailureNotFastForward}, gitrepo.ErrPushRejected)
 	authRefused := failedPush(fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/parent", Branch: "parent", Class: fabricengine.PushFailureAuth}, gitrepo.ErrPushAuthRefused)
+	// repairSeams scripts the adopter-first repair note's reads: whether origin's parent holds the work and the parent commits origin lacks.
+	type repairSeams struct {
+		holds    bool
+		holdsErr error
+		lacks    []string
+		lacksErr error
+	}
+	squash := "squash111"
 	tests := []struct {
 		name        string
 		pushSkipped bool
@@ -135,19 +144,41 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 		wantOutcome shedengine.Outcome
 		// wantWayForward is the exact way-forward line the Stuck reason ends in, with no hand-push advice after it.
 		wantWayForward string
+		// repair scripts the repair note's reads; nil wires none.
+		repair *repairSeams
+		// wantRepair names what the reason must carry; empty means the reason must carry no repair note.
+		wantRepair []string
 	}{
-		{"pushed", false, nil, nil, shedengine.Done, ""},
-		{"push skipped", true, nil, nil, shedengine.Done, ""},
-		{"failing push still marks", false, errors.New("remote rejected"), nil, shedengine.Stuck, ""},
-		{"erroring board seam still Done", false, nil, errors.New("board unavailable"), shedengine.Done, ""},
-		{"rewound hold-back", false, rewound, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(rewound.Record)},
-		{"prime not fast-forward", false, primeDiverged, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(primeDiverged.Record)},
-		{"auth refusal", false, authRefused, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(authRefused.Record)},
+		{"pushed", false, nil, nil, shedengine.Done, "", nil, nil},
+		{"push skipped", true, nil, nil, shedengine.Done, "", nil, nil},
+		{"failing push still marks", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", nil, nil},
+		{"erroring board seam still Done", false, nil, errors.New("board unavailable"), shedengine.Done, "", nil, nil},
+		{"rewound hold-back", false, rewound, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(rewound.Record), nil, nil},
+		{"prime not fast-forward", false, primeDiverged, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(primeDiverged.Record), nil, nil},
+		{"auth refusal", false, authRefused, nil, shedengine.Stuck, fabricengine.FailedPushWayForward(authRefused.Record), nil, nil},
+		{
+			"the squash alone names the reset", false, errors.New("remote rejected"), nil, shedengine.Stuck, "",
+			&repairSeams{holds: true, lacks: []string{squash}},
+			[]string{squash, `git reset --keep origin/main`, `lyx fabric remove me`},
+		},
+		{
+			"another commit listed names the rebase with the squash SHA", false, errors.New("remote rejected"), nil, shedengine.Stuck, "",
+			&repairSeams{holds: true, lacks: []string{squash, "other222"}},
+			[]string{"git rebase --onto " + squash + "~1 " + squash + " main", "git rebase --abort", `lyx fabric remove me`},
+		},
+		{"origin's parent lacking the work names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{lacks: []string{squash}}, nil},
+		{"a failed read of origin's parent names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{holdsErr: errors.New("fetch failed")}, nil},
+		{"a failed commit listing names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{holds: true, lacksErr: errors.New("no branch")}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var order []string
 			deps := newTestDeps(t)
+			deps.Slug = "me"
+			if tt.repair != nil {
+				deps.OriginParentHoldsWork = func() (bool, error) { return tt.repair.holds, tt.repair.holdsErr }
+				deps.ParentCommitsOriginLacks = func() ([]string, error) { return tt.repair.lacks, tt.repair.lacksErr }
+			}
 			deps.PushSkipped = tt.pushSkipped
 			deps.MarkTaskDone = func() error {
 				order = append(order, "mark")
@@ -157,6 +188,7 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 			merger := &recordingParentMerger{
 				results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}},
 				pushErr: tt.pushErr,
+				headSHA: squash,
 				order:   &order,
 			}
 			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
@@ -180,6 +212,18 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 				if got := requireFinalizeReason(t, ptr); !strings.Contains(got, "push it by hand") {
 					t.Errorf("reason = %q; want it to tell the operator to push by hand", got)
 				}
+			}
+			if tt.pushErr == nil {
+				return
+			}
+			reason := requireFinalizeReason(t, ptr)
+			for _, want := range tt.wantRepair {
+				if !strings.Contains(reason, want) {
+					t.Errorf("reason = %q; want the repair note to carry %q", reason, want)
+				}
+			}
+			if hasNote := strings.Contains(reason, "duplicates it"); hasNote != (len(tt.wantRepair) > 0) {
+				t.Errorf("reason = %q; repair note present = %v; want %v", reason, hasNote, len(tt.wantRepair) > 0)
 			}
 		})
 	}
@@ -489,7 +533,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 }
 
 // TestFinalize_ReconcileProceedsOrErrors pins the two ways the run-scope reconcile leaves Finalize going:
-// an active run, or an unreachable origin, lands as usual, and a reconcile error is returned from Call with nothing merged.
+// an active run lands as usual, and a reconcile error is returned from Call with nothing merged.
 func TestFinalize_ReconcileProceedsOrErrors(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -498,7 +542,6 @@ func TestFinalize_ReconcileProceedsOrErrors(t *testing.T) {
 		wantMerges   int
 	}{
 		{"active run proceeds", fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryActive}}}, nil, 1},
-		{"unreachable origin proceeds", fabricengine.OriginReport{Unreachable: true}, nil, 1},
 		{"reconcile error is returned", fabricengine.OriginReport{}, errors.New("ls-remote failed"), 0},
 	}
 	for _, tt := range tests {

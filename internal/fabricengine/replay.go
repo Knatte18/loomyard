@@ -307,6 +307,13 @@ func parentHoldsTaskWork(l, pairLocation *lyxcwd.Location, slug string) (bool, e
 	return pair.HoldsWork("refs/heads/"+origin.ParentBranch, taskHead)
 }
 
+// ParentHoldsTaskWork reports whether the pair's local parent branch already holds the work of the pair's task branch.
+// That marks a Finalize already past its parent-side merge.
+// It returns an error when the pair has no origin record naming its parent branch or a branch cannot be read.
+func ParentHoldsTaskWork(l, pairLocation *lyxcwd.Location, slug string) (bool, error) {
+	return parentHoldsTaskWork(l, pairLocation, slug)
+}
+
 // withoutFinalizeEntered returns the part of ended whose slugs this machine's own landing has not reached,
 // so a replay never sets aside the commits of a run this machine landed.
 func withoutFinalizeEntered(l *lyxcwd.Location, ended EndedSet) EndedSet {

@@ -8,6 +8,7 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -479,6 +480,83 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 				t.Errorf("%s: outcome = %+v; want it unmoved", row.name, outcome)
 			}
 			requireEntry(t, report, "task", fabricengine.EntryActive)
+		}
+	})
+
+	t.Run("An entry origin's Bolt gives to another machine is owned_elsewhere with its owner, way forward and summary line, in a run and a judge-only hub scope", func(t *testing.T) {
+		const wantWayForward = "`lyx adopt task` from this machine's prime takes it over"
+		const wantLine = "owned elsewhere: task by other-machine; `lyx adopt task` takes it over"
+		for _, scope := range []fabricengine.ReconcileScope{{Run: "task"}, {JudgeOnly: true}} {
+			pair := newMovesPair(t)
+			var asked []string
+			seams := fabricengine.OriginSeams{OwnerOf: func(_ string, _ []byte, slug string) (string, bool, error) {
+				asked = append(asked, slug)
+				return "other-machine", true, nil
+			}}
+
+			report := moveReconcile(t, pair.originHub, scope, seams)
+
+			entry := requireEntry(t, report, "task", fabricengine.EntryOwnedElsewhere)
+			if entry.Owner != "other-machine" || entry.WayForward != wantWayForward {
+				t.Errorf("scope %+v: entry = %+v; want owner other-machine and way forward %q", scope, entry, wantWayForward)
+			}
+			if !strings.Contains(report.Summary(), wantLine) {
+				t.Errorf("scope %+v: Summary() = %q; want the line %q", scope, report.Summary(), wantLine)
+			}
+			if !slices.Equal(asked, []string{"task"}) {
+				t.Errorf("scope %+v: OwnerOf asked about %v; want one question for task", scope, asked)
+			}
+		}
+	})
+
+	t.Run("A records branch both sides moved stays unmoved for an entry owned elsewhere while its fast-forwards move, and its pair is never torn down", func(t *testing.T) {
+		pair := newMovesPair(t)
+		localRecords := gitkit.CommitFile(t, pair.records, "notes/local.md", "local\n", "local note")
+		originCommitFile(t, pair.RecordsBare, pair.recordsName, "notes/origin.md", "origin\n")
+		originCode := originCommitFile(t, pair.CodeBare, pair.codeBranch, "moved.txt", "moved")
+		torn := &teardownRecorder{}
+		seams := torn.seams()
+		seams.OwnerOf = func(string, []byte, string) (string, bool, error) { return "other-machine", true, nil }
+
+		report := moveReconcile(t, pair.originHub, fabricengine.ReconcileScope{}, seams)
+
+		outcome := requireState(t, report, "records", pair.recordsName, fabricengine.BranchNeedsReplay)
+		if outcome.Moved || gitkit.RevParse(t, pair.records, "HEAD") != localRecords {
+			t.Errorf("records outcome = %+v, HEAD = %q; want it unreplayed at %q", outcome, gitkit.RevParse(t, pair.records, "HEAD"), localRecords)
+		}
+		if code := requireState(t, report, "code", pair.codeBranch, fabricengine.BranchLevel); !code.Moved || gitkit.RevParse(t, pair.code, "HEAD") != originCode {
+			t.Errorf("code outcome = %+v; want the fast-forward moved to %q", code, originCode)
+		}
+		requireEntry(t, report, "task", fabricengine.EntryOwnedElsewhere)
+		if len(torn.calls) != 0 {
+			t.Errorf("teardown calls = %v; want none for an entry owned elsewhere", torn.slugsCalled())
+		}
+	})
+
+	t.Run("An ended entry owned elsewhere reports ended, a nil OwnerOf reads it active, an OwnerOf error is the reconcile's error and a hub with no Bolt origin head asks nothing", func(t *testing.T) {
+		hub, _ := endedHub(t, "task")
+		torn := &teardownRecorder{}
+		seams := torn.seams()
+		seams.OwnerOf = func(string, []byte, string) (string, bool, error) { return "other-machine", true, nil }
+		requireEntry(t, moveReconcile(t, hub, fabricengine.ReconcileScope{}, seams), "task", fabricengine.EntryEnded)
+
+		pair := newMovesPair(t)
+		requireEntry(t, moveReconcile(t, pair.originHub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{}), "task", fabricengine.EntryActive)
+
+		failing := fabricengine.OriginSeams{OwnerOf: func(string, []byte, string) (string, bool, error) { return "", false, errors.New("no hostname") }}
+		if _, err := fabricengine.ReconcileOrigin(pair.Location, fabricengine.ReconcileScope{}, failing, fabricengine.ReconcileOptions{}); err == nil || !strings.Contains(err.Error(), "no hostname") {
+			t.Errorf("ReconcileOrigin error = %v; want the seam's error", err)
+		}
+
+		bare := newOriginHub(t)
+		originPair(t, bare, "task")
+		writeStatus(t, bare, "task", "Land")
+		gitkit.Git(t, bare.BoardDir(), "update-ref", "-d", "refs/remotes/origin/"+gitkit.CurrentBranch(t, bare.BoardDir()))
+		asked := false
+		quiet := fabricengine.OriginSeams{OwnerOf: func(string, []byte, string) (string, bool, error) { asked = true; return "", false, nil }}
+		moveReconcile(t, bare, fabricengine.ReconcileScope{}, quiet)
+		if asked {
+			t.Error("OwnerOf was asked on a hub with no Bolt origin head; want no question")
 		}
 	})
 }

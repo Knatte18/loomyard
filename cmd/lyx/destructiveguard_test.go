@@ -142,6 +142,7 @@ var destructiveGuardRecordingExecutors = []struct {
 	{"createGitWorktree", "func createGitWorktree(rec *Mutations, "},
 	{"resetHardTo", "func resetHardTo(rec *Mutations, "},
 	{"dropSeedCommits", "func dropSeedCommits(rec *Mutations, "},
+	{"DropLocal", "func DropLocal(rec *Mutations, "},
 }
 
 // destructiveGuardRecordingExecutorsMin is the vacuous-scan floor for destructiveGuardRecordingExecutors: this floors well below the table's row count so a table that silently stopped matching (e.g. a rename that broke every declPrefix at once) fails loudly rather than passing on zero found declarations.
@@ -169,6 +170,7 @@ var destructiveGuardMutatingResultTypes = []struct {
 	{"MergeResult", "internal/fabricengine/merge.go"},
 	{"StageResult", "internal/fabricengine/mergestage.go"},
 	{"BoltWriteResult", "internal/fabricengine/bolt.go"},
+	{"DropLocalResult", "internal/fabricengine/destroy.go"},
 }
 
 // destructiveGuardReadOnlyResultTypes is the companion table of the read-only verbs' result types

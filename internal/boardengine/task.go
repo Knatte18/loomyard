@@ -40,6 +40,8 @@ type Task struct {
 	RunSettings map[string]any `json:"run_settings,omitempty"`
 	// Profile names the hub run profile whose settings lie under RunSettings at seeding; empty means none.
 	Profile string `json:"profile,omitempty"`
+	// OwnerMachine names the machine that owns the entry; empty means none is recorded, and a note never carries one.
+	OwnerMachine string `json:"owner_machine,omitempty"`
 
 	// Unknown holds the decoded entry's keys this binary does not know, each with its raw JSON value, nil when there are none.
 	// Encoding writes them back after the known fields in key order, and no step decodes a value into a Go type.
@@ -261,7 +263,7 @@ func priorityRank(priority string) int {
 	}
 }
 
-// normalizeTask stores a normal priority and an empty run settings object as the empty value and the dates in whole UTC seconds, then checks that the Kind is one of the two kinds and the Priority one of the accepted values.
+// normalizeTask stores a normal priority and an empty run settings object as the empty value, clears the owner of a note and stores the dates in whole UTC seconds, then checks that the Kind is one of the two kinds and the Priority one of the accepted values.
 func normalizeTask(t *Task) error {
 	if t.Kind != KindTask && t.Kind != KindNote {
 		return fmt.Errorf("kind %q is not one of %s, %s", t.Kind, KindTask, KindNote)
@@ -271,6 +273,9 @@ func normalizeTask(t *Task) error {
 	}
 	if len(t.RunSettings) == 0 {
 		t.RunSettings = nil
+	}
+	if t.Kind == KindNote {
+		t.OwnerMachine = ""
 	}
 	t.Created = entryTime(t.Created)
 	t.Revised = entryTime(t.Revised)

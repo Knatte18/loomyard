@@ -57,6 +57,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -405,6 +406,7 @@ const battenProgram = "BATTEN"
 // output past maxChildOutputInError with an explicit marker.
 // An output carrying the not-parked refusal (kind shedrun.StartNotParkedKind) also wraps battenshed.ErrChildNotParked, and one carrying the busy-pane refusal (kind shedrun.StartDriverBusyKind) also wraps battenshed.ErrChildDriverBusy, so InnerRun retries rather than failing.
 // One carrying a held-run-lock refusal (kind shedengine.ShedBusyKind) also wraps battenshed.ErrChildRunBusy.
+// One carrying the owned-elsewhere refusal (kind shedrun.StartOwnedElsewhereKind) also wraps a *battenshed.ChildOwnedElsewhereError naming the owner the refusal carries, so InnerRun pauses instead of failing the spawn.
 //
 // The byte slice lands on a rune boundary only by chance, so strings.ToValidUTF8 drops any partial
 // rune it leaves dangling at the cut point rather than embedding invalid UTF-8 into the error text.
@@ -427,8 +429,52 @@ func childSpawnError(runErr error, childOutput string) error {
 		return fmt.Errorf("%w: %w: %s", battenshed.ErrChildDriverBusy, runErr, trimmed)
 	case shedengine.ShedBusyKind:
 		return fmt.Errorf("%w: %w: %s", battenshed.ErrChildRunBusy, runErr, trimmed)
+	case shedrun.StartOwnedElsewhereKind:
+		return fmt.Errorf("%w: %w: %s", &battenshed.ChildOwnedElsewhereError{Owner: childRefusalOwner(childOutput)}, runErr, trimmed)
 	}
 	return fmt.Errorf("%w: %s", runErr, trimmed)
+}
+
+// childRefusalOwner returns the "owner" of the first line of a child bootstrap's output that is a refusal envelope carrying one, or "" when none is.
+func childRefusalOwner(childOutput string) string {
+	for line := range strings.Lines(childOutput) {
+		var envelope struct {
+			OK    bool   `json:"ok"`
+			Owner string `json:"owner"`
+		}
+		if json.Unmarshal([]byte(line), &envelope) != nil {
+			continue
+		}
+		if !envelope.OK && envelope.Owner != "" {
+			return envelope.Owner
+		}
+	}
+	return ""
+}
+
+// ownerVerdictOf maps a run-scope origin report onto the owner verdict InnerRun reads.
+// An unreachable report is Unreachable, the slug's owned-elsewhere entry is Elsewhere with its owner, and anything else, a report without the slug included, is owned here.
+func ownerVerdictOf(report fabricengine.OriginReport, slug string) battenshed.OwnerVerdict {
+	if report.Unreachable {
+		return battenshed.OwnerVerdict{Unreachable: true}
+	}
+	for _, entry := range report.Entries {
+		if entry.Slug == slug && entry.State == fabricengine.EntryOwnedElsewhere {
+			return battenshed.OwnerVerdict{Owner: entry.Owner, Elsewhere: true}
+		}
+	}
+	return battenshed.OwnerVerdict{}
+}
+
+// childRestepped reports whether a settle record re-stepped the stop status names: its stop key equals the status's and its action is a restep.
+func childRestepped(records []shedrun.SettleRecord, status shedengine.Status) bool {
+	key := sheddriver.StopKeyOf(status)
+	for _, record := range records {
+		if record.Action == shedrun.SettleRestep && record.StopKey == key {
+			return true
+		}
+	}
+	return false
 }
 
 // childRefusalKind returns the "kind" of the first line of a child bootstrap's output that is a refusal envelope carrying one, or "" when none is.
@@ -776,12 +822,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		PrimeLock:  primeLock,
 		CreateWorktree: func(ctx context.Context) error {
 			// The claim comes first, so the run lock on the board entry starts before the pair exists and survives this row failing.
-			// A board failure only warns: the board is the hub's overview, never the run's bookkeeping.
-			claim := boardengine.RunStatus(string(shedengine.StateRunning), battenrecipe.NameWorktreeCreate)
-			if board, err := boardengine.OpenHub(location.HubPath); err != nil {
-				logger.Warn("battencli: claim board entry failed", "slug", slug, "err", err)
-			} else if err := board.SetRunStatus(slug, claim); err != nil {
-				logger.Warn("battencli: claim board entry failed", "slug", slug, "err", err)
+			// It records this machine as the entry's owner in the same commit, so a failed write or push refuses the row and the stopped run resumes with the same verb.
+			if err := c.claimBoardEntry(slug); err != nil {
+				return err
 			}
 
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
@@ -904,6 +947,41 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return err
 				}
 				return childGoto(ctx, taskLocation, slug, target)
+			},
+			// OwnerCheck judges, without moving a ref, the slug's run-scope reconcile from the prime and reads its owner verdict.
+			OwnerCheck: func(ctx context.Context) (battenshed.OwnerVerdict, error) {
+				teardown, err := pairteardown.New(location)
+				if err != nil {
+					return battenshed.OwnerVerdict{}, err
+				}
+				report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, JudgeOnly: true}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
+				if err != nil {
+					return battenshed.OwnerVerdict{}, err
+				}
+				return ownerVerdictOf(report, slug), nil
+			},
+			PauseOwned: func(ctx context.Context, owner string) error {
+				return tendercli.PauseOwnedElsewhere(location, slug)
+			},
+			// ParentHoldsTaskWork marks a Finalize past its parent-side merge, read over the prime and the located task worktree.
+			ParentHoldsTaskWork: func() (bool, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return false, err
+				}
+				return fabricengine.ParentHoldsTaskWork(location, taskLocation, slug)
+			},
+			// Restepped reads the child's settle records for a re-step of the status's stop.
+			Restepped: func(status shedengine.Status) (bool, error) {
+				taskLocation, err := locateTask()
+				if err != nil {
+					return false, err
+				}
+				records, err := sheddriver.ReadSettleRecords(shedrun.SettleRecords(taskLocation, shedrun.SelfRunID))
+				if err != nil {
+					return false, err
+				}
+				return childRestepped(records, status), nil
 			},
 			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: pauseRequested(location, slug),
@@ -1321,6 +1399,22 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	// A Command row's command is read from the template and the board default layer only, the layers deploy and darn's verify are read from.
 	env.ExecutableSetting = configreg.SettingLookup(configengine.Dirs{Board: fabricengine.ConfigDirs(location).Board})
 	env.Command = c.commandDeps(location, slug, executable, locateTask)
+
+	c.clientAttached = func() (bool, error) {
+		taskLocation, err := locateTask()
+		if err != nil {
+			return false, err
+		}
+		reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
+		if err != nil {
+			return false, err
+		}
+		reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+		if err != nil {
+			return false, err
+		}
+		return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).ClientAttached()
+	}
 
 	c.env = env
 	c.shedPaths = shedbuild.ShedPaths{

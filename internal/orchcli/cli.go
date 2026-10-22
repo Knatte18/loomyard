@@ -95,6 +95,11 @@ type orchCLI struct {
 	currentBuild func() (statuspane.BuildIdentity, error)
 	// reconcile judges and moves the hub's branches against origin, which `start` runs before it decides anything about the strand.
 	reconcile func() (fabricengine.OriginReport, error)
+	// claimPrime records this machine as the hub's prime owner when the board records none, which `start` calls first after its reconcile.
+	// claimed names this machine after a claim, lostTo the other machine when its claim won; nil skips the claim.
+	claimPrime func() (claimed, lostTo string, err error)
+	// pauseOwned pauses the pair of a run another machine owns, which `start` calls for each owned_elsewhere entry of its reconcile; nil skips the pause.
+	pauseOwned func(location *lyxcwd.Location, slug string) error
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -193,6 +198,8 @@ Every verb runs from the hub's prime worktree only.`,
 			c.executable = os.Executable
 			c.currentBuild = statuspane.CurrentBuild
 			c.reconcile = func() (fabricengine.OriginReport, error) { return reconcileHub(location) }
+			c.claimPrime = func() (string, string, error) { return claimPrimeFor(location) }
+			c.pauseOwned = installedOwnerPause()
 			return nil
 		},
 	}

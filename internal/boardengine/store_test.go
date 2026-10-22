@@ -7,6 +7,8 @@ package boardengine_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -378,6 +380,61 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 			t.Errorf("expected error naming 'group', got %v", err)
 		}
 	})
+
+	t.Run("owner_machine_is_accepted_only_as_the_effective_owner", func(t *testing.T) {
+		entryPoints := []struct {
+			name  string
+			write func(s *boardengine.Store, fields map[string]any) error
+		}{
+			{"upsert", func(s *boardengine.Store, fields map[string]any) error {
+				_, err := s.UpsertTask(fields)
+				return err
+			}},
+			{"batch_element", func(s *boardengine.Store, fields map[string]any) error {
+				return s.UpsertTasksBatch([]map[string]any{fields})
+			}},
+			{"merge_upsert", func(s *boardengine.Store, fields map[string]any) error {
+				_, err := s.MergeTasks(nil, fields, nil)
+				return err
+			}},
+		}
+		for _, entryPoint := range entryPoints {
+			for _, tt := range []struct {
+				name    string
+				owner   string
+				wantErr bool
+			}{
+				{"the_effective_owner_is_a_noop", "neve", false},
+				{"another_value_is_refused", "box", true},
+			} {
+				t.Run(entryPoint.name+"_"+tt.name, func(t *testing.T) {
+					dir := t.TempDir()
+					board := `{"version":1,"prime_owner":"neve","entries":[{"id":0,"slug":"t1","title":"T","kind":"task","labels":["bug"]}]}`
+					if err := os.WriteFile(filepath.Join(dir, "board.json"), []byte(board), 0o644); err != nil {
+						t.Fatalf("write board.json: %v", err)
+					}
+					s := boardengine.NewStore(dir)
+					if err := s.Load(); err != nil {
+						t.Fatalf("Load() error = %v", err)
+					}
+					err := entryPoint.write(s, map[string]any{"slug": "t1", "title": "T2", "owner_machine": tt.owner})
+					if tt.wantErr {
+						if err == nil || !stringContains(err.Error(), "lyx adopt") || !stringContains(err.Error(), `"neve"`) {
+							t.Fatalf("write error = %v; want a refusal naming the owner and `lyx adopt`", err)
+						}
+						return
+					}
+					if err != nil {
+						t.Fatalf("write error = %v; want nil", err)
+					}
+					got, _ := s.GetTask("t1")
+					if got.Title != "T2" || got.OwnerMachine != "" {
+						t.Errorf("entry after the write = title %q, owner %q; want title %q and no recorded owner", got.Title, got.OwnerMachine, "T2")
+					}
+				})
+			}
+		}
+	})
 }
 
 // TestValidateDependencyGraph verifies that UpsertTask rejects a dangling dependency, a dependency on an isolated task and a cycle with precise error messages, and accepts a chain without a cycle (the kind rules have their own test).
@@ -734,6 +791,38 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	// Both should have a layer assigned (even if empty or a letter)
 	if task1.Layer == "" || task2.Layer == "" {
 		t.Logf("task1 layer: %s, task2 layer: %s", task1.Layer, task2.Layer)
+	}
+
+	// The owner a task lists is its recorded one, else the prime's; a note lists none, and a parent resolver that fails empties the cell without failing the list.
+	dir := t.TempDir()
+	owned := `{"version":1,"prime_owner":"neve","entries":[` +
+		`{"id":0,"slug":"owned","title":"O","kind":"task","labels":["bug"],"owner_machine":"box"},` +
+		`{"id":1,"slug":"plain","title":"P","kind":"task","labels":["bug"]},` +
+		`{"id":2,"slug":"idea","title":"I","kind":"note","labels":["bug"]}]}`
+	if err := os.WriteFile(filepath.Join(dir, "board.json"), []byte(owned), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+	ownersOf := func(brief []boardengine.BriefTask) map[string]string {
+		owners := map[string]string{}
+		for _, b := range brief {
+			owners[b.Slug] = b.OwnerMachine
+		}
+		return owners
+	}
+	withPrime := boardengine.NewStore(dir)
+	if err := withPrime.Load(); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := ownersOf(withPrime.ListTasksBrief(nil)), map[string]string{"owned": "box", "plain": "neve", "idea": ""}; !maps.Equal(got, want) {
+		t.Errorf("listed owners = %v; want %v", got, want)
+	}
+	failing := boardengine.New(boardengine.Config{Path: dir, ParentOf: func(string) (string, error) { return "", errors.New("origin record unreadable") }})
+	listed, err := failing.ListTasksBrief(nil)
+	if err != nil {
+		t.Fatalf("ListTasksBrief() with a failing parent resolver error = %v; want nil", err)
+	}
+	if got, want := ownersOf(listed), map[string]string{"owned": "box", "plain": "", "idea": ""}; !maps.Equal(got, want) {
+		t.Errorf("listed owners with a failing parent resolver = %v; want %v", got, want)
 	}
 }
 

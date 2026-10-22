@@ -160,6 +160,16 @@ type innerRunProducer struct {
 	restepOn bool
 	// restep is the binary re-step's interval and last reading, across Calls.
 	restep restepWatch
+	// ownedBy is the machine the owner check last read as owning the run, empty while it reads as owned here, across Calls.
+	ownedBy string
+	// ownerNoticed is whether the orch was noticed of the current owner episode.
+	ownerNoticed bool
+	// ownerSleep is the owner trigger's own sleep watch.
+	// ownerDue is whether the owner check is due at the next check that has a status.
+	// ownerCovered is whether the previous check's pause coverage covered the slug.
+	ownerSleep   pauserecord.SleepWatch
+	ownerDue     bool
+	ownerCovered bool
 }
 
 var _ shedengine.ShedProducer = (*innerRunProducer)(nil)
@@ -226,6 +236,7 @@ func logAttempt(first bool, msg string, args ...any) {
 // An empty deps.VerifyRows, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic verify retry off.
 // A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, a nil deps.ArbiterInFlight to reporting no arbiter and a nil deps.ArbiterStop to a reading that is not eligible.
 // A nil deps.ParentLock switches the parent lock step and the stale-base resume off.
+// A nil deps.OwnerCheck switches the owner check off, a nil deps.PauseOwned resolves to a no-op, and a nil deps.ParentHoldsTaskWork or deps.Restepped to reporting false.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if pollInterval < pollFloor {
 		logger.Warn("battenshed: poll_interval_s is below the floor and is raised to it", "key", "poll_interval_s", "value", pollInterval, "floor_s", int(pollFloor.Seconds()))
@@ -287,6 +298,15 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	if deps.ReviveStrands == nil {
 		deps.ReviveStrands = func(context.Context) error { return errors.New("no strand revive wired") }
 	}
+	if deps.PauseOwned == nil {
+		deps.PauseOwned = func(context.Context, string) error { return nil }
+	}
+	if deps.ParentHoldsTaskWork == nil {
+		deps.ParentHoldsTaskWork = func() (bool, error) { return false, nil }
+	}
+	if deps.Restepped == nil {
+		deps.Restepped = func(shedengine.Status) (bool, error) { return false, nil }
+	}
 	return &innerRunProducer{
 		name:         name,
 		slug:         slug,
@@ -323,6 +343,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // The full disposition table, evaluated top to bottom: a spawn as above (logging both Live-Substrate
 // Spawn Observability lines around deps.Spawn), then one more read;
 // deps.Spawn returning an error is a hard error, not Stuck, since a failed spawn is mechanism failure, not an ordinary wait, and the next Call retries it; still no status file after a successful spawn is a hard error naming the spawn that returned success without producing one.
+// A spawn refused with a ChildOwnedElsewhereError is no failed spawn: the respawn of an unconfirmed running child pauses the run and returns a budget-exempt Stuck naming the owner, and the next Call spawns nothing while the owner stands.
 // Any Call that finds the child in a state other than done first removes a leftover done-seen marker, so a marker from an earlier run of the same slug never shortens a later wait.
 // Any Call that finds the child out of a halted state likewise removes the halt-warned marker, which ends the halt episode.
 // Once the child's state is settled, the wait runs the notice step (noticeStep) on entry and at every check: informational only, one notice per condition per episode, never changing the outcome below.
@@ -409,6 +430,11 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 		if spawnErr != nil {
 			if cerr := cancelErr(ctx, p.name); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
+			}
+			if owner, owned := spawnOwnedElsewhere(spawnErr); owned {
+				w := &childWait{status: status}
+				p.ownedElsewhere(ctx, w, owner)
+				return p.exemptEnd(fmt.Sprintf("the run is owned by machine %s: not spawning its inner shed run", owner)).results()
 			}
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: spawn inner shed run (resuming this run retries the spawn): %w", p.name, spawnErr)
 		}
@@ -692,14 +718,20 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 	}
 }
 
-// check is one check of the wait: the child's status file, the watched-marker refresh and the parent lock step on the probe checks, the notice step, the arm's step, and last batten's own pause flag.
+// check is one check of the wait: the child's status file, the owner check when it is due, the watched-marker refresh and the parent lock step on the probe checks, the notice step, the arm's step, and last batten's own pause flag.
 // It returns nil to keep waiting.
 // While the pause record covers the slug, a state change still ends the wait and a halted child's notice still goes, but the arm's step does not run.
 func (p *innerRunProducer) check(ctx context.Context, w *childWait, step armStep, now time.Time) *waitEnd {
 	p.coverage(w)
+	p.foldOwnerTrigger(w, now)
 	if end := p.checkChild(ctx, w); end != nil {
+		// Only an end that read a new status runs the owner check; a failed stat or a vanished file leaves it due for the next Call.
+		if w.status.State != w.begun {
+			p.ownerStep(ctx, w)
+		}
 		return end
 	}
+	p.ownerStep(ctx, w)
 	if w.probeDue {
 		p.refreshWatched(ctx)
 		p.lockStep(ctx, w)
@@ -949,6 +981,10 @@ func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *wait
 // A spawn refused with ErrChildNotParked or ErrChildDriverBusy leaves subject unacted and is retried at most once per noticeProbe, reporting the refusal as the wait reason; any other spawn error is a hard error.
 // A resume that landed has recorded the spawn and opened the terminal window once, and leaves the wait reason to the caller.
 func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait, subject string) (resumed bool, end *waitEnd) {
+	if p.ownedBy != "" {
+		p.reportState(w, p.ownerHoldReason())
+		return false, nil
+	}
 	notParkedReason := fmt.Sprintf("%s is not acted on yet: the child's driver has not parked; retrying the resume", subject)
 	if now := p.deps.Now(); now.Before(w.resumeRetryAt) {
 		if w.busyReason != "" {
@@ -966,6 +1002,10 @@ func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait
 	if spawnErr != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return false, hardEnd(cerr)
+		}
+		if owner, owned := spawnOwnedElsewhere(spawnErr); owned {
+			p.ownedElsewhere(ctx, w, owner)
+			return false, nil
 		}
 		if errors.Is(spawnErr, ErrChildNotParked) {
 			// The child's driver is between its stop and its park, so the resume stays unacted and is retried at most once per noticeProbe.

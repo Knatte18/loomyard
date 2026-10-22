@@ -769,7 +769,7 @@ var RewoundWayForwardForTest = rewoundWayForward
 // CodeDivergedWayForwardForTest re-exports codeDivergedWayForward, so a test asserts the exact line a diverged code branch names.
 var CodeDivergedWayForwardForTest = codeDivergedWayForward
 
-// EntryFactsForTest is entryFacts, the facts classifyEntry judges an entry from.
+// EntryFactsForTest is entryFacts, the facts classifyEntry judges an entry from, OwnedElsewhere included.
 type EntryFactsForTest = entryFacts
 
 // ClassifyEntryForTest re-exports classifyEntry, so a test drives its precedence as table rows.

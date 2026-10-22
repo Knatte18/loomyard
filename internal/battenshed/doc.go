@@ -62,9 +62,12 @@
 //
 // A resume, "lyx batten run" over an existing status file, first runs the origin reconcile of the slug's run scope.
 // An entry origin ended refuses, naming the landing or the removal and "lyx cleanup --apply" from the prime; a stopped entry refuses, naming the branch, its state and the way forward for it, then the re-run;
-// an active entry resumes, and so does an unreachable origin, with a Warn.
+// an entry another machine owns refuses, naming the owner and "lyx adopt <slug>"; an active entry resumes, and so does an unreachable origin, with a Warn.
+// With origin answering, the resume first records this machine as the hub's prime owner when none is recorded, and as the owner of a run-held entry that has none; a failed write refuses, naming the re-run once origin answers or the push's own way forward.
+// With origin unreachable the resume reads the local board instead, refuses a task it shows owned elsewhere, and writes no owner.
 // A reconcile error refuses, with fixing its cause and then the re-run as the way forward.
 // A fresh start runs no reconcile: creating the pair probes origin for it, and a parent behind origin costs only Merge-In's merge.
+// It pulls the board instead, which needs origin, and refuses a task another machine owns before anything is seeded or claimed.
 //
 // Between Seed-Child and Run-Shed, three Command rows run one shell command each: Open-Window opens the operator's terminal window attached to the pair's reed session, Seed-IDE writes the pair's VS Code colour and .vscode/ config, and Open-IDE opens VS Code on the pair.
 // Each runs its command only when its batten.yaml switch is on, open_window, seed_ide and open_ide in turn, of which only open_ide is off by default, and is Done either way, a failed command only warning.
@@ -73,7 +76,7 @@
 // `lyx config batten --layer default --set <key>=<value>` from the prime changes one, and a different value in another layer is ignored with a warning.
 // A command may hold the placeholders {lyx}, {slug} and {task_dir}.
 // "--window" passes the hidden "--open-terminal", which turns Open-Window on for that run whatever batten.yaml says.
-// A run resumed past Open-Window opens no window.
+// A run resumed past Open-Window runs that command again when no client is attached to the pair's reed session, through the same switch, so a window closed or left on another machine opens afresh; a resume with a client attached opens none.
 //
 // The InnerRun row waits on its child inside its call rather than returning once per poll.
 // Every poll_interval_s it stats the child's status file, and decodes it when its modification time differs from the last decode or notice_probe_s has passed.
@@ -151,6 +154,20 @@
 // A polled seam that keeps failing, this lock step's included, warns at the first failure, logs Debug while it repeats and logs one Info when it recovers, and a retried spawn or goto logs Info on its first attempt and Debug on each retry.
 // A child awaiting at PR-Gate with no decision pending whose parent branch moved upstream is resumed through the same spawn as a decided one, so the gate's next call reroutes it to Merge-In under the lock, and its awaiting notice is suppressed.
 // The moved-parent read may fetch, so it runs only for a child awaiting at the gate row, at most once per probe.
+//
+// With deps.OwnerCheck wired, the wait also re-checks the run's owner (innerrun_owner.go), a judge-only reconcile of the run scope behind a seam.
+// The check is due when the producer's own sleep watch records a sleep of a minute or more, when a pause that covered the slug on the previous check no longer does, and on a probe check while an owner stands that no pause covers.
+// It runs after the check's status read and before any end that read gave, so a sleep and a state change seen together still run it; a failed stat or a vanished status file runs none and leaves it due for the next Call.
+// An unreachable verdict and a check error keep it due and hold nothing.
+// A verdict of another machine records that owner, releases the parent lock record naming the child's run, pauses the slug under the owner caller through deps.PauseOwned, and sends one notice per episode naming the owner and "lyx adopt <slug>".
+// A failed pause warns once per episode and is retried at the next probe while the owner stands.
+// A Finalize already past its parent-side merge keeps its record and finishes its landing: a Finalize running, or failed on a transient cause with no re-step recorded for that stop, while deps.ParentHoldsTaskWork reads true.
+// A failed read of either seam keeps the record until the next check, and any other state at Finalize, blocked included, releases it.
+// A pause held for an owner releases the record the same way on a probe check, with no check of its own.
+// Every spawn on an existing run reads a ChildOwnedElsewhereError as that verdict: the respawn of an unconfirmed running child returns a budget-exempt Stuck naming the owner, and the awaiting resume, the binary re-step and the Publish retry resume pause, write no marker and keep waiting.
+// While an owner stands every spawn waits, and the spawn hold re-runs the owner check once per probe until it reads the run as owned here, so a failed owner pause never makes the wait spawn and re-reconcile in a loop.
+// Bound: the child can act for up to one check interval after a wake before the check runs, and for as long as origin stays unreachable.
+// A Finalize past its parent-side merge finishes its landing here, and once it is done its batten waits under the owner pause until "lyx resume <slug>" lifts it, then goes on to Land.
 //
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the

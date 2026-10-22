@@ -127,6 +127,56 @@ func TestReadParentTips(t *testing.T) {
 	}
 }
 
+// TestLocalOnlyCommits covers a branch level with origin, one with two local commits listed newest first, and one with no tracking ref.
+func TestLocalOnlyCommits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		branch string
+		setup  func(t *testing.T, warpPath string) []string
+	}{
+		{
+			name:   "level with origin lists none",
+			branch: "main",
+			setup:  func(t *testing.T, warpPath string) []string { return nil },
+		},
+		{
+			name:   "two local commits are listed newest first",
+			branch: "main",
+			setup: func(t *testing.T, warpPath string) []string {
+				first := gitkit.CommitFile(t, warpPath, "one.txt", "one", "one")
+				second := gitkit.CommitFile(t, warpPath, "two.txt", "two", "two")
+				return []string{second, first}
+			},
+		},
+		{
+			name:   "no tracking ref lists none",
+			branch: "local-only",
+			setup: func(t *testing.T, warpPath string) []string {
+				gitkit.Git(t, warpPath, "branch", "local-only")
+				return nil
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
+			want := tc.setup(t, warpPath)
+
+			got, err := f.LocalOnlyCommits(tc.branch)
+			if err != nil {
+				t.Fatalf("LocalOnlyCommits(%q) error = %v", tc.branch, err)
+			}
+			if !slices.Equal(got, want) {
+				t.Errorf("LocalOnlyCommits(%q) = %v; want %v", tc.branch, got, want)
+			}
+		})
+	}
+}
+
 // TestReadParentTips_MissingBranchIsAnError covers a missing local branch, which the error names.
 func TestReadParentTips_MissingBranchIsAnError(t *testing.T) {
 	t.Parallel()

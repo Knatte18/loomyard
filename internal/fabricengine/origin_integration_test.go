@@ -429,3 +429,52 @@ func TestAdd_RunLauncherLifecycle(t *testing.T) {
 		t.Errorf("launcher dir %s still present after remove", fabricengine.LauncherDir(l, slug))
 	}
 }
+
+// TestParentSlug reads the parent pair of a pair forked from the prime, a pair forked from another pair, a slug with no pair and a pair with no origin record.
+func TestParentSlug(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	l := h.Location
+
+	const (
+		first      = "parent-first"
+		second     = "parent-second"
+		recordless = "parent-recordless"
+	)
+	hubforge.AddPairWith(t, h, first, fabricengine.AddOptions{SkipPush: true})
+	firstLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, first))
+	if err != nil {
+		t.Fatalf("lyxcwd.Resolve(first pair): %v", err)
+	}
+	if _, err := h.Topology.Add(firstLayout, second, fabricengine.AddOptions{SkipPush: true}); err != nil {
+		t.Fatalf("Add(%q) from the first pair: %v", second, err)
+	}
+	hubforge.AddPairWith(t, h, recordless, fabricengine.AddOptions{SkipPush: true})
+	if err := os.Remove(fabricengine.OriginRecordPathFor(l, recordless)); err != nil {
+		t.Fatalf("remove the origin record: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		slug string
+		want string
+	}{
+		{"PairForkedFromThePrime", first, ""},
+		{"PairForkedFromAnotherPair", second, first},
+		{"SlugWithNoPair", "parent-ghost", ""},
+		{"PairWithNoOriginRecord", recordless, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := fabricengine.ParentSlug(l, tt.slug)
+			if err != nil {
+				t.Fatalf("ParentSlug(%q) error = %v; want nil", tt.slug, err)
+			}
+			if got != tt.want {
+				t.Errorf("ParentSlug(%q) = %q; want %q", tt.slug, got, tt.want)
+			}
+		})
+	}
+}

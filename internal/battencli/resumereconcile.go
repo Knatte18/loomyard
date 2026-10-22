@@ -34,7 +34,9 @@ func reconcileRun(location *lyxcwd.Location, slug string) (fabricengine.OriginRe
 }
 
 // reconcileResume runs the run-scope reconcile for the slug the pre-run is about to resume and returns the refusal its verdict calls for.
-// An unreachable origin logs one Warn and resumes, and a reconcile error refuses with fixing its cause, then the re-run, as the way forward.
+// A reconcile error refuses with fixing its cause, then the re-run, as the way forward.
+// An unreachable origin logs one Warn and resumes, bar a task the local board shows owned by another machine, and writes no owner.
+// A reconcile that reached origin first claims the prime when no prime owner is recorded, warning when the claim fails, then judges the verdict, then records this machine as the owner of a run-held entry that has none.
 // A receiver with no reconcile seam resumes unchecked.
 func (c *battenCLI) reconcileResume() error {
 	if c.reconcile == nil {
@@ -46,13 +48,22 @@ func (c *battenCLI) reconcileResume() error {
 	}
 	if report.Unreachable {
 		logger.Warn("battencli: origin was unreachable, resuming without judging the run against it", "slug", c.slug)
-		return nil
+		return c.refuseResumeUnreachable()
 	}
-	return resumeRefusal(c.slug, report)
+	if c.owner.Machine != nil {
+		if err := c.claimPrimeOwner(); err != nil {
+			logger.Warn("battencli: the prime owner was not claimed, resuming without it", "slug", c.slug, "cause", err)
+		}
+	}
+	if err := resumeRefusal(c.slug, report); err != nil {
+		return err
+	}
+	return c.resumeOwnerClaim()
 }
 
 // resumeRefusal turns the verdict on slug's entry into the refusal a resume gets, and returns nil for an active entry or one the report does not judge.
 // An ended entry refuses naming the landing or the removal from the board, with "lyx cleanup --apply" from the prime as the way forward.
+// An entry owned elsewhere refuses naming its owner and the adopt that takes it over.
 // A stopped entry refuses naming the branch that stopped it, its state and the way forward for that state, followed by the re-run of the resume.
 func resumeRefusal(slug string, report fabricengine.OriginReport) error {
 	for _, entry := range report.Entries {
@@ -65,6 +76,8 @@ func resumeRefusal(slug string, report fabricengine.OriginReport) error {
 				"battencli: origin ended %q (%s); run \"lyx cleanup --apply\" from the prime, whose hub reconcile tears its pair down, instead of resuming it",
 				slug, endedReason(entry.How),
 			)
+		case fabricengine.EntryOwnedElsewhere:
+			return ownedElsewhereRefusal(slug, entry.Owner)
 		case fabricengine.EntryStopped:
 			return stoppedRefusal(slug, entry, report.Branches)
 		}

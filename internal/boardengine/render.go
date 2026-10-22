@@ -6,7 +6,7 @@
 // the README opens with the time it was rendered,
 // and the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug, the entry's age and time since its last revision as of that time, and the labels that are not type labels;
 // every Tasks table adds the recipe after the slug, loom for an empty one;
-// Running adds where its run stands, and Ready and the layers add the open entries each waits on.
+// Running adds where its run stands and the entry's recorded owner machine, and Ready and the layers add the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
 // the data holds only the kind and the labels.
 // No I/O — the caller writes the files.
@@ -134,6 +134,7 @@ const (
 	columnNote    = "Note"
 	columnEntry   = "Entry"
 	columnAt      = "At"
+	columnOwner   = "Owner"
 	columnAfter   = "After"
 	columnAge     = "Age"
 	columnRevised = "Revised"
@@ -271,8 +272,8 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string, 
 	}
 	if running := byLayer(runningLayer); len(running) > 0 {
 		lines = append(lines, "### "+runningSection.name, "", runningSection.meaning, "")
-		writeGroup(running, readmeTable{[]string{columnTask, columnRecipe, columnAt}, func(t Task) []string {
-			return []string{entryCell(t), recipeCell(t), atCell(*t.Status)}
+		writeGroup(running, readmeTable{[]string{columnTask, columnRecipe, columnAt, columnOwner}, func(t Task) []string {
+			return []string{entryCell(t), recipeCell(t), atCell(*t.Status), cellText(t.OwnerMachine)}
 		}})
 	}
 	lines = append(lines, "### "+readySection.name, "", readySection.meaning, "")

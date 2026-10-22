@@ -29,14 +29,26 @@
 // PR-Gate does the same before it queries the pull request, so the orch never decides on a pull request whose base moved, and its matching-rejection Stuck releases the lock before returning:
 // the edge to PR-Rework (darn: Darn-Write) leaves the Merge-In-to-Finalize window, and the reworked run takes the lock again at Merge-In.
 // Finalize takes the lock and tests the parent after parsing the change description and committing the status file, before its catch-up merge-in.
-// Under that lock it runs the same run-scope origin reconcile and maps its verdict as Merge-In does.
+// Under that lock it runs the same run-scope origin reconcile and maps its ended and stopped verdicts as Merge-In does, then the owner checks.
 // A run whose Finalize merged into the local parent here is never read as ended, so a Finalize re-entered after its done mark proceeds;
 // a Finalize entering with no such merge, its entry done on origin, stops with Halt, since another machine landed the run.
+//
+// The owner checks let a run land only on the machine that owns it and its parent, so a loom run, a darn run and an alignment approve that lands with no orch turn all pass them.
+// Finalize reads Deps.ParentHoldsTaskWork first: a parent already holding the task's work marks a Finalize past its parent-side merge, which skips both owner checks and the unreachable halt.
+// Otherwise an unreachable origin halts, the run's owner is the owner of its owned_elsewhere entry, and the parent's owner comes from Deps.ParentOwner, read from the local board the reconcile left.
+// A run whose pair has no batten run record reads as owned here, since the reconcile judges only recorded pairs, but its parent's owner is still read.
+// A parent or run owned by another machine, an unreachable origin and a failed read of either seam each stop with Halt and a reason behind OwnerHaltPrefix, so the loom halt note is written;
+// the reason names the owners and the `lyx adopt` commands that move them.
+// Merge-In proceeds on an owned_elsewhere verdict, since the owner check belongs to the landing.
+// A nil seam reads as not past the merge and as the parent owned here, so a Finalize built with no owner seams lands as before.
 // A parent that already holds the task's work, after a GitHub merge or an earlier landing, reads as not moved and lands through the already-landed path.
 // The catch-up merge-in stays: the local tip is checked equal to the merged tip under the lock, so it brings no parent code the merge review has not covered while still syncing the records side.
 // After a merge-in-required error from the parent-side merge Finalize tests the parent again, and retries once only when it has not moved, which covers a parent moved by run records alone;
 // otherwise it reroutes, so a code-side commit that arrives between the check and the parent-side merge never lands.
 // Finalize's Done releases the lock before Friction-Reflect runs.
+// A parent push that fails for a reason other than a transient one carries a repair note when origin's parent already holds the task's work, which an adopter-first landing leaves:
+// it names the task's squash by the parent head's SHA, a `git reset --keep` to origin's parent when the squash is the only commit origin lacks or a `git rebase --onto` dropping it when another is listed, and then `lyx fabric remove` of the run, leaving the owner pause standing.
+// An origin parent lacking the work, or a failed read, adds no note.
 //
 // Merge-In and Finalize clear the merge-in their own earlier attempt left parked before the clean-tree check that precedes each merge-in, Finalize's retry pass included.
 // A parked fabric `merge-in` of the parent branch is aborted, whoever started it, so a conflict session's resolution and a hand-started merge-in with its partial resolution are both discarded and the merge starts afresh.

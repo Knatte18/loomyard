@@ -1,5 +1,5 @@
 // destroy.go is the only file in package fabricengine permitted to perform a destructive primitive.
-// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), resetting a warp checkout hard (ResetHard, and ResetPairCode for a task pair's checkout, both through resetHardTo), and dropping seed commits from the hub's own board checkout (dropSeedCommits: a `reset --keep` to upstream and a replay of the other commits).
+// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), resetting a warp checkout hard (ResetHard, and ResetPairCode for a task pair's checkout, both through resetHardTo), dropping seed commits from the hub's own board checkout (dropSeedCommits: a `reset --keep` to upstream and a replay of the other commits), and moving a pair's branches to origin's tips (DropLocal: a `reset --keep` per branch, after the local tip is kept under an archive tag).
 // Every one of them is reached only through one of this file's executors, and every executor runs the shared check pipeline before performing its act — the gate executes, it does not merely approve.
 //
 // The pipeline runs four checks, always in this fixed order, stopping at the first failure:
@@ -1786,6 +1786,112 @@ func dropSeedCommits(rec *Mutations, req pathRequest, repo *gitrepo.Repo, upstre
 		rec.Append(KindCommitsDropped, req.target, strings.Join(seed, " "))
 	}
 	return nil
+}
+
+// DropLocalResult is what DropLocal reports: its mutation record and the archive tags it kept.
+type DropLocalResult struct {
+	MutationRecord
+	// Tags lists the local archive tags that hold the tips DropLocal moved branches off, one per moved branch.
+	Tags []string `json:"tags,omitempty"`
+}
+
+// dropLocalPlan is one branch DropLocal moves: its gate request, its checkout, the tip it leaves, the origin tip it moves to and the commits that tip holds origin lacks.
+type dropLocalPlan struct {
+	req       pathRequest
+	repo      *gitrepo.Repo
+	tip       string
+	onto      string
+	localOnly []string
+}
+
+// DropLocal moves the code and records branches of the pair slug to the tips origin last held for them, after keeping each branch's local tip under a local `archive/<slug>/<tip>` tag.
+// Only a branch holding commits its origin tracking ref lacks is touched, and a branch with no tracking ref is left alone.
+// The gate runs against every branch before any is tagged or moved: a tracked change on a path the move rewrites refuses with those paths named, and nothing is tagged or moved.
+// Each move is a `reset --keep` in the branch's own worktree; nothing is fetched or pushed, and the tags stay local.
+// It appends a tag_created entry per tag and a commits_dropped entry per moved branch, with the dropped commits' SHAs as the detail, each after its effect, to rec and to the result.
+func DropLocal(rec *Mutations, l *lyxcwd.Location, slug string) (res DropLocalResult, err error) {
+	own := NewMutations(l.HubPath)
+	defer func() {
+		res.Mutations = own.Snapshot()
+		rec.Extend(res.Mutations)
+	}()
+
+	targets, _, _, _, err := originTargets(l, ReconcileScope{Run: slug})
+	if err != nil {
+		return res, err
+	}
+	var plans []dropLocalPlan
+	for _, target := range targets {
+		if target.prime || target.slug != slug {
+			continue
+		}
+		repo := gitrepo.New(target.worktree)
+		tip, err := repo.CurrentSHA()
+		if err != nil {
+			return res, err
+		}
+		localOnly, err := repo.CommitsNotIn(tip, target.tracking)
+		if err != nil {
+			return res, err
+		}
+		if len(localOnly) == 0 {
+			continue
+		}
+		touched, err := pathsChangedBetween(target.worktree, "HEAD", target.tracking)
+		if err != nil {
+			return res, err
+		}
+		req := pathRequest{
+			what:      "drop local commits to origin's tip",
+			container: filepath.Dir(target.worktree),
+			target:    target.worktree,
+			ownership: ownedRegisteredLinkedWorktree(target.repoDir),
+			dirtiness: dirtyTrackedOn(touched),
+			force:     false,
+		}
+		if err := checkPathRequest(req); err != nil {
+			return res, err
+		}
+		plans = append(plans, dropLocalPlan{req: req, repo: repo, tip: tip, onto: target.tracking, localOnly: localOnly})
+	}
+
+	for _, plan := range plans {
+		tag, err := keepArchiveTag(own, plan.repo, slug, plan.tip)
+		if err != nil {
+			return res, err
+		}
+		res.Tags = append(res.Tags, tag)
+		if err := plan.repo.ResetKeep(plan.onto); err != nil {
+			return res, fmt.Errorf("move %s to origin's tip %s: %w; the local tip is kept under the tag %s", plan.req.target, plan.onto, err, tag)
+		}
+		own.Append(KindCommitsDropped, plan.req.target, strings.Join(plan.localOnly, " "))
+	}
+	return res, nil
+}
+
+// keepArchiveTag puts the local tag `archive/<slug>/<first 12 hex of sha>` on sha in repo and returns its name.
+// A tag already on sha is kept, and one on another commit is an error.
+// It appends KindTagCreated, with the repository root as the target and the tag name as the detail, only after the tag exists.
+func keepArchiveTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, error) {
+	tag := ArchiveTagPrefix + slug + "/" + sha[:archiveTagSHALen]
+	commonDir, err := repo.CommonDir()
+	if err != nil {
+		return "", fmt.Errorf("tag local tip %s: %w", sha, err)
+	}
+	existing, err := gitexec.Run([]string{"for-each-ref", "--format=%(objectname)", "refs/tags/" + tag}, commonDir)
+	if err != nil {
+		return "", fmt.Errorf("look up archive tag %q: %w", tag, err)
+	}
+	switch existing = strings.TrimSpace(existing); {
+	case existing == "":
+		if _, err := gitexec.Run([]string{"tag", tag, sha}, commonDir); err != nil {
+			return "", fmt.Errorf("create archive tag %q at %s: %w", tag, sha, err)
+		}
+	case existing != sha:
+		return "", fmt.Errorf("archive tag %q already exists at %s, not %s", tag, existing, sha)
+	}
+	rec.Append(KindTagCreated, filepath.Dir(commonDir), tag)
+	return tag, nil
 }
 
 // restoreReplayTip puts repo's branch back on tip with `reset --keep` after a replay failed past its pick, so a failure never leaves the branch on upstream.

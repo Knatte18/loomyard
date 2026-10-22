@@ -20,6 +20,7 @@
 // With `--apply` the moving reconcile runs first, and the segments compute their candidates from the reconciled state.
 // A stop on Bolt or on the prime's records branch refuses the verb with the report and runs no segment; the refusal names the stopped branch's way forward, followed for a dirty, gone or busy-on-a-write-lock stop by `then re-run lyx cleanup --apply from the prime`.
 // A reconcile error refuses `--apply` the same way, naming the error.
+// An entry owned by another machine is only reported, through the summary, and its pair is not torn down, since the reconcile's teardown covers ended entries alone.
 // A stop on a pair is only reported, and an unreachable origin is a `warning` with the segments run.
 // Under an operator's live hub pause the reconcile's network calls wait at the network gate until the lift.
 //

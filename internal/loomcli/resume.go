@@ -248,7 +248,8 @@ driver strand exists, the circling verbs at a review segment awaiting a
 decision, "lyx loom approve" or "lyx loom reject" at any other awaiting row,
 and a retry shortly for the kind "driver_not_parked", while the driver
 finishes its post-run work or a Go driver is still settling the stop. An
-unfinished merge in the worktree is refused with the kind "merge_in_progress".
+unfinished merge in the worktree is refused with the kind "merge_in_progress",
+and a run another machine owns with the kind "owned_elsewhere".
 While a pause covers this task it refuses and names "lyx resume".
 
 Example:
@@ -263,6 +264,9 @@ Example:
 
 			if err := c.refuseCovered(`run "lyx loom resume" again`); err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+			if c.refuseOwnedElsewhere(ctx, out, `run "lyx loom resume" again`) {
 				return nil
 			}
 

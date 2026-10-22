@@ -106,11 +106,17 @@ type TeardownReport struct {
 // LivePair reports whether slug's driver strand, run lock, loop lock or hub pause is live.
 // PrimeParentLockFree reads once whether the prime branch's parent lock record is free.
 // Teardown removes the local pair of an ended entry.
+// OwnerOf answers whether another machine owns an entry; nil reads every entry as owned here.
 type OriginSeams struct {
 	LivePair            func(slug string) (bool, error)
 	PrimeParentLockFree func() (bool, error)
 	Teardown            func(EndedTeardown) (TeardownReport, error)
+	OwnerOf             OwnerReader
 }
+
+// OwnerReader answers the owner question over one `board.json` of the hub at hubPath: the effective owner of slug, and whether that owner is another machine.
+// An error, including this machine having no name, is returned to the reconcile asking it, so no owner is ever compared with an empty name.
+type OwnerReader func(hubPath string, boardJSON []byte, slug string) (owner string, elsewhere bool, err error)
 
 // BranchState is the verdict on one local branch against origin's head for it.
 type BranchState string
@@ -185,6 +191,8 @@ const (
 	EntryEnded EntryState = "ended"
 	// EntryStopped means a branch of the entry or a records stop keeps it from carrying on.
 	EntryStopped EntryState = "stopped"
+	// EntryOwnedElsewhere means origin's board records another machine as the entry's owner.
+	EntryOwnedElsewhere EntryState = "owned_elsewhere"
 )
 
 // EntryOutcome is the verdict on one judged entry.
@@ -192,9 +200,11 @@ const (
 // An ended entry also carries How origin ended it, "done" or "removed", and Local when this machine holds a part of its pair.
 // Removed is set once the teardown removed that pair, with the Tags it kept work under and the reasons it Kept anything.
 // Error is the message of a teardown that failed for any reason but being busy, leaving the pair for a later `lyx cleanup --apply`.
+// Owner names the machine that owns an owned_elsewhere entry.
 type EntryOutcome struct {
 	Slug       string
 	State      EntryState
+	Owner      string
 	Busy       bool
 	WayForward string
 	How        string
@@ -215,7 +225,7 @@ type OriginReport struct {
 	Entries     []EntryOutcome
 }
 
-// Summary renders the report in a few lines for an operator: what moved, what stopped with its way forward, which entries ended and whether origin was unreachable.
+// Summary renders the report in a few lines for an operator: what moved, what stopped with its way forward, which entries another machine owns, which ended and whether origin was unreachable.
 // A stop of a dirty, gone or busy-on-a-write-lock branch is followed by the re-entry that retries it.
 // An empty report renders as the empty string.
 func (r OriginReport) Summary() string {
@@ -243,6 +253,12 @@ func (r OriginReport) Summary() string {
 			line += "; " + cleanupRerun
 		}
 		lines = append(lines, line)
+	}
+
+	for _, entry := range r.Entries {
+		if entry.State == EntryOwnedElsewhere {
+			lines = append(lines, fmt.Sprintf("owned elsewhere: %s by %s; `lyx adopt %s` takes it over", entry.Slug, entry.Owner, entry.Slug))
+		}
 	}
 
 	var ended []string
@@ -323,17 +339,23 @@ func (b BranchOutcome) dirtyWayForward() string {
 // Ended is whether origin's board shows the entry done or removed.
 // Branches are the verdicts on the entry's judged branches.
 // D3Stop is whether the records replay stopped on the prime's records branch or Bolt for this entry's sake.
+// OwnedElsewhere is whether origin's board records another machine as the entry's owner.
 type entryFacts struct {
-	Ended    bool
-	Branches []BranchState
-	D3Stop   bool
+	Ended          bool
+	OwnedElsewhere bool
+	Branches       []BranchState
+	D3Stop         bool
 }
 
 // classifyEntry is the one switch that turns an entry's facts into its verdict.
-// An ended entry is ended whatever its branches say; otherwise a D3 stop, or a branch that stops, makes it stopped; every other entry is active.
+// An ended entry is ended whatever its branches say; otherwise an entry owned elsewhere is owned_elsewhere whatever its branches say;
+// otherwise a D3 stop, or a branch that stops, makes it stopped; every other entry is active.
 func classifyEntry(f entryFacts) EntryState {
 	if f.Ended {
 		return EntryEnded
+	}
+	if f.OwnedElsewhere {
+		return EntryOwnedElsewhere
 	}
 	if f.D3Stop || slices.ContainsFunc(f.Branches, BranchState.stops) {
 		return EntryStopped
@@ -612,8 +634,9 @@ func samePath(porcelain, built string) bool {
 // ReconcileOrigin judges this machine's local branches against origin and returns the verdict on each, and on each entry whose pair has a batten run record.
 // It runs one ls-remote per repository and fetches only the heads origin moved.
 // It reads the ended set, and tears down through the seam the local pair of each run origin has ended, before any branch moves; a judge-only scope reports those teardowns and runs none.
+// It also asks the owner seam, over origin's Bolt tip, which recorded entries another machine owns, and reports those owned_elsewhere.
 // A judge-only scope stops there.
-// Any other scope then moves each branch behind origin: a fast-forward of its checkout, or a replay of a records branch's local commits.
+// Any other scope then moves each branch behind origin: a fast-forward of its checkout, or a replay of a records branch's local commits; an entry owned elsewhere has its fast-forwards moved and its records branch left unreplayed.
 // A branch a live pair, a held lock or a dirty path keeps from moving is reported as such and left where it was, and no branch is ever reset, rebased or pushed.
 // A moving scope also clears the failed-push record of each branch that is no longer local.
 // A transport failure that outlasts the retry bound is the report's Unreachable, with nothing judged against origin and nothing moved, and a nil error.
@@ -679,6 +702,10 @@ func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams
 	if err != nil {
 		return res, err
 	}
+	owners, err := readOriginOwners(l, seams, targets, res.Branches, recorded)
+	if err != nil {
+		return res, err
+	}
 	ended, err := readOriginEnded(l, targets, res.Branches, runs)
 	if err != nil {
 		return res, err
@@ -690,7 +717,7 @@ func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams
 	res.Entries = nil
 
 	if !scope.JudgeOnly {
-		mover := &originMover{rec: rec, l: l, scope: scope, seams: seams, ended: ended, targets: targets, outcomes: res.Branches, live: map[string]bool{}, ownedByEnded: endedLocalSlugs(endedEntries, scope.Run)}
+		mover := &originMover{rec: rec, l: l, scope: scope, seams: seams, ended: ended, targets: targets, outcomes: res.Branches, live: map[string]bool{}, ownedByEnded: endedLocalSlugs(endedEntries, scope.Run), owners: owners}
 		if err := mover.moveAll(pairs); err != nil {
 			return res, err
 		}
@@ -700,7 +727,7 @@ func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams
 		}
 	}
 
-	res.Entries = mergeEndedEntries(classifyEntries(scope, recorded, res.Branches), endedEntries)
+	res.Entries = mergeEndedEntries(classifyEntries(scope, recorded, res.Branches, owners), endedEntries)
 	return res, nil
 }
 
@@ -708,7 +735,8 @@ func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams
 // A stop on Bolt or on the prime's records branch stops every entry, a busy one excepted.
 // A busy records branch of the run scope's own pair stops nothing, since the run's own driver holds it.
 // A stopped entry carries the way forward of the branch that stopped it.
-func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchOutcome) []EntryOutcome {
+// owners maps the slug of each entry another machine owns to that owner; such an entry reads owned_elsewhere and carries the way forward that takes it over.
+func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchOutcome, owners map[string]string) []EntryOutcome {
 	d3Stop := false
 	d3WayForward := ""
 	for _, branch := range branches {
@@ -721,7 +749,8 @@ func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchO
 
 	var entries []EntryOutcome
 	for _, slug := range recorded {
-		facts := entryFacts{D3Stop: d3Stop}
+		owner, ownedElsewhere := owners[slug]
+		facts := entryFacts{D3Stop: d3Stop, OwnedElsewhere: ownedElsewhere}
 		wayForward := ""
 		for _, branch := range branches {
 			if branch.Slug != slug || (scope.Run == slug && branch.Repo == failedPushSideRecords && branch.State == BranchBusy) {
@@ -733,12 +762,45 @@ func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchO
 			}
 		}
 		state := classifyEntry(facts)
-		if state != EntryStopped {
+		entry := EntryOutcome{Slug: slug, State: state}
+		switch {
+		case state == EntryOwnedElsewhere:
+			entry.Owner = owner
+			wayForward = fmt.Sprintf("`lyx adopt %s` from this machine's prime takes it over", slug)
+		case state != EntryStopped:
 			wayForward = ""
-		} else if wayForward == "" {
+		case wayForward == "":
 			wayForward = d3WayForward
 		}
-		entries = append(entries, EntryOutcome{Slug: slug, State: state, WayForward: wayForward})
+		entry.WayForward = wayForward
+		entries = append(entries, entry)
 	}
 	return entries
+}
+
+// readOriginOwners asks seams.OwnerOf, once per slug of slugs, whether another machine owns the entry, over the `board.json` at origin's fetched Bolt tip.
+// It returns the owner of each slug read as owned elsewhere, and nothing for a hub with no Bolt target, no origin head or no OwnerOf seam.
+// The tip's objects are present even for a judge-only scope, which fetches them by SHA, so a dry run reads owners too and moves nothing.
+// A seam error is returned, so no verdict is ever compared with an empty machine name.
+func readOriginOwners(l *lyxcwd.Location, seams OriginSeams, targets []originTarget, outcomes []BranchOutcome, slugs []string) (map[string]string, error) {
+	boltIndex := slices.IndexFunc(targets, func(target originTarget) bool { return target.side == failedPushSideBolt })
+	if seams.OwnerOf == nil || len(slugs) == 0 || boltIndex < 0 || outcomes[boltIndex].OriginHead == "" {
+		return nil, nil
+	}
+	board, err := blobAt(gitrepo.New(targets[boltIndex].worktree), outcomes[boltIndex].OriginHead, boardFileName)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: read %s at origin's Bolt tip: %w", boardFileName, err)
+	}
+
+	owners := map[string]string{}
+	for _, slug := range slugs {
+		owner, elsewhere, err := seams.OwnerOf(l.HubPath, board, slug)
+		if err != nil {
+			return nil, fmt.Errorf("fabricengine: read the owner of %s: %w", slug, err)
+		}
+		if elsewhere {
+			owners[slug] = owner
+		}
+	}
+	return owners, nil
 }

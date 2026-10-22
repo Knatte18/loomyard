@@ -43,8 +43,36 @@ type lockHarness struct {
 	notices    []string
 	// coveredThrough makes the fake pause record cover the slug until that many Sleep calls have been made; zero never covers it.
 	coveredThrough int
+	// coverage, when set, is the fake pause record's reading after that many Sleep calls, in place of coveredThrough and the owner pause.
+	coverage func(call int) pauserecord.Coverage
+	// scratchDir is the producer's scratch directory.
+	scratchDir string
+	// asleep is how far the awake clock trails the wall clock, which sleep advances to stage a machine sleep.
+	asleep time.Duration
+
+	// verdict is the fake owner check's answer to its nth call, counted from one; nil reads as owned here.
+	verdict    func(n int) (OwnerVerdict, error)
+	ownerCalls int
+	// pauseErr is the error the fake owner pause answers its nth call with, counted from one; nil never fails.
+	pauseErr func(n int) error
+	// ownerPauses is the owner every fake owner pause was asked for, and heldByOwner whether one landed, which the fake pause record then reports as an owner hold.
+	ownerPauses []string
+	heldByOwner bool
+	// parentHolds, restepped and their errors answer the Finalize carve-out seams.
+	parentHolds    bool
+	parentHoldsErr error
+	restepped      bool
+	restepErr      error
+	// spawnErr is what the fake spawn returns.
+	spawnErr error
 
 	producer shedengine.ShedProducer
+}
+
+// sleep advances the wall clock by d without the awake clock, which the owner check reads as a machine sleep of d.
+func (h *lockHarness) sleep(d time.Duration) {
+	h.clock.advance(d)
+	h.asleep += d
 }
 
 func handedRecord() *parentlock.Record {
@@ -63,7 +91,30 @@ func newLockHarness(t *testing.T, status shedengine.Status) *lockHarness {
 	_, spawns, deps := newInnerRunDeps(t, nil, nil, []statusResult{{found: true}}, h.clock)
 	h.spawns = spawns
 	deps.NoticeProbe = lockCheckGap
-	deps.Awake = func() time.Duration { return h.clock.Now().Sub(started) }
+	deps.Awake = func() time.Duration { return h.clock.Now().Sub(started) - h.asleep }
+	deps.Spawn = func(context.Context) error {
+		*h.spawns++
+		return h.spawnErr
+	}
+	deps.OwnerCheck = func(context.Context) (OwnerVerdict, error) {
+		h.ownerCalls++
+		if h.verdict == nil {
+			return OwnerVerdict{}, nil
+		}
+		return h.verdict(h.ownerCalls)
+	}
+	deps.PauseOwned = func(_ context.Context, owner string) error {
+		h.ownerPauses = append(h.ownerPauses, owner)
+		if h.pauseErr != nil {
+			if err := h.pauseErr(len(h.ownerPauses)); err != nil {
+				return err
+			}
+		}
+		h.heldByOwner = true
+		return nil
+	}
+	deps.ParentHoldsTaskWork = func() (bool, error) { return h.parentHolds, h.parentHoldsErr }
+	deps.Restepped = func(shedengine.Status) (bool, error) { return h.restepped, h.restepErr }
 	deps.ReadStatus = func(string, string) (shedengine.Status, bool, error) { return h.status, true, nil }
 	deps.ReadDecision = func() (ChildDecision, bool, error) {
 		if h.decision == nil {
@@ -73,6 +124,12 @@ func newLockHarness(t *testing.T, status shedengine.Status) *lockHarness {
 	}
 	deps.PairDir = func() (string, error) { return "/pair", nil }
 	deps.Pause = func() (pauserecord.Coverage, error) {
+		if h.coverage != nil {
+			return h.coverage(h.clock.sleepCalls), nil
+		}
+		if h.heldByOwner {
+			return pauserecord.Coverage{Covered: true, OwnerHeld: true, Entry: pauserecord.Entry{Scope: "myslug", Caller: pauserecord.OwnerCaller}}, nil
+		}
 		return pauserecord.Coverage{Covered: h.clock.sleepCalls < h.coveredThrough, Entry: pauserecord.Entry{Scope: pauserecord.ScopeHub}}, nil
 	}
 	deps.Notify = func(_ context.Context, line string) (bool, error) {
@@ -103,7 +160,8 @@ func newLockHarness(t *testing.T, status shedengine.Status) *lockHarness {
 		},
 		GateRow: lockGateRow,
 	}
-	h.producer = NewInnerRun("innerrun", "myslug", deps, lockCheckGap, t.TempDir(), testGrace)
+	h.scratchDir = t.TempDir()
+	h.producer = NewInnerRun("innerrun", "myslug", deps, lockCheckGap, h.scratchDir, testGrace)
 	return h
 }
 
