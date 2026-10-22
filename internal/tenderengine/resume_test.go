@@ -21,6 +21,28 @@ import (
 )
 
 func TestResume(t *testing.T) {
+	pausedP1 := &shuttleengine.PausedError{Slug: "p1", Err: shuttleengine.ErrPaused}
+	// addLiveP1 adds a live entry of scope p1 owning sessions, the pause that lands after the lift's lock.
+	addLiveP1 := func(t *testing.T, e *env, sessions ...pauserecord.Session) {
+		t.Helper()
+		now := e.clock.Now()
+		_, err := pauserecord.Update(e.path, now, func(r *pauserecord.Record) error {
+			r.Live = append(r.Live, pauserecord.Entry{Scope: "p1", PausedAt: now, GraceEnd: now, Caller: "EXTERNAL", Sessions: sessions})
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// liveP1Sessions returns the sessions the live p1 entry owns, nil when none is live.
+	liveP1Sessions := func(e *env) []pauserecord.Session {
+		for _, entry := range e.record().Live {
+			if entry.Scope == "p1" {
+				return entry.Sessions
+			}
+		}
+		return nil
+	}
 	tests := []struct {
 		name string
 		run  func(t *testing.T)
@@ -177,6 +199,129 @@ func TestResume(t *testing.T) {
 				if live := e.record().Live; len(live) != 1 || len(live[0].Sessions) != 1 {
 					t.Errorf("%s: live entries = %+v; want the hub entry live with its session", tc.name, live)
 				}
+			}
+		}},
+		{"a send refused by a pause added after the lift claims the session into it, which owns it and gives the session no line now", func(t *testing.T) {
+			p := newPair("p1", "a")
+			e := newEnv(t, p)
+			e.seedLive(hubEntry(e.clock.Now(), recorded("p1", "a")))
+			p.onSend = func(string) error {
+				addLiveP1(t, e)
+				return pausedP1
+			}
+
+			report, err := e.resume("")
+
+			if err != nil || !reflect.DeepEqual(report.Moved, []string{"a"}) || len(report.Lines)+len(report.NoLine) != 0 || len(p.sends) != 0 {
+				t.Errorf("report %+v, err %v, sends %v; want a moved and no line", report, err, p.sends)
+			}
+			if got := liveP1Sessions(e); !reflect.DeepEqual(got, []pauserecord.Session{recorded("p1", "a")}) {
+				t.Errorf("live p1 sessions = %+v; want a owned by the new entry", got)
+			}
+		}},
+		{"a refusal whose pause ended is sent again and the second send lands", func(t *testing.T) {
+			p := newPair("p1", "a")
+			e := newEnv(t, p)
+			e.seedLive(hubEntry(e.clock.Now(), recorded("p1", "a")))
+			refused := false
+			p.onSend = func(string) error {
+				if refused {
+					return nil
+				}
+				refused = true
+				return pausedP1
+			}
+
+			report, err := e.resume("")
+
+			if err != nil || !reflect.DeepEqual(report.Lines, []string{"a"}) || len(report.Moved)+len(report.NoLine) != 0 || !reflect.DeepEqual(p.sends, []string{"g-a"}) {
+				t.Errorf("report %+v, err %v, sends %v; want a given its line by the second send", report, err, p.sends)
+			}
+		}},
+		{"a second refusal by a newer pause claims the session into it", func(t *testing.T) {
+			p := newPair("p1", "a")
+			e := newEnv(t, p)
+			e.seedLive(hubEntry(e.clock.Now(), recorded("p1", "a")))
+			sends := 0
+			p.onSend = func(string) error {
+				sends++
+				if sends == 2 {
+					addLiveP1(t, e)
+				}
+				return pausedP1
+			}
+
+			report, err := e.resume("")
+
+			if err != nil || sends != 2 || !reflect.DeepEqual(report.Moved, []string{"a"}) || len(report.Lines)+len(report.NoLine) != 0 {
+				t.Errorf("report %+v, err %v, %d sends; want a moved after two sends", report, err, sends)
+			}
+			if got := liveP1Sessions(e); !reflect.DeepEqual(got, []pauserecord.Session{recorded("p1", "a")}) {
+				t.Errorf("live p1 sessions = %+v; want a owned by the newer entry", got)
+			}
+		}},
+		{"two refusals with no pause left name the ended-pause reason and send no third time", func(t *testing.T) {
+			p := newPair("p1", "a")
+			e := newEnv(t, p)
+			e.seedLive(hubEntry(e.clock.Now(), recorded("p1", "a")))
+			sends := 0
+			p.onSend = func(string) error {
+				sends++
+				return pausedP1
+			}
+
+			report, err := e.resume("")
+
+			want := []SessionNote{{"a", "p1", "the send was held by a pause that has since ended and a second one"}}
+			if err != nil || sends != 2 || !reflect.DeepEqual(report.NoLine, want) || len(report.Lines)+len(report.Moved) != 0 {
+				t.Errorf("report %+v, err %v, %d sends; want a under no_line with the ended-pause reason after two sends", report, err, sends)
+			}
+		}},
+		{"a refusing entry that already owns the session reports it moved and keeps one copy", func(t *testing.T) {
+			p := newPair("p1", "a")
+			e := newEnv(t, p)
+			e.seedLive(hubEntry(e.clock.Now(), recorded("p1", "a")))
+			p.onSend = func(string) error {
+				addLiveP1(t, e, recorded("p1", "a"))
+				return pausedP1
+			}
+
+			report, err := e.resume("")
+
+			if err != nil || !reflect.DeepEqual(report.Moved, []string{"a"}) || len(report.Lines)+len(report.NoLine) != 0 {
+				t.Errorf("report %+v, err %v; want a moved", report, err)
+			}
+			if got := liveP1Sessions(e); !reflect.DeepEqual(got, []pauserecord.Session{recorded("p1", "a")}) {
+				t.Errorf("live p1 sessions = %+v; want one copy of a", got)
+			}
+		}},
+		{"a record made undecodable during the send names the claim failure", func(t *testing.T) {
+			p := newPair("p1", "a")
+			e := newEnv(t, p)
+			e.seedLive(hubEntry(e.clock.Now(), recorded("p1", "a")))
+			p.onSend = func(string) error {
+				if err := os.WriteFile(e.path, []byte("{not json"), 0o644); err != nil {
+					t.Error(err)
+				}
+				return pausedP1
+			}
+
+			report, err := e.resume("")
+
+			if err != nil || len(report.NoLine) != 1 || !strings.HasPrefix(report.NoLine[0].Reason, "the send was held by a pause and the claim failed: ") || len(report.Lines)+len(report.Moved) != 0 {
+				t.Errorf("report %+v, err %v; want a under no_line with the claim-failed reason", report, err)
+			}
+		}},
+		{"a prime session a pause recorded gets its line through the prime pair", func(t *testing.T) {
+			prime := newPair("", "x")
+			e := newEnv(t, newPair("p1"))
+			e.prime = prime
+			e.seedLive(hubEntry(e.clock.Now(), recorded("", "x")))
+
+			report, err := e.resume("")
+
+			if err != nil || !reflect.DeepEqual(report.Lines, []string{"x"}) || len(report.NoLine) != 0 || !reflect.DeepEqual(prime.sends, []string{"g-x"}) {
+				t.Errorf("report %+v, err %v, prime sends %v; want the prime session given its line", report, err, prime.sends)
 			}
 		}},
 		{"resuming nothing succeeds with nothing resumed", func(t *testing.T) {

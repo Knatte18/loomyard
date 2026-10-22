@@ -177,7 +177,7 @@ type verifyGateSeams struct {
 // it fails with the dirty paths when the tree is not clean;
 // once a pre-fix head is recorded, it fails `Terminal` when a commit above it is neither a non-merge commit nor a clean parent merge, and otherwise records those commits in the notes;
 // it renders the hub's `final` gate call over the whole tree from the told gate config, and returns the config's refusal, which names `lyx config gate`, as its error;
-// otherwise it runs that call through verifytree.Verify, reruns it once on a failure, and passes a flaky failure whose rerun passed.
+// otherwise it runs that call through verifytree.Verify, told geom.VerifyHold on the first run and the rerun alike, reruns it once on a failure, and passes a flaky failure whose rerun passed.
 // A run that timed out or hung, as classifyHang reads its log and exit code, is not re-run: it fails at once.
 // A failure that survives returns findings, and the first failure of any kind records HEAD as the pre-fix head.
 // Every failed evaluation writes the verify-gate report.
@@ -214,6 +214,7 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 			return geom.git().CommitLog(geom.WorktreeRoot, base, head)
 		},
 		verify: func(site verifytree.Site, command string) (verifytree.Result, error) {
+			site.Hold = geom.VerifyHold
 			return verifytree.Verify(context.Background(), paths, site, command)
 		},
 		readLog: func(path string) (string, error) {

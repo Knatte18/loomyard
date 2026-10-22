@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -172,6 +173,7 @@ func LandingDeps(dir string) landingshed.Deps {
 		PublishCommand:    func() (string, error) { return "lyx gate test --wait --tier 2 --all", nil },
 		BaseCommand:       func() (string, error) { return "lyx gate test --wait --tier 0 --all", nil },
 		GateTiers:         fixedGateTiers,
+		VerifyHold:        verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
 		Lock: landingshed.ParentLockDeps{
 			Store:          &parentlock.Store{Dir: filepath.Join(dir, "parent-lock")},
 			Owner:          func() (parentlock.Owner, error) { return parentlock.Owner{Slug: "fixture", RunID: "fixture"}, nil },
@@ -269,6 +271,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		VerifyDir:          mustMkdir(t, filepath.Join(dir, "verify")),
 		VerifyCommand:      func() (string, error) { return "go test ./...", nil },
 		Round:              func() (loomshed.RoundGate, error) { return fixedRoundGate(), nil },
+		VerifyHold:         verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
 		StatusPath:         filepath.Join(dir, "status.json"),
 		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
 		StencilsDir:        mustMkdir(t, filepath.Join(dir, "stencils")),

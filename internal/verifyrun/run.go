@@ -12,9 +12,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -33,8 +35,10 @@ const waitDelay = 10 * time.Second
 // A nil env runs the shell with the parent's environment; a non-nil env is the shell's whole environment.
 //
 // A zero exit returns (0, nil), and a non-zero exit returns (exitCode, nil).
-// A cancelled ctx returns (-1, err) with err wrapping ctx.Err(), after killing the shell:
-// on Unix the shell's whole process group, elsewhere the shell alone.
+// A cancelled ctx returns (-1, err) with err wrapping ctx.Err().
+// On Unix the cancel sends SIGTERM to the shell's whole process group, then SIGKILL to it after the wait delay.
+// Run returns only after the group is gone or that SIGKILL is sent.
+// Elsewhere the cancel kills the shell alone.
 // A shell that could not start returns (-1, err) naming the command.
 func Run(ctx context.Context, command, dir string, env []string, out io.Writer) (int, error) {
 	return run(ctx, command, dir, env, out, waitDelay)
@@ -76,14 +80,16 @@ func run(ctx context.Context, command, dir string, env []string, out io.Writer, 
 	cmd.Dir = dir
 	cmd.Env = env
 	cmd.WaitDelay = delay
-	proc.ConfigureGroupKill(cmd, func(pid int, groupErr error) {
+	awaitGone := proc.ConfigureGroupTerminate(cmd, delay, func(pid int, sig os.Signal, groupErr error) {
 		switch {
+		case groupErr == nil && sig == syscall.SIGTERM:
+			logger.Info("verifyrun: sending SIGTERM to verify process group", "pid", pid, "command", command)
 		case groupErr == nil:
-			logger.Info("verifyrun: killing verify process group", "pid", pid, "command", command)
+			logger.Info("verifyrun: sending SIGKILL after the wait delay to verify process group", "pid", pid, "command", command)
 		case errors.Is(groupErr, proc.ErrNoProcessGroup):
 			logger.Warn("verifyrun: killed only the verify shell; its descendants may outlive it", "pid", pid, "command", command)
 		default:
-			logger.Warn("verifyrun: process group kill failed, killing the shell only", "pid", pid, "command", command, "cause", groupErr)
+			logger.Warn("verifyrun: signalling the verify process group failed", "pid", pid, "signal", sig, "command", command, "cause", groupErr)
 		}
 	})
 	if out != io.Discard {
@@ -93,6 +99,7 @@ func run(ctx context.Context, command, dir string, env []string, out io.Writer, 
 
 	logger.Info("verifyrun: spawning verify command", "shell", shellName, "command", command, "dir", dir)
 	err := cmd.Run()
+	awaitGone()
 	if err == nil {
 		logger.Info("verifyrun: verify command exited", "command", command, "dir", dir, "exitCode", 0)
 		return 0, nil

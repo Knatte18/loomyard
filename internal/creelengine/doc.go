@@ -6,7 +6,7 @@
 //
 // Creel decides what is delivered and when, shuttle knows the provider and its idle check and safe send, and reed knows the pane and does the keystrokes: creel → shuttle → reed → tmux.
 // The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-creel-store` pins that with an import scan.
-// Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, types one line into its pane, runs one command of a closed set in its session and sends the guarded interrupt.
+// Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, claims a covered strand into its pause for the interrupt, types one line into its pane, runs one command of a closed set in its session and sends the guarded interrupt.
 // Its idle answer carries a stall reason when a not-idle pane waits on something the operator can act on, a pane too short for the input box, a draft in it or a pane showing no input box, and the engine journals each change of that reason as a `stalled` record.
 // `internal/creelcli` implements it over the hub's worktrees, reed's persisted state and status, the pause record, and a shuttle runner built per worktree at each call.
 // Shuttle's idle check, verified send and guarded interrupt work on a strand with no run record, such as a session added by hand with `lyx reed add`.
@@ -138,7 +138,8 @@
 // interrupt sends the guarded interrupt at once, bypassing the queue, and reports whether it stopped a running turn.
 // The interrupt clears a prompt the provider restored, and a clear that fails after the key was sent still counts as sent.
 // No delivery reaches the receiver while the interrupt runs, its settles and its clear included, and the receiver's worker probes afresh once it ends.
-// A covering pause, an unreadable pause record and another sender's hold refuse it.
+// A strand a pause covers is claimed into that pause and then interrupted, so `lyx tender resume` gives it its resume line.
+// An unreadable pause record, a pause lifted before the key and another sender's hold refuse it.
 //
 // EXTERNAL senders, programs and orch strands may inject, interrupt and hold on any strand, an orch strand included; any other strand may do so on its own strand only.
 // A hold on an orch strand is the exception: only a program may hold one, and any other sender is refused with the way forward, mail with `lyx creel post` or a cycle with `lyx orch distill` or `lyx orch refresh`.
@@ -156,6 +157,7 @@
 // A pause that covers a strand holds every delivery into its pane, injects and reminders alike, and freezes the TTL of its injects until the pause is lifted.
 // post still stores the mail.
 // The Delivery seam answers whether a pause covers a strand; a prime strand is covered by a hub-wide entry only.
+// The delivery worker only reads that answer and records nothing; the interrupt alone claims a covered strand into its pause, and inject --interrupt reaches the same step, so under a pause it claims, interrupts and queues the inject, which the worker holds until the resume.
 //
 // # Removed holders
 //

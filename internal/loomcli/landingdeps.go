@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -167,6 +168,7 @@ func landingDeps(
 		FailingTests:           failingTestsOf,
 		VerifyDir:              verifytree.Dir(l.AnchorPath()),
 		VerifyWaitMark:         verifyWaitMark,
+		VerifyHold:             verifytree.NewPauseHold(runner.PauseGeometry(), holdsParentLock(lock.Store, l.WorktreeName)),
 		Shuttle:                runner,
 		EnginesRun:             runner.EnginesRun,
 		Registry:               registry,
@@ -315,6 +317,32 @@ func parentLockDeps(l *lyxcwd.Location, runID, statusPath, statusLockPath string
 			}
 			return status.PauseAfter != "" && status.PauseAfter == status.CurrentProducer, nil
 		},
+	}
+}
+
+// holdsParentLock returns the function that reports whether a live parent lock of store is owned by slug, which a verify hold reads on every poll.
+// A nil store reads not held, and an error of the store reads not held, logged once per distinct error.
+func holdsParentLock(store *parentlock.Store, slug string) func() bool {
+	var (
+		mutex     sync.Mutex
+		lastError string
+	)
+	return func() bool {
+		if store == nil {
+			return false
+		}
+		held, err := store.HeldBy(slug)
+		mutex.Lock()
+		defer mutex.Unlock()
+		if err != nil {
+			if err.Error() != lastError {
+				lastError = err.Error()
+				logger.Warn("loomcli: the parent locks cannot be listed, so the verify hold reads none held", "cause", err)
+			}
+			return false
+		}
+		lastError = ""
+		return held
 	}
 }
 

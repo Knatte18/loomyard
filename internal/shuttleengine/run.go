@@ -65,6 +65,12 @@ type Runner struct {
 	holds map[string]*turnStartHold
 	// activityFailures keeps one operator-activity failure episode per strand guid, shared by every send and idle probe of the runner.
 	activityFailures logger.EpisodeSet
+	// pauseWarnMu guards coverageReadWarned and statusReadWarned.
+	pauseWarnMu sync.Mutex
+	// coverageReadWarned is the text of the pause record error a send's coverage reading last warned about, so a persistent error warns once.
+	coverageReadWarned string
+	// statusReadWarned is the text of the reed status error a send's target-slug reading last warned about, so a persistent error warns once.
+	statusReadWarned string
 }
 
 // holdFor returns the turn-start hold the runner keeps for the strand guid, creating it on first use.
@@ -90,6 +96,7 @@ func (r *Runner) SetNotifier(notify func(line string) error) {
 }
 
 // SetPause tells the runner the pause geometry it reads, so a run start waits while a pause covers the geometry's slug and a run's Wait skips its deadline and notices while covered.
+// The geometry is also what every send judges its target's coverage by: a send into a covered session is refused with ErrPaused.
 // A runner never told one reads no record.
 func (r *Runner) SetPause(geom pauserecord.Geometry) {
 	r.pause = geom
@@ -100,13 +107,13 @@ func (r *Runner) PauseGeometry() pauserecord.Geometry {
 	return r.pause
 }
 
-// waitWhileCovered returns once no pause covers the runner's slug, at once for a runner told no pause geometry.
+// waitWhileCovered returns once no pause covers slug, at once for a runner told no pause geometry.
 // It writes its one line to stderr and to the trace, and sleeps on the runner's clock.
-func (r *Runner) waitWhileCovered() error {
+func (r *Runner) waitWhileCovered(slug string) error {
 	if r.pause.RecordPath == "" {
 		return nil
 	}
-	return pauserecord.WaitUncovered(context.Background(), r.pause.RecordPath, r.pause.Slug, pauserecord.Waiter{
+	return pauserecord.WaitUncovered(context.Background(), r.pause.RecordPath, slug, pauserecord.Waiter{
 		Notify: func(line string) {
 			fmt.Fprintln(os.Stderr, line)
 			logger.Info("shuttle: run start held by a pause", "line", line)
@@ -334,8 +341,14 @@ type Run struct {
 	deadlineExcluded time.Duration
 	// sleeps is the machine sleeps Wait has seen, fed from an AwakeClock.
 	sleeps pauserecord.SleepWatch
-	// covered reports that the latest Wait tick read a pause covering the run's pair.
+	// covered reports that the latest Wait tick read a pause covering the run's own session.
 	covered bool
+	// sessionSlug is the slug of the run's strand name as reed's status first reported it, when the record held no name; sessionSlugKnown reports that it is set.
+	// A strand's name is fixed for its life, so one successful lookup serves every tick.
+	sessionSlug      string
+	sessionSlugKnown bool
+	// boundaryHeld marks a gated Done arrival that reached the boundary while covered, whose evaluation waits for the first uncovered tick.
+	boundaryHeld bool
 	// turnSince is the run clock's time when Wait last read a turn start, or began.
 	turnSince time.Time
 	// pauseReadError is the text of the pause record error last warned about, so a persistent error warns once.
@@ -515,7 +528,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		return nil, Result{}, err
 	}
 
-	if err := r.waitWhileCovered(); err != nil {
+	if err := r.waitWhileCovered(r.pause.Slug); err != nil {
 		return nil, Result{}, fmt.Errorf("shuttle: wait for the pause to lift: %w", err)
 	}
 
@@ -730,13 +743,30 @@ func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color
 			return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: persist the prompt offset after loading skills: %w", err))
 		}
 	}
-	if err := sendVerified(run.newSendContext(), promptLine); err != nil {
+	if err := run.sendThroughPause(run.newSendContext(), promptLine); err != nil {
 		if errors.Is(err, ErrSubmissionNotLanded) && turnStartedSince(run.engine, run.state.EventsPath, sentAt) {
 			return Result{}, nil
 		}
 		return run.abandonStartup(OutcomeDied, fmt.Errorf("shuttle: deliver the prompt after loading skills: %w", err))
 	}
 	return Result{}, nil
+}
+
+// sendThroughPause sends text over sc through the verified send path and, when a pause refuses it with ErrPaused, waits out the pause and sends again.
+// The wait judges the slug the refusal judged, and each resend builds a fresh context, so a second pause landing before the resend holds it again.
+// Any other result returns as the send gave it, and a failed wait returns wrapped.
+func (run *Run) sendThroughPause(sc sendContext, text string) error {
+	for {
+		err := sendVerified(sc, text)
+		var paused *PausedError
+		if !errors.As(err, &paused) {
+			return err
+		}
+		if waitErr := run.runner.waitWhileCovered(paused.Slug); waitErr != nil {
+			return fmt.Errorf("shuttle: wait for the pause to lift: %w", waitErr)
+		}
+		sc = run.newSendContext()
+	}
 }
 
 // DeliverPendingPrompt types the run's deferred prompt line when the prompt's turn never started, and reports whether it did.
@@ -766,7 +796,7 @@ func (run *Run) DeliverPendingPrompt() (bool, error) {
 	}
 	run.sendMu.Lock()
 	defer run.sendMu.Unlock()
-	if err := sendVerified(run.newSendContext(), record.PromptLine); err != nil {
+	if err := run.sendThroughPause(run.newSendContext(), record.PromptLine); err != nil {
 		return false, fmt.Errorf("shuttle: deliver the pending prompt: %w", err)
 	}
 	return true, nil
@@ -817,7 +847,7 @@ func (run *Run) loadSkillTurn(loader SkillLoader, skills []string, timeout time.
 	reed := run.runner.reed
 	guid := run.state.StrandGUID
 	if typed {
-		if err := sendVerified(run.newSendContext(), loader.SkillLoadMessage(skills)); err != nil {
+		if err := run.sendThroughPause(run.newSendContext(), loader.SkillLoadMessage(skills)); err != nil {
 			return Event{}, false, false, fmt.Errorf("shuttle: load skills %v: %w", skills, err)
 		}
 	}
@@ -1149,7 +1179,7 @@ func (r *Runner) Send(guid, text string) error {
 		if liveErr != nil {
 			return notShuttleOrLiveStrandError(guid, liveErr)
 		}
-		sc, err := r.recordlessSendContext(guid, strand.Provider)
+		sc, err := r.recordlessSendContext(guid, strand.Name, strand.Provider)
 		if err != nil {
 			return err
 		}
@@ -1453,9 +1483,13 @@ func deliveredBelowBaseline(current, baseline paneNeedleScan) bool {
 
 // sendVerified waits for an idle session, then types text and verifies delivery.
 // A busy session fails the send with ErrSessionBusy before anything is typed.
+// A target a pause covers, read after the idle wait, fails it with a *PausedError before anything is typed.
 // On the paste path a retry of a text whose pending-send record shows it went out types nothing; a strand with no run record keeps no such record.
 func sendVerified(sc sendContext, text string) error {
 	if err := awaitIdleSession(sc); err != nil {
+		return err
+	}
+	if err := sc.pausedRefusal(); err != nil {
 		return err
 	}
 	if _, ok := sc.engine.(TextPaster); ok && !sc.recordless {
@@ -1507,6 +1541,9 @@ func sendVerified(sc sendContext, text string) error {
 // An engine without the capability plays ComposeSend and keeps the appearance-only check with no window,
 // so a text that collapses into a paste placeholder is never confirmed there and relies on the engine's own pacing.
 //
+// A pause that covers the target before a replay of the choreography (try > 0) fails the send with a *PausedError, leaving that replay untyped.
+// The conditioned send reaches this function directly, so its replays read coverage too.
+//
 // It assumes the caller has already judged the session ready to take the text.
 func typeVerified(sc sendContext, text string) error {
 	reed, engine, guid := sc.reed, sc.engine, sc.guid
@@ -1539,6 +1576,11 @@ func typeVerified(sc sendContext, text string) error {
 	for try := 0; try <= sendReplays; try++ {
 		if windowClosed(sc.clock, closeAt) {
 			break
+		}
+		if try > 0 {
+			if err := sc.pausedRefusal(); err != nil {
+				return err
+			}
 		}
 		if err := playInputs(reed, guid, typing(text)); err != nil {
 			return err

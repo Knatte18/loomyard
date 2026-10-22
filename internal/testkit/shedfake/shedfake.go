@@ -13,10 +13,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -432,7 +434,7 @@ type (
 	indexSeam      struct{ planindex.Index }
 )
 
-// WebsterSeams returns a RunDeps whose Starter, Stopper, Engines and RefMatcher, and the Index of its Geom, are placeholders.
+// WebsterSeams returns a RunDeps whose Starter, Stopper, Engines and RefMatcher, and the Index of its Geom, are placeholders, and whose Geom carries a verify pause hold over an empty pause record.
 // Each embeds its interface in an empty struct, so it is non-nil for a constructor check and panics if any method is called.
 func WebsterSeams() websterengine.RunDeps {
 	return websterengine.RunDeps{
@@ -441,7 +443,10 @@ func WebsterSeams() websterengine.RunDeps {
 		Engines:    auditEngines{},
 		RefMatcher: refMatcherSeam{},
 		ReadOnly:   func(string) bool { return false },
-		Geom:       websterengine.Geometry{Index: indexSeam{}},
+		Geom: websterengine.Geometry{
+			Index:      indexSeam{},
+			VerifyHold: verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
+		},
 	}
 }
 

@@ -5,6 +5,7 @@ package seatengine
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -308,13 +309,38 @@ func await(t *testing.T, ended <-chan engineEnd) engineEnd {
 	}
 }
 
+// waitRecorder stands in for the notice sender's timer: it answers every wait at once and keeps each duration it was asked for.
+type waitRecorder struct {
+	mu    sync.Mutex
+	waits []time.Duration
+}
+
+// after records d and returns a channel that is already ready.
+func (r *waitRecorder) after(d time.Duration) <-chan time.Time {
+	r.mu.Lock()
+	r.waits = append(r.waits, d)
+	r.mu.Unlock()
+	ready := make(chan time.Time, 1)
+	ready <- time.Time{}
+	return ready
+}
+
+// recorded returns the first n durations asked for, or all of them when fewer were asked for.
+func (r *waitRecorder) recorded(n int) []time.Duration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.waits[:min(n, len(r.waits))])
+}
+
 // engineFixture returns an engine over a fresh fake shuttle, whose stencils directory and worktree root are set up for table.
+// Its notice sender waits through a waitRecorder, so no retry costs real time.
 func engineFixture(t *testing.T, shuttle *fakeShuttle) (*Engine, Geometry) {
 	t.Helper()
 	geom := promptGeometry(t)
 	geom.WorktreeRoot = t.TempDir()
 	engine := New(shuttle, geom)
 	engine.noticeRetry = time.Millisecond
+	engine.noticeAfter = (&waitRecorder{}).after
 	return engine, geom
 }
 

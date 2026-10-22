@@ -16,16 +16,18 @@ import (
 // isAlive is the liveness seam, so marker tests stay tier 1.
 var isAlive = proc.IsAlive
 
-// The two states of a Marker.
+// The three states of a Marker.
 const (
 	// MarkerStateWaiting means the run waits for a gate slot and has not started its command.
 	MarkerStateWaiting = "waiting"
 	// MarkerStateRunning means the run holds its slot, or runs unslotted, and its command runs.
 	MarkerStateRunning = "running"
+	// MarkerStatePaused means a pause holds the run: its command is not running and starts again after the resume.
+	MarkerStatePaused = "paused"
 )
 
 // Marker is the running marker: which site is verifying which command, since when, and the pid that holds it.
-// State says whether the run still waits for a gate slot; WaitStarted is when that wait began, zero for an unslotted run.
+// State says whether the run waits for a gate slot, runs its command or is held by a pause; WaitStarted is when a wait or hold began, zero for an unslotted run that never waited.
 type Marker struct {
 	Site        string    `yaml:"site"`
 	Attempt     int       `yaml:"attempt"`

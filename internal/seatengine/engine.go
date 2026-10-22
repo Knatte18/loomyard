@@ -54,11 +54,12 @@ type Engine struct {
 	shuttle     Shuttle
 	geom        Geometry
 	noticeRetry time.Duration
+	noticeAfter func(time.Duration) <-chan time.Time
 }
 
 // New returns an Engine that starts and probes seats through shuttle and reads the paths geom tells it.
 func New(shuttle Shuttle, geom Geometry) *Engine {
-	return &Engine{shuttle: shuttle, geom: geom, noticeRetry: defaultNoticeRetry}
+	return &Engine{shuttle: shuttle, geom: geom, noticeRetry: defaultNoticeRetry, noticeAfter: time.After}
 }
 
 // seatRun is one advisor: its handle, and what its goroutine recorded when its wait ended, or why it never started.
@@ -217,7 +218,7 @@ func (e *Engine) Run(table Table) (Result, error) {
 		return Result{}, err
 	}
 	chairOutputs := e.absolute(table.Chair().Outputs)
-	sender := newNoticeSender(chairOutputs, e.noticeRetry)
+	sender := newNoticeSender(chairOutputs, e.noticeRetry, e.noticeAfter)
 	work := &advisorWork{}
 	work.bindSender(sender)
 	chair, err := e.startSeat(table, table.Chair(), names, work)

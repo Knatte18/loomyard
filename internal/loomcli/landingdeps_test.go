@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -31,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -50,8 +52,19 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	pushBranch := func() error { return nil }
 	registry := modelspec.Registry{"claude/sonnet-5": {}}
 	runner := &shuttleengine.Runner{}
+	recordPath := filepath.Join(t.TempDir(), "pause.json")
+	runner.SetPause(pauserecord.Geometry{RecordPath: recordPath, Slug: loc.WorktreeName})
+	now := time.Now()
+	if _, err := pauserecord.Update(recordPath, now, func(record *pauserecord.Record) error {
+		record.Live = append(record.Live, pauserecord.Entry{Scope: loc.WorktreeName, PausedAt: now.Add(-time.Hour), GraceEnd: now.Add(-time.Minute)})
+		return nil
+	}); err != nil {
+		t.Fatalf("write the pause record: %v", err)
+	}
 	cfg := landingshed.Config{Squash: true}
 	languageSkills := []string{"scribe:golang-testing"}
+	lock := parentLockDeps(loc, shedrun.SelfRunID, "", "")
+	lock.Store.Alive = func(int, string) bool { return true }
 
 	deps := landingDeps(
 		loc,
@@ -70,9 +83,27 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		func(string, time.Time) error { return nil },
 		func() (string, error) { return "", nil },
 		planVerifySource(loc),
-		parentLockDeps(loc, shedrun.SelfRunID, "", ""),
+		lock,
 		time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 	)
+
+	// The slug entry stops the verify until the run holds its parent lock, which exempts the slug's entries.
+	if !deps.VerifyHold.PastGrace() {
+		t.Error("landingDeps(...).VerifyHold.PastGrace() = false with a slug entry past its grace end and no lock held; want true")
+	}
+	owner := parentlock.Owner{Slug: loc.WorktreeName, Pair: "pair", RunID: "run", PID: 1, StartTime: "t1"}
+	if _, err := lock.Store.TryAcquire("main", owner); err != nil {
+		t.Fatalf("TryAcquire: %v", err)
+	}
+	if deps.VerifyHold.PastGrace() {
+		t.Error("landingDeps(...).VerifyHold.PastGrace() = true while the run holds its parent lock; want false")
+	}
+	if _, err := lock.Store.Release("main", owner); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if !deps.VerifyHold.PastGrace() {
+		t.Error("landingDeps(...).VerifyHold.PastGrace() = false after the lock is released; want true")
+	}
 
 	if deps.ParentName != "parent-session" {
 		t.Errorf("landingDeps(...).ParentName = %q; want the told parent name", deps.ParentName)
@@ -98,6 +129,28 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		if field.IsZero() {
 			t.Errorf("landingDeps(...).%s is the zero value; want it populated", typ.Field(i).Name)
 		}
+	}
+}
+
+// TestHoldsParentLock asserts a nil store reads not held, and a store whose directory is a file reads not held across two calls with one warning.
+//
+// It stays serial because logcapture swaps the process-global logger.
+func TestHoldsParentLock(t *testing.T) {
+	if holdsParentLock(nil, "pair")() {
+		t.Error("holdsParentLock(nil, pair)() = true; want false")
+	}
+
+	buf := logcapture.Capture(t)
+	dir := filepath.Join(t.TempDir(), "locks")
+	if err := os.WriteFile(dir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	holds := holdsParentLock(&parentlock.Store{Dir: dir}, "pair")
+	if holds() || holds() {
+		t.Error("holdsParentLock over an unlistable store = true; want false")
+	}
+	if got := strings.Count(buf.String(), "the parent locks cannot be listed"); got != 1 {
+		t.Errorf("warnings over two calls = %d; want 1", got)
 	}
 }
 

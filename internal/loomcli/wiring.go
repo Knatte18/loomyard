@@ -601,6 +601,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 	websterGeom := hubgeom.WebsterGeometry(location)
 	websterGeom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), websterGeom.GateSlots, websterGeom.GateWaitDir)
+	websterGeom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 
 	// frictionDir is the single resolved value every told-friction consumer below reads: non-empty
 	// only when loom.yaml's friction key is set, per the "Tier 2 off is an empty path string, never a
@@ -718,6 +719,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Round:         roundGateSource(fabricengine.ConfigDirs(location)),
 		// VerifyMergeBase is nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
+		VerifyHold:      verifytree.NewPauseHold(pauseGeom, nil),
 		PublishFailure: func() string {
 			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath), gateTiersLookup(fabricengine.ConfigDirs(location)))
 		},

@@ -284,10 +284,26 @@ func TestEngine_Run_AdvisorDeathSendsOneNoticeOnceTheChairTakesIt(t *testing.T) 
 		chairBusy    []error
 		alwaysBusy   bool
 		wantAttempts int
+		retry        time.Duration
+		wantWaits    []time.Duration
 	}{
 		{name: "an idle chair", wantAttempts: 2},
 		{name: "a busy chair delays the lines", chairBusy: []error{shuttleengine.ErrSessionBusy, shuttleengine.ErrSubmissionNotLanded}, wantAttempts: 4},
 		{name: "a chair that stays busy does not block the join", alwaysBusy: true},
+		{
+			name:         "a paused chair doubles the wait up to five seconds",
+			chairBusy:    []error{pausedRefusal(), pausedRefusal(), pausedRefusal(), pausedRefusal()},
+			wantAttempts: 6,
+			retry:        2 * time.Second,
+			wantWaits:    []time.Duration{2 * time.Second, 4 * time.Second, 5 * time.Second, 5 * time.Second},
+		},
+		{
+			name:         "a busy answer resets the doubling",
+			chairBusy:    []error{pausedRefusal(), shuttleengine.ErrSessionBusy, pausedRefusal()},
+			wantAttempts: 5,
+			retry:        2 * time.Second,
+			wantWaits:    []time.Duration{2 * time.Second, 2 * time.Second, 2 * time.Second},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -297,6 +313,11 @@ func TestEngine_Run_AdvisorDeathSendsOneNoticeOnceTheChairTakesIt(t *testing.T) 
 			shuttle.sendErrs = map[string][]error{chairRole: tt.chairBusy}
 			shuttle.alwaysBusy = map[string]bool{chairRole: tt.alwaysBusy}
 			engine, geom := engineFixture(t, shuttle)
+			waits := &waitRecorder{}
+			engine.noticeAfter = waits.after
+			if tt.retry > 0 {
+				engine.noticeRetry = tt.retry
+			}
 
 			ended := runAsync(engine, engineTable(geom.WorktreeRoot, 1))
 			shuttle.awaitStarts(2)
@@ -333,8 +354,18 @@ func TestEngine_Run_AdvisorDeathSendsOneNoticeOnceTheChairTakesIt(t *testing.T) 
 			if len(chair.sent) != 0 {
 				t.Errorf("a second line was typed into the chair: %q", <-chair.sent)
 			}
+			if tt.wantWaits != nil {
+				if got := waits.recorded(len(tt.wantWaits) + 1); !slices.Equal(got, tt.wantWaits) {
+					t.Errorf("notice waits = %v, want %v", got, tt.wantWaits)
+				}
+			}
 		})
 	}
+}
+
+// pausedRefusal returns the refusal of a send into a session a pause covers.
+func pausedRefusal() error {
+	return &shuttleengine.PausedError{Slug: "task", Err: shuttleengine.ErrPaused}
 }
 
 func TestEngine_Run_AdvisorsEndingTogetherOrAsTheyStart(t *testing.T) {

@@ -51,6 +51,7 @@ func callsAny(data []byte, token string) bool {
 }
 
 // TestVerifiedTree_PlanVerifySitesCallVerify fails when a plan-verify site does not call or hold verifytree.Verify.
+// It also fails a site whose code lines contain neither `Hold:` nor `.Hold =`, so a site that drops its pause hold trips it.
 //
 //lyx:guard
 func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
@@ -62,6 +63,9 @@ func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
 				// Without the paren: the landing gate holds the function as a seam value, not a direct call.
 				if !callsAny(f.Data, "verifytree.Verify") {
 					t.Errorf("`PATTERN-verified-tree` violated: %s is a plan-verify site and does not call verifytree.Verify", site)
+				}
+				if !callsAny(f.Data, "Hold:") && !callsAny(f.Data, ".Hold =") {
+					t.Errorf("`PATTERN-verified-tree` violated: %s is a plan-verify site and does not pass a Hold to verifytree.Verify", site)
 				}
 			}
 		}

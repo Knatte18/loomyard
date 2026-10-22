@@ -46,6 +46,8 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	// internal/agentname is imported to validate a row's role_prefix; it forms no name here.
 	"github.com/Knatte18/loomyard/internal/agentname",
+	// internal/verifytree is imported for the told PauseHold type of Env.VerifyHold; it resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/verifytree",
 }
 
 // shedrecipeDeniedLyxcwdImport is the exact import path the Shed Recipe Registry Invariant excludes

@@ -177,6 +177,7 @@ func planContextOf(env Env) loomshed.PlanContext {
 }
 
 // resolvePlainGateClosure resolves the five validator names that carry no Final closure.
+// The "verify" gate is told env.VerifyHold, which holds its verify under a pause.
 func resolvePlainGateClosure(entry, row string, index int, name string, env Env) (shuttleengine.Gate, error) {
 	switch name {
 	case "discussion":
@@ -239,7 +240,7 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		if err := requireSeam(entry, "Round", env.Round); err != nil {
 			return nil, err
 		}
-		return loomshed.NewVerifyGate(env.WorktreeRoot, env.VerifyDir, row+" gate", env.VerifyCommand, env.VerifyMergeBase, env.VerifyTreeScope, env.Round), nil
+		return loomshed.NewVerifyGate(env.WorktreeRoot, env.VerifyDir, row+" gate", env.VerifyCommand, env.VerifyMergeBase, env.VerifyTreeScope, env.Round, env.VerifyHold), nil
 	default:
 		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "rework-plan", "description", "verify", "parent-review", name)
 	}

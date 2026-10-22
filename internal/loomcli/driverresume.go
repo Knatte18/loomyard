@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -66,6 +67,7 @@ func driverBusyMessage(err error, retry string) string {
 // that error is returned wrapped with its kind intact and without the "may have resumed" advice, since nothing was typed, and the caller refuses with shedrun.StartDriverBusyKind.
 // Any other Send error ends the loop at once: Send already replays its own keystrokes internally,
 // and a "never appeared" verification failure can follow a delivery the pane hid, so re-sending could type the line into the driver twice.
+// A send a pause covers (shuttleengine.ErrPaused) makes no further attempt and is refused with the pause's way forward, which names the resume that lifts it and then retry.
 // A failure leaves the marker in place,
 // and its message names retry, the calling verb, as the way to try again.
 // It returns the path of the stop report the driver is asked to write.
@@ -92,6 +94,10 @@ func (c *loomCLI) resumeParkedDriver(guid, retry string) (string, error) {
 	}
 	if sendErr != nil {
 		logger.Warn("loom: could not resume the parked driver", "guid", guid, "attempts", attempts, "err", sendErr)
+		var paused *shuttleengine.PausedError
+		if errors.As(sendErr, &paused) {
+			return "", fmt.Errorf("loom: the driver's pane is held by a pause: %w", pauserecord.CoveredError(paused.Entry, paused.Slug, fmt.Sprintf("run %q again", retry)))
+		}
 		if errors.Is(sendErr, shuttleengine.ErrSessionBusy) {
 			return "", fmt.Errorf("loom: the driver's pane did not take the resume line: %w", sendErr)
 		}

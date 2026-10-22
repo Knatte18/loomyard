@@ -117,6 +117,13 @@ func TestResumeParkedDriver(t *testing.T) {
 			rerun:     "newpark",
 			wantErr:   []string{"the input box holds a draft"},
 		},
+		{
+			name:       "a pause holding the pane is refused with its way forward and not retried",
+			sender:     &fakeDriverSender{repeatErr: &shuttleengine.PausedError{Slug: "pair", Err: shuttleengine.ErrPaused}},
+			wantTexts:  1,
+			wantErr:    []string{`"lyx resume`, `run "lyx loom start" again`},
+			wantNotErr: []string{"may have resumed"},
+		},
 		{name: "another error is never retried", sender: &fakeDriverSender{repeatErr: errors.New("text never appeared")}, wantTexts: 1, wantErr: []string{"text never appeared"}},
 	}
 	for _, tt := range tests {

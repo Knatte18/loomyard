@@ -205,29 +205,42 @@ func (fx *fixture) newRun(spec Spec, opts ...runOpt) *Run {
 // It returns the geometry a Runner reads that record through, and the function that resumes the entry at resumedAt.
 func coverHub(t *testing.T, pausedAt time.Time) (pauserecord.Geometry, func(resumedAt time.Time)) {
 	t.Helper()
+	path, resume := coverScope(t, pauserecord.ScopeHub, pausedAt)
+	return pauserecord.Geometry{RecordPath: path, Slug: "slug"}, resume
+}
+
+// coverScope writes a live entry of scope paused at pausedAt into a fresh temp record.
+// It returns the record's path and the function that resumes the entry at resumedAt.
+func coverScope(t *testing.T, scope string, pausedAt time.Time) (string, func(resumedAt time.Time)) {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
-	update := func(now time.Time, mutate func(*pauserecord.Record)) {
+	addLiveEntry(t, path, scope, pausedAt)
+	resume := func(resumedAt time.Time) {
 		t.Helper()
-		_, err := pauserecord.Update(path, now, func(record *pauserecord.Record) error {
-			mutate(record)
+		_, err := pauserecord.Update(path, resumedAt, func(record *pauserecord.Record) error {
+			entry := record.Live[0]
+			entry.ResumedAt = resumedAt
+			record.Live = nil
+			record.Resumed = append(record.Resumed, entry)
 			return nil
 		})
 		if err != nil {
 			t.Fatalf("update pause record: %v", err)
 		}
 	}
-	update(pausedAt, func(record *pauserecord.Record) {
-		record.Live = append(record.Live, pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: pausedAt})
+	return path, resume
+}
+
+// addLiveEntry appends a live entry of scope paused at pausedAt to the record at path, creating the record when it is missing.
+func addLiveEntry(t *testing.T, path, scope string, pausedAt time.Time) {
+	t.Helper()
+	_, err := pauserecord.Update(path, pausedAt, func(record *pauserecord.Record) error {
+		record.Live = append(record.Live, pauserecord.Entry{Scope: scope, PausedAt: pausedAt})
+		return nil
 	})
-	resume := func(resumedAt time.Time) {
-		update(resumedAt, func(record *pauserecord.Record) {
-			entry := record.Live[0]
-			entry.ResumedAt = resumedAt
-			record.Live = nil
-			record.Resumed = append(record.Resumed, entry)
-		})
+	if err != nil {
+		t.Fatalf("update pause record: %v", err)
 	}
-	return pauserecord.Geometry{RecordPath: path, Slug: "slug"}, resume
 }
 
 // liftClock runs lift once, after its liftAfter-th Sleep, so a test ends a pause at a known tick.

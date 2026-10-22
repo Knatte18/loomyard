@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planindex"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // errNoIndex is returned by a call that needs the code index when Geometry.Index was never wired.
@@ -87,6 +88,10 @@ type Geometry struct {
 	// The CLI layer sets it; hubgeom and standalonegeom leave it empty because they sit below cliwire and must not link the index.
 	// A call that reaches a nil Index returns an error naming the missing wiring.
 	Index planindex.Index
+	// VerifyHold is the told pause hold the verify gate passes to every Verify, so a pause covering the run holds the verify until the resume.
+	// Nil holds nothing.
+	// The CLI layer sets it; hubgeom and standalonegeom leave it nil.
+	VerifyHold *verifytree.PauseHold
 }
 
 // index returns the geometry's code index, or errNoIndex when none was wired.

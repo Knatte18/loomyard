@@ -113,16 +113,17 @@ func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepSto
 // agentActivityFor returns the reading of the run's agent activity: the newest LastActivity over every live agent run of loc's worktree.
 // The runs come from shuttle through its registered engines, which list every strand, so a MultiLLM row's chair and each of its advisors count.
 // A running verify, a live parent lock wait, or a shuttle wait that is not a held turn end, reads as activity now.
+// A verify held by a pause does no work and reads as none.
 // All three are read from their marker or record files.
 // The boolean is false when nothing is live.
 func agentActivityFor(loc *lyxcwd.Location, cfg shuttleengine.Config) func() (time.Time, bool, error) {
 	return func() (time.Time, bool, error) {
 		anchor := loc.AnchorPath()
-		_, verifyLive, err := verifytree.ReadMarker(verifytree.NewPaths(loc.WorktreePath(), verifytree.Dir(anchor)).Marker)
+		verifyMarker, verifyLive, err := verifytree.ReadMarker(verifytree.NewPaths(loc.WorktreePath(), verifytree.Dir(anchor)).Marker)
 		if err != nil {
 			return time.Time{}, false, err
 		}
-		if verifyLive {
+		if verifyLive && verifyMarker.State != verifytree.MarkerStatePaused {
 			return time.Now(), true, nil
 		}
 		_, lockWaiting, err := parentlock.ReadWait(parentlock.WaitRecordPath(loomengine.LoomScratchDir(loc)), parentlock.ProcessAlive)

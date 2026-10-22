@@ -452,20 +452,53 @@ func TestStore_InjectAndHold(t *testing.T) {
 				t.Errorf("queued TTLs = %+v; want 1 hour then the 10-minute default", queued)
 			}
 		}},
-		{"Interrupt_RefusedUnderPauseOrAnUnreadablePauseRecord", func(t *testing.T, e *env) {
+		{"Interrupt_UnderAPauseClaimsThenInterrupts", func(t *testing.T, e *env) {
 			e.del.SetPaused(alpha, true)
-			_, err := e.store.Interrupt(program(batten), alpha)
-			wantErr(t, err, "pause")
-			_, err = e.store.Inject(program(batten), alpha, "/clear", 0, true)
-			wantErr(t, err, "pause")
-			e.del.SetPaused(alpha, false)
-			e.del.SetPausedError(errors.New("pause record is corrupt"))
+			sent, err := e.store.Interrupt(program(batten), alpha)
+			if err != nil || !sent || !slices.Equal(e.del.Claims(), []string{alpha}) || !slices.Equal(e.del.Interrupts(), []string{alpha}) {
+				t.Fatalf("Interrupt under a pause = %v, %v with claims %v and interrupts %v; want one claim and one interrupt", sent, err, e.del.Claims(), e.del.Interrupts())
+			}
+			result, err := e.store.Inject(program(batten), alpha, "/clear", 0, true)
+			if err != nil || !result.Interrupted || len(e.del.Claims()) != 2 || len(e.del.Interrupts()) != 2 {
+				t.Fatalf("Inject --interrupt under a pause = %+v, %v with claims %v and interrupts %v; want it claimed, interrupted and queued", result, err, e.del.Claims(), e.del.Interrupts())
+			}
+			if queued := e.store.Queued(alpha); len(queued) != 1 || queued[0].Text != "/clear" {
+				t.Errorf("Queued = %+v; want the inject queued for the worker to hold until the resume", queued)
+			}
+			e.del.SetClaimLive(alpha, func() (bool, error) { return false, nil })
 			_, err = e.store.Interrupt(program(batten), alpha)
-			wantErr(t, err, "pause record is corrupt")
+			wantErr(t, err, "was lifted before the interrupt", "way forward", `"lyx creel interrupt `+alpha+`"`)
+			e.del.SetClaimLive(alpha, func() (bool, error) { return false, errors.New("live read broke") })
+			_, err = e.store.Interrupt(program(batten), alpha)
+			wantErr(t, err, "could not read the pause record for "+alpha, "so nothing was interrupted", "live read broke")
+			if len(e.del.Interrupts()) != 2 {
+				t.Errorf("interrupts = %v; a claim whose entry is gone or unreadable must send no key", e.del.Interrupts())
+			}
+			e.del.SetClaimLive(alpha, nil)
+			claimed := len(e.del.Claims())
+			e.del.SetInterruptError(creelengine.ErrNoRunningTurn)
+			sent, err = e.store.Interrupt(program(batten), alpha)
+			if err != nil || sent || len(e.del.Claims()) != claimed+1 {
+				t.Errorf("Interrupt with no running turn under a pause = %v, %v with claims %v; want nothing sent and the strand claimed", sent, err, e.del.Claims())
+			}
+		}},
+		{"Interrupt_AnUnreadablePauseRecordOrAHoldRefusesWithNothingClaimed", func(t *testing.T, e *env) {
+			e.del.SetPausedError(errors.New("pause record is corrupt"))
+			_, err := e.store.Interrupt(program(batten), alpha)
+			wantErr(t, err, "could not read the pause record for "+alpha, "pause record is corrupt")
 			_, err = e.store.Inject(program(batten), alpha, "/clear", 0, true)
 			wantErr(t, err, "pause record is corrupt")
-			if queued := e.store.Queued(alpha); len(queued) != 0 || len(e.del.Interrupts()) != 0 || len(e.del.Sends()) != 0 {
-				t.Errorf("refusals left queued %v, interrupts %v, sends %v", queued, e.del.Interrupts(), e.del.Sends())
+			e.del.SetPausedError(nil)
+			e.del.SetPaused(alpha, true)
+			if _, err := e.store.Hold(program(batten), alpha, 30*time.Minute); err != nil {
+				t.Fatalf("Hold: %v", err)
+			}
+			_, err = e.store.Interrupt(external(), alpha)
+			wantErr(t, err, batten)
+			_, err = e.store.Interrupt(strand(beta), alpha)
+			wantErr(t, err, "lyx creel post")
+			if queued := e.store.Queued(alpha); len(queued) != 0 || len(e.del.Claims()) != 0 || len(e.del.Interrupts()) != 0 || len(e.del.Sends()) != 0 {
+				t.Errorf("refusals left queued %v, claims %v, interrupts %v, sends %v", queued, e.del.Claims(), e.del.Interrupts(), e.del.Sends())
 			}
 		}},
 		{"Interrupt_UnderAHoldOnlyTheOwnerPasses", func(t *testing.T, e *env) {

@@ -6,16 +6,20 @@ package verifytree
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
 // newScratch returns Paths over a fresh one-commit repo whose verify directory lies outside the worktree.
@@ -384,5 +388,375 @@ func TestVerify_DropsStrandName(t *testing.T) {
 	}
 	if string(data) != "|" {
 		t.Errorf("command saw %s and %s as %q; want both dropped", agentname.StrandNameEnv, gateslot.PrebuiltLyxEnv, data)
+	}
+}
+
+// pauseEnv is one TestVerify_PauseHold row's scratch repo, pause record, hold and the files its commands write outside the worktree.
+type pauseEnv struct {
+	t       *testing.T
+	p       Paths
+	record  string
+	hold    *PauseHold
+	polls   atomic.Int64
+	counter string
+	term    string
+	release string
+}
+
+// newPauseEnv returns an env whose hold judges slug over a fresh record, with a short Poll and a fast Sleep.
+func newPauseEnv(t *testing.T, slug string, slugEntryExempt func() bool) *pauseEnv {
+	t.Helper()
+	files := t.TempDir()
+	e := &pauseEnv{t: t, p: newScratch(t), record: filepath.Join(files, "record.json"), counter: filepath.Join(files, "ran"), term: filepath.Join(files, "term"), release: filepath.Join(files, "release")}
+	e.useHold(NewPauseHold(pauserecord.Geometry{RecordPath: e.record, Slug: slug}, slugEntryExempt))
+	// A command still looping on the release file when a row fails must not outlive the row.
+	t.Cleanup(func() { _ = os.WriteFile(e.release, nil, 0o644) })
+	return e
+}
+
+// useHold makes hold the env's hold, shortening its timing seams and counting each PastGrace poll.
+func (e *pauseEnv) useHold(hold *PauseHold) {
+	hold.Poll = 10 * time.Millisecond
+	hold.Sleep = func(ctx context.Context, d time.Duration) error {
+		timer := time.NewTimer(5 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	pastGrace := hold.PastGrace
+	hold.PastGrace = func() bool {
+		defer e.polls.Add(1)
+		return pastGrace()
+	}
+	e.hold = hold
+}
+
+// pause adds a live entry of scope paused now whose grace ends at graceEnd.
+func (e *pauseEnv) pause(scope string, graceEnd time.Time) {
+	e.t.Helper()
+	_, err := pauserecord.Update(e.record, time.Now(), func(r *pauserecord.Record) error {
+		r.Live = append(r.Live, pauserecord.Entry{Scope: scope, PausedAt: time.Now(), GraceEnd: graceEnd, Caller: "EXTERNAL"})
+		return nil
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// resume moves every live entry to the resumed list.
+func (e *pauseEnv) resume() {
+	e.t.Helper()
+	_, err := pauserecord.Update(e.record, time.Now(), func(r *pauserecord.Record) error {
+		for _, entry := range r.Live {
+			entry.ResumedAt = time.Now()
+			r.Resumed = append(r.Resumed, entry)
+		}
+		r.Live = nil
+		return nil
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// pauseOutcome is what one Verify call returned.
+type pauseOutcome struct {
+	result Result
+	err    error
+}
+
+// verifyAsync runs Verify of command under the env's hold in a goroutine and returns its outcome channel.
+func (e *pauseEnv) verifyAsync(ctx context.Context, command string) <-chan pauseOutcome {
+	out := make(chan pauseOutcome, 1)
+	go func() {
+		result, err := Verify(ctx, e.p, Site{Label: "webster verify", Hold: e.hold}, command)
+		out <- pauseOutcome{result, err}
+	}()
+	return out
+}
+
+// waitFor polls cond every 10 ms until it holds, failing the test after ten seconds.
+func (e *pauseEnv) waitFor(what string, cond func() bool) {
+	e.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			e.t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func (e *pauseEnv) markerState() string {
+	e.t.Helper()
+	marker, live, err := ReadMarker(e.p.Marker)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if !live {
+		return ""
+	}
+	return marker.State
+}
+
+// lines counts the lines of the file at path, zero when it does not exist.
+func lines(t *testing.T, path string) int {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(data), "\n")
+}
+
+func (e *pauseEnv) assertNoMarker() {
+	e.t.Helper()
+	if state := e.markerState(); state != "" {
+		e.t.Errorf("a %q marker is live after Verify returned; want none", state)
+	}
+}
+
+// pollsBeyond waits until the hold has polled PastGrace twice more.
+func (e *pauseEnv) pollsBeyond() {
+	e.t.Helper()
+	target := e.polls.Load() + 2
+	e.waitFor("two more PastGrace polls", func() bool { return e.polls.Load() >= target })
+}
+
+// quickCommand appends a line to the env's counter file and exits.
+func (e *pauseEnv) quickCommand() string { return "echo ran >> " + e.counter }
+
+// holdOpenCommand appends a line to the counter file, then runs until the release file exists.
+func (e *pauseEnv) holdOpenCommand() string {
+	return "echo ran >> " + e.counter + "; while [ ! -f " + e.release + " ]; do sleep 0.05; done"
+}
+
+// stoppableCommand appends a line to the counter file and, on its first run only, sleeps until a SIGTERM makes its trap write a line to the term file and exit.
+func (e *pauseEnv) stoppableCommand() string {
+	return "trap 'echo term >> " + e.term + "; exit 0' TERM; echo ran >> " + e.counter + `; [ "$(wc -l < ` + e.counter + `)" -ge 2 ] && exit 0; sleep 60 & wait`
+}
+
+// TestVerify_PauseHold table-drives Verify under a pause hold over a scratch repo and a temp pause record:
+// the hold at entry, the stop at the grace end and the start over after each, a caller's cancel, the parent-lock exemption and the readings that never stop a verify.
+// It is not parallel as a whole because one row captures the process-global logger; its other rows are.
+func TestVerify_PauseHold(t *testing.T) {
+	stopAndWait := func(t *testing.T, e *pauseEnv) <-chan pauseOutcome {
+		t.Helper()
+		out := e.verifyAsync(context.Background(), e.stoppableCommand())
+		e.waitFor("the first run to start", func() bool { return lines(t, e.counter) == 1 })
+		e.pause(pauserecord.ScopeHub, time.Now())
+		e.waitFor("the paused marker", func() bool { return e.markerState() == MarkerStatePaused })
+		if got := lines(t, e.term); got != 1 {
+			t.Errorf("SIGTERM trap lines = %d; want 1, the stopped run's trap", got)
+		}
+		if !fileExists(filepath.Join(e.p.Dir, "verify-1.log")) {
+			t.Errorf("the stopped run's verify-1.log is gone")
+		}
+		return out
+	}
+	heldAtEntry := func(t *testing.T, e *pauseEnv, command string) <-chan pauseOutcome {
+		t.Helper()
+		e.pause(pauserecord.ScopeHub, time.Now().Add(time.Hour))
+		out := e.verifyAsync(context.Background(), command)
+		e.waitFor("the paused marker", func() bool { return e.markerState() == MarkerStatePaused })
+		if got := lines(t, e.counter); got != 0 {
+			t.Errorf("command runs while held = %d; want 0", got)
+		}
+		return out
+	}
+
+	tests := []struct {
+		name   string
+		serial bool
+		run    func(t *testing.T, e *pauseEnv)
+	}{
+		{"a Verify entered under a live pause waits with a paused marker, then runs the command once and passes after the resume", false, func(t *testing.T, e *pauseEnv) {
+			out := heldAtEntry(t, e, e.quickCommand())
+			e.resume()
+			got := <-out
+			if got.err != nil || got.result.Status != StatusPassed {
+				t.Fatalf("Verify = (%+v, %v); want a pass", got.result, got.err)
+			}
+			if n := lines(t, e.counter); n != 1 {
+				t.Errorf("command runs = %d; want 1", n)
+			}
+			e.assertNoMarker()
+		}},
+		{"a tree dirtied while held returns dirty after the resume and runs nothing", false, func(t *testing.T, e *pauseEnv) {
+			out := heldAtEntry(t, e, e.quickCommand())
+			if err := os.WriteFile(filepath.Join(e.p.Worktree, "stray.txt"), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			e.resume()
+			got := <-out
+			if got.err != nil || got.result.Status != StatusDirty {
+				t.Fatalf("Verify = (%+v, %v); want StatusDirty", got.result, got.err)
+			}
+			if n := lines(t, e.counter); n != 0 {
+				t.Errorf("command runs = %d; want 0", n)
+			}
+			e.assertNoMarker()
+		}},
+		{"a command running past a pause's grace end gets SIGTERM, keeps its log, and runs again from the dirty check after the resume", false, func(t *testing.T, e *pauseEnv) {
+			out := stopAndWait(t, e)
+			e.resume()
+			got := <-out
+			if got.err != nil || got.result.Status != StatusPassed {
+				t.Fatalf("Verify = (%+v, %v); want a pass", got.result, got.err)
+			}
+			if n := lines(t, e.counter); n != 2 {
+				t.Errorf("command runs = %d; want 2", n)
+			}
+			if !fileExists(filepath.Join(e.p.Dir, "verify-1.log")) || !fileExists(filepath.Join(e.p.Dir, "verify-2.log")) {
+				t.Errorf("verify logs in %s: want the stopped run's and the rerun's", e.p.Dir)
+			}
+			e.assertNoMarker()
+		}},
+		{"a tree dirtied during the stop's pause returns dirty after the resume and runs no second command", false, func(t *testing.T, e *pauseEnv) {
+			out := stopAndWait(t, e)
+			if err := os.WriteFile(filepath.Join(e.p.Worktree, "stray.txt"), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			e.resume()
+			got := <-out
+			if got.err != nil || got.result.Status != StatusDirty {
+				t.Fatalf("Verify = (%+v, %v); want StatusDirty", got.result, got.err)
+			}
+			if n := lines(t, e.counter); n != 1 {
+				t.Errorf("command runs = %d; want 1, the stopped run", n)
+			}
+			e.assertNoMarker()
+		}},
+		{"a record naming HEAD's tree written during the stop's pause skips after the resume", false, func(t *testing.T, e *pauseEnv) {
+			out := stopAndWait(t, e)
+			tree, err := headTree(e.p.Worktree)
+			if err != nil {
+				t.Fatal(err)
+			}
+			commit, err := headCommit(e.p.Worktree)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rec := record{Entries: []entry{{Command: e.stoppableCommand(), Tree: tree, Commit: commit, VerifiedAt: time.Now()}}}
+			if err := writeRecord(e.p.Record, rec); err != nil {
+				t.Fatal(err)
+			}
+			e.resume()
+			got := <-out
+			if got.err != nil || got.result.Status != StatusSkipped {
+				t.Fatalf("Verify = (%+v, %v); want StatusSkipped", got.result, got.err)
+			}
+			if n := lines(t, e.counter); n != 1 {
+				t.Errorf("command runs = %d; want 1, the stopped run", n)
+			}
+			e.assertNoMarker()
+		}},
+		{"a pause resumed before its grace end lets the running command finish and record its result", false, func(t *testing.T, e *pauseEnv) {
+			out := e.verifyAsync(context.Background(), e.holdOpenCommand())
+			e.waitFor("the command to start", func() bool { return lines(t, e.counter) == 1 })
+			e.pause(pauserecord.ScopeHub, time.Now().Add(time.Hour))
+			e.pollsBeyond()
+			e.resume()
+			e.pollsBeyond()
+			if err := os.WriteFile(e.release, nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got := <-out
+			if got.err != nil || got.result.Status != StatusPassed {
+				t.Fatalf("Verify = (%+v, %v); want a pass", got.result, got.err)
+			}
+			if n := lines(t, e.counter); n != 1 {
+				t.Errorf("command runs = %d; want 1", n)
+			}
+			if _, ok := LatestPass(e.p, e.holdOpenCommand()); !ok {
+				t.Errorf("no pass recorded for the finished command")
+			}
+		}},
+		{"a caller's cancel while held returns the cancel, runs no command and leaves no marker", false, func(t *testing.T, e *pauseEnv) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			e.pause(pauserecord.ScopeHub, time.Now().Add(time.Hour))
+			out := e.verifyAsync(ctx, e.quickCommand())
+			e.waitFor("the paused marker", func() bool { return e.markerState() == MarkerStatePaused })
+			cancel()
+			got := <-out
+			if !errors.Is(got.err, context.Canceled) {
+				t.Fatalf("Verify error = %v; want one wrapping context.Canceled", got.err)
+			}
+			if n := lines(t, e.counter); n != 0 {
+				t.Errorf("command runs = %d; want 0", n)
+			}
+			e.assertNoMarker()
+		}},
+		{"a slug entry under an exempt hold neither holds the command nor stops it past its grace end", false, func(t *testing.T, e *pauseEnv) {
+			e.useHold(NewPauseHold(pauserecord.Geometry{RecordPath: e.record, Slug: "alpha"}, func() bool { return true }))
+			e.pause("alpha", time.Now())
+			out := e.verifyAsync(context.Background(), e.holdOpenCommand())
+			e.waitFor("the command to start", func() bool { return lines(t, e.counter) == 1 })
+			if state := e.markerState(); state != MarkerStateRunning {
+				t.Errorf("marker state = %q; want %q", state, MarkerStateRunning)
+			}
+			e.pollsBeyond()
+			if err := os.WriteFile(e.release, nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got := <-out
+			if got.err != nil || got.result.Status != StatusPassed {
+				t.Fatalf("Verify = (%+v, %v); want a pass", got.result, got.err)
+			}
+			if n := lines(t, e.counter); n != 1 {
+				t.Errorf("command runs = %d; want 1, never stopped", n)
+			}
+		}},
+		{"a hold over no pause geometry runs the command at once and never stops it", false, func(t *testing.T, e *pauseEnv) {
+			e.useHold(NewPauseHold(pauserecord.Geometry{}, nil))
+			out := e.verifyAsync(context.Background(), e.holdOpenCommand())
+			e.waitFor("the command to start", func() bool { return lines(t, e.counter) == 1 })
+			e.pollsBeyond()
+			if err := os.WriteFile(e.release, nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got := <-out
+			if got.err != nil || got.result.Status != StatusPassed {
+				t.Fatalf("Verify = (%+v, %v); want a pass", got.result, got.err)
+			}
+		}},
+		{"an undecodable pause record runs the command at once with a running marker and logs one Warn across the polls", true, func(t *testing.T, e *pauseEnv) {
+			logs := logcapture.CaptureVerbose(t)
+			if err := os.WriteFile(e.record, []byte("{not json"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out := e.verifyAsync(context.Background(), e.holdOpenCommand())
+			e.waitFor("the command to start", func() bool { return lines(t, e.counter) == 1 })
+			if state := e.markerState(); state != MarkerStateRunning {
+				t.Errorf("marker state = %q; want %q", state, MarkerStateRunning)
+			}
+			e.pollsBeyond()
+			if err := os.WriteFile(e.release, nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got := <-out
+			if got.err != nil || got.result.Status != StatusPassed {
+				t.Fatalf("Verify = (%+v, %v); want a pass", got.result, got.err)
+			}
+			if n := strings.Count(logs.String(), "not stopping the verify"); n != 1 {
+				t.Errorf("PastGrace Warn lines = %d; want 1; logs: %s", n, logs.String())
+			}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !tt.serial {
+				t.Parallel()
+			}
+			tt.run(t, newPauseEnv(t, "", nil))
+		})
 	}
 }

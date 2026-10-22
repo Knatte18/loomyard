@@ -11,6 +11,8 @@
 // Every reader is told a Geometry and derives no path itself; only `internal/hubgeom` and `internal/standalonegeom` construct it.
 // A reader that cannot decode the record logs it and reads uncovered, so a corrupt file never freezes the hub.
 //
+// ClaimSession records one session in the oldest live entry covering a slug, so that entry's resume gives the session its line; an uncovered slug and a session a live entry already owns record nothing.
+//
 // Excluded measures how much of a time span the covered intervals took, so overlapping pauses are subtracted once.
 // CoveredError is the refusal every held entry point returns, and `ResumeLine` is the one line a resumed session is given.
 //

@@ -16,6 +16,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -771,10 +772,35 @@ type gateRig struct {
 	gateCalls int
 }
 
+// gateRigSettings is what a gateRigOption adjusts before newGateRig builds the rig.
+type gateRigSettings struct {
+	// entry replaces the rig's always-failing gate entry when non-nil.
+	entry *GateEntry
+	// strandName is the run record's StrandName.
+	strandName string
+}
+
+// gateRigOption adjusts one setting of newGateRig.
+type gateRigOption func(*gateRigSettings)
+
+// withGateEntry replaces the rig's gate entry with entry.
+func withGateEntry(entry GateEntry) gateRigOption {
+	return func(s *gateRigSettings) { s.entry = &entry }
+}
+
+// withStrandName sets the StrandName the rig's run record holds.
+func withStrandName(name string) gateRigOption {
+	return func(s *gateRigSettings) { s.strandName = name }
+}
+
 // newGateRig builds the rig with a 30 s run deadline, one-second ticks and a gate that always fails with three attempts.
 // cfg supplies the send windows; the poll cadence and liveness are set here.
-func newGateRig(t *testing.T, cfg Config, events string) *gateRig {
+func newGateRig(t *testing.T, cfg Config, events string, opts ...gateRigOption) *gateRig {
 	t.Helper()
+	var settings gateRigSettings
+	for _, opt := range opts {
+		opt(&settings)
+	}
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, eventsFileName)
 	outputFile := filepath.Join(runDir, "out.md")
@@ -794,12 +820,227 @@ func newGateRig(t *testing.T, cfg Config, events string) *gateRig {
 		rig.gateCalls++
 		return GateResult{Passed: false, Findings: "bad"}, nil
 	}
+	entry := GateEntry{Gate: gate, Attempts: 3}
+	if settings.entry != nil {
+		entry = *settings.entry
+	}
 	rig.run = newFixture(t, rig.reed, rig.engine, withConfig(cfg)).newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
 		withRunDir(runDir),
-		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+		withRunState(RunState{StrandGUID: "strand-1", StrandName: settings.strandName, SessionID: "session-1", EventsPath: eventsPath}),
 		withRunClock(rig.clock, rig.start.Add(30*time.Second)),
-		withRunGate(GateSpec{{Gate: gate, Attempts: 3}}))
+		withRunGate(GateSpec{entry}))
 	return rig
+}
+
+// resumeOldestLive resumes the oldest live entry of the pause record at path at the given time.
+func resumeOldestLive(t *testing.T, path string, at time.Time) {
+	t.Helper()
+	_, err := pauserecord.Update(path, at, func(record *pauserecord.Record) error {
+		entry := record.Live[0]
+		entry.ResumedAt = at
+		record.Live = record.Live[1:]
+		record.Resumed = append(record.Resumed, entry)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("resume the pause: %v", err)
+	}
+}
+
+// TestGate_HoldsItsBoundaryWhileCovered pins that a gated Wait evaluates no gate closure and types nothing while a pause covers the run's own session, by that session's slug, and does both after the resume.
+// The re-prompt of a failing gate spends one attempt, a closure's pending send is sent per arrival, and an expiry probe still finalizes a covered run whose writer is off the boundary.
+func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
+	t.Parallel()
+
+	const pendingLine = "carry on"
+	failing := func(evals *int) GateEntry {
+		return GateEntry{Attempts: 3, Gate: func() (GateResult, error) {
+			*evals++
+			return GateResult{Passed: false, Findings: "bad"}, nil
+		}}
+	}
+	prime := reedengine.StrandStatus{GUID: "strand-1", PaneID: "%0", Live: true, Name: "ly:p1:impl"}
+	tests := []struct {
+		name string
+		cfg  Config
+		// events seeds the events file.
+		events string
+		// strandName is the run record's StrandName; statusName is the name reed's status reports for the strand.
+		strandName, statusName, runnerSlug string
+		// initialScope is the scope of the entry live from the start, empty for none.
+		initialScope string
+		// addAt adds a hub entry once the clock passes it, zero for never; appendAt appends a turn end to the events file; resumeAt resumes the oldest live entry, zero for never.
+		addAt, appendAt, resumeAt time.Duration
+		// busyFor keeps the pane busy that long from the start.
+		busyFor time.Duration
+		// entry builds the rig's gate entry; evals counts its closure runs, and add adds a hub entry at the rig's clock.
+		entry func(evals *int, add func()) GateEntry
+		// wantEvalsAtResume and wantSendsAtResume are the closure runs and typed texts when the resume happens, -1 for unchecked.
+		wantEvalsAtResume, wantSendsAtResume int
+		// wantEvalsSoonAfterResume is the closure runs two seconds after the resume, inside gateRecheckEvery, zero for unchecked.
+		wantEvalsSoonAfterResume int
+		wantSends                []string
+		// wantAttempts is the attempts the result reports spent, -1 for unchecked.
+		wantAttempts int
+		// wantCachedSlug is the slug the run caches from reed's status, empty for none.
+		wantCachedSlug string
+	}{
+		{
+			name: "a failing gate's arrival under a hub entry waits for the resume and re-prompts once", events: "STOP:turn1\n",
+			runnerSlug: "slug", initialScope: pauserecord.ScopeHub, resumeAt: 5 * time.Second,
+			entry:             func(evals *int, _ func()) GateEntry { return failing(evals) },
+			wantEvalsAtResume: 0, wantSendsAtResume: 0, wantAttempts: 1,
+		},
+		{
+			name: "a slug entry holds a run named for it under a runner of another slug", events: "STOP:turn1\n",
+			strandName: "ly:p1:impl", runnerSlug: "other", initialScope: "p1", resumeAt: 5 * time.Second,
+			entry:             func(evals *int, _ func()) GateEntry { return failing(evals) },
+			wantEvalsAtResume: 0, wantSendsAtResume: 0, wantAttempts: 1,
+		},
+		{
+			name: "a record with no name takes the slug from reed's status, caches it and holds until the resume", events: "STOP:turn1\n",
+			statusName: "ly:p1:impl", runnerSlug: "other", initialScope: "p1", resumeAt: 5 * time.Second,
+			entry:             func(evals *int, _ func()) GateEntry { return failing(evals) },
+			wantEvalsAtResume: 0, wantSendsAtResume: 0, wantAttempts: 1, wantCachedSlug: "p1",
+		},
+		{
+			name: "a closure that adds a hub entry while it fails has its re-prompt refused and sent after the resume", events: "STOP:turn1\n",
+			runnerSlug: "slug", resumeAt: 5 * time.Second,
+			entry: func(evals *int, add func()) GateEntry {
+				return GateEntry{Attempts: 3, Gate: func() (GateResult, error) {
+					*evals++
+					if *evals == 1 {
+						add()
+					}
+					return GateResult{Passed: false, Findings: "bad"}, nil
+				}}
+			},
+			wantEvalsAtResume: 1, wantSendsAtResume: 0, wantAttempts: 1,
+		},
+		{
+			name: "a pending send is not repeated while covered and resumes with the next arrival", events: "STOP:turn1\n",
+			runnerSlug: "slug", addAt: time.Second, appendAt: 2 * time.Second, resumeAt: 6 * time.Second,
+			entry: func(evals *int, _ func()) GateEntry {
+				pending := func() (GateResult, error) {
+					*evals++
+					return GateResult{Pending: true, Send: pendingLine}, nil
+				}
+				return GateEntry{Attempts: 3, PassOnCap: true, Gate: pending, Final: func() (GateResult, error) { return GateResult{Passed: true}, nil }}
+			},
+			wantEvalsAtResume: 1, wantSendsAtResume: 1, wantSends: []string{pendingLine, pendingLine}, wantAttempts: -1,
+		},
+		{
+			name: "a re-prompt left unsent by a busy pane is not retried while covered", cfg: Config{SendReadyTimeoutS: 1}, events: "STOP:turn1\n",
+			runnerSlug: "slug", addAt: 2 * time.Second, busyFor: 3 * time.Second, resumeAt: 7 * time.Second,
+			entry:             func(evals *int, _ func()) GateEntry { return failing(evals) },
+			wantEvalsAtResume: -1, wantSendsAtResume: 0, wantAttempts: 1,
+		},
+		{
+			name: "an expiry probe finalizes a covered run whose writer is off the boundary", events: "START\n",
+			runnerSlug: "slug", initialScope: pauserecord.ScopeHub,
+			entry: func(evals *int, _ func()) GateEntry {
+				entry := failing(evals)
+				entry.Expired = func() (bool, error) { return true, nil }
+				return entry
+			},
+			wantEvalsAtResume: -1, wantSendsAtResume: -1, wantAttempts: 0,
+		},
+		{
+			name: "a gated arrival on the first uncovered tick evaluates the boundary once, not again for the arrival held while covered", events: "STOP:turn1\n",
+			runnerSlug: "slug", initialScope: pauserecord.ScopeHub, appendAt: 5 * time.Second, resumeAt: 5 * time.Second,
+			entry: func(evals *int, _ func()) GateEntry {
+				pending := func() (GateResult, error) {
+					*evals++
+					return GateResult{Pending: true}, nil
+				}
+				return GateEntry{Attempts: 3, PassOnCap: true, Gate: pending, Final: func() (GateResult, error) { return GateResult{Passed: true}, nil }}
+			},
+			wantEvalsAtResume: -1, wantSendsAtResume: -1, wantEvalsSoonAfterResume: 1, wantAttempts: -1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+			var rig *gateRig
+			evals := 0
+			entry := tt.entry(&evals, func() { addLiveEntry(t, path, pauserecord.ScopeHub, rig.clock.Now()) })
+			rig = newGateRig(t, tt.cfg, tt.events, withGateEntry(entry), withStrandName(tt.strandName))
+			if tt.statusName != "" {
+				named := prime
+				named.Name = tt.statusName
+				rig.reed.StatusQueue = []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{named}}}
+			}
+			rig.reed.busyUntil = rig.start.Add(tt.busyFor)
+			rig.run.runner.SetPause(pauserecord.Geometry{RecordPath: path, Slug: tt.runnerSlug})
+			if tt.initialScope != "" {
+				addLiveEntry(t, path, tt.initialScope, rig.start)
+			}
+
+			added, appended, resumed := tt.addAt == 0, tt.appendAt == 0, tt.resumeAt == 0
+			evalsAtResume, sendsAtResume, evalsSoonAfterResume := -1, -1, -1
+			rig.clock.onSleep = func(now time.Time) {
+				elapsed := now.Sub(rig.start)
+				if resumed && tt.resumeAt > 0 && evalsSoonAfterResume < 0 && elapsed >= tt.resumeAt+2*time.Second {
+					evalsSoonAfterResume = evals
+				}
+				if !added && elapsed >= tt.addAt {
+					added = true
+					addLiveEntry(t, path, pauserecord.ScopeHub, now)
+				}
+				if !appended && elapsed >= tt.appendAt {
+					appended = true
+					appendEventsLine(t, rig.eventsPath, "STOP:turn2")
+				}
+				if !resumed && elapsed >= tt.resumeAt {
+					resumed = true
+					evalsAtResume, sendsAtResume = evals, len(rig.reed.SendTextCalls)
+					resumeOldestLive(t, path, now)
+				}
+			}
+
+			result, err := rig.run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+
+			if tt.wantEvalsAtResume >= 0 && evalsAtResume != tt.wantEvalsAtResume {
+				t.Errorf("closure runs at the resume = %d, want %d", evalsAtResume, tt.wantEvalsAtResume)
+			}
+			if tt.wantSendsAtResume >= 0 && sendsAtResume != tt.wantSendsAtResume {
+				t.Errorf("texts typed at the resume = %d, want %d", sendsAtResume, tt.wantSendsAtResume)
+			}
+			if tt.wantEvalsSoonAfterResume != 0 && evalsSoonAfterResume != tt.wantEvalsSoonAfterResume {
+				t.Errorf("closure runs two seconds after the resume = %d, want %d", evalsSoonAfterResume, tt.wantEvalsSoonAfterResume)
+			}
+			var sent []string
+			for _, call := range rig.reed.SendTextCalls {
+				sent = append(sent, call.Text)
+			}
+			switch {
+			case tt.wantSends != nil:
+				if !reflect.DeepEqual(sent, tt.wantSends) {
+					t.Errorf("texts typed = %q, want %q", sent, tt.wantSends)
+				}
+			case tt.wantEvalsSoonAfterResume != 0:
+			case tt.resumeAt > 0:
+				if len(sent) != 1 || rig.reed.typedAt.Sub(rig.start) < tt.resumeAt {
+					t.Errorf("texts typed = %q, first at %v, want one re-prompt at or after the resume at %v", sent, rig.reed.typedAt.Sub(rig.start), tt.resumeAt)
+				}
+			default:
+				if len(sent) != 0 || rig.clock.Now().Sub(rig.start) >= 30*time.Second {
+					t.Errorf("texts typed = %q, ended %v after the start, want nothing typed and an end before the deadline", sent, rig.clock.Now().Sub(rig.start))
+				}
+			}
+			if tt.wantAttempts >= 0 && (result.Gate == nil || result.Gate.Attempts != tt.wantAttempts) {
+				t.Errorf("Gate = %+v, want %d attempts spent", result.Gate, tt.wantAttempts)
+			}
+			if rig.run.sessionSlugKnown != (tt.wantCachedSlug != "") || rig.run.sessionSlug != tt.wantCachedSlug {
+				t.Errorf("cached slug = %q (known %v), want %q", rig.run.sessionSlug, rig.run.sessionSlugKnown, tt.wantCachedSlug)
+			}
+		})
+	}
 }
 
 // TestGate_WaitsForIdleWriter drives a gated Wait over a writer whose newest turn start no turn end has matched, as an AttachGated replay of a writer mid-turn would find it.

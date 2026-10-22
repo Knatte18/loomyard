@@ -33,6 +33,8 @@ type fakePair struct {
 	// interruptErrs holds each session's scripted interrupt errors, consumed in order with the last repeating; an empty list answers nil.
 	interruptErrs map[string][]error
 	sendErr       map[string]error
+	// onSend runs first in Send, outside the lock; a non-nil error it returns is the send's answer.
+	onSend func(guid string) error
 	// background holds the labels of each session whose turn ended with background work; a key present reads as background.
 	background map[string][]string
 	// backgroundErr and paneErr fail Background and PaneRunningTurn for a key present.
@@ -153,6 +155,14 @@ func (p *fakePair) Interrupt(guid string) error {
 }
 
 func (p *fakePair) Send(guid, text string) error {
+	p.mu.Lock()
+	hook := p.onSend
+	p.mu.Unlock()
+	if hook != nil {
+		if err := hook(guid); err != nil {
+			return err
+		}
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if err := p.sendErr[guid]; err != nil {

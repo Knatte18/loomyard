@@ -140,6 +140,22 @@
 // A held turn end read while covered is not re-notified after the resume, since the resume line starts the next turn.
 // An unreadable record reads uncovered, with one Warn per change of error.
 //
+// A line typed into a session a pause covers is refused with a *PausedError, which wraps ErrPaused, and nothing is typed.
+// The send judges the target by its own slug, the one in the strand name reed reports: the name on the run's record, or for a strand with no record the live strand's name, and reed's status only when neither is held.
+// A prime name has the empty slug, which only a hub entry covers.
+// A name that does not parse, a strand reed does not list and a failed status read fall back to the runner's geometry slug.
+// The coverage is read after the idle wait and again before each replay of a typed choreography, the conditioned send's included.
+// Keys are not lines: an interrupt, an inject and the pause's own Esc are delivered under a pause.
+// A runner told no pause geometry, as the orch runner is, reads every target uncovered.
+// The start's segment-color line is a send too, so a refusal drops it with a Warn as any color failure.
+// The start's prompt line, its typed skill-load line and the deferred task prompt wait out a refusing pause on the slug the refusal judged and send again, looping if a second pause lands first.
+//
+// Each Wait tick reads the coverage of the run's own session by that same slug, not the runner's.
+// A gated Done arrival that reaches the boundary while covered is recorded as reached and held: no gate closure runs and no pending or re-prompt send goes out, and the first uncovered tick evaluates it as if it had just arrived.
+// A re-prompt refused with ErrPaused is held like a busy one, spending no attempt.
+// The off-boundary expiry probes keep running under cover, since they send nothing, so an entry's own wait bound can still end a run.
+// The hold only delays an evaluation and changes no verdict or attempt count.
+//
 // # Awake deadline
 //
 // The run deadline counts awake, unpaused time.

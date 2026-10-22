@@ -110,6 +110,7 @@ func gateWaiting(waitDir string, holders func() ([]gateslot.Holder, error), now 
 
 // verifyWaiting returns the Waiting hook that reports a verify from the marker at markerPath, and falls through to next otherwise.
 // A running verify reads as `<producer>: verify running <elapsed> (<detail>)`, and one still waiting for a gate slot as `<producer>: verify waiting for a gate slot <elapsed> (<site>; holders: <worktree> <site>, ...)`, elapsed measured from the wait start.
+// One held by a pause reads as `<producer>: verify held by a pause <elapsed> (<site>)`, elapsed measured from the hold start.
 // The holders clause is dropped when holders names none or fails.
 // The note names the run's current producer and measures elapsed time from now.
 // A marker whose pid is dead reads as absent, so a crashed verify never sticks in the status line.
@@ -121,6 +122,9 @@ func verifyWaiting(markerPath string, holders func() ([]gateslot.Holder, error),
 		}
 		if !live {
 			return next(st)
+		}
+		if m.State == verifytree.MarkerStatePaused {
+			return fmt.Sprintf("%s: verify held by a pause %s (%s)", st.CurrentProducer, formatElapsed(now().Sub(m.WaitStarted)), m.Site), nil
 		}
 		if m.State == verifytree.MarkerStateWaiting {
 			detail := m.Site

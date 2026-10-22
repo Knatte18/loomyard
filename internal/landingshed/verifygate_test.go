@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -272,12 +273,23 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			hold := verifytree.NewPauseHold(pauserecord.Geometry{}, nil)
 			f := newGateFixture(t, tc.command, nil)
+			f.gate.hold = hold
 			f.fake.result = result
 			reason, err := f.gate.check(context.Background(), tc.site, "main")
 
-			if f.fake.verifyCalls != 1 || f.fake.command != tc.command || f.fake.paths != f.paths || f.fake.site != (verifytree.Site{Label: tc.site}) {
+			if f.fake.verifyCalls != 1 || f.fake.command != tc.command || f.fake.paths != f.paths || f.fake.site != (verifytree.Site{Label: tc.site, Hold: hold}) {
 				t.Errorf("verify got calls=%d command=%q paths=%+v site=%+v", f.fake.verifyCalls, f.fake.command, f.fake.paths, f.fake.site)
+			}
+
+			publish := newGateFixture(t, tc.command, nil)
+			publish.gate.hold = hold
+			publish.gate.publishCommand = func() (string, error) { return tc.command, nil }
+			publish.fake.result = result
+			_, _ = publish.gate.checkPublishVerify(context.Background(), tc.site, "main")
+			if publish.fake.site != (verifytree.Site{Label: tc.site, Hold: hold}) {
+				t.Errorf("publish verify got site=%+v; want the gate's hold", publish.fake.site)
 			}
 			if tc.wantErrHas != "" {
 				if reason != "" || err == nil || !strings.Contains(err.Error(), tc.wantErrHas) {

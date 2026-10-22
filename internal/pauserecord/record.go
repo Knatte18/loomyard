@@ -159,6 +159,39 @@ func (r Record) Owner(guid string) (Entry, bool) {
 	return Entry{}, false
 }
 
+// ClaimSession records session in the oldest live entry covering slug, under the record lock, so that entry's resume gives the session its resume line.
+// An uncovered slug records nothing and returns the zero entry and false.
+// A covered slug returns true and the entry that owns the session after the call;
+// a session a live entry already owns is recorded nowhere again, and that owning entry is returned.
+// An undecodable record is the returned error and records nothing.
+func ClaimSession(path, slug string, session Session, now time.Time) (Entry, bool, error) {
+	var owner Entry
+	var covered bool
+	_, err := Update(path, now, func(r *Record) error {
+		covering, found := r.Covering(slug)
+		if !found {
+			return nil
+		}
+		covered = true
+		if existing, owned := r.Owner(session.GUID); owned {
+			owner = existing
+			return nil
+		}
+		for i := range r.Live {
+			if r.Live[i].Scope == covering.Scope {
+				r.Live[i].Sessions = append(r.Live[i].Sessions, session)
+				owner = r.Live[i]
+				return nil
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return Entry{}, false, err
+	}
+	return owner, covered, nil
+}
+
 // CoverageOf returns the covering live entry for slug and the interval of every entry covering it.
 // A live entry's interval runs from its pause to now, a resumed one's to its resume.
 func (r Record) CoverageOf(slug string, now time.Time) Coverage {

@@ -36,6 +36,7 @@ type RoundGate struct {
 // siteLabel names the call site in the running marker, and the closure's own count of its calls is the attempt.
 // command is the told verify-command source, read at each arrival; it is the site's base command, so a pass keeps its record entry and Publish skips on the same tree and command.
 // round is the told `round` gate source, read at each arrival after the told command; its error is the gate's returned error, carrying the config refusal's own way forward.
+// hold is the told pause hold of the worktree's scope: a non-nil hold holds the verify under a pause covering the worktree, and nil holds nothing.
 //
 // With treeScope nil the gate takes the round form.
 // The base of the round is the commit of the told command's latest recorded pass, when that commit is an ancestor of HEAD.
@@ -59,7 +60,7 @@ type RoundGate struct {
 // `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward; a test file the round call's guard scan rejects, such as a misplaced `//lyx:guard` marker, reaches the findings through that tail with its file and line.
 // A headroom finding or a comment lint finding fails with its file and line or its bytes and the way forward.
 // A command, round, merge base or tree scope read error, a failure to read git, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
-func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), round func() (RoundGate, error)) shuttleengine.Gate {
+func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), round func() (RoundGate, error), hold *verifytree.PauseHold) shuttleengine.Gate {
 	attempt := 0
 	darnForm := treeScope != nil
 	paths := verifytree.NewPaths(worktreeRoot, verifyDir)
@@ -157,7 +158,7 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 			}
 		}
 
-		site := verifytree.Site{Label: siteLabel, Attempt: attempt, BaseCommand: told}
+		site := verifytree.Site{Label: siteLabel, Attempt: attempt, BaseCommand: told, Hold: hold}
 		res, err := verifytree.Verify(context.Background(), paths, site, runCommand)
 		if err != nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: %w", err)

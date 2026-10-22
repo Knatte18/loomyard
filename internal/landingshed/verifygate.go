@@ -36,10 +36,12 @@ type verifyGate struct {
 	// classify, when set, chooses the failure record's target and the reason's way forward per failure, in place of failedWayForward and failureTarget.
 	classify func(ctx context.Context, failure verifytree.PublishFailure) FailureRoute
 	waitMark func(label string, start time.Time) error
-	paths    verifytree.Paths
-	dirty    func(worktree string) ([]string, error)
-	verify   func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
-	now      func() time.Time
+	// hold is the told pause hold both verifies run under; nil holds nothing.
+	hold   *verifytree.PauseHold
+	paths  verifytree.Paths
+	dirty  func(worktree string) ([]string, error)
+	verify func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
+	now    func() time.Time
 	// recorder is set only by Publish: nil leaves a failed verify unrecorded.
 	recorder *failureRecorder
 }
@@ -137,6 +139,7 @@ func newVerifyGate(deps Deps) verifyGate {
 		failureTarget:    deps.VerifyFailureTarget,
 		classify:         deps.ClassifyVerifyFailure,
 		waitMark:         deps.VerifyWaitMark,
+		hold:             deps.VerifyHold,
 		paths:            verifytree.NewPaths(deps.WorktreeRoot, deps.VerifyDir),
 		dirty:            verifytree.DirtyPaths,
 		now:              time.Now,
@@ -233,7 +236,7 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 
 	g.markWait("")
 	g.markWait("verify " + producer)
-	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: base}, command)
+	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: base, Hold: g.hold}, command)
 	g.markWait("")
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
@@ -264,7 +267,7 @@ func (g verifyGate) checkPublishVerify(ctx context.Context, producer, parentBran
 		return "", err
 	}
 
-	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: base}, publishCommand)
+	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: base, Hold: g.hold}, publishCommand)
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
