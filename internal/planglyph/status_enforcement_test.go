@@ -91,6 +91,7 @@ var allowedStatusConsumers = []scankit.Entry{
 	{Key: "internal/planglyph/donecheck.go:doneCheckVerdicts", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/deleteorder.go:answerSymbols", Why: "fail-closed status reader"},
 	{Key: "internal/planglyph/handle.go:renameDeclSource", Why: "fail-closed status reader"},
+	{Key: "internal/planglyph/resign.go:RebindResigns", Why: "fail-closed status reader: only found passes, every other answer is resign-not-done"},
 	{Key: "internal/planglyph/pack.go:appendPackAnswer", Why: "fail-closed status reader: found and multipart resolve, every other answer is listed unresolved"},
 	{
 		Key: "internal/planglyph/resign.go:nameResigns",

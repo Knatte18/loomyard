@@ -800,8 +800,47 @@ func logBindOutcomes(batch int, outcomes []planindex.BindOutcome) {
 	}
 }
 
+// cardNotDoneFor returns the ErrCardNotDone-wrapped error findings make against the batch's own cards, or nil when findings is empty.
+// It logs every handle of the batch as failed, so the bind trace names the card that was not done and the batch-mates held back with it.
+func cardNotDoneFor(in postBatchInputs, findings []planindex.Finding) *cardNotDoneError {
+	if len(findings) == 0 {
+		return nil
+	}
+	notDone := &cardNotDoneError{}
+	notDoneCards := map[string]bool{}
+	for _, f := range findings {
+		notDone.reasons = append(notDone.reasons, f.Error())
+		notDoneCards[f.Card] = true
+		if f.Check == "delete-not-done" {
+			notDone.deleteNotDone = true
+		}
+	}
+	logBindOutcomes(in.Number, failedBindOutcomes(in.Cards, func(c planparser.Card) planindex.BindReason {
+		if notDoneCards[c.ID()] {
+			return bindCardNotDone
+		}
+		return bindBatchNotDone
+	}))
+	return notDone
+}
+
+// rereadCards returns cards as plan holds them now, matched by card ID; a card plan no longer holds stays as given.
+func rereadCards(plan *planparser.Plan, cards []planparser.Card) []planparser.Card {
+	reread := make([]planparser.Card, len(cards))
+	for i, c := range cards {
+		reread[i] = c
+		for _, current := range plan.Cards {
+			if current.ID() == c.ID() {
+				reread[i] = current
+				break
+			}
+		}
+	}
+	return reread
+}
+
 // postBatchChecks runs the mechanical pass every terminal batch owes, whichever verb takes it terminal.
-// The pass is the card done-checks, the single delta the rest of the pass shares, handle binding, the glyph scope guard, and drift detection with its exact-tier auto-repair.
+// The pass is the card done-checks, the carrying of a recorded C# re-sign into the plan, the single delta the rest of the pass shares, handle binding, the glyph scope guard, and drift detection with its exact-tier auto-repair.
 // It also runs the plan-staleness re-baseline each of those rewrites requires.
 //
 // The scope guard's findings come back as deviations: the deduplicated, sorted files the batch changed outside its targets.
@@ -830,23 +869,38 @@ func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err err
 	if err != nil {
 		return nil, nil, err
 	}
-	notDone := &cardNotDoneError{}
-	notDoneCards := map[string]bool{}
-	for _, f := range doneFindings {
-		notDone.reasons = append(notDone.reasons, f.Error())
-		notDoneCards[f.Card] = true
-		if f.Check == "delete-not-done" {
-			notDone.deleteNotDone = true
-		}
-	}
-	if len(notDone.reasons) > 0 {
-		logBindOutcomes(in.Number, failedBindOutcomes(in.Cards, func(c planparser.Card) planindex.BindReason {
-			if notDoneCards[c.ID()] {
-				return bindCardNotDone
-			}
-			return bindBatchNotDone
-		}))
+	if notDone := cardNotDoneFor(in, doneFindings); notDone != nil {
 		return nil, nil, notDone
+	}
+
+	// A recorded C# re-sign is carried into the plan once its edit is in the tree: every later card naming the member by its old glyph then names the minted id.
+	// The rewrite is the one this pass makes before the delta, so everything after it reads the re-read plan, and the plan is re-baselined before the guard and drift detection run.
+	fingerprintBefore, err := fingerprint(in.Geom.PlanDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	resignFindings, err := index.RebindResigns(in.Plan, in.Cards, in.Geom.WorktreeRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+	if notDone := cardNotDoneFor(in, resignFindings); notDone != nil {
+		return nil, nil, notDone
+	}
+	fingerprintAfter, err := fingerprint(in.Geom.PlanDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	recordedCards := in.Cards
+	if fingerprintAfter != fingerprintBefore {
+		if err := restampFingerprint(in.State, in.Geom.PlanDir, in.Geom.WebsterDir); err != nil {
+			return nil, nil, err
+		}
+		reparsed, err := in.Plan.Reparse()
+		if err != nil {
+			return nil, nil, fmt.Errorf("re-parse plan %s after re-sign rebinding: %w", in.Geom.PlanDir, err)
+		}
+		in.Plan = reparsed
+		in.Cards = rereadCards(reparsed, in.Cards)
 	}
 
 	// The batch's single delta call: BindHandles, ScopeGuard and DetectDrift all consume this one planindex.Delta rather than each spawning their own.
@@ -904,7 +958,8 @@ func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err err
 		warnings = append(warnings, fmt.Sprintf("glyph scope guard could not run for batch %s: %v", in.Label, deltaErr))
 	} else {
 		deviationSet := map[string]bool{}
-		for _, f := range delta.ScopeGuard(in.Plan, in.Cards) {
+		// The guard's targets are the cards as recorded and as re-read, so a re-signed member's old glyph and its minted id both count as the batch's own.
+		for _, f := range delta.ScopeGuard(in.Plan, append(slices.Clone(recordedCards), in.Cards...)) {
 			if f.File != "" && !deviationSet[f.File] {
 				deviationSet[f.File] = true
 				deviations = append(deviations, f.File)

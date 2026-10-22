@@ -78,6 +78,10 @@ func (index) DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktree
 	return DoneChecks(plan, cards, worktreeRoot)
 }
 
+func (index) RebindResigns(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]Finding, error) {
+	return RebindResigns(plan, cards, worktreeRoot)
+}
+
 func (index) LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.Card, worktreeRoot string) ([]Finding, error) {
 	return LaterDeleteReferences(plan, deleting, later, worktreeRoot)
 }

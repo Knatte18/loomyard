@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/glyph"
@@ -272,4 +273,69 @@ func cardRetires(c planparser.Card, names []resignName, id string) bool {
 		}
 	}
 	return false
+}
+
+// RebindResigns carries the C# re-sign arrows of cards, a batch just recorded, into plan.
+// It names each arrow's head again, and resolves the minted id of every arrow that differs from its target against worktreeRoot's tree.
+// An id that does not resolve found means the card's edit does not match its arrow, which is the blocking resign-not-done finding for that card, and nothing is rewritten.
+// When every id resolves found it rewrites each old glyph to its minted id plan-wide in one plan.RewriteRefs call, so a later card naming the member by its old glyph names the minted id.
+// A Go arrow, an arrow whose minted id is its target, and a plan whose language opts out of glyphs do nothing.
+// An infrastructure error from quarry is wrapped in ErrQuarryUnavailable.
+func RebindResigns(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]Finding, error) {
+	if !plan.GlyphLanguage() || plan.GoToolchain() {
+		return nil, nil
+	}
+	ids := make(map[string]bool, len(cards))
+	for _, c := range cards {
+		ids[c.ID()] = true
+	}
+	// A head that fails to name is already reported at the plan gates, and names no arrow to rebind here.
+	names, _, err := nameResigns(cardsByID(plan, ids))
+	if err != nil {
+		return nil, err
+	}
+	minted := mintedResignIDs(names)
+	if len(minted) == 0 {
+		return nil, nil
+	}
+
+	repo, err := openRepo(worktreeRoot)
+	if err != nil {
+		return nil, err
+	}
+	results, err := resolveTargets(repo, minted)
+	if err != nil {
+		return nil, err
+	}
+	answers := resultByTarget(results)
+
+	var findings []Finding
+	subs := make(map[string]string, len(minted))
+	for _, n := range names {
+		if n.target.Lang != glyph.CSharp || n.id == n.target.String() {
+			continue
+		}
+		// Fail closed: only a found answer shows the card's edit declares the arrow's head.
+		if answer := answers[n.id]; answer.Status != quarry.StatusFound {
+			number, _, _ := strings.Cut(n.card, "-")
+			findings = append(findings, Finding{
+				Check: "resign-not-done",
+				Card:  n.card,
+				Detail: fmt.Sprintf(
+					"re-sign arrow %q -> %q mints %q, which answered %q in the tree; make the edit match the arrow's head, or correct the head to the signature the card wrote and run `lyx webster rebaseline --card %s` naming that card",
+					n.target.String(), n.head, n.id, string(answer.Status), number),
+				Severity: SeverityBlocking,
+				Ref:      n.target.String(),
+			})
+			continue
+		}
+		subs[n.target.String()] = n.id
+	}
+	if len(findings) > 0 {
+		return findings, nil
+	}
+	if err := plan.RewriteRefs(subs); err != nil {
+		return nil, fmt.Errorf("rewrite re-signed refs in plan %s: %w", plan.Dir, err)
+	}
+	return nil, nil
 }
