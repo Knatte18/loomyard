@@ -7,12 +7,40 @@
 
 package reedengine
 
+/*
+#include <unistd.h>
+*/
+import "C"
+
 import (
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// paneProcessAge returns the elapsed time of the process pid, read from /proc/uptime and /proc/<pid>/stat.
+// It answers false for a pid of 0 or below and for anything unreadable,
+// so an age that cannot be read counts as inside the launch grace and never makes a removal kill a pane.
+func paneProcessAge(pid int) (time.Duration, bool) {
+	if pid <= 0 {
+		return 0, false
+	}
+	uptime, err := os.ReadFile("/proc/uptime")
+	if err != nil {
+		return 0, false
+	}
+	stat, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return 0, false
+	}
+	age, err := processAge(string(uptime), string(stat), int64(C.sysconf(C._SC_CLK_TCK)))
+	if err != nil {
+		return 0, false
+	}
+	return age, true
+}
 
 // descendantClosurePIDs expands roots to transitive descendants by reading
 // /proc/<pid>/stat entries. Degrades to bare roots on read failure.
