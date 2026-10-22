@@ -479,8 +479,12 @@ func TestGateTest_Scenario(t *testing.T) {
 		if got, want := filepath.Dir(summaryLogPath(t, g.stdout.String(), 0)), gateslot.RunLogDir(gateslot.Dir(h.BoardDir())); got != want {
 			t.Errorf("run record directory = %s; want the board's %s", got, want)
 		}
-		if log != "" {
-			t.Errorf("run log = %q; want the stand-in's empty output", log)
+		trimpath := trimpathLine("tier0", []string{"GOFLAGS=-trimpath -p=3"})
+		if want := trimpath + "\n"; log != want {
+			t.Errorf("run log = %q; want the -trimpath line and the stand-in's empty output, %q", log, want)
+		}
+		if !slices.Contains(strings.Split(g.stdout.String(), "\n"), trimpath) {
+			t.Errorf("gate output = %q; want the -trimpath line %q", g.stdout.String(), trimpath)
 		}
 		requireFree(t)
 	})

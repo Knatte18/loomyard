@@ -303,6 +303,37 @@ func TestPlanTierRuns(t *testing.T) {
 	}
 }
 
+func TestTrimpathLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		env       []string
+		wantFlags string
+	}{
+		{name: "a -trimpath field fires", env: []string{"GOFLAGS=-trimpath -p=4"}, wantFlags: "-trimpath -p=4"},
+		{name: "a double-dash field fires", env: []string{"GOFLAGS=--trimpath"}, wantFlags: "--trimpath"},
+		{name: "an explicit true fires", env: []string{"GOFLAGS=-p=2 -trimpath=true"}, wantFlags: "-p=2 -trimpath=true"},
+		{name: "an explicit false is silent", env: []string{"GOFLAGS=-trimpath=false"}},
+		{name: "a GOFLAGS without it is silent", env: []string{"GOFLAGS=-p=4 -mod=readonly"}},
+		{name: "no GOFLAGS is silent", env: []string{"A=1"}},
+		{name: "the last GOFLAGS entry wins over an inherited one", env: []string{"GOFLAGS=-trimpath", "GOFLAGS=-p=4"}},
+		{name: "a tier GOFLAGS after an inherited one fires", env: []string{"GOFLAGS=-p=4", "GOFLAGS=-trimpath -p=3"}, wantFlags: "-trimpath -p=3"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			want := ""
+			if tt.wantFlags != "" {
+				want = fmt.Sprintf("gate test: tier0 builds with GOFLAGS=%q, and -trimpath makes runtime.Caller report module-relative file paths; a test locates its repository from its working directory or go.mod, never from a runtime.Caller path alone", tt.wantFlags)
+			}
+			if got := trimpathLine("tier0", tt.env); got != want {
+				t.Errorf("trimpathLine(tier0, %q) = %q; want %q", tt.env, got, want)
+			}
+		})
+	}
+}
+
 func TestRenderTierCommand(t *testing.T) {
 	t.Parallel()
 
