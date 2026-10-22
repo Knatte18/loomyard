@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -176,10 +177,16 @@ func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 // TestRunCmd_ResumeDispositions covers StateRunning, StateBlocked, StateFailed and StatePaused, each resuming silently from the persisted current producer, and an absent status file, which is a fresh start and not a refusal: every fake succeeds trivially, so the whole run completes and the verb reports success, with a history_length key matching the persisted history.
 // A run whose status carries a pause_after naming the first row stops paused, and the driver hands it back with no tackler; a run whose row fails again ends in an error envelope carrying the status error.
 // A resume runs the origin reconcile once: an active or unreachable verdict resumes, an ended verdict refuses naming the landing and "lyx cleanup --apply", a stopped verdict refuses with the branch's way forward verbatim followed by the re-run, and a reconcile error refuses with the error and the re-run; an absent status file never runs it.
+// Over fake owner seams, an owned_elsewhere verdict refuses naming the owner and "lyx adopt", a run-held entry with no owner is recorded as this machine's before the resume and each failure of that write refuses, an unreachable origin reads the local board instead and writes nothing, a hub with no prime owner has this machine claim it, and a status still at Worktree-Create with no pair runs the start check and no reconcile.
 func TestRunCmd_ResumeDispositions(t *testing.T) {
 	t.Parallel()
 
 	const slug = "some-slug"
+	teardown := battenrecipe.NameWorktreeTeardown
+	activeReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryActive}}}
+	elsewhereReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there"}}}
+	unreachableReport := fabricengine.OriginReport{Unreachable: true}
+	owning := func(fake fakeOwners) func() *fakeOwners { return func() *fakeOwners { return &fake } }
 	const stopWayForward = "`lyx fabric pull` in /hub/example"
 	stoppedReport := fabricengine.OriginReport{
 		Branches: []fabricengine.BranchOutcome{{Branch: "some-slug", Repo: "code", Slug: slug, State: fabricengine.BranchRewritten, WayForward: stopWayForward}},
@@ -196,6 +203,12 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		wantOutcome   string
 		wantErrors    []string
 		wantReconcile int
+		// owner builds the fake owner seams; nil leaves the receiver with no owner check.
+		owner func() *fakeOwners
+		// wantSets lists the owner writes, as the fake records them.
+		wantSets []string
+		// wantPulls counts the board pulls the start check made.
+		wantPulls int
 	}{
 		{name: "running", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1},
 		{name: "blocked", state: shedengine.StateBlocked, wantOutcome: "done", wantReconcile: 1},
@@ -227,12 +240,91 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			reconcileErr: errors.New("origin refused the credentials"),
 			wantErrors:   []string{"origin refused the credentials", "fix the cause it names, then re-run lyx batten run " + slug},
 		},
+		{
+			name: "owner_elsewhere_verdict_refuses_naming_the_adopt", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
+			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", false)}),
+			report:     elsewhereReport,
+			wantErrors: []string{"there", "lyx adopt " + slug},
+		},
+		{
+			name: "unowned_run_held_entry_is_recorded_before_the_resume", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
+			owner:    owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true)}),
+			report:   activeReport,
+			wantSets: []string{"slug:" + slug},
+		},
+		{
+			name: "owner_write_with_origin_unreachable_refuses_naming_the_rerun", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
+			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true), setErr: fmt.Errorf("%w: fetch failed", boardengine.ErrOwnerOriginUnreachable)}),
+			report:     activeReport,
+			wantSets:   []string{"slug:" + slug},
+			wantErrors: []string{"needs origin", "lyx batten run " + slug, "once origin answers"},
+		},
+		{
+			name: "refused_owner_push_refuses_naming_its_way_forward", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
+			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true), setErr: errors.New("push refused; way forward: run lyx board sync")}),
+			report:     activeReport,
+			wantSets:   []string{"slug:" + slug},
+			wantErrors: []string{"push refused; way forward: run lyx board sync", "lyx batten run " + slug},
+		},
+		{
+			name: "lost_owner_write_refuses_naming_the_other_owner", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
+			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true), lost: map[string]string{slug: "there"}}),
+			report:     activeReport,
+			wantSets:   []string{"slug:" + slug},
+			wantErrors: []string{"there", "lyx adopt " + slug},
+		},
+		{
+			name: "unreachable_origin_with_the_local_board_owned_elsewhere_refuses", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
+			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "there", true)}),
+			report:     unreachableReport,
+			wantErrors: []string{"the local board shows", "there", "once origin answers", "lyx batten run " + slug},
+		},
+		{
+			name: "unreachable_origin_with_an_unowned_run_held_entry_resumes_without_a_write", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
+			owner:  owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true)}),
+			report: unreachableReport,
+		},
+		{
+			name: "hub_with_no_prime_owner_records_this_machine_as_the_prime_owner", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
+			owner:    owning(fakeOwners{machine: "here", owners: ownedBy("", "", false)}),
+			report:   activeReport,
+			wantSets: []string{"prime"},
+		},
+		{
+			name: "unreachable_origin_with_no_prime_owner_resumes_without_a_write", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
+			owner:  owning(fakeOwners{machine: "here", owners: ownedBy("", "", false)}),
+			report: unreachableReport,
+		},
+		{
+			name: "failed_prime_claim_warns_and_still_reaches_the_owner_verdict", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
+			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("", "", false), primeSetErr: errors.New("push refused")}),
+			report:     elsewhereReport,
+			wantSets:   []string{"prime"},
+			wantErrors: []string{"there", "lyx adopt " + slug},
+		},
+		{
+			name: "worktree_create_without_a_pair_runs_the_start_check_and_no_reconcile", state: shedengine.StateRunning, wantOutcome: "done",
+			owner:     owning(fakeOwners{machine: "here", owners: ownedBy("here", "here", false)}),
+			wantPulls: 1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
 			c := newFakeReceiver(t, nil)
+			if tt.owner != nil {
+				fake := tt.owner()
+				c.owner = fake.seams()
+				defer func() {
+					if got, want := strings.Join(fake.sets, ","), strings.Join(tt.wantSets, ","); got != want {
+						t.Errorf("run(%s) owner writes = %q; want %q", tt.name, got, want)
+					}
+					if fake.pulls != tt.wantPulls {
+						t.Errorf("run(%s) board pulls = %d; want %d", tt.name, fake.pulls, tt.wantPulls)
+					}
+				}()
+			}
 			reconciled := 0
 			c.reconcile = func(got string) (fabricengine.OriginReport, error) {
 				reconciled++

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -102,6 +103,21 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 			},
 			wantKind:   shedverbs.KindBootstrap,
 			wantSubstr: []string{"lyx batten cleanup --apply", "task branch", "locally and on the remote", "to run it again", "different slug"},
+		},
+		{
+			// A step drives no run another machine owns, so the reconcile's owned_elsewhere verdict refuses it as a bootstrap failure.
+			name: "RunOwnedElsewhereIsBootstrap",
+			arrange: func(t *testing.T, c *battenCLI) {
+				writeStatus(t, c, shedengine.Status{
+					CurrentProducer: battenrecipe.NameWorktreeTeardown,
+					State:           shedengine.StateRunning,
+				})
+				c.reconcile = func(string) (fabricengine.OriginReport, error) {
+					return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: c.slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there"}}}, nil
+				}
+			},
+			wantKind:   shedverbs.KindBootstrap,
+			wantSubstr: []string{`"there"`, "lyx adopt " + "some-slug"},
 		},
 	}
 	for _, tt := range tests {

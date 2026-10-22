@@ -62,9 +62,12 @@
 //
 // A resume, "lyx batten run" over an existing status file, first runs the origin reconcile of the slug's run scope.
 // An entry origin ended refuses, naming the landing or the removal and "lyx cleanup --apply" from the prime; a stopped entry refuses, naming the branch, its state and the way forward for it, then the re-run;
-// an active entry resumes, and so does an unreachable origin, with a Warn.
+// an entry another machine owns refuses, naming the owner and "lyx adopt <slug>"; an active entry resumes, and so does an unreachable origin, with a Warn.
+// With origin answering, the resume first records this machine as the hub's prime owner when none is recorded, and as the owner of a run-held entry that has none; a failed write refuses, naming the re-run once origin answers or the push's own way forward.
+// With origin unreachable the resume reads the local board instead, refuses a task it shows owned elsewhere, and writes no owner.
 // A reconcile error refuses, with fixing its cause and then the re-run as the way forward.
 // A fresh start runs no reconcile: creating the pair probes origin for it, and a parent behind origin costs only Merge-In's merge.
+// It pulls the board instead, which needs origin, and refuses a task another machine owns before anything is seeded or claimed.
 //
 // Between Seed-Child and Run-Shed, three Command rows run one shell command each: Open-Window opens the operator's terminal window attached to the pair's reed session, Seed-IDE writes the pair's VS Code colour and .vscode/ config, and Open-IDE opens VS Code on the pair.
 // Each runs its command only when its batten.yaml switch is on, open_window, seed_ide and open_ide in turn, of which only open_ide is off by default, and is Done either way, a failed command only warning.

@@ -776,12 +776,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		PrimeLock:  primeLock,
 		CreateWorktree: func(ctx context.Context) error {
 			// The claim comes first, so the run lock on the board entry starts before the pair exists and survives this row failing.
-			// A board failure only warns: the board is the hub's overview, never the run's bookkeeping.
-			claim := boardengine.RunStatus(string(shedengine.StateRunning), battenrecipe.NameWorktreeCreate)
-			if board, err := boardengine.OpenHub(location.HubPath); err != nil {
-				logger.Warn("battencli: claim board entry failed", "slug", slug, "err", err)
-			} else if err := board.SetRunStatus(slug, claim); err != nil {
-				logger.Warn("battencli: claim board entry failed", "slug", slug, "err", err)
+			// It records this machine as the entry's owner in the same commit, so a failed write or push refuses the row and the stopped run resumes with the same verb.
+			if err := c.claimBoardEntry(slug); err != nil {
+				return err
 			}
 
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))

@@ -24,9 +24,16 @@
 // "lyx batten run <slug> --window" runs the same status check as a plain run and refuses a done slug before opening anything.
 //
 // The Worktree-Create row opens by claiming the slug's board entry with "running · Worktree-Create", before the pair exists, so the board's run lock starts at the claim.
-// An absent or done entry is skipped, and a board failure only warns: the board is the hub's overview, never the run's bookkeeping.
+// The claim is one Bolt commit that also records this machine as the entry's owner, and an absent or done entry is skipped.
+// A failed owner write or push refuses the row, and so does an entry another machine owns, which the claim never takes.
 // The claim stays when the row then fails, and the stopped run resumes with the same verb.
 // No other row writes a board status; loom's transitions are the only later writer.
+//
+// A machine starts, resumes and claims only what it owns.
+// A start (no status file, or one still at Worktree-Create whose pair this machine does not hold) pulls the board, which needs origin, claims the hub's prime when none is recorded, and refuses a task another machine owns.
+// A resume refuses a task the origin reconcile or, with origin unreachable, the local board shows owned elsewhere; with origin answering it records this machine as the owner of a run-held entry with none.
+// Every such refusal names the owner and "lyx adopt <slug>" as the way forward.
+// "lyx batten status" reports the slug's effective owner as owner_machine and whether this machine holds it as owned_here.
 //
 // The Inner-Run row's state-changed notice is held while the child's arbiter is live:
 // the row reads the child's in-flight arbiter marker against the pair's reed directory.
@@ -107,6 +114,8 @@ type battenCLI struct {
 	openTerminalFlag bool
 	// reconcile runs the run-scope origin reconcile of a slug the pre-run resumes; Command wires it to reconcileRun, and nil reads as no reconcile, which only a hand-populated receiver has.
 	reconcile func(slug string) (fabricengine.OriginReport, error)
+	// owner carries the seams of the owner checks; armAt fills it with hubOwnerSeams when it is zero, and a receiver that calls no arm leaves it zero, which reads as no owner check.
+	owner ownerSeams
 }
 
 // windowNamePrefix starts the name of the window "lyx batten run <slug> --window" opens, ahead of the slug.
@@ -367,7 +376,7 @@ func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 // runInWindow is the run verb's body under --window: it opens the window "batten:<slug>" running "lyx batten run <slug>" (without --window, carrying an explicitly typed --driver or --child-driver through) and prints the window's id and name.
 // When this machine has a terminal launcher, the window's run also gets --open-terminal and the envelope's terminal_window names the launcher;
 // with none, the run goes on without it and terminal_window says no window is opened and why.
-// A slug whose status is done, undecodable or in an unrecognized state is refused before any window opens, with the same refusal a plain run gives;
+// A slug whose status is done, undecodable or in an unrecognized state is refused before any window opens, with the same refusal a plain run gives, and so is a slug another machine owns, naming the owner and "lyx adopt <slug>";
 // seeding a fresh status stays inside the window's own run.
 // The envelope reports a started window only, never a started batten: a second batten for the slug is refused by the run's own lock inside the window.
 func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
@@ -382,6 +391,10 @@ func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 		return nil
 	}
 	if _, err := c.checkRunStatus(); err != nil {
+		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		return nil
+	}
+	if err := c.preflightRunOwner(); err != nil {
 		clihelp.SetExit(ctx, output.Err(out, err.Error()))
 		return nil
 	}
