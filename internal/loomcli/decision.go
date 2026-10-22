@@ -499,12 +499,14 @@ On a darn run it works once Darn-Write has validated and committed its record,
 also while Darn-Write runs. It refuses a record that is missing, not
 committed, differing from its committed copy or missing an entry its history
 held, and a commit after which the committed record lacks the entry.
+That bounds the append to a record the writer validated and has not touched,
+and to an entry that reached the fabric.
 
 A decision that adds, changes or removes a PATTERN entry also passes
 --pattern-entry <PATTERN-id>, --pattern-action adds|changes|removes and, for
 adds or changes, --pattern-text <new entry text>. One call then appends the
 entry and one bullet of the record's "## PATTERN changes" section, creating the
-section when the record has none.
+section when the record has none; the bullet is checked with the record.
 
 Example:
   lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."
