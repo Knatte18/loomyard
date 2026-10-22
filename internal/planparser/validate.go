@@ -18,8 +18,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/Knatte18/quarry/glyph"
 )
 
 // RecognizedFormat is the only plan-format version Validate currently understands.
@@ -118,23 +116,22 @@ func checkFormatRecognized(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkLanguageRecognized implements plan-language-unrecognized: plan.Language must be "go" or
-// "none". "" (the zero value, meaning a hand-built *Plan carries no explicit language: at all) is
-// treated identically to "go", matching Plan.Language's own documented "absent defaults to go"
-// rule — ParsePlan itself never actually produces "", always writing "go" explicitly when the
-// frontmatter key is absent. This is a pure string check: it calls no Resolve, stats no disk, and
-// keeps the package tier1-safe.
+// checkLanguageRecognized implements plan-language-unrecognized: plan.Language must be "go",
+// "csharp" or "none".
+// "" (the zero value, meaning a hand-built *Plan carries no explicit language: at all) is treated identically to "go", matching Plan.Language's own documented "absent defaults to go" rule.
+// ParsePlan itself never actually produces "", always writing "go" explicitly when the frontmatter key is absent.
+// This is a pure string check: it calls no Resolve, stats no disk, and keeps the package tier1-safe.
 func checkLanguageRecognized(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	switch plan.Language {
-	case "", "go", "none":
+	case "", "go", "csharp", "none":
 		return findings
 	}
 
 	findings = append(findings, ValidationError{
 		Check:  "plan-language-unrecognized",
-		Detail: fmt.Sprintf(`language %q is not recognized; only "go" and "none" are known`, plan.Language),
+		Detail: fmt.Sprintf(`language %q is not recognized; only "go", "csharp" and "none" are known`, plan.Language),
 	})
 
 	return findings
@@ -474,8 +471,7 @@ func checkDirectoryTarget(plan *Plan) []ValidationError {
 func checkGlyphMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	lang, ok := planLanguage(plan)
-	if !ok {
+	if _, ok := planLanguage(plan); !ok {
 		return findings
 	}
 
@@ -485,7 +481,7 @@ func checkGlyphMalformed(plan *Plan) []ValidationError {
 				if _, disp := lookup(gateGlyphMalformed, t); disp != dispKeep {
 					continue
 				}
-				if _, err := parseGlyph(lang, t); err != nil {
+				if _, err := ParseRef(plan, t); err != nil {
 					findings = append(findings, ValidationError{
 						Check: "glyph-malformed",
 						Card:  cardID(c),
@@ -661,14 +657,13 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 func checkResignNotMember(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	lang, ok := planLanguage(plan)
-	if !ok {
+	if _, ok := planLanguage(plan); !ok {
 		return findings
 	}
 
 	for _, c := range plan.Cards {
 		for _, r := range c.Resigns {
-			shape, bad := resignTargetShape(lang, r.Target)
+			shape, bad := resignTargetShape(plan, r.Target)
 			if !bad {
 				continue
 			}
@@ -688,37 +683,41 @@ func checkResignNotMember(plan *Plan) []ValidationError {
 }
 
 // resignTargetShape names the shape of a re-sign arrow's target and reports whether that shape is a finding.
-func resignTargetShape(lang glyph.Language, target string) (shape string, bad bool) {
+func resignTargetShape(plan *Plan, target string) (shape string, bad bool) {
 	kind, disp := lookup(gateResignTarget, target)
 	if disp == dispFinding {
 		return refKindName(kind), true
 	}
-	g, err := parseGlyph(lang, target)
+	g, err := ParseRef(plan, target)
 	if err != nil || !g.IsSelf() {
 		return "", false
 	}
-	if unitPath, ok := g.UnitPath(); ok && !hasFileExtension(unitPath) {
+	unitPath, ok := g.UnitPath()
+	if !ok {
+		return "a namespace self glyph", true
+	}
+	if !hasFileExtension(unitPath) {
 		return "a package self glyph", true
 	}
 	return "a file self glyph", true
 }
 
-// isFileRenamePair reports whether p is a file-rename pair under lang: both p.Old and p.New
+// isFileRenamePair reports whether p is a file-rename pair under plan's language: both p.Old and p.New
 // classify as refKindGlyph and both parse to a glyph whose IsSelf() reports true. A file-rename
 // pair has no declaration head to name and is exempt from both of checkRenamePairShape's checks —
 // it belongs in the same group as a plain path pair.
-func isFileRenamePair(lang glyph.Language, p MovePair) bool {
+func isFileRenamePair(plan *Plan, p MovePair) bool {
 	if _, disp := lookup(gateFileRenamePair, p.Old); disp != dispKeep {
 		return false
 	}
 	if _, disp := lookup(gateFileRenamePair, p.New); disp != dispKeep {
 		return false
 	}
-	oldGlyph, err := parseGlyph(lang, p.Old)
+	oldGlyph, err := ParseRef(plan, p.Old)
 	if err != nil || !oldGlyph.IsSelf() {
 		return false
 	}
-	newGlyph, err := parseGlyph(lang, p.New)
+	newGlyph, err := ParseRef(plan, p.New)
 	if err != nil || !newGlyph.IsSelf() {
 		return false
 	}
@@ -749,14 +748,13 @@ func isFileRenamePair(lang glyph.Language, p MovePair) bool {
 func checkRenamePairShape(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	lang, langOK := planLanguage(plan)
-	if !langOK {
+	if _, langOK := planLanguage(plan); !langOK {
 		return findings
 	}
 
 	for _, c := range plan.Cards {
 		for _, p := range c.Pairs {
-			if isFileRenamePair(lang, p) {
+			if isFileRenamePair(plan, p) {
 				continue
 			}
 			if k, disp := lookup(gateRenameTo, p.New); disp == dispFinding {
@@ -787,7 +785,7 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 				// where a found self glyph carries a Listing and no Symbols, so renameDeclSource
 				// refused it with a detail claiming the old side "did not resolve found" — a
 				// resolution story for what is a shape mistake (crucible round fable-high-r10, F5).
-				if g, err := parseGlyph(lang, p.Old); err == nil && g.IsSelf() {
+				if g, err := ParseRef(plan, p.Old); err == nil && g.IsSelf() {
 					findings = append(findings, ValidationError{
 						Check: "rename-from-not-glyph",
 						Card:  cardID(c),
@@ -1016,7 +1014,7 @@ func checkImpactSummaryMultiline(plan *Plan) []ValidationError {
 // hold only file(s)/package(s), never an individual symbol. A symbol in the same card's non-Prosa
 // group is not flagged — the rule is scoped to the Prosa group's own Refs, not the card's flat
 // Targets union.
-// Under a glyph-enabled plan.Language, a ref passes when parseGlyph succeeds and the resulting
+// Under a glyph-enabled plan.Language, a ref passes when ParseRef succeeds and the resulting
 // glyph's IsSelf() reports true — admitting both the file self glyph and the unit self glyph, the
 // latter required by the package-spelling rule so a Prosa card can target a whole package (e.g.
 // "internal/foo#") — and is the finding when IsSelf() reports false (a member glyph, or anything
@@ -1026,7 +1024,7 @@ func checkImpactSummaryMultiline(plan *Plan) []ValidationError {
 func checkProsaSymbolTarget(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	lang, langOK := planLanguage(plan)
+	_, langOK := planLanguage(plan)
 
 	for _, c := range plan.Cards {
 		for _, g := range c.TargetGroups {
@@ -1035,7 +1033,7 @@ func checkProsaSymbolTarget(plan *Plan) []ValidationError {
 			}
 			for _, t := range g.Refs {
 				if langOK {
-					if gl, err := parseGlyph(lang, t); err == nil && gl.IsSelf() {
+					if gl, err := ParseRef(plan, t); err == nil && gl.IsSelf() {
 						continue
 					}
 				} else if _, disp := lookup(gateProsaPathOnly, t); disp == dispKeep {

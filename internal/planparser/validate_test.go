@@ -1175,6 +1175,11 @@ func TestValidate_RedundantPackageTarget(t *testing.T) {
 			language: "none",
 			cards:    []planparser.Card{edit(1, "pkg/a#", "pkg/a#Thing")},
 		},
+		{
+			name:     "csharp: a namespace self glyph is no package container",
+			language: "csharp",
+			cards:    []planparser.Card{edit(1, "Glyphchain.Sharp#", "Glyphchain.Sharp#Renderer.Title")},
+		},
 	}
 
 	for _, tc := range tests {
@@ -1208,7 +1213,10 @@ func TestValidate_ResignNotMember(t *testing.T) {
 		language string
 		target   string
 		want     bool
+		// wantDetail is a substring the one finding's detail carries, when set.
+		wantDetail string
 	}{
+		{name: "csharp namespace self glyph", language: "csharp", target: "Glyphchain.Sharp#", want: true, wantDetail: "a namespace self glyph"},
 		{name: "member glyph", target: "pkg/a#Thing"},
 		{name: "method glyph", target: "pkg/a#Owner.Method"},
 		{name: "file path", target: "pkg/a/file.go", want: true},
@@ -1232,6 +1240,9 @@ func TestValidate_ResignNotMember(t *testing.T) {
 			for _, f := range planparser.Validate(plan, t.TempDir()) {
 				if f.Check == "resign-not-member" {
 					got = append(got, f.Ref)
+					if !strings.Contains(f.Detail, tc.wantDetail) {
+						t.Errorf("resign-not-member detail = %q; want it to contain %q", f.Detail, tc.wantDetail)
+					}
 				}
 			}
 			var want []string
@@ -1286,6 +1297,16 @@ func TestValidate_ProsaSymbolTarget(t *testing.T) {
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "prosa-symbol-target"); got != 0 {
 			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 0", got)
+		}
+	})
+
+	t.Run("csharp: file and namespace self glyphs are clean, a member glyph is the finding", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeProsa, []string{"src/Foo.cs#", "Glyphchain.Sharp#", "Glyphchain.Sharp#Renderer.Title"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "csharp", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "prosa-symbol-target"); got != 1 {
+			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 1 (only the member glyph)", got)
 		}
 	})
 
@@ -1403,6 +1424,16 @@ func TestValidate_PathMissing(t *testing.T) {
 					t.Errorf("countFor(findings, path-missing) = %d; want 1", got)
 				}
 			})
+		}
+	})
+
+	t.Run("csharp: a slash-free self glyph has no path to check", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"README.md#"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "csharp", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "path-missing"); got != 0 {
+			t.Errorf("countFor(findings, path-missing) = %d; want 0", got)
 		}
 	})
 
@@ -1907,6 +1938,7 @@ func TestValidate_LanguageRecognized(t *testing.T) {
 		want     int
 	}{
 		{name: "go accepted", language: "go", want: 0},
+		{name: "csharp accepted", language: "csharp", want: 0},
 		{name: "none accepted", language: "none", want: 0},
 		{name: "absent defaulting to go", language: "", want: 0},
 		{name: "unknown value", language: "python", want: 1},
@@ -2104,6 +2136,16 @@ func TestValidate_GlyphMalformed(t *testing.T) {
 		}
 		if got := countFor(findings, "prosa-symbol-target"); got != 1 {
 			t.Errorf("countFor(findings, prosa-symbol-target) = %d; want 1", got)
+		}
+	})
+
+	t.Run("csharp: a slashed member glyph neither alphabet takes is malformed", func(t *testing.T) {
+		t.Parallel()
+		card := cardOfType(1, "a", planparser.CardTypeEdit, []string{"a/b#Draw(int)"})
+		plan := &planparser.Plan{Format: 5, Approved: true, Language: "csharp", Cards: []planparser.Card{card}}
+		findings := planparser.Validate(plan, t.TempDir())
+		if got := countFor(findings, "glyph-malformed"); got != 1 {
+			t.Errorf("countFor(findings, glyph-malformed) = %d; want 1", got)
 		}
 	})
 
@@ -2307,6 +2349,7 @@ func TestSymbolRenamePairs(t *testing.T) {
 		{"file self glyph pair is not returned", "go", []planparser.Card{cardWith(1, filePair)}, nil},
 		{"card with both returns only the symbol pair", "go", []planparser.Card{cardWith(1, filePair, symbolPair)}, []planparser.MovePair{symbolPair}},
 		{"plan with no Rename card returns nil", "go", []planparser.Card{cardWith(1)}, nil},
+		{"file self glyph pair under language csharp is not returned", "csharp", []planparser.Card{cardWith(1, planparser.MovePair{Old: "Program.cs#", New: "App.cs#"})}, nil},
 		{"two-path pair under language none is not returned", "none", []planparser.Card{cardWith(1, planparser.MovePair{Old: "a/old.txt", New: "a/new.txt"})}, nil},
 		{"bare symbols under language none are returned", "none", []planparser.Card{cardWith(1, planparser.MovePair{Old: "greeter.OldName", New: "greeter.NewName"})}, []planparser.MovePair{{Old: "greeter.OldName", New: "greeter.NewName"}}},
 		{"pairs of two cards keep card order", "go", []planparser.Card{cardWith(1, symbolPair), cardWith(2, otherSymbolPair)}, []planparser.MovePair{symbolPair, otherSymbolPair}},

@@ -16,6 +16,7 @@ const fabricVocabularyNameCheck = "fabric-vocabulary-name"
 // A name is the member half of a Create handle or of a Rename pair's New handle.
 // It fails when it carries a bare fabric side token in a file the scan polices, or is a retired host-geometry identifier in non-test code under `internal/` or `cmd/`.
 // A handle that does not split into a unit and a member is skipped, since the handle checks already report it.
+// The member's own name is the Name of ParseRef over the handle's body with a C# generic arity suffix stripped, and the member's last dot-segment only for a body ParseRef rejects.
 // A name failing both rules gets one finding; its way forward is to rename the member.
 // It sits outside ValidateFormat and Validate, since the plan index appends it beside CheckCardFabricReference.
 // It reads plan text only, under any `language:`, and only refuses.
@@ -28,6 +29,11 @@ func CheckFabricVocabularyName(plan *Plan) []ValidationError {
 			last, lastOK := HandleIdentifier(handle)
 			if !unitOK || !memberOK || !lastOK || unit == "" {
 				continue
+			}
+			if body, _ := HandleBody(handle); body != "" {
+				if parsed, err := ParseRef(plan, body); err == nil && parsed.Name != "" {
+					last, _, _ = strings.Cut(parsed.Name, "<")
+				}
 			}
 			broken := brokenFabricVocabularyRule(unit, member, last)
 			if broken == "" {

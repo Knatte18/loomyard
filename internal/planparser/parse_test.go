@@ -987,6 +987,8 @@ func TestParsePlan_Language(t *testing.T) {
 	tests := []struct {
 		name         string
 		languageLine string
+		// target is the card's raw target, "a.go" when empty.
+		target       string
 		wantLanguage string
 		wantTarget   string
 		// wantNoSurface requires SurfaceRefs to be empty, as under language none.
@@ -994,6 +996,7 @@ func TestParsePlan_Language(t *testing.T) {
 	}{
 		{name: "absent defaults to go and canonicalizes", languageLine: "", wantLanguage: "go", wantTarget: "a.go#"},
 		{name: "explicit go behaves identically to absent", languageLine: "language: go\n", wantLanguage: "go", wantTarget: "a.go#"},
+		{name: "csharp canonicalizes a path through the Go unit alphabet", languageLine: "language: csharp\n", target: "Program.cs", wantLanguage: "csharp", wantTarget: "Program.cs#"},
 		{name: "none leaves every ref byte-identical", languageLine: "language: none\n", wantLanguage: "none", wantTarget: "a.go", wantNoSurface: true},
 	}
 
@@ -1001,9 +1004,13 @@ func TestParsePlan_Language(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
+			target := tt.target
+			if target == "" {
+				target = "a.go"
+			}
 			dir := writePlanFiles(t, map[string]string{
 				"00-overview.md": "---\nformat: 5\napproved: true\n" + tt.languageLine + "---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — the only card\n",
-				"01-only.md":     minimalCardFile(1, "only", "a.go"),
+				"01-only.md":     minimalCardFile(1, "only", target),
 			})
 			plan, err := planparser.ParsePlan(dir)
 			if err != nil {

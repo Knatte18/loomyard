@@ -30,11 +30,14 @@ func TestCheckFabricVocabularyName(t *testing.T) {
 		}
 
 		tests := []struct {
-			name string
-			card planparser.Card
-			ref  string
-			want int
+			name     string
+			language string
+			card     planparser.Card
+			ref      string
+			want     int
 		}{
+			{name: "csharp handle with a parameter list names the member, not the parameter type", language: "csharp", card: declare("plan:Ns#Renderer.Paint(System.Text.Rune)"), want: 0},
+			{name: "csharp test name before a parameter list", language: "csharp", card: declare("plan:Ns#Renderer.Test" + capitalized + "Thing(System.Text.Rune)"), ref: "plan:Ns#Renderer.Test" + capitalized + "Thing(System.Text.Rune)", want: 1},
 			{name: "test name outside internal", card: declare("plan:tools/x#Test" + capitalized + "Thing"), ref: "plan:tools/x#Test" + capitalized + "Thing", want: 1},
 			{name: "token under internal", card: declare("plan:internal/foo#" + side + "Thing"), ref: "plan:internal/foo#" + side + "Thing", want: 1},
 			{name: "token under cmd", card: declare("plan:cmd/lyx#" + capitalized + "Thing"), ref: "plan:cmd/lyx#" + capitalized + "Thing", want: 1},
@@ -56,7 +59,7 @@ func TestCheckFabricVocabularyName(t *testing.T) {
 		for _, tc := range tests {
 			t.Run(side+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
-				plan := &planparser.Plan{Cards: []planparser.Card{tc.card}}
+				plan := &planparser.Plan{Language: tc.language, Cards: []planparser.Card{tc.card}}
 
 				findings := planparser.CheckFabricVocabularyName(plan)
 

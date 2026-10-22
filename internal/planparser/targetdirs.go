@@ -253,11 +253,10 @@ func RefMember(plan *Plan, ref string) (string, bool) {
 	if b, handle := HandleBody(ref); handle {
 		body = b
 	}
-	lang, ok := planLanguage(plan)
-	if !ok {
+	if _, ok := planLanguage(plan); !ok {
 		return "", false
 	}
-	g, err := parseGlyph(lang, body)
+	g, err := ParseRef(plan, body)
 	if err != nil || g.IsSelf() {
 		return "", false
 	}
@@ -299,8 +298,8 @@ func refUnit(plan *Plan, raw string) (unit string, fromGlyph, ok bool) {
 		isHandle = true
 	}
 
-	if lang, langOK := planLanguage(plan); langOK {
-		if g, err := parseGlyph(lang, body); err == nil {
+	if _, langOK := planLanguage(plan); langOK {
+		if g, err := ParseRef(plan, body); err == nil {
 			unit, unitOK := g.UnitPath()
 			if !unitOK {
 				return "", false, false
