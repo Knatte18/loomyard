@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -78,8 +79,14 @@ func wireShuttle(location *lyxcwd.Location, enginesFor func(shuttleengine.Config
 	if err != nil {
 		return shuttleOps{}, err
 	}
+	pauseGeom, err := hubgeom.PauseGeometry(location)
+	if err != nil {
+		return shuttleOps{}, err
+	}
 	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	// Told the hub's record with no slug, so each send judges its target by the target's own strand name.
+	runner.SetPause(pauserecord.Geometry{RecordPath: pauseGeom.RecordPath})
 	return shuttleOps{reed: reed, runner: runner}, nil
 }
 
@@ -254,6 +261,45 @@ func (d *hubDelivery) Paused(strand creelengine.Strand) (bool, error) {
 	return coverage.Covered, nil
 }
 
+// ClaimPause records the strand in the live pause entry that covers it, under the record lock.
+// The prime's orch strand is recorded as the orch session, which its watcher finds owned, so the watcher sends no interrupt of its own and still posts the resume line;
+// any other strand is recorded by name, guid and slug.
+// The claim's StillLive re-reads the record and reports whether the owning entry is still live.
+func (d *hubDelivery) ClaimPause(strand creelengine.Strand) (creelengine.PauseClaim, error) {
+	location, err := lyxcwd.ResolveWorktree(strand.Worktree)
+	if err != nil {
+		return creelengine.PauseClaim{}, fmt.Errorf("creel: resolve worktree %s: %w", strand.Worktree, err)
+	}
+	geometry, err := hubgeom.PauseGeometry(location)
+	if err != nil {
+		return creelengine.PauseClaim{}, err
+	}
+	session := pauserecord.Session{Strand: strand.Name, GUID: strand.GUID, Slug: strand.Slug}
+	if parsed, parseErr := agentname.Parse(strand.Name); parseErr == nil && strand.Slug == "" && agentname.MatchesRole(parsed.Role, agentname.RoleOrch) {
+		session = pauserecord.Session{GUID: strand.GUID, Orch: true}
+	}
+	entry, covered, err := pauserecord.ClaimSession(geometry.RecordPath, strand.Slug, session, time.Now())
+	if err != nil {
+		return creelengine.PauseClaim{}, fmt.Errorf("creel: claim %s into the pause record %s: %w", strand.Name, geometry.RecordPath, err)
+	}
+	if !covered {
+		return creelengine.PauseClaim{}, nil
+	}
+	stillLive := func() (bool, error) {
+		record, err := pauserecord.Read(geometry.RecordPath)
+		if err != nil {
+			return false, err
+		}
+		for _, live := range record.Live {
+			if live.Scope == entry.Scope && live.PausedAt.Equal(entry.PausedAt) {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	return creelengine.PauseClaim{Covered: true, StillLive: stillLive}, nil
+}
+
 // Send types one line into the strand's pane and confirms it landed.
 func (d *hubDelivery) Send(strand creelengine.Strand, text string) error {
 	ops, err := d.opsFor(strand)
@@ -282,9 +328,10 @@ func (d *hubDelivery) Interrupt(strand creelengine.Strand) error {
 }
 
 // mapDeliveryError maps shuttle's send and interrupt sentinels onto creel's, and passes any other error through.
+// A send refused because a pause covers the session maps onto creelengine.ErrBusy, so the delivery worker requeues the inject and types it after the resume.
 func mapDeliveryError(err error) error {
 	switch {
-	case errors.Is(err, shuttleengine.ErrSessionBusy):
+	case errors.Is(err, shuttleengine.ErrSessionBusy), errors.Is(err, shuttleengine.ErrPaused):
 		return creelengine.ErrBusy
 	case errors.Is(err, shuttleengine.ErrSubmissionNotLanded):
 		return creelengine.ErrNotLanded

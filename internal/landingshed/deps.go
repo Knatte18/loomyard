@@ -237,14 +237,18 @@ type Deps struct {
 	// A failing call whose log names no failing tier records the highest tier of its gate, read through it.
 	// Told, and required wherever a failure record is written: a nil lookup would panic on a failing log with no tier summary line.
 	GateTiers func(gate string) ([]int, error)
-	// VerifyFailedWayForward is the whole way-forward clause a failed-verify Stuck reason ends with when the failure record was written.
+	// VerifyFailedWayForward is the whole way-forward clause a failed-verify Stuck reason ends with when the failure record was written and ClassifyVerifyFailure is nil.
 	// The recipe that drives the run tells it, since the route back to a fix depends on the recipe's graph.
 	// Empty asks to fix forward on the task branch instead.
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	VerifyFailedWayForward string
-	// VerifyFailureTarget is the row the recipe routes a failed Publish verify back to, written into the failure record's target.
+	// VerifyFailureTarget is the row the recipe routes a failed Publish verify back to, written into the failure record's target when ClassifyVerifyFailure is nil.
 	// Empty writes no target.
 	VerifyFailureTarget string
+	// ClassifyVerifyFailure chooses a failure record's target and the Stuck reason's way forward per failure.
+	// Merge-In and Publish call it when they write a failure record, with the record as written except its target, its log path naming the failing run's log.
+	// Nil keeps VerifyFailureTarget and VerifyFailedWayForward, loom's value.
+	ClassifyVerifyFailure func(ctx context.Context, failure verifytree.PublishFailure) FailureRoute
 	// PublishSkip reports whether Publish skips the `publish` gate for this call, so a diff the recipe verifies by its own narrower command lands without the extra tier.
 	// Publish calls it after taking the parent lock: true takes the path of an empty `publish` list, which removes the Publish failure record before the push;
 	// an error is Publish's returned error, with nothing verified or pushed; false runs the `publish` gate.
@@ -273,6 +277,9 @@ type Deps struct {
 	// Every plan-verify site of the worktree shares it, so a pass at one site lets the next skip.
 	// Told, never derived, per the Told-Geometry Invariant.
 	VerifyDir string
+	// VerifyHold is the told pause hold of the post-merge verifies, which holds a verify while a pause covers the run and stops its command past the grace end.
+	// Nil holds nothing.
+	VerifyHold *verifytree.PauseHold
 
 	// Shuttle is the session-runner seam, told exactly the way every existing session-driving
 	// constructor in this tree takes its own. The resolver's constructor rejects a nil value for

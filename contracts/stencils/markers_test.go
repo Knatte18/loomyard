@@ -1,5 +1,5 @@
 // markers_test.go pins the exact top-level marker set of each stencil whose markers no render test reads in its real file,
-// and the position of each Go-filled marker a row anchors on another marker, a heading or the end of the body.
+// and the position of each Go-filled marker a row anchors on a heading or the whole text.
 // The rubrics' marker allowlist is pinned in rubric_test.go.
 
 package stencils
@@ -38,22 +38,6 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"twill-judge-plain", TwillJudgePlain, []string{"disposition_place", "rejection_rule"}},
 		{"twill-writer-fork", TwillWriterFork, []string{"disposition_place", "explore_step", "files_dir", "format_step", "input_record", "last_file", "reviewed_files", "self_check_command", "self_check_step"}},
 		{"twill-relaunch", TwillRelaunch, []string{"disposition_place", "format_step", "relaunch_files", "self_check_command", "self_check_step"}},
-		{"webster-fragment-locate-quarry", WebsterFragmentLocateQuarry, nil},
-		{"webster-fragment-locate-pack", WebsterFragmentLocatePack, []string{"specs_dir"}},
-		{"webster-fragment-card-read-plain", WebsterFragmentCardReadPlain, nil},
-		{"webster-fragment-card-read-pack", WebsterFragmentCardReadPack, nil},
-		{"webster-fragment-fresh-read-plain", WebsterFragmentFreshReadPlain, nil},
-		{"webster-fragment-fresh-read-pack", WebsterFragmentFreshReadPack, nil},
-		{"webster-fragment-pack-section", WebsterFragmentPackSection, []string{"pack_cards"}},
-		{"webster-fragment-pack-read", WebsterFragmentPackRead, []string{"pack_path"}},
-		{"webster-fragment-pack-card", WebsterFragmentPackCard, []string{"card_path", "pack_entries", "pack_unresolved"}},
-		{"webster-fragment-pack-unresolved", WebsterFragmentPackUnresolved, []string{"pack_unresolved"}},
-		{"webster-fragment-pack-empty", WebsterFragmentPackEmpty, nil},
-		{"webster-fragment-fresh-read-pack-card", WebsterFragmentFreshReadPackCard, nil},
-		{"webster-fragment-card-read-pack-card", WebsterFragmentCardReadPackCard, nil},
-		{"webster-fragment-locate-pack-card", WebsterFragmentLocatePackCard, []string{"specs_dir"}},
-		{"webster-fragment-pack-start-card", WebsterFragmentPackStartCard, nil},
-		{"webster-fragment-card-pack-allowed", WebsterFragmentCardPackAllowed, nil},
 		{"loom-template-parent-review-keepalive", LoomTemplateParentReviewKeepalive, []string{"ping"}},
 		{"loom-template-discussion-chair", LoomTemplateDiscussionChair, nil},
 		{"loom-template-discussion-advisor", LoomTemplateDiscussionAdvisor, []string{"decision_record_path", "edit_directive", "output_files", "parent_directive", "pattern_directive", "slug", "support_log_path"}},
@@ -103,8 +87,8 @@ func headingSection(text, heading string) (string, bool) {
 	return strings.Join(lines[start:end], ""), true
 }
 
-// TestStencils_MarkerPositions asserts each Go-filled marker sits where the prompt needs it, anchored on other markers, headings and the end of the body only.
-// A row with a heading holds its marker inside that heading's section; a row without one holds a suffix or a fixed sequence of the whole text.
+// TestStencils_MarkerPositions asserts each Go-filled marker sits where the prompt needs it, anchored on headings only.
+// A row with a heading holds its marker inside that heading's section; a row without one holds it anywhere in the whole text.
 func TestStencils_MarkerPositions(t *testing.T) {
 	t.Parallel()
 
@@ -114,16 +98,13 @@ func TestStencils_MarkerPositions(t *testing.T) {
 		// heading limits the check to that heading's section; empty checks the whole text.
 		heading string
 		want    string
-		// atEnd requires the text to end with want instead of holding it.
-		atEnd bool
 	}{
-		{"implementer ends with the kick-start pack", "webster-body-implementer", "", "{{.kickstart_pack}}\n", true},
-		{"plan twill directive", "loom-template-plan", "## Step 2 — Explore the codebase", "{{.twill_directive}}", false},
-		{"discussion twill directive", "loom-template-discussion", "## Step 4 — How to get answers", "{{.twill_directive}}", false},
-		{"discussion decision record path", "loom-template-discussion", "## What you may write", "{{.decision_record_path}}", false},
-		{"discussion support log path", "loom-template-discussion", "## What you may write", "{{.support_log_path}}", false},
-		{"driver parent notify", "shed-template-driver", "## Notifying the parent", "{{.parent_notify}}", false},
-		{"driver arbiter command", "shed-template-driver", "## Arbiter", "{{.arbiter_command}}", false},
+		{"plan twill directive", "loom-template-plan", "## Step 2 — Explore the codebase", "{{.twill_directive}}"},
+		{"discussion twill directive", "loom-template-discussion", "## Step 4 — How to get answers", "{{.twill_directive}}"},
+		{"discussion decision record path", "loom-template-discussion", "## What you may write", "{{.decision_record_path}}"},
+		{"discussion support log path", "loom-template-discussion", "## What you may write", "{{.support_log_path}}"},
+		{"driver parent notify", "shed-template-driver", "## Notifying the parent", "{{.parent_notify}}"},
+		{"driver arbiter command", "shed-template-driver", "## Arbiter", "{{.arbiter_command}}"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -140,12 +121,6 @@ func TestStencils_MarkerPositions(t *testing.T) {
 					t.Fatalf("stencil %q has no %q heading", tt.stencil, tt.heading)
 				}
 				text = section
-			}
-			if tt.atEnd {
-				if !strings.HasSuffix(text, tt.want) {
-					t.Errorf("stencil %q does not end with %q", tt.stencil, tt.want)
-				}
-				return
 			}
 			if !strings.Contains(text, tt.want) {
 				t.Errorf("stencil %q (section %q) does not contain %q", tt.stencil, tt.heading, tt.want)

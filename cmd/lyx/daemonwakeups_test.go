@@ -32,6 +32,7 @@ var unboundedWaitFiles = []string{
 	"internal/hibernateengine/watch.go",
 	"internal/pauserecord/hold.go",
 	"internal/shuttleengine/wait.go",
+	"internal/verifytree/verify.go",
 	"internal/websterengine/poll.go",
 	"internal/shedverbs/status.go",
 	"internal/shedverbs/loopwait.go",

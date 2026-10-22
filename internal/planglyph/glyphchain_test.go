@@ -289,12 +289,12 @@ func copyGlyphChainFixture(t *testing.T) string {
 	return dst
 }
 
-// writeGlyphPlan writes a valid on-disk plan directory whose card N carries cards[N-1] as its body, with sections written after the overview's Card Index, and returns the directory with the parsed plan.
-func writeGlyphPlan(t *testing.T, cards []string, sections ...plankit.Section) (string, *planparser.Plan) {
+// writeLanguagePlan writes a valid on-disk plan directory declaring language, whose card N carries cards[N-1] as its body, with sections written after the overview's Card Index, and returns the directory with the parsed plan.
+func writeLanguagePlan(t *testing.T, language string, cards []string, sections ...plankit.Section) (string, *planparser.Plan) {
 	t.Helper()
 	dir := t.TempDir()
 
-	spec := plankit.Plan{Approved: true, Language: "go", Framing: "framing", Sections: sections}
+	spec := plankit.Plan{Approved: true, Language: language, Framing: "framing", Sections: sections}
 	for i := range cards {
 		spec.Cards = append(spec.Cards, plankit.Card{Number: i + 1, Slug: fmt.Sprintf("card%d", i+1), Summary: "summary"})
 	}
@@ -415,7 +415,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 
 			t.Run("edit", func(t *testing.T) {
 				t.Parallel()
-				_, plan := writeGlyphPlan(t, []string{editCard(row.glyph)})
+				_, plan := writeLanguagePlan(t, "go", []string{editCard(row.glyph)})
 				assertPlanGate(t, plan, copyGlyphChainFixture(t), row.editFindings)
 			})
 
@@ -423,7 +423,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 				t.Run("create", func(t *testing.T) {
 					t.Parallel()
 					root := copyGlyphChainFixture(t)
-					dir, plan := writeGlyphPlan(t, []string{createCard(row.create), editCard(row.create.draft)})
+					dir, plan := writeLanguagePlan(t, "go", []string{createCard(row.create), editCard(row.create.draft)})
 					assertPlanGate(t, plan, root, nil)
 
 					for n := 1; n <= 2; n++ {
@@ -450,7 +450,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 			if row.rename != nil {
 				t.Run("rename", func(t *testing.T) {
 					t.Parallel()
-					dir, plan := writeGlyphPlan(t, []string{renameCard(row.glyph, row.rename.draft)}, renameMechanic)
+					dir, plan := writeLanguagePlan(t, "go", []string{renameCard(row.glyph, row.rename.draft)}, renameMechanic)
 					assertPlanGate(t, plan, copyGlyphChainFixture(t), nil)
 					if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, row.rename.canonical) {
 						t.Errorf("card 1 lacks the canonical handle %q: %s", row.rename.canonical, got)
@@ -461,7 +461,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 			if row.deleteGlyphs != nil {
 				t.Run("delete", func(t *testing.T) {
 					t.Parallel()
-					_, plan := writeGlyphPlan(t, []string{deleteCard(row.deleteGlyphs...)})
+					_, plan := writeLanguagePlan(t, "go", []string{deleteCard(row.deleteGlyphs...)})
 					assertPlanGate(t, plan, copyGlyphChainFixture(t), nil)
 				})
 			}
@@ -470,7 +470,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 				t.Run("resign", func(t *testing.T) {
 					t.Parallel()
 					root := copyGlyphChainFixture(t)
-					_, plan := writeGlyphPlan(t, []string{resignCard(row.resigns...)})
+					_, plan := writeLanguagePlan(t, "go", []string{resignCard(row.resigns...)})
 					assertPlanGate(t, plan, root, row.resignFindings)
 
 					// Only the interface-method check reads the tree, so only it stays out of dispatch.
@@ -519,9 +519,304 @@ func TestGlyphChain_CrossCard(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, plan := writeGlyphPlan(t, tc.cards)
+			_, plan := writeLanguagePlan(t, "go", tc.cards)
 			assertPlanGate(t, plan, copyGlyphChainFixture(t), nil)
 		})
+	}
+}
+
+// TestGlyphChain_CSharp runs csharp plans over a fixture copy through both gates and asserts the exact finding set of each, so a C# glyph parses, resolves and names a handle through its own alphabet.
+// The Go rows of the other chain tests keep their findings with csharp/Renderer.cs in the fixture, since no Go unit of it spells the namespace Glyphchain.Sharp.
+func TestGlyphChain_CSharp(t *testing.T) {
+	t.Parallel()
+
+	const namespace = "Glyphchain.Sharp"
+	mismatch := []findingKey{{"plan-language-mismatch", "", SeverityBlocking}}
+	tests := []struct {
+		name string
+		// language is the plan's language, csharp when empty.
+		language string
+		// noLanguageKey writes the plan with no language: key at all.
+		noLanguageKey bool
+		cards         []string
+		sections      []plankit.Section
+		// files are written into the fixture copy before the plan is checked.
+		files        map[string]string
+		planFindings []findingKey
+		dispatch     []findingKey
+		// completed is how many leading cards ValidateDispatch treats as already built.
+		completed int
+		// details are substrings the single plan-gate finding's detail, and the done-check finding's when doneCheck is set, must each hold.
+		details []string
+		// doneCheck is the one finding DoneChecks over every card must report, when set.
+		doneCheck *findingKey
+		// canonical is the handle card 1's file must hold once the plan gate has canonicalized it, when set.
+		canonical string
+	}{
+		{
+			name:         "a go plan editing a C# member that resolves into a .cs file only is a language mismatch",
+			language:     "go",
+			cards:        []string{editCard(namespace + "#Renderer.Title")},
+			planFindings: mismatch,
+			dispatch:     mismatch,
+			details:      []string{"language:"},
+		},
+		{
+			name:     "a go plan beside a Go member is no mismatch",
+			language: "go",
+			cards:    []string{editCard(namespace+"#Renderer.Title", "shapes#Func")},
+		},
+		{
+			name:     "a go plan beside a Go file path is no mismatch",
+			language: "go",
+			cards:    []string{editCard(namespace+"#Renderer.Title", "shapes/shapes.go")},
+		},
+		{
+			name:     "a go plan beside a package self glyph listing a Go file is no mismatch",
+			language: "go",
+			cards:    []string{editCard(namespace+"#Renderer.Title", "shapes#")},
+		},
+		{
+			name:         "a go plan editing a directory self glyph listing only a .cs file is a language mismatch",
+			language:     "go",
+			cards:        []string{editCard("csharp#")},
+			planFindings: mismatch,
+			dispatch:     mismatch,
+		},
+		{
+			name:         "a go plan with an unresolved Go member beside a .cs path reports only the member's glyph-not-found",
+			language:     "go",
+			cards:        []string{editCard("shapes#Missing", "csharp/Renderer.cs")},
+			planFindings: []findingKey{{"glyph-not-found", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"glyph-not-found", "1-card1", SeverityBlocking}},
+		},
+		{
+			name:     "a go plan creating a Go declaration beside a .cs path is no mismatch",
+			language: "go",
+			cards: []string{
+				createCard(&createLeg{draft: "plan:shapes#NewThing", head: "func NewThing()"}),
+				editCard("csharp/Renderer.cs"),
+			},
+		},
+		{
+			name:          "a plan with no language key creating a C# member beside a C# edit is a language mismatch",
+			noLanguageKey: true,
+			cards: []string{
+				editCard(namespace + "#Renderer.Title"),
+				createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.Name", head: "public string Name { get; }"}),
+			},
+			// The Go alphabet cannot name the C# handle, which is one more finding of the same wrong language.
+			planFindings: []findingKey{{"handle-name-failed", "2-card2", SeverityBlocking}, mismatch[0]},
+			dispatch:     []findingKey{{"handle-name-failed", "2-card2", SeverityBlocking}, mismatch[0]},
+		},
+		{
+			name:         "a go plan renaming a C# member whose old side resolves into a .cs file is a language mismatch",
+			language:     "go",
+			cards:        []string{renameCard(namespace+"#Renderer.Title", "plan:"+namespace+"#Renderer.Name")},
+			sections:     []plankit.Section{renameMechanic},
+			planFindings: mismatch,
+			dispatch:     mismatch,
+		},
+		{
+			name:      "a go plan with the Go card done judges no mismatch at dispatch",
+			language:  "go",
+			cards:     []string{editCard("shapes#Func"), editCard(namespace + "#Renderer.Title")},
+			completed: 1,
+		},
+		{
+			name:  "a member and the namespace self glyph parse as C# and resolve found",
+			cards: []string{editCard(namespace+"#Renderer.Draw(int)", namespace+"#")},
+		},
+		{
+			name:  "a C# file path resolves found as a path self glyph",
+			cards: []string{editCard("csharp/Renderer.cs")},
+		},
+		{
+			name:  "a non-source file canonicalizes to its path self glyph and resolves found",
+			cards: []string{editCard("README.md")},
+			files: map[string]string{"README.md": "# fixture\n"},
+		},
+		{
+			name:         "a Create handle body the C# alphabet rejects names the C# handle spelling and asks quarry nothing",
+			cards:        []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.Bad(Int32)", head: "public void Bad(int count)"})},
+			planFindings: []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}},
+			details:      []string{"plan:<namespace>#<owner.member>"},
+		},
+		{
+			name:      "a Create handle whose parameter list holds a dotted type is not cut at its last dot",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.Paint(System.Text.Rune)", head: "public void Paint(System.Text.Rune glyph)"})},
+			canonical: "plan:" + namespace + "#Renderer.Paint(System.Text.Rune)",
+		},
+		{
+			name:      "a Create handle whose draft name the head does not write binds the head's own explicit-interface member",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.IProvider<int>.draft", head: "int IProvider<int>.Count { get; }"})},
+			canonical: "plan:" + namespace + "#Renderer.IProvider<int>.Count",
+		},
+		{
+			name:         "a Create head spelling its qualifier with a space is refused with the canonical qualifier",
+			cards:        []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.IPair<string,int>.First", head: "int IPair<string, int>.First { get; }"})},
+			planFindings: []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}},
+			details:      []string{"invalid_container", "`IPair<string,int>.`"},
+		},
+		{
+			name:      "a two-component explicit-interface qualifier leaves the owner Renderer",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.System.IDisposable.Close()", head: "void System.IDisposable.Close()"})},
+			canonical: "plan:" + namespace + "#Renderer.System.IDisposable.Close()",
+		},
+		{
+			name:      "an explicit-interface indexer binds with no fixture member",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.IProvider<int>.this[int]", head: "int IProvider<int>.this[int index] { get; }"})},
+			canonical: "plan:" + namespace + "#Renderer.IProvider<int>.this[int]",
+		},
+		{
+			name:      "an attribute list before the head does not hide the declared name",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.Mark()", head: "[Obsolete] public void Mark()"})},
+			canonical: "plan:" + namespace + "#Renderer.Mark()",
+		},
+		{
+			name:      "a generic method's name is found before its type parameter list",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Box<>.Wrap<>(T)", head: "public void Wrap<U>(T item) where U : class"})},
+			canonical: "plan:" + namespace + "#Box<>.Wrap<>(T)",
+		},
+		{
+			name:      "a dotted return type is no qualifier, so the nested owner stays whole",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Outer.Item.draft", head: "public Item.Kind Get()"})},
+			canonical: "plan:" + namespace + "#Outer.Item.Get()",
+		},
+		{
+			name:         "an Edit of a namespace self glyph that a directory also names is glyph-ambiguous at both gates",
+			cards:        []string{editCard(namespace + "#")},
+			files:        map[string]string{namespace + "/readme.txt": "readme\n"},
+			planFindings: []findingKey{{"glyph-ambiguous", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"glyph-ambiguous", "1-card1", SeverityBlocking}},
+			details:      crossAlphabetDetails,
+		},
+		{
+			name:         "a Create of a namespace self glyph that a directory also names is create-already-exists",
+			cards:        []string{"**Create:**\n- `" + namespace + "#`\n\n**Intent:** create\n"},
+			files:        map[string]string{namespace + "/readme.txt": "readme\n"},
+			planFindings: []findingKey{{"create-already-exists", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"create-already-exists", "1-card1", SeverityBlocking}},
+			details:      crossAlphabetDetails,
+		},
+		{
+			name:         "a Delete of a namespace self glyph that a directory also names is delete-not-done",
+			cards:        []string{deleteCard(namespace + "#")},
+			files:        map[string]string{namespace + "/readme.txt": "readme\n"},
+			planFindings: []findingKey{{"glyph-ambiguous", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"glyph-ambiguous", "1-card1", SeverityBlocking}},
+			details:      crossAlphabetDetails,
+			doneCheck:    &findingKey{"delete-not-done", "1-card1", SeverityBlocking},
+		},
+		{
+			name:      "a generic type renames to the canonical handle with its arity",
+			cards:     []string{renameCard(namespace+"#Box<>", "plan:"+namespace+"#Crate<>")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Crate<>",
+		},
+		{
+			name:      "a method renames with its parameter list canonicalized and no func receiver",
+			cards:     []string{renameCard(namespace+"#Renderer.Draw(int)", "plan:"+namespace+"#Renderer.Paint")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Renderer.Paint(int)",
+		},
+		{
+			name:      "a const declared beside another renames through a one-declarator head",
+			cards:     []string{renameCard(namespace+"#Renderer.A", "plan:"+namespace+"#Renderer.C")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Renderer.C",
+		},
+		{
+			name:      "a property named like its type renames its declared name",
+			cards:     []string{renameCard(namespace+"#Renderer.Color", "plan:"+namespace+"#Renderer.Hue")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Renderer.Hue",
+		},
+		{
+			name:      "a field with a generic type renames through a one-declarator head",
+			cards:     []string{renameCard(namespace+"#Renderer.map", "plan:"+namespace+"#Renderer.renamed")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Renderer.renamed",
+		},
+		{
+			name:      "an event with accessors renames through an event field head",
+			cards:     []string{renameCard(namespace+"#Renderer.Moved", "plan:"+namespace+"#Renderer.Shifted")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Renderer.Shifted",
+		},
+		{
+			name:         "a Rename new side the C# alphabet rejects names the C# handle spelling",
+			cards:        []string{renameCard(namespace+"#Renderer.Draw(int)", "plan:"+namespace+"#Renderer.Bad(Int32)")},
+			sections:     []plankit.Section{renameMechanic},
+			planFindings: []findingKey{{"rename-old-unresolved", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"rename-old-unresolved", "1-card1", SeverityBlocking}},
+			details:      []string{"plan:<namespace>#<owner.member>"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := copyGlyphChainFixture(t)
+			writeFixtureFiles(t, root, tt.files)
+			language := cmp.Or(tt.language, "csharp")
+			if tt.noLanguageKey {
+				language = ""
+			}
+			dir, plan := writeLanguagePlan(t, language, tt.cards, tt.sections...)
+			assertPlanGate(t, plan, root, tt.planFindings)
+			if tt.canonical != "" {
+				if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, tt.canonical) {
+					t.Errorf("card 1 lacks the canonical handle %q: %s", tt.canonical, got)
+				}
+			}
+			if tt.completed > 0 {
+				findings, err := ValidateDispatch(plan, root, plan.Cards[:tt.completed], nil)
+				if err != nil {
+					t.Fatalf("ValidateDispatch(...) returned error: %v", err)
+				}
+				if got := sortedKeys(findings); len(got) != 0 {
+					t.Errorf("ValidateDispatch with %d completed findings = %+v; want none", tt.completed, got)
+				}
+			} else {
+				assertDispatch(t, plan, root, tt.dispatch)
+			}
+			if len(tt.details) > 0 {
+				findings, err := ValidateFormat(plan, root)
+				if err != nil {
+					t.Fatalf("ValidateFormat(...) returned error: %v", err)
+				}
+				assertSingleFindingDetails(t, "ValidateFormat", findings, tt.details)
+			}
+			if tt.doneCheck != nil {
+				findings, err := DoneChecks(plan, plan.Cards, root)
+				if err != nil {
+					t.Fatalf("DoneChecks(...) returned error: %v", err)
+				}
+				if got := sortedKeys(findings); !slices.Equal(got, []findingKey{*tt.doneCheck}) {
+					t.Errorf("DoneChecks findings = %+v; want %+v", got, *tt.doneCheck)
+				}
+				assertSingleFindingDetails(t, "DoneChecks", findings, tt.details)
+			}
+		})
+	}
+}
+
+// crossAlphabetDetails are the phrases a cross-alphabet ambiguity's detail holds: both alphabets and the way forward.
+var crossAlphabetDetails = []string{"csharp", "go", "name the file"}
+
+// assertSingleFindingDetails fails unless findings is one finding whose detail holds every one of details.
+func assertSingleFindingDetails(t *testing.T, source string, findings []Finding, details []string) {
+	t.Helper()
+	if len(findings) != 1 {
+		t.Errorf("%s findings = %+v; want one", source, findings)
+		return
+	}
+	for _, detail := range details {
+		if !strings.Contains(findings[0].Detail, detail) {
+			t.Errorf("%s detail %q lacks %q", source, findings[0].Detail, detail)
+		}
 	}
 }
 
@@ -575,7 +870,7 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
 			writeFixtureFiles(t, root, tc.files)
-			_, plan := writeGlyphPlan(t, []string{editCard(tc.targets...)})
+			_, plan := writeLanguagePlan(t, "go", []string{editCard(tc.targets...)})
 			assertPlanGate(t, plan, root, tc.want)
 
 			formatFindings, err := ValidateFormat(plan, root)
@@ -608,26 +903,155 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 func TestGlyphChain_ResignScenarios(t *testing.T) {
 	t.Parallel()
 
+	const (
+		namespace = "Glyphchain.Sharp"
+		draw      = namespace + "#Renderer.Draw(int)"
+		drawText  = namespace + "#Renderer.Draw(string)"
+	)
 	mismatch := []findingKey{{"resign-head-mismatch", "1-card1", SeverityBlocking}}
+	collision := func(card string) []findingKey {
+		return []findingKey{{"resign-overload-collision", card, SeverityBlocking}}
+	}
+	// pairFile declares the explicit-interface member the IPair row re-signs, which the fixture does not hold.
+	pairFiles := map[string]string{"csharp/Pair.cs": "namespace Glyphchain.Sharp\n{\n    public class Renderer\n    {\n        int IPair<string, int>.First { get { return 0; } }\n    }\n}\n"}
 	tests := []struct {
 		name string
-		leg  resignLeg
+		// language is the plan's language, go when empty.
+		language string
+		cards    []string
 		// files are written into the fixture copy before the plan is checked.
 		files map[string]string
 		// planGate is what ValidateFormat reports, and dispatch what ValidateDispatch reports.
 		planGate, dispatch []findingKey
+		// detail are the substrings the detail of every finding ValidateFormat reports must hold.
+		detail []string
 	}{
-		{name: "a head naming another member", leg: resignLeg{"shapes#Func", "func Other() int"}, planGate: mismatch, dispatch: mismatch},
-		{name: "a head that fails to parse", leg: resignLeg{"shapes#Func", "func ("}, planGate: mismatch, dispatch: mismatch},
-		{name: "a changed receiver type", leg: resignLeg{"shapes#Struct.ValueMethod", "func (s Plain) ValueMethod() int"}, planGate: mismatch, dispatch: mismatch},
+		{name: "a head naming another member", cards: []string{resignCard(resignLeg{"shapes#Func", "func Other() int"})}, planGate: mismatch, dispatch: mismatch},
+		{name: "a head that fails to parse", cards: []string{resignCard(resignLeg{"shapes#Func", "func ("})}, planGate: mismatch, dispatch: mismatch},
+		{name: "a changed receiver type", cards: []string{resignCard(resignLeg{"shapes#Struct.ValueMethod", "func (s Plain) ValueMethod() int"})}, planGate: mismatch, dispatch: mismatch},
 		{
-			name: "an interface method partitioned by build constraints",
-			leg:  resignLeg{"parted#Measurer.Measure", "func (Measurer) Measure(count int) int"},
+			name:  "an interface method partitioned by build constraints",
+			cards: []string{resignCard(resignLeg{"parted#Measurer.Measure", "func (Measurer) Measure(count int) int"})},
 			files: map[string]string{
 				"parted/a.go": "//go:build linux\n\npackage parted\n\ntype Measurer interface {\n\tMeasure() int\n}\n",
 				"parted/b.go": "//go:build !linux\n\npackage parted\n\ntype Measurer interface {\n\tMeasure() int\n}\n",
 			},
 			planGate: []findingKey{{"resign-interface-method", "1-card1", SeverityBlocking}},
+		},
+		{
+			name:     "a C# method re-signed to another parameter type is clean and no interface method",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public void Draw(long count)"})},
+		},
+		{
+			name:     "a C# head dropping the parameter list is a mismatch naming the parameter list",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public int Draw"})},
+			planGate: mismatch,
+			dispatch: mismatch,
+			detail:   []string{"keep the member's parameter list"},
+		},
+		{
+			name:     "a C# head adding a parameter list is a mismatch naming the parameter list",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{namespace + "#Renderer.Title", "public string Title()"})},
+			planGate: mismatch,
+			dispatch: mismatch,
+			detail:   []string{"keep the member's parameter list"},
+		},
+		{
+			name:     "a C# head naming another member is a mismatch naming a Rename pair",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public void Other(int count)"})},
+			planGate: mismatch,
+			dispatch: mismatch,
+			detail:   []string{"Rename pair"},
+		},
+		{
+			name:     "a C# head that fails to name is a mismatch asking to correct the head",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public void Draw("})},
+			planGate: mismatch,
+			dispatch: mismatch,
+			detail:   []string{"correct the head"},
+		},
+		{
+			name:     "a C# head minting an existing overload is a collision",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public void Draw(string text)"})},
+			planGate: collision("1-card1"),
+			dispatch: collision("1-card1"),
+			detail:   []string{drawText, "free signature"},
+		},
+		{
+			name:     "a C# head minting an overload an earlier card deletes is clean",
+			language: "csharp",
+			cards:    []string{deleteCard(drawText), resignCard(resignLeg{draw, "public void Draw(string text)"})},
+		},
+		{
+			name:     "a C# head minting an overload the same card re-signs away is clean",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{draw, "public void Draw(string text)"}, resignLeg{drawText, "public void Draw(char c)"})},
+		},
+		{
+			name:     "a C# head minting an overload an earlier card renames away is clean",
+			language: "csharp",
+			cards:    []string{renameCard(drawText, "plan:"+namespace+"#Renderer.Write"), resignCard(resignLeg{draw, "public void Draw(string text)"})},
+		},
+		{
+			name:     "a C# head minting the id of an earlier Create handle is a collision on the later card",
+			language: "csharp",
+			cards: []string{
+				createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.Draw(long)", head: "public void Draw(long count)"}),
+				resignCard(resignLeg{draw, "public void Draw(long count)"}),
+			},
+			planGate: collision("2-card2"),
+			dispatch: collision("2-card2"),
+			detail:   []string{"1-card1", "free signature"},
+		},
+		{
+			name:     "a C# head minting the id of an earlier Rename new handle is a collision on the later card",
+			language: "csharp",
+			cards: []string{
+				renameCard(drawText, "plan:"+namespace+"#Renderer.Fill"),
+				resignCard(resignLeg{namespace + "#Renderer.Fill(int)", "public void Fill(string text)"}),
+			},
+			planGate: collision("2-card2"),
+			dispatch: collision("2-card2"),
+			detail:   []string{"1-card1", "free signature"},
+		},
+		{
+			name:     "two C# arrows on different members minting one id collide on the later card",
+			language: "csharp",
+			cards: []string{
+				resignCard(resignLeg{draw, "public void Draw(long count)"}),
+				resignCard(resignLeg{drawText, "public void Draw(long other)"}),
+			},
+			planGate: collision("2-card2"),
+			dispatch: collision("2-card2"),
+			detail:   []string{"1-card1", "free signature"},
+		},
+		{
+			name:     "one C# arrow written on two cards never collides with itself",
+			language: "csharp",
+			cards: []string{
+				resignCard(resignLeg{draw, "public void Draw(long count)"}),
+				resignCard(resignLeg{draw, "public void Draw(long count)"}),
+			},
+		},
+		{
+			name:     "an explicit-interface C# member re-signed keeps its own id",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{namespace + "#Renderer.IProvider<int>.Value", "int IProvider<int>.Value { get; }"})},
+		},
+		{
+			name:     "a C# qualifier spelled with a space is a mismatch quoting the canonical qualifier",
+			language: "csharp",
+			cards:    []string{resignCard(resignLeg{namespace + "#Renderer.IPair<string,int>.First", "int IPair<string, int>.First { get; }"})},
+			files:    pairFiles,
+			planGate: mismatch,
+			dispatch: mismatch,
+			detail:   []string{"invalid_container", "`IPair<string,int>.`"},
 		},
 	}
 	for _, tc := range tests {
@@ -635,9 +1059,25 @@ func TestGlyphChain_ResignScenarios(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
 			writeFixtureFiles(t, root, tc.files)
-			_, plan := writeGlyphPlan(t, []string{resignCard(tc.leg)})
+			var sections []plankit.Section
+			if strings.Contains(strings.Join(tc.cards, ""), "**Rename:**") {
+				sections = append(sections, renameMechanic)
+			}
+			_, plan := writeLanguagePlan(t, cmp.Or(tc.language, "go"), tc.cards, sections...)
 			assertPlanGate(t, plan, root, tc.planGate)
 			assertDispatch(t, plan, root, tc.dispatch)
+
+			findings, err := ValidateFormat(plan, root)
+			if err != nil {
+				t.Fatalf("ValidateFormat(...) returned error: %v", err)
+			}
+			for _, finding := range findings {
+				for _, detail := range tc.detail {
+					if !strings.Contains(finding.Detail, detail) {
+						t.Errorf("%s detail %q lacks %q", finding.Check, finding.Detail, detail)
+					}
+				}
+			}
 		})
 	}
 
@@ -645,7 +1085,7 @@ func TestGlyphChain_ResignScenarios(t *testing.T) {
 		t.Parallel()
 		root := copyGlyphChainFixture(t)
 		leg := resignLeg{"shapes#Func", "func Func(count int) int"}
-		dir, plan := writeGlyphPlan(t, []string{resignCard(leg), resignCard(leg)})
+		dir, plan := writeLanguagePlan(t, "go", []string{resignCard(leg), resignCard(leg)})
 		before := []string{readCardFile(t, dir, 1, "card1"), readCardFile(t, dir, 2, "card2")}
 
 		assertPlanGate(t, plan, root, nil)
@@ -675,13 +1115,13 @@ func TestGlyphChain_FuncNamedInterfaceMethod(t *testing.T) {
 
 	t.Run("arrow", func(t *testing.T) {
 		t.Parallel()
-		_, plan := writeGlyphPlan(t, []string{resignCard(resignLeg{member, "func (FuncNamed) funcLike(count int) int"})})
+		_, plan := writeLanguagePlan(t, "go", []string{resignCard(resignLeg{member, "func (FuncNamed) funcLike(count int) int"})})
 		assertPlanGate(t, plan, withFuncNamed(t), []findingKey{{"resign-interface-method", "1-card1", SeverityBlocking}})
 	})
 
 	t.Run("rename", func(t *testing.T) {
 		t.Parallel()
-		dir, plan := writeGlyphPlan(t, []string{renameCard(member, "plan:shapes#FuncNamed.funcRenamed")}, renameMechanic)
+		dir, plan := writeLanguagePlan(t, "go", []string{renameCard(member, "plan:shapes#FuncNamed.funcRenamed")}, renameMechanic)
 		assertPlanGate(t, plan, withFuncNamed(t), nil)
 		if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, "plan:shapes#FuncNamed.funcRenamed") {
 			t.Errorf("card 1 lacks the canonical handle: %s", got)
@@ -761,6 +1201,12 @@ func deleteWithEdit(deleted, edited []string) string {
 	return "**Delete:**\n" + bullets(deleted) + "\n**Edit:**\n" + bullets(edited) + "\n**Intent:** delete\n\n**ImpactSummary:** none\n"
 }
 
+// nestedImporter is a nested package and a user of it, whose import of the first a card that deletes the first and a later card that edits the second makes a delete-before-reference.
+var nestedImporter = map[string]string{
+	"nested/inner/inner.go": "package inner\n\nfunc Help() {}\n",
+	"nested/user/user.go":   "package user\n\nimport \"example.com/glyphchain/nested/inner\"\n\nfunc Use() { inner.Help() }\n",
+}
+
 // skippedCaller is a Go file that calls callees.Target, written under a directory the reference scan skips.
 const skippedCaller = "package caller\n\nimport \"example.com/glyphchain/callees\"\n\nfunc use() { callees.Target() }\n"
 
@@ -777,7 +1223,9 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 	covers := []string{"callees/local.go", tests}
 
 	cases := []struct {
-		name     string
+		name string
+		// language is the plan's language, go when empty.
+		language string
 		cards    []string
 		sections []plankit.Section
 		// files are extra Go files, by fixture-relative path, written into the fixture copy.
@@ -984,6 +1432,26 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			},
 			wantDeleteOrder: []string{"blocking callees/callees.go:5"},
 		},
+		{
+			name:            "a deleted package's import in a later card's Go file is reported under go",
+			cards:           []string{deleteCard("nested/inner#"), editCard("nested/user/user.go")},
+			files:           nestedImporter,
+			wantDeleteOrder: []string{"blocking nested/user/user.go:3"},
+		},
+		{
+			name:     "a deleted package's import in a later card's Go file is not read under csharp",
+			language: "csharp",
+			cards:    []string{deleteCard("nested/inner#"), editCard("nested/user/user.go")},
+			files:    nestedImporter,
+		},
+		{
+			name:     "a deleted C# member beside Go code naming its identifier reports no caller-uncovered under csharp",
+			language: "csharp",
+			cards:    []string{deleteCard("Glyphchain.Sharp#Renderer.Title")},
+			files: map[string]string{
+				"callers/title.go": "package callers\n\nfunc title(t struct{ Title string }) string { return t.Title }\n",
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -991,7 +1459,7 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
 			writeFixtureFiles(t, root, tc.files)
-			_, plan := writeGlyphPlan(t, tc.cards, tc.sections...)
+			_, plan := writeLanguagePlan(t, cmp.Or(tc.language, "go"), tc.cards, tc.sections...)
 
 			findings, err := ValidateFormat(plan, root)
 			if tc.unusableGate {

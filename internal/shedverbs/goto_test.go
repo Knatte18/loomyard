@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -50,6 +51,14 @@ func seedBlocked(t *testing.T, paths testPaths, current string) {
 func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 	paths := newTestPaths(t)
 	seedBlocked(t, paths, "B")
+	// A goto leaves the run's scratch directory alone, so a gate findings file kept there survives it.
+	findings := filepath.Join(filepath.Dir(paths.LockPath), "gate-findings", "B.md")
+	if err := os.MkdirAll(filepath.Dir(findings), 0o755); err != nil {
+		t.Fatalf("create the findings directory: %v", err)
+	}
+	if err := os.WriteFile(findings, []byte("kept findings"), 0o644); err != nil {
+		t.Fatalf("write the findings file: %v", err)
+	}
 
 	spec := gotoSpec(paths)
 	spec.Caller = "orch"
@@ -78,6 +87,9 @@ func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 	}
 	if len(st.History) != 1 || st.History[0].By != "orch" {
 		t.Errorf("History = %+v; want one goto entry labelled orch", st.History)
+	}
+	if kept, err := os.ReadFile(findings); err != nil || string(kept) != "kept findings" {
+		t.Errorf("findings file = %q, %v; want it left in place by the goto", kept, err)
 	}
 
 	t.Run("ByShedOverridesTheCaller", func(t *testing.T) {

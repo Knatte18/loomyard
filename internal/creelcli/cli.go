@@ -372,7 +372,10 @@ idle, and prints the inject's id. EXTERNAL callers, programs and orch strands
 may inject, interrupt and hold on any strand, and any other strand on its own
 strand only.
 
---interrupt stops the receiver's running turn first. --ttl sets how long the
+--interrupt stops the receiver's running turn first. A receiver a pause covers
+is claimed into the pause and interrupted, so "lyx tender resume" gives it its
+resume line, and the inject is held until the resume; an unreadable pause
+record and another sender's hold still refuse it. --ttl sets how long the
 inject waits for an idle receiver before it expires. With --wait the call
 waits for the outcome, up to --timeout: exit 0 when injected, 2 when typed
 but unconfirmed, 3 when expired.
@@ -429,6 +432,10 @@ func interruptCmd() *cobra.Command {
 prints whether it stopped one. A receiver with no running turn is sent
 nothing. EXTERNAL callers, programs and orch strands may inject, interrupt and
 hold on any strand, and any other strand on its own strand only.
+
+A receiver a pause covers is claimed into that pause and then interrupted, so
+"lyx tender resume" gives it its resume line. An unreadable pause record and
+another sender's hold refuse the interrupt.
 
 Example:
   lyx creel interrupt ly:impl`,

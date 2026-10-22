@@ -6,11 +6,13 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // darnTestEnv returns newTestEnv(t) with DarnTable and every Darn seam filled.
@@ -31,7 +33,14 @@ func darnTestEnv(t *testing.T) Env {
 		ClearRejection: func() error { return nil },
 		Commit:         func() error { return nil },
 		LatestOutcome:  func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
-		PublishFailure: func() (string, bool, error) { return "", false, nil },
+		PublishFailure: func() (string, verifytree.PublishFailure, bool, error) {
+			return "", verifytree.PublishFailure{}, false, nil
+		},
+		RunStart:   func() (time.Time, error) { return time.Time{}, nil },
+		TaskHead:   func() (string, error) { return "", nil },
+		Dirty:      func() ([]string, error) { return nil, nil },
+		ParentTips: func() ([]string, error) { return nil, nil },
+		IsAncestor: func(string) (bool, error) { return true, nil },
 	}
 	return env
 }
@@ -51,6 +60,11 @@ func TestDarnWriteEntry_ConstructionFailures(t *testing.T) {
 		{"NilCommit", "Darn.Commit", gated, func(e *Env) { e.Darn.Commit = nil }},
 		{"NilLatestOutcome", "Darn.LatestOutcome", gated, func(e *Env) { e.Darn.LatestOutcome = nil }},
 		{"NilPublishFailure", "Darn.PublishFailure", gated, func(e *Env) { e.Darn.PublishFailure = nil }},
+		{"NilRunStart", "Darn.RunStart", gated, func(e *Env) { e.Darn.RunStart = nil }},
+		{"NilTaskHead", "Darn.TaskHead", gated, func(e *Env) { e.Darn.TaskHead = nil }},
+		{"NilDirty", "Darn.Dirty", gated, func(e *Env) { e.Darn.Dirty = nil }},
+		{"NilParentTips", "Darn.ParentTips", gated, func(e *Env) { e.Darn.ParentTips = nil }},
+		{"NilIsAncestor", "Darn.IsAncestor", gated, func(e *Env) { e.Darn.IsAncestor = nil }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -100,4 +114,14 @@ func TestDarnWriteEntry_HappyPath(t *testing.T) {
 	if len(gate) != 2 || gate[0].Name != "verify" || gate[1].Name != "description" || gate[0].Attempts != 2 || gate[1].Attempts != 2 {
 		t.Errorf("table gate = %+v; want the verify and description entries with 2 attempts each", gate)
 	}
+
+	// An exhausted gate's reason names the row's findings file, so an entry that drops the chain fails here.
+	withGateFindingsFile(&env, t.TempDir())
+	env.Seats = &shedfake.SeatRunner{Results: []seatengine.Result{failedGateResult(output)}}
+	producer, err = darnWriteEntry(RowIdentity{Name: "Row"}, cfg, env)
+	if err != nil {
+		t.Fatalf("darnWriteEntry() error = %v; want nil", err)
+	}
+	_, pointer, _ := producer.Call(context.Background())
+	requireNamesFindingsFile(t, env, "Row", pointer.Reason)
 }

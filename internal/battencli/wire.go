@@ -597,7 +597,7 @@ func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, f
 
 // readAgentActivity reads the live agent runs of the task worktree through the shuttle config and its registered engines, mapped onto battenshed's neutral type,
 // and reports whether a Go-side wait is live: a running verify, a parent lock wait, or a shuttle wait that is not a held turn end.
-// A held run is idle at its turn end, so it does not suppress the quiet notice.
+// A held run is idle at its turn end, so it does not suppress the quiet notice, and neither does a verify held by a pause.
 // A lock wait record whose writer is dead is ignored.
 // The waits are read from their marker and record files, never from the pane options that display them.
 func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentActivity, waitLive bool, err error) {
@@ -625,11 +625,11 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 		}
 		runs = append(runs, run)
 	}
-	_, verifyLive, err := verifytree.ReadMarker(verifytree.NewPaths(taskLocation.WorktreePath(), verifytree.Dir(anchor)).Marker)
+	verifyMarker, verifyLive, err := verifytree.ReadMarker(verifytree.NewPaths(taskLocation.WorktreePath(), verifytree.Dir(anchor)).Marker)
 	if err != nil {
 		return nil, false, err
 	}
-	if verifyLive {
+	if verifyLive && verifyMarker.State != verifytree.MarkerStatePaused {
 		return runs, true, nil
 	}
 	_, lockWaiting, err := parentlock.ReadWait(parentlock.WaitRecordPath(loomengine.LoomScratchDir(taskLocation)), parentlock.ProcessAlive)

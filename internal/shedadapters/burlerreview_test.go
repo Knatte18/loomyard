@@ -34,6 +34,8 @@ type halfProducerSpec struct {
 	// fans and requiresFans are the deps' per-round fan lists and fix-half requirement; the zero value is a row that records no names.
 	fans         *RoundFans
 	requiresFans bool
+	// gateFindingsPath is the deps' told gate findings file; empty tells none.
+	gateFindingsPath string
 }
 
 // newHalfSpec returns a spec over the minimal profile and a fixed clock.
@@ -44,7 +46,7 @@ func newHalfSpec() halfProducerSpec {
 // newReviewProducer builds a BurlerReviewProducer over runDir, failing the test on constructor error.
 func newReviewProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerReviewProducer {
 	t.Helper()
-	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerReviewProducer("burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerReviewProducer() error = %v; want nil", err)
 	}
@@ -539,10 +541,15 @@ func requireAcceptedReviewRecorded(t *testing.T, engine string) {
 		}},
 	}
 	runner := &shedfake.BurlerHalfRunner{ReviewResults: []burlerengine.ReviewResult{result}}
+	spec.gateFindingsPath = filepath.Join(t.TempDir(), "gate-findings", "burler-review.md")
+	writeRoundFile(t, spec.gateFindingsPath)
 	p := newReviewProducer(t, runDir, runner, spec)
 
 	ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 
+	if _, err := os.Stat(spec.gateFindingsPath); !os.IsNotExist(err) {
+		t.Errorf("findings file stat error = %v; want it removed by a review whose gate passed", err)
+	}
 	if ptr.Path != roundReviewPath(runDir, 1) || !ptr.BudgetExempt || ptr.GateAttempts == nil || *ptr.GateAttempts != 1 {
 		t.Errorf("Call() pointer = %+v; want round 1's review, BudgetExempt and the review gate's one attempt", ptr)
 	}

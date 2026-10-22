@@ -13,6 +13,7 @@
 //
 // `OwnerCaller` is the fixed `Caller` of every pause entry that holds a run owned by another machine, so its lifter and a running loop tell those entries apart from any other.
 // `Coverage.OwnerHeld` is set when a live entry of the slug's own scope carries it, whichever entry is the oldest covering one.
+// ClaimSession records one session in the oldest live entry covering a slug, so that entry's resume gives the session its line; an uncovered slug and a session a live entry already owns record nothing.
 //
 // Excluded measures how much of a time span the covered intervals took, so overlapping pauses are subtracted once.
 // CoveredError is the refusal every held entry point returns, and `ResumeLine` is the one line a resumed session is given.

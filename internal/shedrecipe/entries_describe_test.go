@@ -84,4 +84,14 @@ func TestDescribeEntry_HappyPath(t *testing.T) {
 	if pointer.Path != env.DescriptionPath {
 		t.Errorf("Call() OutputPointer.Path = %q; want the lead's output %q", pointer.Path, env.DescriptionPath)
 	}
+
+	// An exhausted gate's reason names the row's findings file, so an entry that drops the chain fails here.
+	withGateFindingsFile(&env, t.TempDir())
+	env.Seats = &shedfake.SeatRunner{Results: []seatengine.Result{failedGateResult(env.DescriptionPath)}}
+	p, err = describeEntry(RowIdentity{Name: "Row"}, gatesCfg("description", 2), env)
+	if err != nil {
+		t.Fatalf("describeEntry() error = %v; want nil", err)
+	}
+	stuck := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+	requireNamesFindingsFile(t, env, "Row", stuck.Reason)
 }

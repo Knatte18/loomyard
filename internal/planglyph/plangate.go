@@ -19,15 +19,14 @@ import (
 // planGatePass reports redundant-file-target: a card listing a file self glyph and a member glyph that resolves into that file.
 // One finding per file and member, attributed to the card, with Ref the member.
 // It also reports resign-interface-method: a re-sign arrow whose member resolves to an interface method.
-// It also reports caller-uncovered: a deleted or re-signed member that Go code still references, with no admissible card's target covering that code.
-// It also reports delete-before-reference: a deleted member whose reference a later card's Edit code holds, from the same computation, and a deleted package whose import a later card's Go Edit code holds.
+// Under go it also reports caller-uncovered: a deleted or re-signed member that Go code still references, with no admissible card's target covering that code.
+// Under go it also reports delete-before-reference: a deleted member whose reference a later card's Edit code holds, from the same computation, and a deleted package whose import a later card's Go Edit code holds.
 // A member that resolves not_found, ambiguous without being partitioned by build constraints, or unreadably is skipped, since the status policy already reports it.
 // Under a non-glyph language it returns nothing and opens no repository.
 // An infrastructure error is wrapped in ErrQuarryUnavailable; a failed type load is not one, since caller-uncovered then answers from its scan.
 // loader supplies the type information caller-uncovered resolves references with.
 func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([]Finding, error) {
-	lang, ok := plan.GlyphLanguage()
-	if !ok {
+	if !plan.GlyphLanguage() {
 		return nil, nil
 	}
 
@@ -36,7 +35,7 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 		return nil, err
 	}
 
-	results, err := resolveTargets(repo, collectMemberTargets(plan, lang))
+	results, err := resolveTargets(repo, collectMemberTargets(plan))
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +51,7 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 				continue
 			}
 			seen[t] = true
-			g, err := glyph.Parse(lang, t)
+			g, err := planparser.ParseRef(plan, t)
 			if err != nil {
 				continue
 			}
@@ -106,32 +105,37 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 		}
 	}
 
-	coverage, err := callerCoverageFindings(plan, lang, worktreeRoot, answers, partitioned, loader)
+	if !plan.GoToolchain() {
+		return findings, nil
+	}
+
+	coverage, err := callerCoverageFindings(plan, worktreeRoot, answers, partitioned, loader)
 	findings = append(findings, coverage...)
 	if err != nil {
 		return findings, err
 	}
-	regions, _ := buildEditRegions(collectEditTargets(lang, plan.Cards), answers, partitioned)
-	imports, err := laterImportFindings(lang, plan.Cards, regions, worktreeRoot)
+	regions, _ := buildEditRegions(collectEditTargets(plan, plan.Cards), answers, partitioned)
+	imports, err := laterImportFindings(plan, plan.Cards, regions, worktreeRoot)
 	return append(findings, imports...), err
 }
 
-// isInterfaceMethod reports whether s is a method whose signature does not open with the func keyword and a receiver, quarry's answer for an interface method.
+// isInterfaceMethod reports whether s is a Go method whose signature does not open with the func keyword and a receiver, quarry's answer for an interface method.
 // An interface method's own name may open with "func", so the keyword is told apart by the receiver's parenthesis after it.
+// A C# method never is one, since no C# signature opens with the func keyword.
 func isInterfaceMethod(s quarry.Symbol) bool {
-	return s.Kind == quarry.KindMethod && !strings.HasPrefix(s.Signature, "func (") && !strings.HasPrefix(s.Signature, "func(")
+	return s.Glyph.Lang != glyph.CSharp && s.Kind == quarry.KindMethod && !strings.HasPrefix(s.Signature, "func (") && !strings.HasPrefix(s.Signature, "func(")
 }
 
 // collectMemberTargets returns every distinct member glyph plan's cards list among their own Targets, sorted for determinism.
 // A handle and a self glyph are excluded.
-func collectMemberTargets(plan *planparser.Plan, lang glyph.Language) []string {
+func collectMemberTargets(plan *planparser.Plan) []string {
 	seen := make(map[string]bool)
 	for _, c := range plan.Cards {
 		for _, t := range c.Targets {
 			if planparser.IsHandleRef(t) {
 				continue
 			}
-			if g, err := glyph.Parse(lang, t); err == nil && !g.IsSelf() {
+			if g, err := planparser.ParseRef(plan, t); err == nil && !g.IsSelf() {
 				seen[t] = true
 			}
 		}

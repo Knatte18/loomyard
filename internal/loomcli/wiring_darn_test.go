@@ -46,7 +46,7 @@ func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ..
 func TestWire_DarnRecipe(t *testing.T) {
 	t.Parallel()
 
-	darnSeams := []string{"DarnTable", "Darn.ReadRejection", "Darn.ClearRejection", "Darn.Commit", "Darn.LatestOutcome", "Darn.PublishFailure"}
+	darnSeams := []string{"DarnTable", "Darn.ReadRejection", "Darn.ClearRejection", "Darn.Commit", "Darn.LatestOutcome", "Darn.PublishFailure", "Darn.RunStart", "Darn.TaskHead", "Darn.Dirty", "Darn.ParentTips", "Darn.IsAncestor"}
 
 	t.Run("a darn seed fills the darn seams, the verify source and the attempts", func(t *testing.T) {
 		t.Parallel()
@@ -82,6 +82,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.DarnVerifyAttempts != 5 {
 			t.Errorf("c.env.DarnVerifyAttempts = %d; want 5", c.env.DarnVerifyAttempts)
 		}
+		if got, want := c.env.GateFindingsFile("Darn-Write"), shedrun.GateFindingsFile(loc, c.runID, "Darn-Write"); got != want {
+			t.Errorf("c.env.GateFindingsFile(\"Darn-Write\") = %q; want %q", got, want)
+		}
 		if segment := c.env.Segments["Darn-Review"]; segment.MaxBounces != 1 || segment.HardMaxBounces != 4 || c.darnCfg == nil {
 			t.Errorf("Segments[Darn-Review] = %+v, c.darnCfg nil = %v; want the template's budget 1 and hard cap 4 and the loaded config", segment, c.darnCfg == nil)
 		}
@@ -93,6 +96,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if got := c.verifySource().failureTarget; got != "Darn-Write" {
 			t.Errorf("verifySource().failureTarget = %q; want Darn-Write", got)
+		}
+		if c.verifySource().classify == nil {
+			t.Error("verifySource().classify = nil; want the darn failure classifier")
 		}
 	})
 
@@ -243,6 +249,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Webster-Burler-Review"`) {
 			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Webster-Burler-Review row", got)
+		}
+		if c.verifySource().classify != nil {
+			t.Error("a loom seed set verifySource().classify; want nil")
 		}
 	})
 
@@ -404,6 +413,16 @@ func TestLatestDarnOutcome(t *testing.T) {
 			wantFound: true,
 			want:      loomshed.DarnOutcome{Outcome: shedengine.Stuck, Reason: "verify gate failed"},
 		},
+		{
+			name:      "a Darn-Write reroute entry is skipped for the last real halt",
+			status:    &shedengine.Status{CurrentProducer: loomshed.NameDarnWrite, State: shedengine.StateBlocked, Error: "verify gate failed", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarnWrite, Outcome: shedengine.OutcomeReroute}}},
+			wantFound: true,
+			want:      loomshed.DarnOutcome{Outcome: shedengine.Stuck, Reason: "verify gate failed"},
+		},
+		{
+			name:   "a lone Darn-Write reroute entry reports not found",
+			status: &shedengine.Status{CurrentProducer: loomshed.NameMergeIn, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.OutcomeReroute}}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -442,16 +461,17 @@ func TestDarnDeps_PublishFailureNamesThePresentRecord(t *testing.T) {
 	verifyDir := t.TempDir()
 	deps := darnDeps(loc, shedrun.SelfRunID, verifyDir)
 
-	if path, found, err := deps.PublishFailure(); err != nil || found || path != "" {
+	if path, _, found, err := deps.PublishFailure(); err != nil || found || path != "" {
 		t.Fatalf("PublishFailure() with no record = %q, %v, %v; want empty, false, nil", path, found, err)
 	}
 
 	paths := verifytree.NewPaths(loc.WorktreePath(), verifyDir)
-	if err := verifytree.WritePublishFailure(paths, verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify}); err != nil {
+	if err := verifytree.WritePublishFailure(paths, verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Head: "abc123"}); err != nil {
 		t.Fatalf("WritePublishFailure() = %v; want nil", err)
 	}
-	if path, found, err := deps.PublishFailure(); err != nil || !found || path != paths.PublishFailure {
-		t.Errorf("PublishFailure() with a record = %q, %v, %v; want %q, true, nil", path, found, err, paths.PublishFailure)
+	path, record, found, err := deps.PublishFailure()
+	if err != nil || !found || path != paths.PublishFailure || record.Head != "abc123" {
+		t.Errorf("PublishFailure() with a record = %q, head %q, %v, %v; want %q, head abc123, true, nil", path, record.Head, found, err, paths.PublishFailure)
 	}
 }
 

@@ -122,13 +122,16 @@ func TestCardTargetDirs(t *testing.T) {
 func TestRefCovers(t *testing.T) {
 	t.Parallel()
 
-	plan := &planparser.Plan{Language: "go"}
 	tests := []struct {
-		name   string
-		cover  string
-		target string
-		want   bool
+		name     string
+		language string
+		cover    string
+		target   string
+		want     bool
 	}{
+		{name: "package self glyph covers its external test package under go", language: "go", cover: "x/pkg#", target: "x/pkg_test#", want: true},
+		{name: "package self glyph does not cover a _test directory under csharp", language: "csharp", cover: "x/pkg#", target: "x/pkg_test#"},
+		{name: "file cover does not cover a C# member, which maps to no scope", language: "csharp", cover: "src/Foo.cs", target: "Glyphchain.Sharp#Renderer.Title"},
 		{name: "member covers the same member through a handle", cover: "internal/a#Foo", target: "plan:internal/a#Foo", want: true},
 		{name: "member against another member of the package", cover: "internal/a#Foo", target: "internal/a#Bar"},
 		{name: "member against the file self glyph of its file", cover: "internal/a#Foo", target: "internal/a/a.go#"},
@@ -151,6 +154,10 @@ func TestRefCovers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			plan := &planparser.Plan{Language: "go"}
+			if tt.language != "" {
+				plan.Language = tt.language
+			}
 			if got := planparser.RefCovers(plan, tt.cover, tt.target); got != tt.want {
 				t.Errorf("RefCovers(%q, %q) = %v; want %v", tt.cover, tt.target, got, tt.want)
 			}

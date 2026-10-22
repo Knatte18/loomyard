@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -193,8 +194,8 @@ func TestHolders_NamesLiveHoldersAndDropsRecordsOfFreeLocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(holders) != 1 || holders[0].Worktree != "wt" || holders[0].Site != "webster gate" || holders[0].PID != os.Getpid() || holders[0].Started.IsZero() {
-		t.Fatalf("Holders() = %+v; want only the live holder with worktree, site, pid and start time", holders)
+	if len(holders) != 1 || holders[0].Slot != 1 || holders[0].Worktree != "wt" || holders[0].Site != "webster gate" || holders[0].PID != os.Getpid() || holders[0].Started.IsZero() {
+		t.Fatalf("Holders() = %+v; want only the live holder of slot 1 with worktree, site, pid and start time", holders)
 	}
 
 	if err := lease.Release(); err != nil {
@@ -206,6 +207,35 @@ func TestHolders_NamesLiveHoldersAndDropsRecordsOfFreeLocks(t *testing.T) {
 	}
 	if len(holders) != 0 {
 		t.Errorf("Holders() after release = %+v; want none", holders)
+	}
+}
+
+func TestDraining_ReportsTheDrainLockWithoutCreatingIt(t *testing.T) {
+	t.Parallel()
+
+	pool := newPool(t, fixedLimits(2))
+	if draining, err := pool.Draining(); err != nil || draining {
+		t.Errorf("Draining() on a pool with no directory = (%v, %v); want (false, nil)", draining, err)
+	}
+	if _, err := os.Stat(pool.Dir); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("Draining() left %s behind (stat error %v); want nothing created", pool.Dir, err)
+	}
+
+	if err := os.MkdirAll(pool.Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	drain, acquired, err := lock.TryAcquireWriteLock(pool.drainLockPath())
+	if err != nil || !acquired {
+		t.Fatalf("TryAcquireWriteLock(drain) = (%v, %v); want the drain held", acquired, err)
+	}
+	if draining, err := pool.Draining(); err != nil || !draining {
+		t.Errorf("Draining() with the drain held = (%v, %v); want (true, nil)", draining, err)
+	}
+	if err := drain.Release(); err != nil {
+		t.Fatal(err)
+	}
+	if draining, err := pool.Draining(); err != nil || draining {
+		t.Errorf("Draining() after the drain is released = (%v, %v); want (false, nil)", draining, err)
 	}
 }
 

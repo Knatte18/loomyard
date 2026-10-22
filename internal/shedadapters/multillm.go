@@ -42,6 +42,8 @@ type MultiLLMProducer struct {
 	now    func() time.Time
 	// prepareFreshSpawn, when non-nil, runs on the fresh path after the probe and before the archive, and returns the prompt amendment the lead's fresh prompt ends with.
 	prepareFreshSpawn func() (string, error)
+	// gateFindingsPath, when non-empty, is the file an exhausted chair gate's findings are kept in.
+	gateFindingsPath string
 }
 
 var _ shedengine.ShedProducer = (*MultiLLMProducer)(nil)
@@ -69,6 +71,14 @@ func NewMultiLLMProducerSourced(name string, tables TableSource, seats SeatRunne
 		now = time.Now
 	}
 	return &MultiLLMProducer{name: name, tables: tables, seats: seats, now: now, prepareFreshSpawn: prepareFreshSpawn}
+}
+
+// KeepGateFindings tells the producer the file path an exhausted chair gate's findings are written to and its Stuck reason names.
+// It returns the producer so a constructor call can chain it.
+// A call whose chair gate passed removes the file; an empty path keeps no findings file.
+func (p *MultiLLMProducer) KeepGateFindings(path string) *MultiLLMProducer {
+	p.gateFindingsPath = path
+	return p
 }
 
 // Call runs one MultiLLMProducer iteration: entry-check the context, probe the table's seats, and either resume a live chair and map its result, or prepare a fresh spawn, archive every seat's stale outputs, run the table fresh and map the chair's result.
@@ -148,7 +158,10 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Res
 				return "", shedengine.OutputPointer{}, cerr
 			}
 			logger.Warn("shedadapters: chair's gate did not pass", "producer", p.name, "engine", multiLLMEngineLabel, "attempts", chair.Gate.Attempts, "findingsPath", chair.Gate.FindingsPath, "sessionID", chair.SessionID, "strandGUID", chair.StrandGUID)
-			return shedengine.Stuck, shedengine.OutputPointer{Path: result.ChairOutputs[0], GateAttempts: gateAttemptsPointer(chair.Gate), GateSpans: gateSpansOf(chair.Gate), Reason: gateFailedReason(chair.Gate)}, nil
+			return shedengine.Stuck, shedengine.OutputPointer{Path: result.ChairOutputs[0], GateAttempts: gateAttemptsPointer(chair.Gate), GateSpans: gateSpansOf(chair.Gate), Reason: gateFailedReason(chair.Gate, p.gateFindingsPath)}, nil
+		}
+		if chair.Gate != nil {
+			clearGateFindings(p.gateFindingsPath)
 		}
 		return shedengine.Done, shedengine.OutputPointer{Path: result.ChairOutputs[0], GateAttempts: gateAttemptsPointer(chair.Gate), GateSpans: gateSpansOf(chair.Gate)}, nil
 

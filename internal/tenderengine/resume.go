@@ -182,11 +182,15 @@ func liftEntries(deps Deps, pick func(record *pauserecord.Record) ([]pauserecord
 				report.OrchLeftToWatcher = true
 				continue
 			}
-			if reason := sendResumeLine(deps, held); reason != "" {
+			reason, claimed := sendResumeLine(deps, held)
+			switch {
+			case claimed:
+				report.Moved = append(report.Moved, held.Strand)
+			case reason != "":
 				report.NoLine = append(report.NoLine, SessionNote{held.Strand, held.Slug, reason})
-				continue
+			default:
+				report.Lines = append(report.Lines, held.Strand)
 			}
-			report.Lines = append(report.Lines, held.Strand)
 		}
 	}
 	return report, nil
@@ -207,34 +211,80 @@ func moveToCoveringEntry(record *pauserecord.Record, held pauserecord.Session) b
 	return false
 }
 
-// sendResumeLine gives held the resume line once and returns why it did not, empty when it did.
+// sendResumeLine gives held the resume line and returns why it did not, empty when it did.
 // A send the guard holds is reported by the guard's own reason, and any other failure by its message.
-func sendResumeLine(deps Deps, held pauserecord.Session) string {
-	var pair Pair
-	for _, candidate := range deps.Pairs {
-		if candidate.Slug() == held.Slug {
-			pair = candidate
-		}
-	}
+// A prime session, which has the empty slug, is given its line through deps.Prime.
+//
+// A send refused by a live pause entry added after the lift's lock was released claims the session into that entry and reports claimed.
+// The later resume of that entry then gives the session its line.
+// A claim that finds the slug uncovered means the entry was lifted since the send, so the line is sent once more.
+// A second refusal is claimed once more, and a third send is never made, so no send loops.
+func sendResumeLine(deps Deps, held pauserecord.Session) (reason string, claimed bool) {
+	pair := resumePair(deps, held.Slug)
 	if pair == nil {
-		return "the pair is gone"
+		return "the pair is gone", false
 	}
 	live, err := pair.Live(held.GUID)
 	if err != nil {
-		return "liveness reading failed: " + err.Error()
+		return "liveness reading failed: " + err.Error(), false
 	}
 	if !live {
-		return "the strand is not live"
+		return "the strand is not live", false
 	}
 	err = pair.Send(held.GUID, pauserecord.ResumeLine)
+	var paused *shuttleengine.PausedError
+	if !errors.As(err, &paused) {
+		return sendFailureReason(err), false
+	}
+	owned, reason := claimPausedSession(deps, paused, held)
+	if owned || reason != "" {
+		return reason, owned
+	}
+	err = pair.Send(held.GUID, pauserecord.ResumeLine)
+	if !errors.As(err, &paused) {
+		return sendFailureReason(err), false
+	}
+	owned, reason = claimPausedSession(deps, paused, held)
+	if !owned && reason == "" {
+		reason = "the send was held by a pause that has since ended and a second one"
+	}
+	return reason, owned
+}
+
+// resumePair returns the pair that holds sessions of slug, deps.Prime for the empty slug, and nil when there is none.
+func resumePair(deps Deps, slug string) Pair {
+	if slug == "" {
+		return deps.Prime
+	}
+	for _, candidate := range deps.Pairs {
+		if candidate.Slug() == slug {
+			return candidate
+		}
+	}
+	return nil
+}
+
+// claimPausedSession records held in the live entry covering the slug paused judged.
+// It reports owned when an entry owns the session after the call; both results are empty when the slug is uncovered, and reason names a failed claim.
+func claimPausedSession(deps Deps, paused *shuttleengine.PausedError, held pauserecord.Session) (owned bool, reason string) {
+	_, covered, err := pauserecord.ClaimSession(deps.RecordPath, paused.Slug, held, deps.Now())
+	if err != nil {
+		return false, "the send was held by a pause and the claim failed: " + err.Error()
+	}
+	return covered, ""
+}
+
+// sendFailureReason names why a send of the resume line failed, empty for a send that landed (a nil err).
+func sendFailureReason(err error) string {
 	var busy *shuttleengine.SessionBusyError
 	switch {
+	case err == nil:
+		return ""
 	case errors.As(err, &busy):
 		return busy.Reason
-	case err != nil:
+	default:
 		return "the send failed: " + err.Error()
 	}
-	return ""
 }
 
 // ReviveLine is the one line revive types, into a session stalled on an API error.

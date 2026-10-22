@@ -29,7 +29,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/runprofile"
-	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // fakeEditor returns a fake EditorFunc that writes the given valid YAML
@@ -1244,7 +1243,6 @@ func TestDispatchLayers(t *testing.T) {
 
 	loomTemplate, _ := configreg.Template("loom")
 	gateTemplate, _ := configreg.Template("gate")
-	websterTemplate, _ := configreg.Template("webster")
 	lensesTemplate := lenses.ConfigTemplate
 	taskSession, err := agentname.Format("ly", "task-a", "loom")
 	if err != nil {
@@ -1413,28 +1411,6 @@ func TestDispatchLayers(t *testing.T) {
 			check: func(t *testing.T, fx hubFixture, out string) {
 				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "loom")); !os.IsNotExist(err) {
 					t.Errorf("worktree loom.yaml exists after a refused value; stat err = %v", err)
-				}
-			},
-		},
-		{
-			name: "worktree layer refuses a kickstart_pack_per_card that is not a boolean and never syncs", module: "webster",
-			setFlags: []string{"kickstart_pack_per_card=maybe"}, seedBoard: websterTemplate(), wantCode: 1, wantErr: "webster config",
-			check: func(t *testing.T, fx hubFixture, out string) {
-				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "webster")); !os.IsNotExist(err) {
-					t.Errorf("worktree webster.yaml exists after a refused value; stat err = %v", err)
-				}
-			},
-		},
-		{
-			name: "worktree layer sets kickstart_pack_per_card false and the loader reads it back", module: "webster", layer: "worktree",
-			setFlags: []string{"kickstart_pack_per_card=false"}, seedBoard: websterTemplate(), wantSyncs: 1,
-			check: func(t *testing.T, fx hubFixture, out string) {
-				cfg, err := websterengine.LoadConfig(configengine.Dirs{Anchor: fx.worktree, Board: fx.board}, "webster")
-				if err != nil {
-					t.Fatalf("LoadConfig() error = %v; want nil", err)
-				}
-				if cfg.KickstartPackPerCard {
-					t.Errorf("KickstartPackPerCard = true; want false after --set kickstart_pack_per_card=false")
 				}
 			},
 		},
@@ -1721,6 +1697,54 @@ func TestDispatchLayers(t *testing.T) {
 				if err != nil || cfg.Slots != 3 {
 					t.Errorf("gateslot.LoadConfig() = (%+v, %v); want the worktree's own file read with slots 3", cfg, err)
 				}
+			},
+		},
+		{
+			name: "a standalone worktree's lens_set picks the csharp layer for its own load", module: "lenses", noBoard: true,
+			setFlags: []string{"lens_set=csharp"},
+			check: func(t *testing.T, fx hubFixture, out string) {
+				got, err := lenses.Load(configengine.Dirs{Anchor: fx.worktree})
+				if err != nil {
+					t.Fatalf("lenses.Load() error = %v; want the worktree file read", err)
+				}
+				scratch := t.TempDir()
+				seedModuleConfig(t, scratch, "lenses", "lens_set: csharp\n")
+				want, err := lenses.Load(configengine.Dirs{Anchor: scratch})
+				if err != nil {
+					t.Fatalf("lenses.Load(lens_set: csharp) error = %v", err)
+				}
+				neutral, err := lenses.Load(configengine.Dirs{Anchor: t.TempDir()})
+				if err != nil {
+					t.Fatalf("lenses.Load(no lenses.yaml) error = %v", err)
+				}
+				for _, name := range []string{"error-handling", "test-gaps", "performance", "api-design", "concurrency"} {
+					if got.Lenses[name] != want.Lenses[name] {
+						t.Errorf("lens %q = %q; want the csharp layer's %q", name, got.Lenses[name], want.Lenses[name])
+					}
+					if got.Lenses[name] == neutral.Lenses[name] {
+						t.Errorf("lens %q equals the neutral base's prose; want the layer applied", name)
+					}
+				}
+			},
+		},
+		{
+			name: "a hub worktree's lens_set is refused toward the default layer", module: "lenses",
+			setFlags: []string{"lens_set=csharp"}, wantCode: 1, wantErr: "--layer default",
+			check: func(t *testing.T, fx hubFixture, out string) {
+				for _, unwanted := range []string{"way forward: --set the key", "delete the lens_set line"} {
+					if strings.Contains(out, unwanted) {
+						t.Errorf("error holds %q; want only the default-layer way forward: %s", unwanted, out)
+					}
+				}
+				assertFile(t, configengine.ConfigFile(fx.worktree, "lenses"), "", true)
+			},
+		},
+		{
+			name: "default layer refuses an unknown lens_set naming the shipped layers and leaves the board file as it was", module: "lenses", layer: "default",
+			setFlags: []string{"lens_set=xyz"}, seedBoard: lensesTemplate(), wantCode: 1, wantErr: "names no shipped layer", wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, out string) {
+				assertJSONErrContains(t, out, "csharp, go, python")
+				assertFile(t, configengine.ConfigFile(fx.board, "lenses"), lensesTemplate(), false)
 			},
 		},
 		{

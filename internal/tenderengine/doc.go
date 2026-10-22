@@ -38,6 +38,10 @@
 // After the lock, each remaining non-orch session gets `pauserecord.ResumeLine` once through the guarded send.
 // There is no busy pre-check: a recorded session gets its attempt whatever its state reads now.
 // A strand that is not live and a send the guard refuses get no line and are named with the reason, which is the guard's own for a held send and the error's message for any other failure, such as an open rewind picker.
+// A send refused because a live entry added after that lock covers the session claims the session into that entry with `pauserecord.ClaimSession`, and the report lists it as moved;
+// the later resume of that entry gives it its line.
+// A claim that finds no covering entry means the pause was lifted since the send, so the line is sent once more, and a second refusal is claimed once more and never sent a third time.
+// A prime session, which has the empty slug, is given its line through the prime pair.
 // The orch's session is left to the orch watcher.
 // `Lift` runs the same sequence for the one live entry whose scope, caller and pause time equal an `EntryRef`, and lifts nothing for an entry no longer live.
 //

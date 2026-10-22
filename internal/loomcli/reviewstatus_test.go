@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 func reviewStore(t *testing.T) parentreview.Store {
@@ -311,6 +312,22 @@ func TestVerifyWaiting(t *testing.T) {
 			},
 		},
 		{
+			name: "paused marker names the hold, its site and the elapsed time",
+			marker: func(t *testing.T) string {
+				path := filepath.Join(t.TempDir(), "running.yaml")
+				body := "site: Publish\nattempt: 0\ncommand: go test ./...\nstarted: 2026-10-03T09:15:00Z\npid: " + strconv.Itoa(os.Getpid()) + "\nstate: paused\nwait_started: 2026-10-03T09:15:00Z\n"
+				if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				return path
+			},
+			check: func(t *testing.T, note string) {
+				if want := "Webster-Burler: verify held by a pause 6m (Publish)"; note != want {
+					t.Errorf("note = %q; want %q", note, want)
+				}
+			},
+		},
+		{
 			name:       "live marker ahead of review",
 			openReview: true,
 			marker:     func(t *testing.T) string { return writeVerifyMarker(t, os.Getpid(), 2) },
@@ -438,28 +455,48 @@ func TestParentLockWaiting(t *testing.T) {
 	}
 }
 
-// TestAgentActivity_LiveLockWaitReadsAsActivity asserts a live parent lock wait record reads as activity now, and a dead writer's record does not.
+// TestAgentActivity_LiveLockWaitReadsAsActivity asserts a live parent lock wait record and a live running verify marker read as activity now, and a dead writer's record, a dead marker and a verify marker held by a pause do not.
 func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 	t.Parallel()
+	writeLockWait := func(wait parentlock.Wait) func(t *testing.T, loc *lyxcwd.Location) {
+		return func(t *testing.T, loc *lyxcwd.Location) {
+			scratch := loomengine.LoomScratchDir(loc)
+			if err := os.MkdirAll(scratch, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := parentlock.WriteWait(parentlock.WaitRecordPath(scratch), wait); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	writeVerifyMarkerState := func(pid int, state string) func(t *testing.T, loc *lyxcwd.Location) {
+		return func(t *testing.T, loc *lyxcwd.Location) {
+			path := verifytree.NewPaths(loc.WorktreePath(), verifytree.Dir(loc.AnchorPath())).Marker
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			body := "site: Publish\nattempt: 0\ncommand: go test ./...\nstarted: 2026-10-03T09:15:00Z\npid: " + strconv.Itoa(pid) + "\nstate: " + state + "\n"
+			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	tests := []struct {
 		name         string
-		wait         parentlock.Wait
+		setup        func(t *testing.T, loc *lyxcwd.Location)
 		wantActivity bool
 	}{
-		{"live writer", parentlock.NewWait("main", "other-task"), true},
-		{"dead writer", parentlock.Wait{Branch: "main", Holder: "other-task", PID: 1 << 30, StartTime: "gone", Started: time.Now()}, false},
+		{"live writer", writeLockWait(parentlock.NewWait("main", "other-task")), true},
+		{"dead writer", writeLockWait(parentlock.Wait{Branch: "main", Holder: "other-task", PID: 1 << 30, StartTime: "gone", Started: time.Now()}), false},
+		{"live running verify marker", writeVerifyMarkerState(os.Getpid(), verifytree.MarkerStateRunning), true},
+		{"live paused verify marker", writeVerifyMarkerState(os.Getpid(), verifytree.MarkerStatePaused), false},
+		{"dead verify marker", writeVerifyMarkerState(1<<30, verifytree.MarkerStateRunning), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
-			scratch := loomengine.LoomScratchDir(loc)
-			if err := os.MkdirAll(scratch, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := parentlock.WriteWait(parentlock.WaitRecordPath(scratch), tt.wait); err != nil {
-				t.Fatal(err)
-			}
+			tt.setup(t, loc)
 
 			before := time.Now()
 			last, live, err := agentActivityFor(loc, shuttleengine.Config{Engine: "claude"})()

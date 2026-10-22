@@ -5,7 +5,7 @@
 // Git runs through `gitexec.Run`, and `go list` is a logged spawn.
 // It diffs the base to the working tree, not to HEAD:
 // tracked changes, staged or not, a rename counted at both paths, and the untracked files git does not ignore.
-// It returns Targets{Whole, Fallback, Base, Modules, Guards}: each ModuleTargets names a module directory, `.` for the root, and its module-relative package arguments in the order the graph lists them, every impacted package kept, test-less ones included.
+// It returns Targets{Whole, Fallback, Base, Modules, Guards, BinaryTests}: each ModuleTargets names a module directory, `.` for the root, and its module-relative package arguments in the order the graph lists them, every impacted package kept, test-less ones included.
 // Targets also names the base it diffed from whenever that base was usable.
 //
 // DeriveTargets falls back to Whole, with the reason, when any of these holds:
@@ -17,7 +17,9 @@
 //
 // Otherwise the set is the packages the diff changed, plus every package whose dependencies, test imports included, reach one of them, under the `integration`, `tmux` and `llm` tags.
 // A rename or deletion maps through its old path as well as its new one.
-// When a changed package is a dependency of `cmd/lyx`, every package whose tests import `internal/testkit/lyxbin`, which builds the binary, joins the set.
+// When the diff changes the `cmd/lyx` main package, which no test imports and so the graph cannot see, every package whose tests import `internal/testkit/lyxbin`, which builds the binary, joins the set;
+// any other change reaches those packages through the import graph only.
+// Targets.BinaryTests lists those packages, inside the set or not.
 // A diff touching only Markdown files yields no module and no package.
 // The context bounds the derivation: it is checked before each git read, and a cancelled context kills a stalled `go list`, while a local git read already in flight runs to its end.
 //
@@ -36,4 +38,5 @@
 //
 // Bound: a narrower run skips only packages the import graph shows unreachable.
 // What the graph cannot see, such as a test reading another package's files, is caught by the whole runs at the sites that keep them.
+// A binary-driving test that reaches a change only through a subcommand its own package does not import leaves the narrowed run, and the whole runs at Merge-In, Publish and Finalize still run it.
 package impactset

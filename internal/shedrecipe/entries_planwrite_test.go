@@ -124,6 +124,18 @@ func TestPlanWriteEntry_HappyPath(t *testing.T) {
 	if producer == nil {
 		t.Fatalf("planWriteEntry() = nil producer; want non-nil")
 	}
+
+	// An exhausted gate's reason names the row's findings file, so an entry that drops the chain fails here.
+	output := filepath.Join(env.AnchorPath, "00-overview.md")
+	withPlanTable(&env, output)
+	withGateFindingsFile(&env, t.TempDir())
+	env.Seats = &shedfake.SeatRunner{Results: []seatengine.Result{failedGateResult(output)}}
+	producer, err = planWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
+	if err != nil {
+		t.Fatalf("planWriteEntry() error = %v; want nil", err)
+	}
+	pointer := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
+	requireNamesFindingsFile(t, env, "Row", pointer.Reason)
 }
 
 // TestPlanWriteEntry_CallDone drives the happy-path producer's Call once against a done lead.

@@ -17,10 +17,13 @@ Every verify site runs the call rendered from a gate of the hub's `gate.yaml` th
   After each such run, `Verify` keeps the newest logs up to its retention bound plus the one the failure record names, and removes the rest.
 - Merge-In and Publish alone leave a failure record in the verify directory when their `landing` or `publish` call fails with a non-zero exit: the failing gate as kind, the failing tier, the failing tests, the failing run's own log, HEAD and the merge-in commit.
   A Publish that passes both calls removes it before its push, and Finalize and the other sites neither write nor remove it.
+- Every site tells `Site.Hold`, built by `verifytree.NewPauseHold` from its wiring's pause geometry.
+  The Merge-In, Finalize and Publish site's hold reads hub entries only while its run holds the parent lock.
+  `cardverify` and battencli's `verifyrun` rows tell none, being no verify site.
 - `internal/cardverify/runner.go` reruns a card's own `**Verify:**` command through `verifyrun` directly and is no plan-verify site.
 - `internal/battencli/land.go` runs the landing config's `deploy` command through `verifyrun` directly and is no plan-verify site: it verifies no tree.
 
 ## Enforcement
 
 `cmd/lyx/verifiedtree_test.go`, a tripwire rather than a completeness proof.
-Each site names `verifytree.Verify`, no other production file calls `verifyrun.Run`, and none names the retired `verify-pending` marker.
+Each site names `verifytree.Verify` and also names a `Hold` it passes, no other production file calls `verifyrun.Run`, and none names the retired `verify-pending` marker.

@@ -474,6 +474,27 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 		}
 	})
 
+	t.Run("a told classifier chooses the record's target and the reason's way forward", func(t *testing.T) {
+		t.Parallel()
+		fx := newMergeInFixture(t)
+		fx.taskHeads = []string{"t1", "m1"}
+		fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, Log: "/verify/verify-1.log"}
+		// The classifier is set on the producer's own gate: newMergeInFixture copied the fixture's value into it.
+		fx.m.gate.classify = func(context.Context, verifytree.PublishFailure) FailureRoute {
+			return FailureRoute{Target: "Merge-In", WayForward: "the told not-owned route"}
+		}
+
+		outcome, ptr := fx.call(t)
+
+		if outcome != shedengine.Stuck || !strings.HasSuffix(ptr.Reason, "way forward: the told not-owned route") {
+			t.Fatalf("Call() = %q, %+v; want Stuck ending with the classifier's way forward", outcome, ptr)
+		}
+		failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
+		if err != nil || !found || failure.Target != "Merge-In" {
+			t.Errorf("ReadPublishFailure() = %+v, %v, %v; want a record with target Merge-In", failure, found, err)
+		}
+	})
+
 	t.Run("a passing verify clears an earlier failure record", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)

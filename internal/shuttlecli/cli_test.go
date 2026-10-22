@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/google/go-cmp/cmp"
 	"github.com/spf13/cobra"
 )
 
@@ -589,10 +591,18 @@ func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
 		send       bool
 		wantError  string
 		wantKeys   []string
+		// pausedSlug, when set, covers that slug with a live entry and is told, with the empty slug, through both cli.pause and runner.SetPause;
+		// the CLI's own check by the empty slug reads uncovered, so the refusal comes from the runner.
+		pausedSlug string
+		// strandName names the started strand, so the runner judges the send by its slug.
+		strandName string
+		// alsoWant is a second substring the refusal must contain.
+		alsoWant string
 	}{
-		{"interrupt on a pane with no running turn fails naming lyx shuttle send", false, false, "lyx shuttle send", nil},
-		{"interrupt on an open picker closes it once and fails", true, false, "rewind picker was open", []string{"Escape"}},
-		{"send on an open picker closes it once, fails and types nothing", true, true, "rewind picker was open", []string{"Escape"}},
+		{"interrupt on a pane with no running turn fails naming lyx shuttle send", false, false, "lyx shuttle send", nil, "", "", ""},
+		{"interrupt on an open picker closes it once and fails", true, false, "rewind picker was open", []string{"Escape"}, "", "", ""},
+		{"send on an open picker closes it once, fails and types nothing", true, true, "rewind picker was open", []string{"Escape"}, "", "", ""},
+		{"send into a strand another slug's pause covers is refused naming the resume and the retry", false, true, "lyx resume p1", nil, "p1", "ly:p1:impl", "lyx shuttle send"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -620,7 +630,7 @@ func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
 				RunningTurnFn:       func(string) bool { return false },
 			}
 			runner := newFakeClockRunner(reed, engine, root, root)
-			run, err := runner.Start(shuttleengine.Spec{Prompt: "do the thing", OutputFiles: []string{filepath.Join(root, "out.md")}})
+			run, err := runner.Start(shuttleengine.Spec{Prompt: "do the thing", OutputFiles: []string{filepath.Join(root, "out.md")}, NameOverride: tt.strandName})
 			if err != nil {
 				t.Fatalf("runner.Start: %v", err)
 			}
@@ -628,6 +638,17 @@ func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
 			reed.SendKeyCalls = nil
 
 			cli := &shuttleCLI{runner: runner}
+			if tt.pausedSlug != "" {
+				cli.pause = pauserecord.Geometry{RecordPath: filepath.Join(root, "pause", pauserecord.RecordFileName)}
+				runner.SetPause(cli.pause)
+				now := time.Now()
+				if _, err := pauserecord.Update(cli.pause.RecordPath, now, func(record *pauserecord.Record) error {
+					record.Live = append(record.Live, pauserecord.Entry{Scope: tt.pausedSlug, PausedAt: now, Caller: "EXTERNAL"})
+					return nil
+				}); err != nil {
+					t.Fatalf("pauserecord.Update: %v", err)
+				}
+			}
 			cmd := cli.interruptCmd()
 			args := []string{run.StrandGUID()}
 			if tt.send {
@@ -648,6 +669,9 @@ func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
 			}
 			if msg, _ := envelope["error"].(string); !strings.Contains(msg, tt.wantError) {
 				t.Errorf("error = %q; want it to contain %q", msg, tt.wantError)
+			}
+			if msg, _ := envelope["error"].(string); !strings.Contains(msg, tt.alsoWant) {
+				t.Errorf("error = %q; want it to contain %q", msg, tt.alsoWant)
 			}
 			var keys []string
 			for _, call := range reed.SendKeyCalls {
@@ -772,19 +796,22 @@ func (e *openRecorderEngine) OpenLaunch(spec shuttleengine.OpenSpec, cfg shuttle
 	return shuttleengine.Launch{Cmd: "open-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}, e.err
 }
 
-// TestOpenCmd_ModelAliasEngine pins the engine and permission mode `open` hands Runner.Open, and that a refusal from Open reaches the error envelope.
+// TestOpenCmd_ModelAliasEngine pins the engine and permission mode `open` hands Runner.Open, the engine, model and effort its envelope reports, and that a refusal from Open reaches the error envelope.
 func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
 		args []string
-		// wantEngine is the engine whose recorder must see the one spec.
+		// wantEngine is the engine whose recorder must see the one spec, and the engine the envelope names.
 		wantEngine string
+		wantModel  string
+		wantEffort string
 		wantMode   string
 		// openErr scripts the wanted engine's refusal.
 		openErr error
 	}{
-		{name: "an alias of the claude engine", args: []string{"--role", "explore", "--model", "opus"}, wantEngine: "claude"},
+		{name: "an alias of the claude engine", args: []string{"--role", "explore", "--model", "opus"}, wantEngine: "claude", wantModel: "opus"},
+		{name: "an alias with an effort", args: []string{"--role", "explore", "--model", "opus[high]"}, wantEngine: "claude", wantModel: "opus", wantEffort: "high"},
 		{name: "no model leaves the set's default", args: []string{"--role", "explore"}, wantEngine: shuttlefake.EngineName},
 		{name: "bypass is passed through", args: []string{"--role", "explore", "--permission-mode", "bypass"}, wantEngine: shuttlefake.EngineName, wantMode: "bypass"},
 		{name: "prompt is passed through", args: []string{"--role", "explore", "--permission-mode", "prompt"}, wantEngine: shuttlefake.EngineName, wantMode: "prompt"},
@@ -819,8 +846,13 @@ func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 
 			envelope := parseSingleEnvelope(t, out.Bytes())
 			ok, _ := envelope["ok"].(bool)
-			if tt.openErr == nil && !ok {
-				t.Errorf("envelope = %v; want ok", envelope)
+			if tt.openErr == nil {
+				if !ok {
+					t.Errorf("envelope = %v; want ok", envelope)
+				}
+				if envelope["engine"] != tt.wantEngine || envelope["model"] != tt.wantModel || envelope["effort"] != tt.wantEffort {
+					t.Errorf("envelope = %v; want engine %q, model %q, effort %q", envelope, tt.wantEngine, tt.wantModel, tt.wantEffort)
+				}
 			}
 			if tt.openErr != nil {
 				if got, _ := envelope["error"].(string); ok || !strings.Contains(got, "invalid permission mode") {
@@ -839,5 +871,94 @@ func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestOpenCmd_ListModels pins that --list-models, with no --role, prints the loaded registry sorted by alias with each alias's engine, model and default effort, and opens nothing.
+func TestOpenCmd_ListModels(t *testing.T) {
+	t.Parallel()
+	anchor := t.TempDir()
+	if err := os.MkdirAll(configengine.ConfigDir(anchor), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	models := "zephyr: {engine: claude, model: claude-zephyr-1, defaults: {effort: low}}\n"
+	if err := os.WriteFile(configengine.ConfigFile(anchor, "models"), []byte(models), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	recorder := &openRecorderEngine{}
+	engines := shuttleengine.NewEngineSet(shuttlefake.EngineName, map[string]shuttleengine.Engine{shuttlefake.EngineName: recorder})
+	worktreeRoot := t.TempDir()
+	runner := shuttleengine.NewRunner(&shuttlefake.Reed{}, engines, worktreeRoot, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
+	c := &shuttleCLI{runner: runner, configDirs: configengine.Dirs{Anchor: anchor}}
+	cmd := c.openCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--list-models"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+	}
+
+	envelope := parseSingleEnvelope(t, out.Bytes())
+	if ok, _ := envelope["ok"].(bool); !ok {
+		t.Fatalf("envelope = %v; want ok", envelope)
+	}
+	rows, _ := envelope["models"].([]any)
+	byAlias := map[string]map[string]any{}
+	var aliases []string
+	for _, row := range rows {
+		fields, _ := row.(map[string]any)
+		alias, _ := fields["alias"].(string)
+		aliases = append(aliases, alias)
+		byAlias[alias] = fields
+	}
+	if !sort.StringsAreSorted(aliases) {
+		t.Errorf("aliases = %v; want them sorted", aliases)
+	}
+	wantRows := map[string]map[string]any{
+		"zephyr": {"alias": "zephyr", "engine": "claude", "model": "claude-zephyr-1", "effort": "low"},
+		"opus":   {"alias": "opus", "engine": "claude", "model": "opus", "effort": ""},
+	}
+	for alias, want := range wantRows {
+		if diff := cmp.Diff(want, byAlias[alias]); diff != "" {
+			t.Errorf("--list-models row %q mismatch (-want +got):\n%s", alias, diff)
+		}
+	}
+	if len(recorder.specs) != 0 {
+		t.Errorf("OpenLaunch saw specs %+v; want none", recorder.specs)
+	}
+}
+
+// TestOpenCmd_ListModelsRegistryLoadFailure pins that --list-models over an unparsable models config returns an error envelope naming the flag and opens nothing.
+func TestOpenCmd_ListModelsRegistryLoadFailure(t *testing.T) {
+	t.Parallel()
+	anchor := t.TempDir()
+	if err := os.MkdirAll(configengine.ConfigDir(anchor), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(anchor, "models"), []byte("zephyr: [unclosed\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	recorder := &openRecorderEngine{}
+	engines := shuttleengine.NewEngineSet(shuttlefake.EngineName, map[string]shuttleengine.Engine{shuttlefake.EngineName: recorder})
+	worktreeRoot := t.TempDir()
+	runner := shuttleengine.NewRunner(&shuttlefake.Reed{}, engines, worktreeRoot, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
+	c := &shuttleCLI{runner: runner, configDirs: configengine.Dirs{Anchor: anchor}}
+	cmd := c.openCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--list-models"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+	}
+
+	envelope := parseSingleEnvelope(t, out.Bytes())
+	if ok, _ := envelope["ok"].(bool); ok {
+		t.Fatalf("envelope = %v; want an error envelope", envelope)
+	}
+	if message, _ := envelope["error"].(string); !strings.Contains(message, "--list-models") {
+		t.Errorf("error = %q; want it to name --list-models", message)
+	}
+	if len(recorder.specs) != 0 {
+		t.Errorf("OpenLaunch saw specs %+v; want none", recorder.specs)
 	}
 }

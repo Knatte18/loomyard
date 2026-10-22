@@ -386,6 +386,48 @@ func TestList_ReportsLivenessAndWaitersOldestFirst(t *testing.T) {
 	}
 }
 
+func TestStore_HeldBy(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		setup   func(t *testing.T, store *Store, processes *fakeProcesses)
+		wantErr bool
+		want    bool
+	}{
+		{"LiveLockOfTheSlug", func(t *testing.T, store *Store, processes *fakeProcesses) {
+			mustTryAcquire(t, store, "main", liveOwner(processes, "task", 1))
+		}, false, true},
+		{"LiveLockOfAnotherSlug", func(t *testing.T, store *Store, processes *fakeProcesses) {
+			mustTryAcquire(t, store, "main", liveOwner(processes, "other", 1))
+		}, false, false},
+		{"DeadOwnersLock", func(t *testing.T, store *Store, processes *fakeProcesses) {
+			owner := liveOwner(processes, "task", 1)
+			mustTryAcquire(t, store, "main", owner)
+			processes.set(owner, false)
+		}, false, false},
+		{"DirectoryIsAFile", func(t *testing.T, store *Store, processes *fakeProcesses) {
+			if err := os.WriteFile(store.Dir, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			store, processes := newTestStore(t)
+			if err := os.MkdirAll(filepath.Dir(store.Dir), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			tt.setup(t, store, processes)
+			got, err := store.HeldBy("task")
+			if (err != nil) != tt.wantErr || got != tt.want {
+				t.Errorf("HeldBy(task) = (%v, %v); want (%v, error %v)", got, err, tt.want, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestForceRelease_RemovesRecordWhateverItsOwner(t *testing.T) {
 	t.Parallel()
 

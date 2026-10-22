@@ -56,17 +56,12 @@ func InstallNetworkGate(ctx context.Context, pauseSlug *string) {
 		PID:       pid,
 		StartTime: startTime,
 		HoldsParentLock: func(slug string) bool {
-			entries, err := locks.List()
+			held, err := locks.HeldBy(slug)
 			if err != nil {
 				logger.Warn("tendercli: the parent locks cannot be listed, so the gate reads none held", "error", err)
 				return false
 			}
-			for _, entry := range entries {
-				if entry.Err == "" && entry.Alive && entry.Record.Owner.Slug == slug {
-					return true
-				}
-			}
-			return false
+			return held
 		},
 		Notify: func(line string) {
 			fmt.Fprintln(os.Stderr, line)

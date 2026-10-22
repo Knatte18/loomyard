@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -87,6 +88,9 @@ type Env struct {
 	// RunScratchDir is the told ephemeral shed scratch directory of the run, read by the gate resolver's "plan" and "rework-plan" gates, which record their informational findings in a file under it.
 	// Empty keeps those findings inline in the log.
 	RunScratchDir string
+	// GateFindingsFile is the told per-row file an exhausted gate's findings are kept in, read by every entry that builds a gated producer.
+	// Nil tells no row a path, which keeps the gate's own findings path in the Stuck reason.
+	GateFindingsFile func(row string) string
 	// VerifyDir is the told verify directory, read by the gate resolver's "verify" gate.
 	VerifyDir string
 	// VerifyCommand is the told verify-command source, read at each arrival by the gate resolver's "verify" gate, which requires it.
@@ -101,6 +105,9 @@ type Env struct {
 	// It answers the tree-scoped command and true for a diff wholly under the configured trees, and false otherwise.
 	// Set, it alone selects the gate's darn form and requires VerifyMergeBase; nil, which a loom run leaves, keeps the round form.
 	VerifyTreeScope func() (string, bool, error)
+	// VerifyHold is the told pause hold of the worktree's verify sites, read by the gate resolver's "verify" gate.
+	// Nil holds nothing.
+	VerifyHold *verifytree.PauseHold
 	// PublishFailure returns the Publish failure note the Webster-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	PublishFailure func() string

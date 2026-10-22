@@ -68,6 +68,17 @@
 // on Done of a spawn that was told a rejection it then records the rejection through the optional RecordRejection seam, so the darn amendment can name its findings, and removes the pending rejection.
 // A gate-failed Stuck keeps its record and gains the resume way forward.
 // A failed commit, record or removal is a returned error, since re-running the session cannot fix a git or filesystem fault.
+// Before any session is built, a Publish failure record this run wrote reroutes the row to Merge-In when four facts hold, checked in order:
+// the record's written_at is at or after the run's start, as whole-second UTC, with a zero start counting as not this run's;
+// the task branch is still at the record's head;
+// the task worktree has no uncommitted path;
+// and some parent tip the told ParentTips seam returns is not an ancestor of HEAD.
+// The reroute spawns no writer, commits nothing and spends no bounce budget.
+// Its reason says the parent moved since the recorded failure while the task branch and worktree did not, and that Merge-In merges the parent and re-runs the failing gate.
+// It adds that a Merge-In stuck on a parent pair that is dirty, mid-merge, ahead of or diverged from its upstream needs that pair repaired before any resume, since a resume over it reroutes back to the same stop.
+// The reroute cap halts a row rerouted back from such a stop, and the halt embeds this reason.
+// A RunStart, TaskHead, ParentTips or IsAncestor error runs the writer as today, and a Dirty error counts as a dirty tree.
+// The reroute skips the review perch and Describe only while the task branch carries no commit and the worktree no edit since the failed verify, which ran on reviewed code.
 //
 // The PR-Rework producer (NewPRRework) archives the plan and review run directories into the round, then recreates the review run directories and hands each archived one to the required KeepReviewRecords seam.
 // The settle record, its patch and the generation record therefore stay where the next review re-entry compares against them, on every Call that reaches the recreation, so a re-step after a failed carry carries again.

@@ -34,8 +34,12 @@ type crossModuleCommand struct {
 // checkVerifyNestedModule implements verify-nested-module: a `go` command in a card's Verify value must not name a package of a nested module other than the one it runs in.
 // A card's value is judged against the nested modules as the plan stands once that card has run.
 // The overview's `## verify:` section is not read, since no gate runs it.
+// It returns nothing unless the plan's language is go, since a nested module is a Go module boundary.
 func checkVerifyNestedModule(plan *Plan, worktreeRoot string) []ValidationError {
 	var findings []ValidationError
+	if !plan.GoToolchain() {
+		return findings
+	}
 
 	for _, c := range plan.Cards {
 		if c.Verify == "" {

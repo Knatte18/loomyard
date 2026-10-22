@@ -1,7 +1,5 @@
 # PATTERN
 
-Structural invariants, one line per entry: when it applies and what it requires.
-
 ## Paths and geometry
 
 - `PATTERN-cwd-resolution` — Resolving cwd or worktree root: only `internal/lyxcwd`; nothing else calls `os.Getwd` or `git rev-parse`. — [background](pattern/PATTERN-cwd-resolution.md)
@@ -20,6 +18,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-cliwire-sole-wiring` — Wiring standalone CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of strict `Load` or `LoadOrTemplate`, bar `runprofile`. — [background](pattern/PATTERN-config-strictness.md)
 - `PATTERN-config-layers` — Resolving module's config: only `configengine` reads, stacks and locates layer files, machine layer too. — [background](pattern/PATTERN-config-layers.md)
+- `PATTERN-template-overlay` — Judging config document against its template: only against `configengine`'s effective template, overlay picked from base layer.
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only via `hubreconcile.Ensure`, owner of build stamp and hub lock.
 - `PATTERN-refusal-way-forward` — Adding webster, shed or loom refusal: message names the way forward; a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)
 - `PATTERN-no-denied-recovery` — Naming step in a refusal, stencil or spec: never a command agents' settings deny. (test) — [background](pattern/PATTERN-no-denied-recovery.md)
@@ -62,9 +61,9 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-treadle-runner-seam` — Importing into `internal/treadleengine`: only allowlist, never `burlerengine`, `lyxcwd` or an `internal/*cli` package.
 - `PATTERN-plan-generation` — Archiving plan: `_lyx/plan/`'s top-level files hold one generation. — [background](pattern/PATTERN-plan-generation.md)
 - `PATTERN-ref-shape-registry` — Classifying plan ref or `plan:` handle: `internal/planparser` alone declares and decides. (test) — [background](pattern/PATTERN-ref-shape-registry.md)
-- `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only via `glyph`. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
+- `PATTERN-glyph-conversion-chokepoint` — Converting glyphs and paths: only via `glyph`; a ref's alphabet only `planparser`. — [background](pattern/PATTERN-glyph-conversion-chokepoint.md)
 - `PATTERN-gate-self-check-parity` — Adding mechanical gate: closure and CLI self-check call one package function. — [background](pattern/PATTERN-gate-self-check-parity.md)
-- `PATTERN-verified-tree` — Running verify command: only via `verifytree.Verify`. (test) — [background](pattern/PATTERN-verified-tree.md)
+- `PATTERN-verified-tree` — Running verify command: only via `verifytree.Verify`, told its scope's pause hold. (test) — [background](pattern/PATTERN-verified-tree.md)
 - `PATTERN-gate-slot` — Running gate build or test: only in held `internal/gateslot` slots. — [background](pattern/PATTERN-gate-slot.md)
 - `PATTERN-trimpath-safe-root` — Locating module root in code a gate run builds: never from a `runtime.Caller` path alone, which `-trimpath` makes module-relative.
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: batch the active `batcher.yaml` profile derives. — [background](pattern/PATTERN-batcher-registry.md)
@@ -86,6 +85,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-shell-guard-table` — Guarding shell command: only in `internal/shellguard`, every engine rendering every row; engine tool guards stay in-engine.
 - `PATTERN-shell-mechanics-seam` — Building pane-shell command string: only via `internal/shell`, importing only stdlib.
 - `PATTERN-pane-text-injection` — Typing text into agent pane: only reed's guarded paste-submit. — [background](pattern/PATTERN-pane-text-injection.md)
+- `PATTERN-pause-holds-prompts` — Typing a line into covered session: shuttle's send refuses by target's slug; caller holds line or claims session; only orch runner reads uncovered. — [background](pattern/PATTERN-pause-holds-prompts.md)
 - `PATTERN-guarded-interrupt` — Sending agent pane the interrupt key: only shuttle's two pane guards. — [background](pattern/PATTERN-guarded-interrupt.md)
 - `PATTERN-pane-binary-resolution` — Creating strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading spawned session's skill: spawner names it on launch spec, lyx delivers it on launch line or typed; no stencil asks. (test)

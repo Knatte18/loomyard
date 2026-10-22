@@ -57,6 +57,9 @@ type Delivery struct {
 	sendFn                                                            func(strand, text string) error
 	interruptFn                                                       func(strand string) error
 
+	claimLive map[string]func() (bool, error)
+
+	claims      []string
 	sends       []Send
 	commands    []CommandCall
 	interrupts  []string
@@ -66,7 +69,7 @@ type Delivery struct {
 
 // NewDelivery returns a Delivery with no strands.
 func NewDelivery() *Delivery {
-	return &Delivery{idle: map[string]bool{}, paused: map[string]bool{}, stalls: map[string]creelengine.Stall{}, idleCalls: map[string]int{}, pausedCalls: map[string]int{}}
+	return &Delivery{idle: map[string]bool{}, paused: map[string]bool{}, stalls: map[string]creelengine.Stall{}, claimLive: map[string]func() (bool, error){}, idleCalls: map[string]int{}, pausedCalls: map[string]int{}}
 }
 
 // SetStrands replaces the strand list; a strand with pane pid zero gets DefaultPanePID.
@@ -218,6 +221,39 @@ func (d *Delivery) Paused(strand creelengine.Strand) (bool, error) {
 		return false, d.pausedErr
 	}
 	return d.paused[strand.Name], nil
+}
+
+// SetClaimLive scripts the StillLive answer of the claim ClaimPause makes for the named strand; a strand with none reads live.
+func (d *Delivery) SetClaimLive(name string, live func() (bool, error)) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.claimLive[name] = live
+}
+
+// Claims returns the name of every strand ClaimPause claimed, in order; an uncovered strand is not recorded.
+func (d *Delivery) Claims() []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return append([]string(nil), d.claims...)
+}
+
+// ClaimPause implements creelengine.Delivery.
+// It answers covered for a strand set paused and records its name in Claims, answers uncovered and records nothing for any other, and fails with the paused error when one is set.
+func (d *Delivery) ClaimPause(strand creelengine.Strand) (creelengine.PauseClaim, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.pausedErr != nil {
+		return creelengine.PauseClaim{}, d.pausedErr
+	}
+	if !d.paused[strand.Name] {
+		return creelengine.PauseClaim{}, nil
+	}
+	d.claims = append(d.claims, strand.Name)
+	live := d.claimLive[strand.Name]
+	if live == nil {
+		live = func() (bool, error) { return true, nil }
+	}
+	return creelengine.PauseClaim{Covered: true, StillLive: live}, nil
 }
 
 // Send implements creelengine.Delivery.

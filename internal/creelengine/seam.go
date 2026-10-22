@@ -37,6 +37,9 @@ type Delivery interface {
 	Idle(strand Strand) (Idleness, error)
 	// Paused reports whether a pause covers the strand; an error means the pause record could not be read.
 	Paused(strand Strand) (bool, error)
+	// ClaimPause records the strand in the live pause entry that covers it, so that entry's resume gives the strand its resume line.
+	// An uncovered strand records nothing and answers an uncovered claim; an error means the pause record could not be read or written.
+	ClaimPause(strand Strand) (PauseClaim, error)
 	// Send types one line into the strand's pane and confirms it landed.
 	// It returns ErrBusy when the pane guard held the write, and ErrNotLanded when the text was typed but not confirmed.
 	Send(strand Strand, text string) error
@@ -47,6 +50,14 @@ type Delivery interface {
 	// It clears a prompt the provider restored by the interrupt.
 	// It returns ErrNoRunningTurn when there is none, and an error wrapping ErrClearFailed when the interrupt key was sent and only the clear after it failed.
 	Interrupt(strand Strand) error
+}
+
+// PauseClaim is the answer of Delivery.ClaimPause.
+type PauseClaim struct {
+	// Covered reports whether a live pause entry covered the strand and now owns it.
+	Covered bool
+	// StillLive re-reads whether the entry that owns the strand is still live; it is nil when the claim is uncovered.
+	StillLive func() (bool, error)
 }
 
 // Idleness is the answer of Delivery.Idle.

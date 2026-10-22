@@ -320,7 +320,6 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 	// exists to avoid.
 	c.env.AnchorPath = location.AnchorPath()
 	c.env.WorktreeRoot = location.WorktreePath()
-	c.env.StencilsDir = fabricengine.StencilsDir(location.HubPath)
 	c.env.DecisionRecordPath = loomengine.DiscussionDecisionRecord(location)
 	if c.recipe != shedrun.RecipeDarn {
 		c.env.PatternRecordPath = loomengine.DiscussionDecisionRecord(location)
@@ -602,6 +601,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 	websterGeom := hubgeom.WebsterGeometry(location)
 	websterGeom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), websterGeom.GateSlots, websterGeom.GateWaitDir)
+	websterGeom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 
 	// frictionDir is the single resolved value every told-friction consumer below reads: non-empty
 	// only when loom.yaml's friction key is set, per the "Tier 2 off is an empty path string, never a
@@ -711,11 +711,15 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		WorktreeRoot: location.WorktreePath(),
 		// RunScratchDir is the directory the step envelope reports as scratch_dir.
 		RunScratchDir: shedrun.ScratchDir(location, c.runID),
+		GateFindingsFile: func(row string) string {
+			return shedrun.GateFindingsFile(location, c.runID, row)
+		},
 		VerifyDir:     verifytree.Dir(anchorPath),
 		VerifyCommand: planVerifySource(location).baseCommand,
 		Round:         roundGateSource(fabricengine.ConfigDirs(location)),
 		// VerifyMergeBase is nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
+		VerifyHold:      verifytree.NewPauseHold(pauseGeom, nil),
 		PublishFailure: func() string {
 			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath), gateTiersLookup(fabricengine.ConfigDirs(location)))
 		},

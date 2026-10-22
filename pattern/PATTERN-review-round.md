@@ -1,6 +1,6 @@
 # PATTERN-review-round
 
-One review and fix round: the review is written to disk and accepted by Go before any target file is touched, every finding is fixed at every severity, disputed by the fixer with evidence on one of two grounds, or fixed with the fixer's own change when the proposed one is wrong, nothing is self-graded, and each fix is its own commit on warp source, never pushed.
+One review and fix round: the review is written to disk and accepted by Go before any target file is touched, every finding is fixed at every severity, disputed by the fixer with evidence on one of two grounds, or fixed with the fixer's own change when the proposed one is wrong, nothing is self-graded, the round ends on a verdict, and each fix is its own commit on warp source, never pushed.
 
 - A review segment converges only on a judge verdict, and from round 2 on a fix of a key first raised in the closing round may converge, carried to the decision record's `## Open risks`; every other fixed finding never converges on its own.
 - A dispute rests on `premise false` (the premise is false against the code the fixer reads) or `every fix worse` (the premise holds, but every change that addresses it makes the target worse).

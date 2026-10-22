@@ -13,6 +13,7 @@ import (
 var intentionallyNil = map[string]string{
 	"Landing.PublishCommand":              "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.BaseCommand":                 "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.VerifyHold":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.GateTiers":                   "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PushBranch":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.RemoteOnlyCommits":           "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
@@ -37,6 +38,11 @@ var intentionallyNil = map[string]string{
 	"Darn.Commit":                         "darn-only seam, filled by wire for a darn seed",
 	"Darn.LatestOutcome":                  "darn-only seam, filled by wire for a darn seed",
 	"Darn.PublishFailure":                 "darn-only seam, filled by wire for a darn seed",
+	"Darn.RunStart":                       "darn-only seam, filled by wire for a darn seed",
+	"Darn.TaskHead":                       "darn-only seam, filled by wire for a darn seed",
+	"Darn.Dirty":                          "darn-only seam, filled by wire for a darn seed",
+	"Darn.ParentTips":                     "darn-only seam, filled by wire for a darn seed",
+	"Darn.IsAncestor":                     "darn-only seam, filled by wire for a darn seed",
 	"CreateWorktree":                      "batten-only seam, filled by battencli",
 	"ExecutableSetting":                   "no loom or darn row is a Command row; battencli alone fills it",
 	"Command.TaskDir":                     "no loom or darn row is a Command row; battencli alone fills it",
@@ -89,6 +95,7 @@ var intentionallyNil = map[string]string{
 	"PrimeLock.Acquire":                   "batten-only seam, filled by battencli",
 }
 
+// TestWire_EverySeamFilled pins that wire fills every shedrecipe.Env seam, VerifyHold among them, bar the batten-only ones.
 func TestWire_EverySeamFilled(t *testing.T) {
 	t.Parallel()
 

@@ -37,6 +37,9 @@ and failing identities under "findings"; both exit non-zero. A gate.yaml that
 cannot be loaded, or a "final" list naming an undeclared tier, is refused
 naming "lyx config gate".
 
+A pause covering the worktree holds the run until the resume: the verify waits
+before its command, and stops a running command at the pause's grace end.
+
 Example:
   lyx webster verify`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -63,7 +66,7 @@ func (c *websterCLI) runVerify(cmd *cobra.Command) int {
 	}
 
 	paths := verifytree.NewPaths(c.geom.WorktreeRoot, c.geom.VerifyDir)
-	res, err := verifytree.Verify(cmd.Context(), paths, verifytree.Site{Label: verifyVerbSite}, command)
+	res, err := verifytree.Verify(cmd.Context(), paths, verifytree.Site{Label: verifyVerbSite, Hold: c.geom.VerifyHold}, command)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("webster: verify: %v", err))
 	}

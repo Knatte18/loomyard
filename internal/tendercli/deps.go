@@ -264,17 +264,24 @@ func newShuttlePair(location *lyxcwd.Location) (shuttlePair, error) {
 	if err != nil {
 		return shuttlePair{}, err
 	}
+	pauseGeom, err := hubgeom.PauseGeometry(location)
+	if err != nil {
+		return shuttlePair{}, err
+	}
 	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	engines, err := shuttleengines.New(shuttleCfg, configDirs)
 	if err != nil {
 		return shuttlePair{}, err
 	}
+	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	// Told the hub's record with no slug, so each send judges its target by the target's own strand name.
+	runner.SetPause(pauserecord.Geometry{RecordPath: pauseGeom.RecordPath})
 	return shuttlePair{
 		location: location,
 		cfg:      shuttleCfg,
 		engines:  engines,
 		reed:     reed,
-		runner:   shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg),
+		runner:   runner,
 	}, nil
 }
 

@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // intentionallyNil maps each shedrecipe.Env field path wire leaves nil to the reason.
@@ -34,6 +35,8 @@ import (
 var intentionallyNil = map[string]string{
 	"VerifyCommand":               "loom-only seam, batten runs no verify gate",
 	"Round":                       "loom-only seam, batten runs no verify gate",
+	"VerifyHold":                  "loom-only seam, batten runs no verify gate",
+	"GateFindingsFile":            "loom-only seam, batten has no gated row that keeps findings",
 	"Shuttle":                     "loom-only seam, batten drives no agent itself",
 	"Burler":                      "loom-only seam, batten runs no review round",
 	"Seats":                       "loom-only seam, batten runs no seat table",
@@ -45,10 +48,12 @@ var intentionallyNil = map[string]string{
 	"WebsterDeps.RefMatcher":      "loom-only seam, batten runs no webster",
 	"WebsterDeps.ReadOnly":        "loom-only seam, batten runs no webster",
 	"WebsterDeps.Geom.Index":      "loom-only seam, batten runs no webster",
+	"WebsterDeps.Geom.VerifyHold": "loom-only seam, batten runs no webster",
 	"PlanIndex":                   "loom-only seam, batten has no plan segment",
 	"CommitWebster":               "loom-only seam, batten runs no webster",
 	"Landing.PublishCommand":      "loom-only seam, batten lands no branch",
 	"Landing.BaseCommand":         "loom-only seam, batten lands no branch",
+	"Landing.VerifyHold":          "loom-only seam, batten lands no branch",
 	"Landing.GateTiers":           "loom-only seam, batten lands no branch",
 	"Landing.PushBranch":          "loom-only seam, batten lands no branch",
 	"Landing.RemoteOnlyCommits":   "loom-only seam, batten lands no branch",
@@ -93,6 +98,11 @@ var intentionallyNil = map[string]string{
 	"Darn.Commit":                 "darn-only seam, batten has no darn segment",
 	"Darn.LatestOutcome":          "darn-only seam, batten has no darn segment",
 	"Darn.PublishFailure":         "darn-only seam, batten has no darn segment",
+	"Darn.RunStart":               "darn-only seam, batten has no darn segment",
+	"Darn.TaskHead":               "darn-only seam, batten has no darn segment",
+	"Darn.Dirty":                  "darn-only seam, batten has no darn segment",
+	"Darn.ParentTips":             "darn-only seam, batten has no darn segment",
+	"Darn.IsAncestor":             "darn-only seam, batten has no darn segment",
 }
 
 func TestWire_EverySeamFilled(t *testing.T) {
@@ -346,6 +356,28 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	}
 
 	if err := os.Remove(filepath.Join(liveDir, "wait.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	verifyMarkerPath := verifytree.NewPaths(taskLocation.WorktreePath(), verifytree.Dir(taskLocation.AnchorPath())).Marker
+	if err := os.MkdirAll(filepath.Dir(verifyMarkerPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		state    string
+		wantLive bool
+	}{
+		{verifytree.MarkerStateRunning, true},
+		{verifytree.MarkerStatePaused, false},
+	} {
+		marker := fmt.Sprintf("site: Publish\nattempt: 0\ncommand: go test ./...\nstarted: 2026-01-01T10:00:00Z\npid: %d\nstate: %s\n", livePID, step.state)
+		if err := os.WriteFile(verifyMarkerPath, []byte(marker), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, waitLive, err := readAgentActivity(taskLocation); err != nil || waitLive != step.wantLive {
+			t.Errorf("readAgentActivity() waitLive = %v, error = %v with a live %s verify marker; want %v, nil", waitLive, err, step.state, step.wantLive)
+		}
+	}
+	if err := os.Remove(verifyMarkerPath); err != nil {
 		t.Fatal(err)
 	}
 	scratch := loomengine.LoomScratchDir(taskLocation)

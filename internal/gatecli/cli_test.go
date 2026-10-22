@@ -27,6 +27,7 @@ func TestGateTest_RefusesBeforeResolvingTheHub(t *testing.T) {
 		{name: "-C with --card names explicit targets", args: []string{"test", "-C", "sub", "--card", "1"}, wantError: "explicit targets"},
 		{name: "--all with explicit targets is two scope forms", args: []string{"test", "--all", "./pkg"}, wantError: "one scope form"},
 		{name: "--all with --base is two scope forms", args: []string{"test", "--all", "--base", "main"}, wantError: "one scope form"},
+		{name: "a negative --upto names no tier", args: []string{"test", "--upto", "-1"}, wantError: "--upto -1 names no tier"},
 		{name: "-C directory does not exist", args: []string{"test", "-C", missingDir, "./pkg"}, wantError: "does not exist"},
 	}
 	for _, tc := range tests {

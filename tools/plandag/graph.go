@@ -7,7 +7,6 @@ import (
 	"sort"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/quarry/glyph"
 )
 
 // mark is one matrix cell: what a card does with a ref.
@@ -69,13 +68,12 @@ func buildCardGraph(plan *planparser.Plan) cardGraph {
 	}
 	sort.Strings(g.columns)
 
-	lang, typed := plan.GlyphLanguage()
 	n := len(plan.Cards)
 	g.direct = make([][]edgeKind, n)
 	for i := range n {
 		g.direct[i] = make([]edgeKind, n)
 		for j := i + 1; j < n; j++ {
-			g.direct[i][j] = dependencyKind(g.cells[i], g.cells[j], lang, typed)
+			g.direct[i][j] = dependencyKind(g.cells[i], g.cells[j], plan)
 		}
 	}
 	g.reduced = transitiveReduction(g.direct)
@@ -95,14 +93,14 @@ func columnKey(plan *planparser.Plan, ref string) string {
 
 // dependencyKind returns the strongest dependency between two cards' cells:
 // edgeChange when both change an overlapping pair of refs, edgeUse when one changes and the other only uses it, and edgeNone otherwise.
-func dependencyKind(earlier, later map[string]mark, lang glyph.Language, typed bool) edgeKind {
+func dependencyKind(earlier, later map[string]mark, plan *planparser.Plan) edgeKind {
 	kind := edgeNone
 	for earlierColumn, earlierMark := range earlier {
 		for laterColumn, laterMark := range later {
 			if earlierMark != markChange && laterMark != markChange {
 				continue
 			}
-			if !columnsOverlap(earlierColumn, laterColumn, lang, typed) {
+			if !columnsOverlap(earlierColumn, laterColumn, plan) {
 				continue
 			}
 			if earlierMark == markChange && laterMark == markChange {
@@ -116,15 +114,15 @@ func dependencyKind(earlier, later map[string]mark, lang glyph.Language, typed b
 
 // columnsOverlap reports whether two columns name the same code:
 // they are equal, or both are member glyphs of one unit and one names a member of the other, as `pkg#T` and `pkg#T.M` do.
-func columnsOverlap(a, b string, lang glyph.Language, typed bool) bool {
+func columnsOverlap(a, b string, plan *planparser.Plan) bool {
 	if a == b {
 		return true
 	}
-	if !typed {
+	if !plan.GlyphLanguage() {
 		return false
 	}
-	ga, errA := glyph.Parse(lang, a)
-	gb, errB := glyph.Parse(lang, b)
+	ga, errA := planparser.ParseRef(plan, a)
+	gb, errB := planparser.ParseRef(plan, b)
 	if errA != nil || errB != nil || ga.IsSelf() || gb.IsSelf() || ga.Unit != gb.Unit {
 		return false
 	}

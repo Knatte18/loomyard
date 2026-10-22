@@ -140,6 +140,22 @@
 // A held turn end read while covered is not re-notified after the resume, since the resume line starts the next turn.
 // An unreadable record reads uncovered, with one Warn per change of error.
 //
+// A line typed into a session a pause covers is refused with a *PausedError, which wraps ErrPaused, and nothing is typed.
+// The send judges the target by its own slug, the one in the strand name reed reports: the name on the run's record, or for a strand with no record the live strand's name, and reed's status only when neither is held.
+// A prime name has the empty slug, which only a hub entry covers.
+// A name that does not parse, a strand reed does not list and a failed status read fall back to the runner's geometry slug.
+// The coverage is read after the idle wait and again before each replay of a typed choreography, the conditioned send's included.
+// Keys are not lines: an interrupt, an inject and the pause's own Esc are delivered under a pause.
+// A runner told no pause geometry, as the orch runner is, reads every target uncovered.
+// The start's segment-color line is a send too, so a refusal drops it with a Warn as any color failure.
+// The start's prompt line, its typed skill-load line and the deferred task prompt wait out a refusing pause on the slug the refusal judged and send again, looping if a second pause lands first.
+//
+// Each Wait tick reads the coverage of the run's own session by that same slug, not the runner's.
+// A gated Done arrival that reaches the boundary while covered is recorded as reached and held: no gate closure runs and no pending or re-prompt send goes out, and the first uncovered tick evaluates it as if it had just arrived.
+// A re-prompt refused with ErrPaused is held like a busy one, spending no attempt.
+// The off-boundary expiry probes keep running under cover, since they send nothing, so an entry's own wait bound can still end a run.
+// The hold only delays an evaluation and changes no verdict or attempt count.
+//
 // # Awake deadline
 //
 // The run deadline counts awake, unpaused time.
@@ -176,10 +192,11 @@
 //
 // Spec.PermissionMode, Spec.AllowAgentTool and Spec.ResumeSessionID are caller-owned engine vocabulary, like Spec.Effort: Spec.validate never inspects them,
 // and the engine is the sole validator and realizer.
-// Empty PermissionMode keeps the run mode's default, AllowAgentTool left false keeps shuttle's config-driven Agent deny,
-// and an empty ResumeSessionID mints a new session, so a caller that sets none of them sees no change.
+// Empty PermissionMode selects the engine's bypass mode in both run modes, because every session lyx launches into reed needs it.
+// AllowAgentTool left false keeps shuttle's config-driven Agent deny, and an empty ResumeSessionID mints a new session.
 // A non-empty ResumeSessionID launches that existing session instead.
-// OpenSpec.PermissionMode is the same vocabulary, carried blind by Runner.Open, with empty keeping the engine's interactive default.
+// OpenSpec.PermissionMode is the same vocabulary, carried blind by Runner.Open, with empty selecting bypass there too.
+// Each engine maps the default onto its own bypass flag and names its own per-call opt-out.
 //
 // An ungated run's strand is registered with its output files as reed's done-when list,
 // so reed's resume drops a finished agent strand instead of reviving it;
@@ -360,6 +377,7 @@
 // A gated run's GateSpec entries answer passed, failed or pending (GateResult.Pending, PassOnCap or MayHold entries only).
 // An entry that sets GateEntry.Forked evaluates that closure in place of Gate for a run whose record carries fork authorization, copied from Spec.ForkSubagents at spawn; the record, not a later Call's Spec, also decides the fork audit.
 // A failing result flagged GateResult.Terminal finalizes the run at once with no re-prompt, and its findings text rides GateOutcome.Reason.
+// A failed outcome carries the failing entry's findings text on GateOutcome.Findings beside that terminal reason, because finalize removes the findings file with the run directory.
 // A failed entry with budget remaining is re-prompted with one default line naming the findings file, unless the entry sets GateEntry.Reprompt, whose rendered line is sent instead.
 // Every send validates its text, so a renderer returning several lines, or an empty or whitespace-only line, fails the send and ends the loop with the attempts spent so far.
 // A pending answer holds the run at a turn boundary without re-prompting or counting a failure:

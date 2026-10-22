@@ -8,7 +8,8 @@ import "path"
 // sourceExtensions is the per-language set of file extensions that mark a source file, keyed by the plan's language: value.
 // A language absent from the map, including "none", declares none.
 var sourceExtensions = map[string][]string{
-	"go": {".go"},
+	"go":     {".go"},
+	"csharp": {".cs"},
 }
 
 // ReviewExempt reports whether plan is exempt from Plan-Review: it has at least one card, every card's every TargetGroups entry is Prosa, and no Prosa target is a source file.
@@ -34,11 +35,10 @@ func ReviewExempt(plan *Plan) bool {
 
 // isSourceTarget reports whether a Prosa target is a source file, or a whole package or directory that holds source files, or cannot be told apart from one.
 func isSourceTarget(plan *Plan, target string) bool {
-	lang, ok := planLanguage(plan)
-	if !ok {
+	if _, ok := planLanguage(plan); !ok {
 		return !hasFileExtension(target)
 	}
-	gl, err := parseGlyph(lang, target)
+	gl, err := ParseRef(plan, target)
 	if err != nil || !gl.IsSelf() {
 		return true
 	}

@@ -1,7 +1,7 @@
 //go:build integration
 
 // cli_test.go drives `lyx tender pause`, `status`, `resume` and `revive` through the cobra commands over a hubforge hub with one pair and no agents running, and the network gate installer over the same hub.
-// No test calls t.Parallel: each sets the strand-name variable or reads the process-wide network gate.
+// No test but TestNewShuttlePair_TellsTheHubsPauseGeometry calls t.Parallel: each sets the strand-name variable or reads the process-wide network gate.
 
 package tendercli
 
@@ -337,5 +337,30 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 				t.Errorf("operations under the hub's record = %+v, %v; want one marked with slug %q", ops, err, tt.pauseSlug)
 			}
 		})
+	}
+}
+
+// TestNewShuttlePair_TellsTheHubsPauseGeometry pins that a pair's runner reads the hub's pause record with no slug of its own, so each send judges its target by the target's strand name.
+// It sets no process-wide state, so it runs parallel beside the file's serial tests.
+func TestNewShuttlePair_TellsTheHubsPauseGeometry(t *testing.T) {
+	t.Parallel()
+	h := newHub(t)
+	location, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree(pairSlug))
+	if err != nil {
+		t.Fatal(err)
+	}
+	geometry, err := hubgeom.PauseGeometry(location)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pair, err := newShuttlePair(location)
+	if err != nil {
+		t.Fatalf("newShuttlePair() = %v", err)
+	}
+
+	want := pauserecord.Geometry{RecordPath: geometry.RecordPath}
+	if got := pair.runner.PauseGeometry(); got != want {
+		t.Errorf("runner PauseGeometry() = %+v; want %+v, the hub's record path with no slug", got, want)
 	}
 }

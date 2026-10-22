@@ -1,29 +1,63 @@
-// glyphref.go holds the glyph-side helpers classify.go and the rest of the package delegate to,
-// so classify.go itself stays a shape-only file. Per the glyph-conversion-chokepoint Shared
-// Decision, parseGlyph delegates to glyph.Parse with no local grammar of its own: no
-// strings.TrimSuffix(raw, "#"), no reading Glyph.Unit as a disk path, and no regex over a glyph
-// string anywhere in this package.
+// glyphref.go holds the glyph-side helpers classify.go and the rest of the package delegate to, so classify.go itself stays a shape-only file.
+// Per the glyph-conversion-chokepoint Shared Decision, ParseRef is the one alphabet choice for a plan ref and delegates to glyph.Parse with no local grammar of its own:
+// no strings.TrimSuffix(raw, "#"), no reading Glyph.Unit as a disk path, and no regex over a glyph string anywhere in this package.
 
 package planparser
 
-import "github.com/Knatte18/quarry/glyph"
+import (
+	"fmt"
 
-// parseGlyph parses raw against lang's alphabet, delegating entirely to glyph.Parse.
-func parseGlyph(lang glyph.Language, raw string) (glyph.Glyph, error) {
-	return glyph.Parse(lang, raw)
+	"github.com/Knatte18/quarry/glyph"
+)
+
+// ParseRef parses a `#`-shaped plan ref, or a `plan:` handle's body the caller already stripped, against the alphabet plan's language selects.
+// Under a language with no glyph alphabet, such as none, it returns an error and parses nothing.
+// Under go it is the Go alphabet's parse.
+// Under csharp a ref the C# alphabet accepts is a C# glyph, and a ref only the Go alphabet accepts is returned only when it is a self glyph, since quarry spells a path in the Go unit alphabet;
+// any other ref returns the C# alphabet's parse error.
+func ParseRef(plan *Plan, ref string) (glyph.Glyph, error) {
+	lang, ok := planLanguage(plan)
+	if !ok {
+		return glyph.Glyph{}, fmt.Errorf("plan language %q has no glyph alphabet to parse %q against", plan.Language, ref)
+	}
+	parsed, err := glyph.Parse(lang, ref)
+	if err == nil || lang != glyph.CSharp {
+		return parsed, err
+	}
+	if goGlyph, goErr := glyph.Parse(glyph.Go, ref); goErr == nil && goGlyph.IsSelf() {
+		return goGlyph, nil
+	}
+	return glyph.Glyph{}, err
 }
 
-// planLanguage maps plan.Language to the glyph.Language the glyph package's alphabet uses. "go"
-// maps to glyph.Go; "" (the Go zero value, meaning the language: key was absent from a plan built
-// outside ParsePlan) is treated identically to "go", matching Plan.Language's own documented
-// "absent defaults to go" rule. "none" and any other, unrecognized value (already reported by
-// checkLanguageRecognized) report the not-ok second return: no glyph-side check may run against a
-// plan that has opted out of the alphabet, or whose language: value is not one this package
-// understands.
+// ParseMintedCSharpID parses an id quarry minted for a C# member, which is a C# glyph whatever the plan around it says.
+// A caller reading a quarry answer uses it so that it never chooses an alphabet itself.
+func ParseMintedCSharpID(id string) (glyph.Glyph, error) {
+	return glyph.Parse(glyph.CSharp, id)
+}
+
+// PathEntryPath returns the worktree-relative path a canonicalized path entry names, and false when ref is not a self glyph.
+// It reads ref in the Go alphabet whatever the plan's language, since quarry spells a path in the Go unit alphabet under every language.
+// It is the one place a ref is read as a path regardless of language, so a caller that compares a ref's file extension never chooses an alphabet itself.
+func PathEntryPath(ref string) (string, bool) {
+	parsed, err := glyph.Parse(glyph.Go, ref)
+	if err != nil || !parsed.IsSelf() {
+		return "", false
+	}
+	return parsed.UnitPath()
+}
+
+// planLanguage maps plan.Language to the glyph.Language the glyph package's alphabet uses.
+// "go" maps to glyph.Go and "csharp" to glyph.CSharp;
+// "" (the Go zero value, meaning the language: key was absent from a plan built outside ParsePlan) is treated identically to "go", matching Plan.Language's own documented "absent defaults to go" rule.
+// "none" and any other, unrecognized value (already reported by checkLanguageRecognized) report the not-ok second return:
+// no glyph-side check may run against a plan that has opted out of the alphabet, or whose language: value is not one this package understands.
 func planLanguage(plan *Plan) (glyph.Language, bool) {
 	switch plan.Language {
 	case "", "go":
 		return glyph.Go, true
+	case "csharp":
+		return glyph.CSharp, true
 	default:
 		return glyph.Language(""), false
 	}
@@ -35,11 +69,11 @@ func planLanguage(plan *Plan) (glyph.Language, bool) {
 // It returns nil when no card holds a symbol pair and never reads the disk.
 // plan supplies only the language, so a caller passes the cards it checks: the whole plan's for the plan gate, a batch's for webster.
 func SymbolRenamePairs(plan *Plan, cards []Card) []MovePair {
-	lang, typed := planLanguage(plan)
+	_, typed := planLanguage(plan)
 	var symbolPairs []MovePair
 	for _, card := range cards {
 		for _, pair := range card.Pairs {
-			if typed && isFileRenamePair(lang, pair) {
+			if typed && isFileRenamePair(plan, pair) {
 				continue
 			}
 			if !typed && isUntypedFileRenamePair(pair) {
@@ -60,8 +94,17 @@ func isUntypedFileRenamePair(p MovePair) bool {
 	return disp == dispKeep
 }
 
-// GlyphLanguage is planLanguage's exported form, so internal/planglyph can delete its verbatim
-// resolveLanguage duplicate (internal/planglyph/planglyph.go).
-func (p *Plan) GlyphLanguage() (glyph.Language, bool) {
-	return planLanguage(p)
+// GoToolchain reports whether the plan's language is go or absent, so the checks that read Go source or Go toolchain semantics run.
+// It is false under csharp, none and an unrecognized language.
+func (p *Plan) GoToolchain() bool {
+	lang, ok := planLanguage(p)
+	return ok && lang == glyph.Go
+}
+
+// GlyphLanguage reports whether the plan's language selects a glyph alphabet, so glyph-side checks run.
+// It is false under none and under an unrecognized language.
+// The alphabet itself is never returned: a caller parses a ref through ParseRef.
+func (p *Plan) GlyphLanguage() bool {
+	_, ok := planLanguage(p)
+	return ok
 }

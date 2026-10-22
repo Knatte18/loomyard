@@ -16,6 +16,7 @@ const fabricVocabularyNameCheck = "fabric-vocabulary-name"
 // A name is the member half of a Create handle or of a Rename pair's New handle.
 // It fails when it carries a bare fabric side token in a file the scan polices, or is a retired host-geometry identifier in non-test code under `internal/` or `cmd/`.
 // A handle that does not split into a unit and a member is skipped, since the handle checks already report it.
+// The member's own name is the Name of ParseRef over the handle's body with a C# generic arity suffix stripped, and the member's last dot-segment only for a body ParseRef rejects.
 // A name failing both rules gets one finding; its way forward is to rename the member.
 // It sits outside ValidateFormat and Validate, since the plan index appends it beside CheckCardFabricReference.
 // It reads plan text only, under any `language:`, and only refuses.
@@ -29,7 +30,12 @@ func CheckFabricVocabularyName(plan *Plan) []ValidationError {
 			if !unitOK || !memberOK || !lastOK || unit == "" {
 				continue
 			}
-			broken := brokenFabricVocabularyRule(unit, member, last)
+			if body, _ := HandleBody(handle); body != "" {
+				if parsed, err := ParseRef(plan, body); err == nil && parsed.Name != "" {
+					last, _, _ = strings.Cut(parsed.Name, "<")
+				}
+			}
+			broken := brokenFabricVocabularyRule(unit, member, last, plan.GoToolchain())
 			if broken == "" {
 				continue
 			}
@@ -48,10 +54,14 @@ func CheckFabricVocabularyName(plan *Plan) []ValidationError {
 
 // brokenFabricVocabularyRule names the rule a declared member breaks as a phrase, or returns "" when it breaks none.
 // unit is the handle's package half, member its whole member half and last the member's last dot-segment.
-func brokenFabricVocabularyRule(unit, member, last string) string {
+// goToolchain says whether the plan's language is Go, the only alphabet whose unit string carries the external-test pseudo-unit.
+func brokenFabricVocabularyRule(unit, member, last string, goToolchain bool) string {
 	first, _, _ := strings.Cut(unit, "/")
-	// An external test package sits in its package's directory, which is what the scan's owner check reads.
-	dir := goPackageDir(unit)
+	dir := unit
+	if goToolchain {
+		// An external test package sits in its package's directory, which is what the scan's owner check reads.
+		dir = goPackageDir(unit)
+	}
 	isTestName := hasTestPrefix(last)
 
 	bareScope := first == "internal" || fabricvocab.IsDocRoot(first) || isTestName

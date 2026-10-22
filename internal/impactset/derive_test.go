@@ -9,7 +9,7 @@ import (
 
 // testGraph is a small module.
 // Package b imports a, c imports b, d is unrelated, and tmuxonly reaches a only through a test import.
-// The command package cmd/lyx imports b, and e builds the binary in its tests.
+// The command package cmd/lyx imports b, and e builds the binary in its tests and reaches nothing else, so it joins only for a change to cmd/lyx itself.
 func testGraph() moduleGraph {
 	const m = "m/"
 	return newModuleGraph([]pkg{

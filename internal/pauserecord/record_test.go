@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -379,4 +380,81 @@ func TestCoveredError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestClaimSession(t *testing.T) {
+	t.Parallel()
+	hub := Entry{Scope: ScopeHub, PausedAt: epoch, Caller: "EXTERNAL"}
+	slugEntry := Entry{Scope: "alpha", PausedAt: epoch.Add(time.Minute), Caller: "EXTERNAL"}
+	worker := Session{Strand: "w1", GUID: "g1", Slug: "alpha"}
+	orch := Session{GUID: "s1", Orch: true}
+
+	tests := []struct {
+		name        string
+		live        []Entry
+		slug        string
+		session     Session
+		wantCovered bool
+		wantScope   string
+		wantLive    map[string][]Session
+	}{
+		{"an uncovered slug records nothing", []Entry{slugEntry}, "beta", worker, false, "", map[string][]Session{"alpha": nil}},
+		{"a slug entry records the session in itself", []Entry{slugEntry}, "alpha", worker, true, "alpha", map[string][]Session{"alpha": {worker}}},
+		{"a prime session is not covered by a slug entry", []Entry{slugEntry}, "", orch, false, "", map[string][]Session{"alpha": nil}},
+		{"a prime session is recorded in the hub entry", []Entry{hub}, "", orch, true, ScopeHub, map[string][]Session{ScopeHub: {orch}}},
+		{
+			"a session another live entry owns is recorded nowhere again and that entry is answered",
+			[]Entry{hub, {Scope: "alpha", PausedAt: epoch.Add(time.Minute), Sessions: []Session{worker}}},
+			"alpha", worker, true, "alpha",
+			map[string][]Session{ScopeHub: nil, "alpha": {worker}},
+		},
+		{
+			"a session the covering entry holds stays one copy",
+			[]Entry{{Scope: ScopeHub, PausedAt: epoch, Sessions: []Session{orch}}},
+			"", orch, true, ScopeHub,
+			map[string][]Session{ScopeHub: {orch}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), RecordFileName)
+			if _, err := Update(path, epoch, func(r *Record) error {
+				r.Live = append(r.Live, tt.live...)
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			entry, covered, err := ClaimSession(path, tt.slug, tt.session, epoch)
+			if err != nil {
+				t.Fatalf("ClaimSession: %v", err)
+			}
+			if covered != tt.wantCovered || entry.Scope != tt.wantScope {
+				t.Errorf("ClaimSession = scope %q, covered %v; want scope %q, covered %v", entry.Scope, covered, tt.wantScope, tt.wantCovered)
+			}
+			record, err := Read(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, live := range record.Live {
+				if got := live.Sessions; !reflect.DeepEqual(got, tt.wantLive[live.Scope]) {
+					t.Errorf("sessions of %q = %+v; want %+v", live.Scope, got, tt.wantLive[live.Scope])
+				}
+			}
+		})
+	}
+
+	t.Run("an undecodable record is an error and stays as it was", func(t *testing.T) {
+		t.Parallel()
+		path := filepath.Join(t.TempDir(), RecordFileName)
+		if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := ClaimSession(path, "alpha", worker, epoch); err == nil {
+			t.Fatal("ClaimSession error = nil; want the decode error")
+		}
+		if data, err := os.ReadFile(path); err != nil || string(data) != "{not json" {
+			t.Errorf("record after the failed claim = %q, %v; want it untouched", data, err)
+		}
+	})
 }

@@ -200,12 +200,12 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 	if err != nil {
 		return findings, err
 	}
-	if lang, ok := reloaded.GlyphLanguage(); ok {
+	if reloaded.GlyphLanguage() {
 		repo, err := openRepo(worktreeRoot)
 		if err != nil {
 			return findings, err
 		}
-		targets := collectGlyphTargets(reloaded, lang)
+		targets := collectGlyphTargets(reloaded)
 		results, err := resolveTargets(repo, targets)
 		if err != nil {
 			return findings, err

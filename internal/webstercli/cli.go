@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -134,6 +135,13 @@ type websterCLI struct {
 	// per-batch implementer fork's and recovery strand's prompts are composed here, not in
 	// internal/loomcli.
 	frictionDir string
+
+	// pause is the pause geometry the wiring resolved and told the runner.
+	// It is set by wireHub and wireStandalone; the verify verb builds its hold from it, and the batch verbs read the pause record through it.
+	pause pauserecord.Geometry
+	// masterStrand returns the calling Master strand's name and guid, which begin-batch and recover-batch claim into a pause that covers the pair.
+	// It is set by wireHub and wireStandalone over the reed engine each builds.
+	masterStrand func() (name, guid string, err error)
 
 	// stencilsDirFlag, planDirFlag, and targetDirFlag hold the raw, as-parsed values of the three
 	// standalone-entry persistent flags (--stencils-dir, --plan-dir, --target-dir), each bound by
