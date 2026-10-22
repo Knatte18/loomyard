@@ -214,14 +214,20 @@ func TestDriverWaitMark(t *testing.T) {
 	}
 }
 
-// TestConflictSessionStopper asserts the seam stops every live, non-retiring conflict strand of the run by guid, numbered forms included.
-// It stops nothing for a dead, retiring or absent one, and passes a failing table read or stop through with the guid the failure belongs to.
+// TestConflictSessionStopper asserts the seam stops every non-retiring conflict strand of the run by guid, numbered forms included, when it is live or an own-window strand with a present pane.
+// It stops nothing for a retiring or absent one, or one with neither a live nor a present pane, and passes a failing table read or stop through with the guid the failure belongs to.
 func TestConflictSessionStopper(t *testing.T) {
 	t.Parallel()
 
 	conflict := func(guid, role string, live, retiring bool) reedengine.StrandStatus {
 		return reedengine.StrandStatus{GUID: guid, Name: "hub:slug:" + role, Live: live, Retiring: retiring}
 	}
+	// shellOnly is an own-window conflict strand whose engine exited: its pane is present and not live.
+	shellOnly := conflict("c1", "conflict", false, false)
+	shellOnly.OwnWindow, shellOnly.Present = true, true
+	// plainPresent is a window 0 strand with a present pane that is not live, which reed's reconcile removes at its next op.
+	plainPresent := conflict("c1", "conflict", false, false)
+	plainPresent.Present = true
 	other := reedengine.StrandStatus{GUID: "other-guid", Name: "hub:slug:webster", Live: true}
 	statusErr := errors.New("reed down")
 	stopErr := errors.New("tmux gone")
@@ -239,6 +245,8 @@ func TestConflictSessionStopper(t *testing.T) {
 		{name: "live numbered conflict strand is stopped", strands: []reedengine.StrandStatus{conflict("c2", "conflict-2", true, false)}, wantStops: []string{"c2"}},
 		{name: "every live conflict strand is stopped", strands: []reedengine.StrandStatus{conflict("c1", "conflict", true, false), conflict("c2", "conflict-2", true, false)}, wantStops: []string{"c1", "c2"}},
 		{name: "dead conflict strand stops nothing", strands: []reedengine.StrandStatus{conflict("c1", "conflict", false, false)}},
+		{name: "present shell-only own-window conflict strand is stopped", strands: []reedengine.StrandStatus{shellOnly}, wantStops: []string{"c1"}},
+		{name: "present not-live window 0 conflict strand stops nothing", strands: []reedengine.StrandStatus{plainPresent}},
 		{name: "retiring conflict strand stops nothing", strands: []reedengine.StrandStatus{conflict("c1", "conflict", true, true)}},
 		{name: "no conflict strand stops nothing", strands: []reedengine.StrandStatus{other}},
 		{name: "table read failure is passed through with an empty guid", statusErr: statusErr, wantErr: statusErr},
