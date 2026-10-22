@@ -17,6 +17,11 @@
 // After the commit the committed record must hold the appended entry, so an entry a writer write displaced is refused rather than reported.
 //
 // The verb never routes the run, never touches the support log or the plan, and an approved plan is not re-planned by it.
+//
+// Once the entry is committed, the verb sends one creel notice to each live shuttle run of the target worktree but the tackler's, the arbiter's and the caller's own, so the LLM agent working for the run re-reads the record.
+// The line names the record and the entry's heading and carries no decision text, since the committed record is the authority.
+// With no live run nothing is sent: a later producer reads the record when it starts, and PR-Gate's alignment agent judges the run against it.
+// A failed listing or post is reported on the success envelope and never fails the verb, since the entry is already committed.
 
 package loomcli
 
@@ -33,15 +38,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/creelcli"
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/spf13/cobra"
 )
 
@@ -100,6 +111,56 @@ type decisionDeps struct {
 	committed func() ([]byte, bool, error)
 	// history returns every committed version of the decision record, newest first.
 	history func() ([][]byte, error)
+	// liveStrands returns the strand names of the target worktree's live LLM runs.
+	liveStrands func() ([]string, error)
+	// notify posts line to the strand named receiver through creel.
+	notify func(receiver, line string) error
+}
+
+// decisionNoticeError is one notice the verb could not send, reported on its success envelope.
+// Strand is empty when the live runs could not be listed.
+type decisionNoticeError struct {
+	Strand string `json:"strand"`
+	Error  string `json:"error"`
+}
+
+// decisionNoticeLine is the notice a live agent of the run gets for the entry under heading in the record at recordPath.
+// It carries no decision text: the committed record is the authority the agent reads.
+func decisionNoticeLine(recordPath, heading string) string {
+	return fmt.Sprintf("a new decision is in the decision record %s under %q; re-read the record's Added after Discussion entries and follow them", recordPath, heading)
+}
+
+// decisionNoticeReceiver reports whether the live run's strand named strand gets the notice of a call by caller.
+// The tackler and the arbiter judge stops, not the plan, and the caller wrote the decision itself.
+func decisionNoticeReceiver(strand, caller string) bool {
+	name, err := agentname.Parse(strand)
+	return err == nil && strand != caller &&
+		!agentname.MatchesRole(name.Role, sheddriver.TacklerRole) && !agentname.MatchesRole(name.Role, loomengine.ArbiterRole)
+}
+
+// notifyLiveRuns posts the notice of the entry under heading to every live run of the target worktree the notice is for.
+// It returns the strands posted to and the failures, each logged at Warn; a failure never stops the next post.
+func notifyLiveRuns(deps decisionDeps, heading string) ([]string, []decisionNoticeError) {
+	notified := []string{}
+	failures := []decisionNoticeError{}
+	strands, err := deps.liveStrands()
+	if err != nil {
+		logger.Warn("loom: decision add could not list the run's live agents; no notice sent", "error", err)
+		return notified, append(failures, decisionNoticeError{Error: "list the run's live agents: " + err.Error()})
+	}
+	line := decisionNoticeLine(deps.recordPath, heading)
+	for _, strand := range strands {
+		if !decisionNoticeReceiver(strand, deps.strandName) {
+			continue
+		}
+		if err := deps.notify(strand, line); err != nil {
+			logger.Warn("loom: decision add could not notify a live agent", "strand", strand, "error", err)
+			failures = append(failures, decisionNoticeError{Strand: strand, Error: err.Error()})
+			continue
+		}
+		notified = append(notified, strand)
+	}
+	return notified, failures
 }
 
 // checkDarnRecord returns the refusal text for a darn run's record that is not safe to append to, or empty when it is.
@@ -255,10 +316,13 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 			return refuse("%s under %q; %s", cause, addedDecisionHeading(added), decisionWayEntryLost)
 		}
 	}
+	notified, noticeErrors := notifyLiveRuns(deps, addedDecisionHeading(added))
 	result := map[string]any{
-		"slug":    slug,
-		"record":  deps.recordPath,
-		"heading": addedDecisionHeading(added),
+		"slug":          slug,
+		"record":        deps.recordPath,
+		"heading":       addedDecisionHeading(added),
+		"notified":      notified,
+		"notice_errors": noticeErrors,
 	}
 	if patternForm {
 		result["pattern_change"] = patternBullet
@@ -341,8 +405,81 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 			return fabricengine.CommittedAnchoredFile(target, loomengine.DiscussionDecisionRecordRel())
 		},
 		history: discussionHistory(target),
+		liveStrands: func() ([]string, error) {
+			return liveRunStrands(target)
+		},
+		notify: func(receiver, line string) error {
+			return postDecisionNotice(decisionNoticeClients(target), os.Getenv(agentname.StrandNameEnv), receiver, line)
+		},
 	}
 	return nil
+}
+
+// liveRunStrands returns the strand names of the live shuttle runs of target's worktree, read through the registered engines.
+func liveRunStrands(target *lyxcwd.Location) ([]string, error) {
+	configDirs := fabricengine.ConfigDirs(target)
+	cfg, err := shuttleengine.LoadConfig(configDirs, "shuttle")
+	if err != nil {
+		return nil, err
+	}
+	engines, err := shuttleengines.New(cfg, configDirs)
+	if err != nil {
+		return nil, err
+	}
+	readings, err := shuttleengine.ReadAgentActivity(cfg, target.AnchorPath(), engines)
+	if err != nil {
+		return nil, err
+	}
+	strands := make([]string, 0, len(readings))
+	for _, reading := range readings {
+		strands = append(strands, reading.StrandName)
+	}
+	return strands, nil
+}
+
+// noticePoster is the one creel call a notice makes: leaving a body as mail for a receiver.
+type noticePoster interface {
+	Post(receiver, body string) (int64, error)
+}
+
+// noticeClients builds the creel clients a notice posts through: one signing as a strand, one signing as the LOOM program.
+type noticeClients struct {
+	strand  func(strandClaim string) (noticePoster, error)
+	program func() (noticePoster, error)
+}
+
+// postDecisionNotice posts line to receiver for a caller whose exported strand name is caller.
+// Creel accepts a program claim only from an orch pane or a process in no pane, so a named non-orch caller, the arbiter, posts as its own strand.
+// A strand claim creel refuses as coming from outside that strand's pane falls back to posting once as the program.
+func postDecisionNotice(clients noticeClients, caller, receiver, line string) error {
+	if name, err := agentname.Parse(caller); err == nil && !agentname.MatchesRole(name.Role, agentname.RoleOrch) {
+		poster, err := clients.strand(caller)
+		if err != nil {
+			return err
+		}
+		_, err = poster.Post(receiver, line)
+		if !errors.Is(err, creelengine.ErrStrandClaimOutsidePane) {
+			return err
+		}
+	}
+	poster, err := clients.program()
+	if err != nil {
+		return err
+	}
+	_, err = poster.Post(receiver, line)
+	return err
+}
+
+// decisionNoticeClients builds the creel clients of target's worktree that a notice posts through.
+func decisionNoticeClients(target *lyxcwd.Location) noticeClients {
+	return noticeClients{
+		strand: func(strandClaim string) (noticePoster, error) {
+			return creelcli.NewStrandClient(target, strandClaim)
+		},
+		program: func() (noticePoster, error) {
+			return creelcli.NewProgramClient(target, loomProgram)
+		},
+	}
 }
 
 // decisionCmd builds the `decision` subtree.
@@ -378,18 +515,20 @@ section. It re-runs the discussion check over the record, restores the record
 when the check flags it, and commits the record. It resumes nothing and
 changes neither the support log nor the plan.
 
+After the commit it notifies the run's other live agents; the envelope
+lists "notified" and "notice_errors".
+
 --by is parent, operator or arbiter; arbiter is the run's own arbiter strand's
 label, refused from any other caller. --title, --decision and --rationale are
 all required. It is refused for a named session other than the run's recorded
 parent or, for --by arbiter, its arbiter: ask the parent to run it, or run it
-from the operator's own shell. It is
-refused while Discussion-Write is running, since that row owns the record;
-message the Discussion-Write session with the decision instead.
+from the operator's own shell. It is refused while Discussion-Write runs;
+message that session with the decision instead.
 
 On a darn run it works once Darn-Write has validated and committed its record,
-including while Darn-Write runs. It then refuses a record that is missing,
-not committed, differing from its committed copy or missing an entry its
-history held, and a commit after which the committed record lacks the entry.
+also while Darn-Write runs. It refuses a record that is missing, not
+committed, differing from its committed copy or missing an entry its history
+held, and a commit after which the committed record lacks the entry.
 That bounds the append to a record the writer validated and has not touched,
 and to an entry that reached the fabric.
 
