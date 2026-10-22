@@ -54,7 +54,6 @@ var formerTemplateValues = map[string]map[string]string{
 		"soft_threshold_tokens": "300000",
 		"threshold_tokens":      "400000",
 	},
-	"webster": {"kickstart_pack": "true"},
 	"batcher": {"profiles": formerBatcherProfiles},
 }
 

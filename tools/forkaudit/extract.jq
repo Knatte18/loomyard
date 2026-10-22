@@ -14,7 +14,6 @@
 # A row matches when every feature in its `when` equals the fork's feature.
 # `trace` lists the pack_layout values of begin-batch's trace line that agree with the arm.
 # The card row comes first because a per-card prompt also ends with `## Start here`.
-# A task that adds a Webster pack layout adds its marker row here in the same task.
 def markers: [
   {arm: "card", trace: ["card"], when: {cardpack: true}},
   {arm: "file", trace: ["file"], when: {starthere: true}},

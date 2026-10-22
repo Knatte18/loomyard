@@ -1,7 +1,6 @@
 # report.jq renders the report body from the slurped per-fork records, one markdown line per output string.
 # Arguments: $markers, the marker table's rows (arm and agreeing trace values) in table order;
 # $batches, $traces and $card_traces, the contents of batches.tsv, traces.tsv and card-traces.tsv, which join each record to its resolved batch, its trace layout and its traced card pack count;
-# $pack_check, whether to render the pack-correctness section, with $pack_rows and $missed_rows, the contents of pack-check.tsv and missed-files.tsv;
 # $plan_on, whether to render the plan glyph-use section, with $plan_runs, $plan_cards, $plan_refs and $plan_writers, the contents of the plan-*.tsv files.
 # Rows and arms sort by arm (marker-table order, then any other arm name alphabetically), run, start time and agent id,
 # so two runs over the same input differ only in the generation-time line.
@@ -23,8 +22,7 @@
 # and `<calls>/-` for a fork with calls and no row.
 # A fork with a row whose count differs from its call count is listed under Card pack disagreements.
 #
-# Whenever the card arm is present the report prints a note line under the Pack use, Arm comparison and Per-fork tables,
-# and under the Pack correctness heading when that section is on: the first three state how the card arm's metrics differ, the last that only its first card-pack call is graded.
+# Whenever the card arm is present the report prints a note line under the Pack use, Arm comparison and Per-fork tables, each stating how the card arm's metrics differ.
 #
 # A cell whose sample is smaller than the arm's fork count shows its size as `<value> (n=<k>)`, and a cell with no sample left shows n/a.
 
@@ -87,17 +85,13 @@ def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
 | ($known - $present) as $absent
 | ([$recs | sort_by([(.arm | armkey), .proj, .start, .agent])[] | select(.check == "disagrees")]) as $disagreements
 | ([$recs[] | select(.check == "unrecognized") | .trace] | unique) as $unrecognized
-| ["correct", "correct-decl", "stale", "wrong", "nofile", "notree", "unchecked"] as $classes
-| (tsv_rows($pack_rows) | group_by(.[0]) | map({key: .[0][0], value: .}) | from_entries) as $span_rows
-| (tsv_rows($missed_rows) | group_by(.[0]) | map({key: .[0][0], value: .}) | from_entries) as $missed_by_fork
 | (tsv_rows($plan_runs)) as $plan_run_rows
 | ([$plan_run_rows[] | select(.[1] != "-" and .[2] != "-") | .[0]]) as $counted_runs
 | (tsv_rows($plan_cards)) as $plan_card_rows
 | (tsv_rows($plan_refs)) as $plan_ref_rows
 | (tsv_rows($plan_writers) | map({key: .[0], value: .}) | from_entries) as $writer_by_run
-| def class_counts($rows): [$classes[] as $c | ($rows | map(select(.[7] == $c)) | length)];
   # The counted runs having at least one fork in arm $a; a run whose forks span several arms counts under each.
-  def arm_runs($a): [$counted_runs[] | select(. as $r | ($by[$a] | map(.proj) | index($r)) != null)];
+| def arm_runs($a): [$counted_runs[] | select(. as $r | ($by[$a] | map(.proj) | index($r)) != null)];
   # The reference counts of kind $kind per card of run $r.
   def card_counts($r; $kind):
     [$plan_card_rows[] | select(.[0] == $r) | .[2] as $c | ([$plan_ref_rows[] | select(.[0] == $r and .[2] == $c and .[4] == $kind)] | length)];
@@ -168,26 +162,6 @@ def tsv_rows($raw): $raw | split("\n") | map(select(length > 0) | split("\t"));
              elif .card_pack_calls == 0 and $traced == 0 then null
              else "\(.card_pack_calls)/\($traced)" end)]])
   + (if $card_present then ["", "Card arm: strict before edit and file-level before edit use the window stated under the Pack use table, strict in first turn is - and first parallel counts the card-file reads."] else [] end)
-  + (if $pack_check then
-      ["", "## Pack correctness at batch start", ""]
-      + (if $card_present then ["Card arm: its spans here come from its first card-pack call only, resolved at the batch's start; spans from later calls are resolved against edited trees and are not graded, so the count is below its distinct spans under Pack use.", ""] else [] end)
-      + ["### Span entries by class, pooled per arm", ""]
-      + table(["arm", "forks", "spans"] + $classes;
-          [$present[] | . as $a | [$by[$a][] | $span_rows[.rel] // [] | .[]] as $rows | [$a, ($by[$a] | length), ($rows | length)] + class_counts($rows)])
-      + ["", "### Span entries by class, per fork", ""]
-      + table(["arm", "run", "agent"] + $classes + ["stale shifts"];
-          [$recs | sort_by([(.arm | armkey), .proj, .start, .agent])[]
-           | ($span_rows[.rel] // []) as $rows
-           | [.arm, .proj, .agent] + class_counts($rows)
-             + [($rows | map(select(.[7] == "stale") | .[8]) | if length == 0 then null else join(", ") end)]])
-      + ["", "### Missed files by arm", "", "Files a fork edited, wrote or read that its pack gave no span for, split by whether they existed at the batch's start.", ""]
-      + table(["arm", "missed files", "existed", "absent", "unknown"];
-          [$present[] | . as $a | [$by[$a][] | $missed_by_fork[.rel] // [] | .[]] as $rows
-           | [$a, ($rows | length)] + [("yes", "no", "unknown") as $e | ($rows | map(select(.[6] == $e)) | length)]])
-      + ["", "### Missed-file list", ""]
-      + table(["agent", "file", "edits", "writes", "reads", "existed"];
-          [$recs | sort_by([.agent])[] | . as $r | ($missed_by_fork[$r.rel] // []) | sort_by(.[2])[] | [$r.agent, .[2], .[3], .[4], .[5], .[6]]])
-    else [] end)
   + (if $plan_on then
       ([$present[] | select(arm_runs(.) | length > 0)]) as $plan_arms
       | ["", "## Plan glyph use", "", "### Reference kinds per card, median", ""]

@@ -186,7 +186,7 @@ A `Gate findings recorded at …` message that arrives while an earlier fixer ha
 
 ## A plan-drift or plan-conflict refusal ends your run as stuck — do not retry the verb
 
-If `begin-batch` refuses with `{"plan_conflict": "<cause>"}`, the cause being `plan_defect` or `tree_moved`, that means `begin-batch`'s own re-resolution of the plan against the current tree — run immediately before it would have built a pack — found that the plan contradicts the tree.
+If `begin-batch` refuses with `{"plan_conflict": "<cause>"}`, the cause being `plan_defect` or `tree_moved`, that means `begin-batch`'s own re-resolution of the plan against the current tree — run immediately before it would have written the fork prompt — found that the plan contradicts the tree.
 Under loom the stuck run is routed to plan review; a standalone run's way forward is the refusal's own.
 `record-batch` and `recover-batch` also refuse with `{"plan_drifted": true}` when the plan changed since the run recorded it or since the batch began,
 and the same rung applies.
