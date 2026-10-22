@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -687,6 +688,68 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 				if !strings.Contains(post.line, f.path) || !strings.Contains(post.line, heading) || strings.Contains(post.line, input.decision) {
 					t.Errorf("post line = %q; want the record path and heading %q and no decision text", post.line, heading)
 				}
+			}
+		})
+	}
+}
+
+// recordingNoticePoster is a noticePoster that records its kind on every post and answers with err.
+type recordingNoticePoster struct {
+	kind  string
+	err   error
+	posts *[]string
+}
+
+func (p recordingNoticePoster) Post(receiver, body string) (int64, error) {
+	*p.posts = append(*p.posts, p.kind)
+	return 0, p.err
+}
+
+func TestPostDecisionNotice_SignsByCaller(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		caller    string
+		strandErr error
+		want      []string
+		wantErr   bool
+	}{
+		{name: "Orch_PostsAsProgram", caller: "hub:orch", want: []string{"program"}},
+		{name: "Unnamed_PostsAsProgram", caller: "", want: []string{"program"}},
+		{name: "Unparsable_PostsAsProgram", caller: "0f3a9c", want: []string{"program"}},
+		{name: "Arbiter_PostsAsStrand", caller: "hub:task-a:arbiter", want: []string{"strand"}},
+		{
+			name:      "StrandOutsidePane_FallsBackToProgramOnce",
+			caller:    "hub:task-a:arbiter",
+			strandErr: fmt.Errorf("refused: %w", creelengine.ErrStrandClaimOutsidePane),
+			want:      []string{"strand", "program"},
+		},
+		{
+			name:      "StrandOtherFailure_IsNotRetried",
+			caller:    "hub:task-a:arbiter",
+			strandErr: errors.New("creel down"),
+			want:      []string{"strand"},
+			wantErr:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var posts []string
+			clients := noticeClients{
+				strand: func(string) (noticePoster, error) {
+					return recordingNoticePoster{kind: "strand", err: tt.strandErr, posts: &posts}, nil
+				},
+				program: func() (noticePoster, error) {
+					return recordingNoticePoster{kind: "program", posts: &posts}, nil
+				},
+			}
+			err := postDecisionNotice(clients, tt.caller, "hub:task-a:darn", "line")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("postDecisionNotice() error = %v; want error %t", err, tt.wantErr)
+			}
+			if fmt.Sprint(posts) != fmt.Sprint(tt.want) {
+				t.Errorf("postDecisionNotice() posted as %v; want %v", posts, tt.want)
 			}
 		})
 	}

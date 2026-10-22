@@ -39,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelcli"
+	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -408,12 +409,7 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 			return liveRunStrands(target)
 		},
 		notify: func(receiver, line string) error {
-			client, err := decisionNoticeClient(target, os.Getenv(agentname.StrandNameEnv))
-			if err != nil {
-				return err
-			}
-			_, err = client.Post(receiver, line)
-			return err
+			return postDecisionNotice(decisionNoticeClients(target), os.Getenv(agentname.StrandNameEnv), receiver, line)
 		},
 	}
 	return nil
@@ -441,13 +437,49 @@ func liveRunStrands(target *lyxcwd.Location) ([]string, error) {
 	return strands, nil
 }
 
-// decisionNoticeClient returns the creel client a notice is posted through for a caller whose exported strand name is caller.
+// noticePoster is the one creel call a notice makes: leaving a body as mail for a receiver.
+type noticePoster interface {
+	Post(receiver, body string) (int64, error)
+}
+
+// noticeClients builds the creel clients a notice posts through: one signing as a strand, one signing as the LOOM program.
+type noticeClients struct {
+	strand  func(strandClaim string) (noticePoster, error)
+	program func() (noticePoster, error)
+}
+
+// postDecisionNotice posts line to receiver for a caller whose exported strand name is caller.
 // Creel accepts a program claim only from an orch pane or a process in no pane, so a named non-orch caller, the arbiter, posts as its own strand.
-func decisionNoticeClient(target *lyxcwd.Location, caller string) (*creelcli.GoClient, error) {
+// A strand claim creel refuses as coming from outside that strand's pane falls back to posting once as the program.
+func postDecisionNotice(clients noticeClients, caller, receiver, line string) error {
 	if name, err := agentname.Parse(caller); err == nil && !agentname.MatchesRole(name.Role, agentname.RoleOrch) {
-		return creelcli.NewStrandClient(target, caller)
+		poster, err := clients.strand(caller)
+		if err != nil {
+			return err
+		}
+		_, err = poster.Post(receiver, line)
+		if !errors.Is(err, creelengine.ErrStrandClaimOutsidePane) {
+			return err
+		}
 	}
-	return creelcli.NewProgramClient(target, loomProgram)
+	poster, err := clients.program()
+	if err != nil {
+		return err
+	}
+	_, err = poster.Post(receiver, line)
+	return err
+}
+
+// decisionNoticeClients builds the creel clients of target's worktree that a notice posts through.
+func decisionNoticeClients(target *lyxcwd.Location) noticeClients {
+	return noticeClients{
+		strand: func(strandClaim string) (noticePoster, error) {
+			return creelcli.NewStrandClient(target, strandClaim)
+		},
+		program: func() (noticePoster, error) {
+			return creelcli.NewProgramClient(target, loomProgram)
+		},
+	}
 }
 
 // decisionCmd builds the `decision` subtree.
