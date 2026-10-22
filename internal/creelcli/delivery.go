@@ -78,8 +78,14 @@ func wireShuttle(location *lyxcwd.Location, enginesFor func(shuttleengine.Config
 	if err != nil {
 		return shuttleOps{}, err
 	}
+	pauseGeom, err := hubgeom.PauseGeometry(location)
+	if err != nil {
+		return shuttleOps{}, err
+	}
 	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+	// Told the hub's record with no slug, so each send judges its target by the target's own strand name.
+	runner.SetPause(pauserecord.Geometry{RecordPath: pauseGeom.RecordPath})
 	return shuttleOps{reed: reed, runner: runner}, nil
 }
 
@@ -282,9 +288,10 @@ func (d *hubDelivery) Interrupt(strand creelengine.Strand) error {
 }
 
 // mapDeliveryError maps shuttle's send and interrupt sentinels onto creel's, and passes any other error through.
+// A send refused because a pause covers the session maps onto creelengine.ErrBusy, so the delivery worker requeues the inject and types it after the resume.
 func mapDeliveryError(err error) error {
 	switch {
-	case errors.Is(err, shuttleengine.ErrSessionBusy):
+	case errors.Is(err, shuttleengine.ErrSessionBusy), errors.Is(err, shuttleengine.ErrPaused):
 		return creelengine.ErrBusy
 	case errors.Is(err, shuttleengine.ErrSubmissionNotLanded):
 		return creelengine.ErrNotLanded

@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -298,6 +299,27 @@ func TestHubDelivery(t *testing.T) {
 		}
 	})
 
+	t.Run("wireShuttle tells the runner the hub's pause record with an empty slug", func(t *testing.T) {
+		t.Parallel()
+		_, _, pair := newHub(t)
+		location, err := lyxcwd.ResolveWorktree(pair)
+		if err != nil {
+			t.Fatalf("ResolveWorktree(%q) = %v", pair, err)
+		}
+		enginesFor := func(shuttleengine.Config, configengine.Dirs) (shuttleengine.EngineSet, error) {
+			return shuttlefake.EngineSet(&shuttlefake.Engine{}), nil
+		}
+
+		ops, err := wireShuttle(location, enginesFor)
+		if err != nil {
+			t.Fatalf("wireShuttle() = %v", err)
+		}
+		want := pauserecord.Geometry{RecordPath: pauseRecordPath(t, pair)}
+		if got := ops.runner.PauseGeometry(); got != want {
+			t.Errorf("runner PauseGeometry() = %+v; want %+v, the hub's record path with no slug", got, want)
+		}
+	})
+
 	t.Run("Send and Interrupt map shuttle's sentinels onto creel's", func(t *testing.T) {
 		t.Parallel()
 		hub, prime, _ := newHub(t)
@@ -308,6 +330,7 @@ func TestHubDelivery(t *testing.T) {
 			want error
 		}{
 			{"busy", fmt.Errorf("wrapped: %w", shuttleengine.ErrSessionBusy), creelengine.ErrBusy},
+			{"paused", fmt.Errorf("wrapped: %w", shuttleengine.ErrPaused), creelengine.ErrBusy},
 			{"not landed", fmt.Errorf("wrapped: %w", shuttleengine.ErrSubmissionNotLanded), creelengine.ErrNotLanded},
 			{"no running turn", fmt.Errorf("wrapped: %w", shuttleengine.ErrNoRunningTurn), creelengine.ErrNoRunningTurn},
 			{"other", other, other},
@@ -359,6 +382,7 @@ func TestHubDelivery(t *testing.T) {
 			want error
 		}{
 			{fmt.Errorf("wrapped: %w", shuttleengine.ErrSessionBusy), creelengine.ErrBusy},
+			{fmt.Errorf("wrapped: %w", shuttleengine.ErrPaused), creelengine.ErrBusy},
 			{fmt.Errorf("wrapped: %w", shuttleengine.ErrSubmissionNotLanded), creelengine.ErrNotLanded},
 			{other, other},
 			{nil, nil},
