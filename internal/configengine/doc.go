@@ -58,7 +58,8 @@
 // A [Stack] also names, in `Origins`, the highest layer holding each top-level key.
 // The merged document is expanded once, against `Board` for a hub-wide module and `Anchor` otherwise.
 //
-// [Provenance] returns the resolved document of [Load], with strictness and refusals unchanged, each unit's line comment naming the highest layer whose file holds it, or `template` when none does.
+// [Provenance] returns the resolved document of [Load], with strictness and refusals unchanged, each unit's line comment naming the highest layer whose file holds it, or `template` when none does;
+// a unit no file holds that the picked overlay document holds is labelled `template:<value>`.
 // It is what `lyx config <module> --resolved` prints.
 //
 // # The local rule
@@ -92,6 +93,17 @@
 // [Set] takes a trailing variadic openMaps, and a [Spec] carries `OpenMaps`: the dotted paths of the module's open maps, mappings whose keys the user owns.
 // They are passed unchanged to yamlengine, which defines what a declared path changes;
 // with none declared, every caller behaves as before.
+//
+// # Template overlay
+//
+// A [Spec] may carry an [Overlay]: a `Selector`, the name of a top-level template key, and `Documents`, each selector value mapped to an overlay document.
+// The selector's scalar value in the base layer's file picks one document, and the effective template is the spec's template with that document merged over it under the spec's open maps, so an overlay name under a per-name map replaces or adds one entry whole.
+// An absent selector or an empty value picks none, and a spec with no overlay is unchanged.
+// [EffectiveTemplate] composes it from a base document and [TemplateUnder] reads the base layer's file and does the same, so a caller judging a file above the base composes nothing itself.
+// Every judging path uses the effective template: the load's unknown-key warning, template fill and missing-key check, [BelowLayer], and [Provenance].
+// A value no document names, or a non-scalar value, is an [ErrInvalid] error naming the shipped values and the `lyx config` command that sets the selector in the base.
+// Only the base layer picks: in a hub a worktree file holding the selector with a value other than the default file's is refused when read, naming the line to delete and the `--layer default` write from the prime worktree.
+// A worktree value equal to the base's changes no selection and loads.
 //
 // # Per-name maps
 //

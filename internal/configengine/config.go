@@ -215,6 +215,13 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 		logger.Info("configengine: degrading to embedded template", "module", spec.Name, "reason", degradeReason)
 	}
 
+	// Every judging below reads the effective template: the base template with the overlay the base layer picks laid over it.
+	effective, err := EffectiveTemplate(spec, baseDocument(dirs, spec, stack.Layers), dirs.Board != "")
+	if err != nil {
+		return nil, err
+	}
+	spec.Template = effective
+
 	if err := warnUnknownKeys(stack.Layers, spec); err != nil {
 		return nil, err
 	}
