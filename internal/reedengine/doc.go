@@ -189,6 +189,10 @@
 //
 // A strand's full name is formed once, in AddStrand under the state lock, from the prefix the told geometry carries and the strand's role (the grammar is PATTERN-agent-name).
 // A role already held in the worktree is numbered `-N`, and an explicit name that is held refuses.
+// Before naming, an ordinary add (not the `--if-absent` or unless-name paths) reclaims the name it asks for: the strand holding that exact name, the un-numbered role name or the explicit one, is removed with the ordinary removal when its engine is dead by the liveness predicate, it is not hidden, it has no children, and the pair is not paused.
+// A live holder, a holder inside the launch grace, and a numbered form (`fix-2` for a role add of `fix`) keep the name, and the ordinary numbering or refusal applies.
+// Reclaim kills the removed holder's pane only when this session lists it, so a pane placed in another session is never killed; the removal reaches reed.json with the add's own save, so a launch failure after it leaves the old record and only its dead pane gone.
+// Bound: a holder misread as dead under the liveness predicate's residual cases is killed with its engine; creel addresses receivers by strand name, so mail queued for the dead holder goes to the new strand of that name.
 // A role-less add takes the default role `strand`, and an empty told shortname refuses before anything boots, naming `lyx fabric shortname <shortname>`.
 // The name is a birth attribute and the only lookup key: it is stored in the strand record and every by-name lookup resolves through it, matching the full name, its role segment, or a legacy exact name.
 // An add can also name a strand whose presence in this worktree's state skips it (AddStrandUnless), matched by the same rule as an explicit name;

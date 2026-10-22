@@ -241,6 +241,48 @@ func (e *Engine) strandNameLocked(st *ReedState, spec AddSpec) (string, error) {
 	return agentname.Format(shortname, slug, agentname.NumberRole(role, held))
 }
 
+// reclaimDeadNameLocked removes the strand holding the exact name spec asks for when its engine is dead, so the add forms that name instead of a numbered one or a refusal.
+// The asked-for name is explicitName when spec sets NameOverride, else the un-numbered role name; a numbered form is never reclaimed.
+// The holder keeps the name, with nothing changed, when it is hidden, when the pair is paused, when it has children, or when its engine reads live, a launch grace included.
+// Otherwise it is removed as the ordinary removal does, its pane killed only when this session lists it, and the removal reaches the state file with the add's own save.
+// A failed pane listing is returned, since the add lists panes again to launch and would fail the same way.
+func (e *Engine) reclaimDeadNameLocked(st *ReedState, spec AddSpec, explicitName string) error {
+	name := explicitName
+	if spec.NameOverride == "" {
+		role := spec.Role
+		if role == "" {
+			role = defaultRole
+		}
+		var err error
+		if name, err = agentname.Format(e.geom.NameShortname, e.geom.NameSlug, role); err != nil {
+			return err
+		}
+	}
+	idx := strandNamed(st.Strands, name)
+	if idx == -1 {
+		return nil
+	}
+	holder := st.Strands[idx]
+	if holder.Display.Anchor == render.AnchorHidden || e.pairPaused() || len(directChildren(st.Strands, holder.GUID)) > 0 {
+		return nil
+	}
+	live, windows, err := e.listStrandAndWindowPanes(st)
+	if err != nil {
+		return fmt.Errorf("list panes: %w", err)
+	}
+	if e.engineAliveIDSet(presentPanes(st.Strands, live, windows))[holder.PaneID] {
+		return nil
+	}
+	_, paneIDs, err := e.removeStrandLocked(st, holder.GUID, false)
+	if err != nil {
+		return err
+	}
+	reapPIDs, _, _ := e.killStrandPanes(st, paneIDs, false)
+	reapPaneChildren(reapPIDs, reapExitTimeout)
+	logger.Info("reed: reclaimed a dead strand's name", "socket", e.Socket(), "session", e.SessionName(), "name", name, "guid", holder.GUID)
+	return nil
+}
+
 // ifAbsentDecision is the closed set of branch rows AddStrand's --if-absent path chooses among for a
 // given name against the persisted strand table.
 type ifAbsentDecision int
@@ -613,6 +655,10 @@ func (e *Engine) AddStrandUnless(spec AddSpec, unlessName string) (Strand, bool,
 				return nil
 			}
 			// ifAbsentAdd: no matching strand at all — fall through to the ordinary add path below.
+		}
+
+		if err := e.reclaimDeadNameLocked(st, spec, explicitName); err != nil {
+			return err
 		}
 
 		strand, err := e.addStrandLocked(st, spec)

@@ -14,14 +14,17 @@
 package reedengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 )
@@ -754,6 +757,156 @@ func TestAddStrandUnless_NoNamedStrandAdds(t *testing.T) {
 			}
 			if len(loaded.Strands) != len(tt.persisted)+1 {
 				t.Errorf("strand count = %d, want %d", len(loaded.Strands), len(tt.persisted)+1)
+			}
+		})
+	}
+}
+
+// TestAddStrand_ReclaimsADeadHoldersName pins that an add removes a dead, visible, childless, unpaused holder of the exact asked-for name before naming, and leaves every other holder in place.
+// The holder is an own-window strand named tc:tslug:fix, and the new strand is added hidden so nothing launches.
+func TestAddStrand_ReclaimsADeadHoldersName(t *testing.T) {
+	t.Parallel()
+
+	const holderGUID = "holder-guid"
+	// A pid no process holds, since a removal reaps the pane's process tree.
+	const absentPID = 2147483646
+	shellOnlyListing := "@4 1 - %7 0 " + strconv.Itoa(absentPID) + " t\x1fbash\x1f/bin/bash\n"
+	engineListing := "@4 1 - %7 0 " + strconv.Itoa(absentPID) + " t\x1fclaude\x1f/bin/bash\n"
+	ownWindow := render.Display{Anchor: render.AnchorOwnWindow}
+	holder := func(name, paneID string, display render.Display) Strand {
+		return Strand{GUID: holderGUID, Name: name, PaneID: paneID, Display: display}
+	}
+
+	tests := []struct {
+		name         string
+		strands      []Strand
+		listing      string
+		listErr      error
+		age          time.Duration
+		paused       bool
+		spec         AddSpec
+		wantName     string
+		wantErr      string
+		wantHeld     bool
+		wantKillPane string
+	}{
+		{
+			name:    "RoleAddReclaimsAHolderWhosePaneIsAbsent",
+			strands: []Strand{holder("tc:tslug:fix", "%9", ownWindow)},
+			spec:    hiddenSpec("fix", ""), wantName: "tc:tslug:fix",
+		},
+		{
+			name:    "ExplicitNameReclaimsAHolderWhosePaneIsAbsent",
+			strands: []Strand{holder("tc:tslug:fix", "%9", ownWindow)},
+			spec:    hiddenSpec("", "fix"), wantName: "tc:tslug:fix",
+		},
+		{
+			name:    "ShellOnlyHolderPastTheGraceIsReclaimedAndItsPaneKilled",
+			strands: []Strand{holder("tc:tslug:fix", "%7", ownWindow)},
+			listing: shellOnlyListing, age: 31 * time.Second,
+			spec: hiddenSpec("fix", ""), wantName: "tc:tslug:fix", wantKillPane: "%7",
+		},
+		{
+			name:    "LiveHolderKeepsTheNameForARoleAdd",
+			strands: []Strand{holder("tc:tslug:fix", "%7", ownWindow)},
+			listing: engineListing, age: 31 * time.Second,
+			spec: hiddenSpec("fix", ""), wantName: "tc:tslug:fix-2", wantHeld: true,
+		},
+		{
+			name:    "LiveHolderRefusesAnExplicitName",
+			strands: []Strand{holder("tc:tslug:fix", "%7", ownWindow)},
+			listing: engineListing, age: 31 * time.Second,
+			spec: hiddenSpec("", "fix"), wantErr: "already held", wantHeld: true,
+		},
+		{
+			name:    "HiddenHolderKeepsTheName",
+			strands: []Strand{holder("tc:tslug:fix", "", render.Display{Anchor: render.AnchorHidden})},
+			spec:    hiddenSpec("fix", ""), wantName: "tc:tslug:fix-2", wantHeld: true,
+		},
+		{
+			name:    "ShellOnlyHolderInsideTheGraceKeepsTheName",
+			strands: []Strand{holder("tc:tslug:fix", "%7", ownWindow)},
+			listing: shellOnlyListing, age: 29 * time.Second,
+			spec: hiddenSpec("fix", ""), wantName: "tc:tslug:fix-2", wantHeld: true,
+		},
+		{
+			name:    "PausedPairKeepsTheName",
+			strands: []Strand{holder("tc:tslug:fix", "%9", ownWindow)},
+			paused:  true,
+			spec:    hiddenSpec("fix", ""), wantName: "tc:tslug:fix-2", wantHeld: true,
+		},
+		{
+			name: "HolderWithAChildKeepsTheName",
+			strands: []Strand{
+				holder("tc:tslug:fix", "%9", ownWindow),
+				{GUID: "child-guid", Name: "tc:tslug:child", Parent: holderGUID, Display: render.Display{Anchor: render.AnchorHidden}},
+			},
+			spec: hiddenSpec("fix", ""), wantName: "tc:tslug:fix-2", wantHeld: true,
+		},
+		{
+			name:    "NumberedHolderIsNotReclaimedByARoleAdd",
+			strands: []Strand{holder("tc:tslug:fix-2", "%9", ownWindow)},
+			spec:    hiddenSpec("fix", ""), wantName: "tc:tslug:fix", wantHeld: true,
+		},
+		{
+			name:    "FailedListingIsTheAddsErrorAndTheHolderStays",
+			strands: []Strand{holder("tc:tslug:fix", "%9", ownWindow)},
+			listErr: errors.New("list-panes failed"),
+			spec:    hiddenSpec("fix", ""), wantErr: "list-panes failed", wantHeld: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			e := newTestEngine(t)
+			fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
+			fake.answerWindowPanes(tt.listing, tt.listErr)
+			e.paneAge = func(int) (time.Duration, bool) { return tt.age, true }
+			if tt.paused {
+				e.geom.PauseRecordPath = filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+				if _, err := pauserecord.Update(e.geom.PauseRecordPath, time.Now(), func(r *pauserecord.Record) error {
+					r.Live = append(r.Live, pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: time.Now()})
+					return nil
+				}); err != nil {
+					t.Fatalf("pauserecord.Update: %v", err)
+				}
+			}
+			if err := SaveState(e.stateDir(), &ReedState{Strands: tt.strands}); err != nil {
+				t.Fatalf("SaveState: %v", err)
+			}
+
+			got, err := e.AddStrand(tt.spec)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("AddStrand error = %v, want it to contain %q", err, tt.wantErr)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("AddStrand: %v", err)
+				}
+				if got.Name != tt.wantName {
+					t.Errorf("added strand name = %q, want %q", got.Name, tt.wantName)
+				}
+			}
+
+			loaded, err := LoadState(e.stateDir())
+			if err != nil {
+				t.Fatalf("LoadState: %v", err)
+			}
+			if _, held := strandByGUID(loaded.Strands, holderGUID); held != tt.wantHeld {
+				t.Errorf("holder still in state = %v, want %v", held, tt.wantHeld)
+			}
+			var killed []string
+			for _, argv := range fake.ArgvFor("kill-pane") {
+				killed = append(killed, argv[len(argv)-1])
+			}
+			var wantKilled []string
+			if tt.wantKillPane != "" {
+				wantKilled = []string{tt.wantKillPane}
+			}
+			if !slices.Equal(killed, wantKilled) {
+				t.Errorf("kill-pane targets = %v, want %v", killed, wantKilled)
 			}
 		})
 	}
