@@ -60,6 +60,18 @@ type decisionFake struct {
 	dropEntryOnCommit bool
 	// commitLeaves, when set, are the bytes the commit leaves as the committed copy.
 	commitLeaves []byte
+	// liveStrands and liveErr are the answer of the live-run listing.
+	liveStrands []string
+	liveErr     error
+	// notifyErrs maps a receiver to the error its post returns.
+	notifyErrs map[string]error
+	// posts records every post the verb made, receiver and line.
+	posts []decisionPost
+}
+
+// decisionPost is one notice the verb posted.
+type decisionPost struct {
+	receiver, line string
 }
 
 func newDecisionFake(t *testing.T) *decisionFake {
@@ -146,6 +158,14 @@ func (f *decisionFake) deps() decisionDeps {
 		history: func() ([][]byte, error) {
 			f.darnCalls++
 			return f.historyVersions, f.historyErr
+		},
+		liveStrands: func() ([]string, error) { return f.liveStrands, f.liveErr },
+		notify: func(receiver, line string) error {
+			if err := f.notifyErrs[receiver]; err != nil {
+				return err
+			}
+			f.posts = append(f.posts, decisionPost{receiver: receiver, line: line})
+			return nil
 		},
 	}
 }
@@ -559,6 +579,114 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			}
 			if tc.noDarnReads && f.darnCalls != 0 {
 				t.Errorf("darn seam calls = %d; want 0 for a refusal before any darn read", f.darnCalls)
+			}
+			if len(f.posts) != 0 {
+				t.Errorf("posts = %v; want none for a refusal", f.posts)
+			}
+		})
+	}
+}
+
+// TestDecisionVerb_NotifiesLiveAgents asserts a committed entry is announced to each live agent of the run but the tackler, the arbiter and the caller,
+// and that a failed listing or post is reported on a success envelope.
+func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		strandName  string
+		arbiter     bool
+		liveStrands []string
+		liveErr     error
+		notifyErrs  map[string]error
+		want        []string
+		// wantErrors are the strands of the reported failures, "" for a failed listing.
+		wantErrors []string
+	}{
+		{
+			name:        "Orch_SkipsTacklerArbiterAndUnnamedRun",
+			strandName:  "hub:orch",
+			liveStrands: []string{"hub:task-a:darn", "hub:task-a:tackler-2", "hub:task-a:arbiter", "0f3a9c", "hub:task-a:plan"},
+			want:        []string{"hub:task-a:darn", "hub:task-a:plan"},
+		},
+		{
+			name:        "CallerIsLiveRun_SkipsItself",
+			strandName:  "hub:task-a:lead",
+			liveStrands: []string{"hub:task-a:lead", "hub:task-a:darn"},
+			want:        []string{"hub:task-a:darn"},
+		},
+		{
+			name:        "Arbiter_SkipsItself",
+			strandName:  "hub:task-a:arbiter",
+			arbiter:     true,
+			liveStrands: []string{"hub:task-a:arbiter", "hub:task-a:darn"},
+			want:        []string{"hub:task-a:darn"},
+		},
+		{
+			name: "NoLiveRun_SendsNothing",
+		},
+		{
+			name:       "ListingFails_ReportedNotRefused",
+			liveErr:    errors.New("run dir unreadable"),
+			wantErrors: []string{""},
+		},
+		{
+			name:        "OnePostFails_OthersStillSent",
+			liveStrands: []string{"hub:task-a:darn", "hub:task-a:plan"},
+			notifyErrs:  map[string]error{"hub:task-a:darn": errors.New("creel down")},
+			want:        []string{"hub:task-a:plan"},
+			wantErrors:  []string{"hub:task-a:darn"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newDecisionFake(t)
+			f.strandName = tt.strandName
+			f.parent = hubgeom.Parent{Name: "hub:orch"}
+			if tt.strandName != "" && !tt.arbiter {
+				f.parent.Name = tt.strandName
+			}
+			f.liveStrands, f.liveErr, f.notifyErrs = tt.liveStrands, tt.liveErr, tt.notifyErrs
+			input := goodDecisionInput()
+			if tt.arbiter {
+				f.arbiterName = tt.strandName
+				input.by = "arbiter"
+			}
+			var out bytes.Buffer
+			if code := decisionVerb(&out, "task-a", f.deps(), input); code != 0 {
+				t.Fatalf("exit = %d, out %s; want 0", code, out.String())
+			}
+			if f.commits != 1 {
+				t.Errorf("commits = %d; want 1", f.commits)
+			}
+
+			data := envelope.RequireOK(t, out.String()).Raw
+			if got := fmt.Sprint(data["notified"]); got != fmt.Sprint(tt.want) {
+				t.Errorf("envelope notified = %s; want %v", got, tt.want)
+			}
+			gotErrors := []string{}
+			for _, item := range data["notice_errors"].([]any) {
+				entry := item.(map[string]any)
+				if entry["error"] == "" {
+					t.Errorf("notice error %v; want its error text", entry)
+				}
+				gotErrors = append(gotErrors, entry["strand"].(string))
+			}
+			if fmt.Sprint(gotErrors) != fmt.Sprint(append([]string{}, tt.wantErrors...)) {
+				t.Errorf("envelope notice_errors strands = %v; want %v", gotErrors, tt.wantErrors)
+			}
+
+			if len(f.posts) != len(tt.want) {
+				t.Fatalf("posts = %v; want one to each of %v", f.posts, tt.want)
+			}
+			heading := addedDecisionHeading(f.lastAdded)
+			for i, post := range f.posts {
+				if post.receiver != tt.want[i] {
+					t.Errorf("post %d receiver = %q; want %q", i, post.receiver, tt.want[i])
+				}
+				if !strings.Contains(post.line, f.path) || !strings.Contains(post.line, heading) || strings.Contains(post.line, input.decision) {
+					t.Errorf("post line = %q; want the record path and heading %q and no decision text", post.line, heading)
+				}
 			}
 		})
 	}

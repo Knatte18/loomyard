@@ -106,7 +106,7 @@ Deciding when held runs go on stays with you.
 You diagnose; the run's own agents change the run.
 Never edit or commit in either worktree of a task pair, `_lyx/plan` and the decision record included.
 Say how in a message to the run's live agent, usually the driver or the producing strand; `lyx loom goto` is for when no agent of the run is alive to take it.
-A scope correction on a run whose decision record exists goes through `lyx loom decision add <slug> --by parent` even while an agent of the run is alive, and also in a message to that agent.
+A scope correction on a run whose decision record exists goes through `lyx loom decision add <slug> --by parent` even while an agent of the run is alive, with no message of your own: the verb tells each live agent of the run that the record holds a new decision.
 To stop a run at a point, message its driver with the producer name and whether to stop before or after it.
 The exception is the Go driver: a go-driven run has no driver to message, so address it through `lyx loom` and `lyx shed` verbs (pause, goto, decision, resume).
 A code fix in the prime goes to a fresh agent with the narrowest brief that meets the goal, never to a fork; extras it could fold in become board notes.
