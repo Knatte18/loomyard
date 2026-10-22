@@ -94,3 +94,13 @@ func MidMerge(l *lyxcwd.Location) (MidMergeState, error) {
 	state.Conflicts = unified
 	return state, nil
 }
+
+// MidMerge reports the parked or foreign merge state of f's own pair, as the package function of the same name does for a location.
+// It resolves the location from f's code checkout, so the answer is about this pair and never about the worktree the caller runs in.
+func (f *Fabric) MidMerge() (MidMergeState, error) {
+	l, err := lyxcwd.ResolveWorktree(f.warpPath)
+	if err != nil {
+		return MidMergeState{}, fmt.Errorf("fabricengine: mid-merge probe: resolve layout for %s: %w", f.warpPath, err)
+	}
+	return MidMerge(l)
+}

@@ -684,6 +684,7 @@
 // instead of parsing prose.
 // `PushAnchored(l, opts, lockWait)`, `PushPairAnchored(l, opts, lockWait)`, `MergeStateActive(l)`, `MidMerge(l)` and `RequireDrivableWorktree(l)` are further vocabulary-neutral, `l`-in entry points reachable the same way `CommitAnchoredPaths` is.
 // `MidMerge(l)` answers whether the pair carries an unfinished merge and which paths are still conflicted.
+// On an opened `*Fabric`, `Fabric.MidMerge` is the same probe over that pair's own location, and `Fabric.CodeDirtyPaths` reads the code checkout's tracked dirty paths, the list the dirty merge guard decides on.
 // For a parked fabric merge the answer also carries the record's verb, source branch and the code side's source and start SHAs.
 // `lyx loom start` consults it before putting a driver to work.
 // `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all — the
