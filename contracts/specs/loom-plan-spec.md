@@ -137,6 +137,7 @@ A symbol no card in the plan touches needs no edge — its state never changes d
 | Custom | either | none — explicit escape hatch | as applicable |
 
 A `Create` target under the repository root's git-ignored `.scratch/` is a transient draft: the card may remove it once read, and Webster's `create-not-done` check skips it.
+A target no glyph spells, such as a path whose directory holds a space, stays a plain path, and Webster's done-checks judge it by whether the path exists.
 How cards group into execution batches is not a card property; `internal/batcher`'s package doc describes it.
 A card that renames or deletes what an earlier card targets never shares that card's batch.
 
