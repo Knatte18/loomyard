@@ -246,7 +246,7 @@ func TestAuditClusterRound(t *testing.T) {
 
 // TestCommandRunsMutatingGit matrixes commandRunsMutatingGit against every Bash command shape the audit must classify correctly.
 // Every listed mutating subcommand matches, tolerant of a leading path, a chain prefix, a later line and global options.
-// Read-only subcommands whose arguments name a mutating verb, and help requests, never match.
+// Read-only subcommands whose arguments name a mutating verb, help requests and git tag's list forms never match.
 func TestCommandRunsMutatingGit(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -271,6 +271,15 @@ func TestCommandRunsMutatingGit(t *testing.T) {
 		{"apply", "git apply patch.diff", true},
 		{"cherry-pick", "git cherry-pick abc123", true},
 		{"tag", "git tag v1.0", true},
+		{"tag delete", "git tag -d v1", true},
+		{"annotated tag", "git tag -a v1 -m msg", true},
+		{"signed tag", "git tag -s v1", true},
+		{"forced tag", "git tag -f v1 HEAD", true},
+		{"tag message in the = form", "git tag --message=msg v1", true},
+		{"tag delete beside a list option", "git tag -l -d v1", true},
+		{"tag --list after a double dash is an operand", "git tag v1 -- --list", true},
+		{"tag --list as a message value", "git tag -m --list v1", true},
+		{"tag short-option cluster", "git tag -ln v1", true},
 		{"branch", "git branch -d old", true},
 		{"leading path", "/usr/bin/git commit -m x", true},
 		{"chained with &&", "cd internal/burler && git commit -am fix", true},
@@ -302,6 +311,18 @@ func TestCommandRunsMutatingGit(t *testing.T) {
 		{"mutating verb as a log argument is not mutating", "git log --grep merge", false},
 		{"mutating verb as a show argument is not mutating", "git show tag", false},
 		{"flag before a read-only subcommand is not mutating", "git -C commit log", false},
+		{"tag --points-at after read-only commands is not mutating", "sed -n '1,40p' internal/x.go; git -C /worktree log -1 --format='%h %d' ; git -C /worktree tag --points-at HEAD", false},
+		{"bare git tag is not mutating", "git tag", false},
+		{"tag -l with a pattern is not mutating", "git tag -l 'v1.*'", false},
+		{"tag --list is not mutating", "git tag --list", false},
+		{"tag --contains is not mutating", "git tag --contains abc123", false},
+		{"tag --contains in the = form is not mutating", "git tag --contains=abc123", false},
+		{"tag --no-contains is not mutating", "git tag --no-contains abc123", false},
+		{"tag --merged is not mutating", "git tag --merged main", false},
+		{"tag --no-merged is not mutating", "git tag --no-merged main", false},
+		{"tag -n is not mutating", "git tag -n", false},
+		{"tag -n with an attached count is not mutating", "git tag -n5", false},
+		{"tag --sort value starting with a dash is not mutating", "git tag -l --sort -version:refname", false},
 		{"git log is not mutating", "git log --oneline", false},
 		{"git diff is not mutating", "git diff HEAD~1", false},
 		{"git status is not mutating", "git status", false},
