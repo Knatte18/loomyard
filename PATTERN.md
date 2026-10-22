@@ -1,7 +1,5 @@
 # PATTERN
 
-Structural invariants, one line per entry: when it applies and what it requires.
-
 ## Paths and geometry
 
 - `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd`; nothing else calls `os.Getwd` or `git rev-parse`. — [background](pattern/PATTERN-cwd-resolution.md)
@@ -11,7 +9,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-durable-vs-ephemeral-state` — Adding a file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers or writing the hub workspace file: from the hub only. — [background](pattern/PATTERN-hub-containment.md)
 - `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on the board only. — [background](pattern/PATTERN-hub-wide-config.md)
-- `PATTERN-sparse-hub-base` — Writing a hub's base file: only the units the hub tuned, never a template fill; only `hubreconcile`'s one-time walk strip drops a unit the template holds. — [background](pattern/PATTERN-sparse-hub-base.md)
+- `PATTERN-sparse-hub-base` — Writing a hub's base file: only the units the hub tuned, never a template fill. — [background](pattern/PATTERN-sparse-hub-base.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is the sole hub container suffix. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
 ## CLI
@@ -19,7 +17,8 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-cli-cobra` — Adding a CLI module: a cobra subtree under one root in `cmd/lyx/main.go`. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring a standalone-capable CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of strict `Load` or `LoadOrTemplate`, bar `runprofile`. — [background](pattern/PATTERN-config-strictness.md)
-- `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files, machine layer included. — [background](pattern/PATTERN-config-layers.md)
+- `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files. — [background](pattern/PATTERN-config-layers.md)
+- `PATTERN-template-overlay` — Judging a config document against its template: only against `configengine`'s effective template, the overlay picked from the base layer.
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only via `hubreconcile.Ensure`, owner of the build stamp and hub lock.
 - `PATTERN-refusal-way-forward` — Adding a webster, shed or loom refusal: its message names the way forward; a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)
 - `PATTERN-no-denied-recovery` — Naming a step in a refusal, stencil or spec: never a command the agents' settings deny. (test) — [background](pattern/PATTERN-no-denied-recovery.md)

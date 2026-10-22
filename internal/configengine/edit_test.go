@@ -53,7 +53,60 @@ func TestEdit(t *testing.T) {
 		hubWide bool
 		// seedOnly marks the spec seed-only, so a hub's default layer scaffolds from the template.
 		seedOnly bool
+		// overlay swaps in overlaySpec renamed testmod.
+		overlay bool
+		// existing is the worktree file's bytes before the call; empty keeps original.
+		existing string
+		// defaultFile is the hub default file's bytes before the call; empty leaves it absent. It needs board.
+		defaultFile string
 	}{
+		{
+			name:    "a hub worktree edit writing the selector into an absent file is refused and leaves no file",
+			state:   baseLyx,
+			board:   true,
+			overlay: true,
+			steps:   []editStep{{write: "pick: x\n"}},
+			wantErr: "--layer default",
+		},
+		{
+			name:     "a hub worktree edit adding the selector to a file without it is refused and leaves the file",
+			state:    baseWithFile,
+			board:    true,
+			overlay:  true,
+			existing: "lenses:\n  a: Z\n",
+			steps:    []editStep{{write: "pick: x\n"}},
+			wantErr:  "--layer default",
+			wantFile: ptr("lenses:\n  a: Z\n"),
+		},
+		{
+			name:     "a hub worktree edit of a file already holding the selector is refused naming the line to delete",
+			state:    baseWithFile,
+			board:    true,
+			overlay:  true,
+			existing: "pick: x\n",
+			steps:    []editStep{{write: "pick: x\nlenses:\n  a: Z\n"}},
+			wantErr:  "delete the pick line from",
+			wantFile: ptr("pick: x\n"),
+		},
+		{
+			name:     "a hub worktree edit leaving the selector out saves",
+			state:    baseWithFile,
+			board:    true,
+			overlay:  true,
+			existing: "lenses:\n  a: Z\n",
+			steps:    []editStep{{write: "lenses:\n  a: W\n"}},
+			wantFile: ptr("lenses:\n  a: W\n"),
+		},
+		{
+			name:        "a hub worktree edit writing the selector with the default file's value saves",
+			state:       baseWithFile,
+			board:       true,
+			overlay:     true,
+			existing:    "lenses:\n  a: Z\n",
+			defaultFile: "pick: x\n",
+			steps:       []editStep{{write: "pick: x\nlenses:\n  a: Z\n"}},
+			wantFile:    ptr("pick: x\nlenses:\n  a: Z\n"),
+		},
 		{
 			name:     "absent hub base shows the sparse header and a save leaving it keeps the header-only file",
 			state:    baseLyx,
@@ -203,7 +256,11 @@ func TestEdit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			baseDir, path := newBase(t, tt.state, "testmod", original)
+			content := original
+			if tt.existing != "" {
+				content = tt.existing
+			}
+			baseDir, path := newBase(t, tt.state, "testmod", content)
 			dirs := configengine.Dirs{Anchor: baseDir}
 			if tt.board {
 				dirs.Board = t.TempDir()
@@ -211,6 +268,15 @@ func TestEdit(t *testing.T) {
 			if tt.hubWide || tt.layer == configengine.LayerDefault {
 				if err := os.MkdirAll(configengine.ConfigDir(dirs.Board), 0o755); err != nil {
 					t.Fatalf("mkdir: %v", err)
+				}
+			}
+			if tt.defaultFile != "" {
+				defaultPath := configengine.ConfigFile(dirs.Board, "testmod")
+				if err := os.MkdirAll(filepath.Dir(defaultPath), 0o755); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(defaultPath, []byte(tt.defaultFile), 0o644); err != nil {
+					t.Fatalf("write default file: %v", err)
 				}
 			}
 			layer := tt.layer
@@ -235,6 +301,10 @@ func TestEdit(t *testing.T) {
 				}
 			}
 			spec := configengine.Spec{Name: "testmod", Template: []byte(template), Categories: tt.categories, HubWide: tt.hubWide, SeedOnly: tt.seedOnly}
+			if tt.overlay {
+				spec = overlaySpec()
+				spec.Name = "testmod"
+			}
 
 			var calls int
 			var saw string

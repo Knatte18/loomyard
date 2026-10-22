@@ -10,6 +10,8 @@
 // The result is resolved through envsource's markers once, after the merge.
 // A default- or worktree-layer file holding units the template lacks, open-map entries and retired keys aside, still loads, and is logged at Warn naming the file, the keys and the `lyx config reconcile` that removes them;
 // the warning is logged once per file and key list in a process.
+// A loader whose module lists entries that may match nothing, such as `lenses`' `remove`, reports the unmatched ones through [WarnSkippedEntries]:
+// one Warn naming the highest layer file holding the key, once per file, key and entry list in a process.
 //
 // A present file whose content fails to parse, lacks a key inside a list element or fails to resolve returns an error marked [ErrInvalid];
 // an absent base file or `_lyx/`, an unreadable file and a base directory failure stay unmarked.
@@ -58,7 +60,8 @@
 // A [Stack] also names, in `Origins`, the highest layer holding each top-level key.
 // The merged document is expanded once, against `Board` for a hub-wide module and `Anchor` otherwise.
 //
-// [Provenance] returns the resolved document of [Load], with strictness and refusals unchanged, each unit's line comment naming the highest layer whose file holds it, or `template` when none does.
+// [Provenance] returns the resolved document of [Load], with strictness and refusals unchanged, each unit's line comment naming the highest layer whose file holds it, or `template` when none does;
+// a unit no file holds that the picked overlay document holds is labelled `template:<value>`.
 // It is what `lyx config <module> --resolved` prints.
 //
 // # The local rule
@@ -92,6 +95,25 @@
 // [Set] takes a trailing variadic openMaps, and a [Spec] carries `OpenMaps`: the dotted paths of the module's open maps, mappings whose keys the user owns.
 // They are passed unchanged to yamlengine, which defines what a declared path changes;
 // with none declared, every caller behaves as before.
+//
+// # Template overlay
+//
+// A [Spec] may carry an [Overlay]: a `Selector`, the name of a top-level template key, and `Documents`, each selector value mapped to an overlay document.
+// The selector's scalar value in the base layer's file picks one document, and the effective template is the spec's template with that document merged over it under the spec's open maps, so an overlay name under a per-name map replaces or adds one entry whole.
+// An absent selector or an empty value picks none, and a spec with no overlay is unchanged.
+// [EffectiveTemplate] composes it from a base document and [TemplateUnder] reads the base layer's file and does the same, so a caller judging a file above the base composes nothing itself.
+// Every judging path uses the effective template: the load's unknown-key warning, template fill and missing-key check, [BelowLayer], and [Provenance].
+// A value no document names, or a non-scalar value, is an [ErrInvalid] error naming the shipped values and the `lyx config` command that sets the selector in the base.
+// Only the base layer picks: in a hub a worktree file holding the selector with a value other than the default file's is refused when read, naming the line to delete and the `--layer default` write from the prime worktree.
+// A worktree value equal to the base's changes no selection and loads.
+//
+// The write side follows the same rule.
+// [BaseScaffold] returns the template with every per-name map emptied for a spec with a selector, so no scaffolded entry pins itself over the picked layer.
+// [Set] judges a base-layer write against the template its own document picks.
+// The selector's value is the last pair setting it, else the one the file holds.
+// A write to a layer above the base is judged against [TemplateUnder], and an unknown value fails before anything is written.
+// [Set] and [Edit] refuse a hub worktree write or save that leaves the selector holding a value other than the default file's, writing nothing or putting the file back.
+// The refusal names the line to delete when the file held the selector before.
 //
 // # Per-name maps
 //

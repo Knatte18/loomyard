@@ -215,6 +215,13 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 		logger.Info("configengine: degrading to embedded template", "module", spec.Name, "reason", degradeReason)
 	}
 
+	// Every judging below reads the effective template: the base template with the overlay the base layer picks laid over it.
+	effective, err := EffectiveTemplate(spec, baseDocument(dirs, spec, stack.Layers), dirs.Board != "")
+	if err != nil {
+		return nil, err
+	}
+	spec.Template = effective
+
 	if err := warnUnknownKeys(stack.Layers, spec); err != nil {
 		return nil, err
 	}
@@ -301,6 +308,30 @@ func warnUnknownKeys(layers []LayerDoc, spec Spec) error {
 		}
 		logger.Warn("configengine: config file holds keys the template lacks, and no loader reads them", "module", spec.Name, "layer", string(layer.Layer), "file", layer.Path, "keys", keys, "way_forward", wayForward)
 	}
+	return nil
+}
+
+// warnedSkippedEntries holds, as file, key and entry list, every skipped-entries warning this process has logged.
+var warnedSkippedEntries sync.Map
+
+// WarnSkippedEntries logs one Warn for entries of the top-level list key that a loader skipped because they matched nothing.
+// The warning names the module, the highest layer file holding key, that file, the key and the entries.
+// A file, key and entry list already warned in this process is not warned again, so a loader in a poll loop warns once.
+// It returns the errors of [StackLayers].
+func WarnSkippedEntries(dirs Dirs, spec Spec, key string, entries []string) error {
+	stack, err := StackLayers(dirs, spec)
+	if err != nil {
+		return err
+	}
+	origin, held := stack.Origins[key]
+	if !held {
+		return nil
+	}
+	list := strings.Join(entries, ",")
+	if _, warned := warnedSkippedEntries.LoadOrStore(origin.Path+"\x00"+key+"\x00"+list, true); warned {
+		return nil
+	}
+	logger.Warn("configengine: config file lists entries that match nothing, and they are skipped", "module", spec.Name, "layer", string(origin.Layer), "file", origin.Path, "key", key, "entries", list)
 	return nil
 }
 

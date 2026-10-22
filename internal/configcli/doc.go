@@ -19,7 +19,7 @@
 // Under a board every file layer of a module that is not seed-only is sparse, the repo default included: `--set` on any layer writes only the keys set through `yamlengine.SetSparse`, and an editor edit of an absent base scaffolds `configengine.SparseBaseHeader` while an absent layer above it is scaffolded empty.
 // `--print --layer <name>` prints that layer's file verbatim; `--print` of all modules prints each module's own file.
 // `lyx config menu` marks each module with the layers that hold a file, as `loom (default, local)` or `gate (default, machine)`, or `(template)` when none does.
-// `lyx config <module> --resolved` prints the merged result through `configengine.Provenance`, each unit's line comment naming the layer it came from: `template`, `default`, `worktree`, `machine` or `local`.
+// `lyx config <module> --resolved` prints the merged result through `configengine.Provenance`, each unit's line comment naming the layer it came from: `template`, `template:<value>` for a unit only the template overlay the base picks holds, `default`, `worktree`, `machine` or `local`.
 // It is read-only, refused beside `--print`, `--set` or `--layer` and without a module, and errors on an absent base layer as the module's loader does.
 //
 // A write to the default or the machine layer, by `--set`, by an editor edit or through the menu, is refused from any worktree that is not the hub's prime and from a session whose `LYX_STRAND_NAME` parses as a name carrying a slug, wherever its worktree resolves.
@@ -61,6 +61,7 @@
 // A module whose spec sets `configengine.Spec.JSONEntries`, the run profiles of `profiles`, takes instead a top-level name and a JSON object, as in `lyx config profiles --set wide='{"darn":{"review_max_bounces":2}}'`:
 // the object replaces that entry whole or is appended as a new one, the other entries left as they are, and a value that is not a JSON object is refused.
 // An absent hub file starts from the template.
+// A module with a template overlay picks its layer through a selector key only the base file may hold, so a hub worktree write picking a layer the base does not pick is refused, naming `--layer default` from the prime worktree.
 //
 // Every `--set` write, on any layer, and every hub-wide editor save is then checked by loading the module through its own loader (`configreg.Module.CheckLoad`), and the written file is put back as it was when the load fails.
 // A board-dir write loads the board file alone, and any other write loads the worktree's stack.
@@ -71,7 +72,8 @@
 // A darn save that empties `tree_scope` while `tree_scope_verify` stays non-empty, over a hub file that held a tree, is told to run `lyx config darn --set tree_scope_verify=` first and then remove the trees in the editor again.
 //
 // `lyx config reconcile` drops or fills keys across every module against its template, carrying each module's open maps whole;
-// it is a dry run unless applied.
+// it judges a file against the template its base layer's picked overlay composes, so a lens entry equal to the picked layer's prose is dropped.
+// It is a dry run unless applied.
 // A per-name map entry holding the template's value is reported under `dropped` and left out of the written file, and applying rewrites a file whenever the reconcile adds, removes or drops anything.
 // A module that retires keys or floors a value declares a migration, which reconcile runs over its present file first;
 // the dry run lists each rewrite under the module's `migrated` key, and applying writes the migrated file, even when the reconcile itself adds, removes and drops nothing.

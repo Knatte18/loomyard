@@ -177,7 +177,7 @@ func Names() []string {
 	return names
 }
 
-// Fingerprint returns a hex digest of the registry that changes whenever a registered module's name, flags, open maps, per-name maps or template text changes.
+// Fingerprint returns a hex digest of the registry that changes whenever a registered module's name, flags, open maps, per-name maps, template text, or overlay selector or overlay document changes.
 // A change that only swaps a module's Migrate hook leaves it unchanged, since a function value has no stable bytes.
 func Fingerprint() string {
 	return fingerprintOf(Modules())
@@ -213,6 +213,24 @@ func fingerprintOf(modules []Module) string {
 			writeField(perNameMap)
 		}
 		writeField(m.Template())
+		if m.Spec == nil {
+			continue
+		}
+		// A layer's prose is part of what a hub reconciles against, so a binary changing only a layer changes the stamp.
+		overlay := m.Spec().Overlay
+		if overlay.Selector == "" && len(overlay.Documents) == 0 {
+			continue
+		}
+		writeField(overlay.Selector)
+		names := make([]string, 0, len(overlay.Documents))
+		for name := range overlay.Documents {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			writeField(name)
+			writeField(string(overlay.Documents[name]))
+		}
 	}
 	return hex.EncodeToString(hash.Sum(nil))
 }
