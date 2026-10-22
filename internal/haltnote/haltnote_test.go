@@ -34,13 +34,6 @@ func TestRenderParse(t *testing.T) {
 			{Producer: "Plan-Write", Outcome: "blocked", At: "2026-01-02T03:05:06Z"},
 		},
 	}
-	withParent := Note{
-		Producer:     "Land",
-		State:        "failed",
-		Reason:       "worktree is dirty",
-		TraceFile:    "t.log",
-		ParentStatus: "a.go\nb.go",
-	}
 
 	tests := []struct {
 		name        string
@@ -50,7 +43,6 @@ func TestRenderParse(t *testing.T) {
 	}{
 		{name: "blocked note with anomaly and history", note: blocked, golden: blockedGolden},
 		{name: "no history", note: Note{Producer: "P", State: "failed", Reason: "r", TraceFile: "t"}, wantContain: "history:\nno history entries\n"},
-		{name: "parent status", note: withParent, wantContain: "\nparent fabric status:\na.go\nb.go\n"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -83,6 +75,32 @@ func TestRenderParse(t *testing.T) {
 		want := Note{Producer: "Plan-Write", State: "blocked", Reason: "the plan lacks a card", TraceFile: "t"}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("Parse = %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("an older note's parent fabric status section is skipped and not re-rendered", func(t *testing.T) {
+		t.Parallel()
+		got, err := Parse([]byte(blockedGolden + "\nparent fabric status:\na.go\nb.go\n"))
+		if err != nil {
+			t.Fatalf("Parse: %v", err)
+		}
+		want := Note{
+			Producer:       "Plan-Write",
+			State:          "blocked",
+			Reason:         "the plan lacks a card",
+			Anomaly:        "process-signal",
+			HistoryEntries: 2,
+			TraceFile:      "/tmp/trace.log",
+			History: []Row{
+				{Producer: "Discussion-Write", Outcome: "done", At: "2026-01-02T03:04:05Z"},
+				{Producer: "Plan-Write", Outcome: "blocked", At: "2026-01-02T03:05:06Z"},
+			},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("Parse = %+v, want %+v", got, want)
+		}
+		if rendered := string(Render(got)); strings.Contains(rendered, "parent fabric status") {
+			t.Fatalf("Render %q carries a parent fabric status section; want none", rendered)
 		}
 	})
 

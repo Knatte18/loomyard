@@ -15,14 +15,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// settledGuard is the run's goto guard over its settled review segments, reading the Publish failure record of the task worktree.
+// settledGuard is the run's whole goto guard: the Finalize arm first, then the settled-segment arm over its settled review segments, which reads the Publish failure record of the task worktree.
 // It needs a known location.
 func (c *loomCLI) settledGuard() shedengine.GotoGuard {
 	location := c.location
 	verifyPaths := verifytree.NewPaths(location.WorktreePath(), verifytree.Dir(location.AnchorPath()))
-	return settledSegmentGuard(c.routing.Producers, loomengine.LoomReviewsDir(location), func() (verifytree.PublishFailure, bool, error) {
+	return composeGotoGuards(c.finalizeGuard(), settledSegmentGuard(c.routing.Producers, loomengine.LoomReviewsDir(location), func() (verifytree.PublishFailure, bool, error) {
 		return verifytree.ReadPublishFailure(verifyPaths)
-	})
+	}))
 }
 
 // settledSegmentGuard refuses a goto onto a review or fix row of a review segment whose Bouncer holds a live settle record, since such a goto would re-run a settled review.

@@ -118,6 +118,7 @@ func TestGoDriver_Settle(t *testing.T) {
 		return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "blocked", "reason": shedengine.ReasonBounceBudgetExhausted + " for Build; way forward: the parent resumes"},
 			map[string]any{"state": "blocked", "current_producer": "Build", "history_length": 2})
 	}
+	const startRefusal = `the parent's code checkout /hub/parent has uncommitted tracked paths: "a.go"`
 	const guardRefusal = `goto target "Plan" refused: a settled review would re-run`
 	guardRefusedStep := func(t *testing.T) []byte {
 		return driveEnvelopeJSON(t, map[string]any{"ok": false, "kind": "producer", "error": guardRefusal, "arbiter_attempt": "1"},
@@ -199,6 +200,11 @@ func TestGoDriver_Settle(t *testing.T) {
 
 		// Each no-group field leaves that optional group nil for the row.
 		noArbiter, noVerify, noHandOver, noTamper, noCommit bool
+
+		// startCheck wires the start check, which answers startRefusal and startErr.
+		startCheck   bool
+		startRefusal string
+		startErr     error
 
 		wantCalls    []string
 		wantActions  []string
@@ -525,6 +531,44 @@ func TestGoDriver_Settle(t *testing.T) {
 			noCommit:  true,
 			wantCalls: []string{"step"}, wantExit: ExitDone,
 		},
+		{
+			name:  "a blocked start the check refuses hands back quoting the refusal and steps nothing",
+			steps: []func(*testing.T) []byte{}, initialStatus: &blockedStatus, startCheck: true, startRefusal: startRefusal,
+			wantCalls: []string{"start-check:Build"}, wantActions: []string{shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerParent},
+			wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{1: {startRefusal}},
+		},
+		{
+			name:  "a blocked start the check admits steps as usual",
+			steps: []func(*testing.T) []byte{done}, initialStatus: &blockedStatus, startCheck: true,
+			wantCalls: []string{"start-check:Build", "step", "commit-records"}, wantExit: ExitDone,
+		},
+		{
+			name:  "a blocked start whose check fails hands back quoting the error and steps nothing",
+			steps: []func(*testing.T) []byte{}, initialStatus: &blockedStatus, startCheck: true, startErr: errors.New("parent unreadable"),
+			wantCalls: []string{"start-check:Build"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+			wantReportHas: map[int][]string{1: {"parent unreadable"}},
+		},
+		{
+			name:  "an awaiting start runs no start check",
+			steps: []func(*testing.T) []byte{done}, initialStatus: &awaitingStatus, startCheck: true, startRefusal: startRefusal,
+			wantCalls: []string{"step", "commit-records"}, wantExit: ExitDone,
+		},
+		{
+			name:  "a start with no status file runs no start check",
+			steps: []func(*testing.T) []byte{done}, startCheck: true, startRefusal: startRefusal,
+			wantCalls: []string{"step", "commit-records"}, wantExit: ExitDone,
+		},
+		{
+			name:  "a restart with an open attempt resumes it and runs no start check",
+			steps: []func(*testing.T) []byte{}, initialStatus: &blockedStatus, restartAttempt: true, openKey: &blockedKey, openTackler: "tackler/1",
+			startCheck: true, startRefusal: startRefusal,
+			tacklerReturns: func() TacklerEnvelope {
+				envelope := tacklerOutcome(TacklerVerdictHandBack, 1)
+				envelope.AttemptDir = "reuse"
+				return envelope
+			}(),
+			wantCalls: []string{"tackler", "snapshot", "snapshot"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -729,6 +773,12 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 			if tt.noCommit {
 				deps.CommitRecords = nil
+			}
+			if tt.startCheck {
+				deps.StartCheck = func(row string) (string, error) {
+					calls = append(calls, "start-check:"+row)
+					return tt.startRefusal, tt.startErr
+				}
 			}
 
 			exit, err := Run(context.Background(), deps)

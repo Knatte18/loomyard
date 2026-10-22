@@ -324,6 +324,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 				return attempt.Snapshot, err
 			},
 		},
+		StartCheck: c.finalizeGuard(),
 	}
 	return deps, nil
 }

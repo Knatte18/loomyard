@@ -13,6 +13,8 @@ package fabricengine
 
 import (
 	"fmt"
+	"path/filepath"
+	"sort"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -106,16 +108,35 @@ func pickMergeSourceSHA(repo *gitrepo.Repo, localSHA string, localFound bool, re
 // The weft side is not evaluated: it is not a merge participant, so its dirtiness cannot affect a
 // warp-only merge's correctness, and checking it could only refuse a merge that would have been
 // right.
-func pairDirtyReason(f *Fabric) ([]string, error) {
-	warpDirty, _, err := worktreeDirty(scopeTracked, f.warpPath)
+// The reason is decided on the checkout's worktree-relative, sorted tracked dirty paths, which are returned beside it so a guard error can carry them.
+func pairDirtyReason(f *Fabric) ([]string, []string, error) {
+	paths, err := codeDirtyPaths(f)
 	if err != nil {
-		return nil, fmt.Errorf("fabricengine: check checkout dirtiness: %w", err)
+		return nil, nil, fmt.Errorf("fabricengine: check checkout dirtiness: %w", err)
 	}
 
-	if warpDirty {
-		return []string{mergeReasonWorktreeDirty}, nil
+	if len(paths) > 0 {
+		return []string{mergeReasonWorktreeDirty}, paths, nil
 	}
-	return nil, nil
+	return nil, nil, nil
+}
+
+// codeDirtyPaths returns the tracked uncommitted paths of f's code checkout, relative to it, slash-separated and sorted.
+func codeDirtyPaths(f *Fabric) ([]string, error) {
+	absolute, err := trackedDirtyPaths(f.warpPath)
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(absolute))
+	for _, p := range absolute {
+		rel, err := filepath.Rel(f.warpPath, p)
+		if err != nil {
+			return nil, fmt.Errorf("relativize %s to %s: %w", p, f.warpPath, err)
+		}
+		paths = append(paths, filepath.ToSlash(rel))
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 // upstreamSHAAt resolves dir's checked-out branch's upstream tracking ref to a plain SHA.

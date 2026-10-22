@@ -125,31 +125,55 @@ func assertNoVocabularyLeak(t *testing.T, label, s string) {
 // consumer's own tier asserts it branches on the accessor.
 func TestMergeGuardError_WorktreeDirty(t *testing.T) {
 	tests := []struct {
-		name    string
-		reasons []string
-		want    bool
+		name       string
+		reasons    []string
+		dirty      bool
+		inProgress bool
+		notSynced  bool
+		detached   bool
 	}{
 		{
 			name:    "dirty reason alone",
 			reasons: []string{mergeReasonWorktreeDirty},
-			want:    true,
+			dirty:   true,
 		},
 		{
-			name:    "a different single reason",
-			reasons: []string{mergeReasonAlreadyInProgress},
-			want:    false,
+			name:       "a different single reason",
+			reasons:    []string{mergeReasonAlreadyInProgress},
+			inProgress: true,
 		},
 		{
-			name:    "dirty reason alongside others",
-			reasons: []string{mergeReasonAlreadyInProgress, mergeReasonWorktreeDirty, mergeReasonNotSynced},
-			want:    true,
+			name:      "not-synced reason alone",
+			reasons:   []string{mergeReasonNotSynced},
+			notSynced: true,
+		},
+		{
+			name:     "detached reason alone",
+			reasons:  []string{mergeReasonDetachedHead},
+			detached: true,
+		},
+		{
+			name:       "dirty reason alongside others",
+			reasons:    []string{mergeReasonAlreadyInProgress, mergeReasonWorktreeDirty, mergeReasonNotSynced},
+			dirty:      true,
+			inProgress: true,
+			notSynced:  true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := &MergeGuardError{Reasons: tt.reasons}
-			if got := err.WorktreeDirty(); got != tt.want {
-				t.Errorf("WorktreeDirty() = %v; want %v", got, tt.want)
+			if got := err.WorktreeDirty(); got != tt.dirty {
+				t.Errorf("WorktreeDirty() = %v; want %v", got, tt.dirty)
+			}
+			if got := err.AlreadyInProgress(); got != tt.inProgress {
+				t.Errorf("AlreadyInProgress() = %v; want %v", got, tt.inProgress)
+			}
+			if got := err.NotSynced(); got != tt.notSynced {
+				t.Errorf("NotSynced() = %v; want %v", got, tt.notSynced)
+			}
+			if got := err.DetachedHead(); got != tt.detached {
+				t.Errorf("DetachedHead() = %v; want %v", got, tt.detached)
 			}
 		})
 	}

@@ -145,36 +145,7 @@ func TestWriteHaltNote_NamesAnomalyProducerReasonAndHistory(t *testing.T) {
 		history  []shedengine.HistoryEntry
 		wantKind loomengine.AnomalyKind
 		want     []string
-		// parentStatus is the note's ParentFabricStatus; empty writes no section.
-		parentStatus string
 	}{
-		{
-			name:         "ParentPaths",
-			state:        shedengine.StateBlocked,
-			reason:       "parent-side merge failed: worktree dirty",
-			history:      history,
-			wantKind:     loomengine.AnomalyEscalation,
-			want:         []string{"parent fabric status:\n/hub/main/a.go\n/hub/main/b.go\n"},
-			parentStatus: renderParentFabricStatus([]string{"/hub/main/a.go", "/hub/main/b.go"}, nil),
-		},
-		{
-			name:         "ParentReadError",
-			state:        shedengine.StateBlocked,
-			reason:       "parent-side merge failed: worktree dirty",
-			history:      history,
-			wantKind:     loomengine.AnomalyEscalation,
-			want:         []string{"parent fabric status:\ncould not be read: no live pair\n"},
-			parentStatus: renderParentFabricStatus(nil, errors.New("no live pair")),
-		},
-		{
-			name:         "ParentClean",
-			state:        shedengine.StateBlocked,
-			reason:       "parent-side merge failed: worktree dirty",
-			history:      history,
-			wantKind:     loomengine.AnomalyEscalation,
-			want:         []string{"parent fabric status:\nthe parent pair has no uncommitted tracked path\n"},
-			parentStatus: renderParentFabricStatus(nil, nil),
-		},
 		{
 			name:     "BudgetPrefixedBlocked",
 			state:    shedengine.StateBlocked,
@@ -212,7 +183,7 @@ func TestWriteHaltNote_NamesAnomalyProducerReasonAndHistory(t *testing.T) {
 			t.Parallel()
 
 			dir := t.TempDir()
-			n := haltNote{Producer: loomshed.NameWebster, State: tt.state, Reason: tt.reason, History: tt.history, TraceFile: "/logs/trace.log", ParentFabricStatus: tt.parentStatus}
+			n := haltNote{Producer: loomshed.NameWebster, State: tt.state, Reason: tt.reason, History: tt.history, TraceFile: "/logs/trace.log"}
 			if err := writeHaltNote(dir, n); err != nil {
 				t.Fatalf("writeHaltNote() = %v; want nil", err)
 			}
@@ -234,8 +205,8 @@ func TestWriteHaltNote_NamesAnomalyProducerReasonAndHistory(t *testing.T) {
 					t.Errorf("halt note %q does not contain %q", got, w)
 				}
 			}
-			if tt.parentStatus == "" && strings.Contains(got, "parent fabric status") {
-				t.Errorf("halt note %q carries a parent fabric status section; want none for an empty field", got)
+			if strings.Contains(got, "parent fabric status") {
+				t.Errorf("halt note %q carries a parent fabric status section; want none", got)
 			}
 		})
 	}
@@ -343,45 +314,6 @@ func TestLoomPostRun_HaltNotes(t *testing.T) {
 				note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md"))
 				if tt.wantAnomaly != "" && !strings.Contains(note, "anomaly: "+string(tt.wantAnomaly)) {
 					t.Errorf("loom-halt.md = %q; want it to carry the %s anomaly", note, tt.wantAnomaly)
-				}
-			})
-		}
-	})
-
-	t.Run("DirtyReasonCarriesTheParentFabricStatusAndAnotherReasonDoesNot", func(t *testing.T) {
-		t.Parallel()
-
-		tests := []struct {
-			name   string
-			reason string
-			// wantReads is how many times the parent's dirty paths are read; zero means the note has no section.
-			wantReads int
-		}{
-			{"DirtyReason", "parent-side merge failed: fabricengine: merge preconditions failed: worktree dirty", 1},
-			{"OtherReason", "stuck", 0},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				t.Parallel()
-
-				f := newHaltFixture(t)
-				reads := 0
-				f.c.parentDirtyPaths = func() ([]string, error) {
-					reads++
-					return []string{"/hub/main/a.go"}, nil
-				}
-				res := shedengine.Result{Outcome: shedengine.RunBlocked, HaltedProducer: loomshed.NameWebster, Reason: tt.reason}
-
-				f.c.loomPostRun(context.Background(), res, nil)
-				note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md"))
-				if reads != tt.wantReads {
-					t.Errorf("parent dirty-paths reads = %d; want %d", reads, tt.wantReads)
-				}
-				if hasSection := strings.Contains(note, "parent fabric status:\n/hub/main/a.go\n"); hasSection != (tt.wantReads == 1) {
-					t.Errorf("halt note %q: parent fabric status section present = %v; want %v", note, hasSection, tt.wantReads == 1)
-				}
-				if tt.wantReads == 0 && strings.Contains(note, "parent fabric status") {
-					t.Errorf("halt note %q carries a parent fabric status section; want none", note)
 				}
 			})
 		}

@@ -175,6 +175,7 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 // The push lock file is created explicitly here because CommitWeft never writes it — only
 // PushCoalesced does — so leaving it out would make the exclude assertion vacuous.
 // It also covers Fabric.DirtyPaths: both sides' modified tracked paths come back absolute under their checkouts, and an untracked file does not.
+// Fabric.CodeDirtyPaths returns the code checkout and only its tracked path, relative to it.
 func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testing.T) {
 	t.Parallel()
 
@@ -219,6 +220,25 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	weftTrackedPath := filepath.Join(weftFixture.PrimeRecords(), "_lyx", "config.yaml")
 	if want := []string{warpTrackedPath, weftTrackedPath}; !slices.Equal(dirty, want) {
 		t.Errorf("DirtyPaths() = %v; want exactly the modified tracked paths %v, with the untracked %s and %s omitted", dirty, want, warpDirtyPath, pushLockPath)
+	}
+
+	checkout, codePaths, err := f.CodeDirtyPaths()
+	if err != nil {
+		t.Fatalf("CodeDirtyPaths() error = %v", err)
+	}
+	gotCheckout, err := filepath.EvalSymlinks(checkout)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", checkout, err)
+	}
+	wantCheckout, err := filepath.EvalSymlinks(warpPath)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", warpPath, err)
+	}
+	if gotCheckout != wantCheckout {
+		t.Errorf("CodeDirtyPaths() checkout = %q; want the code checkout %q", gotCheckout, wantCheckout)
+	}
+	if want := []string{"README"}; !slices.Equal(codePaths, want) {
+		t.Errorf("CodeDirtyPaths() paths = %v; want exactly the code side's tracked path %v", codePaths, want)
 	}
 
 	entries, err := f.Status()

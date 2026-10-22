@@ -63,6 +63,14 @@ func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
 		t.Errorf("MidMerge() identity = (%q, %q, start %q, source %q); want (merge-in, feature, start %q, source %q)", got.Verb, got.Source, got.StartSHA, got.SourceSHA, wantStartSHA, wantSourceSHA)
 	}
 	assertMergeBlocked(t, h.Location, true)
+
+	fromFabric, err := f.MidMerge()
+	if err != nil {
+		t.Fatalf("Fabric.MidMerge() error = %v", err)
+	}
+	if !reflect.DeepEqual(fromFabric, got) {
+		t.Errorf("Fabric.MidMerge() = %+v; want MidMerge(location) = %+v", fromFabric, got)
+	}
 }
 
 func TestMidMerge_FabricParkedResolved_ParkedNoConflicts(t *testing.T) {

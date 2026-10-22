@@ -13,10 +13,11 @@ import (
 const NoteID = "loom-halt"
 
 const (
-	titlePrefix     = "loom halted "
-	fence           = "```"
-	historyHeader   = "history:"
-	noHistoryLine   = "no history entries"
+	titlePrefix   = "loom halted "
+	fence         = "```"
+	historyHeader = "history:"
+	noHistoryLine = "no history entries"
+	// parentHeader opened a section older binaries wrote; Parse skips every line under it.
 	parentHeader    = "parent fabric status:"
 	rowSeparator    = " / "
 	noteFileName    = NoteID + ".md"
@@ -36,8 +37,6 @@ type Note struct {
 	HistoryEntries int
 	TraceFile      string
 	History        []Row
-	// ParentStatus is the rendered dirty state of the parent pair; empty writes no section.
-	ParentStatus string
 }
 
 // Row is one history row of a halt note.
@@ -65,9 +64,6 @@ func Render(n Note) []byte {
 	}
 	for _, r := range n.History {
 		b.WriteString("- " + r.Producer + rowSeparator + r.Outcome + rowSeparator + r.At + "\n")
-	}
-	if n.ParentStatus != "" {
-		b.WriteString("\n" + parentHeader + "\n" + n.ParentStatus + "\n")
 	}
 	return []byte(b.String())
 }
@@ -103,10 +99,6 @@ func Parse(data []byte) (Note, error) {
 				n.History = append(n.History, row)
 			}
 		case parentHeader:
-			if n.ParentStatus != "" {
-				n.ParentStatus += "\n"
-			}
-			n.ParentStatus += line
 		default:
 			key, value, ok := strings.Cut(line, ": ")
 			if !ok {
@@ -126,7 +118,6 @@ func Parse(data []byte) (Note, error) {
 			}
 		}
 	}
-	n.ParentStatus = strings.TrimRight(n.ParentStatus, "\n")
 
 	if !sawProducer || !sawState {
 		return Note{}, errors.New("haltnote: note lacks its producer or state line")

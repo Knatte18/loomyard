@@ -11,6 +11,7 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -73,6 +74,10 @@ func TestWeftGuards_DetachedWeftDoesNotRefuseWarpDetachedStillDoes(t *testing.T)
 
 	_, err := f1.MergeIn("feature")
 	assertSoleGuardReason(t, "MergeIn(feature) [warp detached]", err, "checkout is not on a branch")
+	var detachedErr *fabricengine.MergeGuardError
+	if errors.As(err, &detachedErr) && (detachedErr.Checkout != "" || len(detachedErr.DirtyPaths) != 0) {
+		t.Errorf("detached-warp guard error carries Checkout %q and DirtyPaths %q; want both empty beside no dirty reason", detachedErr.Checkout, detachedErr.DirtyPaths)
+	}
 
 	h2, f2, commitOnWarpBranch2, commitOnWeftBranch2, _, _ := newMergePairFixture(t, ".")
 	commitOnWarpBranch2("feature", "feature.txt", "feature\n", "feature: warp")

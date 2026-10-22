@@ -684,6 +684,7 @@
 // instead of parsing prose.
 // `PushAnchored(l, opts, lockWait)`, `PushPairAnchored(l, opts, lockWait)`, `MergeStateActive(l)`, `MidMerge(l)` and `RequireDrivableWorktree(l)` are further vocabulary-neutral, `l`-in entry points reachable the same way `CommitAnchoredPaths` is.
 // `MidMerge(l)` answers whether the pair carries an unfinished merge and which paths are still conflicted.
+// On an opened `*Fabric`, `Fabric.MidMerge` is the same probe over that pair's own location, and `Fabric.CodeDirtyPaths` reads the code checkout's tracked dirty paths, the list the dirty merge guard decides on.
 // For a parked fabric merge the answer also carries the record's verb, source branch and the code side's source and start SHAs.
 // `lyx loom start` consults it before putting a driver to work.
 // `RequireDrivableWorktree` is `RequireWarpWorktree` under a name a non-owner may say at all — the
@@ -1374,6 +1375,9 @@
 // taking the write lock or touching either checkout — which is a real difference, not a duplication:
 // a refusal there mutates nothing, while a refusal from the sync step can already have
 // fast-forwarded the other side.
+//
+// **The dirty guard decides on a path list.** `pairDirtyReason` reads the code checkout's tracked dirty paths once, worktree-relative, slash-separated and sorted, and reports the dirty reason only when that list is not empty.
+// A `MergeGuardError` carrying the dirty reason carries that checkout and those paths in `Checkout` and `DirtyPaths`, outside `Error()`, which stays the fixed path-free string.
 //
 // **The warp checkout must be on a branch.** A merge verb refuses with the guard reason `checkout is
 // not on a branch` while the warp checkout has HEAD pointing straight at a commit. A conclude-commit

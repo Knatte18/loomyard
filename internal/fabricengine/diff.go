@@ -110,6 +110,17 @@ func (f *Fabric) DirtyPaths() ([]string, error) {
 	return append(warpPaths, weftPaths...), nil
 }
 
+// CodeDirtyPaths returns the code checkout's absolute path and its tracked uncommitted paths, relative to that checkout, slash-separated and sorted.
+// It is the read the dirty merge guard decides on, and it never lists the records checkout.
+// A read failure is returned wrapped.
+func (f *Fabric) CodeDirtyPaths() (checkout string, paths []string, err error) {
+	paths, err = codeDirtyPaths(f)
+	if err != nil {
+		return "", nil, fmt.Errorf("fabricengine: code checkout dirty paths: %w", err)
+	}
+	return f.warpPath, paths, nil
+}
+
 // Status reports every currently-uncommitted path across both sides of the warp<->weft pair, merged
 // into one side-labelled slice.
 // Unlike Diff, there is no correspondence anchor involved — this is a live worktree read.

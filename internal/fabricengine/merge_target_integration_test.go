@@ -262,6 +262,7 @@ func TestMerge_DirtyTargetHalts(t *testing.T) {
 	if len(guardErrWarp.Reasons) != 1 || guardErrWarp.Reasons[0] != "worktree dirty" {
 		t.Errorf("warp-dirty guard reasons = %v; want exactly [\"worktree dirty\"]", guardErrWarp.Reasons)
 	}
+	assertGuardDirt(t, guardErrWarp, targetWarpPath1, []string{"tracked.txt"})
 
 	if got := fabricengine.CurrentSHAForTest(t, targetWarpPath1); got != warpBefore1 {
 		t.Errorf("[warp dirty] target warp HEAD changed to %q; want unchanged %q", got, warpBefore1)
