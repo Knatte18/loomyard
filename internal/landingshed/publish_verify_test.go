@@ -415,6 +415,39 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 		})
 	}
 
+	t.Run("a told classifier chooses the record's target and the reason's lead and way forward", func(t *testing.T) {
+		fx := newPublishVerifyFixture(t, gateLandingCall, gatePublishCall)
+		fx.p.deps.TaskHead = func() (string, error) { return "merged-head", nil }
+		var seen verifytree.PublishFailure
+		fx.p.gate.classify = func(_ context.Context, failure verifytree.PublishFailure) FailureRoute {
+			seen = failure
+			return FailureRoute{Target: "Merge-In", WayForward: "the told not-owned route", Lead: " outside the task's impacted set, in example.com/m/a,"}
+		}
+		fx.p.gate.recorder = &failureRecorder{
+			failingTests: func(string) []verifytree.FailedTest { return wantTests },
+			head:         fx.p.deps.TaskHead,
+		}
+		fx.gate.fake.resultByCommand = map[string]verifytree.Result{gatePublishCall: failed}
+		writeVerifyLog(t, fx.gate, plainLog)
+		failOnGitHubClient(t)
+
+		outcome, reason, err := fx.call(t)
+
+		if err != nil || outcome != shedengine.Stuck {
+			t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+		}
+		if !strings.Contains(reason, "publish gate failed outside the task's impacted set, in example.com/m/a, after merging parent branch") || !strings.HasSuffix(reason, "way forward: the told not-owned route") {
+			t.Errorf("reason %q; want the classifier's lead and way forward", reason)
+		}
+		got, ok, err := verifytree.ReadPublishFailure(fx.gate.paths)
+		if err != nil || !ok || got.Target != "Merge-In" {
+			t.Fatalf("record = %+v, %v, %v; want target Merge-In", got, ok, err)
+		}
+		if seen.Kind != verifytree.FailureKindPublish || seen.Row != "Publish" || !reflect.DeepEqual(seen.Tests, wantTests) || seen.LogPath != got.LogPath || seen.Target != "" {
+			t.Errorf("classifier saw %+v; want the record as written with an empty target", seen)
+		}
+	})
+
 	t.Run("a passing publish removes a present record", func(t *testing.T) {
 		for _, publishCommand := range []string{"", gatePublishCall} {
 			fx := newPublishVerifyFixture(t, gateLandingCall, publishCommand)

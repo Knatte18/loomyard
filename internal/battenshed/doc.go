@@ -128,7 +128,9 @@
 // The `<row>-publish-retry` marker holds the retry's state and start time: `started` before the goto, `goto-done` after it, `resumed` after a resume that landed and `capped` when the retry gave up.
 // `resumed` and `capped` each spend the run's one retry, and the marker is cleared only where batten seeds a fresh status, so a restart neither repeats a finished retry nor resets the cap.
 // A goto refused as busy and a resume refused as not parked or as a busy pane are retried once per notice probe until the cap of thirty minutes after the start; any other goto refusal gives up at once.
-// A retry that gave up, or a second Publish halt after the retry ran, sends the usual blocked notice with words saying so, which tells the orch the failure needs judgement.
+// The target is the record's: a darn failure outside the task's impacted set names Merge-In, so the retry re-enters Merge-In, which merges a moved parent and re-runs the failed gate.
+// A retry that gave up, or a second halt at Merge-In or Publish after the retry ran, sends the usual blocked notice with words saying so, which tells the orch the failure needs judgement.
+// The notice carries the record's reason, which for such a failure says it lies outside the task's impacted set.
 // Any record that does not match, and any read error on the way to the decision, leaves the halt to the handling above.
 // The retry is split between two records: a Go driver's verify retry is counted in the child's settle records, and batten's in its marker.
 // With no marker, a blocked child at a verify row whose settle records show a Go verify retry counts as spent, so a run is never retried by both.

@@ -1464,7 +1464,7 @@ func (run *Run) identity() Result {
 // A non-nil error from a closure is returned verbatim, stores no memo and changes no count, per the "a gate error is never not passed" decision:
 // a gate that could not run has found no defect, it is an infrastructure fault, not a GateResult{Passed: false}.
 //
-// On a failing entry the method writes GateResult.Findings to <run.runDir>/gateFindingsFileName, overwriting any previous arrival's file so the agent always reads the current complaint (the "findings always ride a file" decision), and sets GateOutcome.FindingsPath to that path when the outcome did not pass.
+// On a failing entry the method writes GateResult.Findings to <run.runDir>/gateFindingsFileName, overwriting any previous arrival's file so the agent always reads the current complaint (the "findings always ride a file" decision), and sets GateOutcome.FindingsPath to that path and GateOutcome.Findings to that text when the outcome did not pass.
 // A write failure is a returned error, not a failed gate — findings the agent can never read cannot fix anything.
 // Both of this method's error returns come back unwrapped, on purpose:
 // this is a helper the two finalize/Wait call sites already wrap with their own "shuttle: gate: %w" context, so wrapping here too would double it, and it keeps this method's own negative-verdict return sites free of the completionsignal_enforcement_test.go tripwire's Errorf marker, which is reserved for the two call sites that actually finalize a run.
@@ -1496,7 +1496,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	failedAt := -1
 	pendingAt := -1
 	pendingSend, pendingWayForward := "", ""
-	findingsPath := ""
+	findingsPath, findings := "", ""
 	terminal, reason := false, ""
 	for i, entry := range run.gate {
 		line := GateEntryOutcome{Name: entry.Name, Attempts: run.gateSent[i]}
@@ -1560,6 +1560,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 			if writeErr := os.WriteFile(findingsPath, []byte(result.Findings), 0o644); writeErr != nil {
 				return nil, writeErr
 			}
+			findings = result.Findings
 			line.State = GateEntryFailed
 			failedAt = i
 			if !entry.PassOnCap {
@@ -1574,6 +1575,7 @@ func (run *Run) evaluateGate(final bool) (*GateOutcome, error) {
 	}
 	if !outcome.Passed {
 		outcome.FindingsPath = findingsPath
+		outcome.Findings = findings
 		outcome.Reason = reason
 	}
 

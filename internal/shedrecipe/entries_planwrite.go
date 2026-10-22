@@ -66,7 +66,7 @@ func planWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 		table.Gate = gate
 		return table, nil
 	}
-	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, rotate)
+	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, rotate).KeepGateFindings(env.gateFindingsPath(row.Name))
 	return loomshed.NewPlanWrite(row.Name, inner, env.CommitPlan), nil
 }
 

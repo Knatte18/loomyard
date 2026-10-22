@@ -25,6 +25,8 @@ type Targets struct {
 	Modules []ModuleTargets
 	// Guards maps the directory of each package outside the set to the sorted names of its `//lyx:guard` tests.
 	Guards map[string][]string
+	// BinaryTests are the sorted worktree-relative directories of every package whose tests import `internal/testkit/lyxbin`, inside the set or not; empty with Whole.
+	BinaryTests []string
 }
 
 // ModuleTargets is the impacted packages of one module.
@@ -117,7 +119,7 @@ func targetsFor(graph moduleGraph, changedPaths []string, guards map[string][]st
 		return wholeTargets("", fallback)
 	}
 
-	targets := Targets{Guards: map[string][]string{}}
+	targets := Targets{Guards: map[string][]string{}, BinaryTests: graph.addBinaryBuildingTests(map[string]bool{})}
 	if len(set) > 0 {
 		targets.Modules = []ModuleTargets{{Dir: ".", Packages: packageArgs(graph.packageDirs(set))}}
 	}
