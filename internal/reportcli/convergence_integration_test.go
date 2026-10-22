@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -205,6 +206,18 @@ func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 	envelope.RequireErr(t, out, primeName)
 	envelope.RequireErr(t, out, "lyx report timing")
 
+	// A resumed hub pause stands in for sleep when the machine's journal cannot be read here.
+	primeLocation, err := lyxcwd.Resolve(h.PrimeWorktree())
+	if err != nil {
+		t.Fatalf("resolve the prime: %v", err)
+	}
+	pause, err := hubgeom.PauseGeometry(primeLocation)
+	if err != nil {
+		t.Fatalf("pause geometry: %v", err)
+	}
+	writeFile(t, pause.RecordPath, fmt.Sprintf(`{"resumed":[{"scope":"hub","paused_at":%q,"resumed_at":%q}]}`,
+		testStart.Add(-2*time.Hour).Format(time.RFC3339), testStart.Add(-time.Hour).Format(time.RFC3339)))
+
 	out, code = runVerb("timing", h.PrimeWorktree())
 	timing := envelope.RequireOK(t, out)
 	if code != 0 {
@@ -221,8 +234,11 @@ func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
 	if phases, _ := timed["phases"].(map[string]any); len(phases) == 0 {
 		t.Errorf("timing run phases = %v; want a phases object", timed["phases"])
 	}
-	if note, _ := timing.Raw["sleep_note"].(string); note == "" {
-		t.Errorf("timing sleep_note = %v; want a note", timing.Raw["sleep_note"])
+	// Either the journal was read, or the seeded hub pause stands in for it: a wrong pause record path would report no recorded pause.
+	note, _ := timing.Raw["sleep_note"].(string)
+	journalRead := strings.HasPrefix(note, "Machine sleep, read from") || strings.HasPrefix(note, "No machine sleep is subtracted")
+	if !journalRead && !strings.Contains(note, "recorded pauses stand in") {
+		t.Errorf("timing sleep_note = %q; want a journal reading or the seeded hub pause standing in", note)
 	}
 	for _, finding := range timing.Raw["findings"].([]any) {
 		if text := fmt.Sprint(finding); strings.Contains(text, fabricengine.RecordsBranchName(slug)) && strings.Contains(text, "abandoned") {
