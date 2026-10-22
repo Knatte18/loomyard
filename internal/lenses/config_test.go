@@ -123,6 +123,68 @@ func TestLoad(t *testing.T) {
 		}
 	})
 
+	t.Run("remove drops a layer lens from the lenses, every fan and the hub's own fan", func(t *testing.T) {
+		boardDir, anchor := t.TempDir(), t.TempDir()
+		writeLensesYAML(t, boardDir, "lens_set: csharp\nremove: [numerics]\nfans:\n  mine: [numerics, generic]\n")
+
+		cfg, err := Load(configengine.Dirs{Anchor: anchor, Board: boardDir})
+		if err != nil {
+			t.Fatalf("Load() returned unexpected error: %v", err)
+		}
+		if _, defined := cfg.Lenses["numerics"]; defined {
+			t.Errorf("Load().Lenses holds numerics; want it removed")
+		}
+		for _, fanName := range []string{"review-code", "full"} {
+			if slices.Contains(cfg.Fans[fanName], "numerics") {
+				t.Errorf("Load().Fans[%s] = %v; want no numerics", fanName, cfg.Fans[fanName])
+			}
+		}
+		if want := []string{"generic"}; !slices.Equal(cfg.Fans["mine"], want) {
+			t.Errorf("Load().Fans[mine] = %v; want %v", cfg.Fans["mine"], want)
+		}
+	})
+
+	t.Run("a remove name matching no lens loads and warns once per process", func(t *testing.T) {
+		anchor := t.TempDir()
+		writeLensesYAML(t, anchor, "remove: [no-such-lens]\n")
+		logs := logcapture.CaptureVerbose(t)
+
+		for range 2 {
+			if _, err := Load(configengine.Dirs{Anchor: anchor}); err != nil {
+				t.Fatalf("Load() returned unexpected error: %v", err)
+			}
+		}
+		warnings := 0
+		for _, line := range strings.Split(logs.String(), "\n") {
+			if strings.Contains(line, "no-such-lens") && strings.Contains(line, configengine.ConfigFile(anchor, "lenses")) {
+				warnings++
+			}
+		}
+		if warnings != 1 {
+			t.Errorf("Load() twice logged %d warnings naming no-such-lens and the file; want 1; log: %s", warnings, logs.String())
+		}
+	})
+
+	t.Run("the skipped-name warning names the highest layer file holding remove", func(t *testing.T) {
+		boardDir, anchor := t.TempDir(), t.TempDir()
+		writeLensesYAML(t, boardDir, "remove: [other-missing]\n")
+		writeLensesYAML(t, anchor, "lenses:\n  mine: prose\n")
+		logs := logcapture.CaptureVerbose(t)
+
+		if _, err := Load(configengine.Dirs{Anchor: anchor, Board: boardDir}); err != nil {
+			t.Fatalf("Load() returned unexpected error: %v", err)
+		}
+		var warning string
+		for _, line := range strings.Split(logs.String(), "\n") {
+			if strings.Contains(line, "other-missing") {
+				warning = line
+			}
+		}
+		if !strings.Contains(warning, configengine.ConfigFile(boardDir, "lenses")) || !strings.Contains(warning, "layer=default") || strings.Contains(warning, configengine.ConfigFile(anchor, "lenses")) {
+			t.Errorf("warning = %q; want it to name the board file and layer=default, never the worktree file", warning)
+		}
+	})
+
 	t.Run("a lens prose holding a bare dollar sign loads verbatim", func(t *testing.T) {
 		anchor := t.TempDir()
 		writeLensesYAML(t, anchor, "lenses:\n  cost: |\n    Check the $5 fee.\n")
@@ -470,6 +532,33 @@ func TestCheckLoad(t *testing.T) {
 		undefinedAt := strings.Index(text, `fan "b-undefined" names undefined lens "missing"`)
 		if emptyAt == -1 || undefinedAt == -1 || emptyAt > undefinedAt {
 			t.Errorf("CheckLoad() = %q; want the a-empty failure, then the b-undefined failure", text)
+		}
+	})
+
+	t.Run("a remove emptying a fan passes the check and the fan is refused at resolution", func(t *testing.T) {
+		t.Parallel()
+		anchor := t.TempDir()
+		writeLensesYAML(t, anchor, "remove: [code-correctness, code-affected-set, code-tests, code-pattern-fit]\n")
+		dirs := configengine.Dirs{Anchor: anchor}
+
+		if err := CheckLoad(dirs); err != nil {
+			t.Errorf("CheckLoad() = %v; want nil", err)
+		}
+		cfg, err := Load(dirs)
+		if err != nil {
+			t.Fatalf("Load() returned unexpected error: %v", err)
+		}
+		if _, held := cfg.Fans["review-code"]; held {
+			t.Errorf("Load().Fans holds review-code; want it moved to EmptiedFans")
+		}
+		_, err = ResolveFan(cfg, "review-code")
+		if err == nil {
+			t.Fatal("ResolveFan(review-code) = nil error; want the emptied-fan refusal")
+		}
+		for _, want := range []string{"remove", "code-correctness", "way forward"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("ResolveFan(review-code) = %q; want it to contain %q", err, want)
+			}
 		}
 	})
 

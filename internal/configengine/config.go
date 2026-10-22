@@ -311,6 +311,30 @@ func warnUnknownKeys(layers []LayerDoc, spec Spec) error {
 	return nil
 }
 
+// warnedSkippedEntries holds, as file, key and entry list, every skipped-entries warning this process has logged.
+var warnedSkippedEntries sync.Map
+
+// WarnSkippedEntries logs one Warn for entries of the top-level list key that a loader skipped because they matched nothing.
+// The warning names the module, the highest layer file holding key, that file, the key and the entries.
+// A file, key and entry list already warned in this process is not warned again, so a loader in a poll loop warns once.
+// It returns the errors of [StackLayers].
+func WarnSkippedEntries(dirs Dirs, spec Spec, key string, entries []string) error {
+	stack, err := StackLayers(dirs, spec)
+	if err != nil {
+		return err
+	}
+	origin, held := stack.Origins[key]
+	if !held {
+		return nil
+	}
+	list := strings.Join(entries, ",")
+	if _, warned := warnedSkippedEntries.LoadOrStore(origin.Path+"\x00"+key+"\x00"+list, true); warned {
+		return nil
+	}
+	logger.Warn("configengine: config file lists entries that match nothing, and they are skipped", "module", spec.Name, "layer", string(origin.Layer), "file", origin.Path, "key", key, "entries", list)
+	return nil
+}
+
 // expansionDir returns the directory whose .env and process environment expand the merged document:
 // the board dir for a hub-wide module, else the anchor, else whichever is told.
 func expansionDir(dirs Dirs, spec Spec) string {

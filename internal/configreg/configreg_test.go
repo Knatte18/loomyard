@@ -81,7 +81,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"deny_python", "run_dir"},
 		"loom":    {"alignment", "alignment_pr_approve", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "merge_auto_accept", "merge_fixer_fan", "merge_reviewer_fan", "parent_review_wait_min", "plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan", "skip_alignment", "webster_auto_accept", "webster_fixer_fan", "webster_reviewer_fan"},
-		"lenses":  {"fans", "lens_set", "lenses"},
+		"lenses":  {"fans", "lens_set", "lenses", "remove"},
 	}
 	for _, m := range Modules() {
 		t.Run(m.Name, func(t *testing.T) {

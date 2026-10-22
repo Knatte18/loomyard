@@ -10,7 +10,6 @@
 // and it drops, reporting each, an entry whose prose or ordered fan list equals the effective template's current value, which leaves the loaded value unchanged.
 // Every other entry is kept as written, and a lens or fan the template lacks is kept and reported, never pruned.
 // A base-layer `--set` leaves template-equal entries out the same way.
-// A template lens or fan cannot be removed: a deleted one resolves to the template's value at the next load.
 // A fan is turned off at the loom or darn fan key entry that names it, by pointing the entry at another fan or setting it to "".
 //
 // A file is judged against, and a missing name filled from, the effective template: the base with the picked language layer laid over it.
@@ -25,10 +24,19 @@
 // A worktree file holding another value than the base's, and a name no layer carries, are refused naming that command.
 // lyx picks no layer itself.
 //
+// # Remove
+//
+// The key `remove` lists lens names.
+// After the strict decode, Load deletes each listed name from the lenses and every occurrence of it from every fan, the hub's own fans included.
+// A fan that had entries and is left empty leaves the fans and is recorded in `Config.EmptiedFans` with the removed names it held.
+// A name matching no lens is skipped with one Warn naming the highest layer file holding `remove`, logged once per file and list in a process, so a lens a later template edit or a layer switch takes away is harmless.
+// A worktree file's `remove` list replaces the hub's whole, as any list does when layers stack.
+//
 // # Guard keys
 //
-// `lenses`, `fans` and `lens_set` are guard keys, since a lens's prose, a fan's lens set and the layer that supplies them are what every review fork is given.
+// `lenses`, `fans`, `lens_set` and `remove` are guard keys, since a lens's prose, a fan's lens set, the layer that supplies them and the lenses taken out of every fan are what every review fork is given.
 // No local override layer and no run setting holds them, and configengine reads `lens_set` from the base layer only.
+// Only a tracked base or worktree file can hold `remove`, and a shortened fan still runs its remaining lenses.
 // The module is per-worktree, not hub-wide.
 //
 // # Load
@@ -40,7 +48,8 @@
 // # Fan resolution
 //
 // ResolveFan reads a loaded Config alone and returns a fan's lenses in order, repeats kept.
-// It refuses an unknown fan, an empty fan, a fan longer than MaxFanLenses and a fan naming an undefined lens.
+// It refuses a fan the removal emptied, naming the removed lenses and the way forward, an unknown fan, an empty fan, a fan longer than MaxFanLenses and a fan naming an undefined lens.
+// CheckLoad resolves only the fans a load still holds, so a `remove` that empties a fan passes it, and the fan is refused when a fan key names it.
 // CheckLoad runs Load and then ResolveFan over every fan in name order, and joins every failure in that order.
 // A lenses.yaml with several failing fans therefore takes every fix in one `--set` or one `--edit`, since a partial fix changes the joined failure and is rolled back.
 //

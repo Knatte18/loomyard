@@ -10,6 +10,8 @@
 // The result is resolved through envsource's markers once, after the merge.
 // A default- or worktree-layer file holding units the template lacks, open-map entries and retired keys aside, still loads, and is logged at Warn naming the file, the keys and the `lyx config reconcile` that removes them;
 // the warning is logged once per file and key list in a process.
+// A loader whose module lists entries that may match nothing, such as `lenses`' `remove`, reports the unmatched ones through [WarnSkippedEntries]:
+// one Warn naming the highest layer file holding the key, once per file, key and entry list in a process.
 //
 // A present file whose content fails to parse, lacks a key inside a list element or fails to resolve returns an error marked [ErrInvalid];
 // an absent base file or `_lyx/`, an unreadable file and a base directory failure stay unmarked.

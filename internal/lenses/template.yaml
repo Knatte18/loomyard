@@ -8,8 +8,9 @@
 # and it drops an entry whose prose or ordered fan list equals the template's current value, reporting each drop, which leaves the loaded value unchanged.
 # Any other entry is kept as written; a lens or fan the template lacks is kept and reported, never pruned.
 #
-# A template lens or fan cannot be removed: a deleted one resolves to the template's value at the next load.
 # A fan is turned off at the loom or darn fan key entry that names it, by pointing the entry at another fan or setting it to "".
+#
+# remove: lists lens names dropped after resolution from the lenses and from every fan; a fan left empty is dropped, and a name matching no lens is skipped with a warning.
 #
 # lens_set: names one embedded language layer under sets/ whose lenses and fans replace or add base entries by name; "" picks none.
 # The base names no language, and its rules lenses read the repository's own rules.
@@ -40,6 +41,8 @@
 # carries.
 
 lens_set: ""
+
+remove: []
 
 lenses:
   generic: |
