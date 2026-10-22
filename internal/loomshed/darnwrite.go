@@ -7,12 +7,15 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // darnResumeWayForward is appended to the Reason of a Darn-Write session whose gate failed.
-const darnResumeWayForward = "way forward: run \"lyx loom resume\" in the task worktree, which re-spawns Darn-Write with a fresh verify budget"
+const darnResumeWayForward = "way forward: run \"lyx loom resume\" in the task worktree, which re-spawns Darn-Write with a fresh verify budget, or, when the parent has moved since this run's verify failure and the task branch and worktree have not, first takes the parent in through Merge-In"
 
 // DarnTold carries the two token texts the producer decides for one darn writer spawn, each empty when it has nothing to tell.
 type DarnTold struct {
@@ -42,8 +45,18 @@ type DarnDeps struct {
 	Commit func() error
 	// LatestOutcome returns the latest Darn-Write history entry of the run; found is false when the row has no entry yet.
 	LatestOutcome func() (DarnOutcome, bool, error)
-	// PublishFailure returns the path of the Publish failure record; found is false when none is present.
-	PublishFailure func() (string, bool, error)
+	// PublishFailure returns the Publish failure record and its path; found is false when none is present.
+	PublishFailure func() (path string, record verifytree.PublishFailure, found bool, err error)
+	// RunStart returns the run's start; the zero time when the run's seed carries no stamp.
+	RunStart func() (time.Time, error)
+	// TaskHead returns the task branch's HEAD commit.
+	TaskHead func() (string, error)
+	// Dirty returns the task worktree's uncommitted paths, read through the dirty-paths reader Merge-In's clean check uses.
+	Dirty func() ([]string, error)
+	// ParentTips returns the parent tips Merge-In would merge, read without a fetch.
+	ParentTips func() ([]string, error)
+	// IsAncestor reports whether sha is an ancestor of the task branch's HEAD.
+	IsAncestor func(sha string) (bool, error)
 }
 
 // darnWrite decorates the gated darn writer session, built per Call by session, with the Go-owned steps around it.
@@ -64,6 +77,8 @@ func NewDarnWrite(name string, session func(DarnTold) shedengine.ShedProducer, d
 // Call implements shedengine.ShedProducer.
 // A failed read of the pending rejection is Stuck naming the reject command.
 // A failed read of the latest outcome or the failure record, a Commit failure and a ClearRejection failure are returned errors, never Stuck, because re-running the session cannot fix a git or filesystem fault.
+// A failure record this run wrote, on a task branch and worktree unchanged since it and a parent that has moved, returns a rerouting Stuck before any session is built.
+// The parent is then merged in instead of the writer re-running against a failure the parent may have fixed.
 // The commit runs on every non-empty output pointer, a gate-failed Stuck included, so a halted run leaves the work committed.
 // A gate-failed Stuck keeps its pointer and gains the resume way forward.
 func (p *darnWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -82,12 +97,14 @@ func (p *darnWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	if err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: read the latest outcome: %w", p.name, err)
 	}
-	failureRecord, hasRecord, err := p.deps.PublishFailure()
+	failureRecord, record, hasRecord, err := p.deps.PublishFailure()
 	if err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: read the Publish failure record: %w", p.name, err)
 	}
 	if !hasRecord {
 		failureRecord = ""
+	} else if reason := p.rerouteReason(failureRecord, record); reason != "" {
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason, Reroute: true}, nil
 	}
 
 	told := DarnTold{PriorWork: renderPriorWork(latest, found, failureRecord)}
@@ -133,6 +150,11 @@ func (p *darnWrite) checkSeams() error {
 		{"Commit", p.deps.Commit == nil},
 		{"LatestOutcome", p.deps.LatestOutcome == nil},
 		{"PublishFailure", p.deps.PublishFailure == nil},
+		{"RunStart", p.deps.RunStart == nil},
+		{"TaskHead", p.deps.TaskHead == nil},
+		{"Dirty", p.deps.Dirty == nil},
+		{"ParentTips", p.deps.ParentTips == nil},
+		{"IsAncestor", p.deps.IsAncestor == nil},
 	}
 	for _, s := range seams {
 		if s.missing {
@@ -140,6 +162,65 @@ func (p *darnWrite) checkSeams() error {
 		}
 	}
 	return nil
+}
+
+// rerouteReason returns the reason to reroute to Merge-In instead of spawning the writer, or "" when the writer runs.
+// It reroutes only when the record at recordPath was written at or after the run's start, the task branch is still at the record's head, the task worktree is clean, and some parent tip is not an ancestor of HEAD.
+// A seam error counts as no reroute, except a Dirty error, which counts as a dirty tree; each is logged at Warn.
+func (p *darnWrite) rerouteReason(recordPath string, record verifytree.PublishFailure) string {
+	writtenAt, err := time.Parse(time.RFC3339, record.WrittenAt)
+	if err != nil {
+		return ""
+	}
+	runStart, err := p.deps.RunStart()
+	if err != nil {
+		logger.Warn("loomshed: could not read the run start; the Darn-Write writer runs", "row", p.name, "error", err)
+		return ""
+	}
+	if runStart.IsZero() || writtenAt.UTC().Before(runStart.UTC().Truncate(time.Second)) {
+		return ""
+	}
+	head, err := p.deps.TaskHead()
+	if err != nil {
+		logger.Warn("loomshed: could not read the task branch head; the Darn-Write writer runs", "row", p.name, "error", err)
+		return ""
+	}
+	if head != record.Head {
+		return ""
+	}
+	dirty, err := p.deps.Dirty()
+	if err != nil {
+		logger.Warn("loomshed: could not read the task worktree status; treating it as dirty", "row", p.name, "error", err)
+		return ""
+	}
+	if len(dirty) > 0 {
+		return ""
+	}
+	tips, err := p.deps.ParentTips()
+	if err != nil {
+		logger.Warn("loomshed: could not read the parent tips; the Darn-Write writer runs", "row", p.name, "error", err)
+		return ""
+	}
+	moved := false
+	for _, tip := range tips {
+		ancestor, err := p.deps.IsAncestor(tip)
+		if err != nil {
+			logger.Warn("loomshed: could not tell whether a parent tip is in HEAD; the Darn-Write writer runs", "row", p.name, "tip", tip, "error", err)
+			return ""
+		}
+		if !ancestor {
+			moved = true
+			break
+		}
+	}
+	if !moved {
+		return ""
+	}
+	return fmt.Sprintf("the parent branch moved since the verify failure recorded at %s, while the task branch and worktree have not changed since it; "+
+		"rerouting to Merge-In, which merges the parent and re-runs the failing gate; "+
+		"if Merge-In stops without merging, on a parent pair that is dirty, mid-merge, ahead of or diverged from its upstream, "+
+		"the way forward is to repair the parent pair as Merge-In's Stuck reason says before any resume, "+
+		"since a resume over the unrepaired pair reroutes back to the same stop", recordPath)
 }
 
 // renderPriorWork returns the note that the change is already under way on the task branch, naming the latest outcome's halt reason and the failure record's path.

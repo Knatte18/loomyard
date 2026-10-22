@@ -174,13 +174,7 @@ func landingDeps(
 		Lock:                   lock,
 		RunStart:               runStart,
 		// The parent reads run over the task pair, opened at call time like the other fabric seams.
-		ReadParentTips: func(fetch bool) (fabricengine.ParentTips, error) {
-			f, err := fabricengine.Open(l)
-			if err != nil {
-				return fabricengine.ParentTips{}, err
-			}
-			return f.ReadParentTips(parentBranch, fetch)
-		},
+		ReadParentTips: parentTipsReader(l, parentBranch),
 		HoldsWork: func(base, source string) (bool, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {
@@ -206,6 +200,33 @@ func landingDeps(
 		MergeReviewedPath: landingshed.MergeReviewedPath(loomengine.LoomScratchDir(l)),
 		Alignment:         landingAlignmentDeps(l, recipe, geom.StencilsDir, registry, runner, runner.PauseGeometry()),
 	}
+}
+
+// parentTipsReader returns the parent-tip reader the landing and the darn rows share:
+// it opens the task pair's fabric at call time and reads parentBranch's tips, fetching the remotes first when fetch is true.
+func parentTipsReader(l *lyxcwd.Location, parentBranch string) func(fetch bool) (fabricengine.ParentTips, error) {
+	return func(fetch bool) (fabricengine.ParentTips, error) {
+		f, err := fabricengine.Open(l)
+		if err != nil {
+			return fabricengine.ParentTips{}, err
+		}
+		return f.ReadParentTips(parentBranch, fetch)
+	}
+}
+
+// mergeableTips returns the parent tips a Merge-In would merge: the local tip alone when pushes are skipped, and the local tip and the upstream tip otherwise, empty tips dropped.
+func mergeableTips(tips fabricengine.ParentTips, pushSkipped bool) []string {
+	candidates := []string{tips.Local}
+	if !pushSkipped {
+		candidates = append(candidates, tips.Upstream)
+	}
+	var merged []string
+	for _, tip := range candidates {
+		if tip != "" {
+			merged = append(merged, tip)
+		}
+	}
+	return merged
 }
 
 // alignmentNoteFile is the alignment note's file name in the PR-Gate point's alignment directory; the attempt listing skips a file there.

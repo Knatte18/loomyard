@@ -40,6 +40,11 @@ func darnWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 		{"Darn.Commit", dw.Commit},
 		{"Darn.LatestOutcome", dw.LatestOutcome},
 		{"Darn.PublishFailure", dw.PublishFailure},
+		{"Darn.RunStart", dw.RunStart},
+		{"Darn.TaskHead", dw.TaskHead},
+		{"Darn.Dirty", dw.Dirty},
+		{"Darn.ParentTips", dw.ParentTips},
+		{"Darn.IsAncestor", dw.IsAncestor},
 	}
 	for _, s := range seams {
 		if err := requireSeam("DarnWrite", s.field, s.seam); err != nil {

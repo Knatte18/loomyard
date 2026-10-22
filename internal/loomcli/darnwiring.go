@@ -178,12 +178,39 @@ func darnDeps(l *lyxcwd.Location, runID, verifyDir string) loomshed.DarnDeps {
 		LatestOutcome: func() (loomshed.DarnOutcome, bool, error) {
 			return latestDarnOutcome(shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID))
 		},
-		PublishFailure: func() (string, bool, error) {
-			_, found, err := verifytree.ReadPublishFailure(paths)
+		PublishFailure: func() (string, verifytree.PublishFailure, bool, error) {
+			record, found, err := verifytree.ReadPublishFailure(paths)
 			if err != nil || !found {
-				return "", false, err
+				return "", verifytree.PublishFailure{}, false, err
 			}
-			return paths.PublishFailure, true, nil
+			return paths.PublishFailure, record, true, nil
+		},
+		RunStart: func() (time.Time, error) { return seedRunStart(l) },
+		TaskHead: func() (string, error) {
+			handle, err := fabricengine.Open(l)
+			if err != nil {
+				return "", err
+			}
+			return handle.HeadSHA()
+		},
+		Dirty: func() ([]string, error) { return verifytree.DirtyPaths(l.WorktreePath()) },
+		ParentTips: func() ([]string, error) {
+			parent, err := readRecordedParentBranch(l)
+			if err != nil {
+				return nil, err
+			}
+			tips, err := parentTipsReader(l, parent)(false)
+			if err != nil {
+				return nil, err
+			}
+			return mergeableTips(tips, fabricengine.EnvSyncOptions().SkipPush), nil
+		},
+		IsAncestor: func(sha string) (bool, error) {
+			handle, err := fabricengine.Open(l)
+			if err != nil {
+				return false, err
+			}
+			return handle.IsAncestor(sha, "HEAD")
 		},
 	}
 }

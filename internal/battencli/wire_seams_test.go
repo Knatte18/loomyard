@@ -95,6 +95,11 @@ var intentionallyNil = map[string]string{
 	"Darn.Commit":                 "darn-only seam, batten has no darn segment",
 	"Darn.LatestOutcome":          "darn-only seam, batten has no darn segment",
 	"Darn.PublishFailure":         "darn-only seam, batten has no darn segment",
+	"Darn.RunStart":               "darn-only seam, batten has no darn segment",
+	"Darn.TaskHead":               "darn-only seam, batten has no darn segment",
+	"Darn.Dirty":                  "darn-only seam, batten has no darn segment",
+	"Darn.ParentTips":             "darn-only seam, batten has no darn segment",
+	"Darn.IsAncestor":             "darn-only seam, batten has no darn segment",
 }
 
 func TestWire_EverySeamFilled(t *testing.T) {

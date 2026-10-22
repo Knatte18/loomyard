@@ -436,3 +436,25 @@ func TestReportOfRunKeepsOnlyTheRunsOwnEntry(t *testing.T) {
 		t.Errorf("reportOfRun(report, %q) = %+v; want the other fields unchanged", "child", got)
 	}
 }
+
+func TestMergeableTips(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		tips        fabricengine.ParentTips
+		pushSkipped bool
+		want        []string
+	}{
+		{"SkippedPushDropsTheUpstreamTip", fabricengine.ParentTips{Local: "local", Upstream: "upstream"}, true, []string{"local"}},
+		{"UnskippedPushKeepsBothTips", fabricengine.ParentTips{Local: "local", Upstream: "upstream"}, false, []string{"local", "upstream"}},
+		{"EmptyUpstreamIsDropped", fabricengine.ParentTips{Local: "local"}, false, []string{"local"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := mergeableTips(tt.tips, tt.pushSkipped); !slices.Equal(got, tt.want) {
+				t.Errorf("mergeableTips(%+v, %v) = %v; want %v", tt.tips, tt.pushSkipped, got, tt.want)
+			}
+		})
+	}
+}

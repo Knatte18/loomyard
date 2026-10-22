@@ -46,7 +46,7 @@ func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ..
 func TestWire_DarnRecipe(t *testing.T) {
 	t.Parallel()
 
-	darnSeams := []string{"DarnTable", "Darn.ReadRejection", "Darn.ClearRejection", "Darn.Commit", "Darn.LatestOutcome", "Darn.PublishFailure"}
+	darnSeams := []string{"DarnTable", "Darn.ReadRejection", "Darn.ClearRejection", "Darn.Commit", "Darn.LatestOutcome", "Darn.PublishFailure", "Darn.RunStart", "Darn.TaskHead", "Darn.Dirty", "Darn.ParentTips", "Darn.IsAncestor"}
 
 	t.Run("a darn seed fills the darn seams, the verify source and the attempts", func(t *testing.T) {
 		t.Parallel()
@@ -461,16 +461,17 @@ func TestDarnDeps_PublishFailureNamesThePresentRecord(t *testing.T) {
 	verifyDir := t.TempDir()
 	deps := darnDeps(loc, shedrun.SelfRunID, verifyDir)
 
-	if path, found, err := deps.PublishFailure(); err != nil || found || path != "" {
+	if path, _, found, err := deps.PublishFailure(); err != nil || found || path != "" {
 		t.Fatalf("PublishFailure() with no record = %q, %v, %v; want empty, false, nil", path, found, err)
 	}
 
 	paths := verifytree.NewPaths(loc.WorktreePath(), verifyDir)
-	if err := verifytree.WritePublishFailure(paths, verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify}); err != nil {
+	if err := verifytree.WritePublishFailure(paths, verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Head: "abc123"}); err != nil {
 		t.Fatalf("WritePublishFailure() = %v; want nil", err)
 	}
-	if path, found, err := deps.PublishFailure(); err != nil || !found || path != paths.PublishFailure {
-		t.Errorf("PublishFailure() with a record = %q, %v, %v; want %q, true, nil", path, found, err, paths.PublishFailure)
+	path, record, found, err := deps.PublishFailure()
+	if err != nil || !found || path != paths.PublishFailure || record.Head != "abc123" {
+		t.Errorf("PublishFailure() with a record = %q, head %q, %v, %v; want %q, head abc123, true, nil", path, record.Head, found, err, paths.PublishFailure)
 	}
 }
 
