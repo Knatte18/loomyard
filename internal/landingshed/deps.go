@@ -127,6 +127,34 @@ type Deps struct {
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	Reconcile func() (fabricengine.OriginReport, error)
 
+	// Slug is the run's slug, which Finalize's owner halts and repair note name in the adopt commands they give.
+	// Told by the caller.
+	Slug string
+	// ParentHoldsTaskWork reports whether the parent branch already holds the task's work, which marks a Finalize past its parent-side merge.
+	// Finalize reads it first: a parent holding the work skips both owner checks and the unreachable halt, and a returned error halts the run.
+	//
+	// Nil means "not past the merge", following CommitStatus's nil-is-absent convention.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	ParentHoldsTaskWork func() (bool, error)
+	// ParentOwner reads who owns the parent, from the local board the origin reconcile left.
+	// Finalize halts on a returned error.
+	//
+	// Nil means "the parent is owned here", following CommitStatus's nil-is-absent convention.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	ParentOwner func() (ParentOwnership, error)
+	// OriginParentHoldsWork reports whether origin's parent branch already holds the task's work, which Finalize reads after a failed parent push.
+	// A returned error adds no repair note.
+	//
+	// Nil means "no repair note", following CommitStatus's nil-is-absent convention.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	OriginParentHoldsWork func() (bool, error)
+	// ParentCommitsOriginLacks lists the SHAs of the parent branch's commits that origin's tracking ref lacks, newest first.
+	// Finalize reads it for the repair note only when OriginParentHoldsWork reads true.
+	//
+	// Nil means "no repair note", following CommitStatus's nil-is-absent convention.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	ParentCommitsOriginLacks func() ([]string, error)
+
 	// CommitParentRecords commits the parent pair's own run records, which Finalize calls after its catch-up merge-in and before the parent-side merge.
 	// Sibling runs leave their status records uncommitted in the parent pair, and the merge guard refuses any tracked modification there.
 	// A clean subtree is a no-op, and a returned error is Stuck.
@@ -282,6 +310,16 @@ type Deps struct {
 	// PR-Gate reads only Alignment.NotePath, and an empty one reads no note.
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	Alignment AlignmentDeps
+}
+
+// ParentOwnership is who owns the parent a run lands on.
+type ParentOwnership struct {
+	// Slug is the parent pair's slug, empty when the parent is the prime.
+	Slug string
+	// Owner is the machine that owns the parent, empty when no other machine does.
+	Owner string
+	// Here reports whether this machine may land on the parent.
+	Here bool
 }
 
 // ParentLockDeps carries the told seams the parent lock guard takes the lock through.

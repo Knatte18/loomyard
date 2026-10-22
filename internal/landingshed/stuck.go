@@ -44,20 +44,39 @@ func reconcileVerdict(ctx context.Context, producer string, reconcile func() (fa
 	if reconcile == nil {
 		return "", shedengine.OutputPointer{}, nil, false
 	}
+	report, err := reconcileReport(ctx, producer, reconcile)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err, true
+	}
+	if report.Unreachable {
+		logger.Warn("landingshed: origin was unreachable, proceeding without judging the run against it", "producer", producer)
+		return "", shedengine.OutputPointer{}, nil, false
+	}
+	return reportVerdict(ctx, producer, report)
+}
+
+// reconcileReport runs the run-scope origin reconcile and logs each entry of the report's mutation record at Info.
+// A cancellation is returned as the cancellation error and any other failure wrapped, with the producer named.
+func reconcileReport(ctx context.Context, producer string, reconcile func() (fabricengine.OriginReport, error)) (fabricengine.OriginReport, error) {
 	report, err := reconcile()
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("landingshed: origin reconcile mutation", "producer", producer, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}
 	if err != nil {
 		if cerr := cancelErr(ctx, producer); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr, true
+			return report, cerr
 		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: origin reconcile: %w", producer, err), true
+		return report, fmt.Errorf("landingshed: %s: origin reconcile: %w", producer, err)
 	}
-	if report.Unreachable {
-		logger.Warn("landingshed: origin was unreachable, proceeding without judging the run against it", "producer", producer)
-		return "", shedengine.OutputPointer{}, nil, false
-	}
+	return report, nil
+}
+
+// reportVerdict maps the ended and stopped entries of a reached origin's report onto a producer's Call return.
+// stop is false when no entry ended or stopped, including an entry another machine owns, so Call proceeds.
+// Otherwise the other values are what Call returns at once:
+// an ended entry as a halting Stuck naming the landing or the board removal, with the end of the run from the prime as the way forward;
+// a stopped entry as a Stuck naming the branch, its state and its way forward, then the row's re-entry.
+func reportVerdict(ctx context.Context, producer string, report fabricengine.OriginReport) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	for _, entry := range report.Entries {
 		var reason string
 		var halt bool
