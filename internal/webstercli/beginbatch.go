@@ -86,9 +86,7 @@ A refusal because the plan's re-resolution against the tree found a blocking
 defect carries "plan_conflict" with its cause: "plan_defect" when no batch is
 begun, "tree_moved" when one is.
 
-A call under a pause that covers the pair refuses first, before it reads or
-changes any state: it claims Master into the pause, so "lyx tender resume"
-gives Master its resume line, and the refusal names the way forward.
+Under a pause that covers the pair it refuses first, claiming Master into it.
 
 Example:
   lyx webster begin-batch 3`,
