@@ -221,12 +221,12 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			},
 		},
 		{
-			name: "a shell outstanding keeps waiting past the bound with no held turn end and no notice", events: "WAIT:background work\n", strand: strandName,
+			name: "a shell outstanding past the bound expires into one held turn end notice and the run ends at its deadline", events: "WAIT:background work\n", strand: strandName,
 			outstand:  []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999", Signal: SignalTranscript}},
 			sleepJump: 6 * time.Minute, timeout: time.Hour,
 			check: func(t *testing.T, got heldRun) {
-				if len(got.notices) != 0 || got.result.Outcome != OutcomeTimeout {
-					t.Errorf("notices = %q, outcome = %q, want none and a wait to the run's deadline", got.notices, got.result.Outcome)
+				if len(got.notices) != 1 || got.result.Outcome != OutcomeTimeout {
+					t.Errorf("notices = %q, outcome = %q, want exactly one and a wait to the run's deadline", got.notices, got.result.Outcome)
 				}
 			},
 		},
