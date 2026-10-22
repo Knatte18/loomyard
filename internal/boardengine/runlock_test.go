@@ -193,6 +193,20 @@ func TestRunLock(t *testing.T) {
 		})
 	}
 
+	t.Run("status write on a run-held task stored with a priority", func(t *testing.T) {
+		t.Parallel()
+		boardPath := t.TempDir()
+		b := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+		if _, err := b.UpsertTask(lockedBase); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		addEntryKeys(t, boardPath, "locked", `"priority":"high"`)
+
+		if err := b.SetStatus("locked", strPtr("paused · X")); err != nil {
+			t.Fatalf("SetStatus on a held task stored with a priority: %v", err)
+		}
+	})
+
 	t.Run("run status form", func(t *testing.T) {
 		t.Parallel()
 		if got := boardengine.RunStatus("running", "Webster"); got != "running · Webster" {
