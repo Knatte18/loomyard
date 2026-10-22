@@ -477,6 +477,7 @@ func DropTemplateEqualNames(template, existing []byte, perNameMaps []string) (ou
 		return existing, dropped, nil
 	}
 	sort.Strings(dropped)
+	liftEmptyValueComments(existingDoc)
 
 	out, err = yaml.Marshal(existingDoc)
 	if err != nil {

@@ -292,6 +292,14 @@ func TestSetValues(t *testing.T) {
 			notContains: []string{"default a", "tuned a"},
 		},
 		{
+			name:        "per-name map emptied under a key carrying a line comment stays valid YAML",
+			template:    "names: # the names\n  a: default a\n",
+			existing:    "names:\n  a: tuned a\n",
+			pairs:       []KV{{Key: "names.a", Value: "default a"}},
+			perNameMaps: []string{"names"},
+			contains:    []string{"names: {} # the names\n"},
+		},
+		{
 			name:        "per-name map holding null becomes a mapping holding the new name",
 			template:    perNameSetTemplate,
 			existing:    "names:\nlists:\n  l: [x]\n",

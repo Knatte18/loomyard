@@ -240,6 +240,7 @@ func TestDropTemplateEqualNames(t *testing.T) {
 		{name: "differing name kept", existing: "names:\n    a: tuned a\n    b: default b\n", want: "names:\n    a: tuned a\n", wantDropped: []string{"names.b"}},
 		{name: "name only the file holds kept", existing: "other: 1\nnames:\n    z: mine\n", want: "other: 1\nnames:\n    z: mine\n", wantDropped: []string{}},
 		{name: "emptied map stays as an empty mapping", existing: "other: 1\nnames:\n    b: default b\n    a: default a\n", want: "other: 1\nnames: {}\n", wantDropped: []string{"names.a", "names.b"}},
+		{name: "emptied map under a key carrying a line comment stays valid YAML", existing: "names: # mine\n    a: default a\n", want: "names: {} # mine\n", wantDropped: []string{"names.a"}},
 		{name: "nothing to drop returns the file byte for byte", existing: "# head\nother:   1\nnames:\n    a: tuned   # note\n", want: "# head\nother:   1\nnames:\n    a: tuned   # note\n", wantDropped: []string{}},
 	}
 	for _, tc := range tests {

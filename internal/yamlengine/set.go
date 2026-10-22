@@ -196,6 +196,7 @@ func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, open
 	}
 
 	dropTemplateNames(&templateNode, &pristine, perNameMaps)
+	liftEmptyValueComments(&templateNode)
 
 	merged, err := yaml.Marshal(&templateNode)
 	if err != nil {
