@@ -59,6 +59,7 @@ var nilLegal = map[string]bool{
 	"Landing.Reconcile":                 true,
 	"Landing.VerifyCommand":             true,
 	"Landing.PublishSkip":               true,
+	"Landing.ClassifyVerifyFailure":     true,
 	"Landing.VerifyWaitMark":            true,
 	"Landing.FailingTests":              true,
 	"Landing.Registry":                  true,

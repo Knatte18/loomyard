@@ -4,6 +4,7 @@
 package loomcli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -14,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -73,8 +75,11 @@ func darnVerifySource(l *lyxcwd.Location) verifySource {
 			_, scoped, err := treeScope()
 			return scoped, err
 		},
-		failedWayForward: `run "lyx loom goto --to Darn-Write", then "lyx loom resume", in the task worktree; the Darn-Write spawn renders the Publish failure record and its gate runs the failing tests`,
+		failedWayForward: darnFailedWayForward,
 		failureTarget:    loomshed.NameDarnWrite,
+		classify: func(ctx context.Context, failure verifytree.PublishFailure) landingshed.FailureRoute {
+			return darnFailureRoute(ctx, failure, l.WorktreePath(), pairMergeBase(l), impactset.DeriveTargets)
+		},
 	}
 }
 

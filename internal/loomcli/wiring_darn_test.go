@@ -94,6 +94,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if got := c.verifySource().failureTarget; got != "Darn-Write" {
 			t.Errorf("verifySource().failureTarget = %q; want Darn-Write", got)
 		}
+		if c.verifySource().classify == nil {
+			t.Error("verifySource().classify = nil; want the darn failure classifier")
+		}
 	})
 
 	t.Run("with tree scope on the verify gate's told command stays the hub's whole verify", func(t *testing.T) {
@@ -243,6 +246,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Webster-Burler-Review"`) {
 			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Webster-Burler-Review row", got)
+		}
+		if c.verifySource().classify != nil {
+			t.Error("a loom seed set verifySource().classify; want nil")
 		}
 	})
 

@@ -6,6 +6,7 @@
 package loomcli
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -161,6 +162,7 @@ func landingDeps(
 		GateTiers:              verify.gateTiers,
 		VerifyFailedWayForward: verify.failedWayForward,
 		VerifyFailureTarget:    verify.failureTarget,
+		ClassifyVerifyFailure:  verify.classify,
 		PublishSkip:            verify.publishSkip,
 		FailingTests:           failingTestsOf,
 		VerifyDir:              verifytree.Dir(l.AnchorPath()),
@@ -329,6 +331,9 @@ type verifySource struct {
 	failedWayForward string
 	// failureTarget is the row the recipe routes a failed Publish verify back to.
 	failureTarget string
+	// classify chooses a failure record's target and the reason's way forward per failure, in place of failedWayForward and failureTarget.
+	// Nil for loom's source.
+	classify func(ctx context.Context, failure verifytree.PublishFailure) landingshed.FailureRoute
 	// publishSkip answers whether Publish skips the `publish` gate for this call, read at each Publish.
 	// Nil for loom's source, which never skips.
 	publishSkip func() (bool, error)
