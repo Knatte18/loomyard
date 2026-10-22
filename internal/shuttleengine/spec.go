@@ -120,7 +120,8 @@ type Spec struct {
 	// "done" outcome instead of the default RemoveStrand + run-dir cleanup.
 	KeepPane bool
 	// AwaitedShellPrefixes names the background shells the run waits on like a fork:
-	// a shell whose label starts with one of them stays out of the background-shell wait marker, since every shell holds a gated run's turn end alike.
+	// a shell whose label starts with one of them stays out of the background-shell wait marker.
+	// Such a shell also keeps a gated waiting turn end from being judged as a plain turn end and keeps an ungated wait from expiring.
 	// It is caller data, not provider knowledge, and validate does not inspect it.
 	AwaitedShellPrefixes []string
 	// Skills names the provider-neutral skills shuttle loads into the fresh session, all in one turn, before it delivers the prompt.

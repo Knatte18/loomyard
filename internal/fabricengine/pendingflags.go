@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync/atomic"
 
@@ -36,11 +37,36 @@ func pendingFlagPath(lockDir, side string) string {
 	return filepath.Join(lockDir, "pending."+side)
 }
 
-// markPending writes one flag per owed side into lockDir, each holding that side's path and the slugs of the push it serves and nothing else.
+// exitDeferred ends a detached push child that a pause covers; a test swaps it for a recorder.
+var exitDeferred = func() { os.Exit(0) }
+
+// pushDeferral returns the function a detached push child's gate calls when a pause covers it:
+// it marks pending again every owed side not in pushed, logs the sides left local, and calls exit.
+// The commits stay local and the flags stay on disk for the next push, so the push is deferred and not failed.
+func pushDeferral(lockDir string, owed map[string]PushSpawn, pushed map[string]bool, exit func()) func() {
+	return func() {
+		left := map[string]PushSpawn{}
+		var sides []string
+		for side, req := range owed {
+			if !pushed[side] {
+				left[side] = req
+				sides = append(sides, side)
+			}
+		}
+		sort.Strings(sides)
+		if err := markPending(lockDir, left); err != nil {
+			logger.Warn("fabricengine: pending flags of a deferred push not written; the commits stay local for the next push", "lock_dir", lockDir, "error", err)
+		}
+		logger.Info("fabricengine: a pause covers the push; exiting with the commits left local", "sides", sides)
+		exit()
+	}
+}
+
+// markPending writes one flag per owed side into lockDir, each holding that side's path, the slugs of the push it serves and its parent-locked mark, and nothing else.
 // A flag is written atomically, so a reader sees no flag or a whole one.
 func markPending(lockDir string, owed map[string]PushSpawn) error {
 	for side, req := range owed {
-		narrowed := PushSpawn{PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug}
+		narrowed := PushSpawn{PauseSlug: req.PauseSlug, TeardownSlug: req.TeardownSlug, ParentLocked: req.ParentLocked}
 		switch side {
 		case pushSideCode:
 			narrowed.WarpPath = req.WarpPath
@@ -198,6 +224,7 @@ func foreignFlagRequest(lockDir, side string, flag PushSpawn) (req PushSpawn, re
 	req = PushSpawn{
 		PauseSlug:    flag.PauseSlug,
 		TeardownSlug: flag.TeardownSlug,
+		ParentLocked: flag.ParentLocked,
 		WorkDir:      BoardDir(filepath.Dir(recordsWorktree)),
 	}
 	switch side {

@@ -63,8 +63,12 @@
 // A pause lifted during its grace cancels the request.
 // A pause error fails the request, lifts the owned entry and queues one notice; the lift and the notice run even when the failed write fails.
 //
-// Confirmation reads the hub right after the pause and then up to 120 times, five seconds apart, ten minutes in all.
-// A reading confirms when a hub entry is live, every session reads idle, asking or dead, no network operation is in flight and the land lock is free.
+// Confirmation reads the hub right after the pause and then re-reads it five seconds apart, up to 120 times, ten minutes in all.
+// A reading confirms when a hub entry is live, every session reads idle, asking, dead or busy only on background shells, no network operation is in flight and the land lock is free.
+// A suspend freezes a shell and the wait loop that holds it and resumes both on wake, so a shell withholds nothing.
+// A session with an outstanding background fork withholds, since a fork is never interrupted and its next batch is already held by the pause; while forks are the only reason for the latest reading, confirmation keeps re-reading up to 720 times, sixty minutes in all.
+// A network operation in flight, a held land lock or any other busy session keeps the ten minute bound.
+// A session whose strand is the request's requester is left out of the reading when the requester is the orch, since the orch is not interrupted by a hub pause and its writes that matter are withheld through the land lock and the network operations.
 // The first reading also withholds while the pause left a strand busy or refused a session.
 // The parent locks a paused run keeps by design are not read.
 // A reading with no live hub entry cancels the request, and a reading error counts as unconfirmed.
@@ -82,6 +86,8 @@
 // Otherwise each stopped run, and each ended run still busy, gets a plain pair pause entry through `Pause`, not recorded as owned so it outlives the request; the owned entry is then lifted.
 // A pair whose pause fails is left unheld and named with `lyx tender pause <slug>`.
 // A run whose `WakeRun.Owner` is set is owned by another machine: its pair pause carries the owner caller, so a slug entry already standing adds none, and the notice names the owner and `lyx adopt <slug>` from this machine's prime.
+// Once an owner pause is added, `Deps.EndOwned` ends the run's owned processes on this machine; the hub's wiring fills it with `tendercli.EndOwnedElsewhere`, which spares a Finalize past its parent-side merge and the calling process and its ancestors.
+// An end error is logged and leaves the notice as it was, and a nil `EndOwned` skips the end.
 // A failed owner pause is named with "the next wake or `lyx orch start` pauses it again", never with `lyx tender pause`, whose entry would carry no owner label.
 // The notice names per stopped run its way forward then `lyx resume <slug>`, only `lyx resume <slug>` for a pair busy on a parked push, and `lyx cleanup --apply` in place of the resume for a pair stopped as gone; a busy ended run is named with its landing or removal and `lyx cleanup --apply`, and the other ended runs are listed.
 // A `TenderStatus` error before the reconcile fails the request with the owned entry lifted.

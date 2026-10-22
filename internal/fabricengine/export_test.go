@@ -7,6 +7,8 @@
 package fabricengine
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -16,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
 // SetGCAutoThresholdForTest sets gcAutoThreshold until the test ends.
@@ -312,6 +315,7 @@ type pushCall struct {
 	WeftPath     string
 	PauseSlug    string
 	TeardownSlug string
+	ParentLocked bool
 	WorkDir      string
 }
 
@@ -337,6 +341,7 @@ func (r *pushRecorder) record(req PushSpawn) {
 		WeftPath:     req.WeftPath,
 		PauseSlug:    req.PauseSlug,
 		TeardownSlug: req.TeardownSlug,
+		ParentLocked: req.ParentLocked,
 		WorkDir:      req.WorkDir,
 	})
 }
@@ -781,4 +786,25 @@ func SetOriginCallHookForTest(hook func(args []string)) (restore func()) {
 	previous := originCallHook
 	originCallHook = hook
 	return func() { originCallHook = previous }
+}
+
+// HoldHubPauseForTest installs a Defer gate for slug over a temp pause record that holds one live hub entry, until the test ends.
+// It changes process-global state, so the calling test must not be parallel.
+func HoldHubPauseForTest(t *testing.T, slug string) {
+	t.Helper()
+
+	recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+	now := time.Now()
+	if _, err := pauserecord.Update(recordPath, now, func(r *pauserecord.Record) error {
+		r.Live = []pauserecord.Entry{{Scope: pauserecord.ScopeHub, PausedAt: now}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{
+		Geometry: pauserecord.Geometry{RecordPath: recordPath, Slug: slug},
+		Defer:    true,
+		Notify:   func(string) {},
+		Sleep:    func(context.Context, time.Duration) error { return errors.New("the test's pause is never lifted") },
+	}))
 }

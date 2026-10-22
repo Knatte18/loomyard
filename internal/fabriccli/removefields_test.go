@@ -4,10 +4,12 @@
 package fabriccli
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/runproc"
 )
 
 func TestRemoveFields(t *testing.T) {
@@ -23,6 +25,8 @@ func TestRemoveFields(t *testing.T) {
 		wantAbsent []string
 		// wantKeyCount, when non-zero, is the exact number of keys.
 		wantKeyCount int
+		// wantEnded is the exact ended_processes list; nil means an empty list.
+		wantEnded []map[string]any
 	}{
 		{
 			name:       "CodeBranchDeleted",
@@ -92,14 +96,26 @@ func TestRemoveFields(t *testing.T) {
 			},
 		},
 		{
+			name:   "EndedProcessesListed",
+			result: fabricengine.RemoveResult{Slug: "s"},
+			session: pairteardown.SessionResult{EndedProcesses: []runproc.Ended{
+				{PID: 11, Role: runproc.RoleDriver},
+				{PID: 12, Role: "descendant of " + runproc.RoleLoop},
+			}},
+			wantEnded: []map[string]any{
+				{"pid": 11, "role": runproc.RoleDriver},
+				{"pid": 12, "role": "descendant of " + runproc.RoleLoop},
+			},
+		},
+		{
 			name:   "ConditionalKeysAbsentWhenEmpty",
 			result: fabricengine.RemoveResult{Slug: "s"},
 			wantAbsent: []string{
 				"stray_path", "abandoned_session", "remote_code_branch_kept_reason", "code_branch_kept_reason",
 				"local", "local_mark_branch", "dropped_records_tip",
 			},
-			// The always-present key set: the existing keys plus steps, finished, remote_code_branch_deleted and session_ended.
-			wantKeyCount: 7 + 4,
+			// The always-present key set: the existing keys plus steps, finished, remote_code_branch_deleted, session_ended and ended_processes.
+			wantKeyCount: 7 + 5,
 		},
 	}
 	for _, tt := range tests {
@@ -122,6 +138,13 @@ func TestRemoveFields(t *testing.T) {
 			steps, ok := f["steps"].([]string)
 			if !ok || steps == nil || len(steps) != len(tt.result.Steps) {
 				t.Errorf("steps = %#v, want a non-nil array of %d entries", f["steps"], len(tt.result.Steps))
+			}
+			wantEnded := tt.wantEnded
+			if wantEnded == nil {
+				wantEnded = []map[string]any{}
+			}
+			if got := f["ended_processes"]; !reflect.DeepEqual(got, wantEnded) {
+				t.Errorf("ended_processes = %#v, want %#v", got, wantEnded)
 			}
 			if tt.wantKeyCount != 0 && len(f) != tt.wantKeyCount {
 				t.Errorf("key count = %d, want %d: %v", len(f), tt.wantKeyCount, f)

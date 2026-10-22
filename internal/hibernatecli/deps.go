@@ -100,6 +100,10 @@ func hubDeps(location *lyxcwd.Location) (hibernateengine.Deps, error) {
 			return tenderengine.Lift(deps, ref)
 		},
 		Reconcile: func() (hibernateengine.WakeReconcile, error) { return wakeReconcile(prime) },
+		EndOwned: func(slug string) error {
+			_, err := tendercli.EndOwnedElsewhere(prime, slug)
+			return err
+		},
 		ExemptNetwork: func(ref tenderengine.EntryRef) func() {
 			return pauserecord.SetGateExempt(ref.Scope, ref.PausedAt)
 		},

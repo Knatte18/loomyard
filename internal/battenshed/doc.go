@@ -163,6 +163,9 @@
 // A failed pause warns once per episode and is retried at the next probe while the owner stands.
 // A Finalize already past its parent-side merge keeps its record and finishes its landing: a Finalize running, or failed on a transient cause with no re-step recorded for that stop, while deps.ParentHoldsTaskWork reads true.
 // A failed read of either seam keeps the record until the next check, and any other state at Finalize, blocked included, releases it.
+// FinalizePastMerge is that decision over its seams as arguments, so a caller outside the wait reads the same carve-out; the owner pause's end spares such a Finalize and ends the processes of every other run.
+// batten survives its own probe's end: the end spares the calling process and its ancestors, so batten keeps its owner hold and probe, and the pair's removal ends it.
+// A running child whose driver the end took, with neither lock held and no strand, is noticed as driver-dead once the owner pause lifts and an owned-here verdict follows, and not while the pause covers it.
 // A pause held for an owner releases the record the same way on a probe check, with no check of its own.
 // Every spawn on an existing run reads a ChildOwnedElsewhereError as that verdict: the respawn of an unconfirmed running child returns a budget-exempt Stuck naming the owner, and the awaiting resume, the binary re-step and the Publish retry resume pause, write no marker and keep waiting.
 // While an owner stands every spawn waits, and the spawn hold re-runs the owner check once per probe until it reads the run as owned here, so a failed owner pause never makes the wait spawn and re-reconcile in a loop.

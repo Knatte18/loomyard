@@ -370,6 +370,8 @@ type Run struct {
 
 	// waitingTasks is the outstanding list of the latest EventWaiting, cleared by any later non-waiting event and when expiredTurnEnd counts the turn end at once.
 	waitingTasks []BackgroundTask
+	// waitingTurnEnd is the message and offset of the latest EventWaiting, the held turn end an ungated wait expires into when its shells outlast the bound.
+	waitingTurnEnd *heldTurnEnd
 	// countedTasks is the outstanding list of the turn end expiredTurnEnd counted at once, kept for finalize's record until a newer turn end is read.
 	countedTasks []BackgroundTask
 	// shellFirstSeen records when each shell id was first seen outstanding.

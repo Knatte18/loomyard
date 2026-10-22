@@ -110,6 +110,12 @@ func (b *Bolt) HasUnpushed() (bool, error) {
 	return gitrepo.New(b.path).HasUnpushed()
 }
 
+// HasUncommitted reports whether the Bolt's worktree holds a file with an uncommitted change, read from local state.
+func (b *Bolt) HasUncommitted() (bool, error) {
+	changed, err := gitrepo.New(b.path).WorktreeChangedFiles()
+	return len(changed) > 0, err
+}
+
 // BoltSkip names why a pull-first write did not run: Bolt could not be brought up to date.
 // The empty value means Bolt is up to date and the writes ran.
 type BoltSkip string

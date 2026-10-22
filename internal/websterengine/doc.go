@@ -573,11 +573,12 @@
 // # Background shells in Master's wait
 //
 // Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);
-// recovery_timeout_min already bounds that verb, so the prefix only keeps it out of the background-shell wait marker.
-// No background shell expires, and every shell holds a gated turn end alike: a gated turn end waiting on a shell is never an arrival.
+// recovery_timeout_min already bounds that verb, so the prefix keeps it out of the background-shell wait marker and is what keeps it holding a gated turn end.
+// A gated turn end waiting only on non-awaited shells is judged as a plain turn end: done when Master's output files exist, held when one is missing.
+// A gated turn end waiting on the awaited recovery verb or on a fork is never an arrival, and neither expires.
 // The run ends on the next turn end with nothing outstanding, the run deadline, the liveness check or a stop;
 // a deadline still ends it done through shuttle's satisfied file contract with the gate run once at finalize, and the shell's result is then never read.
-// `background_shell_wait_min` only sets when a long-running shell is logged and shown in the wait marker.
+// `background_shell_wait_min` sets when a long-running shell is logged and shown in the wait marker, and expires an ungated wait on non-awaited shells into a held turn end.
 // Every shell outstanding when the run ends comes back on shuttle's `Result.EndedShells`, whatever ends the run.
 // lyx does not stop such a shell.
 // What ends the shell follows the run's final outcome.

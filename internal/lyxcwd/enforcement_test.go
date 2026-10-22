@@ -230,7 +230,8 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 		// (Location.RepoName derives from it), while internal/fabricengine
 		// owns the exported BoardDir/HubPath constructors every other
 		// caller uses. The duplication is sanctioned by this map, not a leak.
-		"_board":  {"internal/lyxcwd", "internal/fabricengine"},
+		// internal/runproc also declares it, as the hub-scope owner of its record directories.
+		"_board":  {"internal/lyxcwd", "internal/fabricengine", "internal/runproc"},
 		"-weft":   {"internal/weftname"},
 		"-LYXHUB": {"internal/lyxcwd", "internal/fabricengine"},
 		// "_portals" and "_launchers" are fabric's own illusion-maintenance

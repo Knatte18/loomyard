@@ -12,9 +12,14 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 )
+
+// DeferrableSyncFlag is the hidden flag that marks a detached board sync as one whose network gate defers under a pause instead of waiting, and holds it under the hub scope.
+const DeferrableSyncFlag = "deferrable"
 
 // SpawnSync starts the detached `lyx board sync` of the board at boardPath, the same sync every board write spawns.
 // In a test binary it returns nil without spawning, since forking the running binary would re-run the suite.
@@ -25,9 +30,14 @@ func SpawnSync(boardPath string) error {
 	return spawnSync(boardPath)
 }
 
-// spawnSync launches `lyx board sync` as a detached, windowless process.
+// syncExecutable names the binary spawnSync launches; a test points it at a harmless one.
+var syncExecutable = os.Executable
+
+// spawnSync launches `lyx board sync --deferrable` as a detached, windowless process in the board directory and registers it under the hub owner.
+// The board directory as working directory holds the child's gate under the hub scope, and the flag makes it exit under a pause instead of waiting.
+// A registration failure is logged and never fails the spawn, since the sync is already running.
 func spawnSync(boardPath string) error {
-	exe, err := os.Executable()
+	exe, err := syncExecutable()
 	if err != nil {
 		return err
 	}
@@ -35,13 +45,19 @@ func spawnSync(boardPath string) error {
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, "board", "--board-path", abs, "sync")
+	cmd := exec.Command(exe, "board", "--board-path", abs, "sync", "--"+DeferrableSyncFlag)
+	cmd.Dir = abs
 	proc.Detach(cmd)
 	// Leave stdin/stdout/stderr nil so no handles are inherited from the parent.
 	logger.Info("boardengine: spawning detached board sync", "exe", exe, "boardPath", abs)
 	if err := cmd.Start(); err != nil { // intentionally not Wait()ed
 		logger.Warn("boardengine: board sync spawn failed", "exe", exe, "boardPath", abs, "cause", err)
 		return err
+	}
+	pid := cmd.Process.Pid
+	record := runproc.ChildRecord(pid, runproc.RoleSync, cmd.Args)
+	if err := runproc.Register(fabricengine.RunProcDir(filepath.Dir(abs)), runproc.HubOwner, record); err != nil {
+		logger.Warn("boardengine: board sync not registered", "pid", pid, "cause", err)
 	}
 	return nil
 }

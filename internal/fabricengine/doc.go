@@ -701,6 +701,7 @@
 // and `LockWaitUnbounded` blocks.
 //
 // `fabric.push.lock` alone follows the pending-flag protocol; `board.push.lock` of `Bolt.Sync` does not.
+// `Bolt.HasUncommitted` reads whether the board worktree holds changed files, so a lift can tell that a board sync deferred at its start still owes its commit.
 // A pusher writes one flag per side it owes, `pending.records` or `pending.code` beside the lock, before it tries the lock, so a commit always precedes its flag.
 // A flag holds that side's path and the pause and teardown slugs of the push it serves, so any holder can respawn it.
 // The detached push child (`CoalescePushRequest`) try-locks and exits at once when the lock is held, leaving its commits to the holder.
@@ -723,7 +724,17 @@
 // A `Remove` that fails after taking the lock and leaves a worktree of the pair in place respawns the pair's push once the lock is released:
 // through `SpawnStatusPush` over the pair's location while the task worktree stands, else a records-side-only request when only the records worktree stands and the pair is not local.
 // A push of the prime's records side carries no teardown slug, so it never delays a `Remove`.
+// Every detached push child registers in the owner record under `RunProcDir(hub)`, `<HubScratchDir>/runproc`, right after its start:
+// under its teardown slug when it carries one, so a pair's teardown ends its own pushes, and under `runproc.HubOwner` otherwise, so a prime records push is never ended by a pair's teardown.
+// A registration failure is logged at Warn and never fails the spawn.
 // A child run by hand with a wrong or empty teardown slug takes no lock of the pair and can race a removal.
+// A detached push under a pause defers instead of waiting: it pushes nothing more, leaves its commits local and its pending flags in place, and exits with one Info line, since the push is deferred and not failed, so no failed-push record and no creel mail are written.
+// `DetachedPush` exits at once, before it takes the teardown lock or marks a flag, when `pauserecord.GateCovered` reads covered.
+// `coalescePushSides` installs a deferral for the call's life that puts back the flag of every owed side the running push step has not pushed, then exits through `exitDeferred`.
+// The deferral fires only in a process whose gate defers, which only the detached push and board sync children install, so `CoalescePushBothAt` in an ordinary process is unaffected.
+// `PushSpawn.ParentLocked` is set at spawn time by `statusPushRequest` for a task pair when a live parent lock record names the pair's slug, which holds exactly for the pushes a Finalize spawns past its parent-side merge.
+// It travels as the hidden `--parent-locked` flag and through the pending flags and their respawns, and a parent-locked child never exits for coverage and lets only its own slug's owner entry pass.
+// The mark covers only pushes spawned while that record stood.
 // A code-side rejected push is retried once, after a fetch, only when the fetched remote tip is already contained in local HEAD,
 // so a stale remote-tracking ref recovers by itself while a real divergence does not.
 // A caller treats the `gitrepo.ErrPushRejected` that remains, carried by a `*PushFailedError`, as a human-decidable condition.

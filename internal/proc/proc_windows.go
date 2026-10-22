@@ -67,6 +67,24 @@ func ListProcesses() ([]Process, error) {
 	return nil, errors.ErrUnsupported
 }
 
+// ListStats reports errors.ErrUnsupported on Windows, where the stat files it reads do not exist.
+func ListStats() ([]StatEntry, error) {
+	return nil, errors.ErrUnsupported
+}
+
+// SignalProcess force-kills the process identified by pid when kill is set and reports errors.ErrUnsupported otherwise, since Windows has no SIGTERM.
+func SignalProcess(pid int, kill bool) error {
+	if kill {
+		return KillPID(pid)
+	}
+	return errors.ErrUnsupported
+}
+
+// SignalGroup always reports ErrNoProcessGroup on Windows, where a process group cannot be signalled.
+func SignalGroup(pgid int, kill bool) error {
+	return ErrNoProcessGroup
+}
+
 // IsAncestor is always false on Windows, where the ancestry walk is not implemented.
 func IsAncestor(pid int) bool {
 	return false

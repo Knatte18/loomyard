@@ -104,6 +104,8 @@ type Deps struct {
 	Lift         func(tenderengine.EntryRef) (tenderengine.ResumeReport, error)
 	// Reconcile runs the hub's origin reconcile at the wake and returns the engine's view of its report.
 	Reconcile func() (WakeReconcile, error)
+	// EndOwned ends the owned processes of a run another machine owns, once the wake paused it; nil skips it.
+	EndOwned func(slug string) error
 	// ExemptNetwork lets the pause entry ref pass the network gate for this process until the returned function is called.
 	ExemptNetwork func(ref tenderengine.EntryRef) (restore func())
 	// Hibernate hibernates the machine and returns once the job is queued.

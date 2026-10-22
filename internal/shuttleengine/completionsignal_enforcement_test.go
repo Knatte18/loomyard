@@ -184,7 +184,8 @@ var auditedNegativeVerdictReturns = map[string]int{
 // shuttle-blocking-start batch when the startup step moved from its own method into Start's own
 // blocking call),
 // plus expiredTurnEnd, whose waiting turn end counts as a Done only after consulting the files, and otherwise keeps waiting.
-// pollEventsTick's second site counts an ungated waiting turn end with nothing outstanding as a Done only after consulting the files.
+// pollEventsTick's second site counts an ungated waiting turn end with nothing outstanding as a Done only after consulting the files,
+// and its third judges a gated waiting turn end on non-awaited shells as a plain turn end, Done only after consulting the files.
 // The last site is stopOutcome, whose stopped answer consults the files first.
 // checkLivenessTick holds a third site, its gone-session branch, which consults the files before answering died.
 // attach holds a site that skips the requirements check for a run whose files are all on disk, since harvesting it drives no further turn.
@@ -197,7 +198,7 @@ var auditedFileContractCallSites = map[string]int{
 	"expiredTurnEnd":                  1,
 	"finishedDespiteMechanismFailure": 1,
 	"leftoverThenAgeVerdict":          1,
-	"pollEventsTick":                  2,
+	"pollEventsTick":                  3,
 	"soleFinishedCandidate":           1,
 	"stopOutcome":                     1,
 }

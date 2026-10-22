@@ -31,6 +31,15 @@
 // It also returns the time it held the call, zero unless the wait slept, so a caller can move its own deadline later by that time; Network keeps its context-free signature and takes only the operation name.
 // With no gate installed, as in every test binary, Network does nothing and reports zero.
 // The gate only waits and marks; it fails no call.
+// While a call waits it also keeps a `WaitingMarker` (pid, start time and slug) under `WaitingDir`, a sibling of `NetDir` that `ListNetOps` never reads, removed as soon as the wait returns.
+// `ListWaiting` lists the markers of live processes and removes the rest.
+// The marker records only what the gate waits on, and no gate decision reads it.
+// SetGateExemptAll sets `Gate.ExemptAll` on the installed gate, so its waiter lets every live entry pass, for the one process an explicit operator verb runs in; it does nothing with no gate installed, and the returned function restores the previous value.
+// The exemption never reaches a child, which installs its own gate.
+// A gate with `Defer` set, which only a detached push or board-sync child installs, hands off to the function `SetGateDeferral` stored when `GateCovered` reads a live entry covering the process, before any wait; that function is the child's exit and does not return.
+// With none stored, or one that returns, the gate waits as before, so it still fails no call.
+// `GateCovered` applies exactly the exemptions the gate's waits apply, and reads false with no gate installed or an unreadable record.
+// A gate with `OwnerEntryExempt` set, which only a push child spawned under its slug's parent lock installs, lets a live entry of its own slug whose `Caller` is `OwnerCaller` pass; a hub entry, and an operator's entry of its own slug, still hold it.
 // SetGateExempt names one live entry by scope and pause time that the installed gate lets pass, for the process that owns that entry; any other entry still holds the call, and the returned function restores the previous exemption.
 //
 // The package imports the standard library and `internal/state` only.

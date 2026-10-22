@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -34,7 +35,10 @@ func TestProbeQuietSeesTheGoDriverLock(t *testing.T) {
 	if err := os.WriteFile(shedrun.ParkMarker(task, shedrun.SelfRunID), nil, 0o644); err != nil {
 		t.Fatalf("write the park marker: %v", err)
 	}
-	td := &Teardown{prime: &lyxcwd.Location{HubPath: hub, AnchorRel: "."}}
+	td := &Teardown{
+		prime:          &lyxcwd.Location{HubPath: hub, AnchorRel: "."},
+		ownedProcesses: func(string) ([]runproc.Record, error) { return nil, nil },
+	}
 
 	st, err := td.probeQuiet("slug")
 	if err != nil || !st.quiet || st.goDriver {

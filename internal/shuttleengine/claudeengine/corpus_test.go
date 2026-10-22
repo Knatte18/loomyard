@@ -24,9 +24,10 @@ var corpusDir = filepath.Join("testdata", "corpus")
 
 // Readings a corpus turn end can expect.
 const (
-	readingDone    = "done"
-	readingHeld    = "held"
-	readingWaiting = "waiting"
+	readingDone        = "done"
+	readingHeld        = "held"
+	readingWaiting     = "waiting"
+	readingWaitingHeld = "waiting_held"
 )
 
 // corpusCase is the part of a case.yaml the replay reads: whether the run is gated, the skills Start loads, each later turn end's expected reading,
@@ -117,9 +118,9 @@ func (r *corpusReplay) checkRead(index int) {
 	switch notified := r.notices - r.noticesAt; r.turnEnds[index].Reading {
 	case readingDone:
 		r.t.Errorf("%s: turn end %d reads done, but the run did not finalize on the tick that read it", r.name, index+1)
-	case readingHeld:
+	case readingHeld, readingWaitingHeld:
 		if notified != 1 {
-			r.t.Errorf("%s: turn end %d reads held: the notifier was called %d times, want 1", r.name, index+1, notified)
+			r.t.Errorf("%s: turn end %d reads %s: the notifier was called %d times, want 1", r.name, index+1, r.turnEnds[index].Reading, notified)
 		}
 	case readingWaiting:
 		if notified != 0 {
@@ -299,7 +300,7 @@ func checkCorpusStates(t *testing.T, claude *claudeengine.Claude, name string, c
 }
 
 // checkCorpusParse checks that ParseEvents reads turn end number from line as one event:
-// a waiting one with exactly the case's tasks, any other one as a Stop with nothing outstanding.
+// a waiting or waiting_held one with exactly the case's tasks, any other one as a Stop with nothing outstanding.
 func checkCorpusParse(t *testing.T, claude *claudeengine.Claude, name string, number int, line string, te corpusTurnEnd) {
 	t.Helper()
 	events, err := claude.ParseEvents([]byte(line))
@@ -307,7 +308,7 @@ func checkCorpusParse(t *testing.T, claude *claudeengine.Claude, name string, nu
 		t.Fatalf("%s: turn end %d: ParseEvents = %v, %v; want one event", name, number, events, err)
 	}
 	wantKind := shuttleengine.EventStop
-	if te.Reading == readingWaiting {
+	if te.Reading == readingWaiting || te.Reading == readingWaitingHeld {
 		wantKind = shuttleengine.EventWaiting
 	}
 	var got []corpusTask

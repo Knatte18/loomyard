@@ -9,6 +9,13 @@
 // After any clean exit the daemon releases its lock and lists the hub's sessions once more, and spawns a successor only when that listing finds a session, so a session that appeared during the exit is not left without a watchdog.
 // When `down` ends the hub's server it then polls the daemon's lock for up to ten seconds, so the daemon has left its loop when the verb returns; a lock still held at the bound logs one Warn and `down` still succeeds.
 //
+// In a task pair, `down` first ends the pair's registered processes through `pairteardown.Teardown.EndBeforeSessionDown`, then kills the session as before, and its envelope carries `ended_processes`, the `{pid, role}` of each process ended, empty when none.
+// The pre-step reads local state only and makes no network call, so it never waits at the network gate and runs no origin reconcile.
+// It proceeds when a pause covers the pair, its board entry reads done, it finished its Finalize with no registered batten alive, or the run is not running, and then waits for the run lock before it ends the processes.
+// A run that is running and unpaused is refused with the way forward `lyx tender pause <slug>` then `lyx reed down` again, as the envelope's error with the session left live;
+// a refusal of the run-lock wait or survivors of the end are the envelope's error the same way.
+// The prime is no pair: its `down` ends no registered process and runs as before.
+//
 // `add` places the strand in a window of its own, or its group's, and its `--anchor` takes `own-window` (the default) or `hidden`; any other value is refused.
 //
 // `attach` execs tmux over the lyx process on Unix, so no lyx process outlives the handover, and keeps a child process on Windows.

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -24,6 +25,8 @@ const (
 	confirmInterval = 5 * time.Second
 	// confirmRereads is how many re-reads follow the first confirmation reading, so confirmation gives up after ten minutes.
 	confirmRereads = 120
+	// confirmForkRereads is how many re-reads follow the first confirmation reading while forks are the only withholding reason, so confirmation gives up after sixty minutes.
+	confirmForkRereads = 720
 	// wakeWindow is how much awake time after the hibernate call may pass without a wake before the request fails.
 	wakeWindow = 5 * time.Minute
 	// wakePoll is how often the wake detection reads the clocks.
@@ -90,7 +93,7 @@ func Watch(deps Deps) (Request, error) {
 	if r, ok, err = advance(deps, PhaseConfirming, ""); err != nil || !ok {
 		return r, err
 	}
-	switch outcome, reason := awaitConfirmation(deps, report); outcome {
+	switch outcome, reason := awaitConfirmation(deps, report, r.Requester); outcome {
 	case confirmationStopped:
 		return r, nil
 	case confirmationLifted:
@@ -341,13 +344,18 @@ const (
 	confirmationTimedOut
 )
 
-// awaitConfirmation reads the hub until a reading confirms the pause, the first reading right after the pause and then up to confirmRereads re-reads confirmInterval apart.
+// awaitConfirmation reads the hub until a reading confirms the pause, the first reading right after the pause and then re-reads confirmInterval apart.
+// The wait gives up after confirmRereads re-reads unless the latest reading withheld only for forks, which get confirmForkRereads.
 // The first reading also withholds while the pause report names a strand still busy or a session whose interrupt was refused.
-// A reading error is logged and counts as unconfirmed; the reason is the last withholding one when the wait times out.
-func awaitConfirmation(deps Deps, report tenderengine.PauseReport) (confirmation, string) {
+// A reading error is logged and counts as unconfirmed and as not fork-only; the reason is the last withholding one when the wait times out.
+func awaitConfirmation(deps Deps, report tenderengine.PauseReport, requester string) (confirmation, string) {
 	withheld := ""
-	for reading := 0; reading <= confirmRereads; reading++ {
+	forkOnly := false
+	for reading := 0; reading <= confirmForkRereads; reading++ {
 		if reading > 0 {
+			if reading > confirmRereads && !forkOnly {
+				break
+			}
 			deps.Sleep(confirmInterval)
 		}
 		if !stillOurs(deps) {
@@ -360,23 +368,23 @@ func awaitConfirmation(deps Deps, report tenderengine.PauseReport) (confirmation
 		}
 		if err != nil {
 			logger.Debug("hibernate: a confirmation reading failed", "error", err)
-			withheld = "a confirmation reading failed: " + err.Error()
+			withheld, forkOnly = "a confirmation reading failed: "+err.Error(), false
 			continue
 		}
-		ok, hubEntry, reason := confirmed(status, landLockHeld)
+		ok, hubEntry, onlyForks, reason := confirmed(status, landLockHeld, requester)
 		switch {
 		case !hubEntry:
 			return confirmationLifted, ""
 		case ok && reading == 0 && len(report.StillBusy) > 0:
-			ok, reason = false, "the pause left "+strings.Join(report.StillBusy, ", ")+" busy"
+			ok, onlyForks, reason = false, false, "the pause left "+strings.Join(report.StillBusy, ", ")+" busy"
 		case ok && reading == 0 && len(report.Refused) > 0:
-			ok, reason = false, "the pause was refused by "+report.Refused[0].Strand
+			ok, onlyForks, reason = false, false, "the pause was refused by "+report.Refused[0].Strand
 		}
 		if ok {
 			return confirmationReached, ""
 		}
 		logger.Debug("hibernate: the pause is not confirmed", "reason", reason)
-		withheld = reason
+		withheld, forkOnly = reason, onlyForks
 	}
 	return confirmationTimedOut, withheld
 }
@@ -386,27 +394,60 @@ func hubPaused(status tenderengine.StatusReport) bool {
 	return slices.ContainsFunc(status.Live, func(entry pauserecord.Entry) bool { return entry.Scope == pauserecord.ScopeHub })
 }
 
-// confirmed reports whether one reading confirms the pause: a live hub entry stands, every session is idle, asking or dead, no network operation is in flight and the land lock is free.
-// hubEntry is false when no live hub entry stands, and reason says what withholds a reading that is not ok.
+// confirmed reports whether one reading confirms the pause: a live hub entry stands, every session is idle, asking, dead or busy only on background shells, no network operation is in flight and the land lock is free.
+// A suspend freezes a shell and resumes it on wake, so a shell withholds nothing, while a background fork does.
+// A session whose strand is the requester is left out when the requester parses as the orch, since a hub pause does not interrupt the orch.
+// hubEntry is false when no live hub entry stands, and reason is the first of the reasons that withhold a reading that is not ok.
+// forkOnly is true when the reading withholds and every reason is a background fork, never when a network operation is in flight, the land lock is held or any other session is busy.
 // The parent locks in status.Holds are not read, since a paused run keeps its parent lock by design.
-func confirmed(status tenderengine.StatusReport, landLockHeld bool) (ok bool, hubEntry bool, reason string) {
+func confirmed(status tenderengine.StatusReport, landLockHeld bool, requester string) (ok bool, hubEntry bool, forkOnly bool, reason string) {
 	if !hubPaused(status) {
-		return false, false, "no hub pause is live"
+		return false, false, false, "no hub pause is live"
 	}
+	requesterIsOrch := requesterIsOrchStrand(requester)
+	var reasons []string
+	forkReasons := 0
 	for _, session := range status.Sessions {
-		switch shuttleengine.SessionStateName(session.State) {
-		case shuttleengine.SessionIdleDone, shuttleengine.SessionIdleStalled, shuttleengine.SessionIdleFresh, shuttleengine.SessionAsking, shuttleengine.SessionDead:
+		if requesterIsOrch && session.Strand == requester {
+			continue
+		}
+		switch {
+		case settledSession(session):
+		case session.State == string(shuttleengine.SessionBusy) && session.Cause == shuttleengine.SessionCauseBackground && slices.Contains(session.Background, string(shuttleengine.BackgroundFork)):
+			forkReasons++
+			reasons = append(reasons, fmt.Sprintf("%s has a background fork outstanding", session.Strand))
 		default:
-			return false, true, fmt.Sprintf("%s reads %s", session.Strand, session.State)
+			reasons = append(reasons, fmt.Sprintf("%s reads %s", session.Strand, session.State))
 		}
 	}
 	if len(status.NetOps) > 0 {
-		return false, true, fmt.Sprintf("%d network operation(s) in flight", len(status.NetOps))
+		reasons = append(reasons, fmt.Sprintf("%d network operation(s) in flight", len(status.NetOps)))
 	}
 	if landLockHeld {
-		return false, true, "the land lock is held"
+		reasons = append(reasons, "the land lock is held")
 	}
-	return true, true, ""
+	if len(reasons) == 0 {
+		return true, true, false, ""
+	}
+	return false, true, forkReasons == len(reasons), reasons[0]
+}
+
+// settledSession reports whether a session reads as one a suspend leaves unharmed: idle, asking, dead, or busy only on background shells.
+func settledSession(session tenderengine.SessionStatus) bool {
+	switch shuttleengine.SessionStateName(session.State) {
+	case shuttleengine.SessionIdleDone, shuttleengine.SessionIdleStalled, shuttleengine.SessionIdleFresh, shuttleengine.SessionAsking, shuttleengine.SessionDead:
+		return true
+	case shuttleengine.SessionBusy:
+		return session.Cause == shuttleengine.SessionCauseBackground && len(session.Background) > 0 &&
+			!slices.ContainsFunc(session.Background, func(kind string) bool { return kind != string(shuttleengine.BackgroundShell) })
+	}
+	return false
+}
+
+// requesterIsOrchStrand reports whether requester parses as an agent name whose role is the orch.
+func requesterIsOrchStrand(requester string) bool {
+	name, err := agentname.Parse(requester)
+	return err == nil && agentname.MatchesRole(name.Role, agentname.RoleOrch)
 }
 
 // awaitWake observes the clocks right before the hibernate call and then every wakePoll, and reports whether a sleep ending after the call is seen within wakeWindow of awake time.

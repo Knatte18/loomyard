@@ -173,7 +173,8 @@ func (run *Run) syncShellWait() {
 }
 
 // shellWaitActive reports whether the recorded waiting turn end holds only non-awaited background shells of either signal, at least one outstanding for the bound by its first-seen stamp.
-// It is display only: the wait it shows expires nothing.
+// It shows only while shells are outstanding at staggered first-seen times, one past the bound and another not:
+// a lone shell crossing the bound expires an ungated wait in the same tick, and a gated run's shell-only waiting turn end is judged at once, so neither leaves a list to show.
 func (run *Run) shellWaitActive() bool {
 	if len(run.waitingTasks) == 0 {
 		return false

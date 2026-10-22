@@ -12,7 +12,9 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -53,6 +55,23 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 				if got, present := seed.Params["child_driver"]; present {
 					t.Errorf("seed.Params[child_driver] = %q; want no param for an unset flag", got)
 				}
+
+				records := listRunRecords(t, loc, "some-slug")
+				if verb == "run" && (len(records) != 1 || records[0].Role != runproc.RoleBatten || records[0].PID != os.Getpid()) {
+					t.Errorf("run records = %+v; want one batten record of the test's pid", records)
+				}
+				if verb == "step" && len(records) != 0 {
+					t.Errorf("step records = %+v; want none", records)
+				}
+				if verb == "run" {
+					windowLoc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
+					if err := (&battenCLI{windowFlag: true}).armSeed(windowLoc, "some-slug", verb); err != nil {
+						t.Fatalf("armSeed(%q) with windowFlag = %v; want nil", verb, err)
+					}
+					if records := listRunRecords(t, windowLoc, "some-slug"); len(records) != 0 {
+						t.Errorf("window run records = %+v; want none, since the window opener only opens the window", records)
+					}
+				}
 			})
 		}
 	}
@@ -81,6 +100,32 @@ func TestArmSeed_OwnDriverLLMRefusesTheSameWayOnASeededRun(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "cannot change a seeded run") {
 		t.Errorf("armSeed() error = %q; want the impossibility, not the seeded-value disagreement", err.Error())
+	}
+	if records := listRunRecords(t, loc, "some-slug"); len(records) != 0 {
+		t.Errorf("records after the refused armSeed = %+v; want none", records)
+	}
+}
+
+// listRunRecords lists the live owner records of slug in loc's hub.
+func listRunRecords(t *testing.T, loc *lyxcwd.Location, slug string) []runproc.Record {
+	t.Helper()
+	records, err := runproc.List(fabricengine.RunProcDir(loc.HubPath), slug)
+	if err != nil {
+		t.Fatalf("runproc.List(%q) = %v; want nil", slug, err)
+	}
+	return records
+}
+
+// TestBattenLoopSpec_OnStartRegistersTheLoop asserts the loop's start hook registers the calling process as the run's loop.
+func TestBattenLoopSpec_OnStartRegistersTheLoop(t *testing.T) {
+	t.Parallel()
+	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
+
+	battenLoopSpec(loc, "some-slug").OnStart()
+
+	records := listRunRecords(t, loc, "some-slug")
+	if len(records) != 1 || records[0].Role != runproc.RoleLoop || records[0].PID != os.Getpid() {
+		t.Errorf("records = %+v; want one loop record of the test's pid", records)
 	}
 }
 

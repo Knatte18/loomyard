@@ -15,3 +15,17 @@ type Process struct {
 	// Argv is the process's command line, split at its NUL separators.
 	Argv []string
 }
+
+// StatEntry is one process as ListStats read it from its stat alone.
+type StatEntry struct {
+	// PID is the process id.
+	PID int
+	// PPID is the parent process id.
+	PPID int
+	// PGID is the process-group id.
+	PGID int
+	// StartTime is the process's start time in the form StartTime returns.
+	StartTime string
+	// Zombie reports whether the process has ended and awaits its parent's wait.
+	Zombie bool
+}

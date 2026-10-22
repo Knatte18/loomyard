@@ -9,8 +9,38 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
+
+// TestRestepRecorded asserts a record re-steps a status only when it is a restep at that status's own stop key.
+func TestRestepRecorded(t *testing.T) {
+	t.Parallel()
+
+	status := shedengine.Status{CurrentProducer: "Finalize", State: shedengine.StateFailed, History: make([]shedengine.HistoryEntry, 3)}
+	here := StopKeyOf(status)
+	earlier := here
+	earlier.HistoryLength--
+
+	tests := []struct {
+		name    string
+		records []shedrun.SettleRecord
+		want    bool
+	}{
+		{"restep_at_the_same_stop", []shedrun.SettleRecord{{StopKey: here, Action: shedrun.SettleRestep}}, true},
+		{"restep_at_an_earlier_stop", []shedrun.SettleRecord{{StopKey: earlier, Action: shedrun.SettleRestep}}, false},
+		{"other_action_at_the_same_stop", []shedrun.SettleRecord{{StopKey: here, Action: shedrun.SettleHandBack}}, false},
+		{"no_records", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := RestepRecorded(tt.records, status); got != tt.want {
+				t.Errorf("RestepRecorded(%s) = %v; want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
 
 // TestSettleRecords pins the append-and-read round trip in order, an absent file reading nil, a torn last line skipped, and the verify-retry cap read.
 func TestSettleRecords(t *testing.T) {

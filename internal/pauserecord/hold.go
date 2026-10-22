@@ -21,6 +21,8 @@ const (
 	holdPollCeiling = 5 * time.Second
 	// netDirName is the directory beside the record that holds the in-flight network operation markers.
 	netDirName = "net"
+	// waitingDirName is the directory beside the record that holds the markers of calls waiting at the gate.
+	waitingDirName = "waiting"
 )
 
 // Waiter carries the seams of WaitUncovered; its zero value waits on real timers and writes to stderr.
@@ -35,6 +37,24 @@ type Waiter struct {
 	// ExemptEntry, when it accepts a live entry, lets that entry pass whatever it covers; any entry it rejects holds the wait as usual.
 	// It serves a caller that owns one pause entry and must still reach origin while it stands.
 	ExemptEntry func(Entry) bool
+}
+
+// covering returns the oldest live entry of record that holds slug once the waiter's exemptions are applied.
+func (w Waiter) covering(record Record, slug string) (Entry, bool) {
+	coveredSlug := slug
+	if w.SlugEntryExempt != nil && w.SlugEntryExempt() {
+		coveredSlug = ""
+	}
+	if w.ExemptEntry != nil {
+		var holding []Entry
+		for _, live := range record.Live {
+			if !w.ExemptEntry(live) {
+				holding = append(holding, live)
+			}
+		}
+		record.Live = holding
+	}
+	return record.Covering(coveredSlug)
 }
 
 // WaitUncovered returns once no live entry in the record at path covers slug, and at once when none does.
@@ -59,20 +79,7 @@ func WaitUncovered(ctx context.Context, path, slug string, w Waiter) error {
 			notify(fmt.Sprintf("lyx: pause record unreadable, not holding: %v", err))
 			return nil
 		}
-		coveredSlug := slug
-		if w.SlugEntryExempt != nil && w.SlugEntryExempt() {
-			coveredSlug = ""
-		}
-		if w.ExemptEntry != nil {
-			var holding []Entry
-			for _, live := range record.Live {
-				if !w.ExemptEntry(live) {
-					holding = append(holding, live)
-				}
-			}
-			record.Live = holding
-		}
-		entry, covered := record.Covering(coveredSlug)
+		entry, covered := w.covering(record, slug)
 		if !covered {
 			return nil
 		}
@@ -135,14 +142,48 @@ func NetDir(recordPath string) string {
 // A marker whose process alive reports dead is removed and skipped, so the result holds only operations in flight.
 func ListNetOps(recordPath string, alive func(pid int, startTime string) bool) ([]NetOp, error) {
 	dir := NetDir(recordPath)
+	ops, err := listLiveMarkers(dir, alive, func(op NetOp) (int, string) { return op.PID, op.StartTime })
+	if err != nil {
+		return nil, fmt.Errorf("list network operations in %s: %w", dir, err)
+	}
+	return ops, nil
+}
+
+// WaitingMarker is the marker of one network call that is waiting at the gate for a pause to lift.
+// It records only what the gate waits on: the process and the slug the wait is judged by.
+type WaitingMarker struct {
+	PID       int    `json:"pid"`
+	StartTime string `json:"start_time"`
+	Slug      string `json:"slug"`
+}
+
+// WaitingDir returns the directory of waiting markers beside the record, a sibling of NetDir and never inside it, so the in-flight reading never lists a waiting marker.
+func WaitingDir(recordPath string) string {
+	return filepath.Join(filepath.Dir(recordPath), waitingDirName)
+}
+
+// ListWaiting lists the waiting markers beside the record.
+// A marker whose process alive reports dead is removed and skipped, so the result holds only calls waiting now.
+func ListWaiting(recordPath string, alive func(pid int, startTime string) bool) ([]WaitingMarker, error) {
+	dir := WaitingDir(recordPath)
+	markers, err := listLiveMarkers(dir, alive, func(marker WaitingMarker) (int, string) { return marker.PID, marker.StartTime })
+	if err != nil {
+		return nil, fmt.Errorf("list waiting network calls in %s: %w", dir, err)
+	}
+	return markers, nil
+}
+
+// listLiveMarkers decodes the marker files in dir into T, removing and skipping those whose process identity reports dead and skipping files that do not decode.
+// A missing directory lists nothing.
+func listLiveMarkers[T any](dir string, alive func(pid int, startTime string) bool, identity func(T) (int, string)) ([]T, error) {
 	entries, err := os.ReadDir(dir)
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("list network operations in %s: %w", dir, err)
+		return nil, err
 	}
-	var ops []NetOp
+	var markers []T
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
@@ -152,17 +193,17 @@ func ListNetOps(recordPath string, alive func(pid int, startTime string) bool) (
 		if err != nil {
 			continue
 		}
-		var op NetOp
-		if err := json.Unmarshal(data, &op); err != nil {
+		var marker T
+		if err := json.Unmarshal(data, &marker); err != nil {
 			continue
 		}
-		if !alive(op.PID, op.StartTime) {
+		if pid, startTime := identity(marker); !alive(pid, startTime) {
 			os.Remove(markerPath)
 			continue
 		}
-		ops = append(ops, op)
+		markers = append(markers, marker)
 	}
-	return ops, nil
+	return markers, nil
 }
 
 // Gate is the process-wide hold that network calls go through.
@@ -184,12 +225,79 @@ type Gate struct {
 	// ExemptScope and ExemptPausedAt name the one live entry the gate lets pass; both zero means no entry passes.
 	ExemptScope    string
 	ExemptPausedAt time.Time
+	// ExemptAll lets every live entry pass, for the one process an operator's explicit verb runs in.
+	ExemptAll bool
+	// Defer makes a call that finds a live entry covering the process hand off to the deferral SetGateDeferral stored, before any wait.
+	Defer bool
+	// OwnerEntryExempt lets a live entry of the gate's own slug whose Caller is OwnerCaller pass.
+	OwnerEntryExempt bool
 }
 
 var (
-	installedGate atomic.Pointer[Gate]
-	netOpCounter  atomic.Int64
+	installedGate  atomic.Pointer[Gate]
+	gateDeferral   atomic.Pointer[func()]
+	netOpCounter   atomic.Int64
+	waitingCounter atomic.Int64
 )
+
+// SetGateDeferral stores the function a deferring gate calls when a live entry covers its process, and returns the function that restores the previous one.
+// The function is a process's exit and does not return; when none is stored, or it returns, the gate waits as it does without Defer.
+func SetGateDeferral(onCovered func()) (restore func()) {
+	var stored *func()
+	if onCovered != nil {
+		stored = &onCovered
+	}
+	previous := gateDeferral.Swap(stored)
+	return func() { gateDeferral.Store(previous) }
+}
+
+// GateCovered reports whether a live entry covers the installed gate's process right now, under the exemptions the gate's waits apply.
+// It reports false with no gate installed or an unreadable record.
+func GateCovered() bool {
+	gate := installedGate.Load()
+	if gate == nil {
+		return false
+	}
+	record, err := Read(gate.Geometry.RecordPath)
+	if err != nil {
+		return false
+	}
+	_, covered := gate.waiter(nil).covering(record, gate.Geometry.Slug)
+	return covered
+}
+
+// waiter returns the Waiter that applies this gate's exemptions; onSleep, when non-nil, runs before every sleep of a wait.
+func (g *Gate) waiter(onSleep func()) Waiter {
+	slug := g.Geometry.Slug
+	sleep := g.Sleep
+	if sleep == nil {
+		sleep = sleepOnTimer
+	}
+	waiter := Waiter{
+		Notify: g.Notify,
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			if onSleep != nil {
+				onSleep()
+			}
+			return sleep(ctx, d)
+		},
+		SlugEntryExempt: func() bool { return g.HoldsParentLock != nil && g.HoldsParentLock(slug) },
+	}
+	switch {
+	case g.ExemptAll:
+		waiter.ExemptEntry = func(Entry) bool { return true }
+	case g.ExemptScope != "" || g.OwnerEntryExempt:
+		exemptScope, exemptPausedAt := g.ExemptScope, g.ExemptPausedAt
+		ownerEntryExempt := g.OwnerEntryExempt
+		waiter.ExemptEntry = func(entry Entry) bool {
+			if ownerEntryExempt && entry.Scope == slug && entry.Caller == OwnerCaller {
+				return true
+			}
+			return exemptScope != "" && entry.Scope == exemptScope && entry.PausedAt.Equal(exemptPausedAt)
+		}
+	}
+	return waiter
+}
 
 // InstallGate stores g as the process's network gate and returns a function that reinstates the previous one.
 func InstallGate(g Gate) (restore func()) {
@@ -220,6 +328,29 @@ func SetGateExempt(scope string, pausedAt time.Time) (restore func()) {
 	return func() { replaceGateExempt(previous.scope, previous.pausedAt) }
 }
 
+// SetGateExemptAll makes the installed gate let every live entry pass, for the one process an explicit operator verb runs in, and returns the function that restores the previous setting.
+// It does nothing when no gate is installed.
+// The exemption stays in this process: a child installs its own gate.
+func SetGateExemptAll() (restore func()) {
+	previous := replaceGateExemptAll(true)
+	return func() { replaceGateExemptAll(previous) }
+}
+
+// replaceGateExemptAll sets ExemptAll on the current gate and returns the value it replaced; it replaces nothing when no gate is installed.
+func replaceGateExemptAll(exemptAll bool) bool {
+	for {
+		current := installedGate.Load()
+		if current == nil {
+			return false
+		}
+		updated := *current
+		updated.ExemptAll = exemptAll
+		if installedGate.CompareAndSwap(current, &updated) {
+			return current.ExemptAll
+		}
+	}
+}
+
 // gateExempt is the exempt entry a gate carries.
 type gateExempt struct {
 	scope    string
@@ -243,6 +374,7 @@ func replaceGateExempt(scope string, pausedAt time.Time) gateExempt {
 }
 
 // Network waits while a pause covers the process, then marks an operation op in flight and returns the function that clears the mark.
+// While it waits it keeps a waiting marker under WaitingDir, removed as soon as the wait returns and before the in-flight marker is written.
 // It returns held, the time from entry until the wait returned, which is zero unless the wait slept at least once.
 // With no gate installed it returns zero and a no-op at once.
 // It only waits at entry: it fails no call, and a marker it cannot write is skipped.
@@ -257,28 +389,24 @@ func Network(op string) (held time.Duration, done func()) {
 	}
 	slug := gate.Geometry.Slug
 	holdsParentLock := func() bool { return gate.HoldsParentLock != nil && gate.HoldsParentLock(slug) }
-	sleep := gate.Sleep
-	if sleep == nil {
-		sleep = sleepOnTimer
-	}
 	slept := false
-	waiter := Waiter{
-		Notify: gate.Notify,
-		Sleep: func(ctx context.Context, d time.Duration) error {
-			slept = true
-			return sleep(ctx, d)
-		},
-		SlugEntryExempt: holdsParentLock,
-	}
-	if gate.ExemptScope != "" {
-		exemptScope, exemptPausedAt := gate.ExemptScope, gate.ExemptPausedAt
-		waiter.ExemptEntry = func(entry Entry) bool {
-			return entry.Scope == exemptScope && entry.PausedAt.Equal(exemptPausedAt)
+	waiter := gate.waiter(func() { slept = true })
+	if gate.Defer && GateCovered() {
+		if deferral := gateDeferral.Load(); deferral != nil {
+			(*deferral)()
 		}
 	}
 	entered := now()
+	waiting := WaitingMarker{PID: gate.PID, StartTime: gate.StartTime, Slug: slug}
+	waitingPath := filepath.Join(WaitingDir(gate.Geometry.RecordPath), fmt.Sprintf("%d-%d.json", gate.PID, waitingCounter.Add(1)))
+	if err := writeMarker(waitingPath, waiting); err != nil {
+		waitingPath = ""
+	}
 	// The background context never ends, so the wait returns nil.
 	_ = WaitUncovered(context.Background(), gate.Geometry.RecordPath, slug, waiter)
+	if waitingPath != "" {
+		os.Remove(waitingPath)
+	}
 	if slept {
 		held = now().Sub(entered)
 	}
@@ -300,7 +428,7 @@ func Network(op string) (held time.Duration, done func()) {
 }
 
 // writeMarker writes the marker to path, creating its directory.
-func writeMarker(path string, marker NetOp) error {
+func writeMarker(path string, marker any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

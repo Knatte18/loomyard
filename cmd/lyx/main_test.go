@@ -14,8 +14,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -134,6 +136,43 @@ func TestPauseSlugOverride(t *testing.T) {
 				t.Errorf("pauseSlugOverride = %v; want %v", got, tt.want)
 			case *got != *tt.want:
 				t.Errorf("pauseSlugOverride = %q; want %q", *got, *tt.want)
+			}
+		})
+	}
+}
+
+// TestDetachedChild covers the gate behaviour the root hook reads off the hidden flags: a set pause-slug or deferrable flag defers, a set deferrable flag also holds the hub scope, and a set parent-locked flag is read beside a pause slug.
+func TestDetachedChild(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		declared []string
+		args     []string
+		want     tendercli.DetachedChild
+	}{
+		{"PauseSlugSet", []string{fabricengine.PauseSlugFlag}, []string{"--pause-slug", "child"}, tendercli.DetachedChild{Deferrable: true}},
+		{"DeferrableSet", []string{boardengine.DeferrableSyncFlag}, []string{"--deferrable"}, tendercli.DetachedChild{Deferrable: true, HubScope: true}},
+		{"ParentLockedBesidePauseSlug", []string{fabricengine.PauseSlugFlag, fabricengine.ParentLockedFlag}, []string{"--pause-slug=child", "--parent-locked"}, tendercli.DetachedChild{Deferrable: true, ParentLocked: true}},
+		{"DeclaredButUnset", []string{fabricengine.PauseSlugFlag, boardengine.DeferrableSyncFlag, fabricengine.ParentLockedFlag}, nil, tendercli.DetachedChild{}},
+		{"NotDeclared", nil, nil, tendercli.DetachedChild{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cmd := &cobra.Command{Use: "push"}
+			for _, name := range tt.declared {
+				if name == fabricengine.PauseSlugFlag {
+					cmd.Flags().String(name, "", "")
+				} else {
+					cmd.Flags().Bool(name, false, "")
+				}
+			}
+			if err := cmd.ParseFlags(tt.args); err != nil {
+				t.Fatalf("ParseFlags(%q): %v", tt.args, err)
+			}
+			if got := detachedChild(cmd); got != tt.want {
+				t.Errorf("detachedChild = %+v; want %+v", got, tt.want)
 			}
 		})
 	}

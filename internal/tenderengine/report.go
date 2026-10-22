@@ -10,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -63,6 +64,14 @@ type Deps struct {
 	Prime Pair
 	// Processes lists the processes running on the machine.
 	Processes func() ([]proc.Process, error)
+	// RunProcs lists each owner's live registered run processes; nil reads none.
+	RunProcs func() (map[string][]runproc.Record, error)
+	// Worktrees lists the path of every worktree git still registers, prime and task alike; nil reads none.
+	Worktrees func() ([]string, error)
+	// EndOwner ends every live process registered under owner and returns each it ended; nil ends none.
+	EndOwner func(owner string) ([]runproc.Ended, error)
+	// EndProcess ends the one process pid whose start time still equals startTime and returns each it ended; nil ends none.
+	EndProcess func(pid int, startTime string) ([]runproc.Ended, error)
 	// HubPath is the hub directory.
 	HubPath string
 	// Executable is the running lyx's own executable path, empty when it is unknown.
@@ -81,6 +90,12 @@ type Deps struct {
 	InjectOrchRevive func(line string) (int64, error)
 	// Owners lists each local pair with its effective owner and each run-held entry owned elsewhere; nil reports none.
 	Owners func() ([]PairOwner, error)
+	// PushPair spawns the detached push of the pair slug names; nil spawns none.
+	PushPair func(slug string) error
+	// PushPrimeRecords spawns the detached push of the prime's records; nil spawns none.
+	PushPrimeRecords func() error
+	// SyncBoardIfOwed spawns the board sync when the board holds changes a deferred sync left; nil spawns none.
+	SyncBoardIfOwed func() error
 	// Caller is the caller's strand name, empty for an external caller.
 	Caller string
 	// Now is the clock.

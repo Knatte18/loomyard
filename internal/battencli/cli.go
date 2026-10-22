@@ -465,8 +465,9 @@ func (c *battenCLI) openWindowInPrimeSession(name string, lyxArgs []string) (ree
 // A refusal, such as a done slug or one another machine owns, returns an envelope whose ok is false and whose error names the way forward;
 // the error result is reserved for a failure to arm the run or to read the envelope back.
 // The run's own driver lock, inside the window, refuses a second driver.
+// The adopting process opens the window and never drives the run, so it sets the window flag and registers no batten; only the in-window run it opens registers.
 func ResumeInWindow(location *lyxcwd.Location, slug string) (map[string]any, error) {
-	c := &battenCLI{spec: &shedverbs.Spec{}}
+	c := &battenCLI{spec: &shedverbs.Spec{}, windowFlag: true}
 	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug) }
 	armed, err := c.armAt(location, slug, true, "run")
 	if err != nil {

@@ -36,7 +36,7 @@ const runLockName = "run.lock"
 
 // masterAwaitedShellPrefix is the backgrounded recovery verb of the failure ladder.
 // The prefix keeps that verb out of the background-shell wait marker;
-// it does not change when a turn end counts, since every shell holds a gated turn end alike.
+// it is also what keeps the verb holding a gated turn end, which one waiting only on non-awaited shells is judged as a plain turn end.
 const masterAwaitedShellPrefix = "lyx webster recover-batch"
 
 // ErrRunBusy marks Run's fail-fast refusal when another invocation already holds scratchDir's
