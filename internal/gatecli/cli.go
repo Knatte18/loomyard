@@ -53,7 +53,7 @@ func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeout
 		Short:       "run the hub's test tiers once their gate slots are free",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: fmt.Sprintf(`test runs the tiers the hub declares in gate.yaml, in ascending tier number, stopping at the first tier that fails.
---tier N names a tier and may repeat; the default is tier0.
+--tier N names a tier and may repeat; the default is tier0 when neither --tier nor --upto is given.
 --upto N adds every declared tier numbered 0 through N but a manual one, which runs only when --tier names it.
 A listed tier that another listed tier covers is dropped.
 Each tier takes the gate slots it asks for, so the hub never runs more gate builds and tests at once than its configured slot count allows, and runs its command through the platform shell as one process tree, bounded by the tier's timeout_min once its slots are held.
