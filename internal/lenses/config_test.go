@@ -291,13 +291,19 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		}
 	}
 
-	for lensName, wantSentence := range map[string]string{
-		"coverage":     "A branch no planned row reaches is a finding.",
-		"forced-edits": "a registration no card lists is a finding",
-		"row-validity": "a zero-value or nil seam of a new field has a stated meaning",
+	for lensName, wantSentences := range map[string][]string{
+		"coverage": {
+			"A branch no planned row reaches is a finding.",
+			"uses the operand the record names, not a near one",
+		},
+		"forced-edits": {"a registration no card lists is a finding"},
+		"row-validity": {"a zero-value or nil seam of a new field has a stated meaning"},
 	} {
-		if text := strings.Join(strings.Fields(cfg.Lenses[lensName]), " "); !strings.Contains(text, wantSentence) {
-			t.Errorf("lens %q text = %q; want it to contain %q", lensName, text, wantSentence)
+		text := strings.Join(strings.Fields(cfg.Lenses[lensName]), " ")
+		for _, wantSentence := range wantSentences {
+			if !strings.Contains(text, wantSentence) {
+				t.Errorf("lens %q text = %q; want it to contain %q", lensName, text, wantSentence)
+			}
 		}
 	}
 
