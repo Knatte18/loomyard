@@ -63,7 +63,7 @@
 //   - running: a no-op success when the driver is live or holds the run lock or the driver lock, and refused as a halted run otherwise.
 //   - halted with the run lock or the driver lock held, or with a live driver and no park marker: refused with the kind `driver_not_parked`, to retry shortly; a held driver lock means the Go driver is still settling the stop.
 //   - halted with a live driver and a park marker: resumed, refused with `merge_in_progress` over an unfinished merge under start's Publish and Finalize exception, and with `driver_busy` when the driver's pane would not take the resume line.
-//   - halted with no live driver and a seed recording the Go driver: refused over an unfinished merge with `merge_in_progress`, otherwise a Go driver is spawned, which re-steps the run, and the success envelope names its pid.
+//   - halted with no live driver and a seed recording the Go driver: refused over an unfinished merge with `merge_in_progress`, otherwise a Go driver is spawned, which re-steps the run unless it starts at a blocked Finalize stop under a dirty parent code checkout, where it hands back and steps nothing, and the success envelope names its pid.
 //   - halted with no live driver otherwise: refused over an unfinished merge with `merge_in_progress`, otherwise naming `lyx batten run <slug>` from the prime and then resume for a dead strand, and `lyx loom start` for a retiring strand or none.
 //
 // The driver strand is read from reed's directory, which still lists a session that died with the machine, never from the run's seed;
@@ -179,7 +179,8 @@
 // A done run commits its records, and one that finished with `friction: failed` also gets a report and a notice without being parked.
 //
 // A hand-over runs only at a binary-eligible stop, once per stop key and build, over a clean tree outside the run's records and never under a pause.
-// It records the hand-over, leaves the stop report and the park marker, releases the driver lock and spawns a fresh `lyx loom drive` of the on-disk build, which re-steps.
+// It records the hand-over, leaves the stop report and the park marker, releases the driver lock and spawns a fresh `lyx loom drive` of the on-disk build, which re-steps;
+// a driver starting at a blocked Finalize stop first runs the Finalize arm and hands back, stepping nothing, while the parent's code checkout is dirty.
 //
 // A driver restarted over a halted run finds an agent attempt that no later hand-back closed and lets the agent's own call reuse it, so no second agent is spawned.
 //
