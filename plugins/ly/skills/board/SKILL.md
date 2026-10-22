@@ -22,6 +22,17 @@ Every entry carries a `kind`:
 A new entry without `kind` lands as a note, so claimable work must pass `kind: "task"`.
 A note stays as written until the operator decides to build it; then suitable notes are merged into one task, promoted, and removed.
 
+## Handles
+
+The board gives every entry a short handle, such as `T4`, `B2` or `E7`: `T` for a task, and for a note the first letter of its type label, upper-cased.
+The number is the lowest of its letter not in use, and it stays while the entry lives; a promote or a type change gives the entry a new handle of its new letter.
+The operator names entries by handle, and every verb that takes `slug` or `id` takes `handle` instead, or the bare handle as its whole argument:
+
+```
+lyx board get B4
+lyx board set-status '{"handle":"T4","status":null}'
+```
+
 ## Labels
 
 Every entry carries `labels`, validated against two maps in the hub's `board.yaml`, each from label to description:
@@ -47,8 +58,8 @@ Create or update an entry, demotion included:
 lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'
 ```
 
-An entry's optional `priority` is `high`, `normal` or `low`; absent means normal, and `"priority":"normal"` clears it.
-It orders the entry within its README group and listing.
+A note's optional `priority` is `high`, `normal` or `low`; absent means normal, and `"priority":"normal"` clears it.
+A task carries none: a write giving a task a priority is refused, and `promote` clears a note's.
 
 Read a long body from a file, or from stdin with `-`, instead of embedding it in the payload:
 
@@ -93,7 +104,7 @@ lyx board find --text retry backoff
 lyx board find --label bug retry
 ```
 
-List every entry, with `--text` for a one-line-per-entry scan that shows each entry's age and time since its last revision, `--sort age` or `--sort revised` to put the longest-lying entries first, and fetch one entry in full:
+List every entry, with `--text` for a one-line-per-entry scan that opens with each entry's handle and shows its age and time since its last revision, `--sort age` or `--sort revised` to put the longest-lying entries first, and fetch one entry in full:
 
 ```
 lyx board list --text

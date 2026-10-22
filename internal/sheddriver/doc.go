@@ -13,6 +13,7 @@
 // `Run` steps the run through `Deps.Step` and `Deps.Goto`, which the arming module points at `shedverbs`' `--until-stop` and goto bodies, so the driver restates neither.
 // Each step prints one stop envelope; the driver saves it under the run's drive-reports directory and decides it.
 // Before it acts on a stop it re-reads the status: a run another process is running, or whose run lock is held, ends the driver, and a run that moved to another stop is decided afresh from its status.
+// A driver that starts at a blocked stop with no open agent attempt first asks `Deps.StartCheck` about the stop's row, once, before its first step, and a refusal hands the run back quoting it with nothing stepped.
 // A pause covering the run holds the driver before it spawns or re-steps anything.
 // A failure the driver cannot act on is handed back; only a failed hand-back or a cancelled context is returned as an error.
 // `DriveVerb` holds the run's driver lock for the driver's life, removes the stale park marker and resume report, and refuses a second driver for the run at once.
@@ -56,6 +57,7 @@
 //   - no `Verify`: no stop is a verify halt;
 //   - no `HandOver`: the driver reads no build and never hands over;
 //   - no `Tamper`: a tackler verdict is acted on without comparing the worktree with its snapshot;
+//   - no `StartCheck`: a driver starting at a blocked stop steps it unchecked;
 //   - no `Watched`: the run is never watched;
 //   - no `CommitRecords`: a done stop commits nothing;
 //   - no `WriteFrictionNote`: a paused stop with no reason writes none.

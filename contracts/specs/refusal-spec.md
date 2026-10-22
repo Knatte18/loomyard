@@ -10,7 +10,7 @@ A refusal has a way forward when its message names one of these:
 
 1. a `lyx` verb that makes progress from the refused state;
 2. a transition the run takes by itself: a re-step, the next Master retry, a failure ladder rung;
-3. a plain `git` command in the task worktree, when no `lyx` verb covers it.
+3. a plain `git` command in a checkout the message names, when the work there is the operator's and no `lyx` verb covers it.
 
 A way forward never names a command the agents' settings deny (`PATTERN-no-denied-recovery` holds the list); when a step needs one, lyx performs it itself, as `lyx webster reset` does.
 

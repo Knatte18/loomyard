@@ -64,7 +64,7 @@ const (
 
 // Spec describes one module to the layered loaders.
 // OpenMaps are the dotted paths of the module's open maps;
-// PerNameMaps are the dotted paths of the module's per-name maps, mappings of names each carried whole as one unit, such as a lens's prose or a fan's list;
+// PerNameMaps are the dotted paths of the module's per-name maps, mappings of names the operator owns, such as a lens's prose or a batcher profile, which a layer adds to or overrides by name;
 // HubWide marks a module whose file lives at the hub only;
 // WholeEntries makes each top-level key one unit, open to the local layer.
 // JSONEntries makes a set write each pair as one whole top-level entry from a JSON object, with no template key check.
@@ -252,6 +252,7 @@ func removeKey(node *yaml.Node, path []string) bool {
 // ValidateLocal checks a local override document against the spec.
 // A unit a retired key covers is judged by that key's category alone: CategoryNone admits it with no shape check, any other category refuses it.
 // Every other unit path must exist in the template, or be a top-level key when the spec holds whole entries;
+// a path under a per-name map exists when the template holds it or, whatever the name, some template entry of that map holds the rest of it, and is judged against that entry;
 // its shape, mapping or not, must match the template's where the template holds the path;
 // and the longest category entry covering it must be CategoryNone, a hub-wide module also refusing a path no entry covers.
 // A failure is marked [ErrInvalid] and names the key; an empty or comment-only document passes.
@@ -278,7 +279,7 @@ func ValidateLocal(spec Spec, doc []byte) error {
 			}
 			continue
 		}
-		templateValue := nodeAt(&templateNode, path)
+		templateValue := templateValueAt(spec, &templateNode, path)
 		if templateValue == nil && !spec.WholeEntries {
 			return MarkInvalid(fmt.Errorf("key %q is not in the %s template", path, spec.Name))
 		}
@@ -304,7 +305,8 @@ const machineRemoval = "; way forward: remove it from the machine override"
 
 // ValidateMachine checks a machine override document against the spec.
 // A unit a retired key covers is admitted only when that key's category is CategoryMachine, and its value shape is never checked.
-// Every other unit path must exist in the template and match its shape, and the longest category entry covering it must be CategoryMachine.
+// Every other unit path must exist in the template and match its shape, and the longest category entry covering it must be CategoryMachine;
+// a path under a per-name map exists when the template holds it or, whatever the name, some template entry of that map holds the rest of it, and is judged against that entry.
 // A failure is marked [ErrInvalid], names the key and a way forward; an empty or comment-only document passes.
 func ValidateMachine(spec Spec, doc []byte) error {
 	paths, err := yamlengine.LeafPaths(doc, spec.OpenMaps, spec.WholeEntries)
@@ -329,7 +331,7 @@ func ValidateMachine(spec Spec, doc []byte) error {
 			}
 			continue
 		}
-		templateValue := nodeAt(&templateNode, path)
+		templateValue := templateValueAt(spec, &templateNode, path)
 		if templateValue == nil {
 			return MarkInvalid(fmt.Errorf("key %q is not in the %s template%s", path, spec.Name, machineRemoval))
 		}
@@ -345,6 +347,35 @@ func ValidateMachine(spec Spec, doc []byte) error {
 			return MarkInvalid(fmt.Errorf("key %q is not a machine key; way forward: remove it from the machine override and set it in the hub file through \"lyx config %s\" from the prime, or in the local override through \"lyx config %s --layer local\"", path, spec.Name, spec.Name))
 		case category != CategoryMachine:
 			return MarkInvalid(fmt.Errorf("key %q is %s and cannot be set in a machine override; way forward: remove it from the machine override and set it in the hub file through \"lyx config %s\" from the prime", path, category, spec.Name))
+		}
+	}
+	return nil
+}
+
+// templateValueAt returns the template node a unit path is judged against, which is the node at path when the template holds it.
+// For a path the template lacks under a per-name map P, P.<name> or P.<name>.<rest>, it is the first template entry at P, or the node at rest in the first entry holding it.
+// It returns nil when neither holds the path.
+func templateValueAt(spec Spec, template *yaml.Node, path string) *yaml.Node {
+	if node := nodeAt(template, path); node != nil {
+		return node
+	}
+	for _, perName := range spec.PerNameMaps {
+		under, found := strings.CutPrefix(path, perName+".")
+		if !found {
+			continue
+		}
+		entries := nodeAt(template, perName)
+		if entries == nil || entries.Kind != yaml.MappingNode {
+			continue
+		}
+		_, rest, _ := strings.Cut(under, ".")
+		for i := 1; i < len(entries.Content); i += 2 {
+			if rest == "" {
+				return entries.Content[i]
+			}
+			if node := nodeAt(entries.Content[i], rest); node != nil {
+				return node
+			}
 		}
 	}
 	return nil

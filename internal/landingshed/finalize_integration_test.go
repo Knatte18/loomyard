@@ -269,7 +269,7 @@ func TestFinalize_OverRealHub(t *testing.T) {
 	}
 
 	// Lands a fresh task with squash off, after the idempotent step so the parent already carries the earlier landing.
-	t.Run("a non-squash landing reports the config change", func(t *testing.T) {
+	if !t.Run("a non-squash landing reports the config change", func(t *testing.T) {
 		hubforge.AddPair(t, h, "third-task")
 		thirdCode := h.PairCodeWorktree("third-task")
 		gitkit.CommitFile(t, thirdCode, "third.txt", "third feature\n", "task: add third.txt")
@@ -281,6 +281,33 @@ func TestFinalize_OverRealHub(t *testing.T) {
 		shedfake.RequireOutcome(t, newFinalizeAt(t, "third-task", thirdCode, parentCode, resolutionShuttle(thirdCode, ""), false, changes, notify), shedengine.Done)
 		requireOneConfigNotice(t, notices, "third-task")
 		requireParentLoomConfigUnchanged(t, h, parentConfigBefore)
+	}) {
+		return
+	}
+
+	// Relies on the third step's merge-in having carried the earlier landings in cleanly.
+	t.Run("a dirty parent code checkout is Stuck naming it and its path until the dirt is discarded", func(t *testing.T) {
+		hubforge.AddPair(t, h, "fourth-task")
+		fourthCode := h.PairCodeWorktree("fourth-task")
+		gitkit.CommitFile(t, fourthCode, "fourth.txt", "fourth feature\n", "task: add fourth.txt")
+		gitkit.CommitFile(t, parentCode, "dirty.txt", "committed\n", "parent: add dirty.txt")
+		if err := os.WriteFile(filepath.Join(parentCode, "dirty.txt"), []byte("modified\n"), 0o644); err != nil {
+			t.Fatalf("modify parent dirty.txt: %v", err)
+		}
+
+		ptr := shedfake.RequireOutcome(t, newFinalizeAt(t, "fourth-task", fourthCode, parentCode, resolutionShuttle(fourthCode, ""), true, nil, nil), shedengine.Stuck)
+		resolvedParent, err := filepath.EvalSymlinks(parentCode)
+		if err != nil {
+			t.Fatalf("EvalSymlinks(%s): %v", parentCode, err)
+		}
+		for _, want := range []string{resolvedParent, `"dirty.txt"`} {
+			if !strings.Contains(ptr.Reason, want) {
+				t.Errorf("stuck reason %q does not carry %q", ptr.Reason, want)
+			}
+		}
+
+		gitkit.Git(t, parentCode, "checkout", "--", "dirty.txt")
+		shedfake.RequireOutcome(t, newFinalizeAt(t, "fourth-task", fourthCode, parentCode, resolutionShuttle(fourthCode, ""), true, nil, nil), shedengine.Done)
 	})
 }
 

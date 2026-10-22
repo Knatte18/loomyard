@@ -12,7 +12,7 @@ import (
 
 func strPtr(s string) *string { return &s }
 
-// TestRenderCompact asserts the compact listing aligns columns by display width, shows the status bracket only when a status is set, shows the priority column only when an entry is high or low, shows each age column only when an entry has that date, leaves no trailing gap without labels, keeps the input order and prints nothing for no input.
+// TestRenderCompact asserts the compact listing aligns columns by display width, shows the status bracket only when a status is set, shows the handle column first only when an entry has a handle, the priority column only when an entry is high or low and each age column only when an entry has that date, leaves no trailing gap without labels, keeps the input order and prints nothing for no input.
 //
 //testtiming:keep pins the column alignment, multi-byte widths, status bracket, label gap and ordering of the compact listing, which its covering test asserts for one listing only
 func TestRenderCompact(t *testing.T) {
@@ -25,13 +25,13 @@ func TestRenderCompact(t *testing.T) {
 		want string
 	}{
 		{
-			name: "columns align",
+			name: "columns align, the handle first",
 			in: []boardengine.BriefTask{
-				{Kind: "task", Labels: []string{"bug"}, Slug: "a", Title: "Short", Status: strPtr("active")},
-				{Kind: "note", Labels: []string{"enhancement", "area"}, Slug: "long-slug", Title: "Longer title", Status: strPtr("done")},
+				{Handle: "T4", Kind: "task", Labels: []string{"bug"}, Slug: "a", Title: "Short", Status: strPtr("active")},
+				{Handle: "E12", Kind: "note", Labels: []string{"enhancement", "area"}, Slug: "long-slug", Title: "Longer title", Status: strPtr("done")},
 			},
-			want: "task  a          Short         bug               [active]\n" +
-				"note  long-slug  Longer title  enhancement,area  [done]\n",
+			want: "T4   task  a          Short         bug               [active]\n" +
+				"E12  note  long-slug  Longer title  enhancement,area  [done]\n",
 		},
 		{
 			name: "multi-byte titles align",
@@ -58,11 +58,11 @@ func TestRenderCompact(t *testing.T) {
 		{
 			name: "priority column only when an entry is high or low",
 			in: []boardengine.BriefTask{
-				{Kind: "task", Priority: "high", Labels: []string{"bug"}, Slug: "a", Title: "One"},
+				{Kind: "note", Priority: "high", Labels: []string{"bug"}, Slug: "a", Title: "One"},
 				{Kind: "task", Labels: []string{"bug"}, Slug: "b", Title: "Two"},
 				{Kind: "note", Priority: "low", Labels: []string{"bug"}, Slug: "c", Title: "Six"},
 			},
-			want: "task  high  a  One  bug\ntask        b  Two  bug\nnote  low   c  Six  bug\n",
+			want: "note  high  a  One  bug\ntask        b  Two  bug\nnote  low   c  Six  bug\n",
 		},
 		{
 			name: "age columns as of now, blank for an unknown date",

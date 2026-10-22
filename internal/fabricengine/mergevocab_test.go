@@ -241,13 +241,12 @@ func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
 	for _, reason := range pinnedMergeReasons {
 		reasons = append(reasons, reason)
 	}
-	guardErr := newMergeGuardError(reasons)
+	guardErr := newMergeGuardError(reasons).withDirt("/hub/parent", []string{"a b.go"})
 	assertSideFree(t, "(*MergeGuardError).Error()", guardErr.Error())
-	if !IsWorktreeDirtyReason(guardErr.Error()) {
-		t.Errorf("IsWorktreeDirtyReason(%q) = false; want true for a guard error carrying the dirty-worktree reason", guardErr.Error())
-	}
-	if other := newMergeGuardError([]string{mergeReasonNotSynced}).Error(); IsWorktreeDirtyReason(other) {
-		t.Errorf("IsWorktreeDirtyReason(%q) = true; want false for another guard reason", other)
+	for _, detail := range []string{"/hub/parent", "a b.go"} {
+		if strings.Contains(guardErr.Error(), detail) {
+			t.Errorf("(*MergeGuardError).Error() = %q; must not contain the dirt detail %q", guardErr.Error(), detail)
+		}
 	}
 
 	const mergeInRequiredSource = "some-warp-branch"

@@ -88,13 +88,13 @@ func TestStrip(t *testing.T) {
 	}
 }
 
-const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nplan_max_bounces: ~\nrounds: \"\"\nnames:\n    a: default a\nlists:\n    l: [x]\n"
+const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nplan_max_bounces: ~\nrounds: \"\"\nnames:\n    a: default a\nlists:\n    l: [x]\nprofiles:\n    plain:\n        kind: identity\n    costed:\n        kind: cost\n        budget: 200\n"
 
-// TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry, as a per-name entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
+// TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry, as a per-name entry, as one key of a per-name mapping entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
 func TestSetSparse(t *testing.T) {
 	t.Parallel()
 	openMaps := []string{"labels", "rounds"}
-	perNameMaps := []string{"lists", "names"}
+	perNameMaps := []string{"lists", "names", "profiles"}
 	tests := []struct {
 		name        string
 		existing    string
@@ -137,6 +137,13 @@ func TestSetSparse(t *testing.T) {
 		{name: "per-name list entry refuses a plain value", pairs: []KV{{Key: "lists.m", Value: "plain"}}, wantErr: true},
 		{name: "per-name map holding a list is refused", existing: "names: [a]\n", pairs: []KV{{Key: "names.x", Value: "prose"}}, wantErr: true, wantErrText: []string{"names", "sequence", "rewrite names as a map of name to value"}},
 		{name: "per-name deeper key is unknown", pairs: []KV{{Key: "names.x.y", Value: "v"}}, wantUnknown: []string{"names.x.y"}},
+		{name: "one key of a per-name mapping entry the template holds is written alone", pairs: []KV{{Key: "profiles.costed.budget", Value: "300"}}, want: "profiles:\n    costed:\n        budget: 300\n"},
+		{name: "one key of a per-name mapping entry the template lacks takes the template entry's tag", existing: "profiles:\n    wide:\n        kind: cost\n", pairs: []KV{{Key: "profiles.wide.budget", Value: "250"}, {Key: "profiles.plain.budget", Value: "9"}}, want: "profiles:\n    wide:\n        kind: cost\n        budget: 250\n    plain:\n        budget: 9\n"},
+		{name: "per-name mapping entry is written whole from a flow mapping", pairs: []KV{{Key: "profiles.wide", Value: "{kind: identity}"}}, want: "profiles:\n    wide:\n        kind: identity\n"},
+		{name: "per-name mapping entry refuses a plain value", pairs: []KV{{Key: "profiles.wide", Value: "identity"}}, wantErr: true, wantErrText: []string{"profiles.wide", "flow mapping"}},
+		{name: "per-name mapping entry key under a scalar entry is refused", existing: "profiles:\n    costed: x\n", pairs: []KV{{Key: "profiles.costed.budget", Value: "300"}}, wantErr: true, wantErrText: []string{"profiles.costed"}},
+		{name: "per-name mapping entry key into a per-name map that holds a list is refused", existing: "profiles: [a]\n", pairs: []KV{{Key: "profiles.costed.budget", Value: "300"}}, wantErr: true, wantErrText: []string{"profiles", "sequence"}},
+		{name: "per-name mapping entry key no template entry holds is unknown", pairs: []KV{{Key: "profiles.wide.nope", Value: "1"}}, wantUnknown: []string{"profiles.wide.nope"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -156,7 +163,7 @@ func TestSetSparse(t *testing.T) {
 			if !slices.Equal(got.Unknown, tc.wantUnknown) {
 				t.Fatalf("Unknown = %v, want %v", got.Unknown, tc.wantUnknown)
 			}
-			for _, key := range []string{"labels.<name>", "list", "name", "nested.deep", "port"} {
+			for _, key := range []string{"labels.<name>", "list", "name", "nested.deep", "port", "profiles.<name>.budget"} {
 				if !slices.Contains(got.Known, key) {
 					t.Errorf("Known = %v, lacks %q", got.Known, key)
 				}
@@ -235,6 +242,7 @@ func TestDropTemplateEqualNames(t *testing.T) {
 		{name: "differing name kept", existing: "names:\n    a: tuned a\n    b: default b\n", want: "names:\n    a: tuned a\n", wantDropped: []string{"names.b"}},
 		{name: "name only the file holds kept", existing: "other: 1\nnames:\n    z: mine\n", want: "other: 1\nnames:\n    z: mine\n", wantDropped: []string{}},
 		{name: "emptied map stays as an empty mapping", existing: "other: 1\nnames:\n    b: default b\n    a: default a\n", want: "other: 1\nnames: {}\n", wantDropped: []string{"names.a", "names.b"}},
+		{name: "emptied map under a key carrying a line comment stays valid YAML", existing: "names: # mine\n    a: default a\n", want: "names: {} # mine\n", wantDropped: []string{"names.a"}},
 		{name: "nothing to drop returns the file byte for byte", existing: "# head\nother:   1\nnames:\n    a: tuned   # note\n", want: "# head\nother:   1\nnames:\n    a: tuned   # note\n", wantDropped: []string{}},
 	}
 	for _, tc := range tests {

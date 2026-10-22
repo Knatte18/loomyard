@@ -94,6 +94,8 @@ type Deps struct {
 	HandOver *HandOverSeam
 	// Tamper compares the worktree with the snapshot the tackler attempt recorded; nil acts on a tackler verdict without the comparison.
 	Tamper *TamperSeam
+	// StartCheck judges the row a driver finds blocked at its start before it steps anything, and returns a refusal that hands the run back; nil checks nothing.
+	StartCheck func(row string) (refusal string, err error)
 }
 
 // ArbiterSeam is the stronger agent a tackler escalation, or a stop only it may judge, goes to.
@@ -176,9 +178,18 @@ func Run(ctx context.Context, deps Deps) (Exit, error) {
 
 // run steps the run and settles each stop until the driver is finished.
 func (d *goDriver) run(ctx context.Context) error {
-	stop, resumed, err := d.resumeOpenAttempt(ctx)
+	status, statusFound, err := d.deps.ReadStatus()
+	if err != nil {
+		return d.handBackFailure(fmt.Errorf("reading the status before the first step: %w", err))
+	}
+	stop, resumed, err := d.resumeOpenAttempt(ctx, status, statusFound)
 	if err != nil {
 		return d.handBackFailure(err)
+	}
+	if !resumed {
+		if handedBack, err := d.checkBlockedStart(status, statusFound); err != nil || handedBack {
+			return err
+		}
 	}
 	attempt := ""
 	for {
@@ -616,15 +627,29 @@ func appendToFile(path, text string) error {
 	return file.Close()
 }
 
+// checkBlockedStart runs the start check once, before the first step, for a run whose status shows a blocked stop.
+// A refusal hands the run back at that stop with the refusal as the hand-back's rule, and a check error hands back as a failure; handedBack is true for both, and nothing is stepped.
+// An admit, a nil check and a status that is absent or not blocked leave the driver to step as usual.
+func (d *goDriver) checkBlockedStart(status shedengine.Status, statusFound bool) (handedBack bool, err error) {
+	if d.deps.StartCheck == nil || !statusFound || status.State != shedengine.StateBlocked {
+		return false, nil
+	}
+	refusal, checkErr := d.deps.StartCheck(status.CurrentProducer)
+	if checkErr != nil {
+		return true, d.handBackFailure(fmt.Errorf("the start check failed: %w", checkErr))
+	}
+	if refusal == "" {
+		return false, nil
+	}
+	return true, d.handBackAs(stopFromStatus(status), driveHandBack{Rules: []string{refusal}}, "the start check refused the blocked stop")
+}
+
 // resumeOpenAttempt finds, once before the first step, the stop a halted run left with an agent attempt still open, so a restarted driver reuses the attempt instead of spawning a second agent.
+// It decides on status, the first status read of the driver.
 // An attempt is open when the settle records hold no hand-back for its stop key later than its spawn: a stop the parent took and then resumed finds its attempt closed, and the driver steps.
 // An arbiter attempt is ignored when no arbiter is wired.
 // It returns the stop rebuilt from the envelope the attempt recorded; the rule table then sends it to the tackler or the arbiter, whose own call reuses the attempt.
-func (d *goDriver) resumeOpenAttempt(ctx context.Context) (stop Stop, found bool, err error) {
-	status, statusFound, err := d.deps.ReadStatus()
-	if err != nil {
-		return Stop{}, false, fmt.Errorf("reading the status before the first step: %w", err)
-	}
+func (d *goDriver) resumeOpenAttempt(ctx context.Context, status shedengine.Status, statusFound bool) (stop Stop, found bool, err error) {
 	if !statusFound || status.State == shedengine.StateRunning || status.State == shedengine.StateDone {
 		return Stop{}, false, nil
 	}

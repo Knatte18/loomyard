@@ -1,4 +1,4 @@
-// cli_test.go covers the flag refusals and defaults of both report verbs, which come before any cwd resolution or read, the prime-only refusal decision, and the sleep note of the timing verb.
+// cli_test.go covers the flag refusals and defaults of both report verbs, which come before any cwd resolution or read, the prime-only refusal decision, and the sleep and its note of the timing verb, journal-read or standing in from the hub's pauses.
 
 package reportcli
 
@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -90,25 +92,77 @@ func TestTimingSleepNote(t *testing.T) {
 			`{"__REALTIME_TIMESTAMP":"%d","_BOOT_ID":"boot","MESSAGE":"System returned from sleep operation 'suspend'."}`+"\n",
 		slept.UnixMicro(), woke.UnixMicro())
 
+	now := time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)
+	livePausedAt := now.Add(-time.Hour)
+	stamp := func(at time.Time) string { return at.Format(time.RFC3339) }
+	// pauses holds a resumed hub pause, a live hub pause and a resumed pair pause, which no reading of the hub's idle time takes.
+	pauses := fmt.Sprintf(`{"live":[{"scope":"hub","paused_at":%q}],"resumed":[{"scope":"hub","paused_at":%q,"resumed_at":%q},{"scope":"some-task","paused_at":%q,"resumed_at":%q}]}`,
+		stamp(livePausedAt), stamp(slept), stamp(woke), stamp(now.Add(-3*time.Hour)), stamp(now.Add(-2*time.Hour)))
+	const noRecord = ""
+
 	tests := []struct {
 		name       string
 		out        string
+		stderr     string
 		runErr     error
+		record     string
 		wantNote   string
 		wantSleeps []reportengine.Interval
 	}{
-		{name: "a journalctl missing from PATH is named", runErr: fmt.Errorf("run: %w", exec.ErrNotFound), wantNote: "No machine sleep is subtracted: journalctl is not on PATH."},
-		{name: "a failing journalctl is named", runErr: errors.New("exit status 1"), wantNote: "No machine sleep is subtracted: journalctl failed: exit status 1."},
-		{name: "a recorded sleep is converted and left out", out: journal, wantNote: "Machine sleep, read from the systemd journal, is left out of every interval.", wantSleeps: []reportengine.Interval{{From: slept, To: woke}}},
+		{
+			name:       "a journalctl missing from PATH falls back to the hub pauses",
+			runErr:     fmt.Errorf("run: %w", exec.ErrNotFound),
+			record:     pauses,
+			wantNote:   "Machine sleep could not be read from the systemd journal: journalctl is not on PATH. The hub's recorded pauses stand in for it and are left out of every interval, so the figures may include sleep no hub pause covers.",
+			wantSleeps: []reportengine.Interval{{From: livePausedAt, To: now}, {From: slept, To: woke}},
+		},
+		{
+			name:       "a journal the user may not read falls back to the hub pauses",
+			stderr:     "Hint: You are currently not seeing messages from other users and the system.\n",
+			record:     pauses,
+			wantNote:   "Machine sleep could not be read from the systemd journal: the journal is not readable by this user. The hub's recorded pauses stand in for it and are left out of every interval, so the figures may include sleep no hub pause covers.",
+			wantSleeps: []reportengine.Interval{{From: livePausedAt, To: now}, {From: slept, To: woke}},
+		},
+		{
+			name:     "a failing journalctl with no pause recorded leaves nothing out",
+			runErr:   errors.New("exit status 1"),
+			record:   noRecord,
+			wantNote: "Machine sleep could not be read from the systemd journal: journalctl failed: exit status 1, and the hub records no pause, so nothing is left out and the figures may include sleep.",
+		},
+		{
+			name:     "an undecodable journal and pause record are both named",
+			out:      "{\n",
+			record:   "{",
+			wantNote: "Machine sleep could not be read from the systemd journal: journal line \"{\" does not decode: unexpected end of JSON input, and the hub's pauses could not be read either (decode pause record RECORD: unexpected end of JSON input), so nothing is left out and the figures may include sleep.",
+		},
+		{
+			name:     "a journal with no sleep leaves the pauses unread",
+			record:   pauses,
+			wantNote: "No machine sleep is subtracted: the journal records no systemd-sleep operation.",
+		},
+		{
+			name:       "a recorded sleep is converted and left out",
+			out:        journal,
+			record:     pauses,
+			wantNote:   "Machine sleep, read from the systemd journal, is left out of every interval.",
+			wantSleeps: []reportengine.Interval{{From: slept, To: woke}},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			recordPath := filepath.Join(t.TempDir(), "record.json")
+			if tt.record != noRecord {
+				if err := os.WriteFile(recordPath, []byte(tt.record), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			wantNote := strings.ReplaceAll(tt.wantNote, "RECORD", recordPath)
 
-			sleeps, note := sleepsFromJournal([]byte(tt.out), tt.runErr)
+			sleeps, note := sleepsFromJournal([]byte(tt.out), []byte(tt.stderr), tt.runErr, recordPath, now)
 
-			if note != tt.wantNote {
-				t.Errorf("sleepsFromJournal() note = %q; want %q", note, tt.wantNote)
+			if note != wantNote {
+				t.Errorf("sleepsFromJournal() note = %q; want %q", note, wantNote)
 			}
 			if len(sleeps) != len(tt.wantSleeps) {
 				t.Fatalf("sleepsFromJournal() sleeps = %v; want %v", sleeps, tt.wantSleeps)

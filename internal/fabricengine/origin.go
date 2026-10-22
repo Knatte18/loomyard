@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -42,6 +43,25 @@ const (
 // one place.
 func OriginRecordRel() string {
 	return filepath.Join(lyxdirs.LyxDirName, originRecordDirName, originRecordFileName)
+}
+
+// originRecordSubjectPrefix is the commit subject prefix of the commit that records a new pair's origin.
+const originRecordSubjectPrefix = "fabric: record parent branch for "
+
+// OriginRecordSubject returns the commit subject of the origin-record commit that opens the pair for slug.
+// That commit is the oldest commit of the pair's own records history: everything below it is the parent's.
+func OriginRecordSubject(slug string) string {
+	return originRecordSubjectPrefix + slug
+}
+
+// OriginRecordSlug returns the slug an origin-record commit subject names.
+// It is false for any other subject and for an empty slug.
+func OriginRecordSlug(subject string) (string, bool) {
+	slug, ok := strings.CutPrefix(subject, originRecordSubjectPrefix)
+	if !ok || slug == "" {
+		return "", false
+	}
+	return slug, true
 }
 
 // OriginRecordPath returns the origin record's path for reading, through l's own anchored worktree.

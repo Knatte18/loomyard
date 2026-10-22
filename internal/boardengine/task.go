@@ -17,7 +17,9 @@ import (
 
 // Task is the canonical record stored in board.json.
 type Task struct {
-	ID        int      `json:"id"`
+	ID int `json:"id"`
+	// Handle is the entry's short name, a letter and a number such as T4 or B2, which the board assigns; empty until a load or write assigns it.
+	Handle    string   `json:"handle,omitempty"`
 	Slug      string   `json:"slug"`
 	Title     string   `json:"title"`
 	Kind      string   `json:"kind"`             // KindTask or KindNote
@@ -243,7 +245,7 @@ const (
 	KindNote = "note"
 )
 
-// The priority values an entry accepts.
+// The priority values a note accepts; a task carries none.
 // Task.Priority holds PriorityHigh, PriorityLow or the empty value for normal, so a write of PriorityNormal stores no key.
 const (
 	PriorityHigh   = "high"
@@ -251,19 +253,7 @@ const (
 	PriorityLow    = "low"
 )
 
-// priorityRank orders priority values for sorting: high before normal before low, with the empty value as normal.
-func priorityRank(priority string) int {
-	switch priority {
-	case PriorityHigh:
-		return 0
-	case PriorityLow:
-		return 2
-	default:
-		return 1
-	}
-}
-
-// normalizeTask stores a normal priority and an empty run settings object as the empty value, clears the owner of a note and stores the dates in whole UTC seconds, then checks that the Kind is one of the two kinds and the Priority one of the accepted values.
+// normalizeTask stores a normal priority and an empty run settings object as the empty value, clears the owner of a note and stores the dates in whole UTC seconds, then checks that the Kind is one of the two kinds, the Priority one of the accepted values and a task without one.
 func normalizeTask(t *Task) error {
 	if t.Kind != KindTask && t.Kind != KindNote {
 		return fmt.Errorf("kind %q is not one of %s, %s", t.Kind, KindTask, KindNote)
@@ -282,6 +272,10 @@ func normalizeTask(t *Task) error {
 	if t.Priority != "" && t.Priority != PriorityHigh && t.Priority != PriorityLow {
 		return fmt.Errorf("entry %q has priority %q, and a priority is one of %s, %s, %s: correct it, or set %q to clear it",
 			t.Slug, t.Priority, PriorityHigh, PriorityNormal, PriorityLow, PriorityNormal)
+	}
+	if t.Kind == KindTask && t.Priority != "" {
+		return fmt.Errorf("task %q has priority %q, and only a note carries a priority: set %q to clear it, or make a note a task with \"lyx board promote\", which clears it",
+			t.Slug, t.Priority, PriorityNormal)
 	}
 	return nil
 }

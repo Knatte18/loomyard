@@ -158,9 +158,10 @@ type TaskWithLayer struct {
 
 // RenderOrder returns tasks in README order.
 // Open tasks come first, then open notes, then done entries.
-// Within each section, tasks and done entries order by dependency layer, then by priority, then by ID;
-// open notes order by priority, then by layer, then by ID.
-// Priority runs high, normal, low.
+// Open tasks order by dependency layer, then by handle;
+// open notes order by handle, so each type's notes run by number;
+// done entries put tasks before notes, each by handle.
+// A handle orders by letter, then by number, and entries with equal handles by ID.
 func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 	layerMap, err := ComputeLayers(tasks)
 	if err != nil {
@@ -188,21 +189,19 @@ func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 		if doneI != doneJ {
 			return doneJ
 		}
-		if !doneI && result[i].Kind != result[j].Kind {
+		if result[i].Kind != result[j].Kind {
 			return result[i].Kind == KindTask
 		}
-		rankI, rankJ := priorityRank(result[i].Priority), priorityRank(result[j].Priority)
-		// An open note's README group is its type label, so priority leads its layer; a task's group is its layer.
-		if !doneI && result[i].Kind == KindNote && rankI != rankJ {
-			return rankI < rankJ
+		// An open note's README group is its type label, which its handle letter already groups, so a note's layer plays no part.
+		if result[i].Kind != KindNote {
+			bucketI := bucketOrder[result[i].Layer]
+			bucketJ := bucketOrder[result[j].Layer]
+			if bucketI != bucketJ {
+				return bucketI < bucketJ
+			}
 		}
-		bucketI := bucketOrder[result[i].Layer]
-		bucketJ := bucketOrder[result[j].Layer]
-		if bucketI != bucketJ {
-			return bucketI < bucketJ
-		}
-		if rankI != rankJ {
-			return rankI < rankJ
+		if c := compareHandles(result[i].Handle, result[j].Handle); c != 0 {
+			return c < 0
 		}
 		return result[i].ID < result[j].ID
 	})

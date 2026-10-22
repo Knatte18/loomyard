@@ -449,6 +449,7 @@ func TestMergeIn_DirtyWarpRefuses(t *testing.T) {
 	if len(guardErr.Reasons) != 1 || guardErr.Reasons[0] != "worktree dirty" {
 		t.Errorf("warp-dirty guard reasons = %v; want exactly [\"worktree dirty\"]", guardErr.Reasons)
 	}
+	assertGuardDirt(t, guardErr, h.PrimeWorktree(), []string{"dirty.txt"})
 }
 
 // TestMergeIn_DirtyWeftDoesNotRefuse used to be TestMergeIn_DirtyPair_ByteIdenticalErrorEitherSide's

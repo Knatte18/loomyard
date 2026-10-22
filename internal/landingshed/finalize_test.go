@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -44,6 +45,9 @@ type recordingParentMerger struct {
 	// order, when non-nil, receives "merge" and "push" as those calls happen, so a test can
 	// assert their order against other seams that append to the same slice.
 	order *[]string
+	// midMerge and midMergeErr script MidMerge's return.
+	midMerge    fabricengine.MidMergeState
+	midMergeErr error
 }
 
 type mergeCall struct {
@@ -80,6 +84,10 @@ func (m *recordingParentMerger) PushBranch(opts fabricengine.SyncOptions) (fabri
 }
 
 func (m *recordingParentMerger) HeadSHA() (string, error) { return m.headSHA, m.headErr }
+
+func (m *recordingParentMerger) MidMerge() (fabricengine.MidMergeState, error) {
+	return m.midMerge, m.midMergeErr
+}
 
 // requireFinalizeReason returns the stuck reason carried on ptr, failing the test when it is empty.
 func requireFinalizeReason(t *testing.T, ptr shedengine.OutputPointer) string {
@@ -411,12 +419,28 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 
 // TestFinalize_StuckReasons pins, for each way a landing stops Stuck, the reason it surfaces, that the board seam is never called, and that no stuck-reason file is written.
 func TestFinalize_StuckReasons(t *testing.T) {
-	guardErr := &fabricengine.MergeGuardError{Reasons: []string{"worktree dirty"}}
+	numberedPaths := func(n int) []string {
+		paths := make([]string, n)
+		for i := range paths {
+			paths[i] = fmt.Sprintf("p%02d.go", i+1)
+		}
+		return paths
+	}
+	guardErr := &fabricengine.MergeGuardError{Reasons: []string{"worktree dirty"}, Checkout: "/hub/parent", DirtyPaths: []string{"a b.go", "c,d.go"}}
+	guardWith := func(reasons ...string) *fabricengine.MergeGuardError {
+		return &fabricengine.MergeGuardError{Reasons: reasons, Checkout: "/hub/parent", DirtyPaths: []string{"a b.go", "c,d.go"}}
+	}
+	const gotoResume = `lyx loom goto --to Finalize`
 	tests := []struct {
 		name      string
 		resolved  mergeresolve.Result
 		openerErr error
 		mergeErr  error
+		// midMerge and midMergeErr are what the parent pair's parked-merge read returns.
+		midMerge    fabricengine.MidMergeState
+		midMergeErr error
+		// wantInOrder names substrings the reason must carry, each found after the previous one.
+		wantInOrder []string
 		// recordsErr is what the parent run-records seam returns.
 		recordsErr error
 		wantMerges int
@@ -454,11 +478,86 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			wantInReason: func(d Deps) string { return d.ParentBranch },
 		},
 		{
-			name:         "dirty-worktree guard error surfaces verbatim and is not retried",
-			resolved:     mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
-			mergeErr:     guardErr,
-			wantMerges:   1,
-			wantInReason: func(Deps) string { return guardErr.Error() },
+			name:       "dirty-worktree guard error names the checkout and the quoted paths and is not retried",
+			resolved:   mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:   guardErr,
+			wantMerges: 1,
+			wantInOrder: []string{guardErr.Error(), "/hub/parent", `"a b.go", "c,d.go"`,
+				"commit or discard them in /hub/parent with plain git", gotoResume, "lyx loom resume"},
+		},
+		{
+			name:            "twenty-five dirty paths list the first twenty and count the rest",
+			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:        &fabricengine.MergeGuardError{Reasons: []string{"worktree dirty"}, Checkout: "/hub/parent", DirtyPaths: numberedPaths(25)},
+			wantMerges:      1,
+			wantInOrder:     []string{`"p01.go"`, `"p20.go"`, "and 5 more"},
+			wantNotInReason: `"p21.go"`,
+		},
+		{
+			name:            "twenty dirty paths are all listed with no count",
+			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:        &fabricengine.MergeGuardError{Reasons: []string{"worktree dirty"}, Checkout: "/hub/parent", DirtyPaths: numberedPaths(20)},
+			wantMerges:      1,
+			wantInOrder:     []string{`"p01.go"`, `"p20.go"`},
+			wantNotInReason: "more",
+		},
+		{
+			name:            "source-not-found beside dirt keeps the dirt-only way forward",
+			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:        guardWith("source branch not found", "worktree dirty"),
+			wantMerges:      1,
+			wantInOrder:     []string{"source branch not found; worktree dirty", "/hub/parent", `"a b.go"`, "commit or discard them in /hub/parent with plain git", gotoResume},
+			wantNotInReason: "source branch \"",
+		},
+		{
+			name:            "merge already in progress names the parked merge and the continue or abort way forward",
+			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
+			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked, Verb: fabricengine.MergeVerbMerge, Source: "task-x"},
+			wantMerges:      1,
+			wantInOrder:     []string{"merge already in progress; worktree dirty", "/hub/parent", "merge of task-x", "lyx fabric merge --continue", "lyx fabric merge --abort", gotoResume, "lyx loom resume", "hard-resets the parent's code checkout", "reports status: FAILED and the orch runs it"},
+			wantNotInReason: `"a b.go"`,
+		},
+		{
+			name:            "merge already in progress with an unreadable parked merge names no verb and keeps the way forward",
+			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
+			midMergeErr:     errors.New("probe failed"),
+			wantMerges:      1,
+			wantInOrder:     []string{"/hub/parent", "lyx fabric merge --continue", "lyx fabric merge --abort", gotoResume, "lyx loom resume"},
+			wantNotInReason: "merge of",
+		},
+		{
+			name:            "merge already in progress with no parked merge left names only the goto and the resume",
+			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
+			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeNone},
+			wantMerges:      1,
+			wantInOrder:     []string{"/hub/parent", gotoResume, "lyx loom resume"},
+			wantNotInReason: "merge --continue",
+		},
+		{
+			name:            "merge already in progress with a foreign merge names only the goto and the resume",
+			resolved:        mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:        guardWith("merge already in progress", "worktree dirty"),
+			midMerge:        fabricengine.MidMergeState{Kind: fabricengine.MidMergeForeign},
+			wantMerges:      1,
+			wantInOrder:     []string{"/hub/parent", gotoResume, "lyx loom resume"},
+			wantNotInReason: "merge --continue",
+		},
+		{
+			name:        "branch not synced beside dirt names the list then commit or discard, then reconciling the parent",
+			resolved:    mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:    guardWith("branch not synced to upstream", "worktree dirty"),
+			wantMerges:  1,
+			wantInOrder: []string{"branch not synced to upstream; worktree dirty", `"a b.go"`, "commit them on the parent branch or discard them", "push or reconcile the parent branch", gotoResume, "lyx loom resume"},
+		},
+		{
+			name:        "detached head beside dirt names checking out the parent branch first",
+			resolved:    mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved},
+			mergeErr:    guardWith("checkout is not on a branch", "worktree dirty"),
+			wantMerges:  1,
+			wantInOrder: []string{`"a b.go"`, "check out the parent branch", "set them aside first", "commit them on the parent branch or discard them", gotoResume, "lyx loom resume"},
 		},
 		{
 			name:         "unrecognized merge error surfaces",
@@ -493,7 +592,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 				deps.Reconcile = func() (fabricengine.OriginReport, error) { return *tt.report, nil }
 			}
 			res := &recordingResolver{result: tt.resolved}
-			merger := &recordingParentMerger{}
+			merger := &recordingParentMerger{midMerge: tt.midMerge, midMergeErr: tt.midMergeErr}
 			if tt.mergeErr != nil {
 				merger.results = []mergeCallResult{{err: tt.mergeErr}}
 			}
@@ -506,8 +605,19 @@ func TestFinalize_StuckReasons(t *testing.T) {
 
 			ptr := shedfake.RequireOutcome(t, fz, shedengine.Stuck)
 			got := requireFinalizeReason(t, ptr)
-			if want := tt.wantInReason(deps); !strings.Contains(got, want) {
-				t.Errorf("stuck reason %q does not carry %q", got, want)
+			if tt.wantInReason != nil {
+				if want := tt.wantInReason(deps); !strings.Contains(got, want) {
+					t.Errorf("stuck reason %q does not carry %q", got, want)
+				}
+			}
+			rest := got
+			for _, want := range tt.wantInOrder {
+				idx := strings.Index(rest, want)
+				if idx < 0 {
+					t.Errorf("stuck reason %q does not carry %q after the previous wanted text", got, want)
+					break
+				}
+				rest = rest[idx+len(want):]
 			}
 			if tt.wantNotInReason != "" && strings.Contains(got, tt.wantNotInReason) {
 				t.Errorf("stuck reason %q carries %q; want it free of it", got, tt.wantNotInReason)

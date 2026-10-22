@@ -827,11 +827,11 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 }
 
 // TestListAndFindReadmeOrder verifies ListTasksBrief and Find return entries in README order:
-// open tasks first, then open notes, done last, with priority ordering within a group, and that each listed entry carries its priority.
+// open tasks first, then open notes, done last, and that each listed entry carries its priority.
 func TestListAndFindReadmeOrder(t *testing.T) {
 	s := boardengine.NewStore("")
 	for _, f := range []map[string]any{
-		{"slug": "x-low", "kind": "task", "priority": "low"},
+		{"slug": "x-first", "kind": "task"},
 		{"slug": "x-note", "kind": "note"},
 		{"slug": "x-task", "kind": "task"},
 		{"slug": "x-note2", "kind": "note", "priority": "high"},
@@ -845,7 +845,7 @@ func TestListAndFindReadmeOrder(t *testing.T) {
 		t.Fatalf("SetStatus: %v", err)
 	}
 
-	want := "x-task,x-low:low,x-note2:high,x-note,x-done"
+	want := "x-first,x-task,x-note,x-note2:high,x-done"
 	slugs := func(bs []boardengine.BriefTask) string {
 		var out []string
 		for _, b := range bs {
@@ -1186,6 +1186,17 @@ func TestLoad(t *testing.T) {
 			},
 		},
 		{
+			name: "a task's stored priority is dropped and a note's kept",
+			body: `{"version":1,"entries":[{"id":0,"slug":"t","kind":"task","priority":"high"},{"id":1,"slug":"n","kind":"note","priority":"low"}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 2 || tasks[0].Priority != "" || tasks[1].Priority != boardengine.PriorityLow {
+					t.Errorf("loaded %+v; want the task without a priority and the note low", tasks)
+				}
+			},
+			save:     true,
+			wantKeys: [][3]string{{"t", "priority", ""}, {"n", "priority", `"low"`}},
+		},
+		{
 			name: "a kind with no labels key becomes an empty labels list",
 			body: `{"version":1,"entries":[{"id":0,"slug":"a","title":"A","kind":"note"}]}`,
 			check: func(t *testing.T, tasks []boardengine.Task) {
@@ -1222,6 +1233,7 @@ func TestLoad(t *testing.T) {
   "entries": [
     {
       "id": 0,
+      "handle": "T1",
       "slug": "a",
       "title": "A",
       "kind": "task",
@@ -1255,6 +1267,7 @@ func TestLoad(t *testing.T) {
   "entries": [
     {
       "id": 0,
+      "handle": "T1",
       "slug": "a",
       "title": "A",
       "kind": "task",
@@ -1289,6 +1302,7 @@ func TestLoad(t *testing.T) {
     },
     {
       "id": 1,
+      "handle": "T2",
       "slug": "b",
       "title": "B",
       "kind": "task",
@@ -1319,6 +1333,7 @@ func TestLoad(t *testing.T) {
     },
     {
       "id": 3,
+      "handle": "T3",
       "slug": "fin",
       "title": "Fin",
       "kind": "task",

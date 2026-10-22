@@ -113,6 +113,7 @@ func Reconcile(template, existing []byte, perNameMaps []string, openMaps ...stri
 	// whole.
 	applyExistingOverrides(templateLeaves, existingLeaves)
 	applyExistingSequences(templateSequences, existingSequences)
+	liftEmptyValueComments(&templateNode)
 
 	// Marshal the mutated template back to bytes
 	merged, err = yaml.Marshal(&templateNode)
@@ -314,6 +315,24 @@ func mergePerNameMaps(templateNode, existingNode *yaml.Node, perNameMaps []strin
 	sort.Strings(kept)
 	sort.Strings(dropped)
 	return added, kept, dropped, nil
+}
+
+// liftEmptyValueComments moves the line comment of every mapping key under node whose value is an empty mapping or list onto that value, written in flow style.
+// A key's line comment over an empty block collection marshals as invalid YAML.
+func liftEmptyValueComments(node *yaml.Node) {
+	if node.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key, value := node.Content[i], node.Content[i+1]
+			if key.LineComment == "" || value.LineComment != "" || len(value.Content) > 0 || (value.Kind != yaml.MappingNode && value.Kind != yaml.SequenceNode) {
+				continue
+			}
+			value.LineComment, key.LineComment = key.LineComment, ""
+			value.Style = yaml.FlowStyle
+		}
+	}
+	for _, child := range node.Content {
+		liftEmptyValueComments(child)
+	}
 }
 
 // sameValue reports whether two nodes decode to the same data, whatever their style, quoting or comments.

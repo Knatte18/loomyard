@@ -30,6 +30,7 @@ const swapLockSuffix = ".swaplock"
 // read time.
 type BriefTask struct {
 	ID          int       `json:"id"`
+	Handle      string    `json:"handle,omitempty"`
 	Slug        string    `json:"slug"`
 	Title       string    `json:"title"`
 	DependsOn   []string  `json:"depends_on"`
@@ -154,6 +155,7 @@ func NewStore(boardDir string) *Store {
 // board.json wins when it exists; otherwise the legacy files that exist are migrated in memory.
 // Whenever a legacy file exists, its done marks are folded into the loaded entries.
 // Entries in the old tier-and-type shape convert in memory and persist in the new shape on the next Save.
+// An entry without a handle of its own letter gets one in memory, persisted on the next Save too.
 func (s *Store) Load() error {
 	s.tasks = []Task{}
 	s.legacyDone = nil
@@ -220,6 +222,7 @@ func (s *Store) Load() error {
 			entries[i].Labels = []string{}
 		}
 	}
+	assignHandles(entries, s.vocab)
 	s.tasks = entries
 	s.legacyDone = legacyDone
 	s.primeOwner = primeOwner
@@ -426,8 +429,7 @@ func isDone(t Task) bool {
 }
 
 // MergeStatusUpdate carries the resolved set_status step for a MergeTasks call.
-// Selector is a Go string when the task is identified by slug,
-// or float64 when identified by numeric id (JSON numbers decode as float64).
+// Selector is a Go string when the task is identified by slug, float64 when identified by numeric id (JSON numbers decode as float64), or a Handle when identified by handle.
 // Status is nil to clear the status field.
 type MergeStatusUpdate struct {
 	Selector any
@@ -435,7 +437,7 @@ type MergeStatusUpdate struct {
 }
 
 // UpsertPayloadKeys returns the keys a task payload carries on every upsert path: the required keys and the optional ones.
-// "id" is auto-assigned and never accepted; "phase" and "group" are retired.
+// "id" and "handle" are assigned by the board and never accepted; "phase" and "group" are retired.
 // "owner_machine" is accepted only as the entry's effective owner, a no-op.
 func UpsertPayloadKeys() (required, optional []string) {
 	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "owner_machine"}
@@ -466,6 +468,9 @@ func validateUpsertFields(fields map[string]any) error {
 			}
 			if k == "type" {
 				return fmt.Errorf("unknown field: %q (type is retired; use \"labels\")", k)
+			}
+			if k == "handle" {
+				return fmt.Errorf("unknown field: %q (the board assigns an entry's handle; drop it from the payload)", k)
 			}
 			return fmt.Errorf("unknown field: %q", k)
 		}
@@ -527,142 +532,85 @@ func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
 	return incoming, nil
 }
 
-// GetTask looks up a task by integer ID or slug string. Returns (Task, true) if found.
-func (s *Store) GetTask(idOrSlug any) (Task, bool) {
-	switch v := idOrSlug.(type) {
+// selects reports whether selector names t: an int or float64 matches its id, a string its slug and a Handle its handle, a letter matching case-insensitively.
+func selects(t Task, selector any) bool {
+	switch v := selector.(type) {
 	case int:
-		for _, t := range s.tasks {
-			if t.ID == v {
-				return t, true
-			}
-		}
+		return t.ID == v
 	case float64:
-		id := int(v)
-		for _, t := range s.tasks {
-			if t.ID == id {
-				return t, true
-			}
-		}
+		return t.ID == int(v)
 	case string:
-		for _, t := range s.tasks {
-			if t.Slug == v {
-				return t, true
-			}
-		}
+		return t.Slug == v
+	case Handle:
+		letter, number, ok := ParseHandle(string(v))
+		storedLetter, storedNumber, stored := ParseHandle(t.Handle)
+		return ok && stored && letter == storedLetter && number == storedNumber
 	}
-	return Task{}, false
+	return false
 }
 
-// RemoveTask deletes the task by ID or slug. Returns an error if not found.
-func (s *Store) RemoveTask(idOrSlug any) error {
-	var slugToRemove string
-
-	switch v := idOrSlug.(type) {
-	case int:
-		for _, t := range s.tasks {
-			if t.ID == v {
-				slugToRemove = t.Slug
-				break
-			}
-		}
-	case float64:
-		id := int(v)
-		for _, t := range s.tasks {
-			if t.ID == id {
-				slugToRemove = t.Slug
-				break
-			}
-		}
-	case string:
-		slugToRemove = v
-		found := false
-		for _, t := range s.tasks {
-			if t.Slug == v {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("task not found: %v", idOrSlug)
-		}
-	default:
-		return fmt.Errorf("task not found: %v", idOrSlug)
-	}
-
-	if slugToRemove == "" {
-		return fmt.Errorf("task not found: %v", idOrSlug)
-	}
-
-	for i, t := range s.tasks {
-		if t.Slug == slugToRemove {
-			s.tasks = append(s.tasks[:i], s.tasks[i+1:]...)
-			return nil
-		}
-	}
-
-	return fmt.Errorf("task not found: %v", idOrSlug)
-}
-
-// SetStatus sets or clears the status field for the task identified by idOrSlug.
-// Returns fmt.Errorf("task not found: %v", idOrSlug) when no task matches id or slug.
-func (s *Store) SetStatus(idOrSlug any, status *string) error {
+// index returns the position of the entry selector names, a slug string, a numeric id or a Handle, and false when no entry matches.
+func (s *Store) index(selector any) (int, bool) {
 	for i := range s.tasks {
-		match := false
-		switch v := idOrSlug.(type) {
-		case int:
-			match = s.tasks[i].ID == v
-		case float64:
-			match = s.tasks[i].ID == int(v)
-		case string:
-			match = s.tasks[i].Slug == v
-		}
-
-		if match {
-			incoming := s.tasks[i]
-			incoming.Status = status
-			if err := s.validateWrite(s.tasks, incoming); err != nil {
-				return err
-			}
-			s.tasks[i].Status = status
-			return nil
+		if selects(s.tasks[i], selector) {
+			return i, true
 		}
 	}
-	// No task matched — error so callers get clear feedback instead of a silent no-op.
-	return fmt.Errorf("task not found: %v", idOrSlug)
+	return -1, false
 }
 
-// SetDeps replaces the depends_on list of the task selector names, a slug string or a numeric id, running full validation.
-// Returns fmt.Errorf("task not found: %v", selector) when no task matches.
+// GetTask looks up the entry selector names, a slug string, a numeric id or a Handle. Returns (Task, true) if found.
+func (s *Store) GetTask(selector any) (Task, bool) {
+	i, found := s.index(selector)
+	if !found {
+		return Task{}, false
+	}
+	return s.tasks[i], true
+}
+
+// RemoveTask deletes the entry selector names, a slug string, a numeric id or a Handle. Returns an error if not found.
+func (s *Store) RemoveTask(selector any) error {
+	i, found := s.index(selector)
+	if !found {
+		return fmt.Errorf("task not found: %v", selector)
+	}
+	s.tasks = append(s.tasks[:i], s.tasks[i+1:]...)
+	return nil
+}
+
+// SetStatus sets or clears the status field of the entry selector names, a slug string, a numeric id or a Handle.
+// Returns fmt.Errorf("task not found: %v", selector) when no entry matches.
+func (s *Store) SetStatus(selector any, status *string) error {
+	i, found := s.index(selector)
+	if !found {
+		// An error, so callers get clear feedback instead of a silent no-op.
+		return fmt.Errorf("task not found: %v", selector)
+	}
+	incoming := s.tasks[i]
+	incoming.Status = status
+	if err := s.validateWrite(s.tasks, incoming); err != nil {
+		return err
+	}
+	s.tasks[i].Status = status
+	return nil
+}
+
+// SetDeps replaces the depends_on list of the entry selector names, a slug string, a numeric id or a Handle, running full validation.
+// Returns fmt.Errorf("task not found: %v", selector) when no entry matches.
 func (s *Store) SetDeps(selector any, dependsOn []string) error {
-	var task *Task
-	for i := range s.tasks {
-		match := false
-		switch v := selector.(type) {
-		case int:
-			match = s.tasks[i].ID == v
-		case float64:
-			match = s.tasks[i].ID == int(v)
-		case string:
-			match = s.tasks[i].Slug == v
-		}
-		if match {
-			task = &s.tasks[i]
-			break
-		}
-	}
-
-	if task == nil {
+	i, found := s.index(selector)
+	if !found {
 		return fmt.Errorf("task not found: %v", selector)
 	}
 
-	incoming := *task
+	incoming := s.tasks[i]
 	incoming.DependsOn = dependsOn
 
 	if err := s.validateWrite(s.tasks, incoming); err != nil {
 		return err
 	}
 
-	*task = incoming
+	s.tasks[i] = incoming
 	return nil
 }
 
@@ -720,6 +668,7 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 		}
 		brief := BriefTask{
 			ID:           t.ID,
+			Handle:       t.Handle,
 			Slug:         t.Slug,
 			Title:        t.Title,
 			DependsOn:    t.DependsOn,
@@ -740,7 +689,7 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 	return result
 }
 
-// Promote makes the entry identified by idOrSlug a task.
+// Promote makes the entry identified by idOrSlug a task and clears its priority, which only a note carries.
 // A task is returned unchanged with changed false, so the caller knows nothing was written.
 // The promoted entry passes validateWrite, so a missing type label refuses it.
 func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
@@ -754,6 +703,7 @@ func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
 
 	incoming := current
 	incoming.Kind = KindTask
+	incoming.Priority = ""
 	if err := s.validateWrite(s.tasks, incoming); err != nil {
 		return Task{}, false, err
 	}
