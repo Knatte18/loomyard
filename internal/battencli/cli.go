@@ -173,7 +173,7 @@ Open-IDE's opens VS Code. --window turns Open-Window's switch on for that run.
 The envelope's terminal_window field names the launcher, or says no window is
 opened when this machine has none. A run resumed past that row opens a window
 again when no client is attached to the task worktree's reed session, through
-the same switch and command; a resume with a client attached opens none.
+the same switch and command.
 
 Example:
   lyx batten run some-slug

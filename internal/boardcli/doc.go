@@ -40,6 +40,8 @@
 //
 // `merge` carries the removed entries' issues onto the upserted entry, whether or not the payload names `issues`.
 //
+// A new entry whose payload lacks `created` gets the write's time, and a scope-changing write whose payload lacks `revised` gets it too.
+//
 // A payload's `run_settings` is checked before the store write by `upsert`, each task of `upsert-batch` and `merge`'s upsert.
 // It must be an object of module name to keys, and `configreg.PrepareRunSettings` migrates and validates it; a refusal names the module and the key, and the board stores the migrated result.
 // A payload's `profile` is checked on the same paths: it must be a string, and a non-empty one must name a run profile in the hub's `profiles.yaml` (`runprofile.Load` over the board dir), else the refusal names the known profiles and the way forward; `""` clears it.

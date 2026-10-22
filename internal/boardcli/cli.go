@@ -450,11 +450,11 @@ Optional fields:
   "priority"   string — "high", "normal" or "low"; absent means normal, and "normal" clears it
   "short_name" string — short display label; falls back to the slug
   "issues"     array  — the hub repository's issue numbers it records
-  "created"    string — RFC 3339 time the entry was added; a new entry without it gets the write's time
-  "revised"    string — RFC 3339 time its scope last changed; a scope-changing write without it gets the write's time
+  "created"    string — RFC 3339 time the entry was added
+  "revised"    string — RFC 3339 time its scope last changed
   "run_settings" object — module name to config keys for the pair's local config at Seed-Child; {} clears it
   "profile"    string — a "lyx board profiles" name, laid under run_settings at Seed-Child; "" clears it
-  "owner_machine" string — only the entry's effective owner, a no-op; "lyx adopt" changes an owner
+  "owner_machine" string — the effective owner only; "lyx adopt" moves it
 
 Flag:
   --body-file <path>  read "body" from the file, or from stdin when the path is "-".
