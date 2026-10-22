@@ -71,8 +71,10 @@ func Command() *cobra.Command {
 
 The board is one store: every entry is a task or a note (its kind) and carries labels. Only a task
 can be claimed and depend on other tasks; a note is an idea or observation. A task carries at least
-one type label, a note exactly one, and every label must be configured in board.yaml. The README
-renders tasks split into dependency layers and notes grouped by type. Agents read and write the
+one type label, a note exactly one, and every label must be configured in board.yaml. Every entry
+carries a handle the board assigns, T and a number for a task, a note's type letter and a number for
+a note, such as T4 or B2. The README renders tasks split into dependency layers and notes grouped by
+type, each table sorted by handle. Agents read and write the
 board through "lyx board", never through the JSON files under _board.
 
 The config file is the hub's <hub>/_board/_lyx/config/board.yaml, read whatever worktree the verb runs in.
@@ -140,18 +142,22 @@ available subcommands without requiring a git repo.
 	}
 
 	promoteCmd := &cobra.Command{
-		Use:         "promote {slug|id}",
+		Use:         "promote {slug|id|handle}",
 		Short:       "turn a note into a task once it is ready to be claimed",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Turn a note into a task. A task is returned unchanged, and nothing is written.
+The promoted entry loses its priority, which only a note carries, and its note handle: it takes
+the lowest free T handle.
 Demotion goes through "lyx board upsert" with "kind":"note".
 
 Fields (one of):
-  "slug" string  — entry slug
-  "id"   integer — entry id
+  "slug"   string  — entry slug
+  "id"     integer — entry id
+  "handle" string  — entry handle, such as B4
 
-Example:
-  lyx board promote '{"slug":"my-note"}'` + slugLimitNote(),
+Examples:
+  lyx board promote '{"slug":"my-note"}'
+  lyx board promote B4` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -169,10 +175,10 @@ Example:
 	}
 
 	renameCmd := &cobra.Command{
-		Use:         "rename {slug|id, to}",
+		Use:         "rename {slug|id|handle, to}",
 		Short:       "change an entry's slug in one write, keeping every other field and rewriting depends_on",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Change an entry's slug in one atomic write. The entry keeps its id, position, body, kind, labels,
+		Long: `Change an entry's slug in one atomic write. The entry keeps its id, handle, position, body, kind, labels,
 priority, issues, dates, status and every other field, and every other entry's depends_on names the
 new slug in place of the old one. No entry's revised date changes.
 Refused, with nothing written, for an absent entry, an entry held by a run, and a target that is
@@ -181,9 +187,10 @@ Body and brief text is never rewritten: "mentions" lists the entries whose body 
 the old slug as a whole word, the renamed entry included, and is [] when none does.
 
 Fields:
-  "slug" string  — current slug (mutually exclusive with "id")
-  "id"   integer — numeric entry ID (mutually exclusive with "slug")
-  "to"   string  — the new slug (required)
+  "slug"   string  — current slug (one of slug, id or handle)
+  "id"     integer — numeric entry ID (one of slug, id or handle)
+  "handle" string  — entry handle, such as B4 (one of slug, id or handle)
+  "to"     string  — the new slug (required)
 
 Output:
   {"ok":true,"task":{...},"mentions":["other-entry"]}
@@ -246,7 +253,7 @@ Example:
 		Long: `Find tasks whose slug, title, brief or body contains the text, done tasks included.
 The arguments are joined with single spaces into one search text. At least one argument is required.
 Prints the same JSON as "lyx board list"; with --text it prints the compact one-line-per-task
-listing instead (errors stay JSON); its columns are kind, priority, age, time since last revision, slug, title, labels and, when set, [status].
+listing instead (errors stay JSON); its columns are handle, kind, priority, age, time since last revision, slug, title, labels and, when set, [status].
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
 A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
 
@@ -395,17 +402,20 @@ func slugLimitNote() string {
 	return fmt.Sprintf("\n\nA slug is at most %d characters.", boardengine.MaxSlugLength)
 }
 
+// entrySelector is the group of keys of which one names the entry a payload addresses.
+var entrySelector = []string{"slug", "id", "handle"}
+
 // lookupPayload is the payload of get, remove and promote.
-var lookupPayload = payloadKeys{exclusive: [][2]string{{"slug", "id"}}}
+var lookupPayload = payloadKeys{exclusive: [][]string{entrySelector}}
 
 // renamePayload is the payload of rename.
-var renamePayload = payloadKeys{required: []string{"to"}, exclusive: [][2]string{{"slug", "id"}}}
+var renamePayload = payloadKeys{required: []string{"to"}, exclusive: [][]string{entrySelector}}
 
 // setStatusPayload is the payload of set-status, and merge's set_status object.
-var setStatusPayload = payloadKeys{required: []string{"status"}, exclusive: [][2]string{{"slug", "id"}}}
+var setStatusPayload = payloadKeys{required: []string{"status"}, exclusive: [][]string{entrySelector}}
 
 // setDepsPayload is the payload of set-deps.
-var setDepsPayload = payloadKeys{required: []string{"depends_on"}, exclusive: [][2]string{{"slug", "id"}}}
+var setDepsPayload = payloadKeys{required: []string{"depends_on"}, exclusive: [][]string{entrySelector}}
 
 // upsertPayload is the payload of upsert, the <task> upsert-batch and merge nest; the store enforces it on every upsert path.
 var upsertPayload = func() payloadKeys {
@@ -447,7 +457,7 @@ Optional fields:
   "kind"       string — "task" or "note", default "note"; only a task can be claimed or depend on tasks
   "labels"     array  — configured labels replacing the whole list; a task needs a type label, a note exactly one
   "recipe"    string — recipe the task's child worktree runs, "loom" or "darn"; empty means "loom"
-  "priority"   string — "high", "normal" or "low"; absent means normal, and "normal" clears it
+  "priority"   string — a note's "high", "normal" or "low"; absent means normal, "normal" clears it, and a task carries none
   "short_name" string — short display label; falls back to the slug
   "issues"     array  — the hub repository's issue numbers it records
   "created"    string — RFC 3339 time the entry was added
@@ -571,14 +581,15 @@ Example:
 	// set-status subcommand: set or clear the status field of a task identified by
 	// slug or numeric id.
 	setStatusCmd := &cobra.Command{
-		Use:         "set-status {slug|id, status}",
+		Use:         "set-status {slug|id|handle, status}",
 		Short:       "set or clear the status of a task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Set or clear the lifecycle status of a task. Use null as "status" to clear it.
 
 Fields:
-  "slug"   string      — task slug (mutually exclusive with "id")
-  "id"     integer     — numeric task ID (mutually exclusive with "slug")
+  "slug"   string      — task slug (one of slug, id or handle)
+  "id"     integer     — numeric task ID (one of slug, id or handle)
+  "handle" string      — task handle, such as T4 (one of slug, id or handle)
   "status" string|null — new status value; null clears the current status
 
 Examples:
@@ -611,17 +622,20 @@ Examples:
 
 	// remove subcommand: remove a task by slug or numeric id.
 	removeCmd := &cobra.Command{
-		Use:         "remove {slug|id}",
+		Use:         "remove {slug|id|handle}",
 		Short:       "remove a task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Remove a task by slug or numeric ID. Errors if the task is not found.
+		Long: `Remove a task by slug, numeric ID or handle. Errors if the task is not found.
+Its handle's number is free for the next entry of its letter.
 
 Fields:
-  "slug" string  — task slug (mutually exclusive with "id")
-  "id"   integer — numeric task ID (mutually exclusive with "slug")
+  "slug"   string  — task slug (one of slug, id or handle)
+  "id"     integer — numeric task ID (one of slug, id or handle)
+  "handle" string  — task handle, such as T4 (one of slug, id or handle)
 
-Example:
-  lyx board remove '{"slug":"my-task"}'` + slugLimitNote(),
+Examples:
+  lyx board remove '{"slug":"my-task"}'
+  lyx board remove T4` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -641,10 +655,10 @@ Example:
 	// for a valid-but-absent target (not an error). Malformed payloads error.
 	var getBody bool
 	getCmd := &cobra.Command{
-		Use:         "get {slug|id}",
+		Use:         "get {slug|id|handle}",
 		Short:       "fetch a single task, or its body alone",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Fetch a single task by slug or numeric ID. Returns {"task":null} if not found (not an error).
+		Long: `Fetch a single task by slug, numeric ID or handle. Returns {"task":null} if not found (not an error).
 The result is the envelope {"task": {...}}, which the discussion stencil reads.
 A task's "owner_machine" is the machine that owns it: the recorded one, else the owner it reads as through its parent.
 --body writes the entry's body alone, verbatim, with no envelope; an empty body writes nothing.
@@ -653,11 +667,13 @@ Editing a body as a file: lyx board get ... --body > body.md, edit it, then feed
 upsert --body-file body.md (merge --body-file takes the same file for a merged entry).
 
 Fields:
-  "slug" string  — task slug (mutually exclusive with "id")
-  "id"   integer — numeric task ID (mutually exclusive with "slug")
+  "slug"   string  — task slug (one of slug, id or handle)
+  "id"     integer — numeric task ID (one of slug, id or handle)
+  "handle" string  — task handle, such as B4 (one of slug, id or handle)
 
 Examples:
   lyx board get '{"id":96}'
+  lyx board get B4
   lyx board get '{"slug":"my-task"}' --body` + slugLimitNote(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return clihelp.WrapRun(func(out io.Writer, args []string) int {
@@ -674,7 +690,7 @@ Examples:
 				}
 				if getBody {
 					if !found {
-						return outputError(out, fmt.Sprintf("no entry %v: check the slug or id with lyx board list", selector))
+						return outputError(out, fmt.Sprintf("no entry %v: check the slug, id or handle with lyx board list", selector))
 					}
 					if _, err := io.WriteString(out, task.Body); err != nil {
 						return outputError(out, err.Error())
@@ -704,7 +720,7 @@ Examples:
 		Short:       "list all tasks with computed fields",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `List all tasks in README order with their computed fields (layer, has_proposal).
-With --text, print the compact one-line-per-task listing (kind, priority, age, time since last revision, slug, title, labels, [status])
+With --text, print the compact one-line-per-task listing (handle, kind, priority, age, time since last revision, slug, title, labels, [status])
 instead of JSON; errors stay JSON.
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
 A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
@@ -749,7 +765,7 @@ Examples:
 	// The inner set_status object is validated identically to the set-status command.
 	var mergeBodyFile string
 	mergeCmd := &cobra.Command{
-		Use:         "merge {remove_slugs?, upsert: <task>, set_status?: {slug|id, status}}",
+		Use:         "merge {remove_slugs?, upsert: <task>, set_status?: {slug|id|handle, status}}",
 		Short:       "remove tasks, upsert one and set a status in one atomic write, to fold entries together",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Remove tasks, upsert a task, and optionally set status in one atomic write.
@@ -760,8 +776,9 @@ Fields:
   "remove_slugs" array  — slug strings to remove (optional; omit to skip)
   "upsert"       object — task to create or update (required; same fields as "lyx board upsert")
   "set_status"   object — status to set after upsert (optional):
-    "slug"   string      — task slug (mutually exclusive with "id")
-    "id"     integer     — numeric task ID (mutually exclusive with "slug")
+    "slug"   string      — task slug (one of slug, id or handle)
+    "id"     integer     — numeric task ID (one of slug, id or handle)
+    "handle" string      — task handle, such as T4 (one of slug, id or handle)
     "status" string|null — new status; null clears
 
 Flag:
@@ -868,7 +885,7 @@ Example:
 	// explicit [] clears the list, distinguishing intentional clear from a typo
 	// that would otherwise silently wipe the task's dependency list).
 	setDepsCmd := &cobra.Command{
-		Use:         "set-deps {slug|id, depends_on}",
+		Use:         "set-deps {slug|id|handle, depends_on}",
 		Short:       "replace a task's depends_on list",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Replace the full depends_on list for a task wholesale.
@@ -876,8 +893,9 @@ An absent "depends_on" is an error; an explicit [] clears the list.
 The "notice" names siblings sharing a new depends_on and a label.
 
 Fields:
-  "slug"       string  — task slug (mutually exclusive with "id")
-  "id"         integer — numeric task ID (mutually exclusive with "slug")
+  "slug"       string  — task slug (one of slug, id or handle)
+  "id"         integer — numeric task ID (one of slug, id or handle)
+  "handle"     string  — task handle, such as T4 (one of slug, id or handle)
   "depends_on" array   — complete list of dependency slug strings; replaces existing list (required)
 
 Example:
@@ -977,11 +995,14 @@ func writeListing(out io.Writer, tasks []boardengine.BriefTask, text bool) int {
 	return 0
 }
 
-// resolveLookup decodes a payload addressing one entry by slug or id, validates it against keys, and returns the selector and the decoded map.
-// keys declares the slug|id pair and any further keys; each of its required keys must be present, and a null value counts as present.
+// resolveLookup decodes a payload addressing one entry by slug, id or handle, validates it against keys, and returns the selector and the decoded map.
+// keys declares the slug|id|handle group and any further keys; each of its required keys must be present, and a null value counts as present.
+// A raw payload that is a bare handle, such as B4, reads as {"handle":"B4"}.
 func resolveLookup(raw []byte, keys payloadKeys) (any, map[string]any, error) {
 	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
+	if _, _, ok := boardengine.ParseHandle(string(raw)); ok {
+		m = map[string]any{"handle": string(raw)}
+	} else if err := json.Unmarshal(raw, &m); err != nil {
 		return nil, nil, fmt.Errorf("invalid json: %v", err)
 	}
 	if err := refuseUnknownKey(keys, m); err != nil {
@@ -999,19 +1020,33 @@ func resolveLookup(raw []byte, keys payloadKeys) (any, map[string]any, error) {
 	return selector, m, nil
 }
 
-// lookupSelector returns the slug string or the integral float64 id that m addresses, refusing a payload with neither key or both.
+// lookupSelector returns the slug string, the integral float64 id or the boardengine.Handle that m addresses, refusing a payload with none of the three keys or more than one.
 func lookupSelector(m map[string]any) (any, error) {
-	_, hasSlug := m["slug"]
-	_, hasID := m["id"]
-
-	if !hasSlug && !hasID {
-		return nil, fmt.Errorf("one of slug or id is required")
+	given := 0
+	for _, key := range entrySelector {
+		if _, ok := m[key]; ok {
+			given++
+		}
 	}
-	if hasSlug && hasID {
-		return nil, fmt.Errorf("only one of slug or id may be given")
+	if given == 0 {
+		return nil, fmt.Errorf("one of slug, id or handle is required")
+	}
+	if given > 1 {
+		return nil, fmt.Errorf("only one of slug, id or handle may be given")
 	}
 
-	if hasSlug {
+	if handleVal, hasHandle := m["handle"]; hasHandle {
+		handle, ok := handleVal.(string)
+		if !ok {
+			return nil, fmt.Errorf("handle must be a string")
+		}
+		if _, _, ok := boardengine.ParseHandle(handle); !ok {
+			return nil, fmt.Errorf("handle %q is not a letter followed by a number, such as T4: check it with lyx board list --text", handle)
+		}
+		return boardengine.Handle(handle), nil
+	}
+
+	if _, hasSlug := m["slug"]; hasSlug {
 		slugStr, ok := m["slug"].(string)
 		if !ok || slugStr == "" {
 			return nil, fmt.Errorf("slug must be a non-empty string")
