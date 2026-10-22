@@ -89,7 +89,7 @@ func TestGateParity_VerifyGate(t *testing.T) {
 				}
 				return cfg.GateCall("final", "--all")
 			}
-			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", finalCall, nil, nil, round)())
+			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", finalCall, nil, nil, round, nil)())
 
 			websterFx := prepare()
 			wgeom := websterFx.CLI.geom

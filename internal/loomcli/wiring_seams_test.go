@@ -13,6 +13,7 @@ import (
 var intentionallyNil = map[string]string{
 	"Landing.PublishCommand":              "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.BaseCommand":                 "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.VerifyHold":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.GateTiers":                   "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PushBranch":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.RemoteOnlyCommits":           "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
@@ -94,6 +95,7 @@ var intentionallyNil = map[string]string{
 	"PrimeLock.Acquire":                   "batten-only seam, filled by battencli",
 }
 
+// TestWire_EverySeamFilled pins that wire fills every shedrecipe.Env seam, VerifyHold among them, bar the batten-only ones.
 func TestWire_EverySeamFilled(t *testing.T) {
 	t.Parallel()
 

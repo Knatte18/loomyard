@@ -5,6 +5,7 @@
 package shuttlecli
 
 import (
+	"errors"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -51,7 +52,12 @@ Example:
 			}
 
 			if err := c.runner.Send(guid, shuttleengine.WithMessageTail(text)); err != nil {
-				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				message := err.Error()
+				var paused *shuttleengine.PausedError
+				if errors.As(err, &paused) {
+					message = pauserecord.CoveredError(paused.Entry, paused.Slug, "re-run lyx shuttle send").Error()
+				}
+				clihelp.SetExit(cmd.Context(), output.Err(out, message))
 				return nil
 			}
 

@@ -336,12 +336,24 @@ func (run *Run) Wait() (Result, error) {
 				run.gateAtBoundary = true
 				run.startCleared = false
 				run.unsentReprompt = false
+				run.boundaryHeld = false
+				if run.covered {
+					// A pause covers the session: nothing is evaluated or sent until the first uncovered tick.
+					run.boundaryHeld = true
+				} else if run.boundaryIdle() {
+					if result, finished, ferr := run.handleGatedBoundary(); finished {
+						return result, ferr
+					}
+				}
+			} else if run.boundaryHeld && !run.covered && run.gateAtBoundary {
+				// The pause lifted: evaluate the held arrival as if it had come now.
+				run.boundaryHeld = false
 				if run.boundaryIdle() {
 					if result, finished, ferr := run.handleGatedBoundary(); finished {
 						return result, ferr
 					}
 				}
-			} else if (run.gatePending || run.unsentReprompt) && run.gateAtBoundary {
+			} else if !run.covered && (run.gatePending || run.unsentReprompt) && run.gateAtBoundary {
 				// No new arrival, an entry is pending or a re-prompt is unsent, and the writer is idle: re-evaluate, so a verdict recorded since is read without waiting for the writer to speak.
 				// A pending entry is re-read at most once per gateRecheckEvery; an unsent re-prompt is retried every tick, since that re-sends a re-prompt and reads no verdict.
 				if (run.unsentReprompt || run.gateRecheckDue()) && run.boundaryIdle() {
@@ -349,7 +361,7 @@ func (run *Run) Wait() (Result, error) {
 						return result, ferr
 					}
 				}
-			} else if run.startCleared && run.startHoldReleased() {
+			} else if !run.covered && run.startCleared && run.startHoldReleased() {
 				// The boundary a turn start cleared is restored: evaluate it as on a new turn end, pending or not.
 				if result, finished, ferr := run.handleGatedBoundary(); finished {
 					return result, ferr
@@ -410,7 +422,8 @@ func (run *Run) Wait() (Result, error) {
 }
 
 // observePause is Wait's per-tick reading of the pause and of machine sleep.
-// It feeds the run's sleep watch when the clock is an AwakeClock, reads the runner's coverage of its pair into run.covered, and moves run.deadline by the change in the time excluded since the run was created.
+// It feeds the run's sleep watch when the clock is an AwakeClock, reads the runner's coverage of the run's own session into run.covered, and moves run.deadline by the change in the time excluded since the run was created.
+// The session is judged by the slug of its strand's name, the one a send into it is judged by.
 // The excluded time is the union of the detected sleeps and the coverage's paused intervals, so the deadline counts awake, unpaused time only.
 // A runner told no pause geometry never covers the run.
 // An unreadable record reads uncovered, with one Warn per change of error.
@@ -422,7 +435,7 @@ func (run *Run) observePause() {
 	var coverage pauserecord.Coverage
 	if geometry := run.runner.pause; geometry.RecordPath != "" {
 		var err error
-		coverage, err = pauserecord.ReadCoverage(geometry.RecordPath, geometry.Slug, now)
+		coverage, err = pauserecord.ReadCoverage(geometry.RecordPath, run.coverageSlug(), now)
 		switch {
 		case err == nil:
 			run.pauseReadError = ""
@@ -435,6 +448,19 @@ func (run *Run) observePause() {
 	excluded := pauserecord.Excluded(append(run.sleeps.Sleeps(), coverage.Intervals...), run.createdAt, now)
 	run.deadline = run.deadline.Add(excluded - run.deadlineExcluded)
 	run.deadlineExcluded = excluded
+}
+
+// coverageSlug returns the slug the run's own session is judged by: the slug of its record's strand name, else of the name reed's status reports for its strand, else the runner's geometry slug.
+// A lookup that resolves a name is kept, so reed is asked at most until the first success.
+func (run *Run) coverageSlug() string {
+	if run.sessionSlugKnown {
+		return run.sessionSlug
+	}
+	slug, resolved := run.runner.resolveTargetSlug(run.state.StrandGUID, run.state.StrandName)
+	if resolved && run.state.StrandName == "" {
+		run.sessionSlug, run.sessionSlugKnown = slug, true
+	}
+	return slug
 }
 
 // gateRecheckDue reports whether gateRecheckEvery has passed since the last gate evaluation, which is always so before the first.
@@ -477,7 +503,7 @@ func gateEntryError(name, problem string) error {
 //
 // A pass, a terminal failure (GateResult.Terminal, whatever the entry's failure count, with no re-prompt and no count incremented), or a failure whose budget is spent, finalizes done.
 // A failure with budget remaining re-prompts and keeps polling.
-// A re-prompt send that fails with ErrSessionBusy or ErrSubmissionNotLanded leaves the entry's failure and sent counts unchanged, clears the memo and keeps the writer at the boundary with the re-prompt marked unsent, so a later tick re-sends it until the run deadline;
+// A re-prompt send that fails with ErrSessionBusy, ErrSubmissionNotLanded or ErrPaused leaves the entry's failure and sent counts unchanged, clears the memo and keeps the writer at the boundary with the re-prompt marked unsent, so a later tick re-sends it until the run deadline;
 // any other re-prompt send failure ends the loop as it always has.
 // A pending result sends its Send text when non-empty and keeps polling;
 // a failed pending send warns once per entry and episode, naming the entry, the error and the closure's way-forward, logs Debug while it keeps failing and Info when it is delivered, leaves the entry pending and the writer at the boundary, and never ends the loop.
@@ -500,6 +526,7 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 		}
 		run.failures.Recover(pendingKey, "shuttle: gate: pending send delivered again", "strandGUID", run.state.StrandGUID, "gate", run.gate[run.gatePendingAt].Name)
 		run.gateAtBoundary = false
+		run.boundaryHeld = false
 		return Result{}, false, nil
 	}
 	failed := run.gateFailedAt
@@ -514,7 +541,7 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 		reprompt = render(run.gateFindingsPath)
 	}
 	if serr := run.sendWithin(reprompt); serr != nil {
-		if errors.Is(serr, ErrSessionBusy) || errors.Is(serr, ErrSubmissionNotLanded) {
+		if errors.Is(serr, ErrSessionBusy) || errors.Is(serr, ErrSubmissionNotLanded) || errors.Is(serr, ErrPaused) {
 			// No attempt was spent: keep the writer at the boundary and re-send on a later tick.
 			// The send cleared its own text where it could, but for an engine with the idle reading a box it left occupied fails that re-send busy, until the run deadline ends the loop.
 			// A held send is an ordinary retry iteration: Info when it first holds, Debug while it stays held.
@@ -533,6 +560,7 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	}
 	run.unsentReprompt = false
 	run.gateAtBoundary = false
+	run.boundaryHeld = false
 	run.gateFails[failed]++
 	run.gateSent[failed]++
 	run.gateReworkSince[failed] = run.clock.Now()

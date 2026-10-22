@@ -405,6 +405,24 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 				t.Errorf("interrupts = %d, calls = %v and posts = %v; want none", n, e.s.calls, e.c.posts)
 			}
 		}},
+		{"an orch claimed into the entry before the grace end gets no Esc and its resume line after the resume", func(t *testing.T, e *watchEnv) {
+			e.s.idle = false
+			e.tick()
+			e.pauseHub("EXTERNAL", pauseGrace)
+			if _, covered, err := pauserecord.ClaimSession(e.pausePath, "", pauserecord.Session{GUID: "s1", Orch: true}, e.clock.now); err != nil || !covered {
+				t.Fatalf("ClaimSession = covered %v, error %v; want a claim into the hub entry", covered, err)
+			}
+			e.clock.advance(pauseGrace)
+			e.tick()
+			if n := e.callCount(interruptCall); n != 0 {
+				t.Fatalf("interrupts of a claimed orch = %d; want 0", n)
+			}
+			e.resumeHub()
+			e.tick()
+			if bodies := e.c.postBodies(fakeOrchStrandName); !reflect.DeepEqual(bodies, []string{pauserecord.ResumeLine}) {
+				t.Errorf("posts to the orch = %v; want the resume line once", bodies)
+			}
+		}},
 		{"a cycle request waits while the entry is live, then the resume line is posted once", func(t *testing.T, e *watchEnv) {
 			e.s.idle = false
 			e.tick()

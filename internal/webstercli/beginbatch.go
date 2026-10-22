@@ -86,6 +86,8 @@ A refusal because the plan's re-resolution against the tree found a blocking
 defect carries "plan_conflict" with its cause: "plan_defect" when no batch is
 begun, "tree_moved" when one is.
 
+Under a pause that covers the pair it refuses first, claiming Master into it.
+
 Example:
   lyx webster begin-batch 3`,
 		Args: cobra.ExactArgs(1),
@@ -93,6 +95,11 @@ Example:
 			out := cmd.OutOrStdout()
 
 			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+
+			if refusal := c.refuseCoveredBatch("begin-batch", args[0]); refusal != "" {
+				clihelp.SetExit(cmd.Context(), output.Err(out, refusal))
 				return nil
 			}
 

@@ -96,7 +96,7 @@ func (e *Engine) Resume(table Table, live LiveTable) (Result, error) {
 	}
 	logger.Info("seatengine: resuming a live table", "chairStrand", live.Chair.StrandGUID(), "liveAdvisors", len(live.Advisors))
 
-	sender := newNoticeSender(e.absolute(table.Chair().Outputs), e.noticeRetry)
+	sender := newNoticeSender(e.absolute(table.Chair().Outputs), e.noticeRetry, e.noticeAfter)
 	work := live.work
 	if work == nil {
 		work = &advisorWork{}

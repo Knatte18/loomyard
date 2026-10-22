@@ -166,6 +166,12 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			if got := c.runner.PauseGeometry(); got != wantPause {
 				t.Errorf("runner.PauseGeometry() = %+v; want %+v", got, wantPause)
 			}
+			if c.pause != wantPause {
+				t.Errorf("c.pause = %+v; want the record path the runner was told, %+v", c.pause, wantPause)
+			}
+			if c.geom.VerifyHold == nil {
+				t.Error("geom.VerifyHold = nil; want the verify pause hold wired in hub mode")
+			}
 			if c.openFabric == nil {
 				t.Fatal("openFabric = nil; want a wired opener closure in hub mode")
 			}
@@ -281,6 +287,11 @@ func TestWire_StandaloneMode(t *testing.T) {
 
 	if pause := c.runner.PauseGeometry(); !strings.HasPrefix(pause.RecordPath, stateDir) || pause.Slug != "" {
 		t.Errorf("runner.PauseGeometry() = %+v; want a record path under the derived state directory %q and an empty slug", pause, stateDir)
+	} else if c.pause != pause {
+		t.Errorf("c.pause = %+v; want the record path the runner was told, %+v", c.pause, pause)
+	}
+	if c.geom.VerifyHold == nil {
+		t.Error("geom.VerifyHold = nil; want the verify pause hold wired in standalone mode")
 	}
 
 	// A runner that is merely non-nil proves nothing: NewRunner holds a told-path verdict and surfaces it only when a verb runs, so this drives a public entry point with a guid no strand will ever match.

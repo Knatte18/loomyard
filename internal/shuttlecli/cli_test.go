@@ -591,10 +591,18 @@ func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
 		send       bool
 		wantError  string
 		wantKeys   []string
+		// pausedSlug, when set, covers that slug with a live entry and is told, with the empty slug, through both cli.pause and runner.SetPause;
+		// the CLI's own check by the empty slug reads uncovered, so the refusal comes from the runner.
+		pausedSlug string
+		// strandName names the started strand, so the runner judges the send by its slug.
+		strandName string
+		// alsoWant is a second substring the refusal must contain.
+		alsoWant string
 	}{
-		{"interrupt on a pane with no running turn fails naming lyx shuttle send", false, false, "lyx shuttle send", nil},
-		{"interrupt on an open picker closes it once and fails", true, false, "rewind picker was open", []string{"Escape"}},
-		{"send on an open picker closes it once, fails and types nothing", true, true, "rewind picker was open", []string{"Escape"}},
+		{"interrupt on a pane with no running turn fails naming lyx shuttle send", false, false, "lyx shuttle send", nil, "", "", ""},
+		{"interrupt on an open picker closes it once and fails", true, false, "rewind picker was open", []string{"Escape"}, "", "", ""},
+		{"send on an open picker closes it once, fails and types nothing", true, true, "rewind picker was open", []string{"Escape"}, "", "", ""},
+		{"send into a strand another slug's pause covers is refused naming the resume and the retry", false, true, "lyx resume p1", nil, "p1", "ly:p1:impl", "lyx shuttle send"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -622,7 +630,7 @@ func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
 				RunningTurnFn:       func(string) bool { return false },
 			}
 			runner := newFakeClockRunner(reed, engine, root, root)
-			run, err := runner.Start(shuttleengine.Spec{Prompt: "do the thing", OutputFiles: []string{filepath.Join(root, "out.md")}})
+			run, err := runner.Start(shuttleengine.Spec{Prompt: "do the thing", OutputFiles: []string{filepath.Join(root, "out.md")}, NameOverride: tt.strandName})
 			if err != nil {
 				t.Fatalf("runner.Start: %v", err)
 			}
@@ -630,6 +638,17 @@ func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
 			reed.SendKeyCalls = nil
 
 			cli := &shuttleCLI{runner: runner}
+			if tt.pausedSlug != "" {
+				cli.pause = pauserecord.Geometry{RecordPath: filepath.Join(root, "pause", pauserecord.RecordFileName)}
+				runner.SetPause(cli.pause)
+				now := time.Now()
+				if _, err := pauserecord.Update(cli.pause.RecordPath, now, func(record *pauserecord.Record) error {
+					record.Live = append(record.Live, pauserecord.Entry{Scope: tt.pausedSlug, PausedAt: now, Caller: "EXTERNAL"})
+					return nil
+				}); err != nil {
+					t.Fatalf("pauserecord.Update: %v", err)
+				}
+			}
 			cmd := cli.interruptCmd()
 			args := []string{run.StrandGUID()}
 			if tt.send {
@@ -650,6 +669,9 @@ func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
 			}
 			if msg, _ := envelope["error"].(string); !strings.Contains(msg, tt.wantError) {
 				t.Errorf("error = %q; want it to contain %q", msg, tt.wantError)
+			}
+			if msg, _ := envelope["error"].(string); !strings.Contains(msg, tt.alsoWant) {
+				t.Errorf("error = %q; want it to contain %q", msg, tt.alsoWant)
 			}
 			var keys []string
 			for _, call := range reed.SendKeyCalls {
