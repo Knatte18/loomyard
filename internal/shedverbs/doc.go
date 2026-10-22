@@ -104,8 +104,8 @@
 //
 // A loop that is gone without an envelope ends in the dead-loop stop.
 // It kills what is left of the loop's step tree from the pid file's child record, writes the run failed while the status file still reads running, and reports an interrupted stop with cause loop-exited and loop.status_moved from the recorded producer and history length against the status file.
-// Its loop.detail names the loop log, the producer of the in-flight child with its trace id, and whether that child's step tree was still running and was killed, which a loop killed from outside leaves behind.
-// Spec.Hooks.AfterInterrupt gets loop-exited followed by that detail as its cause, and the in-flight child's first trace file, or the loop log when the record names no trace or no file is listed for it.
+// Its loop.detail names the loop log, the producer of the in-flight child with its trace id when the status file has not moved past that child, and whether that child's step tree was still running and was killed, which a loop killed from outside leaves behind.
+// Spec.Hooks.AfterInterrupt gets loop-exited followed by that detail as its cause, and the in-flight child's first trace file, or the loop log when the record names no trace, no file is listed for it or the status file has moved past that child.
 // It writes that stop as the loop's envelope under the dead loop's id, delivers it and retires the pid file.
 // A record naming no child kills nothing and reports status_moved false.
 // Another holder of the run lock makes the stop busy: nothing is written, the pid file stays and the next invocation retries.
