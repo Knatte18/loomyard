@@ -138,9 +138,9 @@ func renameDeclSource(card, oldRef, newHandle, worktreeRoot string, results map[
 	sym := r.Symbols[0]
 	switch sym.Kind {
 	case quarry.KindVar:
-		return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: "var " + identifier + " int"}}, Finding{}, true
+		return declSource{handle: newHandle, decl: quarry.Declaration{Lang: sym.Glyph.Lang, Unit: sym.Glyph.Unit, Decl: "var " + identifier + " int"}}, Finding{}, true
 	case quarry.KindConst:
-		return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: "const " + identifier + " = 0"}}, Finding{}, true
+		return declSource{handle: newHandle, decl: quarry.Declaration{Lang: sym.Glyph.Lang, Unit: sym.Glyph.Unit, Decl: "const " + identifier + " = 0"}}, Finding{}, true
 	}
 	signature := sym.Signature
 	if isInterfaceMethod(sym) {
@@ -155,7 +155,7 @@ func renameDeclSource(card, oldRef, newHandle, worktreeRoot string, results map[
 			Severity: SeverityBlocking,
 		}, false
 	}
-	return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: decl}}, Finding{}, true
+	return declSource{handle: newHandle, decl: quarry.Declaration{Lang: sym.Glyph.Lang, Unit: sym.Glyph.Unit, Decl: decl}}, Finding{}, true
 }
 
 // partitionedRenameOldDetail is the rename-old-unresolved detail for an old side declared once per build-constraint set: it names each candidate's file and constraint, and the two ways forward.
@@ -211,7 +211,7 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 			if !ok {
 				continue // handle-malformed already reports this; nothing to derive.
 			}
-			sources = append(sources, declSource{handle: d.Handle, card: card, decl: quarry.Declaration{Unit: unit, Decl: d.Decl}})
+			sources = append(sources, declSource{handle: d.Handle, card: card, decl: quarry.Declaration{Lang: lang, Unit: unit, Decl: d.Decl}})
 		}
 		for _, p := range c.Pairs {
 			if !planparser.IsHandleRef(p.New) {
@@ -236,7 +236,7 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 			sources = append(sources, declSource{
 				handle: g.String(),
 				card:   card,
-				decl:   quarry.Declaration{Unit: g.Unit, Decl: r.Decl},
+				decl:   quarry.Declaration{Lang: lang, Unit: g.Unit, Decl: r.Decl},
 				resign: true,
 			})
 		}
