@@ -56,6 +56,7 @@
 //
 // Reconcile, Prune, DropTemplateEqualNames, SetValues and SetSparse each take a perNameMaps argument before the open maps, DropTemplateEqualNames taking no open maps: dotted key paths whose template value is a mapping of names, each name one unit carried whole, such as a lens's prose or a fan's list.
 // An empty argument keeps every other behaviour byte for byte.
+// Merge, Strip, LeafPaths, AnnotateLeaves and FillMissing take no per-name maps, so they step into P name by name and into each mapping entry key by key.
 // For a declared path P:
 //
 //   - Reconcile writes at P only what the file changed, since the load's fill resolves every other template name from the template:
@@ -68,9 +69,10 @@
 //     Nothing at or under P is reported removed, and a list under a name is never merged element by element.
 //     A file value at P that is neither a mapping nor null is refused with the way forward `rewrite P as a map of name to value`.
 //   - Prune keeps every name under P whole and reports a name the template lacks as kept, never removed.
-//   - SetValues and SetSparse know P.<name> for any one dot-free name and refuse a deeper key under P and P itself.
+//   - SetValues and SetSparse know P.<name> for any one dot-free name and refuse P itself and a deeper key under P, bar one case below.
 //     The pair sets the name to the shape the template's entries at P decide:
-//     a string scalar under a mapping of scalars, whatever its first character, and a YAML flow list under a mapping of lists.
+//     a string scalar under a mapping of scalars, whatever its first character, a YAML flow list under a mapping of lists and a YAML flow mapping under a mapping of mappings.
+//     Under a mapping of mappings they also know P.<name>.<rest> for any name, where rest is a scalar or list path some template entry holds, and set that one key, creating the name's mapping, under that entry's tag.
 //     SetValues also carries every name the file holds under P and the template lacks,
 //     and leaves out every name holding the template's value once the pairs apply, as Reconcile does.
 //     A pair under a P that holds neither a mapping nor null is refused with the same way forward.

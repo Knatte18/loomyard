@@ -251,7 +251,7 @@ func TestReconcileAll(t *testing.T) {
 			want: map[string]moduleWant{"batcher": {
 				applied:         true,
 				migratedAll:     masterBaseRewrites,
-				fileContains:    []string{"orientation: 31400"},
+				fileContains:    []string{"profiles: {}"},
 				fileNotContains: []string{"master_base"},
 				loadsAsBatcher:  true,
 			}},
@@ -259,7 +259,7 @@ func TestReconcileAll(t *testing.T) {
 		{
 			name:  "absent batcher file is seeded from the template and not migrated",
 			apply: true,
-			want:  map[string]moduleWant{"batcher": {applied: true, migratedNone: true, fileContains: []string{"orientation: 31400"}, loadsAsBatcher: true}},
+			want:  map[string]moduleWant{"batcher": {applied: true, migratedNone: true, fileContains: []string{"profiles: {}"}, loadsAsBatcher: true}},
 		},
 		{
 			name:  "absent seed-only file is materialized verbatim",
@@ -1449,9 +1449,19 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 			worktreeFile: "discussion_timeout_min: 480\n", wantStripped: []string{"discussion_timeout_min"}, wantDeleted: true, wantMarker: true,
 		},
 		{
-			name: "an open map differing in one entry is kept whole", module: "batcher", opts: migrate,
+			name: "an open map differing in one entry is kept whole", module: "claude", opts: migrate,
+			worktreeFile: "prompt_cache_ttl_roles:\n  driver: 1h\n  webster: 2h\n", wantContains: []string{"driver: 1h", "webster: 2h"}, wantMarker: true,
+		},
+		{
+			name: "a per-name map keeps only the keys differing from the layers below", module: "batcher", opts: migrate,
 			worktreeFile: batcherDiffering, wantContains: []string{"orientation: 31401"}, wantMarker: true,
-			wantStripped: []string{"active"},
+			wantStripped: []string{
+				"active", "profiles.cautious.batchifier", "profiles.cautious.budget", "profiles.cautious.max_cards",
+				"profiles.cautious.weights.batch_growth", "profiles.cautious.weights.context_per_line", "profiles.cautious.weights.fork_messages",
+				"profiles.cautious.weights.message_context", "profiles.cautious.weights.package_context", "profiles.cautious.weights.target_messages",
+				"profiles.cautious.weights.test_file_messages", "profiles.cautious.weights.uses_messages", "profiles.cautious.weights.write_per_card_line",
+				"profiles.identity.batchifier",
+			},
 		},
 		{
 			name: "a literal equal to the expansion of a marker below is kept", module: "loom", opts: migrate,
@@ -1581,7 +1591,7 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 // TestFormerTemplateValues_DifferFromTheTemplate pins that every former value names a registered module and a unit its template holds, and differs from the template's current value, compared as YAML nodes with the module's open maps.
 func TestFormerTemplateValues_DifferFromTheTemplate(t *testing.T) {
 	t.Parallel()
-	for module, units := range formerTemplateValues {
+	for module := range formerTemplateValues {
 		m, ok := configreg.Lookup(module)
 		if !ok {
 			t.Errorf("formerTemplateValues names module %q, which is not registered", module)
@@ -1592,11 +1602,15 @@ func TestFormerTemplateValues_DifferFromTheTemplate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LeafPaths(%s template): %v", module, err)
 		}
+		units, err := yamlengine.LeafPaths(formerValuesDoc(module), spec.OpenMaps, spec.WholeEntries)
+		if err != nil {
+			t.Fatalf("LeafPaths(%s former values): %v", module, err)
+		}
 		_, equal, err := yamlengine.Strip(spec.Template, formerValuesDoc(module), spec.OpenMaps, spec.WholeEntries)
 		if err != nil {
 			t.Fatalf("Strip(%s template, former values): %v", module, err)
 		}
-		for unit := range units {
+		for _, unit := range units {
 			if !slices.Contains(held, unit) {
 				t.Errorf("former value %s.%s: the template holds no such unit", module, unit)
 			}

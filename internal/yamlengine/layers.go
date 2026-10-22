@@ -158,7 +158,10 @@ func (rule unitRule) stripMapping(lower, upper *yaml.Node, path string, topLevel
 // Each perNameMaps entry is a dotted key path whose template value is a mapping of names:
 // P.<name> is known for any dot-free name, and the pair writes the name into the mapping at P, appending it when absent.
 // Under a mapping of scalars the value is a string whatever its first character;
-// under a mapping of lists it is a YAML flow list.
+// under a mapping of lists it is a YAML flow list;
+// under a mapping of mappings it is a YAML flow mapping.
+// A per-name map of mappings also knows P.<name>.<rest> for any name, where rest is a scalar or list path some template entry holds:
+// the pair writes that one key into the mapping at P.<name>, creating it, under the template entry's tag or as a flow list.
 // A value at P that is neither a mapping nor null is an error naming P and its shape, and nothing is written.
 func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, openMaps ...string) (SetResult, error) {
 	var templateNode yaml.Node
@@ -166,7 +169,8 @@ func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, open
 		return SetResult{}, err
 	}
 	scalarOrListPaths := scalarOrListOpenMapPaths(&templateNode, openMaps)
-	listPerNamePaths := listPerNameMapPaths(&templateNode, perNameMaps)
+	entryKinds := perNameEntryKinds(&templateNode, perNameMaps)
+	entryLeaves := perNameEntryLeaves(&templateNode, perNameMaps, entryKinds)
 	existingDoc, existingRoot, err := parseMappingRoot(existing, "existing")
 	if err != nil {
 		return SetResult{}, err
@@ -180,8 +184,8 @@ func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, open
 	templateSequences := make(map[string]*yaml.Node)
 	collectSequencePaths(&templateNode, "", templateSequences)
 
-	known := knownKeys(templateLeaves, templateSequences, openMaps, perNameMaps)
-	if unknown := unknownKeys(pairs, templateLeaves, templateSequences, openMaps, perNameMaps); len(unknown) > 0 {
+	known := knownKeys(templateLeaves, templateSequences, openMaps, perNameMaps, entryLeaves)
+	if unknown := unknownKeys(pairs, templateLeaves, templateSequences, openMaps, perNameMaps, entryLeaves); len(unknown) > 0 {
 		return SetResult{Unknown: unknown, Known: known}, nil
 	}
 
@@ -207,11 +211,22 @@ func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, open
 			if err != nil {
 				return SetResult{}, fmt.Errorf("%w: rewrite %s as a map of name to value", err, perName)
 			}
-			value, err := perNameEntryNode(pair, slices.Contains(listPerNamePaths, perName))
+			value, err := perNameEntryNode(pair, entryKinds[perName])
 			if err != nil {
 				return SetResult{}, err
 			}
 			setEntry(mapping, name, value)
+			continue
+		}
+		_, isLeaf := templateLeaves[pair.Key]
+		_, isSequence := templateSequences[pair.Key]
+		if perName, entryLeaf, ok := splitPerNameEntryKey(pair.Key, perNameMaps, entryLeaves); ok && !isLeaf && !isSequence {
+			if _, err := mappingAt(existingRoot, perName); err != nil {
+				return SetResult{}, fmt.Errorf("%w: rewrite %s as a map of name to value", err, perName)
+			}
+			if err := setPerNameEntryLeaf(existingRoot, pair, entryLeaf); err != nil {
+				return SetResult{}, err
+			}
 			continue
 		}
 		parentPath, name := splitLastSegment(pair.Key)
@@ -247,8 +262,9 @@ func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, open
 	return SetResult{Merged: merged, Known: known}, nil
 }
 
-// knownKeys returns the sorted key set a template makes settable: its leaf paths, its list-valued key paths and one P.<name> per open map and per per-name map P.
-func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps, perNameMaps []string) []string {
+// knownKeys returns the sorted key set a template makes settable: its leaf paths, its list-valued key paths, and one P.<name> per open map and per per-name map P.
+// It also holds one P.<name>.<rest> per path rest the entries of a per-name map of mappings hold, as entryLeaves lists them.
+func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps, perNameMaps []string, entryLeaves map[string]map[string]*yaml.Node) []string {
 	known := make([]string, 0, len(templateLeaves)+len(templateSequences)+len(openMaps)+len(perNameMaps))
 	for path := range templateLeaves {
 		known = append(known, path)
@@ -261,21 +277,26 @@ func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps
 	}
 	for _, p := range perNameMaps {
 		known = append(known, p+".<name>")
+		for rest := range entryLeaves[p] {
+			known = append(known, p+".<name>."+rest)
+		}
 	}
 	sort.Strings(known)
 	return known
 }
 
 // unknownKeys returns the sorted, deduplicated pair keys the template neither holds nor opens.
-// A key under a per-name map is open for one dot-free name only, so a deeper key under it is unknown.
-func unknownKeys(pairs []KV, templateLeaves, templateSequences map[string]*yaml.Node, openMaps, perNameMaps []string) []string {
+// A key under a per-name map is open for one dot-free name only, or, when the map's entries are mappings, for a name followed by a path some entry holds, as entryLeaves lists them;
+// a deeper key under it is unknown.
+func unknownKeys(pairs []KV, templateLeaves, templateSequences map[string]*yaml.Node, openMaps, perNameMaps []string, entryLeaves map[string]map[string]*yaml.Node) []string {
 	var unknown []string
 	for _, pair := range pairs {
 		_, isLeaf := templateLeaves[pair.Key]
 		_, isSequence := templateSequences[pair.Key]
 		_, _, isOpen := splitOpenMapKey(pair.Key, openMaps)
 		_, _, isPerName := splitPerNameKey(pair.Key, perNameMaps)
-		if !isLeaf && !isSequence && !isOpen && !isPerName {
+		_, _, isPerNameEntry := splitPerNameEntryKey(pair.Key, perNameMaps, entryLeaves)
+		if !isLeaf && !isSequence && !isOpen && !isPerName && !isPerNameEntry {
 			unknown = append(unknown, pair.Key)
 		}
 	}
@@ -456,6 +477,7 @@ func DropTemplateEqualNames(template, existing []byte, perNameMaps []string) (ou
 		return existing, dropped, nil
 	}
 	sort.Strings(dropped)
+	liftEmptyValueComments(existingDoc)
 
 	out, err = yaml.Marshal(existingDoc)
 	if err != nil {

@@ -17,9 +17,15 @@ const (
 	nullBudgetTemplate = "plan_max_bounces: ~\nreview_max_bounces: 1\n"
 	roundListTemplate  = "plan_review: \"\" # rounds\n"
 	perNameSetTemplate = "names:\n  a: default a\nlists:\n  l: [x]\n"
+
+	// perNameMappingTemplate holds a per-name map whose entries are mappings, the second holding keys the first lacks.
+	perNameMappingTemplate = "profiles:\n  plain:\n    kind: identity\n  costed:\n    kind: cost\n    budget: 200\n    tags: [a]\n"
 )
 
-var perNameSetMaps = []string{"lists", "names"}
+var (
+	perNameSetMaps     = []string{"lists", "names"}
+	perNameMappingMaps = []string{"profiles"}
+)
 
 func intPointer(v int) *int { return &v }
 
@@ -286,6 +292,14 @@ func TestSetValues(t *testing.T) {
 			notContains: []string{"default a", "tuned a"},
 		},
 		{
+			name:        "per-name map emptied under a key carrying a line comment stays valid YAML",
+			template:    "names: # the names\n  a: default a\n",
+			existing:    "names:\n  a: tuned a\n",
+			pairs:       []KV{{Key: "names.a", Value: "default a"}},
+			perNameMaps: []string{"names"},
+			contains:    []string{"names: {} # the names\n"},
+		},
+		{
 			name:        "per-name map holding null becomes a mapping holding the new name",
 			template:    perNameSetTemplate,
 			existing:    "names:\nlists:\n  l: [x]\n",
@@ -293,6 +307,31 @@ func TestSetValues(t *testing.T) {
 			perNameMaps: perNameSetMaps,
 			contains:    []string{"names:\n    x: prose"},
 			notContains: []string{"default a"},
+		},
+		{
+			name:        "per-name mapping entry the template holds takes one key and keeps the rest",
+			template:    perNameMappingTemplate,
+			pairs:       []KV{{Key: "profiles.costed.budget", Value: "300"}},
+			perNameMaps: perNameMappingMaps,
+			contains:    []string{"costed:\n        kind: cost\n        budget: 300\n        tags: [a]\n"},
+			notContains: []string{"plain"},
+		},
+		{
+			name:        "per-name mapping entry keys absent from the named entry take the template entry's shape",
+			template:    perNameMappingTemplate,
+			existing:    "profiles:\n  wide:\n    kind: cost\n",
+			pairs:       []KV{{Key: "profiles.wide.budget", Value: "250"}, {Key: "profiles.plain.tags", Value: "[b]"}},
+			perNameMaps: perNameMappingMaps,
+			contains:    []string{"plain:\n        kind: identity\n        tags: [b]\n", "wide:\n        kind: cost\n        budget: 250\n"},
+			notContains: []string{"costed"},
+		},
+		{
+			name:        "per-name mapping entry is set whole from a flow mapping",
+			template:    perNameMappingTemplate,
+			pairs:       []KV{{Key: "profiles.wide", Value: "{kind: identity, budget: 5}"}},
+			perNameMaps: perNameMappingMaps,
+			contains:    []string{"wide:\n        kind: identity\n        budget: 5\n"},
+			notContains: []string{"costed", "plain"},
 		},
 	}
 
@@ -387,6 +426,14 @@ func TestSetValues_UnknownKeys(t *testing.T) {
 			pairs:       []KV{{Key: "names.x", Value: "v"}, {Key: "names.x.y", Value: "v"}, {Key: "lists", Value: "[a]"}, {Key: "lists.m.n", Value: "v"}},
 			perNameMaps: perNameSetMaps,
 			wantUnknown: []string{"lists", "lists.m.n", "names.x.y"},
+		},
+		{
+			name:        "per-name map of mappings knows an entry key for any name and refuses one no entry holds",
+			template:    perNameMappingTemplate,
+			pairs:       []KV{{Key: "profiles.wide.budget", Value: "1"}, {Key: "profiles.wide.nope", Value: "1"}},
+			perNameMaps: perNameMappingMaps,
+			wantUnknown: []string{"profiles.wide.nope"},
+			wantKnown:   "profiles.<name>.budget",
 		},
 	}
 
@@ -511,6 +558,21 @@ func TestSetValues_Refusals(t *testing.T) {
 			pair:        KV{Key: "names.x", Value: "prose"},
 			perNameMaps: perNameSetMaps,
 			want:        []string{"names", "sequence", "rewrite names as a map of name to value"},
+		},
+		{
+			name:        "plain value for a per-name mapping entry",
+			template:    perNameMappingTemplate,
+			pair:        KV{Key: "profiles.wide", Value: "identity"},
+			perNameMaps: perNameMappingMaps,
+			want:        []string{"profiles.wide", "flow mapping"},
+		},
+		{
+			name:        "entry key into a per-name mapping map that holds a list",
+			template:    perNameMappingTemplate,
+			existing:    "profiles:\n  - a\n",
+			pair:        KV{Key: "profiles.wide.budget", Value: "300"},
+			perNameMaps: perNameMappingMaps,
+			want:        []string{"profiles", "sequence"},
 		},
 	}
 

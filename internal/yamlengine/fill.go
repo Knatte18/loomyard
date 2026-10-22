@@ -99,6 +99,8 @@ func fillMapping(template, existing *yaml.Node, path string, keys *[]string, ope
 
 		fileValue, ok := present[keyNode.Value]
 		if !ok {
+			// A flow mapping holding block entries and their comments marshals as invalid YAML, so the mapping takes block style.
+			existing.Style &^= yaml.FlowStyle
 			existing.Content = append(existing.Content, deepCopyNode(keyNode), deepCopyNode(valueNode))
 			*keys = append(*keys, keyPath)
 			continue

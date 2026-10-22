@@ -52,7 +52,7 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 
 // TestActive asserts Active resolves the configured profile from batcher.yaml:
 // the template verbatim (which must itself parse as plain YAML) builds a cost batcher named after its cautious profile, an empty active: resolves identity both on the template's profiles and without a profiles: block, an identity active: resolves identity without a profiles: block, an absent batcher.yaml or an absent _lyx/ degrades to the embedded template's cautious batchifier rather than erroring, and every load error names batcher.yaml.
-// The no-such-profile row holds only an operator profile, so it fails only while profiles: is an open map that the template's profiles are not filled into.
+// A layer's profiles add to the template's by name, each merging key by key, so the error rows tune a profile the template lacks.
 func TestActive(t *testing.T) {
 	t.Parallel()
 	template := batcher.ConfigTemplate()
@@ -116,9 +116,23 @@ func TestActive(t *testing.T) {
 		{
 			name: "noSuchProfileErrors",
 			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", "active: \"nope\"\nprofiles:\n  mine:\n    batchifier: identity\n")
+			},
+			wantErrWith: []string{"batcher.yaml", "nope"},
+		},
+		{
+			name: "profilesThatIsAListErrors",
+			seed: func(t *testing.T, baseDir string) {
+				seedConfig(t, baseDir, "batcher", "profiles:\n  - cautious\n")
+			},
+			wantErrWith: []string{"batcher.yaml", "profiles", "sequence"},
+		},
+		{
+			name: "operatorProfileAddsToTheTemplates",
+			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", "active: \"cautious\"\nprofiles:\n  mine:\n    batchifier: identity\n")
 			},
-			wantErrWith: []string{"batcher.yaml", "cautious"},
+			wantName: "cautious",
 		},
 		{
 			name: "unknownBatchifierErrors",
@@ -130,9 +144,10 @@ func TestActive(t *testing.T) {
 		{
 			name: "missingThresholdErrors",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", strings.Replace(template, "    budget: ", "    renamed_budget: ", 1))
+				operatorCopy := strings.NewReplacer(`active: "cautious"`, `active: "mine"`, "  cautious:", "  mine:", "    budget: ", "    renamed_budget: ").Replace(template)
+				seedConfig(t, baseDir, "batcher", operatorCopy)
 			},
-			wantErrWith: []string{"batcher.yaml", "cautious", "budget"},
+			wantErrWith: []string{"batcher.yaml", "mine", "budget"},
 		},
 		{
 			name: "nonPositiveBudgetErrors",
@@ -214,14 +229,25 @@ func TestActive(t *testing.T) {
 			wantName:     "identity",
 		},
 		{
-			name:         "worktreeProfilesReplaceTheDefaultsWhole",
+			name:         "worktreeProfilesAddToTheDefaults",
 			repoDefault:  template,
 			worktreeFile: "profiles:\n  mine:\n    batchifier: identity\n",
-			wantErrWith:  []string{"batcher.yaml", "cautious"},
+			wantName:     "cautious",
+		},
+		{
+			name:        "repoDefaultTuningOneKeyKeepsTheTemplatesOthers",
+			repoDefault: "profiles:\n  cautious:\n    budget: 300000\n",
+			wantName:    "cautious",
+		},
+		{
+			name:        "repoDefaultTunedKeyReachesTheProfile",
+			repoDefault: "profiles:\n  cautious:\n    max_cards: 1\n",
+			wantErrWith: []string{"batcher.yaml", "cautious", "max_cards"},
 		},
 		{
 			name:                   "retiredKeyInRepoDefaultNamesDefaultFileAndFabricReconcile",
 			repoDefault:            strings.Replace(template, "    budget: ", "    alone_above: 1200000\n    budget: ", 1),
+			worktreeFile:           "profiles:\n  mine:\n    batchifier: identity\n",
 			wantErrWith:            []string{"alone_above", `way forward: run "lyx fabric reconcile"`, "the orch runs it"},
 			wantDefaultFileInError: true,
 		},
@@ -269,7 +295,7 @@ func TestActive(t *testing.T) {
 func TestProfileWeights(t *testing.T) {
 	t.Parallel()
 	const valid = `profiles:
-  cautious:
+  tuned:
     weights:
       orientation: 10
       batch_growth: 3
@@ -293,7 +319,7 @@ func TestProfileWeights(t *testing.T) {
 		{
 			name:    "validProfile",
 			config:  valid,
-			profile: "cautious",
+			profile: "tuned",
 			want: batcher.Weights{
 				Orientation: 10, BatchGrowth: 3, ForkMessages: 2, MessageContext: 8, TargetMessages: 3, TestFileMessages: 4,
 				UsesMessages: 5, ContextPerLine: 0.5, PackageContext: 7, WritePerCardLine: 9,
@@ -308,45 +334,45 @@ func TestProfileWeights(t *testing.T) {
 		{
 			name:        "missingCoefficient",
 			config:      strings.Replace(valid, "      package_context: 7\n", "", 1),
-			profile:     "cautious",
+			profile:     "tuned",
 			wantErrWith: []string{"batcher.yaml", "package_context"},
 		},
 		{
 			name:        "negativeCoefficient",
 			config:      strings.Replace(valid, "fork_messages: 2", "fork_messages: -1", 1),
-			profile:     "cautious",
+			profile:     "tuned",
 			wantErrWith: []string{"batcher.yaml", "fork_messages"},
 		},
 		{
 			name:        "missingOrientation",
 			config:      strings.Replace(valid, "      orientation: 10\n", "", 1),
-			profile:     "cautious",
+			profile:     "tuned",
 			wantErrWith: []string{"batcher.yaml", "orientation"},
 		},
 		{
 			name:        "negativeBatchGrowth",
 			config:      strings.Replace(valid, "batch_growth: 3", "batch_growth: -1", 1),
-			profile:     "cautious",
+			profile:     "tuned",
 			wantErrWith: []string{"batcher.yaml", "batch_growth"},
 		},
 		{
 			name:        "retiredStartupContext",
 			config:      valid + "      startup_context: 60000\n",
-			profile:     "cautious",
-			wantErrWith: []string{"batcher.yaml", "cautious", "startup_context"},
+			profile:     "tuned",
+			wantErrWith: []string{"batcher.yaml", "tuned", "startup_context"},
 			wantRetired: true,
 		},
 		{
 			name:        "retiredMasterBase",
 			config:      valid + "      master_base: 52000\n",
-			profile:     "cautious",
-			wantErrWith: []string{"batcher.yaml", "cautious", "master_base"},
+			profile:     "tuned",
+			wantErrWith: []string{"batcher.yaml", "tuned", "master_base"},
 			wantRetired: true,
 		},
 		{
 			name:        "unknownKey",
 			config:      valid + "      bogus_weight: 1\n",
-			profile:     "cautious",
+			profile:     "tuned",
 			wantErrWith: []string{"batcher.yaml", "bogus_weight"},
 		},
 	}

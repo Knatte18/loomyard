@@ -105,6 +105,13 @@ func TestFillMissing(t *testing.T) {
 			wantMap:  map[string]any{"items": []any{}, "other": 1},
 		},
 		{
+			name:     "commented entries filled into a flow mapping stay valid YAML",
+			template: "profiles: # named\n  plain: # one\n    kind: identity # the kind\n",
+			existing: "profiles: {} # named\n",
+			wantKeys: []string{"profiles.plain"},
+			wantMap:  map[string]any{"profiles": map[string]any{"plain": map[string]any{"kind": "identity"}}},
+		},
+		{
 			name:      "file's extra key and order are kept",
 			template:  "a: 1\nb: 2\nc: 3\n",
 			existing:  "z: 0\nc: 30\n",
