@@ -38,7 +38,7 @@ var legacyConfigModules = map[string][]string{
 }
 
 // formerTemplateValues maps a module name to a top-level key to the template value its replaced units held immediately before the tuned defaults replaced them, as YAML text.
-// An open map is one unit, so a whole map is compared whole; under any other mapping each unit is compared alone.
+// An open map is one unit, so a whole map is compared whole; under any other mapping, a per-name map included, each leaf unit is compared alone.
 // Only the replaced units are listed; an older template generation's value is kept as tuned.
 var formerTemplateValues = map[string]map[string]string{
 	"loom": formerLoomValues(),
