@@ -45,6 +45,7 @@ func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeout
 
 	var dir, tags, base string
 	var tiers []int
+	var upto int
 	var cards []string
 	var all, guards, wait bool
 	testCmd := &cobra.Command{
@@ -52,7 +53,8 @@ func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeout
 		Short:       "run the hub's test tiers once their gate slots are free",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: fmt.Sprintf(`test runs the tiers the hub declares in gate.yaml, in ascending tier number, stopping at the first tier that fails.
---tier N names a tier and may repeat; the default is tier0.
+--tier N names a tier and may repeat; the default is tier0 unless --upto is given.
+--upto N adds every declared tier numbered 0 through N but a manual one, which runs only when --tier names it.
 A listed tier that another listed tier covers is dropped.
 Each tier takes the gate slots it asks for, so the hub never runs more gate builds and tests at once than its configured slot count allows, and runs its command through the platform shell as one process tree, bounded by the tier's timeout_min once its slots are held.
 Without --wait it waits for the slots for up to %s, under the prompt-cache lifetime.
@@ -71,6 +73,7 @@ Examples:
 
   lyx gate test --wait ./internal/foo
   lyx gate test --tier 0 --tier 1 --all
+  lyx gate test --upto 2
   lyx gate test --wait --card 3 --card 4
   lyx gate test --base main
   lyx gate test -C backend ./internal/foo ./internal/bar
@@ -84,6 +87,7 @@ Examples:
 			request := testRequest{
 				goBinary: goBinary, samplePeriod: samplePeriod, slotWait: slotWait, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit,
 				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, tiers: tiers, cards: cards, base: base, all: all, guards: guards, wait: wait, targets: args,
+				upto: upto, uptoGiven: cmd.Flags().Changed("upto"),
 			}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
 				request.targets, request.args = args[:dash], args[dash:]
@@ -95,12 +99,14 @@ Examples:
 	testCmd.Flags().StringVarP(&dir, "dir", "C", "", "directory the tiers run in, with explicit targets only; defaults to each tier's own dir")
 	testCmd.Flags().StringVar(&tags, "tags", "", "refused: name the tier that compiles the tags with --tier")
 	testCmd.Flags().IntSliceVar(&tiers, "tier", nil, "tier number to run; repeatable, default 0")
+	testCmd.Flags().IntVar(&upto, "upto", 0, "run every declared tier numbered 0 through N but the manual ones")
 	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages are the scope; repeatable")
 	testCmd.Flags().StringVar(&base, "base", "", "revision whose diff to the working tree is the scope")
 	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")
 	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers pass, run the guard tier over every //lyx:guard test of the module")
 	testCmd.Flags().BoolVar(&wait, "wait", false, "block until the tiers' slots free instead of answering slot_free false after the keep-cache-warm cap")
 	cmd.AddCommand(testCmd)
+	cmd.AddCommand(statusCmd())
 	cmd.AddCommand(cardVerifyCmd())
 
 	return cmd
@@ -137,8 +143,11 @@ type testRequest struct {
 	// dir is the -C value as typed; empty means the tier's own dir.
 	dir  string
 	tags string
-	// tiers are the --tier values as typed; empty means tier0.
+	// tiers are the --tier values as typed; empty means tier0 unless uptoGiven.
 	tiers []int
+	// upto is the --upto value, read only when uptoGiven.
+	upto      int
+	uptoGiven bool
 	// cards are the --card values.
 	cards []string
 	// base is the --base revision.

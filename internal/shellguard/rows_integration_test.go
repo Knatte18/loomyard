@@ -251,4 +251,15 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 			}
 		})
 	}
+	// The form the darn writer's publish-failure steps render for a failing tmux-tier test; no row may take it away.
+	const tmuxTierReproduce = "lyx gate test --wait --tier 2 github.com/Knatte18/loomyard/internal/x -- -run '^TestX$'"
+	for name, row := range rows {
+		t.Run(name+"_tmux_tier_reproduce_command", func(t *testing.T) {
+			t.Parallel()
+
+			if payloadDenied(t, row, tmuxTierReproduce, "") {
+				t.Errorf("row %q denies %q; want allowed", name, tmuxTierReproduce)
+			}
+		})
+	}
 }

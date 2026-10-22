@@ -44,6 +44,27 @@ func leadDoneResult(output string) seatengine.Result {
 	}
 }
 
+// failedGateResult is a done lead writing output whose result carries an exhausted, non-terminal GateOutcome with findings text, so a gated producer keeps the findings in its row's findings file.
+func failedGateResult(output string) seatengine.Result {
+	return seatengine.Result{
+		Chair:        shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Attempts: 2, Findings: "the gate's findings", FindingsPath: "/gate/own-findings.md"}},
+		ChairOutputs: []string{output},
+	}
+}
+
+// withGateFindingsFile tells env a per-row findings file under dir.
+func withGateFindingsFile(env *Env, dir string) {
+	env.GateFindingsFile = func(row string) string { return filepath.Join(dir, "gate-findings", row+".md") }
+}
+
+// requireNamesFindingsFile fails t unless reason names the findings file env tells the row named row.
+func requireNamesFindingsFile(t *testing.T, env Env, row, reason string) {
+	t.Helper()
+	if path := env.GateFindingsFile(row); !strings.Contains(reason, path) {
+		t.Errorf("Stuck reason = %q; want it to name the row's findings file %q", reason, path)
+	}
+}
+
 // TestDiscussionWriteEntry_ConstructionFailures covers the three seams discussionWriteEntry requires and the Config rejection every entry in this package performs first.
 func TestDiscussionWriteEntry_ConstructionFailures(t *testing.T) {
 	t.Parallel()
@@ -83,6 +104,18 @@ func TestDiscussionWriteEntry_HappyPath(t *testing.T) {
 	if producer == nil {
 		t.Fatalf("discussionWriteEntry() = nil producer; want non-nil")
 	}
+
+	// An exhausted gate's reason names the row's findings file, so an entry that drops the chain fails here.
+	output := filepath.Join(env.WorktreeRoot, "decision-record.md")
+	withSeatTable(&env, output)
+	withGateFindingsFile(&env, t.TempDir())
+	env.Seats = &shedfake.SeatRunner{Results: []seatengine.Result{failedGateResult(output)}}
+	producer, err = discussionWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
+	if err != nil {
+		t.Fatalf("discussionWriteEntry() error = %v; want nil", err)
+	}
+	pointer := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
+	requireNamesFindingsFile(t, env, "Row", pointer.Reason)
 }
 
 // TestDiscussionWriteEntry_CallDone drives the producer's Call once against a done lead and asserts the told table was evaluated once and reached the seat runner with the row's gate, the returned OutputPointer.Path is the lead's first output, and the commit closure fired exactly once.

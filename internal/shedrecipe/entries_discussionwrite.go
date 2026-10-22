@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// discussionWriteEntry is the Constructor for the "DiscussionWrite" registry row: it validates Env.DiscussionTable, Env.CommitDiscussion and Env.Seats, resolves the row's "gates" Config key through resolveGateSpec, then returns loomshed.NewDiscussionWrite(name, shedadapters.NewMultiLLMProducerSourced(name, tables, env.Seats, env.Now, prepare), env.CommitDiscussion) -- a seat-table producer behind a commit decorator.
+// discussionWriteEntry is the Constructor for the "DiscussionWrite" registry row: it validates Env.DiscussionTable, Env.CommitDiscussion and Env.Seats, resolves the row's "gates" Config key through resolveGateSpec, then returns loomshed.NewDiscussionWrite(name, shedadapters.NewMultiLLMProducerSourced(name, tables, env.Seats, env.Now, prepare).KeepGateFindings(path), env.CommitDiscussion), path being the row's gate findings file -- a seat-table producer behind a commit decorator.
 // Env.Shuttle is never read: the seats run through Env.Seats.
 //
 // The table arrives as a shedadapters.TableSource closure evaluated once per Call, so the seats' stencils are read at call time.
@@ -60,6 +60,6 @@ func discussionWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.Shed
 		table.Gate = gate
 		return table, nil
 	}
-	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, prepare)
+	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, prepare).KeepGateFindings(env.gateFindingsPath(row.Name))
 	return loomshed.NewDiscussionWrite(row.Name, inner, env.CommitDiscussion), nil
 }

@@ -4,9 +4,10 @@ package lenses
 
 import (
 	"bytes"
-	_ "embed"
+	"embed"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -17,15 +18,45 @@ import (
 //go:embed template.yaml
 var configTemplate string
 
+// lensSetFiles holds the shipped language layers, one document per file under sets/.
+//
+//go:embed sets/*.yaml
+var lensSetFiles embed.FS
+
+// lensSets returns each shipped language layer's bytes keyed by its file's base name without .yaml.
+// It panics on a read error of the embedded tree, which cannot fail for an embedded path.
+func lensSets() map[string][]byte {
+	entries, err := lensSetFiles.ReadDir("sets")
+	if err != nil {
+		panic(fmt.Sprintf("lenses: read the embedded sets directory: %v", err))
+	}
+	sets := make(map[string][]byte, len(entries))
+	for _, entry := range entries {
+		data, err := lensSetFiles.ReadFile("sets/" + entry.Name())
+		if err != nil {
+			panic(fmt.Sprintf("lenses: read the embedded layer %s: %v", entry.Name(), err))
+		}
+		sets[strings.TrimSuffix(entry.Name(), ".yaml")] = data
+	}
+	return sets
+}
+
 // MaxFanLenses caps the number of lenses a single fan may resolve to, the upper bound on how many parallel fork reviewers one cluster round spawns.
 const MaxFanLenses = 16
 
 // Config is the decode shape of lenses.yaml.
 type Config struct {
+	// LensSet names the embedded language layer whose lenses and fans replace or add base entries by name; empty picks none.
+	LensSet string `yaml:"lens_set"`
 	// Lenses maps a lens name to its review prose.
 	Lenses map[string]string `yaml:"lenses"`
 	// Fans maps a fan name to an ordered list of lens names.
 	Fans map[string][]string `yaml:"fans"`
+	// Remove lists lens names Load drops from Lenses and from every fan after resolution.
+	Remove []string `yaml:"remove"`
+	// EmptiedFans maps each fan the removal emptied to the removed lens names it held, in its order.
+	// It is nil when no fan was emptied, and never decoded.
+	EmptiedFans map[string][]string `yaml:"-"`
 }
 
 // Lens is one resolved fan entry: the lens name and the review prose it contributes to a fork's prompt.
@@ -45,22 +76,29 @@ func ConfigPerNameMaps() []string {
 }
 
 // ConfigSpec returns lenses's layered-load spec.
-// Both keys are per-name maps and guard keys: a lens's prose and a fan's lens set are what every review fork is given, so no local override may hold them.
+// Both maps are per-name maps and guard keys: a lens's prose and a fan's lens set are what every review fork is given, so no local override may hold them.
+// lens_set is a guard key too, since the language layer it picks is the prose every review fork is given.
+// remove is a guard key as well: it lets a hub take a review lens out of every fan.
 // The module is per-worktree, not hub-wide.
+// The language layers are the template overlay lens_set picks, read from the base layer only.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:        "lenses",
 		Template:    []byte(ConfigTemplate()),
 		PerNameMaps: ConfigPerNameMaps(),
+		Overlay:     configengine.Overlay{Selector: "lens_set", Documents: lensSets()},
 		Categories: map[string]configengine.Category{
-			"lenses": configengine.CategoryGuard,
-			"fans":   configengine.CategoryGuard,
+			"lens_set": configengine.CategoryGuard,
+			"lenses":   configengine.CategoryGuard,
+			"fans":     configengine.CategoryGuard,
+			"remove":   configengine.CategoryGuard,
 		},
 	}
 }
 
 // Load reads lenses.yaml through the layer stack under dirs and decodes the resolved document strictly.
 // An absent base file resolves the template, and a lens or fan the stack lacks resolves to its template value, so the returned Config holds every template entry.
+// The names in remove are then dropped from the lenses and every fan, and a name matching no lens is skipped with a warning.
 // Every error carries the "lenses: " prefix.
 func Load(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.LoadOrTemplate(dirs, ConfigSpec())
@@ -73,13 +111,69 @@ func Load(dirs configengine.Dirs) (Config, error) {
 	if err := decoder.Decode(&cfg); err != nil {
 		return Config{}, configengine.MarkInvalid(fmt.Errorf("lenses: parse the resolved config: %w", err))
 	}
+	if skipped := applyRemove(&cfg); len(skipped) > 0 {
+		if err := configengine.WarnSkippedEntries(dirs, ConfigSpec(), "remove", skipped); err != nil {
+			return Config{}, fmt.Errorf("lenses: %w", err)
+		}
+	}
 	return cfg, nil
 }
 
+// applyRemove deletes each cfg.Remove name from cfg.Lenses and every occurrence of it from every fan.
+// A fan that had entries and is left empty moves from cfg.Fans into cfg.EmptiedFans, which is allocated only then.
+// It returns the Remove entries that named no lens, in list order.
+func applyRemove(cfg *Config) []string {
+	var skipped []string
+	removed := map[string]bool{}
+	for _, name := range cfg.Remove {
+		if removed[name] {
+			continue
+		}
+		if _, defined := cfg.Lenses[name]; !defined {
+			if !slices.Contains(skipped, name) {
+				skipped = append(skipped, name)
+			}
+			continue
+		}
+		delete(cfg.Lenses, name)
+		removed[name] = true
+	}
+	if len(removed) == 0 {
+		return skipped
+	}
+
+	for fanName, entries := range cfg.Fans {
+		kept := make([]string, 0, len(entries))
+		var dropped []string
+		for _, lensName := range entries {
+			if removed[lensName] {
+				dropped = append(dropped, lensName)
+				continue
+			}
+			kept = append(kept, lensName)
+		}
+		switch {
+		case len(dropped) == 0:
+		case len(kept) == 0:
+			if cfg.EmptiedFans == nil {
+				cfg.EmptiedFans = map[string][]string{}
+			}
+			cfg.EmptiedFans[fanName] = dropped
+			delete(cfg.Fans, fanName)
+		default:
+			cfg.Fans[fanName] = kept
+		}
+	}
+	return skipped
+}
+
 // ResolveFan resolves a fan name into its ordered lenses, preserving order and repeats.
-// It refuses an unknown fan, an empty fan, a fan longer than MaxFanLenses and a fan naming an undefined lens, each naming the fan and carrying the "lenses: " prefix.
+// It refuses a fan the removal emptied, an unknown fan, an empty fan, a fan longer than MaxFanLenses and a fan naming an undefined lens, each naming the fan and carrying the "lenses: " prefix.
 // cfg is read alone, so a Config that did not come from Load resolves only the names it holds.
 func ResolveFan(cfg Config, name string) ([]Lens, error) {
+	if removedNames, emptied := cfg.EmptiedFans[name]; emptied {
+		return nil, fmt.Errorf("lenses: fan %q is empty after remove dropped %s; way forward: drop a name from remove, or point the loom or darn fan key at another fan or \"\" for a later run", name, strings.Join(removedNames, ", "))
+	}
 	entries, ok := cfg.Fans[name]
 	if !ok {
 		return nil, fmt.Errorf("lenses: unknown fan %q (known fans: %s)", name, strings.Join(fanNames(cfg.Fans), ", "))

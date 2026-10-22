@@ -87,6 +87,9 @@ type Env struct {
 	// RunScratchDir is the told ephemeral shed scratch directory of the run, read by the gate resolver's "plan" and "rework-plan" gates, which record their informational findings in a file under it.
 	// Empty keeps those findings inline in the log.
 	RunScratchDir string
+	// GateFindingsFile is the told per-row file an exhausted gate's findings are kept in, read by every entry that builds a gated producer.
+	// Nil tells no row a path, which keeps the gate's own findings path in the Stuck reason.
+	GateFindingsFile func(row string) string
 	// VerifyDir is the told verify directory, read by the gate resolver's "verify" gate.
 	VerifyDir string
 	// VerifyCommand is the told verify-command source, read at each arrival by the gate resolver's "verify" gate, which requires it.

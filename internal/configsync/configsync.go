@@ -6,6 +6,8 @@
 // only a standalone worktree base and a seed-only file stay full, and every layer above a base is sparse.
 // ReconcileHubWideAt covers every module's file at the board dir, hub files and per-worktree repo defaults;
 // ReconcileAll covers a worktree's sparse and local layers.
+// Every strip, prune, reconcile and template-equal drop judges a file against the effective template its base layer picks, the module's template with the overlay its selector names laid over it;
+// key-move scaffolds and the seed-only paths use the base template.
 // Every reconcile entry point, and run-settings preparation through configreg, applies the key-move table to each layer as its first step, before any module of the layer is seeded or reconciled.
 // Reconcile failures are *FileError values naming the file that failed.
 
@@ -13,6 +15,7 @@ package configsync
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -266,6 +269,42 @@ func (e *FileError) Unwrap() error {
 	return e.Err
 }
 
+// effectiveTemplateOf composes the template m's base document picks, failing as a *FileError that names path, the file holding the selector value.
+func effectiveTemplateOf(m configreg.Module, base []byte, hub bool, path string) ([]byte, error) {
+	template, err := configengine.EffectiveTemplate(m.Spec(), base, hub)
+	if err != nil {
+		return nil, &FileError{Module: m.Name, Path: path, Err: err}
+	}
+	return template, nil
+}
+
+// templateUnderBase composes the template the base layer's file under dirs picks, failing as a *FileError that names that file.
+func templateUnderBase(m configreg.Module, dirs configengine.Dirs) ([]byte, error) {
+	spec := m.Spec()
+	template, err := configengine.TemplateUnder(dirs, spec)
+	if err != nil {
+		basePath, _ := configengine.LayerFile(dirs, spec, configengine.BaseLayer(dirs, spec))
+		return nil, &FileError{Module: m.Name, Path: basePath, Err: err}
+	}
+	return template, nil
+}
+
+// primeSeedError names the prime's copy of m in a seed failure its selector caused, and adds the step the refusal's way forward lacks:
+// a prime worktree file holding a selector the base does not hold is refused at load, so its line must go too.
+// The delete step is added only for a module with an overlay selector.
+// It returns err unchanged for any other failure.
+func primeSeedError(m configreg.Module, primeBaseDir string, err error) error {
+	if !errors.Is(err, configengine.ErrInvalid) {
+		return err
+	}
+	primePath := configengine.ConfigFile(primeBaseDir, m.Name)
+	selector := m.Spec().Overlay.Selector
+	if selector == "" {
+		return &FileError{Module: m.Name, Path: primePath, Err: err}
+	}
+	return &FileError{Module: m.Name, Path: primePath, Err: fmt.Errorf("%w; also delete the %s line from %s in an editor", err, selector, primePath)}
+}
+
 // leafValues flattens a decoded YAML document into dotted key path to leaf value.
 // Maps are descended, an empty map contributes nothing, and a list is one leaf compared whole.
 func leafValues(prefix string, node any, into map[string]any) {
@@ -389,6 +428,7 @@ func ReconcileAll(baseDir, boardDir string, opts Options) ([]Result, error) {
 	if pending != nil {
 		pending.write = opts.Migrate && opts.Apply
 	}
+	dirs := configengine.Dirs{Anchor: baseDir, Board: boardDir}
 	for _, m := range configreg.Modules() {
 		var result Result
 		var err error
@@ -398,14 +438,14 @@ func ReconcileAll(baseDir, boardDir string, opts Options) ([]Result, error) {
 		case boardDir == "":
 			result, err = reconcileBaseWorktreeFile(m, baseDir, opts.Apply)
 		default:
-			result, _, err = reconcileSparseFile(m, configengine.ConfigFile(baseDir, m.Name), configengine.LayerWorktree, opts.Apply, pending)
+			result, _, err = reconcileSparseFile(m, dirs, configengine.ConfigFile(baseDir, m.Name), configengine.LayerWorktree, opts.Apply, pending)
 		}
 		if err != nil {
 			return nil, err
 		}
 		results = append(results, result)
 
-		localResult, present, err := reconcileSparseFile(m, configengine.LocalFile(baseDir, m.Name), configengine.LayerLocal, opts.Apply, nil)
+		localResult, present, err := reconcileSparseFile(m, dirs, configengine.LocalFile(baseDir, m.Name), configengine.LayerLocal, opts.Apply, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -495,7 +535,11 @@ func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (
 		}
 	}
 
-	merged, added, removed, kept, dropped, err := yamlengine.Reconcile([]byte(m.Template()), existing, m.PerNameMaps, m.OpenMaps...)
+	template, err := effectiveTemplateOf(m, existing, false, cfgPath)
+	if err != nil {
+		return Result{}, err
+	}
+	merged, added, removed, kept, dropped, err := yamlengine.Reconcile(template, existing, m.PerNameMaps, m.OpenMaps...)
 	if err != nil {
 		return Result{}, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, err)}
 	}
@@ -524,7 +568,7 @@ func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (
 // With a non-nil strip, the file's keys that equal what the layers below it resolve to are reported as Stripped, and removed when strip.write is set;
 // a seed-only module takes the strip as well.
 // A file emptied by a prune or a strip is deleted and reported applied.
-func reconcileSparseFile(m configreg.Module, path string, layer configengine.Layer, apply bool, strip *migration) (result Result, present bool, err error) {
+func reconcileSparseFile(m configreg.Module, dirs configengine.Dirs, path string, layer configengine.Layer, apply bool, strip *migration) (result Result, present bool, err error) {
 	result = Result{Module: m.Name, Layer: layer}
 	original, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -545,7 +589,11 @@ func reconcileSparseFile(m configreg.Module, path string, layer configengine.Lay
 				return fail("migrate", err)
 			}
 		}
-		current, result.Removed, result.KeptExtra, err = yamlengine.Prune([]byte(m.Template()), current, m.PerNameMaps, m.OpenMaps...)
+		template, err := templateUnderBase(m, dirs)
+		if err != nil {
+			return Result{}, true, err
+		}
+		current, result.Removed, result.KeptExtra, err = yamlengine.Prune(template, current, m.PerNameMaps, m.OpenMaps...)
 		if err != nil {
 			return fail("reconcile", err)
 		}
@@ -605,7 +653,11 @@ func stripToSparse(m configreg.Module, dirs configengine.Dirs, original, current
 			repoDefault = layer.Bytes
 		}
 	}
-	differing, _, err := yamlengine.Strip(spec.Template, repoDefault, spec.OpenMaps, spec.WholeEntries)
+	effective, err := configengine.EffectiveTemplate(spec, repoDefault, true)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	differing, _, err := yamlengine.Strip(effective, repoDefault, spec.OpenMaps, spec.WholeEntries)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -641,11 +693,16 @@ func stripFormerValues(m configreg.Module, current []byte, removedKeys []string)
 	return stripped, removedKeys, nil
 }
 
-// stripBase removes from current, a base file of m, every unit equal to the template's or to a former template value of m, and returns the stripped bytes with the removed keys, sorted.
+// stripBase removes from current, units of a base file of m, every unit equal to the effective template's or to a former template value of m, and returns the stripped bytes with the removed keys, sorted.
+// base is the base document whose selector picks the effective template; it is current itself unless current is only part of the file.
 // An open map is compared whole, and a base left with no unit comes back empty.
-func stripBase(m configreg.Module, current []byte) ([]byte, []string, error) {
+func stripBase(m configreg.Module, base, current []byte) ([]byte, []string, error) {
 	spec := m.Spec()
-	stripped, removedKeys, err := yamlengine.Strip(spec.Template, current, spec.OpenMaps, spec.WholeEntries)
+	effective, err := configengine.EffectiveTemplate(spec, base, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	stripped, removedKeys, err := yamlengine.Strip(effective, current, spec.OpenMaps, spec.WholeEntries)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -662,15 +719,20 @@ func sparseSeed(m configreg.Module, seed []byte, dropFormer bool) ([]byte, error
 			return nil, fmt.Errorf("migrate %s: %w", m.Name, err)
 		}
 	}
-	current, _, _, err := yamlengine.Prune([]byte(m.Template()), current, m.PerNameMaps, m.OpenMaps...)
+	spec := m.Spec()
+	effective, err := configengine.EffectiveTemplate(spec, current, true)
+	if err != nil {
+		return nil, fmt.Errorf("reconcile %s: %w", m.Name, err)
+	}
+	migrated := current
+	current, _, _, err = yamlengine.Prune(effective, current, m.PerNameMaps, m.OpenMaps...)
 	if err != nil {
 		return nil, fmt.Errorf("reconcile %s: %w", m.Name, err)
 	}
 	if dropFormer {
-		current, _, err = stripBase(m, current)
+		current, _, err = stripBase(m, migrated, current)
 	} else {
-		spec := m.Spec()
-		current, _, err = yamlengine.Strip(spec.Template, current, spec.OpenMaps, spec.WholeEntries)
+		current, _, err = yamlengine.Strip(effective, current, spec.OpenMaps, spec.WholeEntries)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("reconcile %s: %w", m.Name, err)
@@ -730,12 +792,13 @@ func splitTopLevel(data []byte, keys []string) (picked, rest []byte, err error) 
 
 // stripMovedUnits strips from current, a base file of m that a key move created, only the units of the top-level keys named by movedKeys, and returns the file with the removed keys.
 // The units a prime seed put in the file are left, since the seed already dropped what a strip drops.
+// The moved units are judged against the effective template the whole file's selector picks.
 func stripMovedUnits(m configreg.Module, current []byte, movedKeys []string) ([]byte, []string, error) {
 	picked, rest, err := splitTopLevel(current, movedKeys)
 	if err != nil {
 		return nil, nil, err
 	}
-	strippedPicked, removedKeys, err := stripBase(m, picked)
+	strippedPicked, removedKeys, err := stripBase(m, current, picked)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -884,6 +947,9 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			case SeedPrime:
 				_, markerStat := os.Stat(configengine.SparseMarker(primeBaseDir))
 				mergedBytes, reconcileErr = sparseSeed(m, existing, os.IsNotExist(markerStat))
+				if reconcileErr != nil {
+					reconcileErr = primeSeedError(m, primeBaseDir, reconcileErr)
+				}
 			case SeedLegacy:
 				mergedBytes, reconcileErr = sparseSeed(m, existing, false)
 			default:
@@ -897,14 +963,18 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 					return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("migrate %s: %w", m.Name, err)}
 				}
 			}
-			mergedBytes, removed, keptExtra, reconcileErr = yamlengine.Prune([]byte(m.Template()), mergedBytes, m.PerNameMaps, m.OpenMaps...)
+			var template []byte
+			template, reconcileErr = effectiveTemplateOf(m, mergedBytes, true, cfgPath)
+			if reconcileErr == nil {
+				mergedBytes, removed, keptExtra, reconcileErr = yamlengine.Prune(template, mergedBytes, m.PerNameMaps, m.OpenMaps...)
+			}
 			changed = len(removed)+len(migrated) > 0
 			// The strip runs before the per-name drop, so a per-name map the strip empties leaves no empty mapping behind.
 			if reconcileErr == nil && unmarked {
 				var strippedBytes []byte
 				switch {
 				case presentBefore[m.Name]:
-					strippedBytes, stripped, reconcileErr = stripBase(m, mergedBytes)
+					strippedBytes, stripped, reconcileErr = stripBase(m, mergedBytes, mergedBytes)
 				case len(movedKeys[m.Name]) > 0:
 					strippedBytes, stripped, reconcileErr = stripMovedUnits(m, mergedBytes, movedKeys[m.Name])
 				}
@@ -914,11 +984,15 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 				}
 			}
 			if reconcileErr == nil && len(m.PerNameMaps) > 0 {
-				mergedBytes, dropped, reconcileErr = yamlengine.DropTemplateEqualNames([]byte(m.Template()), mergedBytes, m.PerNameMaps)
+				mergedBytes, dropped, reconcileErr = yamlengine.DropTemplateEqualNames(template, mergedBytes, m.PerNameMaps)
 				changed = changed || len(dropped) > 0
 			}
 		}
 		if reconcileErr != nil {
+			var fileErr *FileError
+			if errors.As(reconcileErr, &fileErr) {
+				return nil, fileErr
+			}
 			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("reconcile %s: %w", m.Name, reconcileErr)}
 		}
 

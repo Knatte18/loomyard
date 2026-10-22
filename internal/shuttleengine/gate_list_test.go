@@ -243,6 +243,9 @@ func TestGateList_FinalReports(t *testing.T) {
 					if result.Gate.FindingsPath != findingsPath {
 						t.Errorf("FindingsPath = %q, want %q", result.Gate.FindingsPath, findingsPath)
 					}
+					if result.Gate.Findings != "bad" {
+						t.Errorf("Findings = %q, want %q", result.Gate.Findings, "bad")
+					}
 					if result.Gate.Attempts != 2 || len(reed.SendTextCalls) != 2 {
 						t.Errorf("Attempts = %d, SendText calls = %d, want 2 and 2", result.Gate.Attempts, len(reed.SendTextCalls))
 					}

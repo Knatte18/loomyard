@@ -72,6 +72,7 @@ const (
 // RetiredKeys are the dotted keys the module no longer reads, each mapped to the category it held as a template key;
 // they stay out of Categories and OpenMaps, the local and machine layers admit them by that category, and a load drops them from the stacked document.
 // SeedOnly marks the module whose file is the operator's registry, seeded whole and never rewritten, so its base stays full in a hub too.
+// Overlay is the module's optional template overlay, picked by a selector key in the base layer; its zero value means none.
 type Spec struct {
 	Name         string
 	Template     []byte
@@ -83,6 +84,7 @@ type Spec struct {
 	Categories   map[string]Category
 	RetiredKeys  map[string]Category
 	SeedOnly     bool
+	Overlay      Overlay
 }
 
 // LocalFile returns the path of a module's local override file under anchor:
@@ -399,6 +401,7 @@ func Layers(dirs Dirs, spec Spec) ([]LayerDoc, error) {
 // the machine layer is judged on dirs alone.
 func readLayers(dirs Dirs, spec Spec, anchorLayers bool) ([]LayerDoc, error) {
 	var docs []LayerDoc
+	var defaultBytes []byte
 	for _, layer := range []Layer{LayerDefault, LayerWorktree, LayerMachine, LayerLocal} {
 		if !anchorLayers && (layer == LayerWorktree || layer == LayerLocal) {
 			continue
@@ -419,6 +422,19 @@ func readLayers(dirs Dirs, spec Spec, anchorLayers bool) ([]LayerDoc, error) {
 			return nil, MarkInvalid(fmt.Errorf("config file %s: %w", path, err))
 		}
 		switch layer {
+		case LayerDefault:
+			defaultBytes = data
+		case LayerWorktree:
+			// Only the base picks a layer: a hub worktree file holding another value than the base's would change the template the base is judged against.
+			if dirs.Board != "" && spec.Overlay.Selector != "" {
+				other, err := worktreeSelectorOther(spec, data, defaultBytes)
+				if err != nil {
+					return nil, err
+				}
+				if other {
+					return nil, selectorRefusal(dirs, spec, path, true)
+				}
+			}
 		case LayerMachine:
 			if len(units) == 0 {
 				continue
@@ -446,7 +462,10 @@ func BelowLayer(dirs Dirs, spec Spec, layer Layer) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	merged := spec.Template
+	merged, err := EffectiveTemplate(spec, baseDocument(dirs, spec, layers), dirs.Board != "")
+	if err != nil {
+		return nil, err
+	}
 	for _, doc := range layers {
 		if layerRank(doc.Layer) >= layerRank(layer) {
 			break
@@ -517,6 +536,7 @@ func stackLayers(dirs Dirs, spec Spec, anchorLayers bool) (Stack, error) {
 
 // Provenance returns the module's resolved configuration with each unit's line comment naming the layer it came from:
 // the highest layer whose document holds the unit, or the template layer when none does.
+// The template layer is labelled template:<value> when the overlay document the base picks holds the unit.
 // It resolves through [Load], so its strictness and refusals are Load's, and an absent base layer errors rather than degrading.
 func Provenance(dirs Dirs, spec Spec) ([]byte, error) {
 	resolved, err := Load(dirs, spec)
@@ -548,15 +568,32 @@ func Provenance(dirs Dirs, spec Spec) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	value, _, err := selectorValue(spec, baseDocument(dirs, spec, layers))
+	if err != nil {
+		return nil, err
+	}
+	overlayUnits := map[string]bool{}
+	if document, picked := spec.Overlay.Documents[value]; picked && value != "" {
+		paths, err := yamlengine.LeafPaths(document, spec.OpenMaps, spec.WholeEntries)
+		if err != nil {
+			return nil, MarkInvalid(fmt.Errorf("%s config: %s %q layer: %w", spec.Name, spec.Overlay.Selector, value, err))
+		}
+		for _, path := range paths {
+			overlayUnits[path] = true
+		}
+	}
 	notes := make(map[string]string, len(units))
 	for _, unit := range units {
-		origin := LayerTemplate
+		origin := string(LayerTemplate)
+		if overlayUnits[unit] {
+			origin = string(LayerTemplate) + ":" + value
+		}
 		for _, doc := range layers {
 			if held[doc.Layer][unit] {
-				origin = doc.Layer
+				origin = string(doc.Layer)
 			}
 		}
-		notes[unit] = string(origin)
+		notes[unit] = origin
 	}
 	return yamlengine.AnnotateLeaves(resolved, notes, spec.OpenMaps, spec.WholeEntries)
 }
