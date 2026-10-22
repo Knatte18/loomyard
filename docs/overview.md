@@ -280,6 +280,7 @@ github.com/Knatte18/loomyard/
 ├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/dotgit/              the one `.git` parser (git dir, common dir, repository test, walk-up to a worktree root), a stdlib-only leaf
 ├── internal/durfmt/              the duration formats the status panes and the timing report share, minute-resolution for growing times and second-resolution for closed spans, a stdlib-only leaf
+├── internal/machinename/         this machine's name, its hostname cut at the first dot and lowercased, the sole reader of the hostname, a stdlib-only leaf
 ├── internal/sleepjournal/        the machine's suspends and hibernates read from systemd-sleep's journal entries, spawning no process, a stdlib-only leaf
 ├── internal/lyxdirs/             the two directory-name tokens (`_lyx` durable, `.lyx` ephemeral), a zero-import leaf
 ├── internal/buildinfo/           the ldflags-stamped build channel, a zero-import leaf

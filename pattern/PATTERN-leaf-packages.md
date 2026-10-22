@@ -71,6 +71,10 @@ Imports only the standard library, `internal/logger`, `internal/stencil` and `in
 
 Imports only the standard library.
 
+## `internal/machinename`
+
+Imports only the standard library.
+
 ## `internal/sleepjournal`
 
 Imports only the standard library.
