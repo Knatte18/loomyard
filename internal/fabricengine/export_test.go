@@ -788,17 +788,6 @@ func SetOriginCallHookForTest(hook func(args []string)) (restore func()) {
 	return func() { originCallHook = previous }
 }
 
-// PendingFlagPathForTest re-exports pendingFlagPath, so a test reads where a side's pending flag sits.
-var PendingFlagPathForTest = pendingFlagPath
-
-// SetExitDeferredForTest swaps the exit a deferred detached push ends with and returns the function that restores it.
-// It changes process-global state, so the calling test must not be parallel.
-func SetExitDeferredForTest(exit func()) (restore func()) {
-	previous := exitDeferred
-	exitDeferred = exit
-	return func() { exitDeferred = previous }
-}
-
 // HoldHubPauseForTest installs a Defer gate for slug over a temp pause record that holds one live hub entry, until the test ends.
 // It changes process-global state, so the calling test must not be parallel.
 func HoldHubPauseForTest(t *testing.T, slug string) {
