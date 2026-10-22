@@ -301,7 +301,7 @@ func TestPlanTable(t *testing.T) {
 			wantLenses []string
 		}{
 			{name: "template fan without lenses.yaml", wantLenses: lensNames(templateFan)},
-			{name: "lenses.yaml redefines the fan", lensesYAML: "fans:\n  twill-plan: [test-economy]\n", wantLenses: []string{"test-economy"}},
+			{name: "lenses.yaml redefines the fan", lensesYAML: "fans:\n  twill-plan: [generic]\n", wantLenses: []string{"generic"}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -335,7 +335,7 @@ func TestPlanTable(t *testing.T) {
 				}
 				if tt.lensesYAML != "" {
 					for _, dropped := range templateFan {
-						if dropped.Name != "test-economy" && strings.Contains(prompt, "- "+dropped.Name+": ") {
+						if strings.Contains(prompt, "- "+dropped.Name+": ") {
 							t.Errorf("twill lead prompt carries lens %q; want only the lenses.yaml fan %v", dropped.Name, tt.wantLenses)
 						}
 					}

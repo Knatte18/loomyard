@@ -150,54 +150,54 @@ lenses:
     Focus on verification: apply the Plan-Review rubric's "Verify coverage"
     and "Test economy". Report anything else you notice too — emphasis, never
     exclusion.
-  criteria-coverage: |
-    Focus on the plan against the decision record: list every decision and
-    every acceptance criterion, and for each find the card whose Intent
-    carries it and the planned test row that would fail if it were broken. A
+  coverage: |
+    Own whether every requirement has a row that would fail if it broke. List
+    every decision and every acceptance criterion of the decision record, and
+    every branch and exit the cards' Intents introduce or change, whether or
+    not the record names it (error returns, early returns, refusals, a loop's
+    or scan's end without a match, a default case). For each, find the card
+    whose Intent carries it and the planned test row that reaches it. A
     criterion the plan argues holds without a test, waives or defers is a
-    finding, and so is a decision, failure exit or branch the record names
-    that no row reaches. Apply the Plan-Review rubric's "Fidelity to the
+    finding, and so is a decision no card carries. A branch no planned row
+    reaches is a finding. Apply the Plan-Review rubric's "Fidelity to the
     answer key". Check that each path, comparison or default a card states
     uses the operand the record names, not a near one, such as the current
-    directory's parent where the record names the worktree's parent. Report
-    anything else you notice too — emphasis, never exclusion.
-  branch-coverage: |
-    Focus on branch coverage: list every branch and exit the cards' Intents
-    introduce or change, whether or not the decision record names it (error
-    returns, early returns, refusals, a loop's or scan's end without a match,
-    a default case), and for each find the planned test row that reaches it.
-    A branch no planned row reaches is a finding. Report anything else you
-    notice too — emphasis, never exclusion.
-  row-reachability: |
-    Focus on whether each planned test row can do what the card says: open
-    every test function a card extends or names, and the fakes, fixtures and
-    helpers it runs on, and check that the row's input reaches the branch it
-    claims (the fake can produce that state at that point of the sequence),
-    that its assertion would fail if the code were wrong, and that each new
-    fake field or helper the row needs is listed on the card. Apply the
-    Plan-Review rubric's "Reachability of a prescribed refusal" and "Verify
-    coverage". Report anything else you notice too — emphasis, never
-    exclusion.
+    directory's parent where the record names the worktree's parent. Your
+    list: per decision, criterion and branch, the card and the row, or none.
+    Report anything else you notice too — emphasis, never exclusion.
+  row-validity: |
+    Own whether each planned test row can do what its card says, and whether
+    it is needed. Open every test function a card extends or names, and the
+    fakes, fixtures and helpers it runs on. Check that the row's input reaches
+    the branch it claims (the fake can produce that state at that point of
+    the sequence), that its assertion would fail if the code were wrong, that
+    each new fake field or helper the row needs is listed on the card, and
+    that a zero-value or nil seam of a new field has a stated meaning where a
+    hand-built receiver drives the code. Then, for every new top-level test
+    and every new row, open the existing tests of the same function, and
+    report a new top-level test that should be a row of an existing test and
+    a row that repeats a behavior an existing test already reaches. Apply the
+    Plan-Review rubric's "Reachability of a prescribed refusal", "Verify
+    coverage" and "Test economy". Your list: per row, reaches and
+    fails-if-wrong, or not; per new test, new or repeat. Report anything else
+    you notice too — emphasis, never exclusion.
   forced-edits: |
-    Focus on what each change forces outside the members a card names: for
-    every member a card changes, find its callers, the tests that assert its
-    output or wording, and the comments, doc files and stated reasons (such as
-    a `//testtiming:keep` reason) that describe it, and report each one the
-    change makes wrong that no card lists. Check that each `Create` handle's
-    package is the package clause of the file the Intent puts it in, an
-    external `_test` package included, and that each listed glyph is the one
-    `lyx quarry` gives. Apply the Plan-Review rubric's "Member glyphs on an
-    `Edit` card" and "The re-sign arrow". A new type, function or executor
-    that must be registered in a table or list, such as a guard table, is a
-    forced edit, and a registration no card lists is a finding. Report
-    anything else you notice too — emphasis, never exclusion.
-  test-economy: |
-    Focus on test economy: for every new top-level test and every new row,
-    open the test file it lands in and the existing tests of the same
-    function, and report a new top-level test that should be a row of an
-    existing test and a row that repeats a behavior an existing test already
-    reaches. Apply the Plan-Review rubric's "Test economy". Report anything
-    else you notice too — emphasis, never exclusion.
+    Own what each change forces outside the members a card names. For every
+    output, key, string, file shape, signature or behaviour a card changes,
+    find its callers, the tests that assert it, and the comments, doc files,
+    skills, fixtures and stated reasons (such as a `//testtiming:keep` reason)
+    that describe it, from the pre-read and a search for what the pre-read
+    lacks, and report each one the change makes wrong that no card lists. A
+    card that covers part of a set is one finding naming the members it
+    missed. Check that each `Create` handle's package is the package clause
+    of the file the Intent puts it in, an external `_test` package included,
+    and that each listed glyph is the one `lyx quarry` gives. A new type,
+    function or executor that must be registered in a table or list, such as
+    a guard table or a seam list, is a forced edit, and a registration no card
+    lists is a finding. Apply the Plan-Review rubric's "Member glyphs on an
+    `Edit` card" and "The re-sign arrow". Your list: per change, the set you
+    found and the cards that cover it. Report anything else you notice too —
+    emphasis, never exclusion.
   interactions: |
     Own the interactions between the record's own decisions. List every pair
     of decisions that act on the same state, file, key, command, ordering or
@@ -364,14 +364,11 @@ fans:
     - board-fit
     - leanness
   twill-plan:
-    - affected-set
+    - coverage
+    - row-validity
+    - forced-edits
     - guard-reach
     - way-forward
-    - criteria-coverage
-    - branch-coverage
-    - row-reachability
-    - forced-edits
-    - test-economy
   review-discussion:
     - interactions
     - existing-paths
