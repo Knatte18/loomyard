@@ -1400,6 +1400,22 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	env.ExecutableSetting = configreg.SettingLookup(configengine.Dirs{Board: fabricengine.ConfigDirs(location).Board})
 	env.Command = c.commandDeps(location, slug, executable, locateTask)
 
+	c.clientAttached = func() (bool, error) {
+		taskLocation, err := locateTask()
+		if err != nil {
+			return false, err
+		}
+		reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "reed")
+		if err != nil {
+			return false, err
+		}
+		reedGeom, err := hubgeom.ReedGeometry(taskLocation)
+		if err != nil {
+			return false, err
+		}
+		return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).ClientAttached()
+	}
+
 	c.env = env
 	c.shedPaths = shedbuild.ShedPaths{
 		StatusPath:     StatusFile(location, slug),

@@ -44,6 +44,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -582,6 +583,7 @@ func (c *battenCLI) pausedExtras() map[string]any {
 // battenPreRun implements the PreRun hook for batten's spec: run's whole existing pre-flight, in today's order: checkRunStatus, then seeding a fresh status when absent.
 // Each step's error becomes a returned error the generic body reports on the error envelope exactly as run's own inline handling did.
 // A found status file is resumed only after the owner pre-flight (ownerPreflight) lets it, which is the run-scope origin reconcile (reconcileResume) bar a run still at Worktree-Create whose pair is absent; a fresh start runs no reconcile, and armAt has already run its owner check.
+// Once the owner pre-flight lets a found status resume, reopenWindow reopens the terminal window when no client is attached.
 //
 // This seed-when-absent behaviour is batten's alone and must not leak into the generic body:
 // loom refuses in exactly the situation batten seeds here, because only "lyx loom start" may seed loom's own status file.
@@ -594,7 +596,14 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		return err
 	}
 	if found {
-		return c.preflightRunOwner()
+		if err := c.preflightRunOwner(); err != nil {
+			return err
+		}
+		status, _, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+		if err != nil {
+			return errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
+		}
+		return c.reopenWindow(ctx, status)
 	}
 
 	// An absent status file is a fresh start: shedengine.Shed.Run refuses to walk from a status
@@ -615,6 +624,55 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 			History:         []shedengine.HistoryEntry{},
 		}, nil
 	})
+}
+
+// openWindowTimeout is the time the reopened Open-Window command may run, the default of any Command row.
+const openWindowTimeout = 30 * time.Second
+
+// reopenWindow runs the Open-Window row's command once for a resumed run that is past the row and has no client attached to the task worktree's reed session, since the window the first run opened is gone with that client.
+// It runs the row's command through a command producer over the row's batten.open_window switch and batten.open_window_command command, so a forced switch and a task's open_window: false apply as in the row.
+// A status whose history holds no Open-Window entry, or whose current producer is still at or before the row, opens nothing; so does an attached client.
+// A failed client check is warned about and opens nothing, and the command's own failure only warns.
+func (c *battenCLI) reopenWindow(ctx context.Context, status shedengine.Status) error {
+	if c.clientAttached == nil || !pastOpenWindow(status) {
+		return nil
+	}
+	attached, err := c.clientAttached()
+	if err != nil {
+		logger.Warn("battencli: cannot tell whether a client is attached, not reopening the window", "slug", c.slug, "cause", err)
+		return nil
+	}
+	if attached {
+		return nil
+	}
+	deps := c.env.Command
+	deps.Setting = c.env.Setting
+	deps.ExecutableSetting = c.env.ExecutableSetting
+	row := shedadapters.CommandRow{
+		SwitchModule:  "batten",
+		SwitchKey:     "open_window",
+		CommandModule: "batten",
+		CommandKey:    "open_window_command",
+		Timeout:       openWindowTimeout,
+	}
+	if _, _, err := shedadapters.NewCommandProducer(battenrecipe.NameOpenWindow, row, deps).Call(ctx); err != nil {
+		return fmt.Errorf("battencli: reopen the window: %w", err)
+	}
+	return nil
+}
+
+// pastOpenWindow reports whether status holds an Open-Window history entry and its current producer is a row after Open-Window.
+func pastOpenWindow(status shedengine.Status) bool {
+	switch status.CurrentProducer {
+	case battenrecipe.NameWorktreeCreate, battenrecipe.NameSeedChild, battenrecipe.NameOpenWindow:
+		return false
+	}
+	for _, entry := range status.History {
+		if entry.Producer == battenrecipe.NameOpenWindow {
+			return true
+		}
+	}
+	return false
 }
 
 // doneSlugRefusal is the refusal both pre-run hooks return for a slug whose run has already

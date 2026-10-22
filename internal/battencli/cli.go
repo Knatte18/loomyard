@@ -116,6 +116,8 @@ type battenCLI struct {
 	reconcile func(slug string) (fabricengine.OriginReport, error)
 	// owner carries the seams of the owner checks; armAt fills it with hubOwnerSeams when it is zero, and a receiver that calls no arm leaves it zero, which reads as no owner check.
 	owner ownerSeams
+	// clientAttached reports whether any client is attached to the task worktree's reed session; wire fills it, and nil reads as no reopening, which only a hand-populated receiver has.
+	clientAttached func() (bool, error)
 }
 
 // windowNamePrefix starts the name of the window "lyx batten run <slug> --window" opens, ahead of the slug.
@@ -167,7 +169,9 @@ default command opens one desktop terminal window attached to the task
 worktree's reed session; Seed-IDE's writes the worktree's VS Code config, and
 Open-IDE's opens VS Code. --window turns Open-Window's switch on for that run.
 The envelope's terminal_window field names the launcher, or says no window is
-opened when this machine has none. A run resumed past that row opens no window.
+opened when this machine has none. A run resumed past that row opens a window
+again when no client is attached to the task worktree's reed session, through
+the same switch and command; a resume with a client attached opens none.
 
 Example:
   lyx batten run some-slug

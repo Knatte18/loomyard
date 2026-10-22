@@ -76,7 +76,7 @@
 // `lyx config batten --layer default --set <key>=<value>` from the prime changes one, and a different value in another layer is ignored with a warning.
 // A command may hold the placeholders {lyx}, {slug} and {task_dir}.
 // "--window" passes the hidden "--open-terminal", which turns Open-Window on for that run whatever batten.yaml says.
-// A run resumed past Open-Window opens no window.
+// A run resumed past Open-Window runs that command again when no client is attached to the pair's reed session, through the same switch, so a window closed or left on another machine opens afresh; a resume with a client attached opens none.
 //
 // The InnerRun row waits on its child inside its call rather than returning once per poll.
 // Every poll_interval_s it stats the child's status file, and decodes it when its modification time differs from the last decode or notice_probe_s has passed.

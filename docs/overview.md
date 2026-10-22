@@ -632,7 +632,7 @@ User-facing modules each get one `lyx <module>` namespace:
   Batten no longer notices the orch of a done child: the `Worktree-Teardown` row notifies only on a failure, and the `Land` row also notifies every landing.
   The `Open-Window`, `Seed-IDE` and `Open-IDE` rows own the terminal window and VS Code; `Run-Shed` opens neither.
   VS Code opens only when `open_ide` is on or the operator runs `lyx ide`.
-  A run resumed past `Open-Window` opens no window.
+  A run resumed past `Open-Window` runs that command again when no client is attached to the pair's reed session, through the same switch; a resume with a client attached opens none.
   That window closes when the run's session ends or its worktree is removed: it closes at once when the attach exits 0 (an operator detach or an ended pair session included), and after any other exit as soon as the worktree is gone within thirty seconds, else it stays open as a shell.
   A child that halts (`blocked`, `failed`, `paused`) makes `Run-Shed` wait, budget-exempt and without a time limit,
   and batten never resumes a halted child (it does restart an approved or rejected `awaiting` one, and retries the first Publish verify failure of a run, below): the operator resumes the child from inside the task worktree (`lyx loom resume`) and the watch carries on, with one warning per halt episode;
