@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -223,6 +224,8 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	c.cfg = websterCfg
 	c.roles = roles
 	c.instructionFiles = websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster])
+	c.pause = pauseGeom
+	geom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 	c.geom = geom
 	c.anchorRel = loc.AnchorRel
 	// The matcher is built eagerly because NewRefScanner only compiles a regexp and cannot fail. The
@@ -331,7 +334,8 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 		return err
 	}
 	runner := shuttleengine.NewDetachedRunner(reedEngine, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, reedGeom.PaneCwd, shuttleCfg)
-	runner.SetPause(standalonegeom.PauseGeometry(res.StateDir))
+	pauseGeom := standalonegeom.PauseGeometry(res.StateDir)
+	runner.SetPause(pauseGeom)
 
 	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
 	// `lyx reed up` is hub-only — so the verbs that need one boot it in-process through this seam
@@ -354,6 +358,8 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	c.cfg = websterCfg
 	c.roles = roles
 	c.instructionFiles = websterengine.MasterInstructionFiles(engines, roles[websterengine.RoleMaster])
+	c.pause = pauseGeom
+	geom.VerifyHold = verifytree.NewPauseHold(pauseGeom, nil)
 	c.geom = geom
 	c.anchorRel = ""
 	// standalone has no fabric repo by construction: the matcher never sees a fabric reference
