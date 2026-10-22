@@ -80,7 +80,6 @@ var nilLegal = map[string]bool{
 	"WebsterDeps.Geom.Git":              true,
 	"WebsterDeps.Geom.GateSlots":        true,
 	"WebsterDeps.Geom.GateConfig":       true,
-	"WebsterDeps.Geom.VerifyHold":       true,
 	"InnerRun.Sleep":                    true,
 	"InnerRun.ReviewWait":               true,
 	"InnerRun.Now":                      true,
