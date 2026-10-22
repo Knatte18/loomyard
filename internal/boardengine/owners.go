@@ -47,7 +47,12 @@ func ParseOwners(boardJSON []byte) (Owners, error) {
 	if err := json.Unmarshal(boardJSON, &record); err != nil {
 		return Owners{}, fmt.Errorf("read prime_owner: %w", err)
 	}
-	owners := Owners{Prime: record.PrimeOwner, Entries: make(map[string]OwnerEntry, len(tasks))}
+	return ownersOf(record.PrimeOwner, tasks), nil
+}
+
+// ownersOf builds the Owners of a board holding tasks and recording primeOwner.
+func ownersOf(primeOwner string, tasks []Task) Owners {
+	owners := Owners{Prime: primeOwner, Entries: make(map[string]OwnerEntry, len(tasks))}
 	for _, task := range tasks {
 		owners.Entries[task.Slug] = OwnerEntry{
 			Owner:   task.OwnerMachine,
@@ -56,7 +61,40 @@ func ParseOwners(boardJSON []byte) (Owners, error) {
 			RunHeld: IsRunStatus(task.Status),
 		}
 	}
-	return owners, nil
+	return owners
+}
+
+// parentOfOrPrime returns parentOf, or a resolver that reads every parent as the prime when parentOf is nil.
+func parentOfOrPrime(parentOf func(slug string) (string, error)) func(slug string) (string, error) {
+	if parentOf != nil {
+		return parentOf
+	}
+	return func(string) (string, error) { return "", nil }
+}
+
+// effectiveOwner returns the owner the entry slug reads as over the store's own entries and prime owner.
+func (s *Store) effectiveOwner(slug string) (string, error) {
+	return ownersOf(s.primeOwner, s.tasks).Effective(slug, parentOfOrPrime(s.parentOf))
+}
+
+// checkOwnerPayload judges the owner_machine key of an upsert payload against the entry's effective owner.
+// A value equal to it is a no-op and is dropped from fields; any other value is refused, since only the owner setter writes an owner.
+// A payload without the key passes untouched.
+func checkOwnerPayload(s *Store, fields map[string]any) error {
+	value, carried := fields["owner_machine"]
+	if !carried {
+		return nil
+	}
+	slug, _ := fields["slug"].(string)
+	effective, err := s.effectiveOwner(slug)
+	if err != nil {
+		return fmt.Errorf("entry %q: resolve its owner: %w", slug, err)
+	}
+	if proposed, isString := value.(string); isString && proposed == effective {
+		delete(fields, "owner_machine")
+		return nil
+	}
+	return fmt.Errorf("entry %q is owned by %q, and a board write never changes an owner: run `lyx adopt <slug>` from this machine's prime to take it over", slug, effective)
 }
 
 // Effective returns the owner machine the entry slug reads as, where "" means owned by no other machine.

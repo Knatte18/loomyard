@@ -21,6 +21,7 @@ type Board struct {
 	skipGit   bool
 	skipPush  bool
 	now       func() time.Time
+	parentOf  func(slug string) (string, error)
 }
 
 // New returns a Board operating with the given config.
@@ -36,6 +37,7 @@ func New(cfg Config) *Board {
 		skipGit:   cfg.SkipGit,
 		skipPush:  cfg.SkipPush,
 		now:       now,
+		parentOf:  cfg.ParentOf,
 	}
 }
 
@@ -74,6 +76,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 
 	store := NewStore(b.boardPath)
 	store.vocab = &b.vocab
+	store.parentOf = b.parentOf
 	if err := store.Load(); err != nil {
 		return nil, err
 	}
@@ -241,6 +244,7 @@ func (b *Board) HealthCheck() error {
 func (b *Board) loadStore() (*Store, error) {
 	store := NewStore(b.boardPath)
 	store.vocab = &b.vocab
+	store.parentOf = b.parentOf
 	if err := store.Load(); err != nil {
 		return nil, err
 	}

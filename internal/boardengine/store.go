@@ -133,6 +133,9 @@ type Store struct {
 	// vocab is the label vocabulary validateWrite checks labels against.
 	// Board sets it on every store it builds; only a store built directly by NewStore, in store-level tests, has none, and nil skips the label check alone.
 	vocab *Vocabulary
+	// parentOf names the slug of an entry's parent pair for the effective owner, "" for the prime; nil reads every parent as the prime.
+	// Board sets it on every store it builds from Config.ParentOf.
+	parentOf func(slug string) (string, error)
 }
 
 // NewStore creates an empty, unloaded Store over boardDir.
@@ -431,8 +434,9 @@ type MergeStatusUpdate struct {
 
 // UpsertPayloadKeys returns the keys a task payload carries on every upsert path: the required keys and the optional ones.
 // "id" is auto-assigned and never accepted; "phase" and "group" are retired.
+// "owner_machine" is accepted only as the entry's effective owner, a no-op.
 func UpsertPayloadKeys() (required, optional []string) {
-	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile"}
+	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "owner_machine"}
 }
 
 // upsertAllowedKeys is the set of field names every upsert path accepts, enforced at the store boundary.
@@ -469,8 +473,12 @@ func validateUpsertFields(fields map[string]any) error {
 
 // UpsertTask creates or updates the task identified by fields["slug"].
 // Rejects unknown fields via validateUpsertFields before any other processing.
+// An owner_machine key equal to the entry's effective owner is dropped from fields, and any other value is refused.
 func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
 	if err := validateUpsertFields(fields); err != nil {
+		return Task{}, err
+	}
+	if err := checkOwnerPayload(s, fields); err != nil {
 		return Task{}, err
 	}
 
@@ -816,6 +824,9 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 		if err := validateUpsertFields(fields); err != nil {
 			return err
 		}
+		if err := checkOwnerPayload(s, fields); err != nil {
+			return err
+		}
 	}
 
 	snapshot := make([]Task, len(s.tasks))
@@ -928,6 +939,9 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	}
 
 	if err := validateUpsertFields(upsert); err != nil {
+		return Task{}, err
+	}
+	if err := checkOwnerPayload(s, upsert); err != nil {
 		return Task{}, err
 	}
 

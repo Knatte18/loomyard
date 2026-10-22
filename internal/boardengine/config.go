@@ -42,6 +42,9 @@ type Config struct {
 	// Clock is the time a write stamps entry dates with and renders the README's ages as of;
 	// nil is the wall clock.
 	Clock func() time.Time `yaml:"-"`
+	// ParentOf names the slug of an entry's parent pair, "" for the prime, so reads and writes resolve an effective owner alike;
+	// nil reads every parent as the prime.
+	ParentOf func(slug string) (string, error) `yaml:"-"`
 }
 
 // Label is one configured label with its description, which is empty when board.yaml gives none.

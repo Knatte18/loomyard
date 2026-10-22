@@ -130,6 +130,7 @@ available subcommands without requiring a git repo.
 				return nil
 			}
 			cfg.Path = boardDir
+			cfg.ParentOf = func(slug string) (string, error) { return fabricengine.ParentSlug(layout, slug) }
 		}
 
 		cfg = boardengine.ApplySkipEnv(cfg)
@@ -427,7 +428,7 @@ func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Pro
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, owner_machine?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -453,6 +454,7 @@ Optional fields:
   "revised"    string — RFC 3339 time its scope last changed; a scope-changing write without it gets the write's time
   "run_settings" object — module name to config keys for the pair's local config at Seed-Child; {} clears it
   "profile"    string — a "lyx board profiles" name, laid under run_settings at Seed-Child; "" clears it
+  "owner_machine" string — only the entry's effective owner, a no-op; "lyx adopt" changes an owner
 
 Flag:
   --body-file <path>  read "body" from the file, or from stdin when the path is "-".

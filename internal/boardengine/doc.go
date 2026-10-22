@@ -48,6 +48,25 @@
 // A write of an empty string clears it, and the README entry cell names it.
 // Like run_settings, a profile change is never a scope change.
 //
+// # Owners
+//
+// A task may carry an owner_machine: the name of the machine that may start, resume and land its run; a note never carries one, and board.json omits the key while none is recorded.
+// The hub's prime has its own record, the top-level prime_owner key of board.json, which the board replay merges with the same origin-wins rule as an entry's owner.
+// The effective owner of an entry is what Owners.Effective resolves: the recorded owner, else for a run-held entry none, else its parent's owner, the parent pair resolved through Config.ParentOf and the prime's owner when it has none;
+// a board with no prime owner, and a slug the board does not hold, read as owned by no other machine.
+// Board copies Config.ParentOf onto every store it builds, so reads and writes resolve parents alike, and nil reads every parent as the prime.
+// An owner change is never a scope change, so the run lock lets a run-held entry take it.
+//
+// SetOwners is the only writer of an owner or the prime owner.
+// It pulls the board level with its upstream, writes one commit "board: owner <machine> for <slugs>" that sets each named task's owner, the prime owner when asked and an optional claim status on its slug, and pushes it.
+// Without Takeover it leaves an entry whose effective owner is another machine untouched and reports it in OwnerWrite.Lost; `lyx adopt` alone passes Takeover.
+// A competing write origin already holds wins the replay of a rejected push, and the owners re-read from the local board.json after the push decide Recorded and Lost.
+// An origin that does not answer is ErrOwnerOriginUnreachable, and a push a held lock keeps deferring is refused naming `lyx board sync`.
+// ReadOwners reads the owners the local board.json records.
+//
+// An upsert payload may carry owner_machine only as the entry's effective owner, which is dropped as a no-op; any other value is refused naming `lyx adopt`.
+// The rule runs from the store's upsert, batch and merge paths, never from the replay, which applies an owner change through its own entry writes.
+//
 // # Dates
 //
 // An entry carries two dates, created, when it was added, and revised, when its scope last changed, each in whole UTC seconds, and board.json names neither while it is unknown.
