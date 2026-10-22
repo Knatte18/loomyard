@@ -602,10 +602,10 @@ func stepStrictPayloadShapes(t *testing.T, f *cliFixture) {
 			name: "merge_set_status_by_handle_succeeds",
 			setup: func(t *testing.T) {
 				f.reset(t)
-				runCLI(t, "upsert", `{"slug":"old-task","title":"Old","labels":["bug"]}`)
+				runCLI(t, "upsert", `{"slug":"old-task","title":"Old","kind":"task","labels":["bug"]}`)
 			},
 			verb:         "merge",
-			payload:      `{"upsert":{"slug":"new-task","title":"New","labels":["bug"]},"set_status":{"handle":"T1","status":"active"}}`,
+			payload:      `{"upsert":{"slug":"new-task","title":"New","kind":"task","labels":["bug"]},"set_status":{"handle":"T1","status":"active"}}`,
 			wantExitCode: 0,
 			wantOK:       true,
 			assertResult: func(t *testing.T, _ map[string]any) {
