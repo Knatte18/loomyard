@@ -326,8 +326,10 @@ func windowPaneListingOf(windowListing string) string {
 	return out
 }
 
-// encodeLivePanes renders live back into list-panes' own six-field wire format, matching
+// encodeLivePanes renders live back into list-panes' own wire format, matching
 // overlay.go's listPanes/parsePaneList round trip.
+// A pane with either command set gets the tail field of title, current command and start command;
+// a pane with neither writes the six leading fields alone, with no title.
 func encodeLivePanes(live []LivePane) string {
 	out := ""
 	for _, p := range live {
@@ -335,7 +337,11 @@ func encodeLivePanes(live []LivePane) string {
 		if p.Dead {
 			dead = "1"
 		}
-		out += p.ID + " " + dead + " " + strconv.Itoa(p.Top) + " " + strconv.Itoa(p.Width) + " " + strconv.Itoa(p.Height) + " " + strconv.Itoa(p.PID) + "\n"
+		out += p.ID + " " + dead + " " + strconv.Itoa(p.Top) + " " + strconv.Itoa(p.Width) + " " + strconv.Itoa(p.Height) + " " + strconv.Itoa(p.PID)
+		if p.CurrentCommand != "" || p.StartCommand != "" {
+			out += " " + p.Title + paneTailSeparator + p.CurrentCommand + paneTailSeparator + p.StartCommand
+		}
+		out += "\n"
 	}
 	return out
 }

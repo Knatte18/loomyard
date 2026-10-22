@@ -35,15 +35,19 @@ type windowPane struct {
 	PID    int
 	// Title is the pane title, which may hold spaces.
 	Title string
+	// CurrentCommand is the name of the pane's foreground process group leader.
+	CurrentCommand string
+	// StartCommand is the command tmux froze into the pane at spawn; empty when the session held no default-command pin.
+	StartCommand string
 }
 
 // livePane maps the pane to a LivePane; the geometry fields stay zero, since no layout reads an own-window pane.
 func (w windowPane) livePane() LivePane {
-	return LivePane{ID: w.PaneID, Dead: w.Dead, PID: w.PID, Title: w.Title}
+	return LivePane{ID: w.PaneID, Dead: w.Dead, PID: w.PID, Title: w.Title, CurrentCommand: w.CurrentCommand, StartCommand: w.StartCommand}
 }
 
-// windowPaneFormat is the session-wide listing format of windowPane: window id, own flag, group (or "-"), pane id, dead flag, pid, then the pane title.
-const windowPaneFormat = "#{window_id} #{?#{@lyx_own},1,0} #{?#{@lyx_group},#{@lyx_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}"
+// windowPaneFormat is the session-wide listing format of windowPane: window id, own flag, group (or "-"), pane id, dead flag, pid, then the tail joining the pane title, current command and start command with paneTailSeparator.
+const windowPaneFormat = "#{window_id} #{?#{@lyx_own},1,0} #{?#{@lyx_group},#{@lyx_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\x1f#{pane_current_command}\x1f#{pane_start_command}"
 
 // parseWindowPanes parses a windowPaneFormat listing, skipping a line it cannot parse.
 func parseWindowPanes(out string) []windowPane {
@@ -68,7 +72,7 @@ func parseWindowPanes(out string) []windowPane {
 			pane.Group = fields[2]
 		}
 		if len(fields) == 7 {
-			pane.Title = fields[6]
+			pane.Title, pane.CurrentCommand, pane.StartCommand = splitPaneTail(fields[6])
 		}
 		panes = append(panes, pane)
 	}
