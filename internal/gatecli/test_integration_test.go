@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -548,6 +549,30 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		if second.Slot != 2 || second.Worktree != "/tiered/worktree" || second.Site != "lyx gate test tier1" || second.Tier != "tier1" || second.Started.Before(first.Started) {
 			t.Errorf("status held[1] = %+v; want slot 2 held by the tier1 run, started no earlier than slot 1", second)
+		}
+	})
+
+	t.Run("status reports draining true while a multi-slot acquire holds the drain lock", func(t *testing.T) {
+		if err := os.MkdirAll(pool.Dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		drain, acquired, err := lock.TryAcquireWriteLock(filepath.Join(pool.Dir, "drain.lock"))
+		if err != nil || !acquired {
+			t.Fatalf("TryAcquireWriteLock(drain) = (%v, %v); want the drain held", acquired, err)
+		}
+		t.Cleanup(func() { _ = drain.Release() })
+
+		var out bytes.Buffer
+		code := RunCLIIn(prime, &out, []string{"status"})
+		var envelope struct {
+			OK       bool `json:"ok"`
+			Draining bool `json:"draining"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+			t.Fatalf("status output %q is not a JSON envelope: %v", out.String(), err)
+		}
+		if code != 0 || !envelope.OK || !envelope.Draining {
+			t.Errorf("status = exit %d, %+v; want exit 0, ok and draining true", code, envelope)
 		}
 	})
 
