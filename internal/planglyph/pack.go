@@ -8,7 +8,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -35,8 +34,7 @@ func KickstartPack(plan *planparser.Plan, cards []planparser.Card, worktreeRoot 
 
 // kickstartPack is KickstartPack over resolve, the quarry boundary: it is called once with the batch's distinct member refs in first-seen order, and never when there are none.
 func kickstartPack(plan *planparser.Plan, cards []planparser.Card, resolve func(targets []string) ([]quarry.ResolveResult, error)) ([]planindex.CardPack, error) {
-	lang, ok := plan.GlyphLanguage()
-	if !ok {
+	if !plan.GlyphLanguage() {
 		return nil, nil
 	}
 
@@ -49,7 +47,7 @@ func kickstartPack(plan *planparser.Plan, cards []planparser.Card, resolve func(
 				selected[i] = append(selected[i], ref)
 				continue
 			}
-			g, err := glyph.Parse(lang, ref.ref)
+			g, err := planparser.ParseRef(plan, ref.ref)
 			if err != nil || g.IsSelf() {
 				continue
 			}

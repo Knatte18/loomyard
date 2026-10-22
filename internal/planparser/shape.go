@@ -229,25 +229,23 @@ func lookup(g refGate, ref string) (refKind, disposition) {
 
 // diskPathForRef maps raw to the disk-relative path checkCardPathMalformed and checkPathMissing
 // (and their two union builders) key on: a path-shaped raw maps to itself; a glyph-shaped raw maps
-// through parseGlyph followed by Glyph.UnitPath() -- the one glyph->path call, per the
+// through ParseRef followed by Glyph.UnitPath() -- the one glyph->path call, per the
 // glyph-conversion-chokepoint Shared Decision -- but only for a self glyph (IsSelf() true). A
 // member glyph names a symbol within its unit, not the unit itself, so mapping it to its unit's
 // directory and existence-checking that directory would answer a question these two checks were
-// never meant to answer (member existence is internal/planglyph's resolve-backed business); a
-// member glyph is therefore skipped (ok false) exactly like a not-ok UnitPath or a failed
-// parseGlyph, rather than reported. Any other shape (a plan: handle, a bare symbol) is also
-// skipped. ok is also false whenever plan.Language reports not-ok (e.g. "none"): a glyph-shaped
-// entry is never resolved when the plan has opted out of the alphabet.
+// never meant to answer (member existence is internal/planglyph's resolve-backed business);
+// a member glyph is therefore skipped (ok false) exactly like a not-ok UnitPath or a failed ParseRef, rather than reported.
+// Any other shape (a plan: handle, a bare symbol) is also skipped.
+// ok is also false whenever plan.Language reports not-ok (e.g. "none"): a glyph-shaped entry is never resolved when the plan has opted out of the alphabet.
 func diskPathForRef(plan *Plan, raw string) (string, bool) {
 	switch classifyRef(raw) {
 	case refKindPath:
 		return raw, true
 	case refKindGlyph:
-		lang, ok := planLanguage(plan)
-		if !ok {
+		if _, ok := planLanguage(plan); !ok {
 			return "", false
 		}
-		g, err := parseGlyph(lang, raw)
+		g, err := ParseRef(plan, raw)
 		if err != nil || !g.IsSelf() {
 			return "", false
 		}

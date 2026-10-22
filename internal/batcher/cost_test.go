@@ -4,6 +4,7 @@
 package batcher_test
 
 import (
+	"cmp"
 	"math"
 	"math/rand"
 	"reflect"
@@ -55,7 +56,6 @@ func TestCostBatchifier_Limits(t *testing.T) {
 	t.Parallel()
 
 	const unlimited = 1e9
-	plan := &planparser.Plan{Language: "go"}
 	sameFile := func(n int) []planparser.Card {
 		cards := make([]planparser.Card, n)
 		for i := range cards {
@@ -63,10 +63,30 @@ func TestCostBatchifier_Limits(t *testing.T) {
 		}
 		return cards
 	}
+	// resignCard is a card whose Edit group re-signs target, and named is a later card that lists target as a Target or a Use.
+	resignCard := func(number int, target string) planparser.Card {
+		return groupCard(number, planparser.TargetGroup{
+			Type:    planparser.CardTypeEdit,
+			Refs:    []string{target},
+			Resigns: []planparser.CardResign{{Target: target, Decl: "public void Draw(long count)"}},
+		})
+	}
+	const drawGlyph = "Glyphchain.Sharp#Renderer.Draw(int)"
+	namingCard := func(number int, target string, asTarget bool) planparser.Card {
+		card := editCard(number, nil)
+		if asTarget {
+			card.Targets = []string{target}
+		} else {
+			card.Uses = []string{target}
+		}
+		return card
+	}
 	tests := []struct {
-		name   string
-		params batcher.CostParams
-		cards  []planparser.Card
+		name string
+		// language is the plan's language, go when empty.
+		language string
+		params   batcher.CostParams
+		cards    []planparser.Card
 		// before is the number of batches the run executes ahead of cards.
 		before       int
 		wantSizes    []int
@@ -224,10 +244,31 @@ func TestCostBatchifier_Limits(t *testing.T) {
 			},
 			wantSizes: []int{2},
 		},
+		{
+			name:      "a later card using a C# member an earlier card re-signs starts a new batch",
+			language:  "csharp",
+			params:    batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards:     []planparser.Card{resignCard(1, drawGlyph), namingCard(2, drawGlyph, false)},
+			wantSizes: []int{1, 1},
+		},
+		{
+			name:      "a later card targeting a C# member an earlier card re-signs starts a new batch",
+			language:  "csharp",
+			params:    batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards:     []planparser.Card{resignCard(1, drawGlyph), namingCard(2, drawGlyph, true)},
+			wantSizes: []int{1, 1},
+		},
+		{
+			name:      "a later card using a Go member an earlier card re-signs shares the batch",
+			params:    batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards:     []planparser.Card{resignCard(1, "internal/a#Foo"), namingCard(2, "internal/a#Foo", false)},
+			wantSizes: []int{2},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+			plan := &planparser.Plan{Language: cmp.Or(tt.language, "go")}
 			batcherUnderTest := batcher.NewCost("cautious", tt.params)
 			if batcherUnderTest.Name() != "cautious" {
 				t.Errorf("Name = %q; want %q", batcherUnderTest.Name(), "cautious")

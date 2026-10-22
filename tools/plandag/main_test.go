@@ -10,8 +10,14 @@ import (
 // writePlan writes a plan directory holding the overview and the cards, each card a file name and its body.
 func writePlan(t *testing.T, cardIndex string, cards map[string]string) string {
 	t.Helper()
+	return writePlanInLanguage(t, "go", cardIndex, cards)
+}
+
+// writePlanInLanguage is writePlan for a plan whose overview declares language.
+func writePlanInLanguage(t *testing.T, language, cardIndex string, cards map[string]string) string {
+	t.Helper()
 	dir := t.TempDir()
-	overview := "---\nformat: 5\napproved: true\nlanguage: go\n---\n\n# Plan: fixture\n\nFixture plan.\n\n## Card Index\n\n" + cardIndex
+	overview := "---\nformat: 5\napproved: true\nlanguage: " + language + "\n---\n\n# Plan: fixture\n\nFixture plan.\n\n## Card Index\n\n" + cardIndex
 	if err := os.WriteFile(filepath.Join(dir, "00-overview.md"), []byte(overview), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -119,6 +125,37 @@ Each card's direct dependencies, ` + "`C`" + ` where both cards change an overla
 `
 	if got := readFile(t, reportPath); got != wantReport {
 		t.Errorf("plandag.md = %q; want %q", got, wantReport)
+	}
+}
+
+func TestRun_CSharpMemberGlyphsOverlapByOwnerPrefix(t *testing.T) {
+	t.Parallel()
+	planDir := writePlanInLanguage(t, "csharp", `1 — owner — edit Box
+2 — member — edit Box.Size
+3 — other — edit Crate.Size
+`, map[string]string{
+		"01-owner.md":  "# Card 1 — owner\n\n**Edit:**\n- `Acme.App#Box`\n\n**Intent:** x\n",
+		"02-member.md": "# Card 2 — member\n\n**Edit:**\n- `Acme.App#Box.Size`\n\n**Intent:** x\n",
+		"03-other.md":  "# Card 3 — other\n\n**Edit:**\n- `Acme.App#Crate.Size`\n\n**Intent:** x\n",
+	})
+	outDir := filepath.Join(t.TempDir(), "out")
+
+	var stdout strings.Builder
+	if err := run(planDir, outDir, "", &stdout); err != nil {
+		t.Fatalf("run() = %v; want nil", err)
+	}
+
+	// Card 2's member glyph sits under card 1's owner glyph, so the two change an overlapping ref; the Crate member shares only a member name.
+	wantDOT := `digraph plan {
+	node [shape=box];
+	1 [label="1-owner", tooltip="edit Box"];
+	2 [label="2-member", tooltip="edit Box.Size"];
+	3 [label="3-other", tooltip="edit Crate.Size"];
+	1 -> 2;
+}
+`
+	if got := readFile(t, filepath.Join(outDir, "plandag.dot")); got != wantDOT {
+		t.Errorf("plandag.dot = %q; want %q", got, wantDOT)
 	}
 }
 

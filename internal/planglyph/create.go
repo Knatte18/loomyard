@@ -73,6 +73,10 @@ func createHandleResults(repo *quarry.Repo, plan *planparser.Plan) (map[string]q
 				if _, seen := expected[ref]; seen {
 					continue
 				}
+				// CanonicalizeHandles already reported a body the C# alphabet rejects as handle-name-failed; quarry is not asked about it.
+				if _, _, named := createDeclarationLanguage(plan, c.ID(), ref); !named {
+					continue
+				}
 				key := resolveKeyFor(ref)
 				expected[ref] = key
 				targets = append(targets, key)
@@ -160,10 +164,14 @@ func createFindings(plan *planparser.Plan, worktreeRoot string, index map[string
 						Severity: SeverityBlocking,
 					})
 				case quarry.StatusAmbiguous:
+					detail := fmt.Sprintf("Create target %q already resolves ambiguous among existing declarations: %s", t, candidateList(classifyAmbiguity(worktreeRoot, r.Candidates).Candidates))
+					if crossDetail, crossAlphabet := crossAlphabetDetail(r); crossAlphabet {
+						detail = fmt.Sprintf("Create target %q already resolves ambiguous: %s", t, crossDetail)
+					}
 					findings = append(findings, Finding{
 						Check:    "create-already-exists",
 						Card:     c.ID(),
-						Detail:   fmt.Sprintf("Create target %q already resolves ambiguous among existing declarations: %s", t, candidateList(classifyAmbiguity(worktreeRoot, r.Candidates).Candidates)),
+						Detail:   detail,
 						Severity: SeverityBlocking,
 					})
 				case quarry.StatusNotFound:

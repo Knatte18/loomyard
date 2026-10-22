@@ -116,6 +116,11 @@ type Index interface {
 	ValidateDispatch(plan *planparser.Plan, worktreeRoot string, completed, forthcoming []planparser.Card) ([]Finding, error)
 	// DoneChecks reports the declared work of cards that is missing from the tree at worktreeRoot.
 	DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]Finding, error)
+	// RebindResigns carries the cards' recorded C# re-sign arrows into the plan.
+	// An arrow whose minted id does not resolve found in the tree at worktreeRoot is a blocking resign-not-done finding, and nothing is rewritten.
+	// Otherwise it rewrites each re-signed glyph to its minted id plan-wide through plan, so a later card naming the member by its old glyph names the minted id.
+	// A Go arrow, an arrow whose minted id is its target, and a plan whose language opts out of glyphs do nothing.
+	RebindResigns(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]Finding, error)
 	// LaterDeleteReferences reports the later cards that still reference a symbol the deleting cards delete.
 	// A finding is blocking for a resolved reference and informational for a method matched by name alone, since it runs no type load.
 	LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.Card, worktreeRoot string) ([]Finding, error)
@@ -134,7 +139,7 @@ type Delta interface {
 	// BindHandles binds the plan handles of cards to the symbols the delta created, and reports the outcome of each handle beside the findings.
 	BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]Finding, []BindOutcome, error)
 	// ScopeGuard reports the delta's changes outside the targets the cards declare.
-	ScopeGuard(cards []planparser.Card) []Finding
+	ScopeGuard(plan *planparser.Plan, cards []planparser.Card) []Finding
 	// DetectDrift reports the plan references the delta invalidates among the cards not in completed.
 	DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, planDir, worktreeRoot, sha, now string) ([]Finding, error)
 }

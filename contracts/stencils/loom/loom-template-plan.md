@@ -116,8 +116,9 @@ language: go
 Omit `root:` when there is no shared prefix.
 Card paths are always worktree-relative and clean: never absolute, never containing `..`.
 
-`language:` is `"go"` (the default — you may omit the key entirely) or `"none"`.
-Leave it at `"go"` unless the task is explicitly non-Go.
+`language:` is `"go"` (the default — you may omit the key entirely), `"csharp"` or `"none"`.
+Set `"csharp"` when the code the cards change is C#, read from the files' extension; `{{.specs_dir}}/loom/loom-plan-spec.md` holds the C# rules.
+Otherwise leave it at `"go"` unless the task is explicitly non-Go.
 
 **A symbol target is always spelled as a glyph, never as a bare `pkg.Symbol` string.** A glyph is `<unit>#<member>` — the package or file's own repository-relative path, a `#`, then the symbol's own name (e.g. `internal/boardcli#newListCmd`, or `internal/boardcli#` to name the whole package). A bare package-qualified symbol is a hard finding (`bare-symbol-target`) because it is the one spelling that cannot have come verbatim from a quarry answer — not because the form is uglier. A file path (`list.go`, `internal/boardcli/list.go`) stays a plain path — the parser canonicalizes it into its own file self glyph automatically; you never hand-write the `#`-suffixed form for a plain file.
 

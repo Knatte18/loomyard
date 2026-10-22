@@ -30,11 +30,14 @@ func TestCheckFabricVocabularyName(t *testing.T) {
 		}
 
 		tests := []struct {
-			name string
-			card planparser.Card
-			ref  string
-			want int
+			name     string
+			language string
+			card     planparser.Card
+			ref      string
+			want     int
 		}{
+			{name: "csharp handle with a parameter list names the member, not the parameter type", language: "csharp", card: declare("plan:Ns#Renderer.Paint(System.Text.Rune)"), want: 0},
+			{name: "csharp test name before a parameter list", language: "csharp", card: declare("plan:Ns#Renderer.Test" + capitalized + "Thing(System.Text.Rune)"), ref: "plan:Ns#Renderer.Test" + capitalized + "Thing(System.Text.Rune)", want: 1},
 			{name: "test name outside internal", card: declare("plan:tools/x#Test" + capitalized + "Thing"), ref: "plan:tools/x#Test" + capitalized + "Thing", want: 1},
 			{name: "token under internal", card: declare("plan:internal/foo#" + side + "Thing"), ref: "plan:internal/foo#" + side + "Thing", want: 1},
 			{name: "token under cmd", card: declare("plan:cmd/lyx#" + capitalized + "Thing"), ref: "plan:cmd/lyx#" + capitalized + "Thing", want: 1},
@@ -48,6 +51,7 @@ func TestCheckFabricVocabularyName(t *testing.T) {
 			{name: "name failing both rules gets one finding", card: declare("plan:internal/foo#Type" + capitalized + ".hostBranch"), ref: "plan:internal/foo#Type" + capitalized + ".hostBranch", want: 1},
 			{name: "token in a non-configsync owner package", card: declare("plan:internal/fabricengine#" + capitalized + "Thing"), want: 0},
 			{name: "test name in an owner package's external test package", card: declare("plan:internal/fabricengine_test#Test" + capitalized + "Thing"), want: 0},
+			{name: "csharp keeps an owner package's external test unit as its directory", language: "csharp", card: declare("plan:internal/fabricengine_test#Test" + capitalized + "Thing"), ref: "plan:internal/fabricengine_test#Test" + capitalized + "Thing", want: 1},
 			{name: "token without test prefix outside internal and the doc roots", card: declare("plan:tools/x#" + capitalized + "Thing"), want: 0},
 			{name: "host geometry identifier under tools", card: declare("plan:tools/x#hostBranch"), want: 0},
 			{name: "name with no token", card: declare("plan:internal/foo#Thing"), want: 0},
@@ -56,7 +60,7 @@ func TestCheckFabricVocabularyName(t *testing.T) {
 		for _, tc := range tests {
 			t.Run(side+"/"+tc.name, func(t *testing.T) {
 				t.Parallel()
-				plan := &planparser.Plan{Cards: []planparser.Card{tc.card}}
+				plan := &planparser.Plan{Language: tc.language, Cards: []planparser.Card{tc.card}}
 
 				findings := planparser.CheckFabricVocabularyName(plan)
 

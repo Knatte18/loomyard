@@ -85,6 +85,12 @@ func TestClassifyAmbiguity(t *testing.T) {
 			wantConstraints: []string{"//go:build t1 && t2 && t3 && t4 && t5", "//go:build !t1"},
 		},
 		{
+			name:            "windows and linux suffixes on .cs files are no build constraint",
+			files:           map[string]string{"Foo_windows.cs": "class Foo {}\n", "Foo_linux.cs": "class Foo {}\n"},
+			candidateFiles:  []string{"Foo_windows.cs", "Foo_linux.cs"},
+			wantConstraints: []string{"no constraint", "no constraint"},
+		},
+		{
 			name:            "unreadable candidate file",
 			files:           map[string]string{"b.go": "//go:build !linux" + body},
 			candidateFiles:  []string{"gone.go", "b.go"},

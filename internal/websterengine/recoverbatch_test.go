@@ -934,6 +934,44 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 	if recovered.Digest == nil || !slices.Equal(recovered.Digest.Departures, wantDepartures) {
 		t.Errorf("recovered Digest = %+v; want Departures %v from the whole bracket", recovered.Digest, wantDepartures)
 	}
+
+	// A recovery that lands a C# re-sign carries it into the plan exactly as record-batch does.
+	t.Run("a recovered C# re-sign rewrites the pending card to the minted id", func(t *testing.T) {
+		fx := newRecoverFixture(t)
+		clk := &recoverFakeClock{now: time.Unix(0, 0)}
+		writeWorktreeFile(t, fx.Worktree, "csharp/Renderer.cs", csharpRendererSource("long"))
+
+		planDir, plan := csharpResignPlanDir(t)
+		fx.Deps.Geom.PlanDir = planDir
+		fx.Deps.Plan = plan
+		fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards[:1]}, {Cards: plan.Cards[1:]}}
+		if err := websterengine.RestampPlanBaseline(fx.Deps.State, planDir, fx.Deps.Geom.WebsterDir); err != nil {
+			t.Fatalf("RestampPlanBaseline() error = %v", err)
+		}
+
+		if first, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk); err != nil || !first.Spawned || !first.Running {
+			t.Fatalf("RecoverBatch() first call = %+v, %v; want a running spawned recovery", first, err)
+		}
+		writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+fx.Git.head+"\n")
+		recovered, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+		if err != nil {
+			t.Fatalf("RecoverBatch() second call error = %v; want nil", err)
+		}
+		if recovered.Digest == nil || recovered.Digest.Status != websterengine.DigestStatusDone {
+			t.Fatalf("recovered Digest = %+v; want a terminal done digest", recovered.Digest)
+		}
+
+		pending, readErr := os.ReadFile(filepath.Join(planDir, "02-pending.md"))
+		if readErr != nil {
+			t.Fatalf("read 02-pending.md: %v", readErr)
+		}
+		if !strings.Contains(string(pending), "Glyphchain.Sharp#Renderer.Draw(long)") || strings.Contains(string(pending), "Renderer.Draw(int)") {
+			t.Errorf("02-pending.md = %q; want it to name the minted id and not the old glyph", pending)
+		}
+		if want, err := websterengine.Fingerprint(planDir); err != nil || fx.Deps.State.PlanFingerprint != want {
+			t.Errorf("State.PlanFingerprint = %q; want the plan directory's own %q (err %v)", fx.Deps.State.PlanFingerprint, want, err)
+		}
+	})
 }
 
 // TestRecoverBatch_AmendedCards walks one batch's amendment through its recoveries.

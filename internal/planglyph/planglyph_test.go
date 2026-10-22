@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/quarry/glyph"
 )
 
 // minimalPlan returns a *planparser.Plan carrying just enough to exercise ValidateFormat/Validate
@@ -275,7 +274,7 @@ func TestCollectGlyphTargets_DeduplicatesAcrossCards(t *testing.T) {
 		},
 	}
 
-	got := collectGlyphTargets(plan, glyph.Go)
+	got := collectGlyphTargets(plan)
 	if len(got) != 1 || got[0] != "sub#Foo" {
 		t.Errorf("collectGlyphTargets(...) = %v; want exactly [%q]", got, "sub#Foo")
 	}

@@ -1,13 +1,13 @@
-// handle.go implements CanonicalizeHandles, the batched-Name boundary that turns every draft
-// plan: handle a plan declares — from a Create sub-bullet, or from a Rename pair's computed
-// to-side — into its canonical plan:<expected-glyph> form, and rewrites every occurrence across
-// the plan on disk in one planparser.RewriteRefs pass. quarry.Name is never called from a
-// planning-loop caller and never exposed through the CLI: resolvePass, which calls
-// CanonicalizeHandles once, is this function's only caller.
+// handle.go implements CanonicalizeHandles, the batched-Name boundary that turns every draft plan: handle a plan declares into its canonical plan:<expected-glyph> form.
+// A handle comes from a Create sub-bullet or from a Rename pair's computed to-side.
+// Every occurrence across the plan is rewritten on disk in one planparser.RewriteRefs pass.
+// quarry.Name is never called from a planning-loop caller and never exposed through the CLI:
+// nameDeclarations is its one call site, and CanonicalizeHandles and nameResigns, which resolvePass calls once each, are its only callers.
 
 package planglyph
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -28,8 +28,6 @@ type declSource struct {
 	handle string
 	card   string
 	decl   quarry.Declaration
-	// resign marks a source built from an Edit card's re-sign arrow rather than from a handle: handle is then the arrow's member glyph, and the answer is only compared with it.
-	resign bool
 }
 
 // identifierPattern caches one compiled word-boundary matcher per identifier, so renameSignature
@@ -87,6 +85,7 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // its declaration is derived as a one-name spec from the kind and the new identifier alone, since the declaration only feeds quarry.Name's glyph prediction.
 // An interface method's signature is its bare method spec, with no "func" and no receiver, which quarry.Name rejects;
 // the declaration is then derived as a method on the symbol's owner, "func (Owner) Spec".
+// A C# symbol takes none of those paths: its head is derived by renameCSharpHead and the declaration is the head under the old symbol's unit and owner chain.
 // It reports ok false, with a rename-old-unresolved Finding, when Old did not resolve found, when Old resolved found but carries no symbol declaration (a self glyph's answer — a file or unit, not a symbol), when the new-side handle carries no member name, or when Old's own signature carries no occurrence of the identifier it is supposed to declare.
 //
 // The r.Status != quarry.StatusFound check below is Found-only by design, not an oversight left
@@ -95,7 +94,7 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // mean arbitrarily choosing r.Symbols[0] as "the" declaration to rename from, out of several
 // declarations the language itself allows to differ from each other. A Rename pair's old side must
 // name exactly one declaration for renameSignature to have anything unambiguous to derive from.
-func renameDeclSource(card, oldRef, newHandle, worktreeRoot string, results map[string]quarry.ResolveResult) (declSource, Finding, bool) {
+func renameDeclSource(plan *planparser.Plan, card, oldRef, newHandle, worktreeRoot string, results map[string]quarry.ResolveResult) (declSource, Finding, bool) {
 	r, resolved := results[oldRef]
 	if !resolved || r.Status != quarry.StatusFound {
 		detail := fmt.Sprintf("Rename pair's old side %q did not resolve found; nothing to derive the new declaration from", oldRef)
@@ -125,6 +124,16 @@ func renameDeclSource(card, oldRef, newHandle, worktreeRoot string, results map[
 		}, false
 	}
 
+	sym := r.Symbols[0]
+	if sym.Glyph.Lang == glyph.CSharp {
+		head, finding, ok := renameCSharpHead(plan, card, oldRef, newHandle, sym)
+		if !ok {
+			return declSource{}, finding, false
+		}
+		decl := quarry.Declaration{Lang: glyph.CSharp, Unit: sym.Glyph.Unit, Owner: csharpOwner(sym.Glyph, head), Decl: head}
+		return declSource{handle: newHandle, decl: decl}, Finding{}, true
+	}
+
 	identifier, ok := planparser.HandleIdentifier(newHandle)
 	if !ok {
 		return declSource{}, Finding{
@@ -135,12 +144,11 @@ func renameDeclSource(card, oldRef, newHandle, worktreeRoot string, results map[
 		}, false
 	}
 
-	sym := r.Symbols[0]
 	switch sym.Kind {
 	case quarry.KindVar:
-		return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: "var " + identifier + " int"}}, Finding{}, true
+		return declSource{handle: newHandle, decl: quarry.Declaration{Lang: sym.Glyph.Lang, Unit: sym.Glyph.Unit, Decl: "var " + identifier + " int"}}, Finding{}, true
 	case quarry.KindConst:
-		return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: "const " + identifier + " = 0"}}, Finding{}, true
+		return declSource{handle: newHandle, decl: quarry.Declaration{Lang: sym.Glyph.Lang, Unit: sym.Glyph.Unit, Decl: "const " + identifier + " = 0"}}, Finding{}, true
 	}
 	signature := sym.Signature
 	if isInterfaceMethod(sym) {
@@ -155,7 +163,34 @@ func renameDeclSource(card, oldRef, newHandle, worktreeRoot string, results map[
 			Severity: SeverityBlocking,
 		}, false
 	}
-	return declSource{handle: newHandle, decl: quarry.Declaration{Unit: sym.Glyph.Unit, Decl: decl}}, Finding{}, true
+	return declSource{handle: newHandle, decl: quarry.Declaration{Lang: sym.Glyph.Lang, Unit: sym.Glyph.Unit, Decl: decl}}, Finding{}, true
+}
+
+// renameCSharpHead derives the declaration head of a C# Rename pair's to-side from its resolved old symbol, and reports ok false, with a rename-old-unresolved Finding, when no head can be derived.
+// The new identifier is the name of the new handle's body parsed in the plan's alphabet, without its generic arity suffix, never a last-dot split, since a parameter type may hold dots.
+func renameCSharpHead(plan *planparser.Plan, card, oldRef, newHandle string, sym quarry.Symbol) (string, Finding, bool) {
+	body, _ := planparser.HandleBody(newHandle)
+	newGlyph, err := planparser.ParseRef(plan, body)
+	if err != nil || newGlyph.IsSelf() {
+		return "", Finding{
+			Check:    "rename-old-unresolved",
+			Card:     card,
+			Detail:   fmt.Sprintf("Rename pair's new side %q is no C# member glyph; spell the new handle `plan:<namespace>#<owner.member>` in the C# alphabet with canonical parameter types", newHandle),
+			Severity: SeverityBlocking,
+		}, false
+	}
+	identifier, _, _ := strings.Cut(newGlyph.Name, "<")
+
+	head, ok := renameCSharpDecl(sym, identifier)
+	if !ok {
+		return "", Finding{
+			Check:    "rename-old-unresolved",
+			Card:     card,
+			Detail:   fmt.Sprintf("Rename pair's old side %q has no declared name an identifier spells, as an operator, an indexer, a finalizer or a constructor has none; drop the pair, since such a member is renamed with its type or not at all", oldRef),
+			Severity: SeverityBlocking,
+		}, false
+	}
+	return head, Finding{}, true
 }
 
 // partitionedRenameOldDetail is the rename-old-unresolved detail for an old side declared once per build-constraint set: it names each candidate's file and constraint, and the two ways forward.
@@ -183,10 +218,6 @@ func partitionedRenameOldDetail(oldRef string, candidates []constrainedCandidate
 // declaration head verbatim), and every Rename pair whose New side is a handle (its declaration
 // computed via renameDeclSource, never trusted from the planner's draft spelling).
 //
-// Every re-sign arrow whose target is a member glyph adds a third source to the same call: the glyph's own unit and the arrow's head.
-// Its answer is compared with the glyph and discarded, never entering the canonical-owner bookkeeping or the rewrite, since the head names an existing member rather than a handle.
-// A naming error, or an ID other than the glyph's own, is the blocking resign-head-mismatch.
-//
 // Under plan.Language "none" this function returns nil findings and performs no call and no
 // rewrite.
 //
@@ -194,8 +225,7 @@ func partitionedRenameOldDetail(oldRef string, candidates []constrainedCandidate
 // resolvePass uses it to know whether re-reading the plan from that source can tell it anything new.
 // When it is true, a failure to re-read the plan is a real infrastructure failure, never merely an in-memory plan that was never on disk to begin with.
 func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []quarry.ResolveResult) ([]Finding, bool, error) {
-	lang, ok := plan.GlyphLanguage()
-	if !ok {
+	if !plan.GlyphLanguage() {
 		return nil, false, nil
 	}
 
@@ -211,34 +241,31 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 			if !ok {
 				continue // handle-malformed already reports this; nothing to derive.
 			}
-			sources = append(sources, declSource{handle: d.Handle, card: card, decl: quarry.Declaration{Unit: unit, Decl: d.Decl}})
+			lang, finding, ok := createDeclarationLanguage(plan, card, d.Handle)
+			if !ok {
+				findings = append(findings, finding)
+				continue
+			}
+			declaration := quarry.Declaration{Lang: lang, Unit: unit, Decl: d.Decl}
+			if lang == glyph.CSharp {
+				// createDeclarationLanguage parsed this body as C#, so the parse here cannot fail.
+				body, _ := planparser.HandleBody(d.Handle)
+				g, _ := planparser.ParseRef(plan, body)
+				declaration = quarry.Declaration{Lang: glyph.CSharp, Unit: g.Unit, Owner: csharpOwner(g, d.Decl), Decl: d.Decl}
+			}
+			sources = append(sources, declSource{handle: d.Handle, card: card, decl: declaration})
 		}
 		for _, p := range c.Pairs {
 			if !planparser.IsHandleRef(p.New) {
 				continue
 			}
-			src, finding, ok := renameDeclSource(card, p.Old, p.New, worktreeRoot, resultIndex)
+			src, finding, ok := renameDeclSource(plan, card, p.Old, p.New, worktreeRoot, resultIndex)
 			if !ok {
 				findings = append(findings, finding)
 				continue
 			}
 			src.card = card
 			sources = append(sources, src)
-		}
-		for _, r := range c.Resigns {
-			if planparser.IsHandleRef(r.Target) {
-				continue
-			}
-			g, err := glyph.Parse(lang, r.Target)
-			if err != nil || g.IsSelf() {
-				continue // resign-not-member and glyph-malformed already report these.
-			}
-			sources = append(sources, declSource{
-				handle: g.String(),
-				card:   card,
-				decl:   quarry.Declaration{Unit: g.Unit, Decl: r.Decl},
-				resign: true,
-			})
 		}
 	}
 
@@ -250,15 +277,9 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 	for i, s := range sources {
 		decls[i] = s.decl
 	}
-	nameResults := quarry.Name(decls)
-	// quarry.Name's contract is one positionally-matched result per declaration, and the per-result
-	// echo check below is what catches a MISALIGNED answer — but it can only run after sources[i]
-	// has already been indexed, so a longer answer panics before reaching it. A batched boundary
-	// this file cannot see inside is exactly where a length guard belongs, and reporting the
-	// mismatch as an infrastructure error keeps it out of the plan-finding vocabulary: nobody should
-	// read "quarry answered a different number of declarations" as a defect in the plan.
-	if len(nameResults) != len(sources) {
-		return findings, false, fmt.Errorf("%w: quarry.Name returned %d result(s) for %d declaration(s)", ErrQuarryUnavailable, len(nameResults), len(sources))
+	nameResults, err := nameDeclarations(decls)
+	if err != nil {
+		return findings, false, err
 	}
 
 	canonicalOwners := make(map[string][]string) // canonical form -> every draft handle claiming it
@@ -273,17 +294,15 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 			})
 			continue
 		}
-		if src.resign {
-			if res.Error != "" || res.ID != src.handle {
-				findings = append(findings, resignHeadMismatch(src, res))
-			}
-			continue
-		}
 		if res.Error != "" {
+			detail := fmt.Sprintf("handle %q failed naming its declaration %q: %s (%s)", src.handle, src.decl.Decl, res.Error, res.Reason)
+			if src.decl.Lang == glyph.CSharp && res.Reason == quarry.NameReasonInvalidContainer {
+				detail += canonicalQualifierWay(plan, src.handle, src.decl.Decl)
+			}
 			findings = append(findings, Finding{
 				Check:    "handle-name-failed",
 				Card:     src.card,
-				Detail:   fmt.Sprintf("handle %q failed naming its declaration %q: %s (%s)", src.handle, src.decl.Decl, res.Error, res.Reason),
+				Detail:   detail,
 				Severity: SeverityBlocking,
 			})
 			continue
@@ -350,22 +369,37 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 	return findings, true, nil
 }
 
-// resignHeadMismatch is the blocking resign-head-mismatch finding for a re-sign arrow whose head quarry.Name could not name, or named as a member other than the arrow's own glyph.
-func resignHeadMismatch(src declSource, res quarry.NameResult) Finding {
-	answer := fmt.Sprintf("answered %q", res.ID)
-	if res.Error != "" {
-		answer = fmt.Sprintf("failed: %s (%s)", res.Error, res.Reason)
+// createDeclarationLanguage returns the language a Create declaration's handle is named in: the Lang of ParseRef over the handle's body.
+// A body ParseRef rejects keeps the language of its parse error, so a Go draft still reaches quarry.Name and is answered there.
+// A body rejected as C# comes back as the blocking handle-name-failed finding with ok false, since it names no declaration quarry could be asked about.
+func createDeclarationLanguage(plan *planparser.Plan, card, handle string) (glyph.Language, Finding, bool) {
+	body, _ := planparser.HandleBody(handle)
+	g, err := planparser.ParseRef(plan, body)
+	if err == nil {
+		return g.Lang, Finding{}, true
 	}
-	return Finding{
-		Check: "resign-head-mismatch",
-		Card:  src.card,
-		Detail: fmt.Sprintf(
-			"re-sign head %q does not name the member %q: naming it %s; write the member's new declaration head, receiver included for a method",
-			src.decl.Decl, src.handle, answer,
-		),
+	var parseErr *glyph.ParseError
+	if !errors.As(err, &parseErr) || parseErr.Lang != glyph.CSharp {
+		return glyph.Go, Finding{}, true
+	}
+	return "", Finding{
+		Check:    "handle-name-failed",
+		Card:     card,
+		Detail:   fmt.Sprintf("handle %q is not a C# glyph: %s; spell the handle plan:<namespace>#<owner.member> in the C# alphabet with canonical parameter types", handle, err),
 		Severity: SeverityBlocking,
-		Ref:      src.handle,
+	}, false
+}
+
+// nameDeclarations names decls in one batched quarry.Name call and returns its results, one per declaration in order.
+// It is the package's one quarry.Name call site, and owns the length guard:
+// the callers' per-result echo checks catch a misaligned answer, but only after indexing a result, so a longer answer would panic before reaching them.
+// A length mismatch is reported as an ErrQuarryUnavailable-wrapped error rather than a plan finding, since no plan defect makes quarry answer a different number of declarations.
+func nameDeclarations(decls []quarry.Declaration) ([]quarry.NameResult, error) {
+	results := quarry.Name(decls)
+	if len(results) != len(decls) {
+		return nil, fmt.Errorf("%w: quarry.Name returned %d result(s) for %d declaration(s)", ErrQuarryUnavailable, len(results), len(decls))
 	}
+	return results, nil
 }
 
 // BindHandles turns a handle into the real glyph the card actually created or renamed to, from the
@@ -397,7 +431,7 @@ func resignHeadMismatch(src declSource, res quarry.NameResult) Finding {
 // Under plan.Language "none" this function returns nil findings and outcomes and performs no call and no
 // rewrite, mirroring CanonicalizeHandles.
 func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAnswer, cards []planparser.Card) ([]Finding, []planindex.BindOutcome, error) {
-	if _, ok := plan.GlyphLanguage(); !ok {
+	if !plan.GlyphLanguage() {
 		return nil, nil, nil
 	}
 

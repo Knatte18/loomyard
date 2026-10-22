@@ -1,6 +1,6 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (contracts/specs/loom-plan-spec.md), run in this fixed order.
-// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), resign-not-member (checkResignNotMember), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), commit-subject-mismatch (checkCommitSubjectMismatch), verify-nested-module (checkVerifyNestedModule, verifymodule.go), verify-module-wide (checkVerifyModuleWide, verifymodule.go), verify-package-missing (checkVerifyPackageMissing, verifypackage.go), and pattern-entry-line-cap (checkPatternEntryLineCap, patternentry.go).
+// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-language-mismatch (checkLanguageMismatch), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), resign-not-member (checkResignNotMember), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), rename-namespace-pair (checkRenameNamespacePair), commit-subject-mismatch (checkCommitSubjectMismatch), verify-nested-module (checkVerifyNestedModule, verifymodule.go), verify-module-wide (checkVerifyModuleWide, verifymodule.go), verify-package-missing (checkVerifyPackageMissing, verifypackage.go), and pattern-entry-line-cap (checkPatternEntryLineCap, patternentry.go).
 // The plan gate's context checks verify-raw-command, verify-gate-no-wait and plan-verify-retired are appended by loomshed outside both entry points, over VerifyCommands.
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
@@ -14,6 +14,7 @@ package planparser
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -69,6 +70,7 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 
 	findings = append(findings, checkFormatRecognized(plan)...)
 	findings = append(findings, checkLanguageRecognized(plan)...)
+	findings = append(findings, checkLanguageMismatch(plan)...)
 	if requireApproved {
 		findings = append(findings, checkApproved(plan)...)
 	}
@@ -95,6 +97,7 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkProsaSymbolTarget(plan)...)
 	findings = append(findings, checkCardNumbering(plan)...)
 	findings = append(findings, checkPathMissing(plan, worktreeRoot)...)
+	findings = append(findings, checkRenameNamespacePair(plan, worktreeRoot)...)
 	findings = append(findings, checkCommitSubjectMismatch(plan)...)
 	findings = append(findings, checkVerifyNestedModule(plan, worktreeRoot)...)
 	findings = append(findings, checkVerifyModuleWide(plan)...)
@@ -118,26 +121,86 @@ func checkFormatRecognized(plan *Plan) []ValidationError {
 	return findings
 }
 
-// checkLanguageRecognized implements plan-language-unrecognized: plan.Language must be "go" or
-// "none". "" (the zero value, meaning a hand-built *Plan carries no explicit language: at all) is
-// treated identically to "go", matching Plan.Language's own documented "absent defaults to go"
-// rule — ParsePlan itself never actually produces "", always writing "go" explicitly when the
-// frontmatter key is absent. This is a pure string check: it calls no Resolve, stats no disk, and
-// keeps the package tier1-safe.
+// checkLanguageRecognized implements plan-language-unrecognized: plan.Language must be "go",
+// "csharp" or "none".
+// "" (the zero value, meaning a hand-built *Plan carries no explicit language: at all) is treated identically to "go", matching Plan.Language's own documented "absent defaults to go" rule.
+// ParsePlan itself never actually produces "", always writing "go" explicitly when the frontmatter key is absent.
+// This is a pure string check: it calls no Resolve, stats no disk, and keeps the package tier1-safe.
 func checkLanguageRecognized(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	switch plan.Language {
-	case "", "go", "none":
+	case "", "go", "csharp", "none":
 		return findings
 	}
 
 	findings = append(findings, ValidationError{
 		Check:  "plan-language-unrecognized",
-		Detail: fmt.Sprintf(`language %q is not recognized; only "go" and "none" are known`, plan.Language),
+		Detail: fmt.Sprintf(`language %q is not recognized; only "go", "csharp" and "none" are known`, plan.Language),
 	})
 
 	return findings
+}
+
+// checkLanguageMismatch implements plan-language-mismatch's pure half: the plan's language must fit the extensions of the files its cards' Targets name.
+// Targets are read as paths through PathEntryPath.
+// Under go it fires when they name a .cs file and no .go file, unless some Target is a member glyph, a `plan:` handle or a self glyph with no file extension, since such a ref may name .go code and is the resolve half's to judge.
+// Under csharp it fires when they name a .go file and no .cs file, unless some Target is a member glyph or a `plan:` handle, since under csharp such a ref names C# code.
+// It never fires under none or an unrecognized language, and reads no disk.
+// The one finding is plan-level, and its way forward is to set `language:` to the files' language or to none.
+func checkLanguageMismatch(plan *Plan) []ValidationError {
+	lang, ok := planLanguage(plan)
+	if !ok {
+		return nil
+	}
+
+	var goFiles, csharpFiles int
+	for _, c := range plan.Cards {
+		for _, target := range c.Targets {
+			if IsHandleRef(target) {
+				return nil
+			}
+			parsed, err := ParseRef(plan, target)
+			if err != nil {
+				continue
+			}
+			if !parsed.IsSelf() {
+				return nil
+			}
+			file, isPath := PathEntryPath(target)
+			if !isPath {
+				continue
+			}
+			switch path.Ext(file) {
+			case ".go":
+				goFiles++
+			case ".cs":
+				csharpFiles++
+			case "":
+				if lang == glyph.Go {
+					return nil
+				}
+			}
+		}
+	}
+
+	var filesLanguage, wantLanguage string
+	switch {
+	case lang == glyph.Go && csharpFiles > 0 && goFiles == 0:
+		filesLanguage, wantLanguage = "C# (.cs)", "csharp"
+	case lang == glyph.CSharp && goFiles > 0 && csharpFiles == 0:
+		filesLanguage, wantLanguage = "Go (.go)", "go"
+	default:
+		return nil
+	}
+
+	return []ValidationError{{
+		Check: "plan-language-mismatch",
+		Detail: fmt.Sprintf(
+			"the plan's language is %q but the files its cards target are %s only; set `language:` to %s, the language of the files, or to `language: none` for a plan that changes both",
+			plan.Language, filesLanguage, wantLanguage,
+		),
+	}}
 }
 
 // checkApproved implements plan-unapproved: plan.Approved must be true.
@@ -471,11 +534,11 @@ func checkDirectoryTarget(plan *Plan) []ValidationError {
 //
 // Without this check a malformed-but-"#"-shaped entry (a doubled "#", an empty unit, a member carrying a paren or a keyword) is invisible end to end outside a Prosa group: classifyRef sends it to refKindGlyph on shape alone and never calls glyph.Parse itself (by design -- see classify.go's own doc comment), bare-symbol-target/directory-target skip it (wrong shape), card-path-malformed/path-missing skip it (diskPathForRef returns not-ok on a parse error), and internal/planglyph's collectGlyphTargets silently drops it before it ever enters the batched Resolve call -- so it never even reaches a glyph-not-found/glyph-ambiguous/glyph-rejected verdict either.
 // The plan would validate 100% clean while carrying a target no execution engine can ever act on, discovered only deep into a batch's own done-check, not up front at the plan gate where every other malformed-entry class is caught (crucible round sonnet-xhigh-r8, PG-1).
+// Under go, a ref the C# alphabet accepts gets the way forward `language: csharp` appended to its detail.
 func checkGlyphMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	lang, ok := planLanguage(plan)
-	if !ok {
+	if _, ok := planLanguage(plan); !ok {
 		return findings
 	}
 
@@ -485,14 +548,18 @@ func checkGlyphMalformed(plan *Plan) []ValidationError {
 				if _, disp := lookup(gateGlyphMalformed, t); disp != dispKeep {
 					continue
 				}
-				if _, err := parseGlyph(lang, t); err != nil {
+				if _, err := ParseRef(plan, t); err != nil {
+					detail := fmt.Sprintf(
+						"card %d entry %q looks like a glyph (contains \"#\") but fails to parse: %v",
+						c.Number, t, err,
+					)
+					if _, csharpErr := glyph.Parse(glyph.CSharp, t); csharpErr == nil && plan.GoToolchain() {
+						detail += "; it is a C# glyph, so set the plan's `language: csharp`"
+					}
 					findings = append(findings, ValidationError{
-						Check: "glyph-malformed",
-						Card:  cardID(c),
-						Detail: fmt.Sprintf(
-							"card %d entry %q looks like a glyph (contains \"#\") but fails to parse: %v",
-							c.Number, t, err,
-						),
+						Check:  "glyph-malformed",
+						Card:   cardID(c),
+						Detail: detail,
 					})
 				}
 			}
@@ -588,7 +655,7 @@ func checkHandleConsistency(plan *Plan) []ValidationError {
 // checkHandleMalformed implements handle-malformed: every entry of a card's CreateRaw (a
 // "**Create:**" arrow bullet that failed the two-field declaration grammar), every handle-shaped
 // Targets/Uses entry whose text after HandlePrefix carries no "#" and therefore names no unit,
-// and — under a glyph-enabled plan.Language only — every handle whose unit half names a ".go"
+// and — under a go plan.Language only — every handle whose unit half names a ".go"
 // FILE rather than a package directory. The first two rules run under every plan.Language, for
 // the same reason checkHandleConsistency does; the file-unit rule is alphabet knowledge and so is
 // language-gated.
@@ -606,7 +673,7 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	claims := handleClaims(plan)
-	_, langOK := planLanguage(plan)
+	goToolchain := plan.GoToolchain()
 
 	for _, c := range plan.Cards {
 		for _, raw := range c.CreateRaw {
@@ -637,7 +704,7 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 					})
 					continue
 				}
-				if langOK && strings.HasSuffix(unit, ".go") && fileUnitRuleApplies(claims[r]) {
+				if goToolchain && strings.HasSuffix(unit, ".go") && fileUnitRuleApplies(claims[r]) {
 					findings = append(findings, ValidationError{
 						Check: "handle-malformed",
 						Card:  cardID(c),
@@ -661,14 +728,13 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 func checkResignNotMember(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	lang, ok := planLanguage(plan)
-	if !ok {
+	if _, ok := planLanguage(plan); !ok {
 		return findings
 	}
 
 	for _, c := range plan.Cards {
 		for _, r := range c.Resigns {
-			shape, bad := resignTargetShape(lang, r.Target)
+			shape, bad := resignTargetShape(plan, r.Target)
 			if !bad {
 				continue
 			}
@@ -688,37 +754,41 @@ func checkResignNotMember(plan *Plan) []ValidationError {
 }
 
 // resignTargetShape names the shape of a re-sign arrow's target and reports whether that shape is a finding.
-func resignTargetShape(lang glyph.Language, target string) (shape string, bad bool) {
+func resignTargetShape(plan *Plan, target string) (shape string, bad bool) {
 	kind, disp := lookup(gateResignTarget, target)
 	if disp == dispFinding {
 		return refKindName(kind), true
 	}
-	g, err := parseGlyph(lang, target)
+	g, err := ParseRef(plan, target)
 	if err != nil || !g.IsSelf() {
 		return "", false
 	}
-	if unitPath, ok := g.UnitPath(); ok && !hasFileExtension(unitPath) {
+	unitPath, ok := g.UnitPath()
+	if !ok {
+		return "a namespace self glyph", true
+	}
+	if !hasFileExtension(unitPath) {
 		return "a package self glyph", true
 	}
 	return "a file self glyph", true
 }
 
-// isFileRenamePair reports whether p is a file-rename pair under lang: both p.Old and p.New
+// isFileRenamePair reports whether p is a file-rename pair under plan's language: both p.Old and p.New
 // classify as refKindGlyph and both parse to a glyph whose IsSelf() reports true. A file-rename
 // pair has no declaration head to name and is exempt from both of checkRenamePairShape's checks —
 // it belongs in the same group as a plain path pair.
-func isFileRenamePair(lang glyph.Language, p MovePair) bool {
+func isFileRenamePair(plan *Plan, p MovePair) bool {
 	if _, disp := lookup(gateFileRenamePair, p.Old); disp != dispKeep {
 		return false
 	}
 	if _, disp := lookup(gateFileRenamePair, p.New); disp != dispKeep {
 		return false
 	}
-	oldGlyph, err := parseGlyph(lang, p.Old)
+	oldGlyph, err := ParseRef(plan, p.Old)
 	if err != nil || !oldGlyph.IsSelf() {
 		return false
 	}
-	newGlyph, err := parseGlyph(lang, p.New)
+	newGlyph, err := ParseRef(plan, p.New)
 	if err != nil || !newGlyph.IsSelf() {
 		return false
 	}
@@ -749,14 +819,13 @@ func isFileRenamePair(lang glyph.Language, p MovePair) bool {
 func checkRenamePairShape(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	lang, langOK := planLanguage(plan)
-	if !langOK {
+	if _, langOK := planLanguage(plan); !langOK {
 		return findings
 	}
 
 	for _, c := range plan.Cards {
 		for _, p := range c.Pairs {
-			if isFileRenamePair(lang, p) {
+			if isFileRenamePair(plan, p) {
 				continue
 			}
 			if k, disp := lookup(gateRenameTo, p.New); disp == dispFinding {
@@ -787,7 +856,7 @@ func checkRenamePairShape(plan *Plan) []ValidationError {
 				// where a found self glyph carries a Listing and no Symbols, so renameDeclSource
 				// refused it with a detail claiming the old side "did not resolve found" — a
 				// resolution story for what is a shape mistake (crucible round fable-high-r10, F5).
-				if g, err := parseGlyph(lang, p.Old); err == nil && g.IsSelf() {
+				if g, err := ParseRef(plan, p.Old); err == nil && g.IsSelf() {
 					findings = append(findings, ValidationError{
 						Check: "rename-from-not-glyph",
 						Card:  cardID(c),
@@ -1016,7 +1085,7 @@ func checkImpactSummaryMultiline(plan *Plan) []ValidationError {
 // hold only file(s)/package(s), never an individual symbol. A symbol in the same card's non-Prosa
 // group is not flagged — the rule is scoped to the Prosa group's own Refs, not the card's flat
 // Targets union.
-// Under a glyph-enabled plan.Language, a ref passes when parseGlyph succeeds and the resulting
+// Under a glyph-enabled plan.Language, a ref passes when ParseRef succeeds and the resulting
 // glyph's IsSelf() reports true — admitting both the file self glyph and the unit self glyph, the
 // latter required by the package-spelling rule so a Prosa card can target a whole package (e.g.
 // "internal/foo#") — and is the finding when IsSelf() reports false (a member glyph, or anything
@@ -1026,7 +1095,7 @@ func checkImpactSummaryMultiline(plan *Plan) []ValidationError {
 func checkProsaSymbolTarget(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	lang, langOK := planLanguage(plan)
+	_, langOK := planLanguage(plan)
 
 	for _, c := range plan.Cards {
 		for _, g := range c.TargetGroups {
@@ -1035,7 +1104,7 @@ func checkProsaSymbolTarget(plan *Plan) []ValidationError {
 			}
 			for _, t := range g.Refs {
 				if langOK {
-					if gl, err := parseGlyph(lang, t); err == nil && gl.IsSelf() {
+					if gl, err := ParseRef(plan, t); err == nil && gl.IsSelf() {
 						continue
 					}
 				} else if _, disp := lookup(gateProsaPathOnly, t); disp == dispKeep {
@@ -1206,6 +1275,60 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 			case CardTypeCreate, CardTypeCustom:
 				// Create's refs are new by definition, and Custom is an explicit escape hatch
 				// exempt from path-missing on its own refs.
+			}
+		}
+	}
+
+	return findings
+}
+
+// checkRenameNamespacePair implements rename-namespace-pair: under csharp, a Rename pair of two self glyphs whose old side is slash-free and names nothing on disk is refused.
+// Under csharp such a pair is a file pair and runs `git mv`, so a pair of namespace self glyphs such as `Glyphchain.Sharp# -> Glyphchain.Core#` would move a path that does not exist.
+// The old side is read through PathEntryPath, never through createTargetsUnion or renameTargetsUnion, whose diskPathForRef drops every slash-free self glyph under csharp.
+// It reads the disk rather than the extension, since a dotted namespace has a path extension too.
+// A path an earlier card creates or renames into is no finding.
+// It runs on pending cards only, since ValidateDispatch drops a finding against a done card, so a pair whose `git mv` landed is never rechecked.
+// Under go the same pair is path-missing's, so it stays silent there.
+func checkRenameNamespacePair(plan *Plan, worktreeRoot string) []ValidationError {
+	var findings []ValidationError
+	if lang, ok := planLanguage(plan); !ok || lang != glyph.CSharp {
+		return findings
+	}
+
+	earlier := make(map[string]bool)
+	for _, c := range plan.Cards {
+		for _, pair := range c.Pairs {
+			if !isFileRenamePair(plan, pair) {
+				continue
+			}
+			oldPath, ok := PathEntryPath(pair.Old)
+			if !ok || strings.Contains(oldPath, "/") || earlier[oldPath] || pathExistsOnDisk(worktreeRoot, oldPath) {
+				continue
+			}
+			findings = append(findings, ValidationError{
+				Check: "rename-namespace-pair",
+				Card:  cardID(c),
+				Ref:   pair.Old,
+				Detail: fmt.Sprintf(
+					"card %d Rename pair %q -> %q names no path on disk, and under csharp a pair of two self glyphs is a file pair that runs `git mv`, so a namespace cannot be renamed this way; rename the namespace through Edit cards on the files that declare it and the files that refer to it; when the old side is meant as a root file, correct it to a file that exists; or, when a later card creates the old side, move the pair to a card after it",
+					c.Number, pair.Old, pair.New,
+				),
+			})
+		}
+
+		for _, g := range c.TargetGroups {
+			if g.Type != CardTypeCreate {
+				continue
+			}
+			for _, ref := range g.Refs {
+				if created, ok := PathEntryPath(ref); ok {
+					earlier[created] = true
+				}
+			}
+		}
+		for _, pair := range c.Pairs {
+			if destination, ok := PathEntryPath(pair.New); ok {
+				earlier[destination] = true
 			}
 		}
 	}

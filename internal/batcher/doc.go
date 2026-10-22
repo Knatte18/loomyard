@@ -70,7 +70,10 @@
 //
 // A card that renames or deletes what an earlier, distinct card targets starts a new batch, so a batch's done-check and card gates read a tree that still holds each card's targets (boundary.go).
 // A card's targets are its Create, Edit and Delete refs and the new side of each Rename pair; its covers are the old side of each Rename pair and its Delete refs, and planparser.RefCovers decides when a cover covers a target.
-// The rule only adds boundaries: it never merges batches, reorders cards or moves a card across a dependency, and every grouping batchifier applies it.
+// A card that names a C# member an earlier card re-signs also starts a new batch, beside the cover rule.
+// An earlier card re-signs a C# member with an Edit arrow whose target parses as a C# glyph, and the naming card names it with that target's exact string among its Targets or Uses.
+// The re-sign is rewritten to the member's minted id only once its batch is recorded, so the naming card cannot share the batch.
+// The rules only add boundaries: they never merge batches, reorder cards or move a card across a dependency, and every grouping batchifier applies them.
 // Its bound is that a file-level old side over-splits from a package-unit target in that file's directory.
 // A recorded partition in state.json is never regrouped, since only a derivation applies the rule.
 package batcher

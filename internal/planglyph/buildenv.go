@@ -72,14 +72,17 @@ type ambiguity struct {
 
 // classifyAmbiguity reads each candidate's file once, under worktreeRoot, and reports the answer
 // partitioned when no single build environment selects two candidate files.
-// Fewer than two candidates, two candidates in one file, a candidate set naming more than
+// Fewer than two candidates, two candidates in one file, a candidate set holding a file that is not a .go file, a candidate set naming more than
 // maxFreeTags free tags, a file that cannot be read and a constraint line that cannot be parsed
 // all yield not partitioned, with every candidate still described.
+// A file that is not a .go file is described as carrying no constraint, so a name such as Foo_windows.cs is never read as one.
 func classifyAmbiguity(worktreeRoot string, candidates []quarry.Symbol) ambiguity {
 	result := ambiguity{Candidates: make([]constrainedCandidate, len(candidates))}
 	sources := make(map[string][]byte, len(candidates))
 	readable := true
+	allGo := true
 	for i, candidate := range candidates {
+		allGo = allGo && strings.HasSuffix(candidate.File, ".go")
 		path := filepath.Clean(filepath.FromSlash(candidate.File))
 		source, seen := sources[path]
 		if !seen {
@@ -95,7 +98,7 @@ func classifyAmbiguity(worktreeRoot string, candidates []quarry.Symbol) ambiguit
 			Constraint: candidateConstraint(filepath.Base(path), source),
 		}
 	}
-	if len(candidates) < 2 || !readable || len(sources) < len(candidates) {
+	if len(candidates) < 2 || !allGo || !readable || len(sources) < len(candidates) {
 		return result
 	}
 
@@ -111,6 +114,9 @@ func classifyAmbiguity(worktreeRoot string, candidates []quarry.Symbol) ambiguit
 // file's `//go:build` line verbatim, else its `// +build` lines, else the GOOS or GOARCH filename
 // suffix, else "no constraint".
 func candidateConstraint(name string, source []byte) string {
+	if !strings.HasSuffix(name, ".go") {
+		return noConstraint
+	}
 	goBuild, plusBuild := constraintLines(source)
 	if goBuild != "" {
 		return goBuild

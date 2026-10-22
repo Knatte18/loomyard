@@ -6,8 +6,6 @@ package planparser
 import (
 	"fmt"
 	"path"
-
-	"github.com/Knatte18/quarry/glyph"
 )
 
 // redundancyOwner is what a card target belongs to for redundant-package-target: the package directory it lies in, and whether the target is that package's own self glyph.
@@ -28,12 +26,11 @@ type redundancyMember struct {
 func checkRedundantPackageTarget(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
-	lang, ok := planLanguage(plan)
-	if !ok {
+	if _, ok := planLanguage(plan); !ok {
 		return findings
 	}
 
-	renameUnits := renameToSideUnits(lang, plan)
+	renameUnits := renameToSideUnits(plan)
 
 	for _, c := range plan.Cards {
 		containers := make(map[string]string)
@@ -45,7 +42,7 @@ func checkRedundantPackageTarget(plan *Plan) []ValidationError {
 				continue
 			}
 			seen[t] = true
-			owner, ok := redundancyOwnerOf(lang, renameUnits, t)
+			owner, ok := redundancyOwnerOf(plan, renameUnits, t)
 			if !ok {
 				continue
 			}
@@ -78,14 +75,14 @@ func checkRedundantPackageTarget(plan *Plan) []ValidationError {
 
 // renameToSideUnits maps every handle some Rename pair claims as its to-side to the UnitPath of that pair's old glyph, whose unit CanonicalizeHandles writes into the handle.
 // A pair whose old side does not parse is skipped; glyph-malformed already reports it.
-func renameToSideUnits(lang glyph.Language, plan *Plan) map[string]string {
+func renameToSideUnits(plan *Plan) map[string]string {
 	units := make(map[string]string)
 	for _, c := range plan.Cards {
 		for _, p := range c.Pairs {
 			if _, disp := lookup(gateHandleClaims, p.New); disp != dispKeep {
 				continue
 			}
-			old, err := parseGlyph(lang, p.Old)
+			old, err := ParseRef(plan, p.Old)
 			if err != nil {
 				continue
 			}
@@ -104,7 +101,7 @@ func renameToSideUnits(lang glyph.Language, plan *Plan) map[string]string {
 // redundancyOwnerOf classifies one target for redundant-package-target.
 // Every owner is keyed by a UnitPath result, so a member, a file and a package compare as paths.
 // ok is false for a target that is neither glyph- nor handle-shaped, that fails to parse, or whose handle body is not a member glyph.
-func redundancyOwnerOf(lang glyph.Language, renameUnits map[string]string, ref string) (redundancyOwner, bool) {
+func redundancyOwnerOf(plan *Plan, renameUnits map[string]string, ref string) (redundancyOwner, bool) {
 	_, disp := lookup(gateRedundantTarget, ref)
 	if disp != dispKeep {
 		return redundancyOwner{}, false
@@ -114,7 +111,7 @@ func redundancyOwnerOf(lang glyph.Language, renameUnits map[string]string, ref s
 		if unitPath, claimed := renameUnits[ref]; claimed {
 			return redundancyOwner{unit: unitPath}, true
 		}
-		g, err := parseGlyph(lang, body)
+		g, err := ParseRef(plan, body)
 		if err != nil || g.IsSelf() {
 			return redundancyOwner{}, false
 		}
@@ -122,7 +119,7 @@ func redundancyOwnerOf(lang glyph.Language, renameUnits map[string]string, ref s
 		return redundancyOwner{unit: unitPath}, ok
 	}
 
-	g, err := parseGlyph(lang, ref)
+	g, err := ParseRef(plan, ref)
 	if err != nil {
 		return redundancyOwner{}, false
 	}

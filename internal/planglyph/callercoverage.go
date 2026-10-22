@@ -23,7 +23,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 	"golang.org/x/mod/modfile"
 )
@@ -86,8 +85,8 @@ func importPathOf(worktreeRoot string, modules []string, dir string) (string, er
 // A deleted member's reference inside a later card's Edit code is delete-before-reference's, so it is reported as that check's finding and never as caller-uncovered, whether or not an admissible target also covers it.
 // The walk runs only when a subject exists.
 // The references are memberReferences' over every Go file that names a subject, so one type load serves both checks.
-func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktreeRoot string, answers map[string]quarry.ResolveResult, partitioned map[string]bool, loader typesLoader) ([]Finding, error) {
-	subjects, err := coverageSubjects(plan, lang, worktreeRoot, answers, partitioned)
+func callerCoverageFindings(plan *planparser.Plan, worktreeRoot string, answers map[string]quarry.ResolveResult, partitioned map[string]bool, loader typesLoader) ([]Finding, error) {
+	subjects, err := coverageSubjects(plan, worktreeRoot, answers, partitioned)
 	if err != nil || len(subjects) == 0 {
 		return nil, err
 	}
@@ -101,14 +100,14 @@ func callerCoverageFindings(plan *planparser.Plan, lang glyph.Language, worktree
 		return nil, err
 	}
 
-	regions, _ := buildEditRegions(collectEditTargets(lang, plan.Cards), answers, partitioned)
+	regions, _ := buildEditRegions(collectEditTargets(plan, plan.Cards), answers, partitioned)
 	uncovered := func(subject coverageSubject, file string, lines []int) []int {
 		var kept []int
 		for _, line := range lines {
 			if subject.deleted && insideLaterEditRegion(regions, subject.card.Number, file, line) {
 				continue
 			}
-			if coveredByTarget(plan, lang, subject, file, line, answers, partitioned) {
+			if coveredByTarget(plan, subject, file, line, answers, partitioned) {
 				continue
 			}
 			kept = append(kept, line)
@@ -208,7 +207,7 @@ func hasUnresolvedLine(unresolved []map[string][]int, file string) bool {
 
 // coverageSubjects returns, in card and body order, every member glyph a card deletes or re-signs whose answer holds its declaration.
 // A member listed more than once on one card is one subject.
-func coverageSubjects(plan *planparser.Plan, lang glyph.Language, worktreeRoot string, answers map[string]quarry.ResolveResult, partitioned map[string]bool) ([]coverageSubject, error) {
+func coverageSubjects(plan *planparser.Plan, worktreeRoot string, answers map[string]quarry.ResolveResult, partitioned map[string]bool) ([]coverageSubject, error) {
 	// modules is read on the first subject, since the walk costs a tree read.
 	var modules []string
 	modulesRead := false
@@ -223,7 +222,7 @@ func coverageSubjects(plan *planparser.Plan, lang glyph.Language, worktreeRoot s
 			return nil
 		}
 		seen[cardRef{c.Number, ref}] = true
-		g, err := glyph.Parse(lang, ref)
+		g, err := planparser.ParseRef(plan, ref)
 		if err != nil || g.IsSelf() {
 			return nil
 		}
@@ -481,7 +480,7 @@ func insideOwnSpan(subject coverageSubject, file string, line int) bool {
 // coveredByTarget reports whether a target of an admissible card covers line of file.
 // A re-signed member admits only its own card, since no earlier card can call a signature that does not exist yet; a deleted member admits its own card and every earlier one.
 // A target covers the line when it is the file's self glyph, the self glyph of the file's directory, or a member glyph whose resolved span holds the line.
-func coveredByTarget(plan *planparser.Plan, lang glyph.Language, subject coverageSubject, file string, line int, answers map[string]quarry.ResolveResult, partitioned map[string]bool) bool {
+func coveredByTarget(plan *planparser.Plan, subject coverageSubject, file string, line int, answers map[string]quarry.ResolveResult, partitioned map[string]bool) bool {
 	for _, c := range plan.Cards {
 		admissible := c.Number == subject.card.Number || (subject.deleted && c.Number < subject.card.Number)
 		if !admissible {
@@ -491,7 +490,7 @@ func coveredByTarget(plan *planparser.Plan, lang glyph.Language, subject coverag
 			if planparser.IsHandleRef(target) {
 				continue
 			}
-			g, err := glyph.Parse(lang, target)
+			g, err := planparser.ParseRef(plan, target)
 			if err != nil {
 				continue
 			}

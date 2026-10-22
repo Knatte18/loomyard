@@ -62,7 +62,8 @@ func sortedCards(cards []planparser.Card) []planparser.Card {
 // lets be declared in several places, not a defect; ambiguous is the blocking finding
 // glyph-ambiguous, listing every ResolveResult.Candidates entry by its ID, file and build
 // constraint, unless classifyAmbiguity reports the candidates partitioned by build constraints,
-// which pass like multipart; not_found is the
+// which pass like multipart; a self glyph two alphabets both match is ambiguous with no candidates,
+// and its detail is crossAlphabetDetail's instead of an empty list; not_found is the
 // blocking finding glyph-not-found, whose detail branches on ResolveResult.Unit — found means the
 // unit is there and only the member is missing (a misspelled member), not_found means the unit
 // itself is missing (a misspelled unit); and EVERY other answer is the blocking finding
@@ -89,11 +90,15 @@ func statusFindings(plan *planparser.Plan, worktreeRoot string, results []quarry
 				// One member declared once per mutually exclusive build-constraint set passes like multipart.
 				continue
 			}
+			detail := fmt.Sprintf("target %q is ambiguous among candidates: %s", r.Target, candidateList(classified.Candidates))
+			if crossDetail, crossAlphabet := crossAlphabetDetail(r); crossAlphabet {
+				detail = fmt.Sprintf("target %q is ambiguous: %s", r.Target, crossDetail)
+			}
 			for _, c := range cards {
 				findings = append(findings, Finding{
 					Check:    "glyph-ambiguous",
 					Card:     c.ID(),
-					Detail:   fmt.Sprintf("target %q is ambiguous among candidates: %s", r.Target, candidateList(classified.Candidates)),
+					Detail:   detail,
 					Severity: SeverityBlocking,
 					Ref:      r.Target,
 				})
@@ -154,6 +159,19 @@ func candidateList(candidates []constrainedCandidate) string {
 		parts = append(parts, cand.ID)
 	}
 	return strings.Join(parts, ", ")
+}
+
+// crossAlphabetDetail reports whether r is quarry's answer for a self glyph that two alphabets both match, and renders its detail.
+// Such an answer is ambiguous with no candidates and carries the matching languages, so it is told apart by those two facts and its status is never read.
+// The detail names the languages and the way forward, which constructs no path: name the file, a `.cs` file declaring the namespace or a file of the directory, as a slashed path self glyph, or a member, as `lyx quarry glyphs` lists them.
+func crossAlphabetDetail(r quarry.ResolveResult) (string, bool) {
+	if len(r.Candidates) != 0 || len(r.Languages) == 0 {
+		return "", false
+	}
+	return fmt.Sprintf(
+		"the self glyph matches in more than one alphabet (%s); name the file, a .cs file declaring the namespace or a file of the directory, as a slashed path self glyph, or a member, as `lyx quarry glyphs` lists them",
+		strings.Join(r.Languages, ", "),
+	), true
 }
 
 // unreadableStatusDetail renders the glyph-rejected detail for a result whose Status neither

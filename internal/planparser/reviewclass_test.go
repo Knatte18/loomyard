@@ -54,6 +54,12 @@ func TestReviewExempt(t *testing.T) {
 		{"prosa on unparseable ref", planparser.Plan{Language: "go", Cards: []planparser.Card{
 			reviewClassCard(reviewClassGroup(prosa, "not a glyph")),
 		}}, false},
+		{"csharp: prosa on cs file", planparser.Plan{Language: "csharp", Cards: []planparser.Card{
+			reviewClassCard(reviewClassGroup(prosa, "src/Foo.cs#")),
+		}}, false},
+		{"csharp: prosa on md file", planparser.Plan{Language: "csharp", Cards: []planparser.Card{
+			reviewClassCard(reviewClassGroup(prosa, "docs/a.md#")),
+		}}, true},
 		{"none: directory", planparser.Plan{Language: "none", Cards: []planparser.Card{
 			reviewClassCard(reviewClassGroup(prosa, "docs/sub")),
 		}}, false},

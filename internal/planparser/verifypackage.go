@@ -28,8 +28,12 @@ type missingPackageArg struct {
 // A card's Verify is skipped when that card or an earlier one holds a Move group, since a Move's destination lives in Intent prose.
 // The overview's `## verify:` section is not read, since no gate runs it.
 // It reads static spellings only: an argument behind a variable or inside `bash -c` passes.
+// It returns nothing unless the plan's language is go.
 func checkVerifyPackageMissing(plan *Plan, worktreeRoot string) []ValidationError {
 	var findings []ValidationError
+	if !plan.GoToolchain() {
+		return findings
+	}
 
 	moveSeen := false
 	for _, c := range plan.Cards {

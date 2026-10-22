@@ -1,9 +1,7 @@
-// chokepoint_enforcement_test.go pins planglyph's two batched-boundary chokepoints per the
-// overview's Decision: ast-enforcement-idiom: every (*quarry.Repo).Resolve call site must sit
-// inside resolveTargets (repo.go), which owns the ensureResolveCoverage length guard, and every
-// quarry.Name call site must sit inside CanonicalizeHandles (handle.go), which owns the
-// length-plus-echo guard. A second call site of either kind, anywhere else in this package, is
-// exactly the bypass these pins exist to catch — the guarded chokepoint would simply not run.
+// chokepoint_enforcement_test.go pins planglyph's two batched-boundary chokepoints per the overview's Decision: ast-enforcement-idiom:
+// every (*quarry.Repo).Resolve call site must sit inside resolveTargets (repo.go), which owns the ensureResolveCoverage length guard,
+// and every quarry.Name call site must sit inside nameDeclarations (handle.go), which owns the length guard.
+// A second call site of either kind, anywhere else in this package, is exactly the bypass these pins exist to catch — the guarded chokepoint would simply not run.
 
 package planglyph
 
@@ -24,7 +22,7 @@ const planglyphScanMinFiles = 5
 // chokepointGuardedFuncs names the one function each pinned selector must be called from.
 var chokepointGuardedFuncs = map[string]string{
 	"Resolve": "resolveTargets",
-	"Name":    "CanonicalizeHandles",
+	"Name":    "nameDeclarations",
 }
 
 // chokepointCallSitesIn returns every "<sel>: <enclosing func>" pair astFile's top-level function
@@ -70,9 +68,7 @@ func chokepointCallSitesIn(astFile *ast.File) []string {
 	return hits
 }
 
-// TestChokepointCallSites_PinnedToTheirGuardedFunctions verifies that every planglyph production
-// .go file's Resolve call sits inside resolveTargets and every quarry.Name call sits inside
-// CanonicalizeHandles.
+// TestChokepointCallSites_PinnedToTheirGuardedFunctions verifies that every planglyph production .go file's Resolve call sits inside resolveTargets and every quarry.Name call sits inside nameDeclarations.
 // It spawns no process, so it carries no build tag.
 // _test.go files are skipped: the invariant is about production wiring, not test helpers.
 func TestChokepointCallSites_PinnedToTheirGuardedFunctions(t *testing.T) {
@@ -91,7 +87,7 @@ func TestChokepointCallSites_PinnedToTheirGuardedFunctions(t *testing.T) {
 
 	if len(failures) > 0 {
 		t.Errorf("planglyph chokepoint invariant violated: %v -- route a new resolve call through "+
-			"resolveTargets and a new naming call through CanonicalizeHandles, or move the coverage "+
+			"resolveTargets and a new naming call through nameDeclarations, or move the coverage "+
 			"guard with the call -- never add an unguarded batched quarry boundary", failures)
 	}
 }
@@ -106,7 +102,7 @@ func notResolveTargets(x *fakeRepo) {
 	x.Resolve(nil)
 }
 
-func notCanonicalizeHandles() {
+func notNameDeclarations() {
 	quarry.Name(nil)
 }
 `
@@ -118,8 +114,8 @@ func notCanonicalizeHandles() {
 
 	got := chokepointCallSitesIn(astFile)
 	want := map[string]bool{
-		"Resolve: notResolveTargets":   true,
-		"Name: notCanonicalizeHandles": true,
+		"Resolve: notResolveTargets": true,
+		"Name: notNameDeclarations":  true,
 	}
 	if len(got) != len(want) {
 		t.Fatalf("chokepointCallSitesIn(seeded fixture) = %v; want %d hit(s) matching %v", got, len(want), want)

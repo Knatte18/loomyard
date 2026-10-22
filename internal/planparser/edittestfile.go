@@ -19,8 +19,7 @@ const editTestFileCheck = "edit-test-file"
 // It takes the done set where CheckCardFabricReference filters nothing, because a completed card's file has already landed and no writer can fix it.
 // It reads plan text only, so it fires whether or not the file exists, and only refuses.
 func CheckEditTestFile(plan *Plan, done []Card) []ValidationError {
-	lang, ok := planLanguage(plan)
-	if !ok {
+	if _, ok := planLanguage(plan); !ok {
 		return nil
 	}
 	finished := make(map[string]bool, len(done))
@@ -41,7 +40,7 @@ func CheckEditTestFile(plan *Plan, done []Card) []ValidationError {
 				if _, disp := lookup(gateEditTestFile, ref); disp != dispKeep {
 					continue
 				}
-				parsed, err := parseGlyph(lang, ref)
+				parsed, err := ParseRef(plan, ref)
 				if err != nil || !parsed.IsSelf() {
 					continue
 				}
