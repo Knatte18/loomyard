@@ -50,7 +50,7 @@ func TestRunLock(t *testing.T) {
 		{name: "upsert title", refused: true, act: upsertLocked(map[string]any{"title": "new"})},
 		{name: "upsert kind", refused: true, act: upsertLocked(map[string]any{"kind": "note"})},
 		{name: "upsert recipe", refused: true, act: upsertLocked(map[string]any{"recipe": "other-recipe"})},
-		{name: "upsert priority", refused: true, act: upsertLocked(map[string]any{"priority": "high"})},
+		{name: "upsert priority on a held note", refused: true, locked: map[string]any{"kind": "note"}, act: upsertLocked(map[string]any{"priority": "high"})},
 		{name: "upsert depends_on", refused: true, extra: []map[string]any{other}, act: upsertLocked(map[string]any{"depends_on": []string{"other"}})},
 		{name: "upsert status and body", refused: true, act: upsertLocked(map[string]any{"status": "done", "body": "new"})},
 		{name: "status blocked", refused: true, locked: map[string]any{"status": "blocked · X"}, act: upsertLocked(map[string]any{"body": "new"})},
@@ -192,6 +192,20 @@ func TestRunLock(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("status write on a run-held task stored with a priority", func(t *testing.T) {
+		t.Parallel()
+		boardPath := t.TempDir()
+		b := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+		if _, err := b.UpsertTask(lockedBase); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		addEntryKeys(t, boardPath, "locked", `"priority":"high"`)
+
+		if err := b.SetStatus("locked", strPtr("paused · X")); err != nil {
+			t.Fatalf("SetStatus on a held task stored with a priority: %v", err)
+		}
+	})
 
 	t.Run("run status form", func(t *testing.T) {
 		t.Parallel()

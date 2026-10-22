@@ -249,14 +249,14 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"soon","title":"Soon thing","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"soon","status":"active"}`)
 
-	wantList := "task  0m  0m  soon   Soon thing   bug                    [active]\n" +
-		"note  0m  0m  later  Later thing  enhancement,undecided\n"
+	wantList := "T1  task  0m  0m  soon   Soon thing   bug                    [active]\n" +
+		"E1  note  0m  0m  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout := runCLI(t, "list", "--text")
 	if exitCode != 0 || stdout != wantList {
 		t.Fatalf("list --text: exit %d, stdout %q, want %q", exitCode, stdout, wantList)
 	}
 
-	wantFind := "note  0m  0m  later  Later thing  enhancement,undecided\n"
+	wantFind := "E1  note  0m  0m  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout = runCLI(t, "find", "--text", "later")
 	if exitCode != 0 || stdout != wantFind {
 		t.Fatalf("find --text: exit %d, stdout %q, want %q", exitCode, stdout, wantFind)

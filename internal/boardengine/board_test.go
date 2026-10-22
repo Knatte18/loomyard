@@ -702,7 +702,8 @@ func TestSetRunStatus(t *testing.T) {
 	}
 }
 
-// TestPriorityRoundTrip pins that every Board write path keeps an entry's priority, and that board.json names it only on a high or low entry.
+// TestPriorityRoundTrip pins that every Board write path keeps a note's priority, and that board.json names it only on a high or low note.
+// It also pins that a write giving a task a priority is refused and that a promote clears the priority.
 //
 //testtiming:keep pins the priority field across every facade write path and its omitempty storage on disk, which no other test asserts
 func TestPriorityRoundTrip(t *testing.T) {
@@ -711,8 +712,9 @@ func TestPriorityRoundTrip(t *testing.T) {
 	b := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
 	for _, fields := range []map[string]any{
 		{"slug": "hi", "title": "Hi", "kind": "note", "labels": bugLabels, "priority": "high"},
-		{"slug": "lo", "title": "Lo", "kind": "task", "labels": bugLabels, "priority": "low"},
-		{"slug": "plain", "title": "Plain", "kind": "task", "labels": bugLabels, "priority": "normal"},
+		{"slug": "lo", "title": "Lo", "kind": "note", "labels": bugLabels, "priority": "low"},
+		{"slug": "plain", "title": "Plain", "kind": "note", "labels": bugLabels, "priority": "normal"},
+		{"slug": "work", "title": "Work", "kind": "task", "labels": bugLabels, "priority": "normal"},
 		{"slug": "gone", "title": "Gone", "kind": "task", "labels": bugLabels, "status": "done"},
 	} {
 		if _, err := b.UpsertTask(fields); err != nil {
@@ -725,10 +727,9 @@ func TestPriorityRoundTrip(t *testing.T) {
 		write func() error
 	}{
 		{"set-status", func() error { return b.SetStatus("lo", strPtr("active")) }},
-		{"run status", func() error { return b.SetRunStatus("lo", boardengine.RunStatus("running", "Webster")) }},
-		{"clear status", func() error { return b.SetStatus("lo", nil) }},
-		{"promote", func() error { _, err := b.Promote("hi"); return err }},
-		{"set-deps", func() error { _, err := b.SetDeps("lo", []string{"hi"}); return err }},
+		{"run status", func() error { return b.SetRunStatus("work", boardengine.RunStatus("running", "Webster")) }},
+		{"clear status", func() error { return b.SetStatus("work", nil) }},
+		{"set-deps", func() error { _, err := b.SetDeps("work", []string{}); return err }},
 		{"batch", func() error {
 			_, err := b.UpsertTasksBatch([]map[string]any{{"slug": "hi", "brief": "batched"}, {"slug": "lo", "brief": "batched"}})
 			return err
@@ -743,7 +744,7 @@ func TestPriorityRoundTrip(t *testing.T) {
 		if err := w.write(); err != nil {
 			t.Fatalf("%s: %v", w.name, err)
 		}
-		for slug, want := range map[string]string{"hi": "high", "lo": "low", "plain": ""} {
+		for slug, want := range map[string]string{"hi": "high", "lo": "low", "plain": "", "work": ""} {
 			got, found, err := b.GetTask(slug)
 			if err != nil || !found || got.Priority != want {
 				t.Errorf("after %s: GetTask(%s) priority = %q, found %v, err %v; want %q", w.name, slug, got.Priority, found, err, want)
@@ -751,8 +752,25 @@ func TestPriorityRoundTrip(t *testing.T) {
 		}
 	}
 
-	if _, _, err := b.MergeTasks(nil, map[string]any{"slug": "hi", "priority": "urgent"}, nil); err == nil || !strings.Contains(err.Error(), `"urgent"`) {
-		t.Errorf("MergeTasks(priority urgent) err = %v; want a refusal naming the value", err)
+	refusals := []struct {
+		name  string
+		write func() error
+		want  string
+	}{
+		{"unknown value", func() error {
+			_, _, err := b.MergeTasks(nil, map[string]any{"slug": "hi", "priority": "urgent"}, nil)
+			return err
+		}, `"urgent"`},
+		{"priority on a task", func() error { _, err := b.UpsertTask(map[string]any{"slug": "work", "priority": "high"}); return err }, "only a note carries a priority"},
+		{"a note with a priority made a task by upsert", func() error {
+			_, err := b.UpsertTask(map[string]any{"slug": "lo", "kind": "task"})
+			return err
+		}, "lyx board promote"},
+	}
+	for _, r := range refusals {
+		if err := r.write(); err == nil || !strings.Contains(err.Error(), r.want) {
+			t.Errorf("%s: err = %v; want a refusal naming %s", r.name, err, r.want)
+		}
 	}
 
 	raw, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
@@ -761,6 +779,11 @@ func TestPriorityRoundTrip(t *testing.T) {
 	}
 	if got := strings.Count(string(raw), `"priority"`); got != 2 {
 		t.Errorf("board.json names priority %d times; want 2, on hi and lo only:\n%s", got, raw)
+	}
+
+	promoted, err := b.Promote("hi")
+	if err != nil || promoted.Priority != "" {
+		t.Errorf("Promote(hi) priority = %q, err %v; want the priority cleared", promoted.Priority, err)
 	}
 }
 
