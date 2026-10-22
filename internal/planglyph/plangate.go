@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -26,8 +25,7 @@ import (
 // An infrastructure error is wrapped in ErrQuarryUnavailable; a failed type load is not one, since caller-uncovered then answers from its scan.
 // loader supplies the type information caller-uncovered resolves references with.
 func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader) ([]Finding, error) {
-	lang, ok := plan.GlyphLanguage()
-	if !ok {
+	if !plan.GlyphLanguage() {
 		return nil, nil
 	}
 
@@ -36,7 +34,7 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 		return nil, err
 	}
 
-	results, err := resolveTargets(repo, collectMemberTargets(plan, lang))
+	results, err := resolveTargets(repo, collectMemberTargets(plan))
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +50,7 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 				continue
 			}
 			seen[t] = true
-			g, err := glyph.Parse(lang, t)
+			g, err := planparser.ParseRef(plan, t)
 			if err != nil {
 				continue
 			}
@@ -106,13 +104,13 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 		}
 	}
 
-	coverage, err := callerCoverageFindings(plan, lang, worktreeRoot, answers, partitioned, loader)
+	coverage, err := callerCoverageFindings(plan, worktreeRoot, answers, partitioned, loader)
 	findings = append(findings, coverage...)
 	if err != nil {
 		return findings, err
 	}
-	regions, _ := buildEditRegions(collectEditTargets(lang, plan.Cards), answers, partitioned)
-	imports, err := laterImportFindings(lang, plan.Cards, regions, worktreeRoot)
+	regions, _ := buildEditRegions(collectEditTargets(plan, plan.Cards), answers, partitioned)
+	imports, err := laterImportFindings(plan, plan.Cards, regions, worktreeRoot)
 	return append(findings, imports...), err
 }
 
@@ -124,14 +122,14 @@ func isInterfaceMethod(s quarry.Symbol) bool {
 
 // collectMemberTargets returns every distinct member glyph plan's cards list among their own Targets, sorted for determinism.
 // A handle and a self glyph are excluded.
-func collectMemberTargets(plan *planparser.Plan, lang glyph.Language) []string {
+func collectMemberTargets(plan *planparser.Plan) []string {
 	seen := make(map[string]bool)
 	for _, c := range plan.Cards {
 		for _, t := range c.Targets {
 			if planparser.IsHandleRef(t) {
 				continue
 			}
-			if g, err := glyph.Parse(lang, t); err == nil && !g.IsSelf() {
+			if g, err := planparser.ParseRef(plan, t); err == nil && !g.IsSelf() {
 				seen[t] = true
 			}
 		}

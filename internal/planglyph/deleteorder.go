@@ -36,11 +36,11 @@ const (
 )
 
 // classifyDeleteOrderRef classifies ref and returns its parsed glyph for the member and package shapes, and its repository-relative path for the file and package shapes.
-func classifyDeleteOrderRef(lang glyph.Language, ref string) (refShape, glyph.Glyph, string) {
+func classifyDeleteOrderRef(plan *planparser.Plan, ref string) (refShape, glyph.Glyph, string) {
 	if planparser.IsHandleRef(ref) {
 		return shapeOther, glyph.Glyph{}, ""
 	}
-	g, err := glyph.Parse(lang, ref)
+	g, err := planparser.ParseRef(plan, ref)
 	if err != nil {
 		if !strings.Contains(ref, "#") && path.Ext(ref) == ".go" {
 			return shapeFile, glyph.Glyph{}, ref
@@ -82,7 +82,7 @@ type editTarget struct {
 }
 
 // collectEditTargets returns, in card and body order, every Edit-group target of cards, limited to member glyphs and files.
-func collectEditTargets(lang glyph.Language, cards []planparser.Card) []editTarget {
+func collectEditTargets(plan *planparser.Plan, cards []planparser.Card) []editTarget {
 	var edits []editTarget
 	for _, c := range cards {
 		for _, group := range c.TargetGroups {
@@ -90,7 +90,7 @@ func collectEditTargets(lang glyph.Language, cards []planparser.Card) []editTarg
 				continue
 			}
 			for _, ref := range group.Refs {
-				shape, _, refPath := classifyDeleteOrderRef(lang, ref)
+				shape, _, refPath := classifyDeleteOrderRef(plan, ref)
 				if shape == shapeMember || shape == shapeFile {
 					edits = append(edits, editTarget{card: c, ref: ref, shape: shape, path: refPath})
 				}
@@ -134,8 +134,7 @@ func buildEditRegions(edits []editTarget, index map[string]quarry.ResolveResult,
 // Under a non-glyph language it returns no findings and opens no repository.
 // An infrastructure error is wrapped in ErrQuarryUnavailable.
 func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.Card, worktreeRoot string) ([]Finding, error) {
-	lang, ok := plan.GlyphLanguage()
-	if !ok {
+	if !plan.GlyphLanguage() {
 		return nil, nil
 	}
 
@@ -151,14 +150,14 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 				continue
 			}
 			for _, ref := range group.Refs {
-				shape, _, _ := classifyDeleteOrderRef(lang, ref)
+				shape, _, _ := classifyDeleteOrderRef(plan, ref)
 				if shape == shapeMember || shape == shapePackage {
 					deletes = append(deletes, pendingDelete{card: c, ref: ref, shape: shape})
 				}
 			}
 		}
 	}
-	if len(deletes) == 0 || len(collectEditTargets(lang, later)) == 0 {
+	if len(deletes) == 0 || len(collectEditTargets(plan, later)) == 0 {
 		return nil, nil
 	}
 	editing := slices.Clone(later)
@@ -167,7 +166,7 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 			editing = append(editing, c)
 		}
 	}
-	edits := collectEditTargets(lang, sortedCards(editing))
+	edits := collectEditTargets(plan, sortedCards(editing))
 
 	seenTarget := make(map[string]bool)
 	var targets []string
@@ -221,7 +220,7 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 
 	deletingView := *plan
 	deletingView.Cards = deleting
-	allSubjects, err := coverageSubjects(&deletingView, lang, worktreeRoot, index, partitioned)
+	allSubjects, err := coverageSubjects(&deletingView, worktreeRoot, index, partitioned)
 	if err != nil {
 		return findings, err
 	}
@@ -234,7 +233,7 @@ func LaterDeleteReferences(plan *planparser.Plan, deleting, later []planparser.C
 		findings = append(findings, deleteOrderFindings(subjects, resolved, nameOnly, regions, allRegions)...)
 	}
 
-	importFindings, err := laterImportFindings(lang, deleting, regions, worktreeRoot)
+	importFindings, err := laterImportFindings(plan, deleting, regions, worktreeRoot)
 	return append(findings, importFindings...), err
 }
 
@@ -318,7 +317,7 @@ func unrewrittenLaterEditRegions(regions, allRegions []editRegion, cardNumber in
 // laterImportFindings returns a blocking delete-before-reference finding for each quoted import of a package that a card in deleting deletes, found in the code of a later card's region.
 // A package is deleted by a package self glyph in a Delete group.
 // Only regions in Go files outside the directories the go tool ignores are searched, and a region file absent from disk is skipped.
-func laterImportFindings(lang glyph.Language, deleting []planparser.Card, regions []editRegion, worktreeRoot string) ([]Finding, error) {
+func laterImportFindings(plan *planparser.Plan, deleting []planparser.Card, regions []editRegion, worktreeRoot string) ([]Finding, error) {
 	linesOf := make(map[string][]string)
 	readLines := func(file string) ([]string, error) {
 		if lines, ok := linesOf[file]; ok {
@@ -345,7 +344,7 @@ func laterImportFindings(lang glyph.Language, deleting []planparser.Card, region
 				continue
 			}
 			for _, ref := range group.Refs {
-				shape, _, unitPath := classifyDeleteOrderRef(lang, ref)
+				shape, _, unitPath := classifyDeleteOrderRef(plan, ref)
 				if shape != shapePackage {
 					continue
 				}

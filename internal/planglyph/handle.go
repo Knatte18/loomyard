@@ -8,6 +8,7 @@
 package planglyph
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -194,8 +195,7 @@ func partitionedRenameOldDetail(oldRef string, candidates []constrainedCandidate
 // resolvePass uses it to know whether re-reading the plan from that source can tell it anything new.
 // When it is true, a failure to re-read the plan is a real infrastructure failure, never merely an in-memory plan that was never on disk to begin with.
 func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []quarry.ResolveResult) ([]Finding, bool, error) {
-	lang, ok := plan.GlyphLanguage()
-	if !ok {
+	if !plan.GlyphLanguage() {
 		return nil, false, nil
 	}
 
@@ -210,6 +210,11 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 			unit, ok := planparser.HandleUnit(d.Handle)
 			if !ok {
 				continue // handle-malformed already reports this; nothing to derive.
+			}
+			lang, finding, ok := createDeclarationLanguage(plan, card, d.Handle)
+			if !ok {
+				findings = append(findings, finding)
+				continue
 			}
 			sources = append(sources, declSource{handle: d.Handle, card: card, decl: quarry.Declaration{Lang: lang, Unit: unit, Decl: d.Decl}})
 		}
@@ -229,14 +234,14 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 			if planparser.IsHandleRef(r.Target) {
 				continue
 			}
-			g, err := glyph.Parse(lang, r.Target)
+			g, err := planparser.ParseRef(plan, r.Target)
 			if err != nil || g.IsSelf() {
 				continue // resign-not-member and glyph-malformed already report these.
 			}
 			sources = append(sources, declSource{
 				handle: g.String(),
 				card:   card,
-				decl:   quarry.Declaration{Lang: lang, Unit: g.Unit, Decl: r.Decl},
+				decl:   quarry.Declaration{Lang: g.Lang, Unit: g.Unit, Decl: r.Decl},
 				resign: true,
 			})
 		}
@@ -350,6 +355,27 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 	return findings, true, nil
 }
 
+// createDeclarationLanguage returns the language a Create declaration's handle is named in: the Lang of ParseRef over the handle's body.
+// A body ParseRef rejects keeps the language of its parse error, so a Go draft still reaches quarry.Name and is answered there.
+// A body rejected as C# comes back as the blocking handle-name-failed finding with ok false, since it names no declaration quarry could be asked about.
+func createDeclarationLanguage(plan *planparser.Plan, card, handle string) (glyph.Language, Finding, bool) {
+	body, _ := planparser.HandleBody(handle)
+	g, err := planparser.ParseRef(plan, body)
+	if err == nil {
+		return g.Lang, Finding{}, true
+	}
+	var parseErr *glyph.ParseError
+	if !errors.As(err, &parseErr) || parseErr.Lang != glyph.CSharp {
+		return glyph.Go, Finding{}, true
+	}
+	return "", Finding{
+		Check:    "handle-name-failed",
+		Card:     card,
+		Detail:   fmt.Sprintf("handle %q is not a C# glyph: %s; spell the handle plan:<namespace>#<owner.member> in the C# alphabet with canonical parameter types", handle, err),
+		Severity: SeverityBlocking,
+	}, false
+}
+
 // resignHeadMismatch is the blocking resign-head-mismatch finding for a re-sign arrow whose head quarry.Name could not name, or named as a member other than the arrow's own glyph.
 func resignHeadMismatch(src declSource, res quarry.NameResult) Finding {
 	answer := fmt.Sprintf("answered %q", res.ID)
@@ -397,7 +423,7 @@ func resignHeadMismatch(src declSource, res quarry.NameResult) Finding {
 // Under plan.Language "none" this function returns nil findings and outcomes and performs no call and no
 // rewrite, mirroring CanonicalizeHandles.
 func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAnswer, cards []planparser.Card) ([]Finding, []planindex.BindOutcome, error) {
-	if _, ok := plan.GlyphLanguage(); !ok {
+	if !plan.GlyphLanguage() {
 		return nil, nil, nil
 	}
 

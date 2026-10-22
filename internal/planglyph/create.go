@@ -73,6 +73,10 @@ func createHandleResults(repo *quarry.Repo, plan *planparser.Plan) (map[string]q
 				if _, seen := expected[ref]; seen {
 					continue
 				}
+				// CanonicalizeHandles already reported a body the C# alphabet rejects as handle-name-failed; quarry is not asked about it.
+				if _, _, named := createDeclarationLanguage(plan, c.ID(), ref); !named {
+					continue
+				}
 				key := resolveKeyFor(ref)
 				expected[ref] = key
 				targets = append(targets, key)

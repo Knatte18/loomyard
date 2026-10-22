@@ -289,12 +289,12 @@ func copyGlyphChainFixture(t *testing.T) string {
 	return dst
 }
 
-// writeGlyphPlan writes a valid on-disk plan directory whose card N carries cards[N-1] as its body, with sections written after the overview's Card Index, and returns the directory with the parsed plan.
-func writeGlyphPlan(t *testing.T, cards []string, sections ...plankit.Section) (string, *planparser.Plan) {
+// writeLanguagePlan writes a valid on-disk plan directory declaring language, whose card N carries cards[N-1] as its body, with sections written after the overview's Card Index, and returns the directory with the parsed plan.
+func writeLanguagePlan(t *testing.T, language string, cards []string, sections ...plankit.Section) (string, *planparser.Plan) {
 	t.Helper()
 	dir := t.TempDir()
 
-	spec := plankit.Plan{Approved: true, Language: "go", Framing: "framing", Sections: sections}
+	spec := plankit.Plan{Approved: true, Language: language, Framing: "framing", Sections: sections}
 	for i := range cards {
 		spec.Cards = append(spec.Cards, plankit.Card{Number: i + 1, Slug: fmt.Sprintf("card%d", i+1), Summary: "summary"})
 	}
@@ -415,7 +415,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 
 			t.Run("edit", func(t *testing.T) {
 				t.Parallel()
-				_, plan := writeGlyphPlan(t, []string{editCard(row.glyph)})
+				_, plan := writeLanguagePlan(t, "go", []string{editCard(row.glyph)})
 				assertPlanGate(t, plan, copyGlyphChainFixture(t), row.editFindings)
 			})
 
@@ -423,7 +423,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 				t.Run("create", func(t *testing.T) {
 					t.Parallel()
 					root := copyGlyphChainFixture(t)
-					dir, plan := writeGlyphPlan(t, []string{createCard(row.create), editCard(row.create.draft)})
+					dir, plan := writeLanguagePlan(t, "go", []string{createCard(row.create), editCard(row.create.draft)})
 					assertPlanGate(t, plan, root, nil)
 
 					for n := 1; n <= 2; n++ {
@@ -450,7 +450,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 			if row.rename != nil {
 				t.Run("rename", func(t *testing.T) {
 					t.Parallel()
-					dir, plan := writeGlyphPlan(t, []string{renameCard(row.glyph, row.rename.draft)}, renameMechanic)
+					dir, plan := writeLanguagePlan(t, "go", []string{renameCard(row.glyph, row.rename.draft)}, renameMechanic)
 					assertPlanGate(t, plan, copyGlyphChainFixture(t), nil)
 					if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, row.rename.canonical) {
 						t.Errorf("card 1 lacks the canonical handle %q: %s", row.rename.canonical, got)
@@ -461,7 +461,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 			if row.deleteGlyphs != nil {
 				t.Run("delete", func(t *testing.T) {
 					t.Parallel()
-					_, plan := writeGlyphPlan(t, []string{deleteCard(row.deleteGlyphs...)})
+					_, plan := writeLanguagePlan(t, "go", []string{deleteCard(row.deleteGlyphs...)})
 					assertPlanGate(t, plan, copyGlyphChainFixture(t), nil)
 				})
 			}
@@ -470,7 +470,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 				t.Run("resign", func(t *testing.T) {
 					t.Parallel()
 					root := copyGlyphChainFixture(t)
-					_, plan := writeGlyphPlan(t, []string{resignCard(row.resigns...)})
+					_, plan := writeLanguagePlan(t, "go", []string{resignCard(row.resigns...)})
 					assertPlanGate(t, plan, root, row.resignFindings)
 
 					// Only the interface-method check reads the tree, so only it stays out of dispatch.
@@ -519,8 +519,67 @@ func TestGlyphChain_CrossCard(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, plan := writeGlyphPlan(t, tc.cards)
+			_, plan := writeLanguagePlan(t, "go", tc.cards)
 			assertPlanGate(t, plan, copyGlyphChainFixture(t), nil)
+		})
+	}
+}
+
+// TestGlyphChain_CSharp runs csharp plans over a fixture copy through both gates and asserts the exact finding set of each, so a C# glyph parses, resolves and names a handle through its own alphabet.
+// The Go rows of the other chain tests keep their findings with csharp/Renderer.cs in the fixture, since no Go unit of it spells the namespace Glyphchain.Sharp.
+func TestGlyphChain_CSharp(t *testing.T) {
+	t.Parallel()
+
+	const namespace = "Glyphchain.Sharp"
+	tests := []struct {
+		name  string
+		cards []string
+		// files are written into the fixture copy before the plan is checked.
+		files        map[string]string
+		planFindings []findingKey
+		dispatch     []findingKey
+		// detail is a substring the single plan-gate finding's detail must hold, when set.
+		detail string
+	}{
+		{
+			name:  "a member and the namespace self glyph parse as C# and resolve found",
+			cards: []string{editCard(namespace+"#Renderer.Draw(int)", namespace+"#")},
+		},
+		{
+			name:  "a C# file path resolves found as a path self glyph",
+			cards: []string{editCard("csharp/Renderer.cs")},
+		},
+		{
+			name:  "a non-source file canonicalizes to its path self glyph and resolves found",
+			cards: []string{editCard("README.md")},
+			files: map[string]string{"README.md": "# fixture\n"},
+		},
+		{
+			name:         "a Create handle body the C# alphabet rejects names the C# handle spelling and asks quarry nothing",
+			cards:        []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.Bad(Int32)", head: "public void Bad(int count)"})},
+			planFindings: []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}},
+			detail:       "plan:<namespace>#<owner.member>",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := copyGlyphChainFixture(t)
+			writeFixtureFiles(t, root, tt.files)
+			_, plan := writeLanguagePlan(t, "csharp", tt.cards)
+			assertPlanGate(t, plan, root, tt.planFindings)
+			assertDispatch(t, plan, root, tt.dispatch)
+			if tt.detail == "" {
+				return
+			}
+			findings, err := ValidateFormat(plan, root)
+			if err != nil {
+				t.Fatalf("ValidateFormat(...) returned error: %v", err)
+			}
+			if len(findings) != 1 || !strings.Contains(findings[0].Detail, tt.detail) {
+				t.Errorf("ValidateFormat findings = %+v; want one whose detail contains %q", findings, tt.detail)
+			}
 		})
 	}
 }
@@ -575,7 +634,7 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
 			writeFixtureFiles(t, root, tc.files)
-			_, plan := writeGlyphPlan(t, []string{editCard(tc.targets...)})
+			_, plan := writeLanguagePlan(t, "go", []string{editCard(tc.targets...)})
 			assertPlanGate(t, plan, root, tc.want)
 
 			formatFindings, err := ValidateFormat(plan, root)
@@ -635,7 +694,7 @@ func TestGlyphChain_ResignScenarios(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
 			writeFixtureFiles(t, root, tc.files)
-			_, plan := writeGlyphPlan(t, []string{resignCard(tc.leg)})
+			_, plan := writeLanguagePlan(t, "go", []string{resignCard(tc.leg)})
 			assertPlanGate(t, plan, root, tc.planGate)
 			assertDispatch(t, plan, root, tc.dispatch)
 		})
@@ -645,7 +704,7 @@ func TestGlyphChain_ResignScenarios(t *testing.T) {
 		t.Parallel()
 		root := copyGlyphChainFixture(t)
 		leg := resignLeg{"shapes#Func", "func Func(count int) int"}
-		dir, plan := writeGlyphPlan(t, []string{resignCard(leg), resignCard(leg)})
+		dir, plan := writeLanguagePlan(t, "go", []string{resignCard(leg), resignCard(leg)})
 		before := []string{readCardFile(t, dir, 1, "card1"), readCardFile(t, dir, 2, "card2")}
 
 		assertPlanGate(t, plan, root, nil)
@@ -675,13 +734,13 @@ func TestGlyphChain_FuncNamedInterfaceMethod(t *testing.T) {
 
 	t.Run("arrow", func(t *testing.T) {
 		t.Parallel()
-		_, plan := writeGlyphPlan(t, []string{resignCard(resignLeg{member, "func (FuncNamed) funcLike(count int) int"})})
+		_, plan := writeLanguagePlan(t, "go", []string{resignCard(resignLeg{member, "func (FuncNamed) funcLike(count int) int"})})
 		assertPlanGate(t, plan, withFuncNamed(t), []findingKey{{"resign-interface-method", "1-card1", SeverityBlocking}})
 	})
 
 	t.Run("rename", func(t *testing.T) {
 		t.Parallel()
-		dir, plan := writeGlyphPlan(t, []string{renameCard(member, "plan:shapes#FuncNamed.funcRenamed")}, renameMechanic)
+		dir, plan := writeLanguagePlan(t, "go", []string{renameCard(member, "plan:shapes#FuncNamed.funcRenamed")}, renameMechanic)
 		assertPlanGate(t, plan, withFuncNamed(t), nil)
 		if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, "plan:shapes#FuncNamed.funcRenamed") {
 			t.Errorf("card 1 lacks the canonical handle: %s", got)
@@ -991,7 +1050,7 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			t.Parallel()
 			root := copyGlyphChainFixture(t)
 			writeFixtureFiles(t, root, tc.files)
-			_, plan := writeGlyphPlan(t, tc.cards, tc.sections...)
+			_, plan := writeLanguagePlan(t, "go", tc.cards, tc.sections...)
 
 			findings, err := ValidateFormat(plan, root)
 			if tc.unusableGate {

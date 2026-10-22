@@ -67,7 +67,7 @@ func resolveKeyFor(ref string) string {
 // never asked about — and it too returns a wrapped ErrQuarryUnavailable rather than skipping the
 // entry, which would silently pass whichever blocking check that target carried.
 func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string) ([]Finding, error) {
-	if _, ok := plan.GlyphLanguage(); !ok {
+	if !plan.GlyphLanguage() {
 		return nil, nil
 	}
 

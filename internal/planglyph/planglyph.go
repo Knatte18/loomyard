@@ -9,7 +9,6 @@ import (
 	"sort"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -309,8 +308,7 @@ func convertAll(errs []planparser.ValidationError) []Finding {
 // Their Create targets and Rename New sides join the exclusion sets below, so a pending ref to something a forthcoming card will create is not reported as missing.
 // They are never selected from current, which holds pending cards only.
 func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming map[string]bool) ([]Finding, error) {
-	lang, ok := plan.GlyphLanguage()
-	if !ok {
+	if !plan.GlyphLanguage() {
 		return nil, nil
 	}
 
@@ -322,7 +320,7 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 		return nil, err
 	}
 
-	targets := collectGlyphTargets(pending, lang)
+	targets := collectGlyphTargets(pending)
 	results, err := resolveTargets(repo, targets)
 	if err != nil {
 		return nil, err
@@ -422,20 +420,18 @@ func renameNewTargetSet(plan *planparser.Plan) map[string]bool {
 	return set
 }
 
-// collectGlyphTargets returns every distinct glyph-shaped ref plan's cards reference across their
-// Targets, Uses, and both Pairs endpoints, sorted for determinism. A plan: handle is excluded by
-// its own literal prefix — planparser.HandlePrefix, loomyard's own grammar, never glyph grammar —
-// checked first because a handle's own unit half can otherwise still parse as a (wrong) glyph
-// unit. Everything else is glyph-shaped when glyph.Parse(lang, ref) succeeds — the sole grammar
-// call, never a local "#"-detecting regex — so a bare path and a bare symbol are excluded by
-// construction, with no shape classifier of planglyph's own.
-func collectGlyphTargets(plan *planparser.Plan, lang glyph.Language) []string {
+// collectGlyphTargets returns every distinct glyph-shaped ref plan's cards reference across their Targets, Uses, and both Pairs endpoints, sorted for determinism.
+// A plan: handle is excluded by its own literal prefix, planparser.HandlePrefix, which is loomyard's own grammar and never glyph grammar.
+// The handle check comes first because a handle's own unit half can otherwise still parse as a (wrong) glyph unit.
+// Everything else is glyph-shaped when planparser.ParseRef(plan, ref) succeeds, the sole alphabet choice and never a local "#"-detecting regex.
+// A bare path and a bare symbol are therefore excluded by construction, with no shape classifier of planglyph's own.
+func collectGlyphTargets(plan *planparser.Plan) []string {
 	seen := make(map[string]bool)
 	add := func(raw string) {
 		if planparser.IsHandleRef(raw) {
 			return
 		}
-		if _, err := glyph.Parse(lang, raw); err != nil {
+		if _, err := planparser.ParseRef(plan, raw); err != nil {
 			return
 		}
 		seen[raw] = true

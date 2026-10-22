@@ -869,7 +869,7 @@ func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err err
 	// The trace is logged before the restamp below, so a restamp failure still reports the bind that landed;
 	// it names the reason the pass decided over the outcomes BindHandles computed, which a missing glyph language or delta makes meaningless.
 	if bindErr == nil {
-		if _, languageSet := in.Plan.GlyphLanguage(); !languageSet {
+		if !in.Plan.GlyphLanguage() {
 			bindOutcomes = failedBindOutcomes(in.Cards, func(planparser.Card) planindex.BindReason { return bindLanguageNone })
 		} else if deltaErr != nil {
 			bindOutcomes = failedBindOutcomes(in.Cards, func(planparser.Card) planindex.BindReason { return bindDeltaUnavailable })

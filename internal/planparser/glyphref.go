@@ -77,8 +77,10 @@ func isUntypedFileRenamePair(p MovePair) bool {
 	return disp == dispKeep
 }
 
-// GlyphLanguage is planLanguage's exported form, so internal/planglyph can delete its verbatim
-// resolveLanguage duplicate (internal/planglyph/planglyph.go).
-func (p *Plan) GlyphLanguage() (glyph.Language, bool) {
-	return planLanguage(p)
+// GlyphLanguage reports whether the plan's language selects a glyph alphabet, so glyph-side checks run.
+// It is false under none and under an unrecognized language.
+// The alphabet itself is never returned: a caller parses a ref through ParseRef.
+func (p *Plan) GlyphLanguage() bool {
+	_, ok := planLanguage(p)
+	return ok
 }
