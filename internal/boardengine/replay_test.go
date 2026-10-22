@@ -61,8 +61,18 @@ func asIsolated(task *Task) { task.Isolated = true }
 
 func asNote(task *Task) { task.Kind = KindNote }
 
+func withOwner(owner string) func(*Task) {
+	return func(task *Task) { task.OwnerMachine = owner }
+}
+
 // boardJSON encodes tasks as a board.json, numbering the entries by position.
 func boardJSON(t *testing.T, tasks []Task) []byte {
+	t.Helper()
+	return boardJSONWithPrime(t, tasks, "")
+}
+
+// boardJSONWithPrime encodes tasks as a board.json that records prime as the hub's prime owner, none when empty.
+func boardJSONWithPrime(t *testing.T, tasks []Task, prime string) []byte {
 	t.Helper()
 	numbered := make([]Task, len(tasks))
 	for i, task := range tasks {
@@ -70,9 +80,10 @@ func boardJSON(t *testing.T, tasks []Task) []byte {
 		numbered[i] = task
 	}
 	data, err := json.Marshal(struct {
-		Version int    `json:"version"`
-		Entries []Task `json:"entries"`
-	}{1, numbered})
+		Version    int    `json:"version"`
+		Entries    []Task `json:"entries"`
+		PrimeOwner string `json:"prime_owner,omitempty"`
+	}{1, numbered, prime})
 	if err != nil {
 		t.Fatalf("marshal board.json: %v", err)
 	}
@@ -103,8 +114,10 @@ type replayRow struct {
 	commit      []Task
 	originFiles map[string]string
 	designs     []fabricengine.BoardDesignFile
-	wantEmpty   bool
-	wantLost    []fabricengine.BoardReplayFinding
+	// originPrime, basePrime, parentPrime and commitPrime are the prime_owner each side records, and wantPrime the one the board holds afterwards.
+	originPrime, basePrime, parentPrime, commitPrime, wantPrime string
+	wantEmpty                                                   bool
+	wantLost                                                    []fabricengine.BoardReplayFinding
 	// wantRefused maps an entry to a substring of its refusal reason.
 	wantRefused map[string]string
 	// wantEntries maps a slug to the title the board holds afterwards, "" meaning the entry is absent.
@@ -287,6 +300,62 @@ func TestFabricReplay(t *testing.T) {
 			wantEntries: map[string]string{"a": "a", "b": "origin"},
 		},
 		{
+			name:        "OwnerChangedOnBothSidesKeepsOriginsAndReportsTheLocalOneLost",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a", withOwner("box"))},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a", withOwner("neve"))},
+			wantEmpty:   true,
+			wantLost:    []fabricengine.BoardReplayFinding{{Entry: "a", Field: "owner_machine", Reason: "origin changed the field too", Local: `"neve"`}},
+			wantEntries: map[string]string{"a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				if got["a"].OwnerMachine != "box" {
+					t.Errorf("owner_machine = %q; want origin's box", got["a"].OwnerMachine)
+				}
+			},
+		},
+		{
+			name:        "OwnerOnlyTheCommitChangedLandsOnARunHeldEntry",
+			base:        []Task{replayEntry("a", withStatus(runLocked))},
+			origin:      []Task{replayEntry("a", withStatus(runLocked))},
+			parent:      []Task{replayEntry("a", withStatus(runLocked))},
+			commit:      []Task{replayEntry("a", withStatus(runLocked), withOwner("neve"))},
+			wantEntries: map[string]string{"a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				if got["a"].OwnerMachine != "neve" {
+					t.Errorf("owner_machine = %q; want the commit's neve", got["a"].OwnerMachine)
+				}
+			},
+		},
+		{
+			name:        "PrimeOwnerChangedOnBothSidesKeepsOriginsAndReportsItLost",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a")},
+			basePrime:   "base",
+			originPrime: "box",
+			parentPrime: "base",
+			commitPrime: "neve",
+			wantPrime:   "box",
+			wantEmpty:   true,
+			wantLost:    []fabricengine.BoardReplayFinding{{Entry: "prime", Field: "prime_owner", Reason: "origin changed the field too", Local: `"neve"`}},
+			wantEntries: map[string]string{"a": "a"},
+		},
+		{
+			name:        "PrimeOwnerOnlyTheCommitChangedLands",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a")},
+			basePrime:   "base",
+			originPrime: "base",
+			parentPrime: "base",
+			commitPrime: "neve",
+			wantPrime:   "neve",
+			wantEntries: map[string]string{"a": "a"},
+		},
+		{
 			name:        "DesignFileChangedOnBothSidesKeepsOriginsFile",
 			base:        []Task{replayEntry("a")},
 			origin:      []Task{replayEntry("a")},
@@ -334,7 +403,7 @@ func TestFabricReplay(t *testing.T) {
 					t.Fatalf("WriteFile(%q) = %v; want nil", configFile, err)
 				}
 			}
-			if err := os.WriteFile(filepath.Join(dir, "board.json"), boardJSON(t, tt.origin), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "board.json"), boardJSONWithPrime(t, tt.origin, tt.originPrime), 0o644); err != nil {
 				t.Fatalf("WriteFile(board.json) = %v; want nil", err)
 			}
 			for name, content := range tt.originFiles {
@@ -345,9 +414,9 @@ func TestFabricReplay(t *testing.T) {
 
 			result, err := FabricReplay{}.Apply(fabricengine.BoardReplayRequest{
 				BoardDir:        dir,
-				BaseBoardJSON:   boardJSON(t, tt.base),
-				ParentBoardJSON: boardJSON(t, tt.parent),
-				CommitBoardJSON: boardJSON(t, tt.commit),
+				BaseBoardJSON:   boardJSONWithPrime(t, tt.base, tt.basePrime),
+				ParentBoardJSON: boardJSONWithPrime(t, tt.parent, tt.parentPrime),
+				CommitBoardJSON: boardJSONWithPrime(t, tt.commit, tt.commitPrime),
 				DesignFiles:     tt.designs,
 			})
 			if err != nil {
@@ -393,6 +462,13 @@ func TestFabricReplay(t *testing.T) {
 				if !held || task.Title != wantTitle {
 					t.Errorf("board entry %q = %+v (held %v); want title %q", slug, task, held, wantTitle)
 				}
+			}
+			stored := NewStore(dir)
+			if err := stored.Load(); err != nil {
+				t.Fatalf("Load() error = %v; want nil", err)
+			}
+			if stored.primeOwner != tt.wantPrime {
+				t.Errorf("prime_owner = %q; want %q", stored.primeOwner, tt.wantPrime)
 			}
 			if tt.check != nil {
 				tt.check(t, dir, got)

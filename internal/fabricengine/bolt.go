@@ -104,6 +104,12 @@ func (b *Bolt) HasUpstream() (bool, error) {
 	return err == nil, err
 }
 
+// HasUnpushed reports whether the Bolt's current branch is ahead of its upstream as last fetched, read from local state without contacting the remote.
+// A branch with no upstream counts as ahead.
+func (b *Bolt) HasUnpushed() (bool, error) {
+	return gitrepo.New(b.path).HasUnpushed()
+}
+
 // BoltSkip names why a pull-first write did not run: Bolt could not be brought up to date.
 // The empty value means Bolt is up to date and the writes ran.
 type BoltSkip string

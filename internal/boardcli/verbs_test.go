@@ -342,6 +342,29 @@ func stepGetAndRemoveByID(t *testing.T, f *cliFixture) {
 	}
 }
 
+// stepOwners seeds a board.json that records a prime owner and one task's owner, straight into the file since the owner setter is not the subject, and reads the owners back through get and list.
+// An unowned task reads as the prime's owner, an owned task as its own, and a note carries none.
+func stepOwners(t *testing.T, f *cliFixture) {
+	seedBoardFile(t, f.cwd, `{"version":1,"prime_owner":"neve","entries":[`+
+		`{"id":0,"slug":"plain","title":"P","kind":"task","labels":["bug"]},`+
+		`{"id":1,"slug":"owned","title":"O","kind":"task","labels":["bug"],"owner_machine":"box"},`+
+		`{"id":2,"slug":"idea","title":"I","kind":"note","labels":["bug"]}]}`)
+	want := map[string]any{"plain": "neve", "owned": "box", "idea": nil}
+
+	for slug, owner := range want {
+		task := runJSON(t, 0, "get", `{"slug":"`+slug+`"}`)["task"].(map[string]any)
+		if task["owner_machine"] != owner {
+			t.Errorf("get %s: owner_machine = %v, want %v", slug, task["owner_machine"], owner)
+		}
+	}
+	for _, entry := range runJSON(t, 0, "list")["tasks"].([]any) {
+		task := entry.(map[string]any)
+		if got, slug := task["owner_machine"], task["slug"].(string); got != want[slug] {
+			t.Errorf("list %s: owner_machine = %v, want %v", slug, got, want[slug])
+		}
+	}
+}
+
 // formatNumber renders a decoded JSON integer without a fractional part.
 func formatNumber(f float64) string {
 	b, _ := json.Marshal(int(f))

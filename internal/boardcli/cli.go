@@ -130,6 +130,7 @@ available subcommands without requiring a git repo.
 				return nil
 			}
 			cfg.Path = boardDir
+			cfg.ParentOf = func(slug string) (string, error) { return fabricengine.ParentSlug(layout, slug) }
 		}
 
 		cfg = boardengine.ApplySkipEnv(cfg)
@@ -427,7 +428,7 @@ func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Pro
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, owner_machine?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -449,10 +450,11 @@ Optional fields:
   "priority"   string — "high", "normal" or "low"; absent means normal, and "normal" clears it
   "short_name" string — short display label; falls back to the slug
   "issues"     array  — the hub repository's issue numbers it records
-  "created"    string — RFC 3339 time the entry was added; a new entry without it gets the write's time
-  "revised"    string — RFC 3339 time its scope last changed; a scope-changing write without it gets the write's time
+  "created"    string — RFC 3339 time the entry was added
+  "revised"    string — RFC 3339 time its scope last changed
   "run_settings" object — module name to config keys for the pair's local config at Seed-Child; {} clears it
   "profile"    string — a "lyx board profiles" name, laid under run_settings at Seed-Child; "" clears it
+  "owner_machine" string — the effective owner only; "lyx adopt" moves it
 
 Flag:
   --body-file <path>  read "body" from the file, or from stdin when the path is "-".
@@ -644,6 +646,7 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Fetch a single task by slug or numeric ID. Returns {"task":null} if not found (not an error).
 The result is the envelope {"task": {...}}, which the discussion stencil reads.
+A task's "owner_machine" is the machine that owns it: the recorded one, else the owner it reads as through its parent.
 --body writes the entry's body alone, verbatim, with no envelope; an empty body writes nothing.
 With --body a target that does not exist is an error, since there is no task:null to print.
 Editing a body as a file: lyx board get ... --body > body.md, edit it, then feed it back with
@@ -679,6 +682,11 @@ Examples:
 					return 0
 				}
 				if found {
+					if task.OwnerMachine == "" && task.Kind == boardengine.KindTask {
+						if task.OwnerMachine, err = board().EffectiveOwner(task.Slug); err != nil {
+							return outputError(out, err.Error())
+						}
+					}
 					return outputGetTask(out, &task)
 				}
 				return outputGetTask(out, nil) // task: null in JSON output

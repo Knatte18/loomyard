@@ -48,6 +48,27 @@
 // A write of an empty string clears it, and the README entry cell names it.
 // Like run_settings, a profile change is never a scope change.
 //
+// # Owners
+//
+// A task may carry an owner_machine: the name of the machine that may start, resume and land its run; a note never carries one, and board.json omits the key while none is recorded.
+// The hub's prime has its own record, the top-level prime_owner key of board.json, which the board replay merges with the same origin-wins rule as an entry's owner.
+// The effective owner of an entry is what Owners.Effective resolves: the recorded owner, else for a run-held entry none, else its parent's owner, the parent pair resolved through Config.ParentOf and the prime's owner when it has none;
+// a board with no prime owner, and a slug the board does not hold, read as owned by no other machine.
+// Board copies Config.ParentOf onto every store it builds, so reads and writes resolve parents alike, and nil reads every parent as the prime.
+// An owner change is never a scope change, so the run lock lets a run-held entry take it.
+//
+// SetOwners is the only writer of an owner or the prime owner.
+// It pulls the board level with its upstream, writes one commit "board: owner <machine> for <slugs>" that sets each named task's owner, the prime owner when asked and an optional claim status on its slug, and pushes it.
+// Without Takeover it leaves an entry whose effective owner is another machine untouched and reports it in OwnerWrite.Lost; `lyx adopt` alone passes Takeover.
+// A competing write origin already holds wins the replay of a rejected push, and the owners re-read from the local board.json after the push decide Recorded and Lost.
+// An origin that does not answer is ErrOwnerOriginUnreachable, and a push a held lock keeps deferring is refused naming `lyx board sync`.
+// ReadOwners reads the owners the local board.json records.
+// The list and get views carry each task's effective owner as owner_machine, the recorded one first, and Board.EffectiveOwner resolves one slug's;
+// a list whose parent resolver fails leaves the cell empty and still succeeds.
+//
+// An upsert payload may carry owner_machine only as the entry's effective owner, which is dropped as a no-op; any other value is refused naming `lyx adopt`.
+// The rule runs from the store's upsert, batch and merge paths, never from the replay, which applies an owner change through its own entry writes.
+//
 // # Dates
 //
 // An entry carries two dates, created, when it was added, and revised, when its scope last changed, each in whole UTC seconds, and board.json names neither while it is unknown.
@@ -88,7 +109,7 @@
 // Each open subsection holds one markdown table per priority, as the Priority section describes, numbered on from 1 across them so each entry keeps one number in its subsection, and Done is one table numbered from 1.
 // A row holds the bold title, with the brief as a `• ` bullet under it in the same cell, then a `• ` bullet `profile: <name>` when the task names a run profile, and then one `• ` bullet per run setting, a code span such as `darn: review_max_bounces 1` with a nested key as its dotted path, sorted, so the settings stack in height and add no column, the slug linked to its design doc when the entry has a body, the Age and Revised cells, the entry's age and the time since its last revision, blank for an unknown date, and the labels that are not type labels.
 // The Running, Ready and layer tables add a Recipe column after the slug, the recipe the task runs, `loom` when its recipe field is empty; the Notes and Done tables have none.
-// Running adds an At column, the run status without the state when the state is `running`, and Ready and the layers add an After column, the open entries named in depends_on.
+// Running adds an At column, the run status without the state when the state is `running`, and an Owner column, the entry's recorded owner machine, blank when none is recorded, and Ready and the layers add an After column, the open entries named in depends_on.
 // A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
 //
 // # Intake

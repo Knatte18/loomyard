@@ -101,6 +101,11 @@ const StartNotParkedKind = "driver_not_parked"
 // It is exported so battencli recognises the refusal by this one declared value rather than by its message text.
 const StartDriverBusyKind = "driver_busy"
 
+// StartOwnedElsewhereKind is the envelope "kind" of the `lyx loom start` and `lyx loom resume` refusal for a run another machine owns.
+// That refusal is NOT retryable: the run is taken over with `lyx adopt` or left alone.
+// It is exported so batten's InnerRun row recognises the refusal by this one declared value rather than by its message text, and never counts it as a failed spawn.
+const StartOwnedElsewhereKind = "owned_elsewhere"
+
 // ResumeReportFileName is the filename of the resume-report file, whose path ResumeReport returns.
 // The file holds the park marker's content on its first line and, on its second, the stop-report path the resume branch picked for that park.
 const ResumeReportFileName = "driver-resume-report"

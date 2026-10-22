@@ -4,6 +4,7 @@
 package tendercli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/tenderengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 )
 
@@ -123,6 +126,65 @@ func TestRevivePending(t *testing.T) {
 			t.Parallel()
 			if got := revivePending(tt.entries); got != tt.want {
 				t.Errorf("revivePending(%+v) = %v; want %v", tt.entries, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPairOwners(t *testing.T) {
+	t.Parallel()
+	const here = "desktop"
+	noParent := func(string) (string, error) { return "", nil }
+	owners := boardengine.Owners{Prime: "laptop", Entries: map[string]boardengine.OwnerEntry{
+		"here":    {Owner: here, IsTask: true, RunHeld: true},
+		"away":    {Owner: "laptop", IsTask: true, RunHeld: true},
+		"remote":  {Owner: "laptop", IsTask: true, RunHeld: true},
+		"mine":    {Owner: here, IsTask: true, RunHeld: true},
+		"waiting": {Owner: "laptop", IsTask: true},
+	}}
+	tests := []struct {
+		name     string
+		owners   boardengine.Owners
+		slugs    []string
+		parentOf func(string) (string, error)
+		want     []tenderengine.PairOwner
+		wantErr  bool
+	}{
+		{
+			name:     "LocalPairsAndRunHeldEntriesOwnedElsewhere",
+			owners:   owners,
+			slugs:    []string{"here", "away"},
+			parentOf: noParent,
+			want: []tenderengine.PairOwner{
+				{Slug: "here", Owner: here, Local: true, OwnedHere: true},
+				{Slug: "away", Owner: "laptop", Local: true},
+				{Slug: "remote", Owner: "laptop"},
+			},
+		},
+		{
+			name:     "UnownedHubReadsOwnedByNoOtherMachine",
+			owners:   boardengine.Owners{Entries: map[string]boardengine.OwnerEntry{"here": {IsTask: true, RunHeld: true}}},
+			slugs:    []string{"here"},
+			parentOf: noParent,
+			want:     []tenderengine.PairOwner{{Slug: "here", Local: true, OwnedHere: true}},
+		},
+		{
+			name:     "ParentOfErrorIsReturned",
+			owners:   boardengine.Owners{Prime: "laptop", Entries: map[string]boardengine.OwnerEntry{"child": {IsTask: true}}},
+			slugs:    []string{"child"},
+			parentOf: func(string) (string, error) { return "", errors.New("origin record unreadable") },
+			wantErr:  true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := pairOwners(tt.owners, tt.slugs, here, tt.parentOf)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("pairOwners() error = %v; want error %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("pairOwners() = %+v; want %+v", got, tt.want)
 			}
 		})
 	}

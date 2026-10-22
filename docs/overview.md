@@ -222,6 +222,7 @@ Records paths are computed on demand from geometry and do not require a registry
 github.com/Knatte18/loomyard/
 ├── cmd/lyx/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
+├── internal/adoptcli/            the adopt CLI command (`lyx adopt`, the takeover of tasks or the prime from another machine)
 ├── internal/agentname/           the sole former, parser and validator of agent names (`<shortname>:<slug>:<role>`), a stdlib-only leaf
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
@@ -280,6 +281,7 @@ github.com/Knatte18/loomyard/
 ├── internal/lyxcwd/              cwd resolution entry gate (the sole owner of cwd resolution, nothing else)
 ├── internal/dotgit/              the one `.git` parser (git dir, common dir, repository test, walk-up to a worktree root), a stdlib-only leaf
 ├── internal/durfmt/              the duration formats the status panes and the timing report share, minute-resolution for growing times and second-resolution for closed spans, a stdlib-only leaf
+├── internal/machinename/         this machine's name, its hostname cut at the first dot and lowercased, the sole reader of the hostname, a stdlib-only leaf
 ├── internal/sleepjournal/        the machine's suspends and hibernates read from systemd-sleep's journal entries, spawning no process, a stdlib-only leaf
 ├── internal/lyxdirs/             the two directory-name tokens (`_lyx` durable, `.lyx` ephemeral), a zero-import leaf
 ├── internal/buildinfo/           the ldflags-stamped build channel, a zero-import leaf
@@ -425,6 +427,10 @@ User-facing modules each get one `lyx <module>` namespace:
   The segments run in order and each calls its owner's own cleanup in-process: `lyx batten cleanup`, `lyx board prune`, `lyx orch cleanup`, the prime's `.scratch/` children older than 14 days that no open board entry cites, logger's trace retention sweep, and the temp root's sweep of dead owners' run directories.
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
+- **adopt** — the takeover of tasks or the prime from another machine of the operator, as one verb (`internal/adoptcli`; `lyx adopt <slug>...`, `lyx adopt --prime [<slug>...]` and `lyx adopt --all`, with `--keep-local` and `--drop-local`, prime only).
+  It reconciles the hub against origin, stops an entry whose pair holds local commits origin lacks or is live, adds the missing pair, records this machine as the owner in one pushed owner write, lifts the owner pause and resumes the run in its window.
+  It calls each owning module's function in-process and has no engine package of its own.
+  ✅ Implemented. See the `internal/adoptcli` package documentation.
 - **report** — the read-only convergence and timing reports (`internal/reportcli` + `internal/reportengine`; `lyx report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]` and `lyx report timing [--since <date>] [--by day|week] [--format json|markdown]`, prime only).
   The convergence report says, per finished run and per ISO week, what woke the orch, what stopped and repaired runs, how many review rounds each segment took and how landings fared.
   The timing report says where run time went, per run, per phase and per day or week, with machine sleep, waits and the time a run stood paused apart, and who settled each stop.
@@ -434,7 +440,7 @@ User-facing modules each get one `lyx <module>` namespace:
   `lyx tender pause` records an entry, waits a short grace for busy agent sessions and network operations to finish, interrupts every covered session still in a running turn with Esc and holds every path that would start agent or network work; the orchestrator is interrupted by its own watcher at the grace end.
   `lyx tender resume` lifts the entry and gives each interrupted session one line to carry on.
   `lyx tender revive [<slug>]` gives one fixed carry-on line to each session stalled on an API error, and the orch a checked creel inject, reported with its id; each send runs under the pause record's write lock, one at a time, so it types only while the session still reads stalled, sends no key and kills nothing.
-  `lyx tender status` lists the live entries, the network operations in flight and the parent locks held, every live session in the hub with its state, cause and whether an entry covers it, and the lyx processes running a replaced binary; it changes nothing, and any caller may run it.
+  `lyx tender status` lists the live entries, the network operations in flight and the parent locks held, every live session in the hub with its state, cause and whether an entry covers it, the lyx processes running a replaced binary, and each pair's owner machine with the run-held entries owned by another machine; it changes nothing, and any caller may run it.
   An agent may pause, resume or revive only its own pair; the orchestrator and an external caller may do each for the hub or any pair.
   Every lyx process in a hub runs its network git and GitHub calls under a gate that waits while a pause covers it, and every reader that reacts to an unexpected stop or to idle time consults the record (`internal/pauserecord`).
   ✅ Implemented. See the `internal/tenderengine` and `internal/tendercli` package documentation.
@@ -632,7 +638,7 @@ User-facing modules each get one `lyx <module>` namespace:
   Batten no longer notices the orch of a done child: the `Worktree-Teardown` row notifies only on a failure, and the `Land` row also notifies every landing.
   The `Open-Window`, `Seed-IDE` and `Open-IDE` rows own the terminal window and VS Code; `Run-Shed` opens neither.
   VS Code opens only when `open_ide` is on or the operator runs `lyx ide`.
-  A run resumed past `Open-Window` opens no window.
+  A run resumed past `Open-Window` runs that command again when no client is attached to the pair's reed session, through the same switch; a resume with a client attached opens none.
   That window closes when the run's session ends or its worktree is removed: it closes at once when the attach exits 0 (an operator detach or an ended pair session included), and after any other exit as soon as the worktree is gone within thirty seconds, else it stays open as a shell.
   A child that halts (`blocked`, `failed`, `paused`) makes `Run-Shed` wait, budget-exempt and without a time limit,
   and batten never resumes a halted child (it does restart an approved or rejected `awaiting` one, and retries the first Publish verify failure of a run, below): the operator resumes the child from inside the task worktree (`lyx loom resume`) and the watch carries on, with one warning per halt episode;

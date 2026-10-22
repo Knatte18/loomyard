@@ -1,0 +1,184 @@
+// innerrun_owner.go implements InnerRun's owner check: after a sleep or a pause hold it asks whether another machine owns the run now,
+// and a run found owned elsewhere is paused, its parent lock released and the orch noticed, unless a Finalize past its parent-side merge still holds the lock.
+
+package battenshed
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/shedengine"
+)
+
+// finalizeRow is the child recipe row that lands the task's work on its parent.
+const finalizeRow = "Finalize"
+
+// The failure messages of the owner seams, each the key of its episode.
+const (
+	failOwnerCheck        = "battenshed: owner check failed; retrying at the next check"
+	failOwnerPause        = "battenshed: could not pause the run owned elsewhere; retrying at the next probe"
+	failOwnerFinalizeRead = "battenshed: could not tell whether the parent holds the task's work; keeping the parent lock"
+)
+
+// OwnerVerdict is what an owner check reads: the machine that owns the run when it is not this one, or that origin could not be reached to tell.
+type OwnerVerdict struct {
+	// Owner names the machine that owns the run; set when Elsewhere is true.
+	Owner string
+	// Elsewhere is true when another machine owns the run.
+	Elsewhere bool
+	// Unreachable is true when origin could not be reached, so the verdict is neither owned here nor elsewhere.
+	Unreachable bool
+}
+
+// ChildOwnedElsewhereError is the error an InnerRunDeps.Spawn closure returns when the child's bootstrap refused because another machine owns the run.
+// InnerRun reads it as an owned-elsewhere verdict and never as a failed spawn.
+type ChildOwnedElsewhereError struct {
+	// Owner names the machine the refusal named.
+	Owner string
+}
+
+// Error implements error.
+func (e *ChildOwnedElsewhereError) Error() string {
+	return fmt.Sprintf("battenshed: the run is owned by machine %s", e.Owner)
+}
+
+// spawnOwnedElsewhere returns the owner a spawn error names and true when the error carries a ChildOwnedElsewhereError.
+func spawnOwnedElsewhere(err error) (string, bool) {
+	var owned *ChildOwnedElsewhereError
+	if errors.As(err, &owned) {
+		return owned.Owner, true
+	}
+	return "", false
+}
+
+// ownerHoldReason is the wait reason of a run owned by another machine.
+func (p *innerRunProducer) ownerHoldReason() string {
+	return fmt.Sprintf("held: the run is owned by machine %s; take it over with \"lyx adopt %s\"", p.ownedBy, p.slug)
+}
+
+// foldOwnerTrigger folds this check's wall and awake readings and its pause coverage into the owner check's trigger.
+// The check becomes due in three cases.
+// The watch records a new sleep.
+// The previous check was covered and this one is not.
+// Or this is a probe check while an owner stands that no pause covers.
+func (p *innerRunProducer) foldOwnerTrigger(w *childWait, now time.Time) {
+	p.ownerSleep.Observe(now, p.deps.Awake())
+	sleeps := p.ownerSleep.Sleeps()
+	slept := len(sleeps) > 0 && sleeps[len(sleeps)-1].End.Equal(now)
+	released := p.ownerCovered && !w.pause.Covered
+	retry := p.ownedBy != "" && !w.pause.Covered && w.probeDue
+	p.ownerCovered = w.pause.Covered
+	if p.deps.OwnerCheck != nil && (slept || released || retry) {
+		p.ownerDue = true
+	}
+}
+
+// ownerStep runs the owner check when it is due.
+// An unreachable verdict and a check error keep it due for the next check and hold nothing.
+// An owned-here verdict clears the owner the producer stands on, and an owned-elsewhere verdict acts on it.
+func (p *innerRunProducer) ownerStep(ctx context.Context, w *childWait) {
+	if !p.ownerDue || p.deps.OwnerCheck == nil {
+		return
+	}
+	verdict, err := p.deps.OwnerCheck(ctx)
+	if err != nil {
+		if ctx.Err() == nil {
+			p.seamFailed(failOwnerCheck, err)
+		}
+		return
+	}
+	p.seamRecovered(failOwnerCheck)
+	switch {
+	case verdict.Unreachable:
+	case verdict.Elsewhere:
+		p.ownerDue = false
+		p.ownedElsewhere(ctx, w, verdict.Owner)
+	default:
+		p.ownerDue = false
+		p.ownedBy, p.ownerNoticed = "", false
+	}
+}
+
+// ownedElsewhere records owner as the run's owner and releases the parent lock record of the child's run, unless a Finalize past its parent-side merge keeps it.
+// It then pauses the slug under the owner caller and sends one notice per episode naming the owner and the adopt command.
+// A failed pause warns once per episode and is retried at the next probe while the owner stands.
+func (p *innerRunProducer) ownedElsewhere(ctx context.Context, w *childWait, owner string) {
+	p.ownedBy = owner
+	if !p.keepsLockForFinalize(w.status) {
+		p.releaseChildLock(w, fmt.Sprintf("the run is owned by machine %s", owner))
+	}
+	if err := p.deps.PauseOwned(ctx, owner); err != nil {
+		if ctx.Err() == nil {
+			p.seamFailed(failOwnerPause, err, "owner", owner)
+		}
+	} else {
+		p.seamRecovered(failOwnerPause)
+	}
+	p.noticeOwnedElsewhere(ctx, owner)
+	p.reportState(w, p.ownerHoldReason())
+}
+
+// noticeOwnedElsewhere sends the one notice of the owner episode, and does nothing once it is posted or when no Notify was wired.
+func (p *innerRunProducer) noticeOwnedElsewhere(ctx context.Context, owner string) {
+	if !p.notices || p.ownerNoticed {
+		return
+	}
+	if p.episode.deliveries == nil {
+		p.episode.deliveries = map[string]*noticeDelivery{}
+	}
+	condition := "owned by machine " + owner
+	line := fmt.Sprintf("%s %s: run paused; %s; take it over with \"lyx adopt %s\"", noticePrefix, p.slug, condition, p.slug)
+	if p.deliver(ctx, "owner "+owner, condition, line) {
+		p.ownerNoticed = true
+	}
+}
+
+// releaseChildLock releases the parent lock record naming the child's run, if there is one.
+func (p *innerRunProducer) releaseChildLock(w *childWait, why string) {
+	lock := p.deps.ParentLock
+	if lock == nil {
+		return
+	}
+	record, found, err := lock.Read()
+	if err != nil {
+		p.seamFailed(failLockRecordUnreadable, err)
+		return
+	}
+	p.seamRecovered(failLockRecordUnreadable)
+	if found {
+		p.releaseLock(w, record, why)
+	}
+}
+
+// keepsLockForFinalize reports whether status is a Finalize already past its parent-side merge, which keeps its parent lock and finishes its landing.
+// That is a Finalize running, or failed on a transient cause with no re-step recorded for that stop, while the parent holds the task's work.
+// A failed read of either seam holds the lock until the next check, and any other state at Finalize does not hold it.
+func (p *innerRunProducer) keepsLockForFinalize(status shedengine.Status) bool {
+	if status.CurrentProducer != finalizeRow {
+		return false
+	}
+	switch {
+	case status.State == shedengine.StateRunning:
+	case status.State == shedengine.StateFailed && status.Transient != "":
+		restepped, err := p.deps.Restepped(status)
+		if err != nil {
+			p.seamFailed(failOwnerFinalizeRead, err)
+			return true
+		}
+		if restepped {
+			p.seamRecovered(failOwnerFinalizeRead)
+			return false
+		}
+	default:
+		return false
+	}
+	holds, err := p.deps.ParentHoldsTaskWork()
+	if err != nil {
+		p.seamFailed(failOwnerFinalizeRead, err)
+		return true
+	}
+	p.seamRecovered(failOwnerFinalizeRead)
+	return holds
+}

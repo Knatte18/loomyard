@@ -24,9 +24,16 @@
 // "lyx batten run <slug> --window" runs the same status check as a plain run and refuses a done slug before opening anything.
 //
 // The Worktree-Create row opens by claiming the slug's board entry with "running · Worktree-Create", before the pair exists, so the board's run lock starts at the claim.
-// An absent or done entry is skipped, and a board failure only warns: the board is the hub's overview, never the run's bookkeeping.
+// The claim is one Bolt commit that also records this machine as the entry's owner, and an absent or done entry is skipped.
+// A failed owner write or push refuses the row, and so does an entry another machine owns, which the claim never takes.
 // The claim stays when the row then fails, and the stopped run resumes with the same verb.
 // No other row writes a board status; loom's transitions are the only later writer.
+//
+// A machine starts, resumes and claims only what it owns.
+// A start (no status file, or one still at Worktree-Create whose pair this machine does not hold) pulls the board, which needs origin, claims the hub's prime when none is recorded, and refuses a task another machine owns.
+// A resume refuses a task the origin reconcile or, with origin unreachable, the local board shows owned elsewhere; with origin answering it records this machine as the owner of a run-held entry with none.
+// Every such refusal names the owner and "lyx adopt <slug>" as the way forward.
+// "lyx batten status" reports the slug's effective owner as owner_machine and whether this machine holds it as owned_here.
 //
 // The Inner-Run row's state-changed notice is held while the child's arbiter is live:
 // the row reads the child's in-flight arbiter marker against the pair's reed directory.
@@ -35,7 +42,9 @@
 package battencli
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -107,6 +116,10 @@ type battenCLI struct {
 	openTerminalFlag bool
 	// reconcile runs the run-scope origin reconcile of a slug the pre-run resumes; Command wires it to reconcileRun, and nil reads as no reconcile, which only a hand-populated receiver has.
 	reconcile func(slug string) (fabricengine.OriginReport, error)
+	// owner carries the seams of the owner checks; armAt fills it with hubOwnerSeams when it is zero, and a receiver that calls no arm leaves it zero, which reads as no owner check.
+	owner ownerSeams
+	// clientAttached reports whether any client is attached to the task worktree's reed session; wire fills it, and nil reads as no reopening, which only a hand-populated receiver has.
+	clientAttached func() (bool, error)
 }
 
 // windowNamePrefix starts the name of the window "lyx batten run <slug> --window" opens, ahead of the slug.
@@ -158,7 +171,9 @@ default command opens one desktop terminal window attached to the task
 worktree's reed session; Seed-IDE's writes the worktree's VS Code config, and
 Open-IDE's opens VS Code. --window turns Open-Window's switch on for that run.
 The envelope's terminal_window field names the launcher, or says no window is
-opened when this machine has none. A run resumed past that row opens no window.
+opened when this machine has none. A run resumed past that row opens a window
+again when no client is attached to the task worktree's reed session, through
+the same switch and command.
 
 Example:
   lyx batten run some-slug
@@ -367,7 +382,7 @@ func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) e
 // runInWindow is the run verb's body under --window: it opens the window "batten:<slug>" running "lyx batten run <slug>" (without --window, carrying an explicitly typed --driver or --child-driver through) and prints the window's id and name.
 // When this machine has a terminal launcher, the window's run also gets --open-terminal and the envelope's terminal_window names the launcher;
 // with none, the run goes on without it and terminal_window says no window is opened and why.
-// A slug whose status is done, undecodable or in an unrecognized state is refused before any window opens, with the same refusal a plain run gives;
+// A slug whose status is done, undecodable or in an unrecognized state is refused before any window opens, with the same refusal a plain run gives, and so is a slug another machine owns, naming the owner and "lyx adopt <slug>";
 // seeding a fresh status stays inside the window's own run.
 // The envelope reports a started window only, never a started batten: a second batten for the slug is refused by the run's own lock inside the window.
 func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
@@ -382,6 +397,10 @@ func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 		return nil
 	}
 	if _, err := c.checkRunStatus(); err != nil {
+		clihelp.SetExit(ctx, output.Err(out, err.Error()))
+		return nil
+	}
+	if err := c.preflightRunOwner(); err != nil {
 		clihelp.SetExit(ctx, output.Err(out, err.Error()))
 		return nil
 	}
@@ -439,6 +458,30 @@ func (c *battenCLI) openWindowInPrimeSession(name string, lyxArgs []string) (ree
 		return reedengine.WindowResult{}, err
 	}
 	return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).OpenWindow(name, lyxArgs)
+}
+
+// ResumeInWindow runs "lyx batten run <slug> --window"'s body in this process, against the hub's prime worktree at location, and returns the envelope that verb prints.
+// It is the in-process resume an adopting verb runs for each slug it takes over.
+// A refusal, such as a done slug or one another machine owns, returns an envelope whose ok is false and whose error names the way forward;
+// the error result is reserved for a failure to arm the run or to read the envelope back.
+// The run's own driver lock, inside the window, refuses a second driver.
+func ResumeInWindow(location *lyxcwd.Location, slug string) (map[string]any, error) {
+	c := &battenCLI{spec: &shedverbs.Spec{}}
+	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug) }
+	armed, err := c.armAt(location, slug, true, "run")
+	if err != nil {
+		return nil, err
+	}
+	*c.spec = armed
+
+	cmd := &cobra.Command{Use: "run", RunE: func(cmd *cobra.Command, args []string) error { return c.runInWindow(cmd) }}
+	var out bytes.Buffer
+	clihelp.Execute(cmd, &out, []string{})
+	var envelope map[string]any
+	if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
+		return nil, fmt.Errorf("battencli: the window resume of %q printed no envelope: %q: %w", slug, out.String(), err)
+	}
+	return envelope, nil
 }
 
 // windowRefusal words err from opening slug's window as a refusal that names its way forward.

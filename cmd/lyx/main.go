@@ -19,6 +19,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/internal/adoptcli"
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -111,7 +112,7 @@ all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output; --json prints the help as JSON and
 never runs the command.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, report, tender, hibernate, gate, creel, help.
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, adopt, report, tender, hibernate, gate, creel, help.
 Shortcuts, declared in internal/shortcutcli's embedded file, are listed under their own heading in lyx --help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -129,6 +130,8 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				tendercli.InstallNetworkGate(cmd.Context(), pauseSlugOverride(cmd))
 				// A push origin refuses reaches the prime orch as creel mail from FABRIC, whichever process pushed.
 				orchcli.InstallPushNotifier(cmd.Context())
+				// orch start pauses a run another machine owns through tender, which imports orchcli.
+				orchcli.InstallOwnerPause(tendercli.PauseOwnedElsewhere)
 				// A records replay, in the detached push child as in Bolt's pull-first, merges the board by entry through boardengine.
 				fabricengine.InstallBoardReplay(boardengine.FabricReplay{})
 			}
@@ -160,6 +163,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		shedcli.Command(),
 		orchcli.Command(),
 		cleanupcli.Command(),
+		adoptcli.Command(),
 		reportcli.Command(),
 		// StartAliasCommand registers the same "start" verb as loomcli.Command()'s
 		// subtree already carries, a second time, as a bare root child rather

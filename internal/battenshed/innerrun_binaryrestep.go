@@ -54,12 +54,13 @@ func restepStopKey(status shedengine.Status) string {
 // neither its run lock nor its driver lock is held, and the Call's publish retry takes no action;
 // the on-disk build differs from the child's last step's, and the task pair has no uncommitted path outside the run's records;
 // and the marker does not already name this halt and this build.
+// It spawns nothing while another machine owns the run, and a spawn refused as owned elsewhere pauses the run and writes no marker.
 // The marker is written only after the spawn returns success, so a batten restart repeats nothing.
 // A refused spawn writes no marker and is retried at the next due check, at most binaryRestepAttemptCap times, and a dirty tree is retried the same way; neither fails the row.
 // The build and the dirty paths cost a process each, so the check runs once per interval, which starts at the notice probe, doubles up to binaryRestepCeiling while the halt and the build stay the same, and returns to the probe on a change.
 func (p *innerRunProducer) binaryRestep(ctx context.Context, w *childWait) *waitEnd {
 	status := w.status
-	if !p.restepOn || (status.State != shedengine.StateBlocked && status.State != shedengine.StateFailed) || w.retry.action != publishRetryNone {
+	if !p.restepOn || p.ownedBy != "" || (status.State != shedengine.StateBlocked && status.State != shedengine.StateFailed) || w.retry.action != publishRetryNone {
 		return nil
 	}
 	stop := restepStopKey(status)
@@ -129,6 +130,10 @@ func (p *innerRunProducer) binaryRestep(ctx context.Context, w *childWait) *wait
 	if spawnErr != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return hardEnd(cerr)
+		}
+		if owner, owned := spawnOwnedElsewhere(spawnErr); owned {
+			p.ownedElsewhere(ctx, w, owner)
+			return nil
 		}
 		p.restep.attempts++
 		logger.Warn("battenshed: the halted child's re-step was refused; retrying at the next due check", "producer", p.name, "slug", p.slug, "build", build, "attempt", p.restep.attempts, "cap", binaryRestepAttemptCap, "refused_as_not_parked", errors.Is(spawnErr, ErrChildNotParked), "refused_as_busy", errors.Is(spawnErr, ErrChildDriverBusy), "error", spawnErr)

@@ -203,6 +203,21 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 	}
 }
 
+func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) {
+	t.Setenv(agentname.StrandNameEnv, "")
+	h := newHub(t)
+
+	for range 2 {
+		if err := PauseOwnedElsewhere(h.Location, pairSlug); err != nil {
+			t.Fatalf("PauseOwnedElsewhere() error = %v", err)
+		}
+	}
+
+	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Scope != pairSlug || live[0].Caller != pauserecord.OwnerCaller {
+		t.Errorf("live entries = %+v; want one entry of the pair under the owner caller", live)
+	}
+}
+
 func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 	h := newHub(t)
 	prime := h.PrimeWorktree()

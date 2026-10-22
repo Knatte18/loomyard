@@ -18,6 +18,41 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
+// TestClientAttached drives ClientAttached through a fake tmux: one attached client, none, a missing session and a failed listing.
+func TestClientAttached(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		mutate  func(*fakeTmux)
+		want    bool
+		wantErr bool
+	}{
+		{"OneClientAttached", func(f *fakeTmux) { f.answer("list-clients", "/dev/pts/1 80 24\n", nil) }, true, false},
+		{"NoClients", func(f *fakeTmux) { f.answer("list-clients", "", nil) }, false, false},
+		{"MissingSession", func(f *fakeTmux) {
+			f.answer("has-session", "", exitCodeErr{code: 1})
+			f.answer("list-clients", "", errors.New("must not list clients of a missing session"))
+		}, false, false},
+		{"FailedListing", func(f *fakeTmux) { f.answer("list-clients", "", errors.New("tmux unreachable")) }, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e, fake := newAttachTestEngine(t, nil)
+			tt.mutate(fake)
+
+			got, err := e.ClientAttached()
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ClientAttached() error = %v; want error %v", err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("ClientAttached() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestParseClientList is a table of `list-clients` answer shapes, asserting the parsed attachedClient slice element by element.
 func TestParseClientList(t *testing.T) {
 	tests := []struct {

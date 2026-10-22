@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
@@ -114,6 +115,38 @@ func landingDeps(
 		},
 		CommitParentRecords: parentRecordsCommitter(l, seedSlug(l.WorktreeName)),
 		Reconcile:           runReconciler(l, seedSlug(l.WorktreeName)),
+		Slug:                seedSlug(l.WorktreeName),
+		// ParentHoldsTaskWork marks a Finalize past its parent-side merge, read over the prime and this pair.
+		ParentHoldsTaskWork: func() (bool, error) {
+			prime, err := primeOfHub(l)
+			if err != nil {
+				return false, err
+			}
+			return fabricengine.ParentHoldsTaskWork(prime, l, seedSlug(l.WorktreeName))
+		},
+		ParentOwner: parentOwner(l, seedSlug(l.WorktreeName)),
+		// The origin parent's work and the parent commits origin lacks are read over the parent's own pair, which Finalize's push failure describes.
+		OriginParentHoldsWork: func() (bool, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return false, err
+			}
+			tips, err := f.ReadParentTips(parentBranch, true)
+			if err != nil {
+				return false, err
+			}
+			if tips.Upstream == "" {
+				return false, nil
+			}
+			return f.HoldsWork(tips.Upstream, "refs/heads/"+taskBranch)
+		},
+		ParentCommitsOriginLacks: func() ([]string, error) {
+			parent, err := fabricengine.OpenParent(l, parentBranch)
+			if err != nil {
+				return nil, err
+			}
+			return parent.LocalOnlyCommits(parentBranch)
+		},
 		// The pre-merge step probes the pair's merge state, aborts the row's own parked merge-in and stops the run's conflict sessions first.
 		MergeState: func() (fabricengine.MidMergeState, error) {
 			return fabricengine.MidMerge(l)
@@ -434,13 +467,9 @@ func parentRecordsCommitter(l *lyxcwd.Location, slug string) func() error {
 // The prime is resolved at call time, and the seams come from pairteardown over it with the hub's options.
 func runReconciler(l *lyxcwd.Location, slug string) func() (fabricengine.OriginReport, error) {
 	return func() (fabricengine.OriginReport, error) {
-		primeName, err := fabricengine.PrimeName(l)
+		prime, err := primeOfHub(l)
 		if err != nil {
-			return fabricengine.OriginReport{}, fmt.Errorf("resolve the hub's prime: %w", err)
-		}
-		prime, err := lyxcwd.ResolveWorktree(filepath.Join(l.HubPath, primeName))
-		if err != nil {
-			return fabricengine.OriginReport{}, fmt.Errorf("locate the hub's prime %q: %w", primeName, err)
+			return fabricengine.OriginReport{}, err
 		}
 		teardown, err := pairteardown.New(prime)
 		if err != nil {
@@ -448,6 +477,41 @@ func runReconciler(l *lyxcwd.Location, slug string) func() (fabricengine.OriginR
 		}
 		report, err := fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{Run: slug}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 		return reportOfRun(report, slug), err
+	}
+}
+
+// parentOwner returns the seam Finalize reads the owner of the parent of the run slug through.
+// The parent's slug is resolved from the pair's origin record, and its owner is read from the local board the run's reconcile left:
+// the prime owner for the prime, and the parent pair's effective owner otherwise.
+// A parent no other machine owns reads as owned here.
+func parentOwner(l *lyxcwd.Location, slug string) func() (landingshed.ParentOwnership, error) {
+	return func() (landingshed.ParentOwnership, error) {
+		here, err := machinename.Name()
+		if err != nil {
+			return landingshed.ParentOwnership{}, err
+		}
+		prime, err := primeOfHub(l)
+		if err != nil {
+			return landingshed.ParentOwnership{}, err
+		}
+		parentOf := func(slug string) (string, error) {
+			return fabricengine.ParentSlug(prime, slug)
+		}
+		parentSlug, err := parentOf(slug)
+		if err != nil {
+			return landingshed.ParentOwnership{}, err
+		}
+		owners, err := boardengine.ReadOwners(fabricengine.BoardDir(l.HubPath))
+		if err != nil {
+			return landingshed.ParentOwnership{}, err
+		}
+		owner := owners.Prime
+		if parentSlug != "" {
+			if owner, err = owners.Effective(parentSlug, parentOf); err != nil {
+				return landingshed.ParentOwnership{}, err
+			}
+		}
+		return landingshed.ParentOwnership{Slug: parentSlug, Owner: owner, Here: !boardengine.OwnedElsewhere(owner, here)}, nil
 	}
 }
 

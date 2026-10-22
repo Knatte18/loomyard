@@ -26,7 +26,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
-	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -419,73 +418,95 @@ func TestWire_OrchStrandRecordedReadsThePrimesOrchState(t *testing.T) {
 	}
 }
 
-// TestWire_CreateWorktreeClaimsTheBoardEntry asserts the Worktree-Create closure writes the run-status claim before it touches the pair, and that a failed claim only warns.
-// Both rows fail the closure on the absent fabric config, so no pair is created.
-// It sets BOARD_SKIP_GIT and BOARD_SKIP_PUSH and redirects the logger's output, all process-global, so it does not call t.Parallel.
+// TestWire_CreateWorktreeClaimsTheBoardEntry asserts the Worktree-Create closure claims the board entry with this machine as its owner before it touches the pair:
+// a setter error and an entry another machine owns each fail the row naming their cause, an absent entry passes the claim with nothing written, and the real setter records the owner beside the claim status.
+// Every row that passes the claim fails the closure on the absent fabric config, so no pair is created.
+// It sets BOARD_SKIP_GIT and BOARD_SKIP_PUSH, process-global, so it does not call t.Parallel.
 func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	t.Setenv("BOARD_SKIP_PUSH", "1")
-	logs := logcapture.Capture(t)
 
 	const slug = "claimed"
+	const machine = "here"
+	seededHub := func(t *testing.T) string {
+		hub := boardkit.HubWithBoardConfig(t)
+		board, err := boardengine.OpenHub(hub)
+		if err != nil {
+			t.Fatalf("OpenHub: %v", err)
+		}
+		if _, err := board.UpsertTask(map[string]any{"slug": slug, "kind": "task", "labels": []string{"bug"}}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		return hub
+	}
 	tests := []struct {
 		name string
-		// hub builds the hub and returns its path.
-		hub func(t *testing.T) string
-		// wantStatus is the entry's status after the call; empty when the row has no board config to read it from.
+		// set replaces the owner setter; nil keeps the real one over the hub's board.
+		set func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error)
+		// wantErr lists substrings the row's error carries; an empty list wants the absent fabric config, the row's own failure.
+		wantErr []string
+		// wantStatus and wantOwner are the seeded entry's status and owner after the call; empty skips the read.
 		wantStatus string
-		wantWarn   bool
+		wantOwner  string
 	}{
 		{
-			name: "ClaimSurvivesTheFailedRow",
-			hub: func(t *testing.T) string {
-				hub := boardkit.HubWithBoardConfig(t)
-				board, err := boardengine.OpenHub(hub)
-				if err != nil {
-					t.Fatalf("OpenHub: %v", err)
-				}
-				if _, err := board.UpsertTask(map[string]any{"slug": slug, "kind": "task", "labels": []string{"bug"}}); err != nil {
-					t.Fatalf("seed: %v", err)
-				}
-				return hub
+			name: "SetterErrorFailsTheRow",
+			set: func(boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
+				return boardengine.OwnerWrite{}, errors.New("push refused")
 			},
-			wantStatus: "running · Worktree-Create",
+			wantErr: []string{"push refused", slug},
 		},
 		{
-			name: "FailedClaimWarnsAndTheRowContinues",
-			hub: func(t *testing.T) string {
-				hub := t.TempDir()
-				if err := os.MkdirAll(configengine.ConfigDir(fabricengine.BoardDir(hub)), 0o755); err != nil {
-					t.Fatalf("mkdir config dir: %v", err)
-				}
-				return hub
+			name: "EntryOwnedElsewhereFailsTheRow",
+			set: func(boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
+				return boardengine.OwnerWrite{Lost: map[string]string{slug: "there"}}, nil
 			},
-			wantWarn: true,
+			wantErr: []string{`"there"`, "lyx adopt " + slug},
+		},
+		{
+			name: "AbsentEntryPassesTheClaimWithNothingWritten",
+			set: func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
+				if req.Machine != machine || len(req.Slugs) != 1 || req.Slugs[0] != slug || req.Claim != "running · Worktree-Create" || req.Takeover {
+					return boardengine.OwnerWrite{}, fmt.Errorf("claim request = %+v; want %q's Worktree-Create claim for %q with no takeover", req, machine, slug)
+				}
+				return boardengine.OwnerWrite{}, nil
+			},
+		},
+		{
+			name:       "RealSetterRecordsTheOwnerBesideTheClaim",
+			wantStatus: "running · Worktree-Create",
+			wantOwner:  machine,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logs.Reset()
-			hub := tt.hub(t)
+			hub := seededHub(t)
 			location := &lyxcwd.Location{RepoName: "example", HubPath: hub, WorktreeName: "hub-repo", AnchorRel: "."}
 			c := &battenCLI{}
 			if err := c.wire(location, slug); err != nil {
 				t.Fatalf("wire() error = %v; want nil", err)
 			}
+			c.owner = hubOwnerSeams(location)
+			c.owner.Machine = func() (string, error) { return machine, nil }
+			if tt.set != nil {
+				c.owner.Set = tt.set
+			}
 
 			err := c.env.CreateWorktree(context.Background())
 
 			if err == nil {
-				t.Fatal("CreateWorktree() error = nil; want the absent fabric config to fail the row")
+				t.Fatal("CreateWorktree() error = nil; want a failed row")
 			}
-			if tt.wantWarn {
-				fabricConfig := configengine.ConfigFile(fabricengine.BoardDir(hub), "fabric")
-				if !strings.Contains(err.Error(), fabricConfig) {
-					t.Errorf("CreateWorktree() error = %q; want it to name %q, the row's own failure", err.Error(), fabricConfig)
+			wantErr := tt.wantErr
+			if len(wantErr) == 0 {
+				wantErr = []string{configengine.ConfigFile(fabricengine.BoardDir(hub), "fabric")}
+			}
+			for _, want := range wantErr {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("CreateWorktree() error = %q; want it to carry %q", err.Error(), want)
 				}
-				if got := logs.String(); !strings.Contains(got, slug) || !strings.Contains(got, "claim board entry failed") {
-					t.Errorf("log = %q; want a warning naming %q", got, slug)
-				}
+			}
+			if tt.wantStatus == "" {
 				return
 			}
 			board, openErr := boardengine.OpenHub(hub)
@@ -493,8 +514,8 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 				t.Fatalf("OpenHub: %v", openErr)
 			}
 			task, found, getErr := board.GetTask(slug)
-			if getErr != nil || !found || task.Status == nil || *task.Status != tt.wantStatus {
-				t.Errorf("entry = %+v, found %v, err %v; want status %q", task, found, getErr, tt.wantStatus)
+			if getErr != nil || !found || task.Status == nil || *task.Status != tt.wantStatus || task.OwnerMachine != tt.wantOwner {
+				t.Errorf("entry = %+v, found %v, err %v; want status %q owned by %q", task, found, getErr, tt.wantStatus, tt.wantOwner)
 			}
 		})
 	}

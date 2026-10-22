@@ -277,6 +277,20 @@ func NewHub(tb testing.TB, anchor string) *Hub {
 	return hub
 }
 
+// CloneSecond clones a second hub from h's own bares, at h's anchor, into a container of tb's own, as a second machine working on the same remote.
+// The second hub shares h's remotes and nothing else, so a push from either reaches the other through them.
+// It calls tb.Fatalf on any error.
+func CloneSecond(tb testing.TB, h *Hub) *Hub {
+	tb.Helper()
+
+	defer markFixtureBuild()()
+
+	container := tb.TempDir()
+	second, _ := cloneHub(tb, h.Anchor, h.CodeBare, h.RecordsBare, container)
+	registerTeardown(tb, second.Path)
+	return second
+}
+
 // cloneHub drives fabriccli.CloneAndWire at anchor against the given bares into the existing container directory, and returns the Hub with the prime cwd its Location resolved from.
 // It calls tb.Fatalf on any error.
 func cloneHub(tb testing.TB, anchor, warpBare, weftBare, container string) (*Hub, string) {

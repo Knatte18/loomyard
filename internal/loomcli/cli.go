@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -170,6 +171,8 @@ type loomCLI struct {
 	spawnGoDriver func() (int, error)
 	// spawnGoDriverFrom is spawnGoDriver for a caller that resolved the lyx executable path itself, as a driver handing over after a deploy replaced the file it runs from.
 	spawnGoDriverFrom func(executable string) (int, error)
+	// ownerOf judges who owns the run of slug; newLoomCLI sets it to runOwnerVerdict over this machine's name, and nil reads as owned here and calls nothing.
+	ownerOf func(l *lyxcwd.Location, slug string) (ownerVerdict, error)
 }
 
 // newLoomCLI is the only place production code may build a *loomCLI: it is what keeps
@@ -185,6 +188,9 @@ func newLoomCLI() *loomCLI {
 		spec:                  &shedverbs.Spec{},
 	}
 	c.parentDirtyPaths = c.parentDirtyPathsFromFabric
+	c.ownerOf = func(l *lyxcwd.Location, slug string) (ownerVerdict, error) {
+		return runOwnerVerdict(l, slug, machinename.Name)
+	}
 	c.spawnGoDriverFrom = func(executable string) (int, error) { return spawnDetachedDrive(c.location, executable) }
 	c.spawnGoDriver = func() (int, error) {
 		executable, err := os.Executable()

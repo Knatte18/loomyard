@@ -38,6 +38,10 @@ func TestRunLock(t *testing.T) {
 		refused bool
 		// unknown is raw JSON members spliced into the locked entry after seeding; an accepted row requires the written file to still carry each.
 		unknown string
+		// primeOwner is a prime_owner record spliced into board.json after seeding.
+		primeOwner string
+		// unchanged requires an accepted row to leave board.json byte-identical.
+		unchanged bool
 	}{
 		{name: "upsert body", refused: true, act: upsertLocked(map[string]any{"body": "new"})},
 		{name: "upsert brief", refused: true, act: upsertLocked(map[string]any{"brief": "new"})},
@@ -93,6 +97,7 @@ func TestRunLock(t *testing.T) {
 		{name: "status-only upsert", act: upsertLocked(map[string]any{"status": "done"})},
 		{name: "run settings change", act: upsertLocked(map[string]any{"run_settings": map[string]any{"loom": map[string]any{"review_max_bounces": 2}}})},
 		{name: "profile change", act: upsertLocked(map[string]any{"profile": "light"})},
+		{name: "upsert naming the held entry's own effective owner", unknown: `"owner_machine":"box"`, primeOwner: "neve", unchanged: true, act: upsertLocked(map[string]any{"owner_machine": "box"})},
 		{name: "normal priority on an entry without one", act: upsertLocked(map[string]any{"priority": "normal"})},
 		{name: "batch whose only item on it is status-only", extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
 			_, err := b.UpsertTasksBatch([]map[string]any{{"slug": "other", "body": "batched"}, {"slug": "locked", "status": "done"}})
@@ -133,6 +138,15 @@ func TestRunLock(t *testing.T) {
 			if tc.unknown != "" {
 				addEntryKeys(t, boardPath, "locked", tc.unknown)
 			}
+			if tc.primeOwner != "" {
+				setPrimeOwner(t, boardPath, tc.primeOwner)
+			}
+			if tc.unchanged {
+				// The splices are re-encoded by a write, so the baseline is the file as the store itself writes it.
+				if err := b.Rerender(); err != nil {
+					t.Fatalf("rerender: %v", err)
+				}
+			}
 			before, err := os.ReadFile(filepath.Join(boardPath, "board.json"))
 			if err != nil {
 				t.Fatalf("read board.json: %v", err)
@@ -147,6 +161,9 @@ func TestRunLock(t *testing.T) {
 			if !tc.refused {
 				if err != nil {
 					t.Fatalf("write refused: %v", err)
+				}
+				if tc.unchanged && string(after) != string(before) {
+					t.Errorf("board.json changed on a write that names the entry's own owner:\nbefore %s\nafter  %s", before, after)
 				}
 				if tc.unknown != "" {
 					var members map[string]json.RawMessage
@@ -239,6 +256,29 @@ func addEntryKeys(t *testing.T, boardPath, slug, members string) {
 	}
 	if top["entries"], err = json.Marshal(entries); err != nil {
 		t.Fatalf("encode entries: %v", err)
+	}
+	if raw, err = json.Marshal(top); err != nil {
+		t.Fatalf("encode board.json: %v", err)
+	}
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+}
+
+// setPrimeOwner splices the prime_owner record into the board.json under boardPath.
+func setPrimeOwner(t *testing.T, boardPath, owner string) {
+	t.Helper()
+	path := filepath.Join(boardPath, "board.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read board.json: %v", err)
+	}
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &top); err != nil {
+		t.Fatalf("decode board.json: %v", err)
+	}
+	if top["prime_owner"], err = json.Marshal(owner); err != nil {
+		t.Fatalf("encode prime_owner: %v", err)
 	}
 	if raw, err = json.Marshal(top); err != nil {
 		t.Fatalf("encode board.json: %v", err)

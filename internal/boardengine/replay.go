@@ -50,6 +50,7 @@ var replayFields = []replayField{
 	{"short_name", func(t Task) any { return t.ShortName }, func(dst *Task, src Task) { dst.ShortName = src.ShortName }},
 	{"run_settings", func(t Task) any { return orNilSettings(t.RunSettings) }, func(dst *Task, src Task) { dst.RunSettings = cloneSettings(src.RunSettings) }},
 	{"profile", func(t Task) any { return t.Profile }, func(dst *Task, src Task) { dst.Profile = src.Profile }},
+	{"owner_machine", func(t Task) any { return t.OwnerMachine }, func(dst *Task, src Task) { dst.OwnerMachine = src.OwnerMachine }},
 }
 
 // orEmpty returns values, or an empty slice for nil, so a nil and an empty slice compare equal.
@@ -83,6 +84,20 @@ func replayValue(value any) string {
 		return fmt.Sprint(value)
 	}
 	return string(encoded)
+}
+
+// parsePrimeOwner decodes the top-level prime_owner of a board.json read from a commit, empty for an absent or empty file or an absent key.
+func parsePrimeOwner(data []byte) (string, error) {
+	if len(bytes.TrimSpace(data)) == 0 {
+		return "", nil
+	}
+	var decoded struct {
+		PrimeOwner string `json:"prime_owner"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return "", err
+	}
+	return decoded.PrimeOwner, nil
 }
 
 // parseReplayBoard decodes a board.json read from a commit, an absent or empty file being a board with no entry.
@@ -128,6 +143,7 @@ type replayRun struct {
 
 // Apply re-applies the request's commit onto the board directory by entry and design file, and reports what it kept and what it set aside.
 // It loads the board config from the request's board directory and a store from origin's board.json there, and applies each change of the commit against its parent on its own, against the board as the kept changes before it left it.
+// The hub's prime_owner record replays like an entry field, reported lost under the entry name prime.
 // Where both sides changed the same field of an entry or the same design file since the merge base, or the change touches an entry origin removed, origin's side is kept for that change and it is reported lost.
 // A change the board's own checks refuse, the run lock included, is reported refused and so is a later change that depends on an entry a refused change added; the rest of the commit still lands.
 // It saves board.json and re-renders the board's output files when anything was applied, and writes nothing otherwise.
@@ -148,6 +164,19 @@ func (FabricReplay) Apply(req fabricengine.BoardReplayRequest) (fabricengine.Boa
 		return fabricengine.BoardReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
 	}
 	_, commitTasks, err := parseReplayBoard(req.CommitBoardJSON)
+	if err != nil {
+		return fabricengine.BoardReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
+	}
+
+	basePrime, err := parsePrimeOwner(req.BaseBoardJSON)
+	if err != nil {
+		return fabricengine.BoardReplayResult{}, fmt.Errorf("merge base %s: %w", boardFile, err)
+	}
+	parentPrime, err := parsePrimeOwner(req.ParentBoardJSON)
+	if err != nil {
+		return fabricengine.BoardReplayResult{}, fmt.Errorf("parent %s: %w", boardFile, err)
+	}
+	commitPrime, err := parsePrimeOwner(req.CommitBoardJSON)
 	if err != nil {
 		return fabricengine.BoardReplayResult{}, fmt.Errorf("commit %s: %w", boardFile, err)
 	}
@@ -173,6 +202,8 @@ func (FabricReplay) Apply(req fabricengine.BoardReplayRequest) (fabricengine.Boa
 			run.removeEntry(before)
 		}
 	}
+
+	run.changePrimeOwner(basePrime, parentPrime, commitPrime)
 
 	designsApplied := false
 	for _, file := range req.DesignFiles {
@@ -256,6 +287,24 @@ func (r *replayRun) addEntry(commit Task) {
 		return
 	}
 	r.store.tasks = append(r.store.tasks, incoming)
+	r.applied = true
+}
+
+// changePrimeOwner applies the commit's prime_owner change against its parent onto origin's record.
+// A record origin already holds is skipped, and one origin changed since the merge base to a third value stands and is reported lost.
+func (r *replayRun) changePrimeOwner(base, before, commit string) {
+	if before == commit {
+		return
+	}
+	current := r.store.primeOwner
+	if current == commit {
+		return
+	}
+	if current != base && current != before {
+		r.lost("prime", "prime_owner", "origin changed the field too", replayValue(commit))
+		return
+	}
+	r.store.primeOwner = commit
 	r.applied = true
 }
 

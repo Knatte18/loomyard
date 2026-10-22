@@ -277,11 +277,14 @@ Example:
 func statusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "status",
-		Short:       "print the live pause entries, the network operations in flight, the parent locks held, every live session and the processes running a replaced binary",
+		Short:       "print the live pause entries, the network operations in flight, the parent locks held, every live session, the processes running a replaced binary and each pair's owner",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status prints the live pause entries, the network operations in flight and the
 parent locks held, then every live session in the hub with its state, cause and
 whether an entry covers it, and the lyx processes running a replaced binary.
+owners lists each pair of this machine with the machine that owns it, then each
+run-held board entry owned by another machine that has no pair here, so a run
+owned elsewhere is never read as stalled or landed.
 failed_pushes lists every push origin refused that this machine still holds a
 record of, each with its way forward.
 It changes nothing. Any caller may run it.

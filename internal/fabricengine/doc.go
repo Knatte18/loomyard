@@ -61,7 +61,16 @@
 // A code branch is read through the reflog of its tracking ref, as `Fabric.Pull` reads it: rewound takes precedence over ahead, and rewritten is a history origin replaced with commits this machine never held.
 // A records branch neither side contains is needs_replay, which a moving reconcile replaces with the result of its replay.
 // The states a move adds, dirty, busy and live, and the stops themselves, carry a `WayForward` line, the repair step alone; each caller appends its own re-entry.
-// `classifyEntry` turns the verdicts on an entry's branches into active, ended or stopped.
+// `classifyEntry` turns the verdicts on an entry's branches into active, ended, owned_elsewhere or stopped, in that precedence.
+//
+// After judging and before the ended set, `readOriginOwners` reads `board.json` at origin's fetched Bolt tip and asks `OriginSeams.OwnerOf`, an `OwnerReader`, once per recorded pair whether another machine owns it.
+// A judge-only scope reads owners too, since the tip's objects are fetched by SHA, and moves nothing.
+// A hub with no Bolt target or no origin head asks nothing, and a nil `OwnerOf` reads every entry as owned here.
+// A seam error, an empty machine name included, is the reconcile's error, so no verdict is compared with an empty name.
+// An owned_elsewhere entry carries its `Owner` and a way forward naming `lyx adopt <slug>`, and the report's `Summary` has a line for it.
+// An ended entry stays ended whoever owns it, and an owned_elsewhere entry's pair is never handed to the teardown seam.
+// The move is fast-forward only for such an entry: its code and records fast-forwards move, but a records branch both sides moved stays needs_replay and is not replayed, so no commit made after the handover lands on the new owner's tip.
+// The rule holds in the reconcile only; the weft push retry still replays a rejected push.
 //
 // Every scope reads the ended set from origin's fetched Bolt tip and its history before any replay, and drops each run this machine's own landing has reached.
 // `reconcileEnded` then applies the removal to each of those runs that has a batten run record here: an entry with a local part of its pair, its worktree paths, launchers or branches, goes to `OriginSeams.Teardown` as an `EndedTeardown` naming the slug and whether `SnapshotTagged` finds the snapshot tag an earlier force-case run left.

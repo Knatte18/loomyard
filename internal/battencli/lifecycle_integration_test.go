@@ -983,6 +983,7 @@ func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hu
 		t.Fatal("ReadStatus must not be called: the create row must fail before the poll row ever runs")
 		return shedengine.Status{}, false, nil
 	})
+	c.owner = hubOwnerSeams(h.Location)
 
 	err := c.env.CreateWorktree(context.Background())
 	if err == nil {

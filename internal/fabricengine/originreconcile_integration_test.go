@@ -533,7 +533,7 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		}
 	})
 
-	t.Run("classifyEntry puts ended over every branch cause and a D3 stop over active", func(t *testing.T) {
+	t.Run("classifyEntry puts ended over owned_elsewhere, owned_elsewhere over every branch cause and a D3 stop over active", func(t *testing.T) {
 		for _, tt := range []struct {
 			name  string
 			facts fabricengine.EntryFactsForTest
@@ -541,6 +541,9 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 		}{
 			{"ended over a stopping branch", fabricengine.EntryFactsForTest{Ended: true, Branches: []fabricengine.BranchState{fabricengine.BranchDirty}}, fabricengine.EntryEnded},
 			{"ended over a D3 stop", fabricengine.EntryFactsForTest{Ended: true, D3Stop: true}, fabricengine.EntryEnded},
+			{"ended over owned_elsewhere", fabricengine.EntryFactsForTest{Ended: true, OwnedElsewhere: true}, fabricengine.EntryEnded},
+			{"owned_elsewhere over stopping branches", fabricengine.EntryFactsForTest{OwnedElsewhere: true, Branches: []fabricengine.BranchState{fabricengine.BranchDiverged, fabricengine.BranchDirty}}, fabricengine.EntryOwnedElsewhere},
+			{"owned_elsewhere over a D3 stop", fabricengine.EntryFactsForTest{OwnedElsewhere: true, D3Stop: true}, fabricengine.EntryOwnedElsewhere},
 			{"a D3 stop over level branches", fabricengine.EntryFactsForTest{D3Stop: true, Branches: []fabricengine.BranchState{fabricengine.BranchLevel}}, fabricengine.EntryStopped},
 			{"a diverged branch", fabricengine.EntryFactsForTest{Branches: []fabricengine.BranchState{fabricengine.BranchLevel, fabricengine.BranchDiverged}}, fabricengine.EntryStopped},
 			{"a rewound branch", fabricengine.EntryFactsForTest{Branches: []fabricengine.BranchState{fabricengine.BranchRewound}}, fabricengine.EntryStopped},

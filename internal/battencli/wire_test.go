@@ -495,8 +495,16 @@ func TestChildSpawnError(t *testing.T) {
 		wantNotParked bool
 		wantBusy      bool
 		wantRunBusy   bool
+		wantOwner     string
 		wantSubstr    []string
 	}{
+		{
+			name:        "owned_elsewhere_refusal_wraps_the_owner_error_naming_the_owner",
+			runErr:      runErr,
+			childOutput: "log noise\n" + `{"error":"loom: this run is owned by machine","kind":"` + shedrun.StartOwnedElsewhereKind + `","ok":false,"owner":"laptop"}` + "\n",
+			wantOwner:   "laptop",
+			wantSubstr:  []string{"exit status 1", "owned by machine"},
+		},
 		{
 			name:        "driver_busy_refusal_wraps_its_own_sentinel_and_not_the_not_parked_one",
 			runErr:      runErr,
@@ -606,6 +614,10 @@ func TestChildSpawnError(t *testing.T) {
 			}
 			if errors.Is(got, battenshed.ErrChildRunBusy) != tt.wantRunBusy {
 				t.Errorf("childSpawnError(...) = %v; errors.Is(ErrChildRunBusy) = %v, want %v", got, !tt.wantRunBusy, tt.wantRunBusy)
+			}
+			var owned *battenshed.ChildOwnedElsewhereError
+			if gotOwned := errors.As(got, &owned); gotOwned != (tt.wantOwner != "") || (gotOwned && owned.Owner != tt.wantOwner) {
+				t.Errorf("childSpawnError(...) = %v; errors.As(ChildOwnedElsewhereError) = %v with owner %v, want owner %q", got, gotOwned, owned, tt.wantOwner)
 			}
 			for _, want := range tt.wantSubstr {
 				if !strings.Contains(got.Error(), want) {
@@ -808,6 +820,73 @@ func TestFinishRemoval(t *testing.T) {
 			}
 			if strings.Contains(err.Error(), "lyx fabric prune") {
 				t.Errorf("finishRemoval(%s) = %q; want it to never name lyx fabric prune", tt.name, err.Error())
+			}
+		})
+	}
+}
+
+// TestOwnerVerdictOf asserts a run-scope report maps onto the owner verdict: an owned-elsewhere entry of the slug names its owner, an active entry and a report without the slug read as owned here, and an unreachable report reads as unreachable.
+func TestOwnerVerdictOf(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		report fabricengine.OriginReport
+		want   battenshed.OwnerVerdict
+	}{
+		{
+			name:   "owned_elsewhere_entry_names_its_owner",
+			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "other", State: fabricengine.EntryActive}, {Slug: "task", State: fabricengine.EntryOwnedElsewhere, Owner: "laptop"}}},
+			want:   battenshed.OwnerVerdict{Owner: "laptop", Elsewhere: true},
+		},
+		{
+			name:   "active_entry_is_owned_here",
+			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "task", State: fabricengine.EntryActive}}},
+		},
+		{
+			name:   "unreachable_report_is_unreachable",
+			report: fabricengine.OriginReport{Unreachable: true},
+			want:   battenshed.OwnerVerdict{Unreachable: true},
+		},
+		{
+			name:   "report_without_the_slug_is_owned_here",
+			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "other", State: fabricengine.EntryOwnedElsewhere, Owner: "laptop"}}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ownerVerdictOf(tt.report, "task"); got != tt.want {
+				t.Errorf("ownerVerdictOf(%s) = %+v; want %+v", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestChildRestepped asserts a record re-steps a status only when it is a restep at that status's own stop key.
+func TestChildRestepped(t *testing.T) {
+	t.Parallel()
+
+	status := shedengine.Status{CurrentProducer: "Finalize", State: shedengine.StateFailed, History: make([]shedengine.HistoryEntry, 3)}
+	here := sheddriver.StopKeyOf(status)
+	earlier := here
+	earlier.HistoryLength--
+
+	tests := []struct {
+		name    string
+		records []shedrun.SettleRecord
+		want    bool
+	}{
+		{"restep_at_the_same_stop", []shedrun.SettleRecord{{StopKey: here, Action: shedrun.SettleRestep}}, true},
+		{"restep_at_an_earlier_stop", []shedrun.SettleRecord{{StopKey: earlier, Action: shedrun.SettleRestep}}, false},
+		{"other_action_at_the_same_stop", []shedrun.SettleRecord{{StopKey: here, Action: shedrun.SettleHandBack}}, false},
+		{"no_records", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := childRestepped(tt.records, status); got != tt.want {
+				t.Errorf("childRestepped(%s) = %v; want %v", tt.name, got, tt.want)
 			}
 		})
 	}

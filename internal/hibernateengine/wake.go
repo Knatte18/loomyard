@@ -15,6 +15,7 @@ import (
 // Ended is false for a stopped entry.
 // WayForward is the one line that repairs the stop, or for an ended entry what lets its removal go through.
 // Busy marks an entry whose pair a driver or a lock still holds, ParkedPush a busy pair whose records push lock a parked push holds, and Gone a stop whose branch origin no longer has.
+// Owner names the other machine that owns the entry's run, and is empty for a run owned here.
 type WakeRun struct {
 	Slug       string
 	Ended      bool
@@ -22,6 +23,7 @@ type WakeRun struct {
 	Busy       bool
 	ParkedPush bool
 	Gone       bool
+	Owner      string
 }
 
 // WakeReconcile is the engine's own view of one hub reconcile at the wake, so the engine imports no fabric package.
@@ -80,7 +82,8 @@ func reconcileExempt(deps Deps, owned *tenderengine.EntryRef) (WakeReconcile, er
 	return deps.Reconcile()
 }
 
-// holdRuns adds a pair pause entry for each stopped run and each busy ended one, not recorded as owned so it outlives the request, and returns the notice sentence naming each run's next step.
+// holdRuns adds a pair pause entry for each stopped run, each run owned by another machine and each busy ended one, not recorded as owned so it outlives the request, and returns the notice sentence naming each run's next step.
+// A run owned elsewhere is paused with the owner caller, so a slug entry already standing adds none.
 // A pair whose pause fails is left unheld and named with the step that holds it.
 func holdRuns(deps Deps, runs []WakeRun) string {
 	var steps, unheld, ended []string
@@ -89,8 +92,16 @@ func holdRuns(deps Deps, runs []WakeRun) string {
 			ended = append(ended, run.Slug)
 			continue
 		}
-		if _, err := deps.Pause(tenderengine.PauseRequest{Slug: run.Slug, Grace: pauseGrace}); err != nil {
-			unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); hold it with `lyx tender pause %s`", run.Slug, err, run.Slug))
+		request := tenderengine.PauseRequest{Slug: run.Slug, Grace: pauseGrace}
+		if run.Owner != "" {
+			request.Caller = pauserecord.OwnerCaller
+		}
+		if _, err := deps.Pause(request); err != nil {
+			if run.Owner != "" {
+				unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); the next wake or `lyx orch start` pauses it again", run.Slug, err))
+			} else {
+				unheld = append(unheld, fmt.Sprintf("%s could not be paused (%v); hold it with `lyx tender pause %s`", run.Slug, err, run.Slug))
+			}
 		}
 		steps = append(steps, runStep(run))
 	}
@@ -105,6 +116,8 @@ func holdRuns(deps Deps, runs []WakeRun) string {
 func runStep(run WakeRun) string {
 	resume := fmt.Sprintf("`lyx resume %s`", run.Slug)
 	switch {
+	case run.Owner != "":
+		return fmt.Sprintf("%s is owned by machine %s: `lyx adopt %s` from this machine's prime takes it over here", run.Slug, run.Owner, run.Slug)
 	case run.Ended:
 		return fmt.Sprintf("%s ended on origin by its landing or removal but is still busy: %s; then `lyx cleanup --apply`", run.Slug, run.WayForward)
 	case run.ParkedPush:

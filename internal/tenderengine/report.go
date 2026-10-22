@@ -79,6 +79,8 @@ type Deps struct {
 	OrchRevivePending func() (bool, error)
 	// InjectOrchRevive injects line into the orch strand and returns the inject's id.
 	InjectOrchRevive func(line string) (int64, error)
+	// Owners lists each local pair with its effective owner and each run-held entry owned elsewhere; nil reports none.
+	Owners func() ([]PairOwner, error)
 	// Caller is the caller's strand name, empty for an external caller.
 	Caller string
 	// Now is the clock.

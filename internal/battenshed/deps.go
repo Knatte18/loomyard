@@ -294,6 +294,19 @@ type InnerRunDeps struct {
 	Goto func(ctx context.Context, target string) error
 	// ParentLock carries the seams of the parent lock backstop and of the stale-base resume; nil switches both off.
 	ParentLock *ChildParentLock
+	// OwnerCheck judges, without moving any branch, whether another machine owns this run now.
+	// The wait calls it after a detected sleep, after a pause hold ends and while it holds a spawn for an owner.
+	// A nil OwnerCheck switches the check off.
+	OwnerCheck func(ctx context.Context) (OwnerVerdict, error)
+	// PauseOwned pauses the slug under the owner caller, naming the machine that owns it.
+	// A nil PauseOwned resolves to a no-op in NewInnerRun.
+	PauseOwned func(ctx context.Context, owner string) error
+	// ParentHoldsTaskWork reports whether the pair's parent branch already holds the work of the task branch, which marks a Finalize past its parent-side merge.
+	// A nil ParentHoldsTaskWork resolves to reporting false in NewInnerRun.
+	ParentHoldsTaskWork func() (bool, error)
+	// Restepped reports whether the child's settle records hold a re-step of the stop status names.
+	// A nil Restepped resolves to reporting false in NewInnerRun.
+	Restepped func(status shedengine.Status) (bool, error)
 }
 
 // ChildParentLock carries the seams InnerRun reads the parent lock of the child's run through.

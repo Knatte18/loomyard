@@ -272,7 +272,11 @@ func (p *innerRunProducer) publishRetryGoto(ctx context.Context, w *childWait, r
 }
 
 // publishRetryResume resumes the child paused at the retry's target through its bootstrap, logging the attempt at Info the first time and at Debug on each retry after a refusal.
+// It spawns nothing while another machine owns the run, and a spawn refused as owned elsewhere pauses the run and writes no marker.
 func (p *innerRunProducer) publishRetryResume(ctx context.Context, w *childWait, r publishRetry) *waitEnd {
+	if p.ownedBy != "" {
+		return nil
+	}
 	first := w.publishRefusal == ""
 	logAttempt(first, "battenshed: resuming the child at the failed Publish's target", "producer", p.name, "slug", p.slug, "target", r.target)
 	err := p.deps.Spawn(ctx)
@@ -280,6 +284,10 @@ func (p *innerRunProducer) publishRetryResume(ctx context.Context, w *childWait,
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return hardEnd(cerr)
+		}
+		if owner, owned := spawnOwnedElsewhere(err); owned {
+			p.ownedElsewhere(ctx, w, owner)
+			return nil
 		}
 		busy := errors.Is(err, ErrChildDriverBusy)
 		if !busy && !errors.Is(err, ErrChildNotParked) {

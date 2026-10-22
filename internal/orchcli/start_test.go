@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -131,6 +132,20 @@ type startHarness struct {
 	callsAtReconcile int
 	report           fabricengine.OriginReport
 	reconcileErr     error
+	// claims, when set, wires the prime claim to answer each call with the next entry, the last one repeating; claimCalls counts the calls.
+	claims     []claimAnswer
+	claimCalls int
+	// pauseOwned, when set, wires the owner pause to fail with pauseOwnedErr, record each slug in ownerPaused and count the calls callsAtOwnerPause saw of the strand operations.
+	pauseOwned        bool
+	pauseOwnedErr     error
+	ownerPaused       []string
+	callsAtOwnerPause int
+}
+
+// claimAnswer is one scripted answer of the fake prime claim.
+type claimAnswer struct {
+	claimed, lostTo string
+	err             error
 }
 
 func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHarness {
@@ -183,6 +198,23 @@ func (h *startHarness) run(t *testing.T, args ...string) (int, map[string]any) {
 	t.Helper()
 	var out bytes.Buffer
 	// start renders the operator index of its root, so the verb runs under a root that has it as a child.
+	if len(h.claims) > 0 {
+		h.cli.claimPrime = func() (string, string, error) {
+			answer := h.claims[min(h.claimCalls, len(h.claims)-1)]
+			h.claimCalls++
+			return answer.claimed, answer.lostTo, answer.err
+		}
+	}
+	if h.pauseOwned {
+		h.cli.pauseOwned = func(_ *lyxcwd.Location, slug string) error {
+			h.callsAtOwnerPause = len(h.calls)
+			if h.pauseOwnedErr != nil {
+				return h.pauseOwnedErr
+			}
+			h.ownerPaused = append(h.ownerPaused, slug)
+			return nil
+		}
+	}
 	h.root = &cobra.Command{Use: "lyx"}
 	h.root.AddCommand(h.cli.startCmd())
 	code := clihelp.Execute(h.root, &out, append([]string{"start"}, args...))
@@ -1044,6 +1076,83 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
 				if warning, _ := env["warning"].(string); !strings.Contains(warning, "ls-remote failed for the records repository") || len(h.starter.specs) != 1 {
 					t.Errorf("warning = %q, starts = %d; want the reconcile error and one launch", warning, len(h.starter.specs))
+				}
+			},
+		},
+		{
+			name: "a hub with no prime owner claims it once and reports the claim",
+			prepare: func(t *testing.T, h *startHarness) {
+				h.claims = []claimAnswer{{claimed: "desktop"}}
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if warning, _ := env["warning"].(string); h.claimCalls != 1 || !strings.Contains(warning, "claimed for machine desktop") || len(h.starter.specs) != 1 {
+					t.Errorf("claims = %d, warning = %q, starts = %d; want one claim reported and one launch", h.claimCalls, warning, len(h.starter.specs))
+				}
+			},
+		},
+		{
+			name: "a lost claim reports the other machine and the launch goes on",
+			prepare: func(t *testing.T, h *startHarness) {
+				h.claims = []claimAnswer{{lostTo: "laptop"}}
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if warning, _ := env["warning"].(string); !strings.Contains(warning, "machine laptop") || len(h.starter.specs) != 1 {
+					t.Errorf("warning = %q, starts = %d; want the other machine named and one launch", warning, len(h.starter.specs))
+				}
+			},
+		},
+		{
+			name: "a failing claim warns and the launch goes on",
+			prepare: func(t *testing.T, h *startHarness) {
+				h.claims = []claimAnswer{{err: errors.New("origin is unreachable")}}
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if warning, _ := env["warning"].(string); !strings.Contains(warning, "origin is unreachable") || len(h.starter.specs) != 1 {
+					t.Errorf("warning = %q, starts = %d; want the failure and one launch", warning, len(h.starter.specs))
+				}
+			},
+		},
+		{
+			name: "an owned_elsewhere entry is paused once before the launch and named in owner_pauses",
+			prepare: func(t *testing.T, h *startHarness) {
+				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
+				h.pauseOwned = true
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				pauses := envList(t, env, "owner_pauses")
+				row, _ := pauses[0].(map[string]any)
+				if !reflect.DeepEqual(h.ownerPaused, []string{"p1"}) || len(pauses) != 1 || row["slug"] != "p1" || row["owner"] != "laptop" || h.callsAtOwnerPause != 0 || len(h.starter.specs) != 1 {
+					t.Errorf("paused = %v, owner_pauses = %v, calls before the pause = %d, starts = %d; want p1 paused once before any strand call and one launch", h.ownerPaused, pauses, h.callsAtOwnerPause, len(h.starter.specs))
+				}
+			},
+		},
+		{
+			name: "a failing owner pause warns naming the re-run of orch start and the launch goes on",
+			prepare: func(t *testing.T, h *startHarness) {
+				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
+				h.pauseOwned, h.pauseOwnedErr = true, errors.New("tender down")
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				warning, _ := env["warning"].(string)
+				if !strings.Contains(warning, "tender down") || !strings.Contains(warning, "re-run `lyx orch start`, which pauses it again") || len(envList(t, env, "owner_pauses")) != 0 || len(h.starter.specs) != 1 {
+					t.Errorf("warning = %q, starts = %d; want the failure and the re-run named, nothing paused and one launch", warning, len(h.starter.specs))
+				}
+			},
+		},
+		{
+			name: "with no owner pause wired an owned_elsewhere entry is named under the warnings and the launch goes on",
+			prepare: func(t *testing.T, h *startHarness) {
+				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if warning, _ := env["warning"].(string); !strings.Contains(warning, "p1 is owned by machine laptop") || len(h.starter.specs) != 1 {
+					t.Errorf("warning = %q, starts = %d; want p1 and its owner named and one launch", warning, len(h.starter.specs))
 				}
 			},
 		},

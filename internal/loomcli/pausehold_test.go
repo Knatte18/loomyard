@@ -21,6 +21,12 @@ import (
 // coverRun makes c's worktree a task worktree of its hub and records a live hub-wide pause entry, returning the record's path.
 func coverRun(t *testing.T, c *loomCLI) string {
 	t.Helper()
+	return coverRunBy(t, c, pauserecord.ScopeHub, "EXTERNAL")
+}
+
+// coverRunBy is coverRun with the live entry's scope and caller named by the test; an empty scope is the run's own slug.
+func coverRunBy(t *testing.T, c *loomCLI, scope, caller string) string {
+	t.Helper()
 	gitDir := filepath.Join(c.location.HubPath, "repo", ".git", "worktrees", c.location.WorktreeName)
 	gitFile := filepath.Join(c.location.WorktreePath(), ".git")
 	if err := os.WriteFile(gitFile, []byte("gitdir: "+gitDir+"\n"), 0o644); err != nil {
@@ -30,9 +36,12 @@ func coverRun(t *testing.T, c *loomCLI) string {
 	if err != nil {
 		t.Fatalf("hubgeom.PauseGeometry: %v", err)
 	}
+	if scope == "" {
+		scope = geometry.Slug
+	}
 	now := time.Now()
 	if _, err := pauserecord.Update(geometry.RecordPath, now, func(record *pauserecord.Record) error {
-		record.Live = append(record.Live, pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: now, Caller: "EXTERNAL"})
+		record.Live = append(record.Live, pauserecord.Entry{Scope: scope, PausedAt: now, Caller: caller})
 		return nil
 	}); err != nil {
 		t.Fatalf("pauserecord.Update: %v", err)

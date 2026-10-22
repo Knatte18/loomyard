@@ -21,6 +21,7 @@ type Board struct {
 	skipGit   bool
 	skipPush  bool
 	now       func() time.Time
+	parentOf  func(slug string) (string, error)
 }
 
 // New returns a Board operating with the given config.
@@ -36,6 +37,7 @@ func New(cfg Config) *Board {
 		skipGit:   cfg.SkipGit,
 		skipPush:  cfg.SkipPush,
 		now:       now,
+		parentOf:  cfg.ParentOf,
 	}
 }
 
@@ -74,6 +76,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 
 	store := NewStore(b.boardPath)
 	store.vocab = &b.vocab
+	store.parentOf = b.parentOf
 	if err := store.Load(); err != nil {
 		return nil, err
 	}
@@ -241,6 +244,7 @@ func (b *Board) HealthCheck() error {
 func (b *Board) loadStore() (*Store, error) {
 	store := NewStore(b.boardPath)
 	store.vocab = &b.vocab
+	store.parentOf = b.parentOf
 	if err := store.Load(); err != nil {
 		return nil, err
 	}
@@ -259,6 +263,15 @@ func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
 
 	task, found := store.GetTask(idOrSlug)
 	return task, found, nil
+}
+
+// EffectiveOwner returns the owner machine the entry slug reads as, "" meaning owned by no other machine, persisting nothing.
+func (b *Board) EffectiveOwner(slug string) (string, error) {
+	store, err := b.loadStore()
+	if err != nil {
+		return "", err
+	}
+	return store.effectiveOwner(slug)
 }
 
 // checkFilterLabels refuses a filter label that is in neither list of the vocabulary and that no entry carries.

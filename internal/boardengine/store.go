@@ -43,6 +43,8 @@ type BriefTask struct {
 	Revised     time.Time `json:"revised,omitzero"`
 	Layer       string    `json:"layer"`
 	HasProposal bool      `json:"has_proposal"`
+	// OwnerMachine is the entry's effective owner: the recorded one, else the owner it reads as through its parent; empty for a note and where the owner cannot be resolved.
+	OwnerMachine string `json:"owner_machine,omitempty"`
 }
 
 const (
@@ -55,11 +57,13 @@ const (
 
 // storeFile is the on-disk shape of board.json.
 // LegacyDone lists the slugs whose done mark came from a legacy file, so the fold never re-applies one.
+// PrimeOwner names the machine that owns the hub's prime, empty when none is recorded.
 // Unknown holds the top-level keys this binary does not know, written back after the known ones in key order.
 type storeFile struct {
 	Version    int                        `json:"version"`
 	Entries    []Task                     `json:"entries"`
 	LegacyDone []string                   `json:"legacy_done,omitempty"`
+	PrimeOwner string                     `json:"prime_owner,omitempty"`
 	Unknown    map[string]json.RawMessage `json:"-"`
 }
 
@@ -79,6 +83,7 @@ type loadedStoreFile struct {
 	Version    int                        `json:"version"`
 	Entries    []storedEntry              `json:"entries"`
 	LegacyDone []string                   `json:"legacy_done,omitempty"`
+	PrimeOwner string                     `json:"prime_owner,omitempty"`
 	Unknown    map[string]json.RawMessage `json:"-"`
 }
 
@@ -89,6 +94,7 @@ func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 		Version    int            `json:"version"`
 		Entries    []decodedEntry `json:"entries"`
 		LegacyDone []string       `json:"legacy_done,omitempty"`
+		PrimeOwner string         `json:"prime_owner,omitempty"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
@@ -107,7 +113,7 @@ func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 	eachElement(rawEntries, func(raw []byte) {
 		entries = append(entries, storedEntryFrom(decoded.Entries[len(entries)], raw))
 	})
-	*f = loadedStoreFile{Version: decoded.Version, Entries: entries, LegacyDone: decoded.LegacyDone}
+	*f = loadedStoreFile{Version: decoded.Version, Entries: entries, LegacyDone: decoded.LegacyDone, PrimeOwner: decoded.PrimeOwner}
 	if len(unknown) > 0 {
 		f.Unknown = unknown
 	}
@@ -121,12 +127,17 @@ var loadedStoreFileKeys = jsonKeySet(reflect.TypeFor[loadedStoreFile]())
 type Store struct {
 	tasks      []Task
 	legacyDone []string
+	// primeOwner is the board.json prime_owner record, the machine that owns the hub's prime; empty when none is recorded.
+	primeOwner string
 	// unknown is the top-level keys of board.json this binary does not know, kept raw and written back by Save.
 	unknown  map[string]json.RawMessage
 	boardDir string
 	// vocab is the label vocabulary validateWrite checks labels against.
 	// Board sets it on every store it builds; only a store built directly by NewStore, in store-level tests, has none, and nil skips the label check alone.
 	vocab *Vocabulary
+	// parentOf names the slug of an entry's parent pair for the effective owner, "" for the prime; nil reads every parent as the prime.
+	// Board sets it on every store it builds from Config.ParentOf.
+	parentOf func(slug string) (string, error)
 }
 
 // NewStore creates an empty, unloaded Store over boardDir.
@@ -146,6 +157,7 @@ func NewStore(boardDir string) *Store {
 func (s *Store) Load() error {
 	s.tasks = []Task{}
 	s.legacyDone = nil
+	s.primeOwner = ""
 	s.unknown = nil
 	if s.boardDir == "" {
 		return nil
@@ -164,6 +176,7 @@ func (s *Store) Load() error {
 	var entries []Task
 	var legacyDone []string
 	var unknown map[string]json.RawMessage
+	var primeOwner string
 	if fileExists(path) {
 		// The raw bytes are read under the shared lock and decoded after it is released,
 		// so the decode never holds off a writer waiting for the exclusive lock.
@@ -180,6 +193,7 @@ func (s *Store) Load() error {
 				return fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
 			}
 			entries, legacyDone, unknown = migrateEntries(file.Entries, s.vocab), file.LegacyDone, file.Unknown
+			primeOwner = file.PrimeOwner
 		}
 	} else if haveTasks || haveNotes {
 		entries, legacyDone, err = migrateLegacy(tasksRecords, notesRecords, s.vocab)
@@ -208,6 +222,7 @@ func (s *Store) Load() error {
 	}
 	s.tasks = entries
 	s.legacyDone = legacyDone
+	s.primeOwner = primeOwner
 	s.unknown = unknown
 	return nil
 }
@@ -260,6 +275,7 @@ func (s *Store) Save() error {
 		Version:    storeVersion,
 		Entries:    s.tasks,
 		LegacyDone: s.legacyDone,
+		PrimeOwner: s.primeOwner,
 		Unknown:    s.unknown,
 	})
 }
@@ -420,8 +436,9 @@ type MergeStatusUpdate struct {
 
 // UpsertPayloadKeys returns the keys a task payload carries on every upsert path: the required keys and the optional ones.
 // "id" is auto-assigned and never accepted; "phase" and "group" are retired.
+// "owner_machine" is accepted only as the entry's effective owner, a no-op.
 func UpsertPayloadKeys() (required, optional []string) {
-	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile"}
+	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "owner_machine"}
 }
 
 // upsertAllowedKeys is the set of field names every upsert path accepts, enforced at the store boundary.
@@ -458,8 +475,12 @@ func validateUpsertFields(fields map[string]any) error {
 
 // UpsertTask creates or updates the task identified by fields["slug"].
 // Rejects unknown fields via validateUpsertFields before any other processing.
+// An owner_machine key equal to the entry's effective owner is dropped from fields, and any other value is refused.
 func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
 	if err := validateUpsertFields(fields); err != nil {
+		return Task{}, err
+	}
+	if err := checkOwnerPayload(s, fields); err != nil {
 		return Task{}, err
 	}
 
@@ -685,26 +706,34 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 		}
 	}
 
+	owners := ownersOf(s.primeOwner, s.tasks)
+	parentOf := parentOfOrPrime(s.parentOf)
 	result := make([]BriefTask, 0, len(s.tasks))
 	for _, t := range ordered {
 		if !hasAllLabels(t, labels) {
 			continue
 		}
+		owner := t.OwnerMachine
+		if owner == "" && t.Kind == KindTask {
+			// A resolver error leaves the cell empty: a list never fails on a parent it cannot read.
+			owner, _ = owners.Effective(t.Slug, parentOf)
+		}
 		brief := BriefTask{
-			ID:          t.ID,
-			Slug:        t.Slug,
-			Title:       t.Title,
-			DependsOn:   t.DependsOn,
-			Kind:        t.Kind,
-			Labels:      t.Labels,
-			Isolated:    t.Isolated,
-			Brief:       t.Brief,
-			Priority:    t.Priority,
-			Status:      t.Status,
-			Created:     t.Created,
-			Revised:     t.Revised,
-			Layer:       layerMap[t.Slug],
-			HasProposal: t.Body != "",
+			ID:           t.ID,
+			Slug:         t.Slug,
+			Title:        t.Title,
+			DependsOn:    t.DependsOn,
+			Kind:         t.Kind,
+			Labels:       t.Labels,
+			Isolated:     t.Isolated,
+			Brief:        t.Brief,
+			Priority:     t.Priority,
+			Status:       t.Status,
+			Created:      t.Created,
+			Revised:      t.Revised,
+			Layer:        layerMap[t.Slug],
+			HasProposal:  t.Body != "",
+			OwnerMachine: owner,
 		}
 		result = append(result, brief)
 	}
@@ -803,6 +832,9 @@ func (s *Store) ListTasksFull() []Task {
 func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 	for _, fields := range tasks {
 		if err := validateUpsertFields(fields); err != nil {
+			return err
+		}
+		if err := checkOwnerPayload(s, fields); err != nil {
 			return err
 		}
 	}
@@ -917,6 +949,9 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	}
 
 	if err := validateUpsertFields(upsert); err != nil {
+		return Task{}, err
+	}
+	if err := checkOwnerPayload(s, upsert); err != nil {
 		return Task{}, err
 	}
 

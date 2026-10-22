@@ -47,6 +47,21 @@ type StatusReport struct {
 	Sessions []SessionStatus `json:"sessions"`
 	// Stale holds the processes running a replaced binary.
 	Stale StaleReport `json:"stale"`
+	// Owners holds each local pair with its effective owner, then each run-held entry owned by another machine that has no local pair.
+	Owners []PairOwner `json:"owners"`
+	// OwnersError is the error of a failed owners reading, empty when it read.
+	OwnersError string `json:"owners_error,omitempty"`
+}
+
+// PairOwner is one pair, or one run-held board entry with no local pair, with the machine that owns it.
+type PairOwner struct {
+	Slug string `json:"slug"`
+	// Owner is the machine the entry reads as owned by, empty when no other machine owns it.
+	Owner string `json:"owner"`
+	// Local is true when this machine holds the pair.
+	Local bool `json:"local"`
+	// OwnedHere is true when no other machine owns it.
+	OwnedHere bool `json:"owned_here"`
 }
 
 // SessionStatus is one live session with the state its run's files read.
@@ -455,16 +470,24 @@ func describeState(state shuttleengine.SessionState) string {
 	return fmt.Sprintf("%s (%s)", state.Name, state.Cause)
 }
 
-// Status reads the live entries, the holds, every live session's state and the processes running a replaced binary, changing nothing.
-// A failed state or process reading is reported inside its own part and leaves the rest of the report intact.
+// Status reads the live entries, the holds, every live session's state, the processes running a replaced binary and the owners of the pairs, changing nothing.
+// A failed state, process or owners reading is reported inside its own part and leaves the rest of the report intact.
 func Status(deps Deps) (StatusReport, error) {
 	record, err := pauserecord.Read(deps.RecordPath)
 	if err != nil {
 		return StatusReport{}, err
 	}
-	report := StatusReport{Live: append([]pauserecord.Entry{}, record.Live...), Stale: StaleReport{Supported: true, Processes: []StaleProcess{}}}
+	report := StatusReport{Live: append([]pauserecord.Entry{}, record.Live...), Stale: StaleReport{Supported: true, Processes: []StaleProcess{}}, Owners: []PairOwner{}}
 	if report.Sessions, err = sessionStatuses(deps, record); err != nil {
 		return report, err
+	}
+	if deps.Owners != nil {
+		owners, err := deps.Owners()
+		if err != nil {
+			report.OwnersError = err.Error()
+		} else {
+			report.Owners = append(report.Owners, owners...)
+		}
 	}
 	if deps.Processes != nil {
 		processes, err := deps.Processes()

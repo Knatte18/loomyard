@@ -64,8 +64,16 @@
 // The envelope gains `reconcile` (the report), `failed_pushes` (the hub's outstanding failed pushes), and the `mutations` and `partial` pair of a mutating verb, since the reconcile can remove pairs, write snapshot tags and move branches.
 // An unreachable origin or a reconcile error is a `warning`.
 // A failure after the reconcile ran carries the report's `mutations`, with `partial` true when the record is non-empty.
-// A fresh launch's prompt gains a line summarising the report and the outstanding failed pushes.
+// A fresh launch's prompt gains a line summarising the report and the outstanding failed pushes, the owned-elsewhere lines of the summary included.
 // Under an operator's live hub pause the reconcile's network calls wait at the network gate until the lift.
+//
+// # The prime claim and the owner pause at start
+//
+// After the reconcile, `start` first claims the prime for this machine through `claimPrime`, writing only when the board records no prime owner.
+// A claim, a claim lost to another machine and a failure are reported under the reconcile warnings, and none refuses the start.
+// Before it touches any strand, `start` then pauses each owned_elsewhere entry of the report through `pauseOwned`, which `InstallOwnerPause` stores for the process; the root pre-run installs `tendercli.PauseOwnedElsewhere`, since `tendercli` imports this package and the reverse import would cycle.
+// The paused slugs with their owners are the `owner_pauses` envelope key, and a failed or unwired pause is a warning naming that `lyx orch start` pauses it again.
+// A nil `claimPrime` or `pauseOwned`, as a hand-built start harness has, is skipped.
 //
 // # Withdrawing around a fresh launch
 //

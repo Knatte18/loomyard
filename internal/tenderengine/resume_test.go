@@ -727,6 +727,40 @@ func TestStatus(t *testing.T) {
 		}
 	})
 
+	t.Run("the owners part carries the seam's answer, and a failed seam leaves the rest of the report intact", func(t *testing.T) {
+		answer := []PairOwner{{Slug: "p1", Owner: "laptop", Local: true}, {Slug: "p2", Owner: "desktop", OwnedHere: false}, {Slug: "p3", Owner: "here", Local: true, OwnedHere: true}}
+		tests := []struct {
+			name      string
+			owners    func() ([]PairOwner, error)
+			want      []PairOwner
+			wantError string
+		}{
+			{"Answer", func() ([]PairOwner, error) { return answer, nil }, answer, ""},
+			{"NilSeam", nil, []PairOwner{}, ""},
+			{"SeamError", func() ([]PairOwner, error) { return nil, errors.New("board unreadable") }, []PairOwner{}, "board unreadable"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				e := newEnv(t, newPair("p1", "a"))
+				e.seedLive(hubEntry(e.clock.Now()))
+				deps := e.deps()
+				deps.Owners = tt.owners
+
+				report, err := Status(deps)
+
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(report.Owners, tt.want) || report.OwnersError != tt.wantError {
+					t.Errorf("owners = %+v, error = %q; want %+v, %q", report.Owners, report.OwnersError, tt.want, tt.wantError)
+				}
+				if len(report.Sessions) != 1 || len(report.Live) != 1 {
+					t.Errorf("report = %+v; want sessions and live entries still read", report)
+				}
+			})
+		}
+	})
+
 	t.Run("an empty hub reads empty lists, not nil", func(t *testing.T) {
 		report := read(t, newEnv(t))
 
