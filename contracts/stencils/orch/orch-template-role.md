@@ -158,7 +158,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
   - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Loom-Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lyx board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`, with the held task's slug in place of `<slug>`.
     Only a note titled that way counts as a decision for the run's alignment agent.
   - Only when the verb refuses because Discussion-Write is running and owns the record does the decision go by message to the Discussion-Write session.
-    A darn run's verb refuses until Darn-Write has committed its record, and then the decision goes by message to the Darn-Write session.
+    A darn run's verb refuses until Darn-Write has committed its record, and then the verb alone records the decision, with no message of your own, since it tells each live agent of the run.
   - The board's run lock is unchanged, so a held task's entry is never edited.
 - Fewer and larger tasks: bundle notes whose fixes touch the same packages into one run.
   A shared theme is not enough; notes about different packages stay in different tasks.
