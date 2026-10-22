@@ -60,8 +60,12 @@ strand. The flag never removes, resizes or refocuses that strand. A skip
 exits 0 with skipped: true and an unless object holding the matched strand's
 guid and name.
 
+add runs --cmd verbatim. An agent session is not opened through add: use
+lyx shuttle open --role <role>, which launches it under its strand name and
+session id in its engine's bypass mode.
+
 Example:
-  lyx reed add --cmd "claude --session-id %SID%" --role producer`,
+  lyx reed add --cmd "htop" --role monitor`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil

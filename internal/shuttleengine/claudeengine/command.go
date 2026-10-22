@@ -61,15 +61,13 @@ const (
 
 // validatePermissionMode resolves a run's or an opened session's permission mode into whether its launch lines carry --dangerously-skip-permissions.
 // An opened session is always interactive.
-// Empty resolves to the run mode's default: an autonomous run skips, an interactive run prompts.
-// "bypass" skips and "prompt" adds nothing.
+// Empty and "bypass" skip in either run mode, because every session lyx launches into reed needs bypass to work unattended;
+// "prompt" adds nothing and is the per-call opt-out.
 // "prompt" on an autonomous run is an error, since a run that prompts with nobody to answer stalls;
 // any other value is an error naming the three legal values.
 func validatePermissionMode(mode string, interactive bool) (skipPermissions bool, err error) {
 	switch mode {
-	case "":
-		return !interactive, nil
-	case permissionModeBypass:
+	case "", permissionModeBypass:
 		return true, nil
 	case permissionModePrompt:
 		if !interactive {
@@ -77,7 +75,7 @@ func validatePermissionMode(mode string, interactive bool) (skipPermissions bool
 		}
 		return false, nil
 	}
-	return false, fmt.Errorf("claudeengine: invalid permission mode %q; valid values are \"\" (the run mode's default), %q, %q (case-sensitive)", mode, permissionModeBypass, permissionModePrompt)
+	return false, fmt.Errorf("claudeengine: invalid permission mode %q; valid values are \"\" (bypass), %q, %q (case-sensitive)", mode, permissionModeBypass, permissionModePrompt)
 }
 
 // resolveModelID translates a bare-word model plus an optional version into the final model id.
@@ -289,7 +287,7 @@ func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort string, skipPerm
 
 // OpenLaunch returns the launch of a named interactive session with no prompt.
 // It loads claude.yaml, validates the effort and the permission mode and resolves the model and version into a model id before anything else, mints a session id, and returns the fresh line as Cmd.
-// Bypass is opt-in per call through spec.PermissionMode;
+// Bypass is the default, and spec.PermissionMode "prompt" opts out per call;
 // the session still loads Claude Code's own settings layers, whose deny rules and hooks Claude Code applies in bypass too, and carries no shuttle --settings or guard.
 // "prompt" adds nothing, so it cannot override a default mode the settings set.
 // The session takes no turn until text reaches its pane through the operator, `lyx shuttle send` or creel, each bounded by its own rules.

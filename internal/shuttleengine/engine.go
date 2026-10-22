@@ -240,7 +240,7 @@ type OpenSpec struct {
 	// Segment is the loom segment the session's window is colored by.
 	Segment segmentcolor.Segment
 	// PermissionMode is the caller-owned engine vocabulary for the session's permission mode.
-	// Empty keeps the engine's interactive default.
+	// Empty selects the engine's bypass mode.
 	// Open and the CLI pass it uninspected; the engine is the sole validator and realizer.
 	PermissionMode string
 }

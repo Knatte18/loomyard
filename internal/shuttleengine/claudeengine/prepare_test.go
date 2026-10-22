@@ -244,7 +244,7 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 		},
 		{name: "empty_resume_session_id_mints_session", spec: shuttleengine.Spec{}, claude: templateConfig(t), onLaunch: flagExpectation{present: []string{"--session-id"}, absent: []string{"--resume"}}},
 		{name: "permission_interactive_bypass", spec: shuttleengine.Spec{PermissionMode: "bypass", Interactive: true}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{skipPermissions}}},
-		{name: "permission_interactive_empty", spec: shuttleengine.Spec{PermissionMode: "", Interactive: true}, claude: templateConfig(t), onBothLines: flagExpectation{absent: []string{skipPermissions}}},
+		{name: "permission_interactive_empty", spec: shuttleengine.Spec{PermissionMode: "", Interactive: true}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{skipPermissions}}},
 		{name: "permission_autonomous_empty", spec: shuttleengine.Spec{PermissionMode: "", Interactive: false}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{skipPermissions}}},
 		{name: "permission_autonomous_bypass", spec: shuttleengine.Spec{PermissionMode: "bypass", Interactive: false}, claude: templateConfig(t), onBothLines: flagExpectation{present: []string{skipPermissions}}},
 		{name: "permission_interactive_prompt", spec: shuttleengine.Spec{PermissionMode: "prompt", Interactive: true}, claude: templateConfig(t), onBothLines: flagExpectation{absent: []string{skipPermissions}}},
