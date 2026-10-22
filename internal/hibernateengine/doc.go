@@ -63,8 +63,12 @@
 // A pause lifted during its grace cancels the request.
 // A pause error fails the request, lifts the owned entry and queues one notice; the lift and the notice run even when the failed write fails.
 //
-// Confirmation reads the hub right after the pause and then up to 120 times, five seconds apart, ten minutes in all.
-// A reading confirms when a hub entry is live, every session reads idle, asking or dead, no network operation is in flight and the land lock is free.
+// Confirmation reads the hub right after the pause and then re-reads it five seconds apart, up to 120 times, ten minutes in all.
+// A reading confirms when a hub entry is live, every session reads idle, asking, dead or busy only on background shells, no network operation is in flight and the land lock is free.
+// A suspend freezes a shell and the wait loop that holds it and resumes both on wake, so a shell withholds nothing.
+// A session with an outstanding background fork withholds, since a fork is never interrupted and its next batch is already held by the pause; while forks are the only reason for the latest reading, confirmation keeps re-reading up to 720 times, sixty minutes in all.
+// A network operation in flight, a held land lock or any other busy session keeps the ten minute bound.
+// A session whose strand is the request's requester is left out of the reading when the requester is the orch, since the orch is not interrupted by a hub pause and its writes that matter are withheld through the land lock and the network operations.
 // The first reading also withholds while the pause left a strand busy or refused a session.
 // The parent locks a paused run keeps by design are not read.
 // A reading with no live hub entry cancels the request, and a reading error counts as unconfirmed.

@@ -36,7 +36,9 @@ type fakeWorld struct {
 	awake        time.Duration
 	pendingSleep bool
 
-	caller    string
+	caller string
+	// requester is the requester of the own request, requesterExternal when unset.
+	requester string
 	goos      string
 	systemctl bool
 
@@ -449,7 +451,11 @@ func (w *fakeWorld) deps() Deps {
 
 // ownRequest is a waiting request whose daemon is the world's own process.
 func (w *fakeWorld) ownRequest(trigger Trigger, slug string) Request {
-	return Request{Trigger: trigger, Slug: slug, Requester: requesterExternal, RequestedAt: w.now(), DaemonPID: w.selfPID, DaemonStart: w.selfStart, Phase: PhaseWaiting}
+	requester := w.requester
+	if requester == "" {
+		requester = requesterExternal
+	}
+	return Request{Trigger: trigger, Slug: slug, Requester: requester, RequestedAt: w.now(), DaemonPID: w.selfPID, DaemonStart: w.selfStart, Phase: PhaseWaiting}
 }
 
 // seed writes r as the request file.

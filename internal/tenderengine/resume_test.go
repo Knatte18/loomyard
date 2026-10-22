@@ -735,6 +735,26 @@ func TestStatus(t *testing.T) {
 		}
 	})
 
+	t.Run("a session busy on background work lists the kind of each outstanding task", func(t *testing.T) {
+		p := newPair("p1", "a")
+		p.states["g-a"] = shuttleengine.SessionState{
+			Name:  shuttleengine.SessionBusy,
+			Cause: shuttleengine.SessionCauseBackground,
+			Outstanding: []shuttleengine.BackgroundTask{
+				{Kind: shuttleengine.BackgroundShell, ID: "s1"},
+				{Kind: shuttleengine.BackgroundFork, ID: "f1"},
+			},
+		}
+		e := newEnv(t, p)
+		e.seedLive(hubEntry(e.clock.Now()))
+
+		sessions := read(t, e).Sessions
+
+		if len(sessions) != 1 || !reflect.DeepEqual(sessions[0].Background, []string{"shell", "fork"}) {
+			t.Errorf("sessions = %+v; want one session with background shell and fork", sessions)
+		}
+	})
+
 	t.Run("stale processes keep a replaced lyx inside the hub and nothing else", func(t *testing.T) {
 		e := newEnv(t)
 		e.hubPath = "/home/u/hub"

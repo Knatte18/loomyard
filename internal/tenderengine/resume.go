@@ -78,6 +78,8 @@ type SessionStatus struct {
 	State string `json:"state"`
 	// Cause says why the session is in the state, or the error of a failed reading.
 	Cause string `json:"cause"`
+	// Background is the kind of each outstanding task of a busy state whose cause is background, empty for any other state.
+	Background []string `json:"background,omitempty"`
 	// Since is when the causing line or reading happened, in RFC 3339, empty when it has no time.
 	Since string `json:"since"`
 	// Prime is true for a session of the prime.
@@ -609,6 +611,9 @@ func sessionStatuses(deps Deps, record pauserecord.Record) ([]SessionStatus, err
 				status.State, status.Cause = string(state.Name), state.Cause
 				if !state.Since.IsZero() {
 					status.Since = state.Since.UTC().Format(time.RFC3339)
+				}
+				for _, task := range state.Outstanding {
+					status.Background = append(status.Background, string(task.Kind))
 				}
 			}
 			statuses = append(statuses, status)

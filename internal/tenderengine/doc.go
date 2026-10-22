@@ -84,6 +84,7 @@
 //
 //   - Every live session of every task pair and then of the prime, each with its state, cause and since, and whether a live entry covers its slug.
 //     A prime session is covered only by a hub entry.
+//     A session busy on background work lists the kind of each outstanding task under `background`.
 //     A session whose state reading fails is listed with the state `unknown` and the error as its cause.
 //   - The processes running a replaced binary: each process whose exe is a deleted file with the running lyx's own file name and whose cwd is the hub or inside it.
 //     A platform that cannot list processes reports the part unsupported, and any other failed reading is reported in the part; the rest of the report is unaffected either way.
