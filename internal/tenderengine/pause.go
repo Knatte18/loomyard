@@ -34,6 +34,9 @@ type PauseRequest struct {
 	Slug string
 	// Grace is how long busy sessions and network operations get to finish before the Esc.
 	Grace time.Duration
+	// Caller, when set, is the Caller the added entry carries instead of the deps' caller.
+	// The caller's own session is still the one the deps' caller names.
+	Caller string
 	// Added, when set, is called once with the entry the pause adds, right after the record update and before the grace's first poll, so no Esc has gone yet.
 	// A scope that already had a live entry adds none and calls no Added.
 	// An error ends the pause at once with it wrapped; the entry stays live.
@@ -116,6 +119,9 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 			}
 		}
 		caller := deps.Caller
+		if req.Caller != "" {
+			caller = req.Caller
+		}
 		if caller == "" {
 			caller = externalCaller
 		}

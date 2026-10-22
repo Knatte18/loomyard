@@ -11,6 +11,9 @@
 // Every reader is told a Geometry and derives no path itself; only `internal/hubgeom` and `internal/standalonegeom` construct it.
 // A reader that cannot decode the record logs it and reads uncovered, so a corrupt file never freezes the hub.
 //
+// `OwnerCaller` is the fixed `Caller` of every pause entry that holds a run owned by another machine, so its lifter and a running loop tell those entries apart from any other.
+// `Coverage.OwnerHeld` is set when a live entry of the slug's own scope carries it, whichever entry is the oldest covering one.
+//
 // Excluded measures how much of a time span the covered intervals took, so overlapping pauses are subtracted once.
 // CoveredError is the refusal every held entry point returns, and `ResumeLine` is the one line a resumed session is given.
 //

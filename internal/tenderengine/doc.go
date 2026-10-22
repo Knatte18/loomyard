@@ -13,6 +13,7 @@
 //
 // A pause covers the whole hub for an empty slug and one pair for a slug.
 // Under the record lock it adds the entry with its grace end and the caller; a live entry of the same scope adds none.
+// A request's `Caller` replaces the deps' caller on the entry; the session-skip rule still reads the deps' caller.
 // It then polls each second until every covered session reads idle and no covered network operation is in flight, the grace end passes, or the entry is no longer live.
 // An entry resumed during the grace ends the sequence with no Esc.
 // A request's `Added` callback is called once with the entry a pause adds, right after the record update and before the grace, and never for a scope that already had a live entry;

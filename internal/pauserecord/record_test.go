@@ -282,6 +282,26 @@ func TestCoverageOf(t *testing.T) {
 	if resumedOnly.Covered || len(resumedOnly.Intervals) != 1 {
 		t.Fatalf("resumed-only coverage = %+v, want uncovered with its one interval", resumedOnly)
 	}
+
+	if got.OwnerHeld {
+		t.Fatalf("coverage by an entry with no caller = %+v, want OwnerHeld unset", got)
+	}
+	ownerEntry := Entry{Scope: "a", PausedAt: epoch.Add(time.Minute), Caller: OwnerCaller}
+	olderHub := Entry{Scope: ScopeHub, PausedAt: epoch, Caller: "someone"}
+	for _, row := range []struct {
+		name   string
+		record Record
+		want   bool
+	}{
+		{"a slug entry carrying the owner caller", Record{Live: []Entry{ownerEntry}}, true},
+		{"a hub entry older than the owner entry", Record{Live: []Entry{olderHub, ownerEntry}}, true},
+		{"an entry with another caller", Record{Live: []Entry{{Scope: "a", PausedAt: epoch, Caller: "someone"}}}, false},
+		{"a hub entry carrying the owner caller", Record{Live: []Entry{{Scope: ScopeHub, PausedAt: epoch, Caller: OwnerCaller}}}, false},
+	} {
+		if held := row.record.CoverageOf("a", now).OwnerHeld; held != row.want {
+			t.Errorf("%s: OwnerHeld = %v, want %v", row.name, held, row.want)
+		}
+	}
 }
 
 func TestReadCoverage(t *testing.T) {
