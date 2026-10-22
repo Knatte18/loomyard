@@ -905,3 +905,38 @@ func TestOpenCmd_ListModels(t *testing.T) {
 		t.Errorf("OpenLaunch saw specs %+v; want none", recorder.specs)
 	}
 }
+
+// TestOpenCmd_ListModelsRegistryLoadFailure pins that --list-models over an unparsable models config returns an error envelope naming the flag and opens nothing.
+func TestOpenCmd_ListModelsRegistryLoadFailure(t *testing.T) {
+	t.Parallel()
+	anchor := t.TempDir()
+	if err := os.MkdirAll(configengine.ConfigDir(anchor), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(anchor, "models"), []byte("zephyr: [unclosed\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	recorder := &openRecorderEngine{}
+	engines := shuttleengine.NewEngineSet(shuttlefake.EngineName, map[string]shuttleengine.Engine{shuttlefake.EngineName: recorder})
+	worktreeRoot := t.TempDir()
+	runner := shuttleengine.NewRunner(&shuttlefake.Reed{}, engines, worktreeRoot, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
+	c := &shuttleCLI{runner: runner, configDirs: configengine.Dirs{Anchor: anchor}}
+	cmd := c.openCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--list-models"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+	}
+
+	envelope := parseSingleEnvelope(t, out.Bytes())
+	if ok, _ := envelope["ok"].(bool); ok {
+		t.Fatalf("envelope = %v; want an error envelope", envelope)
+	}
+	if message, _ := envelope["error"].(string); !strings.Contains(message, "--list-models") {
+		t.Errorf("error = %q; want it to name --list-models", message)
+	}
+	if len(recorder.specs) != 0 {
+		t.Errorf("OpenLaunch saw specs %+v; want none", recorder.specs)
+	}
+}
