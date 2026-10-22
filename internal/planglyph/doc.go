@@ -128,7 +128,10 @@
 //     supposed to build, remove, or rename it.
 //     A Create target under the worktree root's git-ignored `.scratch/` is a transient draft its card may remove once read, so it gets no done-check;
 //     a `.scratch/` below the root, a Rename new side and every Delete target keep theirs.
+//     A target still path-shaped after canonicalization, one no glyph spells such as a path whose directory holds a space, is judged on disk instead of resolved:
+//     its path must exist for a Create or Rename new side and must not for a Delete or Rename old side (planparser.IsDiskCheckedTarget).
 //     Each detail carries the lookup: the resolve key looked up beside the card's own spelling, quarry's status, for not_found whether the unit exists, and for ambiguous each candidate's file and build constraint.
+//     A Create or Rename new side answered not_found also names the files declaring its unit and every declaration of its name elsewhere in the worktree, from one glyphs listing taken only when such a finding is due.
 //     An ambiguous answer whose candidates sit in files no single build environment selects together counts as resolved, so a Create or a Rename new side over such a member lands;
 //     the Delete direction and a Rename old side keep blocking on any surviving declaration.
 //     glyph-rejected is additionally DoneChecks' own

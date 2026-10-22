@@ -10,7 +10,12 @@
 package planglyph
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -26,11 +31,13 @@ const scratchDirPrefix = ".scratch/"
 // group type calls for, and the resolve key actually looked up: a plan: handle's own resolve key
 // is its member-glyph half — the string after HandlePrefix, which by canonicalization time is the
 // card's own expected glyph — never the literal "plan:"-prefixed token quarry cannot parse.
+// onDisk marks a key no glyph spells, which is judged by whether its worktree-relative path exists rather than resolved.
 type doneCheckEntry struct {
 	card    planparser.Card
 	checkID string
 	key     string
 	display string
+	onDisk  bool
 }
 
 // resolveKeyFor maps a Create/Delete group's own ref to the string DoneChecks actually resolves:
@@ -52,6 +59,10 @@ func resolveKeyFor(ref string) string {
 // delete-not-done; and a Rename pair whose old side is still anything but not_found, or whose new
 // side still does not resolve found or multipart, is check ID rename-not-done in either direction.
 // A Create target under the worktree root's .scratch/ is a transient draft and is neither resolved nor judged.
+// A target still path-shaped is a path canonicalization could not spell as a glyph, such as one whose directory holds a space:
+// quarry rejects it before resolution, so its worktree-relative path is checked on disk instead, existing for the Create direction and absent for the Delete direction.
+// A Create target or Rename new side quarry answers not_found also names, in its detail, the files declaring the looked-up unit
+// and every declaration elsewhere in the worktree carrying the looked-up name, so a missing declaration reads apart from one written somewhere the card did not say.
 // An answer outside quarry's four-value status vocabulary — a pre-resolution rejection, or a status
 // this policy has not been taught — is the blocking finding glyph-rejected for that entry, failing
 // closed exactly as statusFindings and createFindings do (see doneCheckVerdicts).
@@ -74,8 +85,10 @@ func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot str
 	var entries []doneCheckEntry
 	seen := make(map[string]bool)
 	var targets []string
-	addTarget := func(key string) {
-		if !seen[key] {
+	addEntry := func(c planparser.Card, checkID, key, display string) {
+		onDisk := planparser.IsDiskCheckedTarget(key)
+		entries = append(entries, doneCheckEntry{card: c, checkID: checkID, key: key, display: display, onDisk: onDisk})
+		if !onDisk && !seen[key] {
 			seen[key] = true
 			targets = append(targets, key)
 		}
@@ -90,14 +103,11 @@ func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot str
 					if strings.HasPrefix(key, scratchDirPrefix) {
 						continue
 					}
-					entries = append(entries, doneCheckEntry{card: c, checkID: "create-not-done", key: key, display: ref})
-					addTarget(key)
+					addEntry(c, "create-not-done", key, ref)
 				}
 			case planparser.CardTypeDelete:
 				for _, ref := range g.Refs {
-					key := resolveKeyFor(ref)
-					entries = append(entries, doneCheckEntry{card: c, checkID: "delete-not-done", key: key, display: ref})
-					addTarget(key)
+					addEntry(c, "delete-not-done", resolveKeyFor(ref), ref)
 				}
 			case planparser.CardTypeRename:
 				// A Rename's mechanical done verdict is the Create and Delete verdicts composed:
@@ -109,12 +119,8 @@ func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot str
 				// entirely recorded clean: DoneChecks saw no Create/Delete group, BindHandles no
 				// declarations, and DetectDrift only inspects what the delta says DID change.
 				for _, p := range g.Pairs {
-					oldKey := resolveKeyFor(p.Old)
-					entries = append(entries, doneCheckEntry{card: c, checkID: "rename-not-done-old", key: oldKey, display: p.Old})
-					addTarget(oldKey)
-					newKey := resolveKeyFor(p.New)
-					entries = append(entries, doneCheckEntry{card: c, checkID: "rename-not-done-new", key: newKey, display: p.New})
-					addTarget(newKey)
+					addEntry(c, "rename-not-done-old", resolveKeyFor(p.Old), p.Old)
+					addEntry(c, "rename-not-done-new", resolveKeyFor(p.New), p.New)
 				}
 			}
 		}
@@ -122,6 +128,9 @@ func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot str
 
 	if len(entries) == 0 {
 		return nil, nil
+	}
+	if len(targets) == 0 {
+		return doneCheckVerdicts(plan, worktreeRoot, entries, nil, nil)
 	}
 	sort.Strings(targets)
 
@@ -135,7 +144,78 @@ func DoneChecks(plan *planparser.Plan, cards []planparser.Card, worktreeRoot str
 	}
 	index := resultByTarget(results)
 
-	return doneCheckVerdicts(worktreeRoot, entries, index)
+	var declarations []quarry.Symbol
+	if anyMemberMissing(entries, index) {
+		answer, err := repo.Glyphs(".")
+		if err != nil {
+			return nil, fmt.Errorf("%w: list the worktree's declarations: %v", ErrQuarryUnavailable, err)
+		}
+		declarations = answer.Symbols
+	}
+
+	return doneCheckVerdicts(plan, worktreeRoot, entries, index, declarations)
+}
+
+// anyMemberMissing reports whether a Create target or Rename new side among entries was answered not_found in index,
+// the one answer whose finding names the worktree's declarations.
+func anyMemberMissing(entries []doneCheckEntry, index map[string]quarry.ResolveResult) bool {
+	for _, e := range entries {
+		if e.onDisk || (e.checkID != "create-not-done" && e.checkID != "rename-not-done-new") {
+			continue
+		}
+		if r, ok := index[e.key]; ok && r.Status == quarry.StatusNotFound {
+			return true
+		}
+	}
+	return false
+}
+
+// searchedDescription names, for a key quarry answered not_found, the files among declarations that declare the key's unit,
+// and every declaration elsewhere whose own name is the key's member name, with its glyph and file.
+// It returns "" when the key does not parse as a member glyph in the plan's alphabet, since then there is no name to look for.
+func searchedDescription(plan *planparser.Plan, key string, declarations []quarry.Symbol) string {
+	wanted, err := planparser.ParseRef(plan, key)
+	if err != nil || wanted.IsSelf() {
+		return ""
+	}
+
+	var unitFiles []string
+	var elsewhere []string
+	for _, s := range declarations {
+		if s.Glyph.Unit == wanted.Unit && !slices.Contains(unitFiles, s.File) {
+			unitFiles = append(unitFiles, s.File)
+		}
+		if s.Glyph.Name == wanted.Name && s.ID != key {
+			elsewhere = append(elsewhere, fmt.Sprintf("%s in %s", s.ID, s.File))
+		}
+	}
+	sort.Strings(unitFiles)
+
+	var parts []string
+	if len(unitFiles) > 0 {
+		parts = append(parts, "quarry searched the unit's files "+strings.Join(unitFiles, ", "))
+	}
+	if len(elsewhere) > 0 {
+		parts = append(parts, fmt.Sprintf("%s is declared as %s", wanted.Name, strings.Join(elsewhere, ", ")))
+	} else {
+		parts = append(parts, fmt.Sprintf("no declaration named %s exists anywhere in the worktree", wanted.Name))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// diskLookup checks key, a worktree-relative path, on disk under worktreeRoot,
+// and reports whether anything exists there together with the lookup description a finding detail carries.
+// An error other than the path not existing is returned, so an unreadable tree never passes a done-check.
+func diskLookup(worktreeRoot, key string) (bool, string, error) {
+	_, err := os.Lstat(filepath.Join(worktreeRoot, filepath.FromSlash(key)))
+	switch {
+	case err == nil:
+		return true, fmt.Sprintf("checked %q on disk, since no glyph spells it, and it exists", key), nil
+	case errors.Is(err, fs.ErrNotExist):
+		return false, fmt.Sprintf("checked %q on disk, since no glyph spells it, and nothing exists there", key), nil
+	default:
+		return false, "", fmt.Errorf("done-check: stat %q: %w", key, err)
+	}
 }
 
 // lookupDescription renders what a done-check looked up and what quarry answered, for a finding detail.
@@ -156,16 +236,28 @@ func lookupDescription(key string, status quarry.Status, unitFound bool, candida
 }
 
 // doneCheckVerdicts applies the three done rules to entries against index, the batched resolve's
-// answers keyed by target, reading ambiguous candidates' files under worktreeRoot.
+// answers keyed by target, reading ambiguous candidates' files and onDisk entries' paths under worktreeRoot.
 // Each finding's detail names the lookup: the resolve key, quarry's status, the unit status of a
 // missing member, and each candidate's file and build constraint for an ambiguous answer.
+// A Create or Rename new side answered not_found also names, from declarations, the worktree's listed declarations, its unit's files and every declaration of its name.
 //
 // It is split out from DoneChecks so the coverage guard below is reachable from a unit test: every
 // other path into it runs a real quarry.Repo, and the one condition worth pinning -- an answer set
 // that does not cover a target the caller asked about -- cannot be produced through one.
-func doneCheckVerdicts(worktreeRoot string, entries []doneCheckEntry, index map[string]quarry.ResolveResult) ([]Finding, error) {
+func doneCheckVerdicts(plan *planparser.Plan, worktreeRoot string, entries []doneCheckEntry, index map[string]quarry.ResolveResult, declarations []quarry.Symbol) ([]Finding, error) {
 	var findings []Finding
 	for _, e := range entries {
+		if e.onDisk {
+			exists, lookup, err := diskLookup(worktreeRoot, e.key)
+			if err != nil {
+				return findings, err
+			}
+			if finding, failed := doneCheckFinding(e, exists, exists, lookup); failed {
+				findings = append(findings, finding)
+			}
+			continue
+		}
+
 		r, ok := index[e.key]
 		if !ok {
 			// Every key here was put into targets by this function itself and handed to
@@ -217,46 +309,47 @@ func doneCheckVerdicts(worktreeRoot string, entries []doneCheckEntry, index map[
 		if crossDetail, crossAlphabet := crossAlphabetDetail(r); crossAlphabet {
 			lookup = fmt.Sprintf("looked up %q, quarry answered ambiguous: %s", e.key, crossDetail)
 		}
+		if r.Status == quarry.StatusNotFound && (e.checkID == "create-not-done" || e.checkID == "rename-not-done-new") {
+			if searched := searchedDescription(plan, e.key, declarations); searched != "" {
+				lookup += "; " + searched
+			}
+		}
 
-		switch e.checkID {
-		case "create-not-done":
-			if !resolved {
-				findings = append(findings, Finding{
-					Check:    "create-not-done",
-					Card:     e.card.ID(),
-					Detail:   fmt.Sprintf("Create target %q still does not resolve: %s", e.display, lookup),
-					Severity: SeverityBlocking,
-				})
-			}
-		case "delete-not-done":
-			if stillExists {
-				findings = append(findings, Finding{
-					Check:    "delete-not-done",
-					Card:     e.card.ID(),
-					Detail:   fmt.Sprintf("Delete target %q still resolves: %s", e.display, lookup),
-					Severity: SeverityBlocking,
-				})
-			}
-		case "rename-not-done-old":
-			if stillExists {
-				findings = append(findings, Finding{
-					Check:    "rename-not-done",
-					Card:     e.card.ID(),
-					Detail:   fmt.Sprintf("Rename pair's old side %q still resolves — the rename did not happen: %s", e.display, lookup),
-					Severity: SeverityBlocking,
-				})
-			}
-		case "rename-not-done-new":
-			if !resolved {
-				findings = append(findings, Finding{
-					Check:    "rename-not-done",
-					Card:     e.card.ID(),
-					Detail:   fmt.Sprintf("Rename pair's new side %q still does not resolve — the rename did not happen: %s", e.display, lookup),
-					Severity: SeverityBlocking,
-				})
-			}
+		if finding, failed := doneCheckFinding(e, resolved, stillExists, lookup); failed {
+			findings = append(findings, finding)
 		}
 	}
 
 	return findings, nil
+}
+
+// doneCheckFinding applies e's done rule: the Create direction fails when the target is not resolved, the Delete direction when it still exists.
+// It returns the blocking finding, its detail ending in lookup, and whether the rule failed.
+func doneCheckFinding(e doneCheckEntry, resolved, stillExists bool, lookup string) (Finding, bool) {
+	var check, detail string
+	switch e.checkID {
+	case "create-not-done":
+		if resolved {
+			return Finding{}, false
+		}
+		check, detail = "create-not-done", fmt.Sprintf("Create target %q still does not resolve: %s", e.display, lookup)
+	case "delete-not-done":
+		if !stillExists {
+			return Finding{}, false
+		}
+		check, detail = "delete-not-done", fmt.Sprintf("Delete target %q still resolves: %s", e.display, lookup)
+	case "rename-not-done-old":
+		if !stillExists {
+			return Finding{}, false
+		}
+		check, detail = "rename-not-done", fmt.Sprintf("Rename pair's old side %q still resolves — the rename did not happen: %s", e.display, lookup)
+	case "rename-not-done-new":
+		if resolved {
+			return Finding{}, false
+		}
+		check, detail = "rename-not-done", fmt.Sprintf("Rename pair's new side %q still does not resolve — the rename did not happen: %s", e.display, lookup)
+	default:
+		panic(fmt.Sprintf("planglyph: done-check entry with unknown check ID %q", e.checkID))
+	}
+	return Finding{Check: check, Card: e.card.ID(), Detail: detail, Severity: SeverityBlocking}, true
 }

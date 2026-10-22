@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -27,7 +28,7 @@ func TestDoneCheckVerdicts_UncoveredTargetIsInfrastructureNotAPass(t *testing.T)
 		display: "internal/greet#Farewell",
 	}}
 
-	findings, err := doneCheckVerdicts("", entries, map[string]quarry.ResolveResult{})
+	findings, err := doneCheckVerdicts(&planparser.Plan{}, "", entries, map[string]quarry.ResolveResult{}, nil)
 
 	if err == nil {
 		t.Fatalf("doneCheckVerdicts() with an uncovered target = (%v, nil); want a wrapped ErrQuarryUnavailable — passing the check would be a false success", findings)
@@ -44,7 +45,8 @@ func TestDoneCheckVerdicts_UncoveredTargetIsInfrastructureNotAPass(t *testing.T)
 }
 
 // TestDoneCheckVerdicts_Rules pins the three done rules against a fully covering answer index, so the guard above cannot be satisfied by a version that simply always errors.
-// A blocking row also pins the detail's lookup: the key, quarry's status, the unit status of a missing member, and each ambiguous candidate's file and build constraint.
+// A blocking row also pins the detail's lookup: the key, quarry's status, the unit status of a missing member, each ambiguous candidate's file and build constraint,
+// and for a Create or Rename new side answered not_found the unit's files and the name's declarations elsewhere.
 // An ambiguous row writes its candidate files under a temp root, where a pair partitioned by build constraints counts as resolved and so lands a Create and a Rename new side but still blocks a Delete and a Rename old side.
 //
 //testtiming:keep pins the ambiguous rows and the per-arm rule table, which the resolve-backed DoneChecks tests reach only for found and not_found
@@ -63,6 +65,12 @@ func TestDoneCheckVerdicts_Rules(t *testing.T) {
 		"internal/greet/b.go": "//go:build amd64" + declaration,
 	}
 	candidateFiles := []string{"internal/greet/a.go", "internal/greet/b.go"}
+	// declarations is the worktree listing every row is handed: one member of the key's unit, and the key's name declared in another unit.
+	declarations := []quarry.Symbol{
+		{Glyph: glyph.Glyph{Lang: glyph.Go, Unit: "internal/greet", Name: "Other"}, ID: "internal/greet#Other", File: "internal/greet/greet.go"},
+		{Glyph: glyph.Glyph{Lang: glyph.Go, Unit: "internal/other", Name: "Thing"}, ID: "internal/other#Thing", File: "internal/other/thing.go"},
+	}
+	const searched = "quarry searched the unit's files internal/greet/greet.go; Thing is declared as internal/other#Thing in internal/other/thing.go"
 
 	tests := []struct {
 		name string
@@ -80,10 +88,9 @@ func TestDoneCheckVerdicts_Rules(t *testing.T) {
 	}{
 		{"create landed", "create-not-done", quarry.StatusFound, "", nil, nil, "", nil},
 		{"create missing, member missing", "create-not-done", quarry.StatusNotFound, quarry.StatusFound, nil, nil, "create-not-done",
-			[]string{key, "quarry answered not_found", "the unit exists and the member is missing"}},
+			[]string{key, "quarry answered not_found", "the unit exists and the member is missing", searched}},
 		{"create missing, unit missing", "create-not-done", quarry.StatusNotFound, quarry.StatusNotFound, nil, nil, "create-not-done",
-			[]string{key, "quarry answered not_found", "the unit is missing"}},
-		{"delete gone", "delete-not-done", quarry.StatusNotFound, "", nil, nil, "", nil},
+			[]string{key, "quarry answered not_found", "the unit is missing"}}, {"delete gone", "delete-not-done", quarry.StatusNotFound, "", nil, nil, "", nil},
 		{"delete still there", "delete-not-done", quarry.StatusFound, "", nil, nil, "delete-not-done",
 			[]string{key, "quarry answered found"}},
 		{"rename old gone", "rename-not-done-old", quarry.StatusNotFound, "", nil, nil, "", nil},
@@ -91,7 +98,7 @@ func TestDoneCheckVerdicts_Rules(t *testing.T) {
 			[]string{key, "quarry answered found"}},
 		{"rename new landed", "rename-not-done-new", quarry.StatusFound, "", nil, nil, "", nil},
 		{"rename new missing", "rename-not-done-new", quarry.StatusNotFound, quarry.StatusFound, nil, nil, "rename-not-done",
-			[]string{key, "quarry answered not_found", "the unit exists and the member is missing"}},
+			[]string{key, "quarry answered not_found", "the unit exists and the member is missing", searched}},
 		{"multipart counts as resolved", "create-not-done", quarry.StatusMultipart, "", nil, nil, "", nil},
 		// Ambiguous means declarations with that name still exist, so the Delete direction blocks
 		// on it — the old single "resolved" boolean read ambiguous as "gone" and passed both of
@@ -123,7 +130,7 @@ func TestDoneCheckVerdicts_Rules(t *testing.T) {
 			entries := []doneCheckEntry{{card: card, checkID: tt.checkID, key: key, display: key}}
 			index := map[string]quarry.ResolveResult{key: {Target: key, Status: tt.status, Unit: tt.unit, Candidates: candidates}}
 
-			findings, err := doneCheckVerdicts(root, entries, index)
+			findings, err := doneCheckVerdicts(&planparser.Plan{}, root, entries, index, declarations)
 			if err != nil {
 				t.Fatalf("doneCheckVerdicts() error = %v; want nil", err)
 			}
