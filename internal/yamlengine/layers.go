@@ -262,8 +262,8 @@ func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, open
 	return SetResult{Merged: merged, Known: known}, nil
 }
 
-// knownKeys returns the sorted key set a template makes settable: its leaf paths, its list-valued key paths, one P.<name> per open map and per per-name map P,
-// and one P.<name>.<rest> per path rest the entries of a per-name map of mappings hold, as entryLeaves lists them.
+// knownKeys returns the sorted key set a template makes settable: its leaf paths, its list-valued key paths, and one P.<name> per open map and per per-name map P.
+// It also holds one P.<name>.<rest> per path rest the entries of a per-name map of mappings hold, as entryLeaves lists them.
 func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps, perNameMaps []string, entryLeaves map[string]map[string]*yaml.Node) []string {
 	known := make([]string, 0, len(templateLeaves)+len(templateSequences)+len(openMaps)+len(perNameMaps))
 	for path := range templateLeaves {

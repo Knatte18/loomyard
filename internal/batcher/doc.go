@@ -9,8 +9,8 @@
 // batcher.yaml holds named profiles under profiles:, each a batchifier kind (identity or cost) with that kind's parameters;
 // its active: key names the profile in force (see contracts/specs/loom-plan-spec.md).
 // profiles: is a per-name map, keyed by names the operator chooses:
-// a layer's profiles add to or override the template's identity and cautious by name, each profile merging key by key, so a layer holds only the profiles and keys it tunes,
-// and `lyx config batcher --set profiles.<name>.<key>=<value>` sets one key of any profile.
+// a layer's profiles add to or override the template's identity and cautious by name, each profile merging key by key, so a layer holds only the profiles and keys it tunes.
+// `lyx config batcher --set profiles.<name>.<key>=<value>` sets one key of any profile.
 // Active resolves the active profile at config-load time and builds it through the registry.
 // An empty active: and active: identity resolve to the identity batcher even when no profile of that name is configured, so a batcher.yaml without profiles: keeps working;
 // a configured profile named identity wins over that default.

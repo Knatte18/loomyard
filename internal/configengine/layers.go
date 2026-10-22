@@ -352,8 +352,8 @@ func ValidateMachine(spec Spec, doc []byte) error {
 	return nil
 }
 
-// templateValueAt returns the template node a unit path is judged against: the node at path,
-// or, for a path the template lacks under a per-name map P, P.<name> or P.<name>.<rest>, the first template entry at P, or the node at rest in the first entry holding it.
+// templateValueAt returns the template node a unit path is judged against, which is the node at path when the template holds it.
+// For a path the template lacks under a per-name map P, P.<name> or P.<name>.<rest>, it is the first template entry at P, or the node at rest in the first entry holding it.
 // It returns nil when neither holds the path.
 func templateValueAt(spec Spec, template *yaml.Node, path string) *yaml.Node {
 	if node := nodeAt(template, path); node != nil {

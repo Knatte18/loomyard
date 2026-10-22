@@ -317,8 +317,8 @@ func mergePerNameMaps(templateNode, existingNode *yaml.Node, perNameMaps []strin
 	return added, kept, dropped, nil
 }
 
-// liftEmptyValueComments moves the line comment of every mapping key under node whose value is an empty mapping or list onto that value, written in flow style,
-// since a key's line comment over an empty block collection marshals as invalid YAML.
+// liftEmptyValueComments moves the line comment of every mapping key under node whose value is an empty mapping or list onto that value, written in flow style.
+// A key's line comment over an empty block collection marshals as invalid YAML.
 func liftEmptyValueComments(node *yaml.Node) {
 	if node.Kind == yaml.MappingNode {
 		for i := 0; i+1 < len(node.Content); i += 2 {
