@@ -18,6 +18,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
@@ -187,6 +188,7 @@ func searchedDescription(plan *planparser.Plan, key string, declarations []quarr
 		}
 	}
 	sort.Strings(unitFiles)
+	sort.Strings(elsewhere)
 
 	var parts []string
 	if len(unitFiles) > 0 {
@@ -201,13 +203,14 @@ func searchedDescription(plan *planparser.Plan, key string, declarations []quarr
 }
 
 // diskLookup checks key, a worktree-relative path, on disk under worktreeRoot and reports whether anything exists there together with the lookup description a finding detail carries.
+// A path whose parent component is a regular file reads as not existing.
 // An error other than the path not existing is returned, so an unreadable tree never passes a done-check.
 func diskLookup(worktreeRoot, key string) (bool, string, error) {
 	_, err := os.Lstat(filepath.Join(worktreeRoot, filepath.FromSlash(key)))
 	switch {
 	case err == nil:
 		return true, fmt.Sprintf("checked %q on disk, since no glyph spells it, and it exists", key), nil
-	case errors.Is(err, fs.ErrNotExist):
+	case errors.Is(err, fs.ErrNotExist), errors.Is(err, syscall.ENOTDIR):
 		return false, fmt.Sprintf("checked %q on disk, since no glyph spells it, and nothing exists there", key), nil
 	default:
 		return false, "", fmt.Errorf("done-check: stat %q: %w", key, err)

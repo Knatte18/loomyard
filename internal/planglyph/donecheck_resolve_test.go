@@ -89,11 +89,37 @@ func TestDoneChecks_Verdicts(t *testing.T) {
 			group: planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"tree/with space/Spaced.cs"}},
 		},
 		{
+			// A parent component that is now a regular file stats as not-a-directory, which reads as nothing existing there.
+			name:  "Delete spaced path under a file parent gone",
+			files: map[string]string{"sub/a.go": "package sub\n", "tree/with space": "now a file\n"},
+			group: planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"tree/with space/Spaced.cs"}},
+		},
+		{
 			name:       "Delete spaced path survives",
 			files:      map[string]string{"sub/a.go": "package sub\n", "tree/with space/Spaced.cs": "namespace Tree;\n"},
 			group:      planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"tree/with space/Spaced.cs"}},
 			wantChecks: []string{"delete-not-done"},
 			wantDetail: []string{`checked "tree/with space/Spaced.cs" on disk, since no glyph spells it, and it exists`},
+		},
+		{
+			name:  "Rename spaced path landed",
+			files: map[string]string{"sub/a.go": "package sub\n", "tree/with space/New.cs": "namespace Tree;\n"},
+			group: planparser.TargetGroup{
+				Type:  planparser.CardTypeRename,
+				Refs:  []string{"tree/with space/Old.cs", "tree/with space/New.cs"},
+				Pairs: []planparser.MovePair{{Old: "tree/with space/Old.cs", New: "tree/with space/New.cs"}},
+			},
+		},
+		{
+			name:  "Rename spaced path skipped",
+			files: map[string]string{"sub/a.go": "package sub\n", "tree/with space/Old.cs": "namespace Tree;\n"},
+			group: planparser.TargetGroup{
+				Type:  planparser.CardTypeRename,
+				Refs:  []string{"tree/with space/Old.cs", "tree/with space/New.cs"},
+				Pairs: []planparser.MovePair{{Old: "tree/with space/Old.cs", New: "tree/with space/New.cs"}},
+			},
+			wantChecks: []string{"rename-not-done", "rename-not-done"},
+			wantDetail: []string{`checked "tree/with space/Old.cs" on disk, since no glyph spells it, and it exists`},
 		},
 		{
 			// The canonical plan: handle resolves via its stripped expected-glyph half, not the literal token.
