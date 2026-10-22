@@ -136,7 +136,7 @@
 // The sleeps are read once from the systemd journal, `journalctl -t systemd-sleep`, and parsed by internal/sleepjournal, each running from systemd-sleep's "Performing sleep operation" entry to the next "System returned from sleep operation" entry of the same operation and boot.
 // A working interval loses the part a sleep covers, and the span, the idle row and the Producers table's elapsed and idle count awake time only;
 // each run's section names the sleep left out of its span, and "All runs" the sum.
-// With journalctl absent or failing, or no sleep in its journal, as on Windows, nothing is left out and the report's header says why.
+// With journalctl absent or failing, a journal the user may not read, or no sleep in its journal, as on Windows, nothing is left out and the report's header says why.
 // -no-sleep reads no journal and counts sleep as time.
 //
 // The span is the window the time figures are measured over.

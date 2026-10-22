@@ -28,12 +28,14 @@ func TestSleepsFromJournal(t *testing.T) {
 	notes := []struct {
 		name     string
 		out      []byte
+		stderr   string
 		runErr   error
 		wantNote string
 		want     []Interval
 	}{
 		{name: "journalctl absent", runErr: fmt.Errorf("start: %w", exec.ErrNotFound), wantNote: "No machine sleep is left out of the time figures: journalctl is not on PATH.\n"},
 		{name: "a failing journalctl", runErr: errors.New("exit status 1"), wantNote: "No machine sleep is left out of the time figures: journalctl failed: exit status 1.\n"},
+		{name: "a journal the user may not read", stderr: "Hint: You are currently not seeing messages from other users and the system.\n", wantNote: "No machine sleep is left out of the time figures: the journal is not readable by this user.\n"},
 		{name: "an empty journal", wantNote: "No machine sleep is left out of the time figures: the journal records no systemd-sleep operation.\n"},
 		{name: "a line that does not decode", out: []byte("{\n"), wantNote: "No machine sleep is left out of the time figures: journal line \"{\" does not decode: unexpected end of JSON input.\n"},
 		{name: "a recorded sleep", out: []byte(enter(1, "b1", "hibernate") + "\n" + leave(9, "b1", "hibernate") + "\n"), wantNote: "Machine sleep, read from the systemd journal, is left out of every time figure.\n", want: []Interval{{at(1), at(9)}}},
@@ -41,7 +43,7 @@ func TestSleepsFromJournal(t *testing.T) {
 	for _, tt := range notes {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			sleeps, note := sleepsFromJournal(tt.out, tt.runErr)
+			sleeps, note := sleepsFromJournal(tt.out, []byte(tt.stderr), tt.runErr)
 			if note != tt.wantNote {
 				t.Errorf("sleepsFromJournal note = %q; want %q", note, tt.wantNote)
 			}
