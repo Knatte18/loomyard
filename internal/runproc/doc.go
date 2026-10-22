@@ -13,6 +13,7 @@
 //
 // End is the only way a run's processes are ended.
 // For an owner's live records, leaving out the caller and its ancestors, it reads every process once, then sends SIGTERM to each recorded leader's group, to each recorded non-leader by pid, and to every process below a record: through its own group when it leads one, by pid otherwise, and not at all when a group already signalled holds it.
+// A signalled group's other live processes are watched like its leader, so each is awaited, sent SIGKILL and reported; a signal call that fails still counts as sent, so its processes are reported while they live.
 // It waits up to `endGrace` for the signalled processes to disappear, then sends SIGKILL to what is left, and waits `killBound`.
 // Every signal follows a comparison with the last reading: a pid is signalled only while its start time matches, and a group only while a live process still reports it with a start time at or after the recorded one.
 // A pid that is a zombie, absent or carries another start time counts as gone.

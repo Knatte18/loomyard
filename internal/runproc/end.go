@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -139,7 +140,11 @@ func (e ender) end(dir, owner string, callerPID int) ([]Ended, error) {
 		skip := func(pid int) bool { return pid == callerPID || e.isAncestor(pid) }
 		passEnded, passSurvivors, err := e.runUnits(planRecords(todo, stats, skip), stats)
 		ended = append(ended, passEnded...)
-		survivors = append(survivors, passSurvivors...)
+		for _, survivor := range passSurvivors {
+			if !slices.Contains(survivors, survivor) {
+				survivors = append(survivors, survivor)
+			}
+		}
 		if err != nil {
 			return ended, err
 		}

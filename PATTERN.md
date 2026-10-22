@@ -1,7 +1,5 @@
 # PATTERN
 
-This overview is an index: an entry's line names the rule, and its `pattern/` background file carries the detail.
-
 ## Paths and geometry
 
 - `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd`. — [background](pattern/PATTERN-cwd-resolution.md)
