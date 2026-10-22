@@ -68,6 +68,18 @@ func TestAdd_OriginRecord(t *testing.T) {
 		if !strings.Contains(shown, `"parent_branch": "main"`) {
 			t.Errorf("git show %s:%s = %q; want it to contain the committed parent_branch content", weftBranch, gitRelPath, shown)
 		}
+
+		subject, err := gitexec.Run([]string{"log", "-1", "--format=%s", weftBranch}, weftPath)
+		if err != nil {
+			t.Fatalf("git log -1 %s in %s: %v", weftBranch, weftPath, err)
+		}
+		subject = strings.TrimSpace(subject)
+		if want := fabricengine.OriginRecordSubject(slug); subject != want {
+			t.Errorf("records commit subject = %q; want %q", subject, want)
+		}
+		if want := "fabric: record parent branch for " + slug; subject != want {
+			t.Errorf("records commit subject = %q; want the literal %q", subject, want)
+		}
 	})
 
 	t.Run("parent worktree is the acting worktree's name", func(t *testing.T) {
