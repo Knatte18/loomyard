@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -249,16 +250,22 @@ type CycleRequest struct {
 	RequestedAt time.Time `json:"requested_at"` // When the request was made.
 }
 
+// errMarkerChanged reports that the cycle request marker no longer holds the request a cycle start read.
+var errMarkerChanged = errors.New("orch: the cycle request changed since it was read")
+
 // RequestCycle writes the cycle request marker recording mode and the request time at.
+// It holds the orch state lock and replaces the marker atomically, so a locked reader never sees a truncated marker.
 func RequestCycle(p Paths, mode string, at time.Time) error {
 	data, err := json.Marshal(CycleRequest{Mode: mode, RequestedAt: at})
 	if err != nil {
 		return fmt.Errorf("orch: encode cycle request: %w", err)
 	}
-	if err := os.MkdirAll(p.Dir, 0o755); err != nil {
-		return fmt.Errorf("orch: create request dir: %w", err)
+	l, err := lockMarker(p)
+	if err != nil {
+		return fmt.Errorf("orch: write cycle request: %w", err)
 	}
-	if err := os.WriteFile(p.CycleRequestPath, append(data, '\n'), 0o644); err != nil {
+	defer l.Release()
+	if err := fsx.AtomicWriteBytes(p.CycleRequestPath, append(data, '\n')); err != nil {
 		return fmt.Errorf("orch: write cycle request: %w", err)
 	}
 	return nil
@@ -281,12 +288,89 @@ func CycleRequested(p Paths) (CycleRequest, bool, error) {
 	return req, true, nil
 }
 
-// ClearCycleRequest removes the cycle request; an absent request is not an error.
-func ClearCycleRequest(p Paths) error {
-	if err := os.Remove(p.CycleRequestPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("orch: clear cycle request: %w", err)
+// lockMarker creates p.Dir when it is absent and takes the orch state lock, which every writer and remover of the cycle request marker holds.
+func lockMarker(p Paths) (*lock.FileLock, error) {
+	if err := os.MkdirAll(p.Dir, 0o755); err != nil {
+		return nil, fmt.Errorf("create request dir: %w", err)
 	}
-	return nil
+	return lock.AcquireWriteLock(p.StateLockPath)
+}
+
+// WithdrawCycleRequest removes the cycle request under the orch state lock and reports whether one was pending.
+// An absent request answers false and no error.
+func WithdrawCycleRequest(p Paths) (bool, error) {
+	l, err := lockMarker(p)
+	if err != nil {
+		return false, fmt.Errorf("orch: withdraw cycle request: %w", err)
+	}
+	defer l.Release()
+	if err := os.Remove(p.CycleRequestPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("orch: withdraw cycle request: %w", err)
+	}
+	return true, nil
+}
+
+// RemoveCycleRequestIf removes the cycle request under the orch state lock only while it still holds req, and reports whether it removed it.
+// A request written after req was read is left in place.
+func RemoveCycleRequestIf(p Paths, req CycleRequest) (bool, error) {
+	l, err := lockMarker(p)
+	if err != nil {
+		return false, fmt.Errorf("orch: remove cycle request: %w", err)
+	}
+	defer l.Release()
+	return takeMarkerUnlocked(p, req, true)
+}
+
+// takeMarkerUnlocked is the lock-free body of the locked marker callers, which hold the orch state lock.
+// It reads the marker as CycleRequested does.
+// When its pending flag equals pending and its request equals req (the same mode and an equal RequestedAt), it removes the marker if pending and answers true;
+// otherwise it changes nothing and answers false.
+// An unparseable marker reads as pending with the zero request on both reads, so a stale removal of one still matches.
+func takeMarkerUnlocked(p Paths, req CycleRequest, pending bool) (bool, error) {
+	current, currentPending, err := CycleRequested(p)
+	if err != nil {
+		return false, err
+	}
+	if currentPending != pending || current.Mode != req.Mode || !current.RequestedAt.Equal(req.RequestedAt) {
+		return false, nil
+	}
+	if pending {
+		if err := os.Remove(p.CycleRequestPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return false, fmt.Errorf("orch: remove cycle request: %w", err)
+		}
+	}
+	return true, nil
+}
+
+// saveCycleStart persists s, the first state of a cycle, and consumes the cycle request marker in one save under the orch state lock.
+// req and pending are what the tick read of the marker; the marker is removed only while it still holds them.
+// It checks the strand as saveStateForStrand does, answering errStrandReplaced and keeping the persisted WatcherStopping, with the marker left pending.
+// When the marker changed and s.CycleTrigger is TriggerRequested it writes nothing and answers errMarkerChanged;
+// for a hard or soft trigger it writes s and leaves the newer marker pending for the next idle.
+func saveCycleStart(p Paths, s State, req CycleRequest, pending bool) error {
+	err := state.UpdateJSON(p.StatePath, p.StateLockPath, func(cur State, found bool) (State, error) {
+		if found && cur.Strand != s.Strand {
+			return cur, errStrandReplaced
+		}
+		if found {
+			s.WatcherStopping = cur.WatcherStopping
+		}
+		taken, err := takeMarkerUnlocked(p, req, pending)
+		if err != nil {
+			return cur, err
+		}
+		if !taken && s.CycleTrigger == TriggerRequested {
+			return cur, errMarkerChanged
+		}
+		return s, nil
+	})
+	if err != nil && !errors.Is(err, errStrandReplaced) && !errors.Is(err, errMarkerChanged) {
+		return fmt.Errorf("orch: save state: %w", err)
+	}
+	return err
 }
 
 // ResumeMark is the recorded delivery of the resume pointer by the session-start hook.

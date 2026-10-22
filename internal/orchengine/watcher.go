@@ -974,11 +974,15 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	}
 	if requested && now.Sub(req.RequestedAt) >= w.cfg.HandoffTimeout() {
 		// The time is on disk, so this covers a marker a dead watcher left.
-		logger.Warn("orch: stale cycle request removed", "mode", req.Mode, "age", now.Sub(req.RequestedAt).String(), "strandGUID", st.Strand)
-		if err := ClearCycleRequest(w.paths); err != nil {
+		// Only the request this tick read is removed: one written since stays pending and the cycle start below finds it changed.
+		removed, err := RemoveCycleRequestIf(w.paths, req)
+		if err != nil {
 			return err
 		}
-		requested = false
+		if removed {
+			logger.Warn("orch: stale cycle request removed", "mode", req.Mode, "age", now.Sub(req.RequestedAt).String(), "strandGUID", st.Strand)
+		}
+		req, requested = CycleRequest{}, false
 	}
 	// The trigger is chosen in a fixed order: the hard cap wins over a request, which wins over the soft threshold.
 	var trigger string
@@ -1049,13 +1053,23 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	st.PendingHandoff = path
 	st.CycleTrigger = trigger
 	st.CycleMode, st.CycleRequestedAt = mode, requestedAt
-	if st, err = w.enter(st, PhaseHandoffRequested, now); err != nil {
-		return err
+	// The fields enter sets, saved together with the marker's removal so a withdrawn or replaced request is never consumed.
+	st.Phase = PhaseHandoffRequested
+	st.PhaseStrand = st.Strand
+	st.PhaseEnteredAt = now
+	st.PhaseEventsOffset = w.cursor
+	st.PhaseInjected = false
+	st.Pending, st.RequestID = nil, 0
+	st.Stuck, st.StuckByCreel = "", false
+	if err := saveCycleStart(w.paths, st, req, requested); err != nil {
+		if !errors.Is(err, errMarkerChanged) {
+			return err
+		}
+		logger.Info("orch: requested cycle not started, the request changed", "strandGUID", st.Strand)
+		return w.releaseHold(&st)
 	}
+	w.seen = phaseEvents{}
 	w.newest = nil
-	if err := ClearCycleRequest(w.paths); err != nil {
-		return err
-	}
 	return w.sendStep(&st, true, CreelStep{}, body, now)
 }
 
@@ -1156,8 +1170,12 @@ func (w *Watcher) removeSatisfiedRequest(mode string, effectAt time.Time) error 
 	if err != nil || !pending || req.Mode != mode || req.RequestedAt.After(effectAt) {
 		return err
 	}
+	removed, err := RemoveCycleRequestIf(w.paths, req)
+	if err != nil || !removed {
+		return err
+	}
 	logger.Info("orch: cycle request satisfied by the running cycle and removed", "mode", req.Mode, "requestedAt", req.RequestedAt)
-	return ClearCycleRequest(w.paths)
+	return nil
 }
 
 // startAutoReload reloads the plugins and the role after an auto-compaction read at a turn end, once the creel hold is taken.

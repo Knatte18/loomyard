@@ -127,6 +127,12 @@
 // The time is on disk, so this covers a request whose cycle could not start, such as one creel kept refusing the hold for, and a marker a dead watcher left, across watcher restarts.
 // State records the cycle's mode as CycleMode and the request time as CycleRequestedAt, zero for an automatic trigger.
 //
+// Every writer and remover of the marker holds the orch state lock: the request write replaces the marker atomically, `WithdrawCycleRequest` removes it, and the watcher's removals compare and remove only the request they read (`RemoveCycleRequestIf`).
+// The cycle start compares and removes the marker inside the save of its first phase, with the mode and request time it read at the top of the tick.
+// A marker that changed since the read leaves a requested start idle, with the creel hold released and nothing posted, and the next idle tick reads the marker afresh;
+// a hard or soft start enters its phase all the same and leaves the newer marker pending.
+// The stale removal and the satisfied-request removal below remove only the request they read, so a request written after the read is never removed by them.
+//
 // A cycle start clears the request pending at that moment, so a request found later was made after the cycle started.
 // A same-mode request made during a cycle is satisfied by it:
 // the compact cycle removes a pending compact request made no later than the boundary when the compaction completes,

@@ -14,8 +14,10 @@ import (
 
 // requestCycle writes the cycle request marker for mode, then checks for a live watcher.
 // With no watcher live it removes the marker again, so no later watcher acts on a request made while none ran, and reports false.
+// It removes only the request it wrote, so a request another caller wrote meanwhile stays.
 func (c *orchCLI) requestCycle(mode string) (watcherLive bool, err error) {
-	if err := orchengine.RequestCycle(c.paths, mode, time.Now()); err != nil {
+	request := orchengine.CycleRequest{Mode: mode, RequestedAt: time.Now()}
+	if err := orchengine.RequestCycle(c.paths, request.Mode, request.RequestedAt); err != nil {
 		return false, err
 	}
 	watcherLive, err = orchengine.WatcherLive(c.paths)
@@ -23,7 +25,7 @@ func (c *orchCLI) requestCycle(mode string) (watcherLive bool, err error) {
 		return false, err
 	}
 	if !watcherLive {
-		if err := orchengine.ClearCycleRequest(c.paths); err != nil {
+		if _, err := orchengine.RemoveCycleRequestIf(c.paths, request); err != nil {
 			return false, err
 		}
 	}

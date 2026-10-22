@@ -616,6 +616,21 @@ func TestWatcher_ConfirmedClearRemovesOnlyASatisfiedClearRequest(t *testing.T) {
 			if _, pending, _ := CycleRequested(e.paths); pending != c.wantPending {
 				t.Errorf("request pending = %v, want %v", pending, c.wantPending)
 			}
+			if !c.wantPending {
+				return
+			}
+			// The kept request runs at the next idle: the reload finishes, then it starts its own requested cycle.
+			e.tick()
+			e.tick()
+			e.s.usage["resumed"] = 300
+			e.endTurn("resumed")
+			if st := e.state(); st.Phase != PhaseIdle {
+				t.Fatalf("phase = %s, want idle after the reload", st.Phase)
+			}
+			e.endTurn("next")
+			if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerRequested || st.CycleMode != c.mode {
+				t.Errorf("state = %+v, want the kept %s request to start its own requested cycle", st, c.mode)
+			}
 		})
 	}
 }

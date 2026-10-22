@@ -50,6 +50,8 @@ type fakeCreel struct {
 	onSend func(mail bool, step CreelStep, body string)
 	// onReadMailbox runs before ReadMailbox hands its messages to the handler.
 	onReadMailbox func()
+	// onHold runs before Hold records its call, so a test can change the cycle request marker between the tick's read and its locked save.
+	onHold func()
 
 	errs   map[string][]error
 	nextID int64
@@ -172,6 +174,9 @@ func (f *fakeCreel) Sent(receiver string, since time.Time) ([]CreelSent, error) 
 }
 
 func (f *fakeCreel) Hold(receiver string, duration time.Duration) error {
+	if f.onHold != nil {
+		f.onHold()
+	}
 	f.calls = append(f.calls, "hold:"+receiver)
 	return f.fail("hold")
 }
