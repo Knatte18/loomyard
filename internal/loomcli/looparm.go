@@ -171,7 +171,7 @@ func agentActivityFor(loc *lyxcwd.Location, cfg shuttleengine.Config) func() (ti
 }
 
 // loomAfterInterrupt is loom's AfterInterrupt hook and returns the envelope's "friction" key.
-// It writes the halt note a `failed` halt writes, with the cause as the reason, and spawns no reflection, so an interrupted stop leaves a note the run's Friction-Reflect row covers.
+// It writes the halt note a `failed` halt writes, classified as an interrupted stop with the cause as the reason, and spawns no reflection, so an interrupted stop leaves a note the run's Friction-Reflect row covers.
 // It always reports skipped.
 func (c *loomCLI) loomAfterInterrupt(_ context.Context, producer, cause, traceFile string) string {
 	var history []shedengine.HistoryEntry
@@ -179,10 +179,11 @@ func (c *loomCLI) loomAfterInterrupt(_ context.Context, producer, cause, traceFi
 		history = st.History
 	}
 	return c.reflectHalt(haltNote{
-		Producer:  producer,
-		State:     shedengine.StateFailed,
-		Reason:    cause,
-		History:   history,
-		TraceFile: traceFile,
+		Producer:    producer,
+		State:       shedengine.StateFailed,
+		Reason:      cause,
+		History:     history,
+		TraceFile:   traceFile,
+		Interrupted: true,
 	})
 }

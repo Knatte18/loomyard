@@ -73,7 +73,7 @@
 // A loop that cannot take the loop lock within the grace period exits at once, and its waiter, seeing its spawn exited and the lock held, adopts the holder's loop id from the pid file.
 //
 // The loop lock is the liveness record, held for the loop's life, and the pid file is the loop's record for the kill.
-// The pid file holds the loop id, the loop's own pid and start time, and the in-flight child's process tree with the status file's current_producer and history_length when that child started;
+// The pid file holds the loop id, the loop's own pid and start time, and the in-flight child's process tree and trace id with the status file's current_producer and history_length when that child started;
 // the loop writes it after taking the lock and removes it only after its envelope is on disk.
 // The envelope file holds the loop id beside the envelope, and a waiter prints only the envelope.
 // A waiter matches files by its adopted loop id: it prints the envelope file only when it carries that id, or the delivered record of that id, which only that loop's envelope ever reaches.
@@ -104,6 +104,8 @@
 //
 // A loop that is gone without an envelope ends in the dead-loop stop.
 // It kills what is left of the loop's step tree from the pid file's child record, writes the run failed while the status file still reads running, and reports an interrupted stop with cause loop-exited and loop.status_moved from the recorded producer and history length against the status file.
+// Its loop.detail names the loop log, the producer of the in-flight child with its trace id, and whether that child's step tree was still running and was killed, which a loop killed from outside leaves behind.
+// Spec.Hooks.AfterInterrupt gets loop-exited followed by that detail as its cause, and the in-flight child's first trace file, or the loop log when the record names no trace or no file is listed for it.
 // It writes that stop as the loop's envelope under the dead loop's id, delivers it and retires the pid file.
 // A record naming no child kills nothing and reports status_moved false.
 // Another holder of the run lock makes the stop busy: nothing is written, the pid file stays and the next invocation retries.

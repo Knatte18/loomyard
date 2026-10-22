@@ -467,6 +467,59 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 		}
 	})
 
+	t.Run("the interrupt hook gets a cause naming the in-flight step and that step's trace file", func(t *testing.T) {
+		tests := []struct {
+			name      string
+			traceID   string
+			traces    []string
+			wantCause string
+			wantFile  func(w *waitWorld) string
+		}{
+			{
+				name:      "TraceKnown",
+				traceID:   "trace-7",
+				traces:    []string{"/logs/trace-7.log", "/logs/trace-7.1.log"},
+				wantCause: "; step A was in flight under trace trace-7",
+				wantFile:  func(*waitWorld) string { return "/logs/trace-7.log" },
+			},
+			{
+				name:      "NoTraceID_LoopLog",
+				wantCause: "; step A was in flight",
+				wantFile:  func(w *waitWorld) string { return w.spec.Loop.LogPath },
+			},
+			{
+				name:      "NoTraceFile_LoopLog",
+				traceID:   "trace-8",
+				wantCause: "; step A was in flight under trace trace-8",
+				wantFile:  func(w *waitWorld) string { return w.spec.Loop.LogPath },
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				w := newWaitWorld(t)
+				w.setStatus("B", shedengine.StateRunning, 1)
+				w.writePID(LoopPIDRecord{LoopID: "dead-1", Child: proc.TreeRecord{PID: 4242}, TraceID: tt.traceID, CurrentProducer: "A"})
+				w.traces[tt.traceID] = tt.traces
+				var producer, cause, file string
+				w.spec.Hooks.AfterInterrupt = func(_ context.Context, gotProducer, gotCause, gotFile string) string {
+					producer, cause, file = gotProducer, gotCause, gotFile
+					return "noted"
+				}
+
+				env, code := w.wait()
+
+				assertLoopExited(t, w, env, code)
+				wantCause := "loop-exited: loop dead-1 ended without an envelope; its output is in " + w.spec.Loop.LogPath + tt.wantCause
+				if producer != "B" || cause != wantCause || file != tt.wantFile(w) {
+					t.Errorf("AfterInterrupt(%q, %q, %q); want (%q, %q, %q)", producer, cause, file, "B", wantCause, tt.wantFile(w))
+				}
+				if env["friction"] != "noted" {
+					t.Errorf("envelope friction = %v; want the hook's noted", env["friction"])
+				}
+			})
+		}
+	})
+
 	t.Run("a loop that dies while the watch emits nothing is seen at the next tick", func(t *testing.T) {
 		w := newWaitWorld(t)
 		live := w.startLiveLoop("live-1")

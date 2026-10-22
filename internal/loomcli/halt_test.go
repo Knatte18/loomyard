@@ -470,7 +470,7 @@ func TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection(t *testing.T) {
 	}
 }
 
-// TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection asserts the interrupt hook writes the `loom-halt` note with the cause as reason, reports skipped and runs the reflection shuttle zero times.
+// TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection asserts the interrupt hook writes the `loom-halt` note as an interrupted stop with the cause as reason, reports skipped and runs the reflection shuttle zero times.
 func TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection(t *testing.T) {
 	t.Parallel()
 
@@ -487,7 +487,7 @@ func TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection(t *testing.T) {
 		t.Errorf("reflection shuttle ran %d times; want 0", len(f.shuttle.Specs))
 	}
 	note := readNote(t, filepath.Join(f.frictionDir, "loom-halt.md"))
-	for _, want := range []string{"loom halted failed at Plan-Write", "state: failed", "watchdog", "trace_file: /logs/child.log"} {
+	for _, want := range []string{"loom halted failed at Plan-Write", "state: failed", "anomaly: " + string(loomengine.AnomalyInterrupted), "watchdog", "trace_file: /logs/child.log"} {
 		if !strings.Contains(note, want) {
 			t.Errorf("halt note %q does not contain %q", note, want)
 		}

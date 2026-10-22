@@ -150,6 +150,9 @@ func TestLoopIntegration_ChildTreeDiesWithLoop(t *testing.T) {
 		_ = proc.KillPID(record.Loop.PID)
 		_ = proc.KillPID(grandchild)
 	})
+	if record.TraceID == "" {
+		t.Errorf("pid record %+v names no trace id; want the in-flight child's", record)
+	}
 
 	if err := waiter.Process.Kill(); err != nil {
 		t.Fatalf("kill the waiter: %v", err)

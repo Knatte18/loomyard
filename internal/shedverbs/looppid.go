@@ -26,6 +26,8 @@ type LoopPIDRecord struct {
 	Loop proc.TreeRecord `json:"loop"`
 	// Child is the in-flight step child's process tree.
 	Child proc.TreeRecord `json:"child"`
+	// TraceID is the trace id the in-flight step child runs under; empty before the first child.
+	TraceID string `json:"trace_id,omitempty"`
 	// CurrentProducer is the status file's current_producer when the child started.
 	CurrentProducer string `json:"current_producer"`
 	// HistoryLength is the status file's history length when the child started.
