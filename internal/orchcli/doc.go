@@ -1,5 +1,5 @@
 // Package orchcli is the CLI for the hub orchestrator: the long-lived session in the hub's prime worktree that runs the task loop for the operator.
-// Its verbs (`start`, `status`, `refresh`, `distill`, `stop`, `cleanup`, `rules` and the watcher behind them) host that session as an interactive agent in a reed strand and cycle its context before it fills; this comment records the loop the session runs, which the verbs exist to serve.
+// Its verbs (`start`, `status`, `refresh`, `distill`, `withdraw`, `stop`, `cleanup`, `rules` and the watcher behind them) host that session as an interactive agent in a reed strand and cycle its context before it fills; this comment records the loop the session runs, which the verbs exist to serve.
 //
 // # The role file and the note
 //
@@ -12,6 +12,17 @@
 // Its `## Hub-wide rules` and `## This orch's rules` sections hold the hub-wide rules file on Bolt and this orch thread's own rules file under its worktree's `_lyx/orch/`, re-read at every delivery.
 // `start` and `resume-context` render it in-process from the binary they run as, which the pane names;
 // the watcher outlives a deploy, so it runs `help index` from the `lyx` path the orch strand recorded and goes idle with a reason naming `lyx orch stop` when that path is missing or gone.
+//
+// # The cycle request
+//
+// `refresh` and `distill` write a request marker the watcher acts on at the session's next idle moment.
+// A hub pause holds the watcher's cycle machine, so a request made under a pause waits for the resume, and the timeout that abandons it counts no pause time.
+// With a live watcher and a live hub pause entry, the envelope of both verbs adds `held_by_pause: true` and a `note`, and the request is still written; with no live watcher the request is removed and the envelope carries no such key.
+// `status` reports the marker as `cycle_request`: null while none is pending, else an object with `mode`, `requested_at` (RFC 3339 UTC, null for a marker that does not parse) and `held_by_pause`.
+// A pause record that cannot be read counts as no pause.
+// `withdraw` removes a pending request of either mode in any phase and answers `withdrawn: true`.
+// With none pending it answers `withdrawn: false` with `phase`, and with `cycle_trigger` only when the phase is neither idle nor resuming, since `toIdle` does not reset the trigger and a reload start does not set it.
+// It never refuses: it removes only the marker, never a started cycle's state, and a marker present during a cycle has not started, because a cycle start consumes the marker it starts from under the orch state lock.
 //
 // # The orch rules
 //

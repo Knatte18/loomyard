@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -90,11 +91,13 @@ func newTestCLI(t *testing.T, fake *fakeStrands) *orchCLI {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "orch")
 	return &orchCLI{
-		cfg:         orchengine.Config{ThresholdTokens: 1234},
-		strands:     fake,
-		engines:     shuttleengine.NewEngineSet("claude", map[string]shuttleengine.Engine{"claude": claudeengine.New()}),
-		indexRunner: func(string) (string, error) { return fakeRunnerIndex, nil },
-		newCreel:    func() (orchengine.Creel, error) { return &fakeCreel{}, nil },
+		cfg:     orchengine.Config{ThresholdTokens: 1234},
+		strands: fake,
+		// The record is absent until a test writes it with pauserecord.Update.
+		pauseRecordPath: filepath.Join(filepath.Dir(dir), "pause", pauserecord.RecordFileName),
+		engines:         shuttleengine.NewEngineSet("claude", map[string]shuttleengine.Engine{"claude": claudeengine.New()}),
+		indexRunner:     func(string) (string, error) { return fakeRunnerIndex, nil },
+		newCreel:        func() (orchengine.Creel, error) { return &fakeCreel{}, nil },
 		paths: orchengine.Paths{
 			Dir:              dir,
 			StatePath:        filepath.Join(dir, "state.json"),
@@ -138,6 +141,32 @@ func TestRefuseNonPrime(t *testing.T) {
 	}
 }
 
+// requestedAt is the request time requestAt writes, and requestedAtText its RFC 3339 UTC spelling in an envelope.
+var requestedAt = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+
+const requestedAtText = "2026-10-01T12:00:00Z"
+
+// requestAt writes a cycle request of mode made at requestedAt.
+func requestAt(t *testing.T, c *orchCLI, mode string) {
+	t.Helper()
+	if err := orchengine.RequestCycle(c.paths, mode, requestedAt); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// pauseHubAt writes a live hub entry into the pause record, paused at requestedAt.
+func pauseHubAt(t *testing.T, c *orchCLI) {
+	t.Helper()
+	entry := pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: requestedAt, GraceEnd: requestedAt.Add(30 * time.Second)}
+	_, err := pauserecord.Update(c.pauseRecordPath, requestedAt, func(r *pauserecord.Record) error {
+		r.Live = append(r.Live, entry)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestStatus_Envelope(t *testing.T) {
 	t.Parallel()
 
@@ -148,6 +177,10 @@ func TestStatus_Envelope(t *testing.T) {
 		strands []reedengine.StrandStatus
 		// state is the saved state; nil leaves none on disk.
 		state *orchengine.State
+		// arrange prepares the cycle request and the pause record; nil leaves both absent.
+		arrange func(t *testing.T, c *orchCLI)
+		// wantRequest is the envelope's cycle_request, nil meaning a present JSON null.
+		wantRequest any
 		// want maps an envelope key to its value, nil meaning a present JSON null.
 		want func(c *orchCLI) map[string]any
 	}{
@@ -184,6 +217,54 @@ func TestStatus_Envelope(t *testing.T) {
 				return map[string]any{"context_tokens": nil, "strand_live": false, "last_deferral": nil, "cycle_trigger": "", "session_id": ""}
 			},
 		},
+		{
+			name:    "a compact request is reported unheld",
+			arrange: func(t *testing.T, c *orchCLI) { requestAt(t, c, orchengine.CycleCompact) },
+			wantRequest: map[string]any{
+				"mode": orchengine.CycleCompact, "requested_at": requestedAtText, "held_by_pause": false,
+			},
+			want: func(*orchCLI) map[string]any { return nil },
+		},
+		{
+			name: "a request under a live hub pause is reported held",
+			arrange: func(t *testing.T, c *orchCLI) {
+				requestAt(t, c, orchengine.CycleCompact)
+				pauseHubAt(t, c)
+			},
+			wantRequest: map[string]any{
+				"mode": orchengine.CycleCompact, "requested_at": requestedAtText, "held_by_pause": true,
+			},
+			want: func(*orchCLI) map[string]any { return nil },
+		},
+		{
+			name: "an unreadable pause record holds nothing",
+			arrange: func(t *testing.T, c *orchCLI) {
+				requestAt(t, c, orchengine.CycleCompact)
+				if err := os.MkdirAll(filepath.Dir(c.pauseRecordPath), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(c.pauseRecordPath, []byte("not json"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRequest: map[string]any{
+				"mode": orchengine.CycleCompact, "requested_at": requestedAtText, "held_by_pause": false,
+			},
+			want: func(*orchCLI) map[string]any { return nil },
+		},
+		{
+			name: "an unparseable marker reports an empty mode and a null time",
+			arrange: func(t *testing.T, c *orchCLI) {
+				if err := os.MkdirAll(c.paths.Dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(c.paths.CycleRequestPath, []byte("cycle\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantRequest: map[string]any{"mode": "", "requested_at": nil, "held_by_pause": false},
+			want:        func(*orchCLI) map[string]any { return nil },
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -195,10 +276,16 @@ func TestStatus_Envelope(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if tc.arrange != nil {
+				tc.arrange(t, c)
+			}
 
 			code, env := runVerb(t, c.statusCmd())
 			if code != 0 {
 				t.Fatalf("exit = %d; env %v", code, env)
+			}
+			if got, present := env["cycle_request"]; !present || !reflect.DeepEqual(got, tc.wantRequest) {
+				t.Errorf("status[cycle_request] = %v (present %v); want %v", got, present, tc.wantRequest)
 			}
 			for k, v := range tc.want(c) {
 				if got, present := env[k]; !present || got != v {
@@ -265,6 +352,127 @@ func TestRefreshAndDistill_RequestTheirOwnMode(t *testing.T) {
 			}
 			if env["watcher_live"] != false {
 				t.Errorf("envelope = %v; want watcher_live false", env)
+			}
+			if _, pending, err := orchengine.CycleRequested(c.paths); err != nil || pending {
+				t.Errorf("CycleRequested = %v, %v; want no marker, nil", pending, err)
+			}
+			if _, present := env["held_by_pause"]; present {
+				t.Errorf("envelope = %v; want no held_by_pause key without a watcher", env)
+			}
+		})
+
+		t.Run(tc.name+" with a live watcher under a hub pause", func(t *testing.T) {
+			t.Parallel()
+
+			c := newTestCLI(t, &fakeStrands{})
+			if err := os.MkdirAll(c.paths.Dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			held, acquired, err := lock.TryAcquireWriteLock(c.paths.WatchLockPath)
+			if err != nil || !acquired {
+				t.Fatalf("hold the watch lock: acquired %v, err %v", acquired, err)
+			}
+			defer held.Release()
+			pauseHubAt(t, c)
+
+			code, env := runVerb(t, tc.verb(c))
+			if code != 0 {
+				t.Fatalf("exit = %d; env %v", code, env)
+			}
+			if env["held_by_pause"] != true || env["note"] != "the request waits for the hub pause to be resumed" {
+				t.Errorf("envelope = %v; want held_by_pause true and the note", env)
+			}
+			if req, pending, err := orchengine.CycleRequested(c.paths); err != nil || !pending || req.Mode != tc.want {
+				t.Errorf("CycleRequested = %+v, %v, %v; want the request still pending in mode %q", req, pending, err, tc.want)
+			}
+		})
+
+		t.Run(tc.name+" without a watcher under a hub pause carries no held_by_pause", func(t *testing.T) {
+			t.Parallel()
+
+			c := newTestCLI(t, &fakeStrands{})
+			pauseHubAt(t, c)
+
+			code, env := runVerb(t, tc.verb(c))
+			if code != 0 {
+				t.Fatalf("exit = %d; env %v", code, env)
+			}
+			if _, present := env["held_by_pause"]; present {
+				t.Errorf("envelope = %v; want no held_by_pause key without a watcher", env)
+			}
+		})
+	}
+}
+
+// TestWithdraw pins the withdraw verb: a pending request of either mode is removed, and none pending answers the persisted phase and, while a cycle runs, its trigger.
+func TestWithdraw(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// request is the mode of the request written first; empty writes none.
+		request string
+		state   orchengine.State
+		// want maps an envelope key to its value; wantAbsent lists keys the envelope must not carry.
+		want       map[string]any
+		wantAbsent []string
+	}{
+		{
+			name: "APendingClearRequestIsRemoved", request: orchengine.CycleClear,
+			state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle},
+			want:  map[string]any{"withdrawn": true}, wantAbsent: []string{"phase"},
+		},
+		{
+			name: "APendingCompactRequestIsRemoved", request: orchengine.CycleCompact,
+			state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle},
+			want:  map[string]any{"withdrawn": true}, wantAbsent: []string{"phase"},
+		},
+		{
+			name:  "NoRequestInIdleAnswersNoTriggerEvenWithARecordedOne",
+			state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle, CycleTrigger: orchengine.TriggerRequested},
+			want:  map[string]any{"withdrawn": false, "phase": "idle"}, wantAbsent: []string{"cycle_trigger"},
+		},
+		{
+			name:  "NoRequestInResumingAnswersNoTriggerEvenWithARecordedOne",
+			state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseResuming, CycleTrigger: orchengine.TriggerRequested},
+			want:  map[string]any{"withdrawn": false, "phase": "resuming"}, wantAbsent: []string{"cycle_trigger"},
+		},
+		{
+			name:  "NoRequestInHandoffRequestedAnswersTheRunningCyclesTrigger",
+			state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseHandoffRequested, CycleTrigger: orchengine.TriggerRequested},
+			want:  map[string]any{"withdrawn": false, "phase": "handoff-requested", "cycle_trigger": "requested"},
+		},
+		{
+			name: "ARequestWrittenDuringARunningCycleIsRemoved", request: orchengine.CycleClear,
+			state: orchengine.State{Strand: "g1", Phase: orchengine.PhaseClearing, CycleTrigger: orchengine.TriggerRequested},
+			want:  map[string]any{"withdrawn": true}, wantAbsent: []string{"phase"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := newTestCLI(t, &fakeStrands{})
+			if err := orchengine.SaveState(c.paths, tt.state); err != nil {
+				t.Fatal(err)
+			}
+			if tt.request != "" {
+				requestAt(t, c, tt.request)
+			}
+
+			code, env := runVerb(t, c.withdrawCmd())
+			if code != 0 {
+				t.Fatalf("exit = %d; env %v", code, env)
+			}
+			for key, want := range tt.want {
+				if got, present := env[key]; !present || got != want {
+					t.Errorf("withdraw[%q] = %v (present %v); want %v", key, got, present, want)
+				}
+			}
+			for _, key := range tt.wantAbsent {
+				if _, present := env[key]; present {
+					t.Errorf("withdraw envelope = %v; want no %q key", env, key)
+				}
 			}
 			if _, pending, err := orchengine.CycleRequested(c.paths); err != nil || pending {
 				t.Errorf("CycleRequested = %v, %v; want no marker, nil", pending, err)

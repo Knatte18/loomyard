@@ -8,6 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/spf13/cobra"
 )
@@ -54,6 +55,30 @@ func statusFields(st orchengine.State, cfg orchengine.Config, strand reedengine.
 	}
 }
 
+// hubPauseHolds reports whether the pause record holds a live hub entry, the entry that holds the watcher's cycle machine.
+// A record that cannot be read answers false, as the watcher reads it uncovered.
+func (c *orchCLI) hubPauseHolds() bool {
+	record, err := pauserecord.Read(c.pauseRecordPath)
+	if err != nil {
+		return false
+	}
+	_, live := record.Covering("")
+	return live
+}
+
+// cycleRequestField builds the status envelope's cycle_request value: nil when no request is pending, else the request's mode, its time and whether a hub pause holds it.
+// A marker that does not parse reports an empty mode and a null time.
+func cycleRequestField(req orchengine.CycleRequest, pending, held bool) any {
+	if !pending {
+		return nil
+	}
+	var requestedAt any
+	if !req.RequestedAt.IsZero() {
+		requestedAt = req.RequestedAt.UTC().Format(time.RFC3339)
+	}
+	return map[string]any{"mode": req.Mode, "requested_at": requestedAt, "held_by_pause": held}
+}
+
 // statusCmd builds the `status` subcommand.
 func (c *orchCLI) statusCmd() *cobra.Command {
 	return &cobra.Command{
@@ -68,7 +93,11 @@ and last deferral (last_deferral, RFC 3339 UTC, null when none).
 stuck names the stall reason creel last reported for the watcher's pending inject,
 or the creel failure holding the cycle.
 session_id is the orch session's recorded provider id, which "lyx orch start
---continue" resumes; it is empty when none is recorded.`,
+--continue" resumes; it is empty when none is recorded.
+cycle_request is null while no cycle request is pending, else an object with the
+request's mode, requested_at (RFC 3339 UTC, null for a marker that does not parse)
+and held_by_pause, true while a hub pause holds the watcher's cycle machine, so
+the request waits for the resume. "lyx orch withdraw" removes a pending request.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -92,8 +121,16 @@ session_id is the orch session's recorded provider id, which "lyx orch start
 				return nil
 			}
 
+			req, pending, err := orchengine.CycleRequested(c.paths)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+				return nil
+			}
+
 			strand, tracked := trackedStrand(strands, st.Strand)
-			clihelp.SetExit(cmd.Context(), output.Ok(out, statusFields(st, c.cfg, strand, tracked, watcherLive)))
+			fields := statusFields(st, c.cfg, strand, tracked, watcherLive)
+			fields["cycle_request"] = cycleRequestField(req, pending, pending && c.hubPauseHolds())
+			clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 			return nil
 		},
 	}
