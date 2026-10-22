@@ -325,6 +325,31 @@ func TestCompute_Landings(t *testing.T) {
 			},
 		},
 		{
+			name: "a pair-opening commit past more trailer-free commits than the first page reads still stops the walk before the parent's trailer",
+			setup: func(w *world) landingExpectation {
+				w.parentCommit("P", 5, "parent landing")
+				w.parentCommit("A", 50, "a's landing")
+				w.boardCommit("bd1", 1, boardTask("a", "", "chore"))
+				w.boardCommit("bd2", 60, boardTask("a", "done", "chore"))
+				w.recordsCommit("r-sync", 10, "P")
+				w.pairOpening("open-a", 20, "a")
+				w.checkpoint("cp-a", 40, "a")
+				last := "cp-a"
+				for i := 0; i < 70; i++ {
+					last = "r-" + strings.Repeat("y", i+1)
+					w.recordsCommit(last, 45, "")
+				}
+				w.tagOver("a", "ta", last, at(100), seedText("darn"), statusJSON(w.t, shedengine.Status{State: shedengine.StateDone, History: finalizeDone}), nil)
+				return landingExpectation{
+					landings: []wantLanding{
+						{commit: "P", kind: "unmapped", fresh: "no-pre-image"},
+						{commit: "A", kind: "other", slug: "a", tag: tagName("a", "ta"), join: "time"},
+					},
+					runLandings: map[string]string{tagName("a", "ta"): "A"},
+				}
+			},
+		},
+		{
 			name: "two runs whose exact joins claim one commit are both unmapped and the clash is a finding",
 			setup: func(w *world) landingExpectation {
 				w.parentCommit("E", 50, "claimed twice")
