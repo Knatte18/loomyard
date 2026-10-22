@@ -2,14 +2,14 @@
 
 ## Paths and geometry
 
-- `PATTERN-cwd-resolution` — Resolving cwd or worktree root: only `internal/lyxcwd`; nothing else calls `os.Getwd` or `git rev-parse`. — [background](pattern/PATTERN-cwd-resolution.md)
+- `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd`. — [background](pattern/PATTERN-cwd-resolution.md)
 - `PATTERN-told-geometry` — Writing an engine: handed absolute paths, it derives none, never imports `internal/lyxcwd`. — [background](pattern/PATTERN-told-geometry.md)
 - `PATTERN-lyxdirs-single-declarer` — Naming `_lyx` or `.lyx` in a path: only `internal/lyxdirs` declares them, bar one variable block atop a `tools/` script.
 - `PATTERN-lyx-temp-root` — Creating temp file or dir: under `internal/lyxtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
 - `PATTERN-durable-vs-ephemeral-state` — Adding file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-hub-containment` — Linking hub-level containers or writing hub workspace file: from the hub only. — [background](pattern/PATTERN-hub-containment.md)
 - `PATTERN-hub-wide-config` — A hub-level config module: `HubWide` in `configreg`, its file on board only. — [background](pattern/PATTERN-hub-wide-config.md)
-- `PATTERN-sparse-hub-base` — Writing hub's base file: only units the hub tuned, never a template fill; only `hubreconcile`'s one-time walk strip drops a template-held unit. — [background](pattern/PATTERN-sparse-hub-base.md)
+- `PATTERN-sparse-hub-base` — Writing a hub's base file: only the units the hub tuned, never a template fill. — [background](pattern/PATTERN-sparse-hub-base.md)
 - `PATTERN-hub-suffix` — Touching hub naming: `-LYXHUB` is sole hub container suffix. (test) — [background](pattern/PATTERN-hub-suffix.md)
 
 ## CLI
@@ -17,7 +17,7 @@
 - `PATTERN-cli-cobra` — Adding CLI module: a cobra subtree under one root in `cmd/lyx/main.go`. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring standalone CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
 - `PATTERN-config-strictness` — Loading config: a caller adopts exactly one of strict `Load` or `LoadOrTemplate`, bar `runprofile`. — [background](pattern/PATTERN-config-strictness.md)
-- `PATTERN-config-layers` — Resolving module's config: only `configengine` reads, stacks and locates layer files, machine layer too. — [background](pattern/PATTERN-config-layers.md)
+- `PATTERN-config-layers` — Resolving a module's config: only `configengine` reads, stacks and locates layer files. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-template-overlay` — Judging config document against its template: only against `configengine`'s effective template, overlay picked from base layer.
 - `PATTERN-binary-change-reconcile` — Reconciling a hub's config after a binary change: only via `hubreconcile.Ensure`, owner of build stamp and hub lock.
 - `PATTERN-refusal-way-forward` — Adding webster, shed or loom refusal: message names the way forward; a test reaches it. — [background](pattern/PATTERN-refusal-way-forward.md)
@@ -25,24 +25,24 @@
 
 ## Fabric and git
 
-- `PATTERN-fabric-vocabulary` — Naming the wired composite: "fabric"; warp and weft only to tell sides apart. (test) — [background](pattern/PATTERN-fabric-vocabulary.md)
+- `PATTERN-fabric-vocabulary` — Naming the wired composite: "fabric". (test) — [background](pattern/PATTERN-fabric-vocabulary.md)
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing `_launchers` or workspace file in `fabricengine`: via a hub `os.Root`, never raw `os` or `fslink`.
 - `PATTERN-push-both-sides` — Pushing run records from Go: code branch goes along. — [background](pattern/PATTERN-push-both-sides.md)
 - `PATTERN-push-failure-visible` — A push refused after retry: a failed-push record and creel notice. (test)
-- `PATTERN-mutation-record` — Adding mutating fabric verb: it fills a `*Mutations` record; result embeds `MutationRecord`. — [background](pattern/PATTERN-mutation-record.md)
+- `PATTERN-mutation-record` — Adding a mutating fabric verb: it fills a `*Mutations` record. — [background](pattern/PATTERN-mutation-record.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only via `internal/pairteardown`. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-batten-bookend` — Creating or destroying a task worktree: its producer never runs inside it. — [background](pattern/PATTERN-batten-bookend.md)
 - `PATTERN-github-auth` — Calling GitHub: auth only via `internal/githubclient`; no other production package runs `gh`.
 - `PATTERN-agent-filed-issues` — Filing GitHub issue: only `lyx selfreport create` calls `selfreportengine.CreateIssue` in production. (test)
 - `PATTERN-hub-store-gc` — Hub stores run no auto gc or maintenance: only `fabricengine/housekeeping.go` sets it or runs `gc`. — [background](pattern/PATTERN-hub-store-gc.md)
-- `PATTERN-gogit-read-helper` — Reading via go-git in `internal/gitrepo`: only via `readGoGit`, sole caller of `goGit()`. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
+- `PATTERN-gogit-read-helper` — Reading via go-git in `internal/gitrepo`: only via `readGoGit`. (test) — [background](pattern/PATTERN-gogit-read-helper.md)
 - `PATTERN-gitrepo-client-boundary` — Git in `internal/gitrepo`: local reads via go-git and `dotgit`, rest via `gitexec`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
 - `PATTERN-gitexec-checked-call` — Running git: `gitexec.Run`/`runChecked`; raw `RunGit`/`r.run` only at pinned `//gitexec:raw` sites.
 - `PATTERN-never-force-add` — Keeping transients unindexed: each repo's `.git/info/exclude`; fabric and gitrepo never run `git add -f`.
 - `PATTERN-origin-reconcile` — Acting on a run or hub after an absence: first `fabricengine`'s origin reconcile, sole judge of branches.
-- `PATTERN-owner-machine` — Starting, resuming or landing a run, bar a Finalize past its parent-side merge, or acting after a wake: only where its entry reads owned by no other machine; owner set only by `boardengine`'s setter; origin verdicts in `ReconcileOrigin`; name only from `internal/machinename`. — [background](pattern/PATTERN-owner-machine.md)
+- `PATTERN-owner-machine` — Starting, resuming or landing a run, bar a Finalize past its parent-side merge, or acting on wake: only where its entry reads owned by no other machine; owner set only by `boardengine`'s setter; verdicts in `ReconcileOrigin`; name only from `internal/machinename`. — [background](pattern/PATTERN-owner-machine.md)
 - `PATTERN-parent-lock` — Merging a parent into a task branch, or landing on it: only under that parent's `internal/parentlock` lock; a moved parent reroutes to Merge-In.
 
 ## Shed and loom
@@ -67,7 +67,7 @@
 - `PATTERN-gate-slot` — Running gate build or test: only in held `internal/gateslot` slots. — [background](pattern/PATTERN-gate-slot.md)
 - `PATTERN-trimpath-safe-root` — Locating module root in code a gate run builds: never from a `runtime.Caller` path alone, which `-trimpath` makes module-relative.
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: batch the active `batcher.yaml` profile derives. — [background](pattern/PATTERN-batcher-registry.md)
-- `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, each finding fixed or disputed, end on verdict. — [background](pattern/PATTERN-review-round.md)
+- `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Parsing plan, discussion, summary, recipe or halt note: only sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts
@@ -76,7 +76,7 @@
 - `PATTERN-creel-store` — Writing creel journal or reaching a pane: only `internal/creelengine`. (test) — [background](pattern/PATTERN-creel-store.md)
 - `PATTERN-stencil-ownership` — Reading prompt or spec: at call time via `internal/stencilstore`, never embedded. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-producer-pointer-rule` — Writing an instruction file: it points at another producer's format contract, never restating it.
-- `PATTERN-friction-capture` — Halting loom run or refusing in webster: Go writes a note, reflected at run end, archived once covered. (test) — [background](pattern/PATTERN-friction-capture.md)
+- `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a note. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finding run unfinished in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
 - `PATTERN-shuttle-provider-seam` — Referencing provider: specifics live only under `internal/shuttleengine/<engine>`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
 - `PATTERN-model-choice-mapping` — Mapping resolved model-spec onto a spawn: only `shuttleengine.NewModelChoice` reads fields. (test) — [background](pattern/PATTERN-model-choice-mapping.md)
@@ -116,11 +116,11 @@
 - `PATTERN-test-economy` — Writing test: pins public-surface behavior no test covers, else extends one. — [background](pattern/PATTERN-test-economy.md)
 - `PATTERN-test-speed` — Writing test: lowest fitting tier, injected clocks, `t.Parallel` by default. (test) — [background](pattern/PATTERN-test-speed.md)
 - `PATTERN-test-isolation` — Testing package: git spawners use `gitkit.HermeticGitEnv()`. (test) — [background](pattern/PATTERN-test-isolation.md)
-- `PATTERN-testkit` — Sharing test support across packages: one kit under `internal/testkit/<kit>/`, imported only from tests, never duplicated. (test) — [background](pattern/PATTERN-testkit.md)
-- `PATTERN-hubforge-fixtures` — A hub fixture no fake can test: `hubforge` via `fabriccli.CloneAndWire`, never hand-assembled or wrapped. — [background](pattern/PATTERN-hubforge-fixtures.md)
+- `PATTERN-testkit` — Sharing test support across packages: one kit under `internal/testkit/<kit>/`, imported only from tests. (test) — [background](pattern/PATTERN-testkit.md)
+- `PATTERN-hubforge-fixtures` — A hub fixture no fake can test: `hubforge` via `fabriccli.CloneAndWire`. — [background](pattern/PATTERN-hubforge-fixtures.md)
 
 ## Docs
 
 - `PATTERN-markdown-link-integrity` — Linking in a `.md` file under `docs/`: every inline link resolves. (test) — [background](pattern/PATTERN-markdown-link-integrity.md)
 - `PATTERN-comment-line-breaks` — Writing Go comment: one sentence per line. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
-- `PATTERN-documentation-lifecycle` — Design docs: none for unbuilt work; a built one in its package's `doc.go`. — [background](pattern/PATTERN-documentation-lifecycle.md)
+- `PATTERN-documentation-lifecycle` — Design docs: none for unbuilt work. — [background](pattern/PATTERN-documentation-lifecycle.md)
