@@ -88,6 +88,7 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // its declaration is derived as a one-name spec from the kind and the new identifier alone, since the declaration only feeds quarry.Name's glyph prediction.
 // An interface method's signature is its bare method spec, with no "func" and no receiver, which quarry.Name rejects;
 // the declaration is then derived as a method on the symbol's owner, "func (Owner) Spec".
+// A C# symbol takes none of those paths: its head is derived by renameCSharpHead and the declaration is the head under the old symbol's unit and owner chain.
 // It reports ok false, with a rename-old-unresolved Finding, when Old did not resolve found, when Old resolved found but carries no symbol declaration (a self glyph's answer — a file or unit, not a symbol), when the new-side handle carries no member name, or when Old's own signature carries no occurrence of the identifier it is supposed to declare.
 //
 // The r.Status != quarry.StatusFound check below is Found-only by design, not an oversight left
@@ -96,7 +97,7 @@ func renameSignature(signature, oldName, newName string) (string, bool) {
 // mean arbitrarily choosing r.Symbols[0] as "the" declaration to rename from, out of several
 // declarations the language itself allows to differ from each other. A Rename pair's old side must
 // name exactly one declaration for renameSignature to have anything unambiguous to derive from.
-func renameDeclSource(card, oldRef, newHandle, worktreeRoot string, results map[string]quarry.ResolveResult) (declSource, Finding, bool) {
+func renameDeclSource(plan *planparser.Plan, card, oldRef, newHandle, worktreeRoot string, results map[string]quarry.ResolveResult) (declSource, Finding, bool) {
 	r, resolved := results[oldRef]
 	if !resolved || r.Status != quarry.StatusFound {
 		detail := fmt.Sprintf("Rename pair's old side %q did not resolve found; nothing to derive the new declaration from", oldRef)
@@ -126,6 +127,16 @@ func renameDeclSource(card, oldRef, newHandle, worktreeRoot string, results map[
 		}, false
 	}
 
+	sym := r.Symbols[0]
+	if sym.Glyph.Lang == glyph.CSharp {
+		head, finding, ok := renameCSharpHead(plan, card, oldRef, newHandle, sym)
+		if !ok {
+			return declSource{}, finding, false
+		}
+		decl := quarry.Declaration{Lang: glyph.CSharp, Unit: sym.Glyph.Unit, Owner: csharpOwner(sym.Glyph, head), Decl: head}
+		return declSource{handle: newHandle, decl: decl}, Finding{}, true
+	}
+
 	identifier, ok := planparser.HandleIdentifier(newHandle)
 	if !ok {
 		return declSource{}, Finding{
@@ -136,7 +147,6 @@ func renameDeclSource(card, oldRef, newHandle, worktreeRoot string, results map[
 		}, false
 	}
 
-	sym := r.Symbols[0]
 	switch sym.Kind {
 	case quarry.KindVar:
 		return declSource{handle: newHandle, decl: quarry.Declaration{Lang: sym.Glyph.Lang, Unit: sym.Glyph.Unit, Decl: "var " + identifier + " int"}}, Finding{}, true
@@ -157,6 +167,33 @@ func renameDeclSource(card, oldRef, newHandle, worktreeRoot string, results map[
 		}, false
 	}
 	return declSource{handle: newHandle, decl: quarry.Declaration{Lang: sym.Glyph.Lang, Unit: sym.Glyph.Unit, Decl: decl}}, Finding{}, true
+}
+
+// renameCSharpHead derives the declaration head of a C# Rename pair's to-side from its resolved old symbol, and reports ok false, with a rename-old-unresolved Finding, when no head can be derived.
+// The new identifier is the name of the new handle's body parsed in the plan's alphabet, without its generic arity suffix, never a last-dot split, since a parameter type may hold dots.
+func renameCSharpHead(plan *planparser.Plan, card, oldRef, newHandle string, sym quarry.Symbol) (string, Finding, bool) {
+	body, _ := planparser.HandleBody(newHandle)
+	newGlyph, err := planparser.ParseRef(plan, body)
+	if err != nil || newGlyph.IsSelf() {
+		return "", Finding{
+			Check:    "rename-old-unresolved",
+			Card:     card,
+			Detail:   fmt.Sprintf("Rename pair's new side %q is no C# member glyph; spell the new handle `plan:<namespace>#<owner.member>` in the C# alphabet with canonical parameter types", newHandle),
+			Severity: SeverityBlocking,
+		}, false
+	}
+	identifier, _, _ := strings.Cut(newGlyph.Name, "<")
+
+	head, ok := renameCSharpDecl(sym, identifier)
+	if !ok {
+		return "", Finding{
+			Check:    "rename-old-unresolved",
+			Card:     card,
+			Detail:   fmt.Sprintf("Rename pair's old side %q has no declared name an identifier spells, as an operator, an indexer, a finalizer or a static constructor has none; drop the pair, since such a member is renamed with its type or not at all", oldRef),
+			Severity: SeverityBlocking,
+		}, false
+	}
+	return head, Finding{}, true
 }
 
 // partitionedRenameOldDetail is the rename-old-unresolved detail for an old side declared once per build-constraint set: it names each candidate's file and constraint, and the two ways forward.
@@ -229,7 +266,7 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 			if !planparser.IsHandleRef(p.New) {
 				continue
 			}
-			src, finding, ok := renameDeclSource(card, p.Old, p.New, worktreeRoot, resultIndex)
+			src, finding, ok := renameDeclSource(plan, card, p.Old, p.New, worktreeRoot, resultIndex)
 			if !ok {
 				findings = append(findings, finding)
 				continue

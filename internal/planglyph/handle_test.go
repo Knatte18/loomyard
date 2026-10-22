@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -311,6 +312,37 @@ func TestRenameSignature(t *testing.T) {
 			}
 			if ok && got != tc.want {
 				t.Errorf("renameSignature(%q, %q, %q) = %q; want %q", tc.signature, tc.oldName, tc.newName, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRenameCSharpDecl pins the exact heads a C# rename derives, which the glyph-chain rows see only through the minted id.
+func TestRenameCSharpDecl(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		kind       quarry.Kind
+		signature  string
+		symbolName string
+		identifier string
+		want       string
+		wantOK     bool
+	}{
+		{"ConstKeepsOneDeclarator", quarry.KindConst, "public const int A = 1, B = 2;", "A", "C", "public const int C = default", true},
+		{"FieldKeepsGenericType", quarry.KindField, "private Dictionary<string, int> map;", "map", "renamed", "private Dictionary<string, int> renamed", true},
+		{"FieldKeepsTupleType", quarry.KindField, "private (int, int) pair;", "pair", "twin", "private (int, int) twin", true},
+		{"PropertyWhoseTypeIsGenericOfItsNameReplacesTheType", quarry.KindProperty, "Color<int> Color { get; }", "Color", "Hue", "Hue<int> Color { get; }", true},
+		{"OperatorHasNoDeclaredName", quarry.KindOperator, "public static Box operator +(Box a, Box b)", "operator+", "Plus", "", false},
+		{"FinalizerHasNoDeclaredName", quarry.KindMethod, "~Renderer()", "Renderer", "Other", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			sym := quarry.Symbol{Kind: tt.kind, Signature: tt.signature, Glyph: glyph.Glyph{Lang: glyph.CSharp, Name: tt.symbolName}}
+			got, ok := renameCSharpDecl(sym, tt.identifier)
+			if ok != tt.wantOK || got != tt.want {
+				t.Errorf("renameCSharpDecl(%q, %q) = %q, %v; want %q, %v", tt.signature, tt.identifier, got, ok, tt.want, tt.wantOK)
 			}
 		})
 	}

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -118,10 +119,11 @@ func planGatePass(plan *planparser.Plan, worktreeRoot string, loader typesLoader
 	return append(findings, imports...), err
 }
 
-// isInterfaceMethod reports whether s is a method whose signature does not open with the func keyword and a receiver, quarry's answer for an interface method.
+// isInterfaceMethod reports whether s is a Go method whose signature does not open with the func keyword and a receiver, quarry's answer for an interface method.
 // An interface method's own name may open with "func", so the keyword is told apart by the receiver's parenthesis after it.
+// A C# method never is one, since no C# signature opens with the func keyword.
 func isInterfaceMethod(s quarry.Symbol) bool {
-	return s.Kind == quarry.KindMethod && !strings.HasPrefix(s.Signature, "func (") && !strings.HasPrefix(s.Signature, "func(")
+	return s.Glyph.Lang != glyph.CSharp && s.Kind == quarry.KindMethod && !strings.HasPrefix(s.Signature, "func (") && !strings.HasPrefix(s.Signature, "func(")
 }
 
 // collectMemberTargets returns every distinct member glyph plan's cards list among their own Targets, sorted for determinism.

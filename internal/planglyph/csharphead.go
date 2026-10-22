@@ -10,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/glyph"
+	"github.com/Knatte18/quarry/quarry"
 )
 
 // csharpKeywords are the reserved words of C#, none of which is an identifier in a declaration head.
@@ -260,6 +261,45 @@ func qualifierMayStartAt(text string, start int) bool {
 	}
 	previous, _ := utf8.DecodeLastRuneInString(text[:start])
 	return previous != '.' && !isHeadWordRune(previous)
+}
+
+// renameCSharpDecl derives the declaration head of a C# symbol renamed to identifier, and reports false when the symbol's declared name cannot be told from its signature.
+// A field, const or event gets a one-declarator head, since a signature quarry gives every declarator of one declaration would declare several symbols once its name is replaced.
+// The head is then the signature cut before the first declarator's name, followed by identifier, with ` = default` appended for a const.
+// Every other kind has the declared name token replaced in place.
+// That token is kept only when it is the symbol's own name without its generic arity suffix, so an operator, an indexer, a finalizer and a static constructor, which no identifier names, report false.
+func renameCSharpDecl(sym quarry.Symbol, identifier string) (string, bool) {
+	switch sym.Kind {
+	case quarry.KindField, quarry.KindConst, quarry.KindEvent:
+		tokens := tokenizeHead(sym.Signature)
+		index := declaratorTokenIndex(tokens)
+		if index < 0 {
+			return "", false
+		}
+		head := sym.Signature[:tokens[index].start] + identifier
+		if sym.Kind == quarry.KindConst {
+			head += " = default"
+		}
+		return head, true
+	}
+
+	start, ok := declaredNameIndex(sym.Signature, sym.Glyph.Name)
+	if !ok {
+		return "", false
+	}
+	bare, _, _ := strings.Cut(sym.Glyph.Name, "<")
+	end := start
+	for end < len(sym.Signature) {
+		next, size := utf8.DecodeRuneInString(sym.Signature[end:])
+		if !isHeadWordRune(next) {
+			break
+		}
+		end += size
+	}
+	if sym.Signature[start:end] != bare {
+		return "", false
+	}
+	return sym.Signature[:start] + identifier + sym.Signature[end:], true
 }
 
 // canonicalQualifierWay returns the way forward for a C# Create handle quarry refused as an invalid container because its head spells the explicit-interface qualifier in a non-canonical spelling, or "" when the head does not.

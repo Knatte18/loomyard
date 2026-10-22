@@ -607,8 +607,8 @@ func TestGlyphChain_CSharp(t *testing.T) {
 			language:     "go",
 			cards:        []string{renameCard(namespace+"#Renderer.Title", "plan:"+namespace+"#Renderer.Name")},
 			sections:     []plankit.Section{renameMechanic},
-			planFindings: []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}, mismatch[0]},
-			dispatch:     []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}, mismatch[0]},
+			planFindings: mismatch,
+			dispatch:     mismatch,
 		},
 		{
 			name:      "a go plan with the Go card done judges no mismatch at dispatch",
@@ -702,6 +702,50 @@ func TestGlyphChain_CSharp(t *testing.T) {
 			dispatch:     []findingKey{{"glyph-ambiguous", "1-card1", SeverityBlocking}},
 			details:      crossAlphabetDetails,
 			doneCheck:    &findingKey{"delete-not-done", "1-card1", SeverityBlocking},
+		},
+		{
+			name:      "a generic type renames to the canonical handle with its arity",
+			cards:     []string{renameCard(namespace+"#Box<>", "plan:"+namespace+"#Crate<>")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Crate<>",
+		},
+		{
+			name:      "a method renames with its parameter list canonicalized and no func receiver",
+			cards:     []string{renameCard(namespace+"#Renderer.Draw(int)", "plan:"+namespace+"#Renderer.Paint")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Renderer.Paint(int)",
+		},
+		{
+			name:      "a const declared beside another renames through a one-declarator head",
+			cards:     []string{renameCard(namespace+"#Renderer.A", "plan:"+namespace+"#Renderer.C")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Renderer.C",
+		},
+		{
+			name:      "a property named like its type renames its declared name",
+			cards:     []string{renameCard(namespace+"#Renderer.Color", "plan:"+namespace+"#Renderer.Hue")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Renderer.Hue",
+		},
+		{
+			name:      "a field with a generic type renames through a one-declarator head",
+			cards:     []string{renameCard(namespace+"#Renderer.map", "plan:"+namespace+"#Renderer.renamed")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Renderer.renamed",
+		},
+		{
+			name:      "an event with accessors renames through an event field head",
+			cards:     []string{renameCard(namespace+"#Renderer.Moved", "plan:"+namespace+"#Renderer.Shifted")},
+			sections:  []plankit.Section{renameMechanic},
+			canonical: "plan:" + namespace + "#Renderer.Shifted",
+		},
+		{
+			name:         "a Rename new side the C# alphabet rejects names the C# handle spelling",
+			cards:        []string{renameCard(namespace+"#Renderer.Draw(int)", "plan:"+namespace+"#Renderer.Bad(Int32)")},
+			sections:     []plankit.Section{renameMechanic},
+			planFindings: []findingKey{{"rename-old-unresolved", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"rename-old-unresolved", "1-card1", SeverityBlocking}},
+			details:      []string{"plan:<namespace>#<owner.member>"},
 		},
 	}
 	for _, tt := range tests {
