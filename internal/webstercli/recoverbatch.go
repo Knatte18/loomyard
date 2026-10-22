@@ -114,7 +114,7 @@ unless a later card still references a symbol the batch deletes: a call that
 finds that before spawning refuses with {"batch_failed": true} and the plan
 edit as its way forward. If --wait elapses first it returns
 {"batch": "NN-<slug>", "status": "running", "elapsed_s": N} instead,
-touching neither git nor the repo -- Master re-calls recover-batch. A call
+and Master re-calls recover-batch. A call
 that spawns fabric-commits state.json at once, so the strand survives a crash.
 
 Under a pause that covers the pair it refuses first, claiming Master into it.
