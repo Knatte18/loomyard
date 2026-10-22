@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// describeEntry is the Constructor for the "Describe" registry row: it resolves the row's "gates" Config key through resolveGateSpec, validates Env.DescribeTable, Env.CommitDescription, and Env.Seats, then returns loomshed.NewDiscussionWrite(name, shedadapters.NewMultiLLMProducerSourced(name, tables, env.Seats, env.Now, nil), env.CommitDescription) -- a seat-table producer behind a commit decorator.
+// describeEntry is the Constructor for the "Describe" registry row: it resolves the row's "gates" Config key through resolveGateSpec, validates Env.DescribeTable, Env.CommitDescription, and Env.Seats, then returns loomshed.NewDiscussionWrite(name, shedadapters.NewMultiLLMProducerSourced(name, tables, env.Seats, env.Now, nil).KeepGateFindings(path), env.CommitDescription), path being the row's gate findings file -- a seat-table producer behind a commit decorator.
 // Env.Shuttle is never read: the lead runs through Env.Seats.
 //
 // The DiscussionWrite decorator is reused rather than copied: its commit-on-non-empty-pointer rule

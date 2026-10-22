@@ -44,7 +44,7 @@ func burlerRowTimeout(timeoutS int, env Env) time.Duration {
 	return time.Duration(timeoutS) * time.Second
 }
 
-// burlerReviewEntry is the Constructor for the "BurlerReview" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, joins and creates the run directory this row's segment shares with its Bouncer and fix rows, and returns shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: the segment's Models}, profile, opts, runDir, env.Now).
+// burlerReviewEntry is the Constructor for the "BurlerReview" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, joins and creates the run directory this row's segment shares with its Bouncer and fix rows, and returns shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: the segment's Models, GateFindingsPath: the row's gate findings file}, profile, opts, runDir, env.Now).
 //
 // The row takes no "gates" key: its only gate is the engine's review-parse entry.
 // The row's models and review key come from its segment's SegmentSettings.
@@ -132,7 +132,7 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	return producer, nil
 }
 
-// burlerFixEntry is the Constructor for the "BurlerFix" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile through burlerFixProfile, resolves the row's "gates" Config key through resolveRowGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer and review rows, and returns shedadapters.NewBurlerFixProducer(name, review_row, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: the segment's Models}, profile, opts, runDir, env.Now).
+// burlerFixEntry is the Constructor for the "BurlerFix" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile through burlerFixProfile, resolves the row's "gates" Config key through resolveRowGateSpec into the RunOpts.Gate it builds, joins and creates the run directory this row's segment shares with its Bouncer and review rows, and returns shedadapters.NewBurlerFixProducer(name, review_row, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: the segment's Models, GateFindingsPath: the row's gate findings file}, profile, opts, runDir, env.Now).
 //
 // All four fix rows share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
 // the Webster and Darn fixers name the "verify" gate, so a round that changed code ends with a passing verify, and the two review segments name their own validators.
