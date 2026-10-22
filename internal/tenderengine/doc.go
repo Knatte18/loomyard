@@ -97,4 +97,15 @@
 //     A seam that is not told reports none, and a failed reading is reported in the part.
 //
 // Status reads no transcript and no pane content and writes nothing, so any caller may run it.
+//
+// # Reap
+//
+// Reap takes one fresh reading of the processes part and ends exactly the orphans it lists, through the `Deps.EndOwner` and `Deps.EndProcess` seams, each nil ending nothing.
+// An orphan owner whose every record reads orphan is ended whole, one `EndOwner` call per owner.
+// An orphan record of an owner that keeps a record working inside a registered worktree is ended by `EndProcess` with its recorded start time.
+// Each unregistered orphan is ended the same way with the start time of the same reading, so a pid reused since is left alone.
+// The hub owner, a pair that exists, a process working inside a registered worktree and a slug whose batten reads running are never orphans, so a reap never ends them.
+// The report lists what it ended and what survived, and the processes reading it acted on.
+// A survivor returns the report with an error naming each survivor's pid and registered role and the way forward of running the verb again once it is gone;
+// any other end error is returned after the remaining orphans are tried.
 package tenderengine

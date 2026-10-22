@@ -31,6 +31,8 @@ type OwnedProcess struct {
 	// Role is what the process does for its owner.
 	Role string `json:"role"`
 	PID  int    `json:"pid"`
+	// StartTime is the process's start time as the record holds it, which a reap matches before it signals the pid.
+	StartTime string `json:"start_time"`
 	// AgeSeconds is the time from the record's registration to the reading.
 	AgeSeconds int64 `json:"age_seconds"`
 	// Orphan is true when the process's owner has no pair and no live batten, and the process works outside every registered worktree.
@@ -95,6 +97,7 @@ func readProcesses(deps Deps, processes []proc.Process, processesErr error) Proc
 				Owner:      owner,
 				Role:       record.Role,
 				PID:        record.PID,
+				StartTime:  record.StartTime,
 				AgeSeconds: int64(deps.Now().Sub(record.RegisteredAt).Seconds()),
 				Orphan:     orphan,
 			})

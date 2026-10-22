@@ -105,7 +105,13 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		RunProcs: func() (map[string][]runproc.Record, error) {
 			return runproc.Owners(fabricengine.RunProcDir(location.HubPath))
 		},
-		Worktrees:  func() ([]string, error) { return worktreePaths, nil },
+		Worktrees: func() ([]string, error) { return worktreePaths, nil },
+		EndOwner: func(owner string) ([]runproc.Ended, error) {
+			return runproc.End(fabricengine.RunProcDir(location.HubPath), owner, os.Getpid())
+		},
+		EndProcess: func(pid int, startTime string) ([]runproc.Ended, error) {
+			return runproc.EndProcess(pid, startTime, "")
+		},
 		HubPath:    location.HubPath,
 		Executable: executable,
 		OrchStrand: func() (string, error) {

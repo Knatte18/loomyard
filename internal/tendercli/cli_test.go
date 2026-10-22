@@ -272,6 +272,7 @@ func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 		{"a pause of another slug", Command(), []string{"pause", "other-pair"}},
 		{"a hub-wide revive", Command(), []string{"revive"}},
 		{"a revive of another slug", Command(), []string{"revive", "other-pair"}},
+		{"a reap", Command(), []string{"reap"}},
 	} {
 		env, code := verb(t, tc.command, prime, tc.args...)
 		if env.OK || code == 0 || !strings.Contains(env.Error, "ask your parent session") {
@@ -304,6 +305,9 @@ func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 	}
 	if live, _ := liveEntries(t, h); len(live) != 1 || live[0].Scope != pauserecord.ScopeHub || live[0].Caller != orch {
 		t.Errorf("live entries = %+v; want the hub entry with the orch as caller", live)
+	}
+	if reaped, code := verb(t, Command(), prime, "reap"); !reaped.OK || code != 0 {
+		t.Errorf("orch reap: ok=%v error=%q; want no caller refusal", reaped.OK, reaped.Error)
 	}
 }
 

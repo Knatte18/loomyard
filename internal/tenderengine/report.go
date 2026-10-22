@@ -68,6 +68,10 @@ type Deps struct {
 	RunProcs func() (map[string][]runproc.Record, error)
 	// Worktrees lists the path of every worktree git still registers, prime and task alike; nil reads none.
 	Worktrees func() ([]string, error)
+	// EndOwner ends every live process registered under owner and returns each it ended; nil ends none.
+	EndOwner func(owner string) ([]runproc.Ended, error)
+	// EndProcess ends the one process pid whose start time still equals startTime and returns each it ended; nil ends none.
+	EndProcess func(pid int, startTime string) ([]runproc.Ended, error)
 	// HubPath is the hub directory.
 	HubPath string
 	// Executable is the running lyx's own executable path, empty when it is unknown.
