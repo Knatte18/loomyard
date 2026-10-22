@@ -1715,6 +1715,29 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 			}
 		}
 	})
+
+	// A record recovery would refuse as uncheckable cannot be recovered, so the way forward restarts the run.
+	t.Run("GlyphRejectedWithUncheckableNamesTheFreshRestart", func(t *testing.T) {
+		fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+			{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+		})
+		writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
+		fx.Deps.Plan.Cards[0].TargetGroups = []planparser.TargetGroup{
+			{Type: planparser.CardTypeCreate, Refs: []string{"foo.Bar"}},
+		}
+		fx.Deps.State.Batches[1].Uncheckable = []string{"fabric-reference: Bash command references the fabric"}
+
+		_, err := websterengine.RecordBatch(fx.Deps, 1)
+		if !errors.Is(err, websterengine.ErrBatchFailed) {
+			t.Fatalf("RecordBatch() error = %v; want errors.Is(err, ErrBatchFailed)", err)
+		}
+		if !strings.Contains(err.Error(), "way forward: 1) lyx webster reset --to start; 2) lyx webster run") {
+			t.Errorf("RecordBatch() error = %q; want it to contain the fresh-restart steps", err.Error())
+		}
+		if strings.Contains(err.Error(), "recover-batch") {
+			t.Errorf("RecordBatch() error = %q; want no recover-batch", err.Error())
+		}
+	})
 }
 
 // The bodies of internal/foo/user.go that deleteReferencedBatches takes: the function Gone called on line 4, no call, and the method Thing.Gone called on line 4.
