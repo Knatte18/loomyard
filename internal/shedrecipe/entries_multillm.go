@@ -99,7 +99,7 @@ func multiLLMEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 		return nil, fmt.Errorf("shedrecipe: MultiLLM: %w", err)
 	}
 
-	return shedadapters.NewMultiLLMProducer(row.Name, table, env.Seats, env.Now), nil
+	return shedadapters.NewMultiLLMProducer(row.Name, table, env.Seats, env.Now).KeepGateFindings(env.gateFindingsPath(row.Name)), nil
 }
 
 // multiLLMSeat builds the i-th seat of a MultiLLM row from its "seats" element.

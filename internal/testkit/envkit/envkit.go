@@ -274,6 +274,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		SpecsDir:           mustMkdir(t, filepath.Join(dir, "specs")),
 		RunRoot:            mustMkdir(t, filepath.Join(dir, "run-root")),
 		RunScratchDir:      mustMkdir(t, filepath.Join(dir, "run-scratch")),
+		GateFindingsFile:   func(row string) string { return filepath.Join(dir, "gate-findings", row+".md") },
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		PatternRecordPath:  filepath.Join(dir, "decision-record.md"),
 		RefuseRaw:          []string{"go test"},

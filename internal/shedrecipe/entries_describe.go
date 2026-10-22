@@ -46,6 +46,6 @@ func describeEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 		table.Gate = gate
 		return table, nil
 	}
-	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, nil)
+	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, nil).KeepGateFindings(env.gateFindingsPath(row.Name))
 	return loomshed.NewDiscussionWrite(row.Name, inner, env.CommitDescription), nil
 }

@@ -100,4 +100,14 @@ func TestDarnWriteEntry_HappyPath(t *testing.T) {
 	if len(gate) != 2 || gate[0].Name != "verify" || gate[1].Name != "description" || gate[0].Attempts != 2 || gate[1].Attempts != 2 {
 		t.Errorf("table gate = %+v; want the verify and description entries with 2 attempts each", gate)
 	}
+
+	// An exhausted gate's reason names the row's findings file, so an entry that drops the chain fails here.
+	withGateFindingsFile(&env, t.TempDir())
+	env.Seats = &shedfake.SeatRunner{Results: []seatengine.Result{failedGateResult(output)}}
+	producer, err = darnWriteEntry(RowIdentity{Name: "Row"}, cfg, env)
+	if err != nil {
+		t.Fatalf("darnWriteEntry() error = %v; want nil", err)
+	}
+	_, pointer, _ := producer.Call(context.Background())
+	requireNamesFindingsFile(t, env, "Row", pointer.Reason)
 }

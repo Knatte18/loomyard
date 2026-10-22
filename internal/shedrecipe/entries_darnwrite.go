@@ -55,7 +55,7 @@ func darnWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 			table.Gate = gate
 			return table, nil
 		}
-		return shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, nil)
+		return shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, nil).KeepGateFindings(env.gateFindingsPath(row.Name))
 	}
 	return loomshed.NewDarnWrite(row.Name, session, dw), nil
 }

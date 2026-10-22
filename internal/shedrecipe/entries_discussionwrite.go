@@ -60,6 +60,6 @@ func discussionWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.Shed
 		table.Gate = gate
 		return table, nil
 	}
-	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, prepare)
+	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, prepare).KeepGateFindings(env.gateFindingsPath(row.Name))
 	return loomshed.NewDiscussionWrite(row.Name, inner, env.CommitDiscussion), nil
 }
