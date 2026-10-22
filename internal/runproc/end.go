@@ -136,7 +136,8 @@ func (e ender) end(dir, owner string, callerPID int) ([]Ended, error) {
 		if err != nil {
 			return ended, fmt.Errorf("runproc: read processes: %w", err)
 		}
-		passEnded, passSurvivors, err := e.runUnits(planRecords(todo, stats), stats)
+		skip := func(pid int) bool { return pid == callerPID || e.isAncestor(pid) }
+		passEnded, passSurvivors, err := e.runUnits(planRecords(todo, stats, skip), stats)
 		ended = append(ended, passEnded...)
 		survivors = append(survivors, passSurvivors...)
 		if err != nil {
@@ -212,7 +213,8 @@ func (e ender) runUnits(units []unit, first []proc.StatEntry) (ended, survivors 
 	return ended, survivors, nil
 }
 
-// signal sends SIGTERM, or SIGKILL when kill is set, to the unit when it still holds against stats, and reports whether a signal went out.
+// signal sends SIGTERM, or SIGKILL when kill is set, to the unit when it still holds against stats, and reports whether a signal was attempted.
+// A failed call still counts as attempted, so the unit's members are awaited and a member still running is reported.
 func (e ender) signal(u unit, kill bool, stats []proc.StatEntry) bool {
 	signalName := "SIGTERM"
 	if kill {
@@ -229,7 +231,7 @@ func (e ender) signal(u unit, kill bool, stats []proc.StatEntry) bool {
 	default:
 		return false
 	}
-	return err == nil
+	return true
 }
 
 // await polls stats until none of members is running or bound is spent, and returns the members still running with the last reading.
@@ -256,7 +258,8 @@ func (e ender) await(members []watched, bound time.Duration) ([]watched, []proc.
 
 // planRecords builds the signals that end records and everything below them in one reading.
 // A leader's group is signalled as a whole, a process outside a group already signalled is signalled by pid, and one that leads its own group through that group.
-func planRecords(records []Record, stats []proc.StatEntry) []unit {
+// A group unit's members are its leader and every other live process of the group, so each is awaited and escalated; skip names the processes never watched.
+func planRecords(records []Record, stats []proc.StatEntry, skip func(pid int) bool) []unit {
 	byPID := map[int]proc.StatEntry{}
 	children := map[int][]proc.StatEntry{}
 	for _, entry := range stats {
@@ -268,6 +271,10 @@ func planRecords(records []Record, stats []proc.StatEntry) []unit {
 	groups := map[int]bool{}
 	claimed := map[int]bool{}
 	running := map[int]bool{}
+	recorded := map[int]bool{}
+	for _, record := range records {
+		recorded[record.PID] = true
+	}
 	for _, record := range records {
 		member := watched{pid: record.PID, startTime: record.StartTime, role: record.Role}
 		running[record.PID] = hasRunning(member, stats)
@@ -278,6 +285,9 @@ func planRecords(records []Record, stats []proc.StatEntry) []unit {
 		}
 		switch {
 		case record.PGID > 1:
+			if !groups[record.PGID] {
+				members = append(members, groupMembers(record.PGID, "descendant of "+record.Role, stats, claimed, recorded, skip)...)
+			}
 			groups[record.PGID] = true
 			units = append(units, unit{pid: record.PID, startTime: record.StartTime, group: record.PGID, members: members})
 		case running[record.PID]:
@@ -310,12 +320,27 @@ func planRecords(records []Record, stats []proc.StatEntry) []unit {
 				if child.PGID == child.PID && child.PGID > 1 {
 					next.group = child.PGID
 					groups[child.PGID] = true
+					next.members = append(next.members, groupMembers(child.PGID, role, stats, claimed, recorded, skip)...)
 				}
 				units = append(units, next)
 			}
 		}
 	}
 	return units
+}
+
+// groupMembers returns the live processes of group that no unit claims yet, bar recorded pids, which each form their own unit, and skipped pids.
+// It marks the returned processes claimed.
+func groupMembers(group int, role string, stats []proc.StatEntry, claimed, recorded map[int]bool, skip func(pid int) bool) []watched {
+	var members []watched
+	for _, entry := range stats {
+		if entry.PGID != group || entry.Zombie || claimed[entry.PID] || recorded[entry.PID] || skip(entry.PID) {
+			continue
+		}
+		claimed[entry.PID] = true
+		members = append(members, watched{pid: entry.PID, startTime: entry.StartTime, role: role})
+	}
+	return members
 }
 
 // hasRunning reports whether stats holds member's pid, with its start time, and not as a zombie.

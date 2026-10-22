@@ -23,6 +23,7 @@ type world struct {
 	ignoreTerm    map[int]bool
 	immortal      map[int]bool
 	zombieOnTerm  map[int]bool
+	failSignal    map[int]bool
 	afterTerm     func(w *world)
 	onFirstSignal func(w *world)
 	slept         bool
@@ -91,6 +92,9 @@ func (w *world) ender(goos string, ancestors []int) ender {
 			if _, found := w.table[pid]; !found {
 				return syscall.ESRCH
 			}
+			if w.failSignal[pid] {
+				return syscall.EPERM
+			}
 			w.record("pid", kill, pid)
 			w.react(pid, kill)
 			return nil
@@ -153,6 +157,7 @@ func TestEnd(t *testing.T) {
 		ignoreTerm    []int
 		immortal      []int
 		zombieOnTerm  []int
+		failSignal    []int
 		afterTerm     func(w *world)
 		onFirstSignal func(w *world, dir string)
 		goos          string
@@ -167,7 +172,33 @@ func TestEnd(t *testing.T) {
 			table:       []proc.StatEntry{entry(10, 1, 10, "100"), entry(11, 10, 10, "110")},
 			records:     []Record{{PID: 10, PGID: 10, StartTime: "100", Role: RoleLoop}},
 			wantSignals: []string{"term group 10"},
-			wantEnded:   []Ended{{10, RoleLoop}},
+			wantEnded:   []Ended{{10, RoleLoop}, {11, "descendant of loop"}},
+		},
+		{
+			name:        "a group member that ignores SIGTERM after its leader exits gets the group SIGKILL",
+			table:       []proc.StatEntry{entry(12, 1, 12, "120"), entry(13, 12, 12, "130")},
+			records:     []Record{{PID: 12, PGID: 12, StartTime: "120", Role: RoleLoop}},
+			ignoreTerm:  []int{13},
+			wantSignals: []string{"term group 12", "kill group 12"},
+			wantEnded:   []Ended{{12, RoleLoop}, {13, "descendant of loop"}},
+			wantSpent:   endGrace,
+		},
+		{
+			name:          "a group whose leader is gone still reports a member that survives SIGKILL",
+			table:         []proc.StatEntry{{PID: 12, PPID: 1, PGID: 12, StartTime: "120", Zombie: true}, entry(14, 1, 12, "140")},
+			records:       []Record{{PID: 12, PGID: 12, StartTime: "120", Role: RoleLoop}},
+			immortal:      []int{14},
+			wantSignals:   []string{"term group 12", "kill group 12"},
+			wantSurvivors: []Ended{{14, "descendant of loop"}},
+			wantSpent:     endGrace + killBound,
+		},
+		{
+			name:          "a process whose signal call fails is reported when it stays alive",
+			table:         []proc.StatEntry{entry(15, 1, 5, "150")},
+			records:       []Record{{PID: 15, StartTime: "150", Role: RoleLoop}},
+			failSignal:    []int{15},
+			wantSurvivors: []Ended{{15, RoleLoop}},
+			wantSpent:     endGrace + killBound,
 		},
 		{
 			name:        "a non-leader ends with its descendants signalled by pid",
@@ -181,7 +212,7 @@ func TestEnd(t *testing.T) {
 			table:       []proc.StatEntry{entry(30, 1, 5, "300"), entry(31, 30, 31, "310"), entry(32, 31, 31, "320")},
 			records:     []Record{{PID: 30, StartTime: "300", Role: RolePush}},
 			wantSignals: []string{"term pid 30", "term group 31"},
-			wantEnded:   []Ended{{30, RolePush}, {31, "descendant of push"}},
+			wantEnded:   []Ended{{30, RolePush}, {31, "descendant of push"}, {32, "descendant of push"}},
 		},
 		{
 			name:        "the caller and an ancestor of it are not signalled",
@@ -349,6 +380,7 @@ func TestEnd(t *testing.T) {
 				ignoreTerm:   pidSet(tt.ignoreTerm),
 				immortal:     pidSet(tt.immortal),
 				zombieOnTerm: pidSet(tt.zombieOnTerm),
+				failSignal:   pidSet(tt.failSignal),
 				afterTerm:    tt.afterTerm,
 				statsErr:     tt.statsErr,
 			}
