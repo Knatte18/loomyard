@@ -481,6 +481,11 @@ func (w *world) checkpoint(sha string, hour int, slug string) {
 	w.repo.commitOnChainWith(sha, at(hour), loomengine.LandingCheckpointSubject(slug), nil, map[string]string{recordPaths(w.t, slug).Dir + "/checkpoint-" + sha: ""})
 }
 
+// pairOpening commits the origin-record commit that opens slug's pair to the records main line at hour.
+func (w *world) pairOpening(sha string, hour int, slug string) {
+	w.repo.commitOnChainWith(sha, at(hour), fabricengine.OriginRecordSubject(slug), nil, map[string]string{"origin-" + sha: ""})
+}
+
 // parentCommit commits to the parent branch's main line at hour with the given message.
 func (w *world) parentCommit(sha string, hour int, message string) {
 	w.code.commitOnChainWith(sha, at(hour), message, nil, nil)

@@ -72,6 +72,8 @@
 //
 // Report.Landings lists the first-parent commits of the parent branch committed at or after Options.Since, oldest first, from one walk that reaches Options.FreshDays further back to date the owners of blamed lines.
 // The exact join reads each selected tag's task commit from the newest task-commit trailer in the first-parent history below the tag, walked in growing pages.
+// The walk ends at the commit that opened the run's pair, named by fabricengine's origin-record subject:
+// a trailer below it is the parent's own and names a parent landing, so a run whose history holds no trailer of its own, such as a darn run, finds no task commit.
 // The landing is the first-parent commit that is the task commit (a fast-forward), has it as a parent (a merge) or holds its tree (a squash).
 // A fast-forwarded branch's own commits, back to the nearest older merge or exact-joined landing, belong to its landing and are neither landings nor unmapped.
 // The time join serves a tag the exact join found no task commit for, and a slug whose pair has checkpoints after its newest tag:

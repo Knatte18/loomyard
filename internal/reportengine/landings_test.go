@@ -240,7 +240,9 @@ func TestCompute_Landings(t *testing.T) {
 				w.taskCommit("T", 15)
 				w.parentMerge("MG", 20, "T")
 				w.boardCommit("bd", 1, boardTask("merged", "", "chore"))
+				w.pairOpening("open-merged", 40, "merged")
 				w.recordsCommit("r-trailer", 50, "T")
+				w.pairOpening("open-other", 55, "other")
 				for _, sha := range []string{"r-a", "r-b", "r-c"} {
 					w.recordsCommit(sha, 60, "")
 				}
@@ -262,6 +264,7 @@ func TestCompute_Landings(t *testing.T) {
 				w.parentCommit("SQ", 20, "squash")
 				w.code.setTree("SQ", "tree-shared")
 				w.boardCommit("bd", 1, boardTask("squashed", "", "chore"))
+				w.pairOpening("open-squashed", 40, "squashed")
 				w.recordsCommit("r-trailer", 50, "T")
 				last := "r-trailer"
 				for i := 0; i < 70; i++ {
@@ -291,6 +294,58 @@ func TestCompute_Landings(t *testing.T) {
 						{commit: "F", kind: "other", slug: "y", tag: tagName("y", "ty"), join: "time"},
 					},
 					runLandings: map[string]string{tagName("x", "tx"): "E", tagName("y", "ty"): "F"},
+				}
+			},
+		},
+		{
+			name: "runs with no trailer above their pair-opening commits skip the parent's trailer below it and map through the time join",
+			setup: func(w *world) landingExpectation {
+				w.parentCommit("P", 5, "parent landing")
+				w.parentCommit("A", 50, "a's landing")
+				w.parentCommit("B", 90, "b's landing")
+				w.boardCommit("bd1", 1, boardTask("a", "", "chore"), boardTask("b", "", "chore"))
+				w.boardCommit("bd2", 60, boardTask("a", "done", "chore"), boardTask("b", "", "chore"))
+				w.boardCommit("bd3", 95, boardTask("a", "done", "chore"), boardTask("b", "done", "chore"))
+				w.recordsCommit("r-sync", 10, "P")
+				w.pairOpening("open-a", 20, "a")
+				w.checkpoint("cp-a", 40, "a")
+				w.pairOpening("open-b", 70, "b")
+				w.checkpoint("cp-b", 80, "b")
+				status := statusJSON(w.t, shedengine.Status{State: shedengine.StateDone, History: finalizeDone})
+				w.tagOver("a", "ta", "cp-a", at(100), seedText("darn"), status, nil)
+				w.tagOver("b", "tb", "cp-b", at(110), seedText("darn"), status, nil)
+				return landingExpectation{
+					landings: []wantLanding{
+						{commit: "P", kind: "unmapped", fresh: "no-pre-image"},
+						{commit: "A", kind: "other", slug: "a", tag: tagName("a", "ta"), join: "time"},
+						{commit: "B", kind: "other", slug: "b", tag: tagName("b", "tb"), join: "time"},
+					},
+					runLandings: map[string]string{tagName("a", "ta"): "A", tagName("b", "tb"): "B"},
+				}
+			},
+		},
+		{
+			name: "a pair-opening commit past more trailer-free commits than the first page reads still stops the walk before the parent's trailer",
+			setup: func(w *world) landingExpectation {
+				w.parentCommit("P", 5, "parent landing")
+				w.parentCommit("A", 50, "a's landing")
+				w.boardCommit("bd1", 1, boardTask("a", "", "chore"))
+				w.boardCommit("bd2", 60, boardTask("a", "done", "chore"))
+				w.recordsCommit("r-sync", 10, "P")
+				w.pairOpening("open-a", 20, "a")
+				w.checkpoint("cp-a", 40, "a")
+				last := "cp-a"
+				for i := 0; i < 70; i++ {
+					last = "r-" + strings.Repeat("y", i+1)
+					w.recordsCommit(last, 45, "")
+				}
+				w.tagOver("a", "ta", last, at(100), seedText("darn"), statusJSON(w.t, shedengine.Status{State: shedengine.StateDone, History: finalizeDone}), nil)
+				return landingExpectation{
+					landings: []wantLanding{
+						{commit: "P", kind: "unmapped", fresh: "no-pre-image"},
+						{commit: "A", kind: "other", slug: "a", tag: tagName("a", "ta"), join: "time"},
+					},
+					runLandings: map[string]string{tagName("a", "ta"): "A"},
 				}
 			},
 		},
