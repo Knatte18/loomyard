@@ -13,6 +13,7 @@ import (
 var intentionallyNil = map[string]string{
 	"Landing.PublishCommand":              "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.BaseCommand":                 "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.VerifyHold":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.GateTiers":                   "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PushBranch":                  "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.RemoteOnlyCommits":           "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",

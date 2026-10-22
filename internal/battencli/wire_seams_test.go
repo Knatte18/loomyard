@@ -53,6 +53,7 @@ var intentionallyNil = map[string]string{
 	"CommitWebster":               "loom-only seam, batten runs no webster",
 	"Landing.PublishCommand":      "loom-only seam, batten lands no branch",
 	"Landing.BaseCommand":         "loom-only seam, batten lands no branch",
+	"Landing.VerifyHold":          "loom-only seam, batten lands no branch",
 	"Landing.GateTiers":           "loom-only seam, batten lands no branch",
 	"Landing.PushBranch":          "loom-only seam, batten lands no branch",
 	"Landing.RemoteOnlyCommits":   "loom-only seam, batten lands no branch",

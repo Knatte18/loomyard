@@ -174,6 +174,7 @@ func LandingDeps(dir string) landingshed.Deps {
 		PublishCommand:    func() (string, error) { return "lyx gate test --wait --tier 2 --all", nil },
 		BaseCommand:       func() (string, error) { return "lyx gate test --wait --tier 0 --all", nil },
 		GateTiers:         fixedGateTiers,
+		VerifyHold:        verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
 		Lock: landingshed.ParentLockDeps{
 			Store:          &parentlock.Store{Dir: filepath.Join(dir, "parent-lock")},
 			Owner:          func() (parentlock.Owner, error) { return parentlock.Owner{Slug: "fixture", RunID: "fixture"}, nil },

@@ -249,6 +249,9 @@ type Deps struct {
 	// Every plan-verify site of the worktree shares it, so a pass at one site lets the next skip.
 	// Told, never derived, per the Told-Geometry Invariant.
 	VerifyDir string
+	// VerifyHold is the told pause hold of the post-merge verifies, which holds a verify while a pause covers the run and stops its command past the grace end.
+	// Nil holds nothing.
+	VerifyHold *verifytree.PauseHold
 
 	// Shuttle is the session-runner seam, told exactly the way every existing session-driving
 	// constructor in this tree takes its own. The resolver's constructor rejects a nil value for

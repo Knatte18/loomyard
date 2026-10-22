@@ -365,6 +365,21 @@ func (s *Store) List() ([]Entry, error) {
 	return entries, nil
 }
 
+// HeldBy reports whether a live lock record that reads without error is owned by slug.
+// It returns the error of listing the records.
+func (s *Store) HeldBy(slug string) (bool, error) {
+	entries, err := s.List()
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if entry.Err == "" && entry.Alive && entry.Record.Owner.Slug == slug {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func branchFromFileName(name string) (string, error) {
 	decoded, err := hex.DecodeString(strings.TrimSuffix(name, recordSuffix))
 	if err != nil {
