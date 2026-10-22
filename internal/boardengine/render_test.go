@@ -239,7 +239,7 @@ func readmeFixture() []boardengine.Task {
 // Every README pins the render time at its top, and every table pins the Age and Revised columns before Labels, as of that time and blank for an unknown date.
 // A second row pins that Ready renders _None._ when empty, and that the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
 // Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
-// A third row pins that a task with a run status renders under Running, before Ready and in no layer, its At cell dropping the state `running` and keeping any other.
+// A third row pins that a task with a run status renders under Running, before Ready and in no layer, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the recorded owner machine and blank when none is recorded.
 // The same row pins that a task waiting on a running one lands in Layer A, not Ready, still naming it under After, and that a task after that one lands in Layer B.
 func TestRenderReadmeGolden(t *testing.T) {
 	t.Parallel()
@@ -370,7 +370,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 			name: "running task under Running before Ready and in no layer",
 			tasks: []boardengine.Task{
 				{ID: 1, Slug: "base", Title: "Base work", Kind: boardengine.KindTask, Labels: []string{"enhancement"}},
-				{ID: 2, Slug: "held", Title: "Held work", Kind: boardengine.KindTask, Labels: []string{"bug", "area"}, Status: stringPtr(boardengine.RunStatus("running", "Webster")), DependsOn: []string{"base"}},
+				{ID: 2, Slug: "held", Title: "Held work", Kind: boardengine.KindTask, Labels: []string{"bug", "area"}, Status: stringPtr(boardengine.RunStatus("running", "Webster")), DependsOn: []string{"base"}, OwnerMachine: "box"},
 				{ID: 3, Slug: "next", Title: "Next work", Kind: boardengine.KindTask, DependsOn: []string{"held"}},
 				{ID: 4, Slug: "last", Title: "Last work", Kind: boardengine.KindTask, DependsOn: []string{"next"}},
 				{ID: 5, Slug: "halted", Title: "Halted work", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.RunStatus("paused", "Plan-Write")), Recipe: "darn"},
@@ -392,10 +392,10 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"#### Normal priority\n" +
 				"\n" +
-				"| # | Task | Slug | Recipe | At | Age | Revised | Labels |\n" +
-				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| 1 | **Held work** | `held` | loom | Webster |  |  | area |\n" +
-				"| 2 | **Halted work** | `halted` | darn | paused · Plan-Write |  |  |  |\n" +
+				"| # | Task | Slug | Recipe | At | Owner | Age | Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| 1 | **Held work** | `held` | loom | Webster | box |  |  | area |\n" +
+				"| 2 | **Halted work** | `halted` | darn | paused · Plan-Write |  |  |  |  |\n" +
 				"\n" +
 				"### Ready\n" +
 				"\n" +

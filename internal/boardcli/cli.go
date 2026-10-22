@@ -646,6 +646,7 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Fetch a single task by slug or numeric ID. Returns {"task":null} if not found (not an error).
 The result is the envelope {"task": {...}}, which the discussion stencil reads.
+A task's "owner_machine" is the machine that owns it: the recorded one, else the owner it reads as through its parent.
 --body writes the entry's body alone, verbatim, with no envelope; an empty body writes nothing.
 With --body a target that does not exist is an error, since there is no task:null to print.
 Editing a body as a file: lyx board get ... --body > body.md, edit it, then feed it back with
@@ -681,6 +682,11 @@ Examples:
 					return 0
 				}
 				if found {
+					if task.OwnerMachine == "" && task.Kind == boardengine.KindTask {
+						if task.OwnerMachine, err = board().EffectiveOwner(task.Slug); err != nil {
+							return outputError(out, err.Error())
+						}
+					}
 					return outputGetTask(out, &task)
 				}
 				return outputGetTask(out, nil) // task: null in JSON output

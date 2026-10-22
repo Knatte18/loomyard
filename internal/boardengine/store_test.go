@@ -7,6 +7,8 @@ package boardengine_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -789,6 +791,38 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	// Both should have a layer assigned (even if empty or a letter)
 	if task1.Layer == "" || task2.Layer == "" {
 		t.Logf("task1 layer: %s, task2 layer: %s", task1.Layer, task2.Layer)
+	}
+
+	// The owner a task lists is its recorded one, else the prime's; a note lists none, and a parent resolver that fails empties the cell without failing the list.
+	dir := t.TempDir()
+	owned := `{"version":1,"prime_owner":"neve","entries":[` +
+		`{"id":0,"slug":"owned","title":"O","kind":"task","labels":["bug"],"owner_machine":"box"},` +
+		`{"id":1,"slug":"plain","title":"P","kind":"task","labels":["bug"]},` +
+		`{"id":2,"slug":"idea","title":"I","kind":"note","labels":["bug"]}]}`
+	if err := os.WriteFile(filepath.Join(dir, "board.json"), []byte(owned), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+	ownersOf := func(brief []boardengine.BriefTask) map[string]string {
+		owners := map[string]string{}
+		for _, b := range brief {
+			owners[b.Slug] = b.OwnerMachine
+		}
+		return owners
+	}
+	withPrime := boardengine.NewStore(dir)
+	if err := withPrime.Load(); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got, want := ownersOf(withPrime.ListTasksBrief(nil)), map[string]string{"owned": "box", "plain": "neve", "idea": ""}; !maps.Equal(got, want) {
+		t.Errorf("listed owners = %v; want %v", got, want)
+	}
+	failing := boardengine.New(boardengine.Config{Path: dir, ParentOf: func(string) (string, error) { return "", errors.New("origin record unreadable") }})
+	listed, err := failing.ListTasksBrief(nil)
+	if err != nil {
+		t.Fatalf("ListTasksBrief() with a failing parent resolver error = %v; want nil", err)
+	}
+	if got, want := ownersOf(listed), map[string]string{"owned": "box", "plain": "", "idea": ""}; !maps.Equal(got, want) {
+		t.Errorf("listed owners with a failing parent resolver = %v; want %v", got, want)
 	}
 }
 

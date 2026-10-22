@@ -265,6 +265,15 @@ func (b *Board) GetTask(idOrSlug any) (Task, bool, error) {
 	return task, found, nil
 }
 
+// EffectiveOwner returns the owner machine the entry slug reads as, "" meaning owned by no other machine, persisting nothing.
+func (b *Board) EffectiveOwner(slug string) (string, error) {
+	store, err := b.loadStore()
+	if err != nil {
+		return "", err
+	}
+	return store.effectiveOwner(slug)
+}
+
 // checkFilterLabels refuses a filter label that is in neither list of the vocabulary and that no entry carries.
 // A path-only Board has no config to check against and accepts every label.
 func (b *Board) checkFilterLabels(store *Store, labels []string) error {

@@ -63,6 +63,8 @@
 // A competing write origin already holds wins the replay of a rejected push, and the owners re-read from the local board.json after the push decide Recorded and Lost.
 // An origin that does not answer is ErrOwnerOriginUnreachable, and a push a held lock keeps deferring is refused naming `lyx board sync`.
 // ReadOwners reads the owners the local board.json records.
+// The list and get views carry each task's effective owner as owner_machine, the recorded one first, and Board.EffectiveOwner resolves one slug's;
+// a list whose parent resolver fails leaves the cell empty and still succeeds.
 //
 // An upsert payload may carry owner_machine only as the entry's effective owner, which is dropped as a no-op; any other value is refused naming `lyx adopt`.
 // The rule runs from the store's upsert, batch and merge paths, never from the replay, which applies an owner change through its own entry writes.
@@ -107,7 +109,7 @@
 // Each open subsection holds one markdown table per priority, as the Priority section describes, numbered on from 1 across them so each entry keeps one number in its subsection, and Done is one table numbered from 1.
 // A row holds the bold title, with the brief as a `• ` bullet under it in the same cell, then a `• ` bullet `profile: <name>` when the task names a run profile, and then one `• ` bullet per run setting, a code span such as `darn: review_max_bounces 1` with a nested key as its dotted path, sorted, so the settings stack in height and add no column, the slug linked to its design doc when the entry has a body, the Age and Revised cells, the entry's age and the time since its last revision, blank for an unknown date, and the labels that are not type labels.
 // The Running, Ready and layer tables add a Recipe column after the slug, the recipe the task runs, `loom` when its recipe field is empty; the Notes and Done tables have none.
-// Running adds an At column, the run status without the state when the state is `running`, and Ready and the layers add an After column, the open entries named in depends_on.
+// Running adds an At column, the run status without the state when the state is `running`, and an Owner column, the entry's recorded owner machine, blank when none is recorded, and Ready and the layers add an After column, the open entries named in depends_on.
 // A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
 //
 // # Intake

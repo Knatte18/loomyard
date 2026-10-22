@@ -43,6 +43,8 @@ type BriefTask struct {
 	Revised     time.Time `json:"revised,omitzero"`
 	Layer       string    `json:"layer"`
 	HasProposal bool      `json:"has_proposal"`
+	// OwnerMachine is the entry's effective owner: the recorded one, else the owner it reads as through its parent; empty for a note and where the owner cannot be resolved.
+	OwnerMachine string `json:"owner_machine,omitempty"`
 }
 
 const (
@@ -704,26 +706,34 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 		}
 	}
 
+	owners := ownersOf(s.primeOwner, s.tasks)
+	parentOf := parentOfOrPrime(s.parentOf)
 	result := make([]BriefTask, 0, len(s.tasks))
 	for _, t := range ordered {
 		if !hasAllLabels(t, labels) {
 			continue
 		}
+		owner := t.OwnerMachine
+		if owner == "" && t.Kind == KindTask {
+			// A resolver error leaves the cell empty: a list never fails on a parent it cannot read.
+			owner, _ = owners.Effective(t.Slug, parentOf)
+		}
 		brief := BriefTask{
-			ID:          t.ID,
-			Slug:        t.Slug,
-			Title:       t.Title,
-			DependsOn:   t.DependsOn,
-			Kind:        t.Kind,
-			Labels:      t.Labels,
-			Isolated:    t.Isolated,
-			Brief:       t.Brief,
-			Priority:    t.Priority,
-			Status:      t.Status,
-			Created:     t.Created,
-			Revised:     t.Revised,
-			Layer:       layerMap[t.Slug],
-			HasProposal: t.Body != "",
+			ID:           t.ID,
+			Slug:         t.Slug,
+			Title:        t.Title,
+			DependsOn:    t.DependsOn,
+			Kind:         t.Kind,
+			Labels:       t.Labels,
+			Isolated:     t.Isolated,
+			Brief:        t.Brief,
+			Priority:     t.Priority,
+			Status:       t.Status,
+			Created:      t.Created,
+			Revised:      t.Revised,
+			Layer:        layerMap[t.Slug],
+			HasProposal:  t.Body != "",
+			OwnerMachine: owner,
 		}
 		result = append(result, brief)
 	}
