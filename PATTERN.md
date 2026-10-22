@@ -26,7 +26,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 
 ## Fabric and git
 
-- `PATTERN-fabric-vocabulary` — Naming the wired composite: "fabric"; warp and weft only to tell its sides apart. (test) — [background](pattern/PATTERN-fabric-vocabulary.md)
+- `PATTERN-fabric-vocabulary` — Naming the wired composite: "fabric". (test) — [background](pattern/PATTERN-fabric-vocabulary.md)
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process, never raw git. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-fabric-destruction-chokepoint` — Destroying anything in fabric: only `internal/fabricengine/destroy.go`. — [background](pattern/PATTERN-fabric-destruction-chokepoint.md)
 - `PATTERN-fabric-write-containment` — Writing `_launchers` or the workspace file in `fabricengine`: via a hub `os.Root`, never raw `os` or `fslink`.
@@ -67,7 +67,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-gate-slot` — Running a gate build or test: only in held `internal/gateslot` slots. — [background](pattern/PATTERN-gate-slot.md)
 - `PATTERN-trimpath-safe-root` — Locating the module root in code a gate run builds: never from a `runtime.Caller` path alone, which `-trimpath` makes module-relative.
 - `PATTERN-batcher-registry` — Choosing webster's execution unit: the batch the active `batcher.yaml` profile derives. — [background](pattern/PATTERN-batcher-registry.md)
-- `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit, each finding fixed or disputed, end on a verdict. — [background](pattern/PATTERN-review-round.md)
+- `PATTERN-review-round` — Review and fix round: review accepted on disk before any edit. — [background](pattern/PATTERN-review-round.md)
 - `PATTERN-sole-parsers` — Parsing plan, discussion, summary, recipe or halt note: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts
@@ -85,6 +85,7 @@ Structural invariants, one line per entry: when it applies and what it requires.
 - `PATTERN-shell-guard-table` — Guarding a shell command: only in `internal/shellguard`, every engine rendering every row; engine tool guards stay in their engine.
 - `PATTERN-shell-mechanics-seam` — Building a pane-shell command string: only via `internal/shell`, which imports only stdlib.
 - `PATTERN-pane-text-injection` — Typing text into an agent pane: only reed's guarded paste-submit. — [background](pattern/PATTERN-pane-text-injection.md)
+- `PATTERN-pause-holds-prompts` — Typing a line into a covered session: shuttle's send refuses by the target's slug; its caller holds the line or claims the session; only the orch runner reads uncovered. — [background](pattern/PATTERN-pause-holds-prompts.md)
 - `PATTERN-guarded-interrupt` — Sending an agent pane the interrupt key: only shuttle's two pane guards. — [background](pattern/PATTERN-guarded-interrupt.md)
 - `PATTERN-pane-binary-resolution` — Creating a strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading a spawned session's skill: its spawner names it on the launch spec, lyx delivers it on the launch line or typed; no stencil asks for one. (test)
@@ -122,4 +123,4 @@ Structural invariants, one line per entry: when it applies and what it requires.
 
 - `PATTERN-markdown-link-integrity` — Linking in a `.md` file under `docs/`: every inline link resolves. (test) — [background](pattern/PATTERN-markdown-link-integrity.md)
 - `PATTERN-comment-line-breaks` — Writing a Go comment: one sentence per line. (test) — [background](pattern/PATTERN-comment-line-breaks.md)
-- `PATTERN-documentation-lifecycle` — Design docs: none for unbuilt work; a built one lives in its package's `doc.go`. — [background](pattern/PATTERN-documentation-lifecycle.md)
+- `PATTERN-documentation-lifecycle` — Design docs: none for unbuilt work. — [background](pattern/PATTERN-documentation-lifecycle.md)

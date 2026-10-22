@@ -69,6 +69,8 @@ type sendContext struct {
 	landingStart SessionStartSource
 	keepUnlanded bool
 	recordless   bool
+	// paused reads whether a pause covers the target strand and returns the refusal when it does; nil reads uncovered.
+	paused func() error
 	// activityFailures is the runner's operator-activity failure episodes, shared by every send and probe of one runner.
 	activityFailures *logger.EpisodeSet
 }
@@ -84,6 +86,7 @@ func (run *Run) newSendContext() sendContext {
 		eventsPath: run.state.EventsPath,
 		cfg:        run.runner.cfg,
 		clock:      run.clock,
+		paused:     func() error { return run.runner.pausedTarget(run.state.StrandGUID, run.state.StrandName) },
 
 		activityFailures: &run.runner.activityFailures,
 	}
@@ -105,16 +108,18 @@ func (r *Runner) newSendContext(state RunState, runDir string) (sendContext, err
 		eventsPath: state.EventsPath,
 		cfg:        r.cfg,
 		clock:      r.clock,
+		paused:     func() error { return r.pausedTarget(state.StrandGUID, state.StrandName) },
 
 		activityFailures: &r.activityFailures,
 	}, nil
 }
 
 // recordlessSendContext returns the context of a verified send into the pane of the live strand guid, which no run record names.
+// name is the strand's name as reed reports it, which its coverage reading judges by.
 // It keeps the runner's turn-start hold for the strand and never clears a text that did not land.
 // The send goes through the engine named by provider, the strand's provider tag, or the runner's default engine for an empty tag.
 // It fails with the lookup's error when the set does not hold that engine.
-func (r *Runner) recordlessSendContext(guid, provider string) (sendContext, error) {
+func (r *Runner) recordlessSendContext(guid, name, provider string) (sendContext, error) {
 	engine, _, err := r.engineFor(RunState{Engine: provider})
 	if err != nil {
 		return sendContext{}, err
@@ -128,6 +133,7 @@ func (r *Runner) recordlessSendContext(guid, provider string) (sendContext, erro
 		hold:         r.holdFor(guid),
 		keepUnlanded: true,
 		recordless:   true,
+		paused:       func() error { return r.pausedTarget(guid, name) },
 
 		activityFailures: &r.activityFailures,
 	}, nil
