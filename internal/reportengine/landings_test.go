@@ -240,7 +240,9 @@ func TestCompute_Landings(t *testing.T) {
 				w.taskCommit("T", 15)
 				w.parentMerge("MG", 20, "T")
 				w.boardCommit("bd", 1, boardTask("merged", "", "chore"))
+				w.pairOpening("open-merged", 40, "merged")
 				w.recordsCommit("r-trailer", 50, "T")
+				w.pairOpening("open-other", 55, "other")
 				for _, sha := range []string{"r-a", "r-b", "r-c"} {
 					w.recordsCommit(sha, 60, "")
 				}
@@ -262,6 +264,7 @@ func TestCompute_Landings(t *testing.T) {
 				w.parentCommit("SQ", 20, "squash")
 				w.code.setTree("SQ", "tree-shared")
 				w.boardCommit("bd", 1, boardTask("squashed", "", "chore"))
+				w.pairOpening("open-squashed", 40, "squashed")
 				w.recordsCommit("r-trailer", 50, "T")
 				last := "r-trailer"
 				for i := 0; i < 70; i++ {
