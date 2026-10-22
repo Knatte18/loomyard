@@ -103,6 +103,7 @@ func TestTimingSleepNote(t *testing.T) {
 	tests := []struct {
 		name       string
 		out        string
+		stderr     string
 		runErr     error
 		record     string
 		wantNote   string
@@ -113,6 +114,13 @@ func TestTimingSleepNote(t *testing.T) {
 			runErr:     fmt.Errorf("run: %w", exec.ErrNotFound),
 			record:     pauses,
 			wantNote:   "Machine sleep could not be read from the systemd journal: journalctl is not on PATH. The hub's recorded pauses stand in for it and are left out of every interval, so the figures may include sleep no hub pause covers.",
+			wantSleeps: []reportengine.Interval{{From: livePausedAt, To: now}, {From: slept, To: woke}},
+		},
+		{
+			name:       "a journal the user may not read falls back to the hub pauses",
+			stderr:     "Hint: You are currently not seeing messages from other users and the system.\n",
+			record:     pauses,
+			wantNote:   "Machine sleep could not be read from the systemd journal: the journal is not readable by this user. The hub's recorded pauses stand in for it and are left out of every interval, so the figures may include sleep no hub pause covers.",
 			wantSleeps: []reportengine.Interval{{From: livePausedAt, To: now}, {From: slept, To: woke}},
 		},
 		{
@@ -151,7 +159,7 @@ func TestTimingSleepNote(t *testing.T) {
 			}
 			wantNote := strings.ReplaceAll(tt.wantNote, "RECORD", recordPath)
 
-			sleeps, note := sleepsFromJournal([]byte(tt.out), tt.runErr, recordPath, now)
+			sleeps, note := sleepsFromJournal([]byte(tt.out), []byte(tt.stderr), tt.runErr, recordPath, now)
 
 			if note != wantNote {
 				t.Errorf("sleepsFromJournal() note = %q; want %q", note, wantNote)

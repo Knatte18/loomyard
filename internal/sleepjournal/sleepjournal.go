@@ -1,4 +1,4 @@
-// sleepjournal.go parses the machine's suspends and hibernates out of `journalctl` output and maps one journalctl run to the sleeps and a reason clause.
+// sleepjournal.go parses the machine's suspends and hibernates out of `journalctl` output and maps one journalctl run to the sleeps, a reason clause and whether the journal was read.
 
 package sleepjournal
 
@@ -89,16 +89,20 @@ func sleepOperation(message, prefix string) string {
 	return operation
 }
 
-// Read maps the output and exit error of one journalctl run, started with Args, to the sleeps, a reason clause and whether the journal was read.
+// Read maps the output, standard error and exit error of one journalctl run, started with Args, to the sleeps, a reason clause and whether the journal was read.
 // With a sleep found the clause is empty.
-// Otherwise there are no sleeps and the clause says why nothing is left out: journalctl absent, journalctl failing, output that does not parse, or a journal with no systemd-sleep operation.
+// Otherwise there are no sleeps and the clause says why nothing is left out: journalctl absent, journalctl failing, a journal the user may not read, output that does not parse, or a journal with no systemd-sleep operation.
+// A user without journal access gets exit status 0, empty output and a permission hint on standard error, which reads as unread.
 // The journal reads as read only in the last case and when a sleep is found, so a caller can tell a machine that did not sleep from one whose sleep is unknown.
-func Read(out []byte, runErr error) ([]Interval, string, bool) {
+func Read(out, stderr []byte, runErr error) ([]Interval, string, bool) {
 	if runErr != nil {
 		if errors.Is(runErr, exec.ErrNotFound) {
 			return nil, "journalctl is not on PATH", false
 		}
 		return nil, fmt.Sprintf("journalctl failed: %v", runErr), false
+	}
+	if len(bytes.TrimSpace(out)) == 0 && journalAccessDenied(stderr) {
+		return nil, "the journal is not readable by this user", false
 	}
 	sleeps, err := Parse(out)
 	if err != nil {
@@ -108,4 +112,11 @@ func Read(out []byte, runErr error) ([]Interval, string, bool) {
 		return nil, "the journal records no systemd-sleep operation", true
 	}
 	return sleeps, "", true
+}
+
+// journalAccessDenied reports whether journalctl's standard error says the user may not see the system journal.
+func journalAccessDenied(stderr []byte) bool {
+	text := string(stderr)
+	return strings.Contains(text, "not seeing messages from other users and the system") ||
+		strings.Contains(text, "No journal files were opened due to insufficient permissions")
 }

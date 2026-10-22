@@ -70,11 +70,15 @@ func TestParse(t *testing.T) {
 	reads := []struct {
 		name       string
 		out        []byte
+		stderr     string
 		runErr     error
 		wantClause string
 		wantLen    int
 		wantRead   bool
 	}{
+		{name: "a journal the user may not read, by the hint", stderr: "Hint: You are currently not seeing messages from other users and the system.\n", wantClause: "the journal is not readable by this user"},
+		{name: "a journal the user may not read, by the refusal", stderr: "No journal files were opened due to insufficient permissions.\n", wantClause: "the journal is not readable by this user"},
+		{name: "a readable empty journal with unrelated standard error", stderr: "-- No entries --\n", wantClause: "the journal records no systemd-sleep operation", wantRead: true},
 		{name: "journalctl absent", runErr: fmt.Errorf("start: %w", exec.ErrNotFound), wantClause: "journalctl is not on PATH"},
 		{name: "a failing journalctl", runErr: errors.New("exit status 1"), wantClause: "journalctl failed: exit status 1"},
 		{name: "a line that does not decode", out: []byte("{\n"), wantClause: "journal line \"{\" does not decode: unexpected end of JSON input"},
@@ -84,7 +88,7 @@ func TestParse(t *testing.T) {
 	for _, tt := range reads {
 		t.Run("read "+tt.name, func(t *testing.T) {
 			t.Parallel()
-			sleeps, clause, read := Read(tt.out, tt.runErr)
+			sleeps, clause, read := Read(tt.out, []byte(tt.stderr), tt.runErr)
 			if clause != tt.wantClause || len(sleeps) != tt.wantLen || read != tt.wantRead {
 				t.Errorf("Read = %d sleeps, %q, read %t; want %d sleeps, %q, read %t", len(sleeps), clause, read, tt.wantLen, tt.wantClause, tt.wantRead)
 			}

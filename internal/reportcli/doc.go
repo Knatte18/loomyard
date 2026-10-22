@@ -28,7 +28,7 @@
 //
 // `timing` runs `journalctl` once per invocation for the systemd-sleep entries, when it is on PATH, logging the spawn and its end at Info, and hands the sleeps it parses to the engine, which leaves them out of every interval.
 // A journal with no sleep leaves nothing out, and `sleep_note` says why.
-// A journalctl that is absent or fails, or output that does not parse, leaves the machine's sleep unknown, so the verb reads the hub's pause record instead and hands the engine every hub-scope entry's interval, a live one running to now, since a hub pause holds every run and `lyx hibernate` pauses the hub before the machine sleeps.
+// A journalctl that is absent or fails, a journal the user may not read (journalctl exits 0 with empty output and a permission hint on standard error), or output that does not parse, leaves the machine's sleep unknown, so the verb reads the hub's pause record instead and hands the engine every hub-scope entry's interval, a live one running to now, since a hub pause holds every run and `lyx hibernate` pauses the hub before the machine sleeps.
 // Pair-scope entries are left out, as the engine's sleep is machine-wide.
 // Its `sleep_note` then names why the journal was not read, says whether pauses stood in, and says the figures may include sleep.
 // Bound: the stand-in covers only the hub pauses the record still keeps, within `pauserecord.Retention`, so a sleep taken with no hub pause, or before that, counts as run time.

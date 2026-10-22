@@ -3,6 +3,7 @@
 package reportcli
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
@@ -155,20 +156,23 @@ func livePairs(location *lyxcwd.Location) ([]string, error) {
 func machineSleeps(ctx context.Context, pauseRecordPath string, now time.Time) ([]reportengine.Interval, string) {
 	path, err := exec.LookPath("journalctl")
 	if err != nil {
-		return sleepsFromJournal(nil, err, pauseRecordPath, now)
+		return sleepsFromJournal(nil, nil, err, pauseRecordPath, now)
 	}
 	logger.Info("report: spawning journalctl for the machine's sleep", "path", path)
-	out, err := exec.CommandContext(ctx, path, sleepjournal.Args()...).Output()
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, path, sleepjournal.Args()...)
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	logger.Info("report: journalctl finished", "bytes", len(out), "error", err)
-	return sleepsFromJournal(out, err, pauseRecordPath, now)
+	return sleepsFromJournal(out, stderr.Bytes(), err, pauseRecordPath, now)
 }
 
-// sleepsFromJournal maps the output and exit error of one journalctl run to the intervals the report leaves out and the note its sleep_note carries.
+// sleepsFromJournal maps the output, standard error and exit error of one journalctl run to the intervals the report leaves out and the note its sleep_note carries.
 // A journal that was read gives its sleeps, and without them the note says why no machine sleep is subtracted.
 // A journal that could not be read gives the hub-wide pauses of the pause record at pauseRecordPath instead, a live one running to now, since a hub pause holds every run;
 // the note then names why the journal was not read and says the figures may include sleep no pause covers.
-func sleepsFromJournal(out []byte, runErr error, pauseRecordPath string, now time.Time) ([]reportengine.Interval, string) {
-	read, clause, journalRead := sleepjournal.Read(out, runErr)
+func sleepsFromJournal(out, stderr []byte, runErr error, pauseRecordPath string, now time.Time) ([]reportengine.Interval, string) {
+	read, clause, journalRead := sleepjournal.Read(out, stderr, runErr)
 	if journalRead {
 		if clause != "" {
 			return nil, "No machine sleep is subtracted: " + clause + "."
