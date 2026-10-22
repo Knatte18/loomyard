@@ -37,8 +37,8 @@ var legacyConfigModules = map[string][]string{
 	"fabric": {"warp", "weft"},
 }
 
-// formerTemplateValues maps a module name to its dotted unit to that unit's template value immediately before the tuned defaults replaced it, as YAML text.
-// An open map is one unit, so a whole map is compared whole.
+// formerTemplateValues maps a module name to a top-level key to the template value its replaced units held immediately before the tuned defaults replaced them, as YAML text.
+// An open map is one unit, so a whole map is compared whole; under any other mapping each unit is compared alone.
 // Only the replaced units are listed; an older template generation's value is kept as tuned.
 var formerTemplateValues = map[string]map[string]string{
 	"loom": formerLoomValues(),
@@ -54,28 +54,8 @@ var formerTemplateValues = map[string]map[string]string{
 		"soft_threshold_tokens": "300000",
 		"threshold_tokens":      "400000",
 	},
-	"batcher": {"profiles": formerBatcherProfiles},
+	"batcher": {"profiles": "cautious:\n  budget: 450000\n"},
 }
-
-// formerBatcherProfiles is the batcher template's profiles map before the cautious profile's budget was tuned.
-const formerBatcherProfiles = `identity:
-  batchifier: identity
-cautious:
-  batchifier: cost
-  max_cards: 6
-  budget: 450000
-  weights:
-    orientation: 31400
-    batch_growth: 7000
-    fork_messages: 4
-    message_context: 300
-    target_messages: 6
-    test_file_messages: 0.5
-    uses_messages: 2
-    context_per_line: 12
-    package_context: 2000
-    write_per_card_line: 12
-`
 
 // formerLoomValues returns loom's former template values.
 func formerLoomValues() map[string]string {

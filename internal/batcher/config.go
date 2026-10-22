@@ -1,6 +1,6 @@
 // config.go — configuration for the batcher module.
 //
-// Defines the package-local config type mirroring batcher.yaml's keys, ConfigOpenMaps, ConfigSpec, and Active, which uses internal/configengine.LoadOrTemplate with ConfigSpec() to resolve batcher's layered config, degrading to the embedded template on proven absence, then builds the batchifier the active profile names.
+// Defines the package-local config type mirroring batcher.yaml's keys, ConfigPerNameMaps, ConfigSpec, and Active, which uses internal/configengine.LoadOrTemplate with ConfigSpec() to resolve batcher's layered config, degrading to the embedded template on proven absence, then builds the batchifier the active profile names.
 // Also defines MigrateConfig, the pure rewrite that removes a batcher.yaml's retired keys.
 
 package batcher
@@ -28,7 +28,7 @@ type config struct {
 // profile is one named entry under batcher.yaml's profiles: key.
 // The cost parameters are pointers so a missing key is told apart from a zero.
 // AloneAbove is the retired cost parameter, read only so a profile still carrying it is refused rather than silently ignored.
-// file and layer are the layer file the stack took the profiles: map from, kept so a retired-key refusal names the file that carries the key.
+// file and layer are the highest layer file holding the profile, kept so a retired-key refusal names the file that carries the key.
 type profile struct {
 	Batchifier string             `yaml:"batchifier"`
 	AloneAbove *float64           `yaml:"alone_above"`
@@ -58,18 +58,19 @@ func retiredKeyError(file string, layer configengine.Layer, profileName, key str
 	return configengine.MarkInvalid(fmt.Errorf("%s profile %q carries %s, which no longer exists (%w); way forward: %s", file, profileName, key, ErrRetiredKey, wayForward))
 }
 
-// ConfigOpenMaps returns the batcher.yaml keys whose entries are the operator's own, which configengine carries whole through reconcile and --set.
-func ConfigOpenMaps() []string {
+// ConfigPerNameMaps returns the batcher.yaml keys whose entries are named by the operator:
+// a layer's profiles add to or override the template's by name, each profile merging key by key, and a name the template lacks is kept through reconcile and --set.
+func ConfigPerNameMaps() []string {
 	return []string{"profiles"}
 }
 
 // ConfigSpec returns batcher's layered-load spec.
-// Both keys, the active profile name and the profiles open map, only shape batching and meet no category, so the local layer may hold either.
+// Both keys, the active profile name and the profiles per-name map, only shape batching and meet no category, so the local layer may hold either.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
-		Name:     moduleName,
-		Template: []byte(ConfigTemplate()),
-		OpenMaps: ConfigOpenMaps(),
+		Name:        moduleName,
+		Template:    []byte(ConfigTemplate()),
+		PerNameMaps: ConfigPerNameMaps(),
 		Categories: map[string]configengine.Category{
 			"active":   configengine.CategoryNone,
 			"profiles": configengine.CategoryNone,
@@ -110,7 +111,7 @@ func Active(dirs configengine.Dirs) (Batcher, error) {
 }
 
 // loadConfig loads and unmarshals batcher.yaml through the layer stack under dirs, degrading to the embedded template on proven absence.
-// Each profile records the layer file the stack took profiles: from.
+// Each profile records the highest layer file holding it.
 func loadConfig(dirs configengine.Dirs) (config, error) {
 	spec := ConfigSpec()
 	resolved, err := configengine.LoadOrTemplate(dirs, spec)
@@ -129,15 +130,35 @@ func loadConfig(dirs configengine.Dirs) (config, error) {
 	if err != nil {
 		return config{}, err
 	}
-	origin, ok := stack.Origins["profiles"]
-	if !ok {
-		return cfg, nil
+	origins, err := profileOrigins(stack.Layers)
+	if err != nil {
+		return config{}, err
 	}
 	for name, prof := range cfg.Profiles {
-		prof.file, prof.layer = origin.Path, origin.Layer
-		cfg.Profiles[name] = prof
+		if origin, held := origins[name]; held {
+			prof.file, prof.layer = origin.Path, origin.Layer
+			cfg.Profiles[name] = prof
+		}
 	}
 	return cfg, nil
+}
+
+// profileOrigins maps each profile name a layer file holds under profiles: to the highest layer holding it.
+// A layer whose profiles: is no mapping is an error marked configengine.ErrInvalid.
+func profileOrigins(layers []configengine.LayerDoc) (map[string]configengine.LayerDoc, error) {
+	origins := map[string]configengine.LayerDoc{}
+	for _, layer := range layers {
+		var document struct {
+			Profiles map[string]yaml.Node `yaml:"profiles"`
+		}
+		if err := yaml.Unmarshal(layer.Bytes, &document); err != nil {
+			return nil, configengine.MarkInvalid(fmt.Errorf("unmarshal batcher config %s: %w", layer.Path, err))
+		}
+		for name := range document.Profiles {
+			origins[name] = layer
+		}
+	}
+	return origins, nil
 }
 
 // unmarshalConfig decodes batcher.yaml's bytes, marking a failure configengine.ErrInvalid.

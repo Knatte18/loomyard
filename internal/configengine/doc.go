@@ -117,9 +117,11 @@
 //
 // # Per-name maps
 //
-// A [Spec] also carries `PerNameMaps`: the dotted paths of the module's per-name maps, mappings of names each carried whole as one unit.
+// A [Spec] also carries `PerNameMaps`: the dotted paths of the module's per-name maps, mappings of names the operator owns.
 // The unknown-keys warning and [Set], on the base and the sparse layers, pass them unchanged to yamlengine, which defines what a declared path changes;
-// so a name under a per-name map that the template lacks is never warned as a key no loader reads, and `--set` knows `P.<name>` for any name.
-// The load's template fill needs no declaration, and its log of filled keys leaves out a name under a per-name map, since a base file holds only the names it tuned.
-// The local layer is unchanged.
+// so a name under a per-name map that the template lacks is never warned as a key no loader reads, and `--set` knows `P.<name>` for any name,
+// and `P.<name>.<key>` too where the map's entries are mappings and some template entry holds the key.
+// The layer merge and the template fill need no declaration: a layer's names add to or override the template's by name, and a mapping entry merges key by key.
+// The load's log of filled keys leaves out a name under a per-name map, since a base file holds only the names it tuned.
+// The local and machine layers judge a path under a per-name map against the template entry holding the rest of it, whatever the name.
 package configengine
