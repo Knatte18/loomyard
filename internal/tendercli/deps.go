@@ -138,6 +138,21 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 	return deps, slugs, nil
 }
 
+// ownerPauseGrace is how long the running turns of a run owned by another machine get to finish before the Esc.
+const ownerPauseGrace = 10 * time.Second
+
+// PauseOwnedElsewhere pauses the pair of slug in the hub location belongs to, because another machine owns its run.
+// The entry carries pauserecord.OwnerCaller, and the pair's running turns are interrupted after the grace.
+// A slug whose entry already stands adds none.
+func PauseOwnedElsewhere(location *lyxcwd.Location, slug string) error {
+	deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
+	if err != nil {
+		return err
+	}
+	_, err = tenderengine.Pause(deps, tenderengine.PauseRequest{Slug: slug, Grace: ownerPauseGrace, Caller: pauserecord.OwnerCaller})
+	return err
+}
+
 // tenderProgram is the program name tender signs its creel calls with.
 const tenderProgram = "TENDER"
 
