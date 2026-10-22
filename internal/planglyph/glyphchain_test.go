@@ -550,6 +550,8 @@ func TestGlyphChain_CSharp(t *testing.T) {
 		details []string
 		// doneCheck is the one finding DoneChecks over every card must report, when set.
 		doneCheck *findingKey
+		// canonical is the handle card 1's file must hold once the plan gate has canonicalized it, when set.
+		canonical string
 	}{
 		{
 			name:         "a go plan editing a C# member that resolves into a .cs file only is a language mismatch",
@@ -635,6 +637,48 @@ func TestGlyphChain_CSharp(t *testing.T) {
 			details:      []string{"plan:<namespace>#<owner.member>"},
 		},
 		{
+			name:      "a Create handle whose parameter list holds a dotted type is not cut at its last dot",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.Paint(System.Text.Rune)", head: "public void Paint(System.Text.Rune glyph)"})},
+			canonical: "plan:" + namespace + "#Renderer.Paint(System.Text.Rune)",
+		},
+		{
+			name:      "a Create handle whose draft name the head does not write binds the head's own explicit-interface member",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.IProvider<int>.draft", head: "int IProvider<int>.Count { get; }"})},
+			canonical: "plan:" + namespace + "#Renderer.IProvider<int>.Count",
+		},
+		{
+			name:         "a Create head spelling its qualifier with a space is refused with the canonical qualifier",
+			cards:        []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.IPair<string,int>.First", head: "int IPair<string, int>.First { get; }"})},
+			planFindings: []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}},
+			dispatch:     []findingKey{{"handle-name-failed", "1-card1", SeverityBlocking}},
+			details:      []string{"invalid_container", "`IPair<string,int>.`"},
+		},
+		{
+			name:      "a two-component explicit-interface qualifier leaves the owner Renderer",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.System.IDisposable.Close()", head: "void System.IDisposable.Close()"})},
+			canonical: "plan:" + namespace + "#Renderer.System.IDisposable.Close()",
+		},
+		{
+			name:      "an explicit-interface indexer binds with no fixture member",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.IProvider<int>.this[int]", head: "int IProvider<int>.this[int index] { get; }"})},
+			canonical: "plan:" + namespace + "#Renderer.IProvider<int>.this[int]",
+		},
+		{
+			name:      "an attribute list before the head does not hide the declared name",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Renderer.Mark()", head: "[Obsolete] public void Mark()"})},
+			canonical: "plan:" + namespace + "#Renderer.Mark()",
+		},
+		{
+			name:      "a generic method's name is found before its type parameter list",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Box<>.Wrap<>(T)", head: "public void Wrap<U>(T item) where U : class"})},
+			canonical: "plan:" + namespace + "#Box<>.Wrap<>(T)",
+		},
+		{
+			name:      "a dotted return type is no qualifier, so the nested owner stays whole",
+			cards:     []string{createCard(&createLeg{draft: "plan:" + namespace + "#Outer.Item.draft", head: "public Item.Kind Get()"})},
+			canonical: "plan:" + namespace + "#Outer.Item.Get()",
+		},
+		{
 			name:         "an Edit of a namespace self glyph that a directory also names is glyph-ambiguous at both gates",
 			cards:        []string{editCard(namespace + "#")},
 			files:        map[string]string{namespace + "/readme.txt": "readme\n"},
@@ -669,8 +713,13 @@ func TestGlyphChain_CSharp(t *testing.T) {
 			if tt.noLanguageKey {
 				language = ""
 			}
-			_, plan := writeLanguagePlan(t, language, tt.cards, tt.sections...)
+			dir, plan := writeLanguagePlan(t, language, tt.cards, tt.sections...)
 			assertPlanGate(t, plan, root, tt.planFindings)
+			if tt.canonical != "" {
+				if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, tt.canonical) {
+					t.Errorf("card 1 lacks the canonical handle %q: %s", tt.canonical, got)
+				}
+			}
 			if tt.completed > 0 {
 				findings, err := ValidateDispatch(plan, root, plan.Cards[:tt.completed], nil)
 				if err != nil {

@@ -216,7 +216,14 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 				findings = append(findings, finding)
 				continue
 			}
-			sources = append(sources, declSource{handle: d.Handle, card: card, decl: quarry.Declaration{Lang: lang, Unit: unit, Decl: d.Decl}})
+			declaration := quarry.Declaration{Lang: lang, Unit: unit, Decl: d.Decl}
+			if lang == glyph.CSharp {
+				// createDeclarationLanguage parsed this body as C#, so the parse here cannot fail.
+				body, _ := planparser.HandleBody(d.Handle)
+				g, _ := planparser.ParseRef(plan, body)
+				declaration = quarry.Declaration{Lang: glyph.CSharp, Unit: g.Unit, Owner: csharpOwner(g, d.Decl), Decl: d.Decl}
+			}
+			sources = append(sources, declSource{handle: d.Handle, card: card, decl: declaration})
 		}
 		for _, p := range c.Pairs {
 			if !planparser.IsHandleRef(p.New) {
@@ -285,10 +292,14 @@ func CanonicalizeHandles(plan *planparser.Plan, worktreeRoot string, results []q
 			continue
 		}
 		if res.Error != "" {
+			detail := fmt.Sprintf("handle %q failed naming its declaration %q: %s (%s)", src.handle, src.decl.Decl, res.Error, res.Reason)
+			if src.decl.Lang == glyph.CSharp && res.Reason == quarry.NameReasonInvalidContainer {
+				detail += canonicalQualifierWay(plan, src.handle, src.decl.Decl)
+			}
 			findings = append(findings, Finding{
 				Check:    "handle-name-failed",
 				Card:     src.card,
-				Detail:   fmt.Sprintf("handle %q failed naming its declaration %q: %s (%s)", src.handle, src.decl.Decl, res.Error, res.Reason),
+				Detail:   detail,
 				Severity: SeverityBlocking,
 			})
 			continue
