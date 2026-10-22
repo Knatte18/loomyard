@@ -29,7 +29,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/runprofile"
-	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // fakeEditor returns a fake EditorFunc that writes the given valid YAML
@@ -1244,7 +1243,6 @@ func TestDispatchLayers(t *testing.T) {
 
 	loomTemplate, _ := configreg.Template("loom")
 	gateTemplate, _ := configreg.Template("gate")
-	websterTemplate, _ := configreg.Template("webster")
 	lensesTemplate := lenses.ConfigTemplate
 	taskSession, err := agentname.Format("ly", "task-a", "loom")
 	if err != nil {
@@ -1413,28 +1411,6 @@ func TestDispatchLayers(t *testing.T) {
 			check: func(t *testing.T, fx hubFixture, out string) {
 				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "loom")); !os.IsNotExist(err) {
 					t.Errorf("worktree loom.yaml exists after a refused value; stat err = %v", err)
-				}
-			},
-		},
-		{
-			name: "worktree layer refuses a kickstart_pack_per_card that is not a boolean and never syncs", module: "webster",
-			setFlags: []string{"kickstart_pack_per_card=maybe"}, seedBoard: websterTemplate(), wantCode: 1, wantErr: "webster config",
-			check: func(t *testing.T, fx hubFixture, out string) {
-				if _, err := os.Stat(configengine.ConfigFile(fx.worktree, "webster")); !os.IsNotExist(err) {
-					t.Errorf("worktree webster.yaml exists after a refused value; stat err = %v", err)
-				}
-			},
-		},
-		{
-			name: "worktree layer sets kickstart_pack_per_card false and the loader reads it back", module: "webster", layer: "worktree",
-			setFlags: []string{"kickstart_pack_per_card=false"}, seedBoard: websterTemplate(), wantSyncs: 1,
-			check: func(t *testing.T, fx hubFixture, out string) {
-				cfg, err := websterengine.LoadConfig(configengine.Dirs{Anchor: fx.worktree, Board: fx.board}, "webster")
-				if err != nil {
-					t.Fatalf("LoadConfig() error = %v; want nil", err)
-				}
-				if cfg.KickstartPackPerCard {
-					t.Errorf("KickstartPackPerCard = true; want false after --set kickstart_pack_per_card=false")
 				}
 			},
 		},

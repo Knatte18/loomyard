@@ -190,8 +190,6 @@ func preMigrationBase(t *testing.T, module configreg.Module) string {
 		return strings.Join(kept, "\n")
 	case "orch":
 		return formerUnits(t, module.Name, template, map[string]string{"soft_threshold_tokens": "300000", "threshold_tokens": "400000"})
-	case "webster":
-		return formerUnits(t, module.Name, template, map[string]string{"kickstart_pack": "true"})
 	case "batcher":
 		return replaceOnce(t, module.Name, template, "budget: 200000", "budget: 450000")
 	}

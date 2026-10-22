@@ -140,65 +140,6 @@
 // A strand whose re-derivation is byte-identical to the flagged content is failed again;
 // the way forward is to revert the path and edit its card.
 //
-// # the kick-start pack
-//
-// A pack holds the member glyphs the batch's cards name in their targets and `Uses:`, grouped per card from one resolve call.
-// Each is resolved to its declarations with file, line span and signature.
-// A `var` or `const` entry shows the first line of its signature only, while its span still covers the whole declaration.
-// Beside them sit the card's refs that did not resolve, each with a reason in plain words, `plan:` handles included.
-// begin-batch builds it (buildKickstartPack) immediately before it renders the fork prompt, after the dispatch re-resolution and its fingerprint re-stamp.
-// It parses the plan afresh, because that re-resolution may have canonicalized handles on disk.
-// A plan that no longer parses degrades to the loaded plan and the batch's cards with a Warn.
-// An index error keeps the degraded pack the index returned, also with a Warn.
-// Neither refuses begin-batch.
-// A plan whose language opts out of glyphs builds no pack, and neither does a batch none of whose cards has a resolved or unresolved entry;
-// either way the prompt renders as with the switch off.
-//
-// The pack reaches the fork alone, through a pack file begin-batch writes beside the fork prompt file, named after the batch with a `-pack` suffix:
-// the begin-batch envelope, its advisories and Master's context carry none of it,
-// and the recovery prompt never takes one.
-// The pack file opens with the one-turn read instruction: read every card file and every listed span in one turn, in parallel, then the target and `Uses:` files no span covers and the located unresolved glyphs' files, all before any edit.
-// Then it holds one subsection per card.
-// Each subsection sits under the card's pointer path, the same spelling as its bullet in the prompt's card list, and lists the card's entries, or `none` when none of its member glyphs resolved, or says the card names no member glyph.
-// A card's unresolved list follows its entries only when the card has unresolved refs.
-// The fork prompt's last line, after the batch-report section, sends the fork to the pack file, since the end of a prompt is what an agent acts on first;
-// the batch-report section still names the report as the fork's last action.
-// Without a pack no pack file is written and the prompt ends with the batch-report section.
-//
-// The `kickstart_pack_per_card` key of webster.yaml, true by default, picks between the per-card layout and the file layout described above.
-// It applies in a hub geometry, where the anchor and the worktree are one directory (packLayoutOf);
-// a standalone geometry always gets the file layout, because `lyx loom card-pack` is a hub-only verb and every call of it would refuse.
-// A prompt without a pack, and the recovery prompt, render the same bytes under either value.
-// Each begin-batch reads the key afresh, so a flip applies from the next call on.
-// In the per-card layout the card files are the batch overview: the fork's first work turn reads every card file and nothing else.
-// Step 1 of each card then runs `lyx loom card-pack <N>` and reads the listed spans in one parallel turn before that card's first edit, so the spans are resolved against the tree as it stands at the card's start, earlier cards' edits included.
-// begin-batch writes no pack file, the prompt carries none of the pack's entries, and it ends with a `## Start here` section sending the fork to its card files.
-// The sandbox rule also lists `lyx loom card-pack` among the always-allowed commands, through the optional `card_pack_allowed` marker every other prompt fills empty.
-// begin-batch still builds the batch pack, so the off, language-none and empty outcomes and the counts keep their batch-start meaning.
-//
-// The locate step, step 1 of the implementer body and its FRESH-READ rule are markers, locate, card_read and fresh_read, filled per mode by renderLocate and renderReadRules.
-// Without a pack the fragments carry the text as it stood before, so a fork without a pack and every recovery prompt render the bytes they did before the pack existed.
-// With a pack the locate step says the fork's first turn read the listed spans, says every line number obtained before the first edit holds before any edit only, and keeps the quarry or grep path for an unresolved member glyph;
-// FRESH-READ points at the pack file for what is read before any edit,
-// and step 1 only names the card file as the card's instruction.
-// That bounds the fork's reading: it is no longer told to re-read whole a file that holds a listed span, so an edit outside a listed span in such a file is read only when the fork chooses to.
-// What can now get through is anything read before the first edit and changed since by an earlier card's edit or a self-fix.
-// An Edit whose `old_string` no longer matches fails loudly, the Edit-only rule keeps a Write built from a pre-edit read from dropping an earlier edit,
-// and the card and batch gates, which run every card's tests, catch reasoning over stale content.
-//
-// Every begin-batch logs one Info line, `webster: kickstart pack`.
-// Its keys are batch, kickstart_pack (`on`, `off`, `language-none` or `empty`), resolved, unresolved and pack_layout (`file`, `card` or `none`).
-// The resolved and unresolved counts are distinct refs across the batch, so a ref listed under two cards counts once, and stay 0 when no pack is built.
-// pack_layout is `none` on every line where no pack was built.
-// The `kickstart_pack` key of webster.yaml switches the pack on and off, so runs with and without it can be compared;
-// each begin-batch reads it afresh, so a flip applies from the next call on.
-//
-// CardPackMarkdown renders one card's subsection alone, against the tree as it stands at the call, for the read-only `lyx loom card-pack` verb.
-// It parses the plan afresh and reuses the batch pack's subsection rendering, so the text is byte-identical to that card's subsection in a batch pack.
-// A refusal, which ends in the locate fallback as its way forward, logs nothing;
-// a rendered pack logs one Info line, `webster: card pack`, with keys card, resolved and unresolved, the last two counted as distinct refs.
-// An index error is a Warn and keeps the degraded pack.
-//
 // # one dispatch scope for begin-batch, run entry and validate
 //
 // A plan describes intended change, so re-resolving a card whose work may already have landed reports the plan working as designed as a defect.
