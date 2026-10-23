@@ -52,6 +52,10 @@ type parentMerger interface {
 	HeadSHA() (string, error)
 	// MidMerge reads the merge the parent pair has parked, if any. See fabricengine.Fabric.MidMerge.
 	MidMerge() (fabricengine.MidMergeState, error)
+	// FastForwardPair moves the parent pair to its upstream as a fast-forward only. See fabricengine.Fabric.FastForwardPair.
+	FastForwardPair(opts fabricengine.SyncOptions) (fabricengine.FastForwardResult, error)
+	// CodeDirtyPaths reads the parent pair's code checkout and its tracked uncommitted paths. See fabricengine.Fabric.CodeDirtyPaths.
+	CodeDirtyPaths() (checkout string, paths []string, err error)
 }
 
 // The compile-time assertion that *fabricengine.Fabric satisfies parentMerger.
@@ -147,10 +151,11 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 
 // Call runs one Finalize iteration.
 //
-// Before its catch-up merge-in, Finalize takes the parent lock and tests that the parent did not move since Merge-In merged it:
-// a moved parent is a reroute Stuck, a paused lock wait or an unreadable lock record is a halting Stuck, and a landing that reaches Done releases the lock.
+// Finalize takes the parent lock first, before anything that reads or moves the parent, and releases it on every way out:
+// a paused lock wait or an unreadable lock record is a halting Stuck, and a landing that reaches Done, a reroute, a Stuck and an error all free the lock.
 // Under that lock it runs the owner checks: a run origin ended or stopped is Stuck, and a run or parent another machine owns, an unreachable origin and a failed owner read halt.
 // A parent already holding the task's work skips the owner checks and the unreachable halt, and an unreachable origin then proceeds.
+// It then opens the parent pair and syncs it: a pair that is missing, dirty or mid-merge, or a parent that cannot be fast-forwarded to its upstream, is Stuck with a way forward before any merge.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
 // changes -- an operator squash-merged the pull request on GitHub, or an earlier Finalize landed and
@@ -195,17 +200,33 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		}
 	}
 
-	// Step 1b2: take the parent lock and test that the parent did not move since Merge-In merged it.
-	// A parent that already holds the task's work, after a GitHub merge or an earlier landing, reads as not moved and lands through the already-landed path.
-	// The catch-up merge-in below stays: the local tip is checked equal to the merged tip under the lock,
-	// so it brings no parent code the merge review has not covered, and it still syncs the records side.
-	if outcome, out, err, stop := holdParent(ctx, fz.guard, finalizeName); stop {
-		return outcome, out, err
+	// Step 1b2: take the parent lock first, before anything reads or moves the parent, and release it on every way out of this Call.
+	// A lock a dead Finalize left is taken over by the acquire, since the lock store grants a record whose owner process no longer lives.
+	lockReason, err := fz.guard.ensure(ctx, finalizeName)
+	if err != nil {
+		if cerr := cancelErr(ctx, finalizeName); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		return "", shedengine.OutputPointer{}, err
 	}
+	if lockReason != "" {
+		return stuckVerdict(ctx, finalizeName, lockReason, true)
+	}
+	defer fz.guard.release(finalizeName)
 
 	// Step 1b3: judge the run against origin under the lock, and halt unless this machine owns the run and its parent.
 	// A run whose Finalize already merged into the local parent here is never read as ended or owned elsewhere, so a Finalize re-entered after its done mark proceeds.
 	if outcome, out, err, stop := fz.ownerChecks(ctx); stop {
+		return outcome, out, err
+	}
+
+	// Step 1b4: open the parent pair, which this producer never creates, and sync it before any merge.
+	parentHandle, err := fz.parentOpener()
+	if err != nil {
+		return fz.stuckOrCancelled(ctx, fmt.Sprintf("no live pair for parent branch %q: %v; way forward: re-create the parent pair, then run \"lyx loom resume\"", fz.deps.ParentBranch, err), "error", err)
+	}
+	syncReason, err := fz.syncParent(ctx, parentHandle)
+	if outcome, out, err, stop := fz.gateStop(ctx, syncReason, err); stop {
 		return outcome, out, err
 	}
 
@@ -223,13 +244,6 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	// so a sibling run's uncommitted status record does not trip the parent-side merge guard.
 	if outcome, out, err, done := fz.commitParentRecords(ctx); done {
 		return outcome, out, err
-	}
-
-	// Step 3: obtain the parent pair's handle. This producer never creates a worktree to merge
-	// into; materializing a pair is a separate command's job and a human's decision.
-	parentHandle, err := fz.parentOpener()
-	if err != nil {
-		return fz.stuckOrCancelled(ctx, fmt.Sprintf("no live pair for parent branch %q: %v", fz.deps.ParentBranch, err), "error", err)
 	}
 
 	// Step 4: the parent-side merge, this producer's own merge critical section. Message is set
@@ -273,6 +287,79 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return fz.stuckOrCancelled(ctx, fz.dirtyParentReason(parentHandle, guardErr))
 	}
 	return fz.stuckOrCancelled(ctx, fmt.Sprintf("parent-side merge failed: %v", mergeErr), "error", mergeErr)
+}
+
+// syncParent probes the opened parent pair and, with a push, brings its local branch level with its upstream; it returns a Stuck reason, or "" when Finalize may go on.
+// A pair mid-merge or holding tracked dirt in its code checkout is Stuck before anything else, whether the parent is behind, equal, without an upstream or under the push skip.
+// Under the told push skip it then neither fetches nor fast-forwards.
+// Otherwise a parent branch ahead of or diverged from its upstream is Stuck, since Finalize never rewrites the parent.
+// A parent behind its upstream is fast-forwarded in its own pair, which moves it to the upstream tip and touches no local commit;
+// an upstream that is no longer a fast-forward of the pair is Stuck.
+// A parent already holding the task's work is past its parent-side merge and is left as it is.
+func (fz *Finalize) syncParent(ctx context.Context, parent parentMerger) (string, error) {
+	branch := fz.deps.ParentBranch
+	const resume = `then run "lyx loom resume"`
+
+	if fz.deps.ParentHoldsTaskWork != nil {
+		held, err := fz.deps.ParentHoldsTaskWork()
+		if err != nil {
+			return "", fmt.Errorf("landingshed: %s: read whether the parent branch already holds the task's work: %w", finalizeName, err)
+		}
+		if held {
+			return "", nil
+		}
+	}
+
+	state, err := parent.MidMerge()
+	if err != nil {
+		return "", fmt.Errorf("landingshed: %s: read the merge state of the parent pair of %q: %w", finalizeName, branch, err)
+	}
+	if state.Kind != fabricengine.MidMergeNone {
+		return fmt.Sprintf("a merge is in progress in the parent pair of %q; way forward: finish or abort that merge in the parent pair, %s", branch, resume), nil
+	}
+	checkout, dirty, err := parent.CodeDirtyPaths()
+	if err != nil {
+		return "", fmt.Errorf("landingshed: %s: read the dirty paths of the parent pair of %q: %w", finalizeName, branch, err)
+	}
+	if len(dirty) > 0 {
+		return DirtyParentRefusal(checkout, dirty), nil
+	}
+	if fz.deps.PushSkipped {
+		return "", nil
+	}
+
+	tips, err := fz.deps.ReadParentTips(true)
+	if err != nil {
+		return "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", finalizeName, branch, err)
+	}
+	switch tips.Relation {
+	case fabricengine.ParentNoUpstream, fabricengine.ParentEqual:
+		return "", nil
+	case fabricengine.ParentAhead:
+		return fmt.Sprintf("the local parent branch %q is ahead of its upstream; way forward: push or reconcile %q in its own pair, %s", branch, branch, resume), nil
+	case fabricengine.ParentDiverged:
+		return fmt.Sprintf("the local parent branch %q has diverged from its upstream; way forward: push or reconcile %q in its own pair, %s", branch, branch, resume), nil
+	case fabricengine.ParentBehind:
+	default:
+		return "", fmt.Errorf("landingshed: %s: unknown relation %q of parent branch %q to its upstream", finalizeName, tips.Relation, branch)
+	}
+
+	result, err := parent.FastForwardPair(fabricengine.SyncOptions{SkipPush: fz.deps.PushSkipped})
+	if err != nil {
+		return "", fmt.Errorf("landingshed: %s: fast-forward the parent pair of %q: %w", finalizeName, branch, err)
+	}
+	switch result.Refusal {
+	case "":
+		return "", nil
+	case fabricengine.FastForwardDirty:
+		return fmt.Sprintf("the parent pair of %q has uncommitted changes; way forward: commit or stash them in the parent pair, %s", branch, resume), nil
+	case fabricengine.FastForwardMergeInProgress:
+		return fmt.Sprintf("a merge is in progress in the parent pair of %q; way forward: finish or abort that merge in the parent pair, %s", branch, resume), nil
+	case fabricengine.FastForwardNotFastForward:
+		return fmt.Sprintf("the upstream of %q is no longer a fast-forward of the parent pair; way forward: reconcile %q with its upstream in its own pair, %s", branch, branch, resume), nil
+	default:
+		return "", fmt.Errorf("landingshed: %s: unknown fast-forward refusal %q for parent branch %q", finalizeName, result.Refusal, branch)
+	}
 }
 
 // maxListedDirtyPaths caps how many dirty paths a refusal lists before it counts the rest.
@@ -394,7 +481,6 @@ func (fz *Finalize) markTaskDone() {
 // Deps.PushSkipped suppresses the push, exactly as it does for the task branch.
 //
 // On its Done return only, a non-empty notice is queued through Deps.Notify, and a failure there is a logged warning that never changes the verdict.
-// The run's parent lock is released on that Done as well, before Friction-Reflect runs.
 //
 // After a successful push into a parent that requires a pull request, the task's pull request is
 // closed best-effort (closePullRequest): the landing has already happened and is irreversible.
@@ -420,7 +506,6 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 			logger.Warn("landingshed: queue config-change notice failed", "producer", finalizeName, "cause", err)
 		}
 	}
-	fz.guard.release(finalizeName)
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 

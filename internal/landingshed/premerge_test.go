@@ -196,7 +196,8 @@ func callProducer(t *testing.T, producer string, pm preMerge, res *recordingReso
 		}
 		return (&MergeIn{deps: deps, resolver: res, premerge: pm}).Call(context.Background())
 	case finalizeName:
-		return (&Finalize{deps: deps, resolver: res, premerge: pm}).Call(context.Background())
+		merger := &recordingParentMerger{}
+		return (&Finalize{deps: deps, resolver: res, premerge: pm, parentOpener: func() (parentMerger, error) { return merger, nil }}).Call(context.Background())
 	default:
 		t.Fatalf("unknown producer %q", producer)
 		return "", shedengine.OutputPointer{}, nil

@@ -45,11 +45,10 @@ func (r *scriptedResolver) Resolve(ctx context.Context, source, tip string) (mer
 
 // finalizeVerifyFixture is a Finalize over a real gate with fake verifytree seams.
 type finalizeVerifyFixture struct {
-	fz           *Finalize
-	gate         *gateFixture
-	merger       *recordingParentMerger
-	markedDone   int
-	openerCalled int
+	fz         *Finalize
+	gate       *gateFixture
+	merger     *recordingParentMerger
+	markedDone int
 }
 
 func newFinalizeVerifyFixture(t *testing.T, res resolver, results ...mergeCallResult) *finalizeVerifyFixture {
@@ -62,13 +61,10 @@ func newFinalizeVerifyFixture(t *testing.T, res resolver, results ...mergeCallRe
 	}
 	fx.merger = &recordingParentMerger{results: results}
 	fx.fz = &Finalize{
-		deps:     deps,
-		resolver: res,
-		gate:     fx.gate.gate,
-		parentOpener: func() (parentMerger, error) {
-			fx.openerCalled++
-			return fx.merger, nil
-		},
+		deps:         deps,
+		resolver:     res,
+		gate:         fx.gate.gate,
+		parentOpener: func() (parentMerger, error) { return fx.merger, nil },
 	}
 	return fx
 }
@@ -77,11 +73,11 @@ func resolved(alreadyUpToDate bool) mergeresolve.Result {
 	return mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved, AlreadyUpToDate: alreadyUpToDate}
 }
 
-// requireNotLanded fails the test when the parent opener, the parent-side merge, the push or the board update ran.
+// requireNotLanded fails the test when the parent-side merge, the push or the board update ran.
 func (fx *finalizeVerifyFixture) requireNotLanded(t *testing.T) {
 	t.Helper()
-	if fx.openerCalled != 0 || len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
-		t.Errorf("opener calls = %d, merge calls = %d, push calls = %d; want none after a halted gate", fx.openerCalled, len(fx.merger.calls), len(fx.merger.pushCalls))
+	if len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
+		t.Errorf("merge calls = %d, push calls = %d; want none after a halted gate", len(fx.merger.calls), len(fx.merger.pushCalls))
 	}
 	if fx.markedDone != 0 {
 		t.Errorf("MarkTaskDone called %d time(s); want never", fx.markedDone)
@@ -139,7 +135,7 @@ func TestFinalizeVerify_Fail(t *testing.T) {
 }
 
 // TestFinalizeVerify_DirtyTreeHalts pins that a dirty tree at each of the three points ends Stuck naming the paths,
-// before the parent opener is called.
+// before the parent-side merge.
 func TestFinalizeVerify_DirtyTreeHalts(t *testing.T) {
 	cases := []struct {
 		name       string

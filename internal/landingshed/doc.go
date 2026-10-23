@@ -22,7 +22,7 @@
 // PR-Align takes no parent lock.
 // The producer reaches the agent through the AlignmentSession interface, which `*alignment.Session` satisfies, and all its seams are told through Deps.Alignment.
 //
-// Publish, PR-Gate and Finalize hold the parent lock too, and a moved parent sends them back to Merge-In.
+// Publish, PR-Gate and Finalize hold the parent lock too, and a moved parent sends Publish and PR-Gate back to Merge-In.
 // Each takes the lock through the shared guard, which grants a run that already holds it, so a re-call after a resume takes back a record handed to batten.
 // Moved means a code-side tip, the local one or the upstream one after a fetch unless the push is skipped or the branch has no upstream, differs from the merge record's merged tip and does not hold the task's work;
 // a missing merge record counts as moved, so the row reroutes to Merge-In, which writes one.
@@ -32,8 +32,13 @@
 // Publish, for a parent in require_pr_to_base, takes the lock and tests the parent before its gates and the push; a parent outside the list stays a no-op that touches neither git nor GitHub.
 // PR-Gate does the same before it queries the pull request, so the orch never decides on a pull request whose base moved, and its matching-rejection Stuck releases the lock before returning:
 // the edge to PR-Rework (darn: Darn-Write) ends the hold, and the reworked run takes the lock again at the next lock-taking row.
-// Finalize takes the lock and tests the parent after parsing the change description and committing the status file, before its catch-up merge-in.
+// Finalize takes the lock first, after parsing the change description and committing the status file and before anything reads or moves the parent, and releases it on every way out of its Call: Done, a reroute, a Stuck and an error.
+// A lock a dead Finalize left is taken over at the next acquire, since the lock store grants a record whose owner process no longer lives.
 // Under that lock it runs the same run-scope origin reconcile and maps its ended and stopped verdicts as Merge-In does, then the owner checks.
+// It then opens the parent pair and syncs it before any merge: a pair that is missing, mid-merge or holding tracked dirt in its code checkout is Stuck with its way forward, whether the parent is behind, equal, without an upstream or under the push skip.
+// With no push skip a parent behind its upstream is fast-forwarded in its own pair, which moves it to the upstream tip and touches no local commit, and one ahead of, diverged from or no longer a fast-forward of its upstream is Stuck, since Finalize never pushes or rewrites the parent here.
+// Under the push skip it neither fetches nor fast-forwards, and a parent that already holds the task's work is past its parent-side merge and is left as it is.
+// Finalize tests no moved parent at entry.
 // A run whose Finalize merged into the local parent here is never read as ended, so a Finalize re-entered after its done mark proceeds;
 // a Finalize entering with no such merge, its entry done on origin, stops with Halt, since another machine landed the run.
 //
@@ -51,7 +56,6 @@
 // otherwise it reroutes, so a code-side commit that arrives between the check and the parent-side merge never lands.
 // A dirty parent is Stuck naming the parent's code checkout and its tracked dirty paths, capped at 20, with the way forward per reason.
 // The run records Finalize commits at its parent-records step never count as that dirt, since the guard reads the code checkout alone, whose `_lyx` link is excluded from its index.
-// Finalize's Done releases the lock before Friction-Reflect runs.
 // A parent push that fails for a reason other than a transient one carries a repair note when origin's parent already holds the task's work, which an adopter-first landing leaves:
 // it names the task's squash by the parent head's SHA, a `git reset --keep` to origin's parent when the squash is the only commit origin lacks or a `git rebase --onto` dropping it when another is listed, and then `lyx fabric remove` of the run, leaving the owner pause standing.
 // An origin parent lacking the work, or a failed read, adds no note.
