@@ -58,7 +58,8 @@ A failing run is rerun once;
 a pass on the rerun passes the gate and records the failing identities as flaky.
 A run that exceeds the verify timeout is not rerun, since a hang is not flakiness: it fails the gate at once with the timeout, the log path and the log tail as findings.
 A failure that survives the rerun, or a tree that is not clean, is recorded in `verify-gate.yaml` in the reports directory and returned to Merriam as findings.
-Merriam answers each failure with one fixer fork, whose commits are `fix: <summary>` and are checked at the next attempt.
+Merriam answers each failure with one fixer, whose commits are `fix: <summary>` and are checked at the next attempt.
+The gate routes each failure to a fixer and records it as `fixer` in `verify-gate.yaml`: a fork in Merriam's session, on Merriam's model, or, for the last attempt, after a fixer that committed nothing and from then on, the cold fixer `lyx webster fix-verify` spawns as its own strand at the `recovery` role.
 `verify_gate_attempts` in `webster.yaml` bounds the attempts;
 an exhausted gate ends the run `stuck`, as does a fixer commit the gate rejects.
 `verify-gate.yaml` replaces the retired post-exit `integration.yaml`: nothing runs the suite after the session ends, and a run in flight with the retired record restarts with `lyx webster run --fresh`.

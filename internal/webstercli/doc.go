@@ -50,4 +50,10 @@
 // recover-batch exits non-zero whenever the terminal record it returns for is not done: a stuck or dead digest goes out as an error envelope (`ok` false) carrying the same fields as a done one, the digest fields with recoveries, recovery_retry and warnings.
 // Its message names the way forward, `lyx webster recover-batch NN` once more when recovery_retry is true, else ending the run stuck naming the batch.
 // A done digest and a running snapshot exit 0, and Master reads the digest fields, never the exit code.
+//
+// # Fix-verify
+//
+// fix-verify runs the cold verify-gate fixer the verify gate escalates a failure to, spawning or attaching as recover-batch does, and boots the standalone reed session the same way.
+// Its envelope carries status, elapsed_s and warnings, with reply on done and dead_reason on dead;
+// a dead fixer exits non-zero with a message whose way forward is the same as for done: Master rewrites its contract files and ends its turn, and the gate judges the fix.
 package webstercli

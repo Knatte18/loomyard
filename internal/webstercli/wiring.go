@@ -341,7 +341,7 @@ func (c *websterCLI) wireStandalone(cwd, stencilsDir, planDir, targetDirFlag str
 	// Standalone's reed session lives on its own derived geometry, which no CLI verb can reach —
 	// `lyx reed up` is hub-only — so the verbs that need one boot it in-process through this seam
 	// (see the field's own doc comment).
-	// Assigned here, executed by the two verbs that spawn an agent themselves, run and recover-batch:
+	// Assigned here, executed by the verbs that spawn an agent themselves, run, recover-batch and fix-verify:
 	// wiring runs for EVERY verb, and validate, status and await-batch must boot no tmux server at all.
 	//
 	// Standalone reed is never booted by `lyx reed up` — that verb is hub-only — it is booted
