@@ -759,23 +759,29 @@ func TestCompact_SoftCycleHonoursDefer(t *testing.T) {
 }
 
 func TestCycleRequest_AbandonedWithinTimeoutOfRequest(t *testing.T) {
-	t.Run("note never written", func(t *testing.T) {
+	t.Run("note never written, timed from the note request's read", func(t *testing.T) {
 		e := newCompactEnv(t)
 		e.s.usage["a"] = 10
-		e.s.events = []shuttleengine.Event{stop("a")}
 		if err := RequestCycle(e.paths, CycleCompact, e.clock.now); err != nil {
 			t.Fatal(err)
 		}
 		e.tick()
-		e.clock.advance(11 * time.Second)
+		// The orch ends its turn 50s after the request, and reads the note request at once.
+		e.clock.advance(50 * time.Second)
+		e.s.events = append(e.s.events, stop("a"))
 		e.tick()
 		if e.state().Phase != PhaseHandoffRequested {
 			t.Fatalf("phase = %s", e.state().Phase)
 		}
-		e.clock.advance(90 * time.Second)
+		e.clock.advance(99 * time.Second)
+		e.tick()
+		if st := e.state(); st.Phase != PhaseHandoffRequested {
+			t.Fatalf("phase = %s, want the timeout measured from the read of the note request, not from the request", st.Phase)
+		}
+		e.clock.advance(time.Second)
 		e.tick()
 		if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" {
-			t.Errorf("state = %+v, want idle after the timeout measured from the request", st)
+			t.Errorf("state = %+v, want idle after the timeout measured from the read", st)
 		}
 		e.assertCompactCalls(0)
 	})
@@ -976,7 +982,7 @@ func assertIdleWithHoldReleased(t *testing.T, e *watchEnv) {
 	}
 }
 
-func TestCycleRequest_RestartedWatcherMeasuresFromRequestTime(t *testing.T) {
+func TestCycleRequest_RestartedWatcherMeasuresFromTheRecordedReadTime(t *testing.T) {
 	e := newCompactEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}
@@ -989,10 +995,14 @@ func TestCycleRequest_RestartedWatcherMeasuresFromRequestTime(t *testing.T) {
 	if e.state().Phase != PhaseHandoffRequested {
 		t.Fatalf("phase = %s", e.state().Phase)
 	}
+	readAt := e.clock.now
+	e.tick()
+	// The journal forgets the read, so only the time the first watcher recorded can time the phase out.
+	e.c.reads = nil
 	e.w = e.newWatcher()
-	e.clock.advance(90 * time.Second)
+	e.clock.advance(100 * time.Second)
 	e.tick()
 	if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" {
-		t.Errorf("state = %+v, want the restarted watcher to time out from the request time", st)
+		t.Errorf("state = %+v, want the restarted watcher to time out from the read at %v", st, readAt)
 	}
 }

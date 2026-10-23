@@ -17,6 +17,8 @@
 //
 // `refresh` and `distill` write a request marker the watcher acts on at the session's next idle moment.
 // A hub pause holds the watcher's cycle machine, so a request made under a pause waits for the resume, and the timeout that abandons it counts no pause time.
+// A request whose cycle has not started within the handoff timeout is abandoned;
+// once started, the session has the full handoff timeout to write its note, counted from when it reads the watcher's note request.
 // With a live watcher and a live hub pause entry, the envelope of both verbs adds `held_by_pause: true` and a `note`, and the request is still written; with no live watcher the request is removed and the envelope carries no such key.
 // `status` reports the marker as `cycle_request`: null while none is pending, else an object with `mode`, `requested_at` (RFC 3339 UTC, null for a marker that does not parse) and `held_by_pause`.
 // A pause record that cannot be read counts as no pause.

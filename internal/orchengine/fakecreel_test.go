@@ -39,6 +39,10 @@ type fakeCreel struct {
 	sent []CreelSent
 	// withdrawn is what Withdraw answers.
 	withdrawn []CreelWithdrawn
+	// reads is the time MailReadAt answers by mail id; an id with none answers unread.
+	// Every post is read at the clock's time of its post unless unreadPosts is set.
+	reads       map[int64]time.Time
+	unreadPosts bool
 
 	// clock stamps the sent entries a journaled-but-failed call leaves, and the time an auto-landed inject was sent.
 	clock func() time.Time
@@ -105,10 +109,28 @@ func (f *fakeCreel) Post(receiver, body string) (int64, error) {
 	}
 	id := f.newID()
 	f.posts = append(f.posts, fakePost{ID: id, Receiver: receiver, Body: body})
+	if !f.unreadPosts {
+		f.markRead(id, f.clock())
+	}
 	if f.onSend != nil {
 		f.onSend(true, CreelStep{}, body)
 	}
 	return id, nil
+}
+
+// markRead records mail id as read at at.
+func (f *fakeCreel) markRead(id int64, at time.Time) {
+	if f.reads == nil {
+		f.reads = map[int64]time.Time{}
+	}
+	f.reads[id] = at
+}
+
+func (f *fakeCreel) MailReadAt(id int64) (time.Time, error) {
+	if err := f.fail("mailreadat"); err != nil {
+		return time.Time{}, err
+	}
+	return f.reads[id], nil
 }
 
 func (f *fakeCreel) ReadMailbox(handle func([]CreelMessage) error) error {

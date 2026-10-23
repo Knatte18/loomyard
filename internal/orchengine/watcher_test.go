@@ -525,14 +525,100 @@ func TestWatcher_HandoffTurnEndWithoutFileNoClear(t *testing.T) {
 	}
 }
 
-func TestWatcher_HandoffTimeoutAborts(t *testing.T) {
+// TestWatcher_HandoffTimeoutCountsFromTheRequestRead drives a note phase whose request the orch reads at a scripted delay after its post, or never.
+func TestWatcher_HandoffTimeoutCountsFromTheRequestRead(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// readAfter is how long after the post the orch reads the request; negative leaves it unread.
+		readAfter time.Duration
+	}{
+		{name: "ReadAtThePost", readAfter: 0},
+		{name: "ReadQueuedBehindALongTurn", readAfter: 10 * time.Minute},
+		{name: "NeverRead", readAfter: -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.c.unreadPosts = true
+			// A read left in State by an earlier cycle must not survive the cycle start, or the phase would time out at once.
+			e.setState(func(st *State) { st.RequestReadAt = e.clock.now.Add(-time.Hour) })
+			e.injectHandoff()
+			id, postedAt := e.state().RequestID, e.clock.now
+			if tt.readAfter > 0 {
+				e.clock.advance(tt.readAfter)
+				e.tick()
+				if st := e.state(); st.Phase != PhaseHandoffRequested {
+					t.Fatalf("phase = %s before the read, want handoff-requested", st.Phase)
+				}
+			}
+			if tt.readAfter >= 0 {
+				e.c.markRead(id, postedAt.Add(tt.readAfter))
+			}
+			e.clock.advance(99 * time.Second)
+			e.tick()
+			if st := e.state(); st.Phase != PhaseHandoffRequested {
+				t.Fatalf("phase = %s 99s after the read, want handoff-requested", st.Phase)
+			}
+			if st := e.state(); tt.readAfter >= 0 && !st.RequestReadAt.Equal(postedAt.Add(tt.readAfter)) {
+				t.Errorf("RequestReadAt = %v; want %v", st.RequestReadAt, postedAt.Add(tt.readAfter))
+			}
+			e.clock.advance(time.Second)
+			e.tick()
+			st := e.state()
+			if tt.readAfter < 0 {
+				if st.Phase != PhaseHandoffRequested || !st.RequestReadAt.IsZero() {
+					t.Errorf("state = %+v, want an unread request still waiting", st)
+				}
+				return
+			}
+			if st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" || e.s.count("clear") != 0 || !st.RequestReadAt.IsZero() {
+				t.Errorf("state = %+v calls = %v, want idle once the timeout from the read passed", st, e.s.calls)
+			}
+		})
+	}
+}
+
+func TestWatcher_HandoffTimeoutHoldsWhileTheReadLookupFails(t *testing.T) {
+	t.Parallel()
 	e := newWatchEnv(t)
+	e.c.unreadPosts = true
 	e.injectHandoff()
-	e.clock.advance(101 * time.Second)
+	id, postedAt := e.state().RequestID, e.clock.now
+	e.c.markRead(id, postedAt)
+	e.clock.advance(200 * time.Second)
+	e.c.failNext("mailreadat", errBoom)
 	e.tick()
 	st := e.state()
-	if st.Phase != PhaseIdle || st.LastAbortReason == "" || e.s.count("clear") != 0 {
-		t.Fatalf("state = %+v calls = %v", st, e.s.calls)
+	if st.Phase != PhaseHandoffRequested || st.Stuck != errBoom.Error() || !st.StuckByCreel || !st.RequestReadAt.IsZero() {
+		t.Fatalf("state = %+v, want the phase held and the lookup failure shown in Stuck", st)
+	}
+	e.tick()
+	st = e.state()
+	if st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" {
+		t.Errorf("state = %+v, want idle once the lookup answered a read past the timeout", st)
+	}
+}
+
+func TestWatcher_HandoffTimeoutDiscountsAHubPauseAfterTheRead(t *testing.T) {
+	t.Parallel()
+	e := newWatchEnv(t)
+	e.injectHandoff()
+	e.clock.advance(40 * time.Second)
+	e.pauseHub("", pauseGrace)
+	e.clock.advance(50 * time.Second)
+	e.resumeHub()
+	// 110s have passed since the read, 50s of them paused.
+	e.clock.advance(20 * time.Second)
+	e.tick()
+	if st := e.state(); st.Phase != PhaseHandoffRequested {
+		t.Fatalf("phase = %s, want handoff-requested with 60s unpaused since the read", st.Phase)
+	}
+	e.clock.advance(40 * time.Second)
+	e.tick()
+	if st := e.state(); st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" {
+		t.Errorf("state = %+v, want idle once 100s unpaused passed since the read", st)
 	}
 }
 
@@ -555,6 +641,9 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 	handoff := e.state().PendingHandoff
 	if e.s.count("clear") != 1 {
 		t.Fatalf("calls = %v", e.s.calls)
+	}
+	if st := e.state(); !st.RequestReadAt.IsZero() {
+		t.Errorf("RequestReadAt = %v, want the note request's read cleared on entering clearing", st.RequestReadAt)
 	}
 	if got := e.c.count("hold:"); got < 2 || e.c.count("release:") != 0 {
 		t.Fatalf("holds = %d releases = %d, want the hold taken at the cycle start and renewed since", got, e.c.count("release:"))

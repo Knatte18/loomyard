@@ -858,7 +858,7 @@ func colorTyped(st State) bool {
 func (w *Watcher) toIdle(st State, abortReason string) error {
 	st.Phase = PhaseIdle
 	st.PhaseInjected = false
-	st.Pending, st.RequestID = nil, 0
+	st.Pending, st.RequestID, st.RequestReadAt = nil, 0, time.Time{}
 	st.PendingHandoff, st.PendingResume = "", ""
 	st.ReloadStep, st.ReloadTypedAt, st.ReloadRetry, st.ReloadSkipsSkills = ReloadStepSkills, time.Time{}, nil, false
 	st.Stuck, st.StuckByCreel = "", false
@@ -883,7 +883,7 @@ func (w *Watcher) enter(st State, phase Phase, now time.Time) (State, error) {
 	st.PhaseEnteredAt = now
 	st.PhaseEventsOffset = w.cursor
 	st.PhaseInjected = false
-	st.Pending, st.RequestID = nil, 0
+	st.Pending, st.RequestID, st.RequestReadAt = nil, 0, time.Time{}
 	st.Stuck, st.StuckByCreel = "", false
 	w.seen = phaseEvents{}
 	return st, w.save(st)
@@ -1037,7 +1037,7 @@ func (w *Watcher) tickIdle(st State, now time.Time) error {
 	st.PhaseEnteredAt = now
 	st.PhaseEventsOffset = w.cursor
 	st.PhaseInjected = false
-	st.Pending, st.RequestID = nil, 0
+	st.Pending, st.RequestID, st.RequestReadAt = nil, 0, time.Time{}
 	st.Stuck, st.StuckByCreel = "", false
 	if err := saveCycleStart(w.paths, st, req, requested); err != nil {
 		if !errors.Is(err, errMarkerChanged) {
@@ -1089,12 +1089,12 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 	if w.seen.ask {
 		return w.toIdle(st, "session asked a question during the handoff")
 	}
-	// A requested cycle's clock starts at the request, which predates the phase entry.
-	started := st.PhaseEnteredAt
-	if !st.CycleRequestedAt.IsZero() && st.CycleRequestedAt.Before(started) {
-		started = st.CycleRequestedAt
+	readAt, err := w.requestReadAt(&st)
+	if err != nil {
+		return err
 	}
-	if w.unpausedSince(started, now) >= w.cfg.HandoffTimeout() {
+	// The clock starts when the orch read the request, so a request creel held behind a long turn still gets the full time.
+	if !readAt.IsZero() && w.unpausedSince(readAt, now) >= w.cfg.HandoffTimeout() {
 		return w.toIdle(st, "handoff timed out")
 	}
 	passed, err := w.notePassed(st)
@@ -1130,6 +1130,25 @@ func (w *Watcher) tickHandoff(st State, now time.Time) error {
 		return err
 	}
 	return w.sendStep(&st, true, CreelStep{}, body, now)
+}
+
+// requestReadAt returns when the orch read the posted note request, zero while it is unread, none was posted or creel could not be asked.
+// The first time creel answers a read it is recorded in State.RequestReadAt, so a restarted watcher keeps it.
+// A failed lookup is recorded through creelFailed and answers zero, holding the timeout until creel answers.
+func (w *Watcher) requestReadAt(st *State) (time.Time, error) {
+	if !st.RequestReadAt.IsZero() || st.RequestID == 0 {
+		return st.RequestReadAt, nil
+	}
+	readAt, err := w.creel.MailReadAt(st.RequestID)
+	if err != nil {
+		return time.Time{}, w.creelFailed(st, err)
+	}
+	if readAt.IsZero() {
+		return readAt, nil
+	}
+	logger.Info("orch: note request read by the orch", "strandGUID", st.Strand, "id", st.RequestID, "readAt", readAt)
+	st.RequestReadAt = readAt
+	return readAt, w.save(*st)
 }
 
 // handoffWritten reports whether the handoff file exists and is non-empty.
