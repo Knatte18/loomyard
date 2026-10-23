@@ -46,7 +46,7 @@ A long-lived Master session is the only party with full oversight of what actual
 A `summary.md` may additionally carry two sections the verify gate produces.
 When the gate's rerun passes a failing plan-level verify, the identities that failed once are flaky, and `internal/websterengine`'s `AppendIntegrationTriage` appends an `## Integration suite triage` section listing them;
 the run keeps its outcome.
-When the gate sends a failure back to Merriam, Merriam spawns one fixer fork and rewrites `summary.md` with a `## Verify gate fixes` section naming the findings, what the fixer says it changed and each `fix: <summary>` commit it made.
+When the gate sends a failure back to Merriam, Merriam answers with one fixer, a fork or the cold fixer, and rewrites `summary.md` with a `## Verify gate fixes` section naming the findings, what that fixer says it changed and each `fix: <summary>` commit it made.
 Either section reaches the PR reviewer because the `Describe` stencil carries it into the change description as a check item, not because Publish passes `summary.md` through.
 
 ## The verify gate
