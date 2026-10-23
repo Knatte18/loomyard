@@ -2,7 +2,7 @@
 // The result is the Publish failure record's `cards`, `later_range` and `untraced`, so a reviewer starts a fix from the commits that wrote the failing members.
 //
 // The package lives apart from the landing and loom producer packages, which link no tree-sitter grammar, because it reaches quarry through internal/planglyph.
-// It is told absolute paths and derives none, and it reads plan refs only through internal/planparser.
+// It is told the worktree root and the anchor path, takes every other path from the owning packages' own path functions, and reads plan refs only through internal/planparser.
 //
 // Locations extracts `path:line` locations from the failure identities of a verify log, Go test and build output only, and places each relative to the repository root.
 // A location is placed as written when it exists at the head, with the worktree root stripped when it is absolute, with the module path stripped when it is a `-trimpath` frame, or joined onto its identity's package directory when it is a bare or `./`-relative name.
