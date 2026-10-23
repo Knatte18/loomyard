@@ -31,6 +31,7 @@ func TestDecideDrive(t *testing.T) {
 	budgetHaltStop := Stop{OK: true, State: "blocked", LoopState: "blocked", Reason: budgetHaltReason, CurrentProducer: "Plan-Write", HistoryLength: 3}
 	preconditionHaltReason := shedengine.ReasonPreconditionUnmet + ": the source worktree has uncommitted tracked changes; way forward: commit or revert them"
 	preconditionHaltStop := Stop{OK: true, State: "blocked", LoopState: "blocked", Reason: preconditionHaltReason, CurrentProducer: "Worktree-Create", HistoryLength: 3}
+	landingHaltStop := Stop{OK: true, State: "blocked", LoopState: "blocked", CurrentProducer: "Finalize", HistoryLength: 3, HandBack: true}
 	restepRecord := func(key StopKey) SettleRecord {
 		return SettleRecord{StopKey: key, Action: shedrun.SettleRestep}
 	}
@@ -50,14 +51,17 @@ func TestDecideDrive(t *testing.T) {
 		{name: "error with no kind", stop: errorStop("", ""), want: driveActionHandBack},
 		{name: "step paused with an empty reason carries a friction note", stop: Stop{OK: true, State: "paused", LoopState: "paused"}, want: driveActionHandBack, wantFrictionNote: true},
 		{name: "step paused with a reason carries none", stop: Stop{OK: true, State: "paused", LoopState: "paused", Reason: "pause requested"}, want: driveActionHandBack},
-		{name: "status-derived paused stop with a pause reason carries none", stop: stopFromStatus(shedengine.Status{State: shedengine.StatePaused, PauseReason: "pause requested by operator"}), want: driveActionHandBack},
-		{name: "status-derived paused stop without a pause reason carries a friction note", stop: stopFromStatus(shedengine.Status{State: shedengine.StatePaused}), want: driveActionHandBack, wantFrictionNote: true},
+		{name: "status-derived paused stop with a pause reason carries none", stop: stopFromStatus(shedengine.Status{State: shedengine.StatePaused, PauseReason: "pause requested by operator"}, nil), want: driveActionHandBack},
+		{name: "status-derived paused stop without a pause reason carries a friction note", stop: stopFromStatus(shedengine.Status{State: shedengine.StatePaused}, nil), want: driveActionHandBack, wantFrictionNote: true},
+		{name: "marked landing halt hands back", stop: landingHaltStop, want: driveActionHandBack},
+		{name: "marked landing halt on a changed build with an escalation pending still hands back", stop: landingHaltStop, facts: driveFacts{BuildChanged: true, EscalationPending: true}, want: driveActionHandBack},
+		{name: "unmarked reroute-cap halt goes to the tackler", stop: Stop{OK: true, State: "blocked", LoopState: "blocked", Reason: shedengine.ReasonRerouteCapReached + " for Webster", CurrentProducer: "Webster", HistoryLength: 3}, want: driveActionTackler},
 		{name: "budget halt from the envelope hands back", stop: budgetHaltStop, want: driveActionHandBack},
-		{name: "budget halt from the status hands back", stop: stopFromStatus(shedengine.Status{State: shedengine.StateBlocked, Error: budgetHaltReason}), want: driveActionHandBack},
+		{name: "budget halt from the status hands back", stop: stopFromStatus(shedengine.Status{State: shedengine.StateBlocked, Error: budgetHaltReason}, nil), want: driveActionHandBack},
 		{name: "budget halt on a changed build still hands back", stop: budgetHaltStop, facts: driveFacts{BuildChanged: true}, want: driveActionHandBack},
 		{name: "budget halt after a tackler resume returned still hands back", stop: budgetHaltStop, facts: driveFacts{ResumeReturned: true}, want: driveActionHandBack},
 		{name: "precondition halt from the envelope hands back", stop: preconditionHaltStop, want: driveActionHandBack},
-		{name: "precondition halt from the status hands back", stop: stopFromStatus(shedengine.Status{State: shedengine.StateBlocked, Error: preconditionHaltReason}), want: driveActionHandBack},
+		{name: "precondition halt from the status hands back", stop: stopFromStatus(shedengine.Status{State: shedengine.StateBlocked, Error: preconditionHaltReason}, nil), want: driveActionHandBack},
 		{name: "precondition halt on a changed build still hands back", stop: preconditionHaltStop, facts: driveFacts{BuildChanged: true}, want: driveActionHandBack},
 		{name: "blocked stop containing the precondition prefix past its start goes to the tackler", stop: Stop{OK: true, State: "blocked", LoopState: "blocked", Reason: "halted: " + preconditionHaltReason, CurrentProducer: "Plan-Write", HistoryLength: 3}, want: driveActionTackler},
 		{name: "awaiting with a pending escalation", stop: awaitingStop("a notice"), facts: driveFacts{EscalationPending: true}, want: driveActionArbiter},
@@ -148,6 +152,15 @@ func TestParseDriveStop(t *testing.T) {
 				Stop: "interrupted", CurrentProducer: "Plan-Write", HistoryLength: 2, InterruptPolicy: "reinvoke", StatusMoved: true, TraceCopy: "/t.log", StderrPath: "/s.log",
 			},
 			wantKey: StopKey{CurrentProducer: "Plan-Write", HistoryLength: 2, State: "failed"},
+		},
+		{
+			name:     "marked landing halt carries the hand_back key",
+			envelope: `{"ok":true,"state":"blocked","loop":{"stop":"halted","current_producer":"Finalize","history_length":5,"state":"blocked","hand_back":true}}`,
+			want: Stop{
+				OK: true, State: "blocked",
+				Stop: "halted", CurrentProducer: "Finalize", HistoryLength: 5, LoopState: "blocked", HandBack: true,
+			},
+			wantKey: StopKey{CurrentProducer: "Finalize", HistoryLength: 5, State: "blocked"},
 		},
 		{name: "undecodable bytes are refused", envelope: `{"ok":`, wantErr: true},
 	}

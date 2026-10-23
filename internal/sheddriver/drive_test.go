@@ -138,9 +138,16 @@ func TestGoDriver_Settle(t *testing.T) {
 		},
 	}
 
+	finalizeCapStatus := shedengine.Status{
+		State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: shedengine.ReasonRerouteCapReached + " for Finalize; way forward: the orch resumes",
+		History: append(slices.Clone(blockedStatus.History), shedengine.HistoryEntry{Producer: "Finalize", Outcome: shedengine.Stuck, At: driveTestEpoch.Add(2 * time.Second).Format(time.RFC3339)}),
+	}
+
 	tests := []struct {
 		name  string
 		steps []func(t *testing.T) []byte
+		// handsBack wires Deps.HandsBack to mark a blocked Finalize reroute-cap status.
+		handsBack bool
 		// statuses, when set, is the status the run shows after each step; otherwise the status the step's envelope describes.
 		statuses []shedengine.Status
 		// statusSeq, when set, is what the nth status read after the first step returns, the last entry repeating.
@@ -467,6 +474,19 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantCalls: []string{"step"}, wantExit: ExitDone,
 		},
 		{
+			name:  "a status moved to a blocked landing halt hands back with no tackler, arbiter or hand-over call",
+			steps: []func(*testing.T) []byte{blocked}, statusSeq: []shedengine.Status{finalizeCapStatus}, handsBack: true, buildChanged: true, escalation: true,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleMoved, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerGoRule, shedrun.SettlerParent},
+			wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{1: {"only the orch's resume lifts it"}},
+		},
+		{
+			name:  "no hand-back check: a status moved to a blocked reroute-cap halt goes to the tackler",
+			steps: []func(*testing.T) []byte{blocked}, statusSeq: []shedengine.Status{finalizeCapStatus}, tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
+			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
+			wantActions: []string{shedrun.SettleMoved, shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerGoRule, shedrun.SettlerTackler, shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+		},
+		{
 			name:  "a blocked start the check refuses hands back quoting the refusal and steps nothing",
 			steps: []func(*testing.T) []byte{}, initialStatus: &blockedStatus, startCheck: true, startRefusal: startRefusal,
 			wantCalls: []string{"start-check:Build"}, wantActions: []string{shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerParent},
@@ -698,6 +718,11 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 			if tt.noCommit {
 				deps.CommitRecords = nil
+			}
+			if tt.handsBack {
+				deps.HandsBack = func(producer, reason string) bool {
+					return producer == "Finalize" && strings.HasPrefix(reason, shedengine.ReasonRerouteCapReached)
+				}
 			}
 			if tt.startCheck {
 				deps.StartCheck = func(row string) (string, error) {

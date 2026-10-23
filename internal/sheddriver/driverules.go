@@ -43,6 +43,8 @@ type Stop struct {
 	FromStatus bool
 	// Restep is set by the loop on a stop whose run an orch goto moved, so the loop re-steps instead of deciding.
 	Restep bool
+	// HandBack is true on a blocked stop that is a landing halt only the orch's resume lifts, as the loop's envelope marks it or the driver's told check answers for a status.
+	HandBack bool
 }
 
 // parseDriveStop decodes the envelope shedverbs.RunUntilStop prints.
@@ -67,6 +69,7 @@ func parseDriveStop(envelope []byte) (Stop, error) {
 			StatusMoved     bool   `json:"status_moved"`
 			TraceCopy       string `json:"trace_copy"`
 			StderrPath      string `json:"stderr_path"`
+			HandBack        bool   `json:"hand_back"`
 		} `json:"loop"`
 	}
 	if err := json.Unmarshal(envelope, &decoded); err != nil {
@@ -90,18 +93,21 @@ func parseDriveStop(envelope []byte) (Stop, error) {
 		StatusMoved:     decoded.Loop.StatusMoved,
 		TraceCopy:       decoded.Loop.TraceCopy,
 		StderrPath:      decoded.Loop.StderrPath,
+		HandBack:        decoded.Loop.HandBack,
 		Raw:             envelope,
 	}, nil
 }
 
 // stopFromStatus builds the stop the driver acts on from a status alone.
 // It has FromStatus set and no kind, and a paused status carries its pause_reason as the stop's reason; a failed status reads as an error stop.
-func stopFromStatus(st shedengine.Status) Stop {
+// handsBack is the told check of a landing halt, answered for a blocked status's current producer and error; nil marks nothing.
+func stopFromStatus(st shedengine.Status, handsBack func(producer, reason string) bool) Stop {
 	reason := ""
 	if st.State == shedengine.StatePaused {
 		reason = st.PauseReason
 	}
 	return Stop{
+		HandBack:        handsBack != nil && st.State == shedengine.StateBlocked && handsBack(st.CurrentProducer, st.Error),
 		Reason:          reason,
 		OK:              st.State != shedengine.StateFailed,
 		State:           string(st.State),
@@ -202,6 +208,8 @@ func decideDrive(stop Stop, facts driveFacts) driveDecision {
 		return driveDecision{Action: driveActionHandBack, Rule: "an ownership error, or an error with no kind: hand back"}
 	case state == string(shedengine.StatePaused):
 		return driveDecision{Action: driveActionHandBack, Rule: "the run is paused: hold and hand back", FrictionNote: stop.Reason == ""}
+	case stop.HandBack && state == string(shedengine.StateBlocked):
+		return driveDecision{Action: driveActionHandBack, Rule: "a landing halt: only the orch's resume lifts it"}
 	case budgetExhausted(stop):
 		return driveDecision{Action: driveActionHandBack, Rule: "a bounce-budget-exhausted halt: only the parent's resume lifts it"}
 	case preconditionUnmet(stop):

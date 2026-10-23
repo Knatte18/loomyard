@@ -94,6 +94,8 @@ type Deps struct {
 	Tamper *TamperSeam
 	// StartCheck judges the row a driver finds blocked at its start before it steps anything, and returns a refusal that hands the run back; nil checks nothing.
 	StartCheck func(row string) (refusal string, err error)
+	// HandsBack is the recipe's told check of a blocked stop that goes to the orch, answering for a producer and the error its blocked status persists; nil marks nothing from a status.
+	HandsBack func(producer, reason string) bool
 }
 
 // ArbiterSeam is the stronger agent a tackler escalation, or a stop only it may judge, goes to.
@@ -613,7 +615,7 @@ func (d *goDriver) checkBlockedStart(status shedengine.Status, statusFound bool)
 	if refusal == "" {
 		return false, nil
 	}
-	return true, d.handBackAs(stopFromStatus(status), driveHandBack{Rules: []string{refusal}}, "the start check refused the blocked stop")
+	return true, d.handBackAs(stopFromStatus(status, d.deps.HandsBack), driveHandBack{Rules: []string{refusal}}, "the start check refused the blocked stop")
 }
 
 // resumeOpenAttempt finds, once before the first step, the stop a halted run left with an agent attempt still open, so a restarted driver reuses the attempt instead of spawning a second agent.
@@ -757,12 +759,12 @@ func (d *goDriver) recheck(stop Stop) (next Stop, exit bool, err error) {
 
 	if n := len(status.History); n > 0 && status.History[n-1].Outcome == shedengine.OutcomeGoto {
 		d.settle(stop, shedrun.SettlerGoRule, shedrun.SettleMoved, "an orch goto moved the run: re-step", status.CurrentProducer)
-		moved := stopFromStatus(status)
+		moved := stopFromStatus(status, d.deps.HandsBack)
 		moved.Restep = true
 		return moved, false, nil
 	}
 
-	moved := stopFromStatus(status)
+	moved := stopFromStatus(status, d.deps.HandsBack)
 	raw, err := json.Marshal(map[string]any{
 		"state":  moved.State,
 		"reason": "",
@@ -852,7 +854,7 @@ func (d *goDriver) handBackAs(stop Stop, h driveHandBack, outcome string) error 
 func (d *goDriver) handBackFailure(cause error) error {
 	var stop Stop
 	if status, found, err := d.deps.ReadStatus(); err == nil && found {
-		stop = stopFromStatus(status)
+		stop = stopFromStatus(status, d.deps.HandsBack)
 	}
 	rule := "a failure the driver cannot act on: hand back"
 	d.rules = append(d.rules, rule)

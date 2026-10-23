@@ -26,6 +26,7 @@
 //   - a step that reported another holder of the run: exit and leave the run to the holder;
 //   - an ownership error, or an error with no kind: hand back;
 //   - a paused run: hold, and hand back, asking for the friction note when neither the envelope nor the status records a reason;
+//   - a blocked stop the loop's envelope marks `hand_back`, or for a stop built from a status the told `Deps.HandsBack` check marks: hand back, ahead of every budget, precondition, hand-over, arbiter and tackler row, since only the orch's resume lifts a landing halt;
 //   - a blocked stop whose reason, or for a stop built from a status whose error, starts with the bounce-budget-exhausted prefix: hand back, ahead of every hand-over, arbiter and tackler row, since only the parent's resume lifts it;
 //   - a blocked stop whose reason, or for a stop built from a status whose error, starts with the precondition-unmet prefix: hand back, ahead of every hand-over, arbiter and tackler row, since no tackler settles it;
 //   - an awaiting stop the arbiter would admit: the arbiter decides;
@@ -40,7 +41,7 @@
 //   - anything else: hand back.
 //
 // A stop built from a paused status takes the status's `pause_reason` as its reason, and a stop report for a paused stop with none says `paused with no recorded reason`.
-// The budget-exhausted and precondition-unmet rows only hand back; they never resume a run.
+// The landing-halt, budget-exhausted and precondition-unmet rows only hand back; they never resume a run.
 // A recipe's told `GotoGuard` reaches the tackler through `TacklerDeps`: a verdict whose goto the guard refuses, or cannot decide, is rejected as an invalid resume with the guard's text.
 //
 // The settle records at `shedrun.SettleRecords` hold one line per action taken at a stop.
@@ -57,6 +58,7 @@
 //   - no `HandOver`: the driver reads no build and never hands over;
 //   - no `Tamper`: a tackler verdict is acted on without comparing the worktree with its snapshot;
 //   - no `StartCheck`: a driver starting at a blocked stop steps it unchecked;
+//   - no `HandsBack`: a stop built from a status is never marked, so only the loop's envelope marks a landing halt;
 //   - no `Watched`: the run is never watched;
 //   - no `CommitRecords`: a done stop commits nothing;
 //   - no `WriteFrictionNote`: a paused stop with no reason writes none.
