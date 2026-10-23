@@ -51,16 +51,23 @@
 // Merge-In proceeds on an owned_elsewhere verdict, since the owner check belongs to the landing.
 // A nil seam reads as not past the merge and as the parent owned here, so a Finalize built with no owner seams lands as before.
 // A parent that already holds the task's work, after a GitHub merge or an earlier landing, reads as not moved and lands through the already-landed path.
-// The catch-up merge-in stays: the local tip is checked equal to the merged tip under the lock, so it brings no parent code the merge review has not covered while still syncing the records side.
+// Finalize then merges the parent branch into the task worktree under the lock and judges the merge.
+// It reads the merge record's merged tip, clears a parked merge-in, checks the tree clean and merges.
+// A loom Finalize (Deps.ConflictReroutes) merges through the task pair's merge-in and, on a conflict, aborts the merge and reroutes, leaving the merge and its conflict session to Merge-In outside the lock.
+// A darn Finalize merges through its resolver, which resolves a conflict with the conflict session under the lock, since darn has no other merging row.
+// An unreadable merge record is logged and read as absent, so the parent side is measured from the task's merge base, as a darn run with no record is.
+// The merge is large when it needed the conflict session, or when the parent's changes since the merged tip it read touch a file the task changed since its merge base; a parent already holding the task's work is never large.
+// A large merge keeps the merge commit and reroutes with no gate run: a Stuck with Reroute set on the row's on_reroute edge, which spends no bounce budget, and the deferred release frees the lock first, with shed's reroute cap as its bound.
+// Finalize then writes the merge record with the new merged tip and the aligned tip as it was.
 // After a merge-in-required error from the parent-side merge Finalize tests the parent again, and retries once only when it has not moved, which covers a parent moved by run records alone;
-// otherwise it reroutes, so a code-side commit that arrives between the check and the parent-side merge never lands.
+// the retry merges and judges the parent again under the same lock, and a parent that moved reroutes, so a code-side commit that arrives between the check and the parent-side merge never lands.
 // A dirty parent is Stuck naming the parent's code checkout and its tracked dirty paths, capped at 20, with the way forward per reason.
 // The run records Finalize commits at its parent-records step never count as that dirt, since the guard reads the code checkout alone, whose `_lyx` link is excluded from its index.
 // A parent push that fails for a reason other than a transient one carries a repair note when origin's parent already holds the task's work, which an adopter-first landing leaves:
 // it names the task's squash by the parent head's SHA, a `git reset --keep` to origin's parent when the squash is the only commit origin lacks or a `git rebase --onto` dropping it when another is listed, and then `lyx fabric remove` of the run, leaving the owner pause standing.
 // An origin parent lacking the work, or a failed read, adds no note.
 //
-// Merge-In and Finalize clear the merge-in their own earlier attempt left parked before the clean-tree check that precedes each merge-in, Finalize's retry pass included.
+// Merge-In and Finalize clear the merge-in their own earlier attempt left parked before the clean-tree check that precedes each merge of the parent, Finalize's retry pass included.
 // A parked fabric `merge-in` of the parent branch is aborted, whoever started it, so a conflict session's resolution and a hand-started merge-in with its partial resolution are both discarded and the merge starts afresh.
 // Every live conflict-session strand of the run is stopped through Deps.StopConflictSession first, and only after every stop succeeded is the merge aborted, so no session is left writing into the redone merge;
 // a stop that fails is Stuck naming the strand, with the merge untouched.
@@ -150,20 +157,17 @@
 // setting can encode as one flag. A bool would force (or skip) a pull request on every task-to-task
 // merge alike, which a stacked branch whose own parent is not the trunk branch already disproves.
 //
-// Finalize always syncs the task branch against the parent through internal/mergeresolve, regardless
-// of which branch Publish took -- the only sync in the no-pull-request case, a second one catching
-// whatever landed in the parent while a pull request sat out for review in the other case -- and then
-// merges the task branch into the parent pair itself.
-// Each catch-up merge-in, the retry after the parent moved included, runs the same three clean-tree checks and the same post-merge verify gate as Merge-In before the parent-side merge,
+// Finalize always merges the parent branch into the task worktree, regardless of which branch Publish took, and then merges the task branch into the parent pair itself.
+// Each merge of the parent, the retry after the parent moved included, runs the same three clean-tree checks and the same post-merge verify gate as Merge-In before the parent-side merge,
 // and a dirty tree or a failure is Stuck with the parent branch untouched.
-// After each catch-up merge-in and before the parent-side merge, Finalize commits the parent pair's own run records through the told Deps.CommitParentRecords, so a sibling run's uncommitted status record does not trip the merge guard;
+// After each merge of the parent and before the parent-side merge, Finalize commits the parent pair's own run records through the told Deps.CommitParentRecords, so a sibling run's uncommitted status record does not trip the merge guard;
 // a clean subtree is a no-op, an absent seam skips the step, and a commit failure is Stuck naming the parent pair and its run records, with nothing merged.
 // The landing commit carries the change description, then a blank line and a trailer block when the block is non-empty.
 // The block is landing.yaml's trailer_text, then the engine_trailers text of each engine the task's sessions ran under, in engine-name order, each copied verbatim with no prefix.
 // Finalize reads those engines through the told Deps.EnginesRun before any parent-side mutation, and a read failure is an error with nothing merged.
 // An empty trailer_text adds no fixed line, an engine left out of engine_trailers or mapped to empty text adds no engine line, and both empty land the commit with no trailer block.
 // lyx config reconcile moves a retired co_authored_by value into engine_trailers as the claude entry `Co-Authored-By: <value>`, and drops an empty one without an entry.
-// Before the catch-up merge-in, Finalize reads the per-worktree config files the task changed away from both its fork point and the parent's current tip, so a parent-side change never reads as a task edit, and, at Done, queues one notice about them naming the base, task tip and parent tip for the hub's orchestrator;
+// Before the merge of the parent, Finalize reads the per-worktree config files the task changed away from both its fork point and the parent's current tip, so a parent-side change never reads as a task edit, and, at Done, queues one notice about them naming the base, task tip and parent tip for the hub's orchestrator;
 // it never carries those files to the parent,
 // and a read failure or a failed notice never stops the landing.
 // After the parent-side merge and before the push, Finalize marks the board task done; after a

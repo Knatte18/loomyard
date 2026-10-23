@@ -95,6 +95,9 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	if build(shedrun.RecipeDarn).TraceFailure != nil {
 		t.Error("landingDeps(...).TraceFailure is set for the darn recipe; want nil")
 	}
+	if !deps.ConflictReroutes || build(shedrun.RecipeDarn).ConflictReroutes {
+		t.Error("landingDeps(...).ConflictReroutes is not true for loom and false for darn")
+	}
 
 	// The slug entry stops the verify until the run holds its parent lock, which exempts the slug's entries.
 	if !deps.VerifyHold.PastGrace() {

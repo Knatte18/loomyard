@@ -1,4 +1,4 @@
-// finalize_verify_test.go covers the clean-tree checks and the post-merge verify gate as Finalize.mergeInStep wires them around every parent merge-in, against fake verifytree seams, a scripted resolver and the package's fake merger.
+// finalize_verify_test.go covers the clean-tree checks and the post-merge verify gate as Finalize.mergeAndGate wires them around every merge of the parent, against fake verifytree seams, a scripted resolver and the package's fake merger.
 // None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// The clean-tree checks one mergeInStep makes, by their zero-based position within it.
+// The clean-tree checks one mergeAndGate pass makes, by their zero-based position within it.
 const (
 	finalizeCleanBeforeMergeIn = iota
 	finalizeCleanAfterMergeIn

@@ -156,7 +156,12 @@ type Deps struct {
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	ParentCommitsOriginLacks func() ([]string, error)
 
-	// CommitParentRecords commits the parent pair's own run records, which Finalize calls after its catch-up merge-in and before the parent-side merge.
+	// ConflictReroutes reports whether a conflict in Finalize's merge of the parent branch into the task aborts the merge and reroutes, which leaves the merge and its conflict session to Merge-In outside the parent lock.
+	// Told by the caller: true for loom.
+	// False, darn's value, resolves the conflict with the conflict session under the lock, since darn has no other merging row.
+	ConflictReroutes bool
+
+	// CommitParentRecords commits the parent pair's own run records, which Finalize calls after its merge of the parent branch and before the parent-side merge.
 	// Sibling runs leave their status records uncommitted in the parent pair, and the merge guard refuses any tracked modification there.
 	// A clean subtree is a no-op, and a returned error is Stuck.
 	//

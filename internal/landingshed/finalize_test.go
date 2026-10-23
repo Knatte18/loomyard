@@ -378,7 +378,8 @@ func (r *orderedResolver) Resolve(ctx context.Context, source, tip string) (merg
 
 // TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once with the same composed message, and that the board seam runs once, after the retry that lands, never after a failed attempt.
 // It also pins that the parent run records are committed after each merge-in and before the parent-side merge, on the first pass and on the retry alike.
-// The retry runs only when the parent has not moved: a parent that moved again, which the second tip read finds, reroutes with no retry.
+// The retry runs only when the parent has not moved: a parent that moved again, which the tip read before the retry finds, reroutes with no retry.
+// The tip reads in order are the sync's, the first merge's, the retry check's and the retry merge's.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -392,7 +393,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	}{
 		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push", 0, 2, false},
 		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 0, 2, false},
-		{"a parent moved again reroutes with no retry", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Stuck, "merge-in,records,merge", 2, 1, true},
+		{"a parent moved again reroutes with no retry", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Stuck, "merge-in,records,merge", 3, 1, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -971,7 +972,7 @@ func TestFinalize_LockFirstAndFastForward(t *testing.T) {
 
 		shedfake.RequireOutcome(t, fz, shedengine.Done)
 
-		if got, want := strings.Join(held, ","), "reconcile:true,tips:true:true"; got != want {
+		if got, want := strings.Join(held, ","), "reconcile:true,tips:true:true,tips:false:true"; got != want {
 			t.Errorf("lock holds at the seams = %q; want %q", got, want)
 		}
 		if got, want := strings.Join(order, ","), "fast-forward,merge,push"; got != want {

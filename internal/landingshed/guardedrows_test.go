@@ -180,7 +180,8 @@ func TestGuardedRows_LockLifecycle(t *testing.T) {
 				reads := 0
 				deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
 					reads++
-					if reads == 1 {
+					// The sync's read and the merge's read see the tip the merge record names.
+					if reads <= 2 {
 						return fabricengine.ParentTips{Local: testParentTip, Upstream: testParentTip, Relation: fabricengine.ParentEqual}, nil
 					}
 					return movedTips(false)

@@ -83,11 +83,13 @@ func landingDeps(
 		TaskBranch:      taskBranch,
 		ParentBranch:    parentBranch,
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(l)),
-		StencilsDir:     geom.StencilsDir,
-		ScratchDir:      loomengine.LoomScratchDir(l),
-		OriginURL:       originURL,
-		PushSkipped:     pushSkipped,
-		PushBranch:      pushBranch,
+		// Only a loom run has Merge-In to leave a conflict to; a darn run resolves it under the lock.
+		ConflictReroutes: recipe == shedrun.RecipeLoom,
+		StencilsDir:      geom.StencilsDir,
+		ScratchDir:       loomengine.LoomScratchDir(l),
+		OriginURL:        originURL,
+		PushSkipped:      pushSkipped,
+		PushBranch:       pushBranch,
 		RemoteOnlyCommits: func() (string, []string, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {
