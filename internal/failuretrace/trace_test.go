@@ -4,7 +4,10 @@ package failuretrace
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -235,6 +238,44 @@ func TestTrace(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Trace() = %+v; want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewTracer(t *testing.T) {
+	t.Parallel()
+
+	const overview = "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a card\n"
+	const card = "# Card 1 — only\n\n**Edit:**\n- `a.go`\n**Intent:** placeholder.\n"
+	tests := []struct {
+		name      string
+		withPlan  bool
+		wantError string
+	}{
+		{name: "a missing plan directory is an error", withPlan: false, wantError: "failuretrace: read the plan:"},
+		{name: "a plan with no webster state is an error", withPlan: true, wantError: "failuretrace: no webster state to trace against"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchor := t.TempDir()
+			if tt.withPlan {
+				planDir := planparser.PlanDir(anchor)
+				if err := os.MkdirAll(planDir, 0o755); err != nil {
+					t.Fatalf("create plan dir: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(planDir, "00-overview.md"), []byte(overview), 0o644); err != nil {
+					t.Fatalf("write overview fixture: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(planDir, "01-only.md"), []byte(card), 0o644); err != nil {
+					t.Fatalf("write card fixture: %v", err)
+				}
+			}
+
+			_, err := NewTracer(anchor, anchor)("x", traceHead)
+			if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+				t.Errorf("NewTracer()(log, head) error = %v; want one containing %q", err, tt.wantError)
 			}
 		})
 	}
