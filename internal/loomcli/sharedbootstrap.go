@@ -305,6 +305,7 @@ func (c *loomCLI) ensureStatusStrand() error {
 }
 
 // wireLanding assembles Env.Landing: it opens the fabric, reads the landing branches and the origin URL, builds the push closure and tells landingDeps the hub's language skills.
+// It then sets the fixer's seat runner to the seat engine wire built.
 // An origin URL that cannot be read passes through as empty.
 func (c *loomCLI) wireLanding() error {
 	handle, err := fabricengine.Open(c.location)
@@ -351,6 +352,8 @@ func (c *loomCLI) wireLanding() error {
 		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
 		runStart,
 	)
+	// The fixer runs on the seat engine wire already built, so no second engine is constructed.
+	c.env.Landing.FixerSeats = c.env.Seats
 	return nil
 }
 

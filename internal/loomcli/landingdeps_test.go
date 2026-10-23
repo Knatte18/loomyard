@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -133,10 +134,9 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	if deps.ClassifyVerifyFailure != nil {
 		t.Error("landingDeps(...).ClassifyVerifyFailure is set for loom's verify source; want nil")
 	}
-	// The merge fixer's seams have no filler in landingDeps yet.
+	// FixerSeats is the one field wireLanding fills, from the seat engine wire built.
 	unfilled := map[string]bool{
-		"PublishSkip": true, "ClassifyVerifyFailure": true,
-		"FixerSeats": true, "DecisionRecordPath": true, "PlanDir": true, "LineChange": true, "IsTestFile": true, "RowEntry": true, "TaskRemoteTip": true,
+		"PublishSkip": true, "ClassifyVerifyFailure": true, "FixerSeats": true,
 	}
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
@@ -146,6 +146,79 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		if field.IsZero() {
 			t.Errorf("landingDeps(...).%s is the zero value; want it populated", typ.Field(i).Name)
 		}
+	}
+}
+
+// TestRowEntry asserts rowEntry answers the history index just after the last entry another producer made.
+func TestRowEntry(t *testing.T) {
+	t.Parallel()
+
+	entry := func(producer string) shedengine.HistoryEntry { return shedengine.HistoryEntry{Producer: producer} }
+	tests := []struct {
+		name    string
+		history []shedengine.HistoryEntry
+		want    int
+	}{
+		{"EmptyHistory", nil, 0},
+		{"OwnResumedEntries", []shedengine.HistoryEntry{entry("Webster"), entry("Merge-In"), entry("Merge-In")}, 1},
+		{"ReachedAgainFromAnotherRow", []shedengine.HistoryEntry{entry("Merge-In"), entry("Finalize"), entry("Merge-In")}, 2},
+		{"OnlyOwnEntries", []shedengine.HistoryEntry{entry("Merge-In"), entry("Merge-In")}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := rowEntry(tt.history, "Merge-In"); got != tt.want {
+				t.Errorf("rowEntry(%v, Merge-In) = %d; want %d", tt.history, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFixerTestFileMatcher asserts the matcher a darn run gets is the union over languages, and a loom run's follows the live plan's language.
+func TestFixerTestFileMatcher(t *testing.T) {
+	t.Parallel()
+
+	writePlan := func(t *testing.T, language string) string {
+		t.Helper()
+		planDir := planparser.PlanDir(t.TempDir())
+		plankit.Write(t, planDir, plankit.Plan{
+			Language: language,
+			Cards: []plankit.Card{{
+				Number:        1,
+				Slug:          "first-card",
+				Summary:       "the first card",
+				Groups:        []plankit.Group{{Label: "Edit", Targets: []string{"docs/a.md"}}},
+				Intent:        "change the doc.",
+				ImpactSummary: "none",
+			}},
+		})
+		return planDir
+	}
+	unparseable := t.TempDir()
+
+	tests := []struct {
+		name    string
+		recipe  string
+		planDir string
+		path    string
+		want    bool
+	}{
+		{"DarnUnionGoTest", shedrun.RecipeDarn, "", "a/b_test.go", true},
+		{"DarnUnionCsharpTest", shedrun.RecipeDarn, "", "a/BTests.cs", true},
+		{"DarnUnionSource", shedrun.RecipeDarn, "", "a/b.go", false},
+		{"LoomNoLanguageReadsGo", shedrun.RecipeLoom, writePlan(t, ""), "a/b_test.go", true},
+		{"LoomNoLanguageSourceIsNotATest", shedrun.RecipeLoom, writePlan(t, ""), "a/b.go", false},
+		{"LoomCsharpPlanIgnoresGoTests", shedrun.RecipeLoom, writePlan(t, "csharp"), "a/b_test.go", false},
+		{"LoomCsharpPlanMatchesCsharpTests", shedrun.RecipeLoom, writePlan(t, "csharp"), "a/BTests.cs", true},
+		{"LoomUnparseablePlanCountsEveryFile", shedrun.RecipeLoom, unparseable, "a/b.go", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := fixerTestFileMatcher(tt.recipe, tt.planDir)(tt.path); got != tt.want {
+				t.Errorf("fixerTestFileMatcher(%s, %q)(%q) = %t; want %t", tt.recipe, tt.planDir, tt.path, got, tt.want)
+			}
+		})
 	}
 }
 

@@ -7,6 +7,7 @@ package loomcli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/failuretrace"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -238,10 +240,70 @@ func landingDeps(
 			}
 			return f.MergeBase(ref)
 		},
-		MergeRecordPath:   landingshed.MergeRecordPath(loomengine.LoomScratchDir(l)),
-		MergeReviewedPath: landingshed.MergeReviewedPath(loomengine.LoomScratchDir(l)),
-		Alignment:         landingAlignmentDeps(l, recipe, geom.StencilsDir, registry, runner, runner.PauseGeometry()),
+		MergeRecordPath:    landingshed.MergeRecordPath(loomengine.LoomScratchDir(l)),
+		MergeReviewedPath:  landingshed.MergeReviewedPath(loomengine.LoomScratchDir(l)),
+		Alignment:          landingAlignmentDeps(l, recipe, geom.StencilsDir, registry, runner, runner.PauseGeometry()),
+		DecisionRecordPath: loomengine.DiscussionDecisionRecord(l),
+		PlanDir:            fixerPlanDir(l, recipe),
+		LineChange: func(from, to string) (fabricengine.LineChange, error) {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return fabricengine.LineChange{}, err
+			}
+			return f.LineChange(from, to)
+		},
+		IsTestFile: fixerTestFileMatcher(recipe, fixerPlanDir(l, recipe)),
+		RowEntry: func(row string) (int, error) {
+			status, _, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(l, shedrun.SelfRunID), shedrun.StatusLock(l, shedrun.SelfRunID))
+			if err != nil {
+				return 0, err
+			}
+			return rowEntry(status.History, row), nil
+		},
+		// The task branch's remote-tracking ref is read without a fetch, so an absent one is no tip.
+		TaskRemoteTip: func() (string, error) {
+			tip, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/remotes/origin/" + taskBranch)
+			if errors.Is(err, gitrepo.ErrRefNotFound) {
+				return "", nil
+			}
+			return tip, err
+		},
 	}
+}
+
+// fixerPlanDir returns the plan directory the merge fixer reads: the run's plan directory on a loom run, and "" on a darn run, which has none.
+func fixerPlanDir(l *lyxcwd.Location, recipe string) string {
+	if recipe == shedrun.RecipeDarn {
+		return ""
+	}
+	return planparser.PlanDir(l.AnchorPath())
+}
+
+// fixerTestFileMatcher returns the test-file predicate the fixer's kind cap judges a path by.
+// A darn run has no plan and so no language, and matches a test file of any language.
+// A loom run parses the live plan at call time, reading an absent `language:` as go and a plan that does not parse as none, whose matcher counts every file a test file and so over-covers.
+func fixerTestFileMatcher(recipe, planDir string) func(path string) bool {
+	if recipe == shedrun.RecipeDarn {
+		return planparser.IsAnyLanguageTestFile
+	}
+	return func(path string) bool {
+		language := "none"
+		if plan, err := planparser.ParsePlan(planDir); err == nil {
+			language = planparser.PlanLanguage(plan)
+		}
+		return planparser.IsTestFile(language, path)
+	}
+}
+
+// rowEntry returns the history index just after the last entry a producer other than row made, or 0 when row made every entry.
+// Every entry the row adds while it is resumed keeps that index, and an entry of the row reached again from another row gets a new one.
+func rowEntry(history []shedengine.HistoryEntry, row string) int {
+	for index := len(history) - 1; index >= 0; index-- {
+		if history[index].Producer != row {
+			return index + 1
+		}
+	}
+	return 0
 }
 
 // parentTipsReader returns the parent-tip reader the landing and the darn rows share:
