@@ -225,7 +225,7 @@ func (FabricReplay) Apply(req fabricengine.BoardReplayRequest) (fabricengine.Boa
 			return fabricengine.BoardReplayResult{}, fmt.Errorf("save store: %w", err)
 		}
 	}
-	if err := RenderToDisk(req.BoardDir, store.Tasks(), cfg.Outputs(), time.Now()); err != nil {
+	if err := RenderToDisk(req.BoardDir, store.Tasks(), store.primeOwner, cfg.Outputs(), time.Now()); err != nil {
 		return fabricengine.BoardReplayResult{}, fmt.Errorf("render: %w", err)
 	}
 	return run.result, nil
