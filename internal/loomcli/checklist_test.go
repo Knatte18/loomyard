@@ -464,7 +464,7 @@ func TestRenderChecklist(t *testing.T) {
 			name: "a visit with spans of two entries draws one gate line per entry in first-appearance order, opening with its first span's start, a held span adding into its entry's gate time",
 			rows: recipe,
 			poll: checklistStatus(shedengine.StateRunning, "Review", withGateSpans(doneEntry("Plan", 5),
-				gateSpan("plan", shedengine.GateSpanKindGate, 0, 7),
+				shedengine.GateSpan{Gate: "plan", Kind: shedengine.GateSpanKindGate, Start: "2026-01-02T12:00:00+02:00", End: secondMark(7)},
 				gateSpan("plan", shedengine.GateSpanKindRework, 7, 70),
 				gateSpan("plan", shedengine.GateSpanKindGate, 70, 75),
 				gateSpan("plan", shedengine.GateSpanKindRework, 75, 197),
