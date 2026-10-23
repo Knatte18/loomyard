@@ -3,8 +3,10 @@
 package main
 
 import (
+	pathpkg "path"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
@@ -47,7 +49,8 @@ type cardGraph struct {
 // buildCardGraph derives the matrix and dependency graph of plan.
 // A card changes every ref under its type labels and uses every ref under its Uses label alone,
 // and a later card depends on an earlier one when an overlapping pair of their refs has a change on at least one side.
-func buildCardGraph(plan *planparser.Plan) cardGraph {
+// With additiveGuess set, a change-against-change pair makes no edge when either column is guessed additive.
+func buildCardGraph(plan *planparser.Plan, additiveGuess bool) cardGraph {
 	g := cardGraph{cards: plan.Cards}
 	seen := map[string]bool{}
 	for _, card := range plan.Cards {
@@ -73,7 +76,7 @@ func buildCardGraph(plan *planparser.Plan) cardGraph {
 	for i := range n {
 		g.direct[i] = make([]edgeKind, n)
 		for j := i + 1; j < n; j++ {
-			g.direct[i][j] = dependencyKind(g.cells[i], g.cells[j], plan)
+			g.direct[i][j] = dependencyKind(g.cells[i], g.cells[j], plan, additiveGuess)
 		}
 	}
 	g.reduced = transitiveReduction(g.direct)
@@ -93,7 +96,8 @@ func columnKey(plan *planparser.Plan, ref string) string {
 
 // dependencyKind returns the strongest dependency between two cards' cells:
 // edgeChange when both change an overlapping pair of refs, edgeUse when one changes and the other only uses it, and edgeNone otherwise.
-func dependencyKind(earlier, later map[string]mark, plan *planparser.Plan) edgeKind {
+// With guessAdditive set, a pair where both change and either column is guessed additive is skipped.
+func dependencyKind(earlier, later map[string]mark, plan *planparser.Plan, guessAdditive bool) edgeKind {
 	kind := edgeNone
 	for earlierColumn, earlierMark := range earlier {
 		for laterColumn, laterMark := range later {
@@ -104,12 +108,38 @@ func dependencyKind(earlier, later map[string]mark, plan *planparser.Plan) edgeK
 				continue
 			}
 			if earlierMark == markChange && laterMark == markChange {
+				if guessAdditive && (additiveGuess(earlierColumn) || additiveGuess(laterColumn)) {
+					continue
+				}
 				return edgeChange
 			}
 			kind = edgeUse
 		}
 	}
 	return kind
+}
+
+// additiveGuess reports whether a matrix column is one that cards usually only add to, so two cards changing it need no order:
+// a path or self glyph whose file is a doc.go, anything under docs/, PATTERN.md or anything under contracts/specs/,
+// and a member glyph whose last dotted name segment starts with wire or is addWeftVerbs.
+// It is a heuristic for the report's measurement and never a statement that the change is safe to reorder.
+func additiveGuess(column string) bool {
+	path, isPath := planparser.PathEntryPath(column)
+	if !isPath {
+		member, err := planparser.ParseRef(&planparser.Plan{}, column)
+		if err != nil {
+			path, isPath = column, !strings.Contains(column, "#")
+		} else if !member.IsSelf() {
+			return strings.HasPrefix(member.Name, "wire") || member.Name == "addWeftVerbs"
+		}
+	}
+	if !isPath {
+		return false
+	}
+	return pathpkg.Base(path) == "doc.go" ||
+		strings.HasPrefix(path, "docs/") ||
+		path == "PATTERN.md" ||
+		strings.HasPrefix(path, "contracts/specs/")
 }
 
 // columnsOverlap reports whether two columns name the same code:

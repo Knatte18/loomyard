@@ -9,7 +9,8 @@ import (
 
 // renderMarkdown returns the report of g for the plan at planDir:
 // a summary line, the levels table of cards that could run in parallel, each card's direct dependencies and the card by ref matrix.
-func renderMarkdown(g cardGraph, planDir string) string {
+// A non-nil guessed, the same plan's graph under the additive guess, adds one line after the summary comparing the two critical paths and best speedups.
+func renderMarkdown(g cardGraph, guessed *cardGraph, planDir string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Card DAG: %s\n\n", planDir)
 
@@ -29,6 +30,11 @@ func renderMarkdown(g cardGraph, planDir string) string {
 		widest = max(widest, len(ids))
 	}
 	fmt.Fprintf(&b, "%d cards, %d direct dependencies, critical path %d cards, widest level %d cards.\n\n", len(g.cards), directEdges, criticalPath, widest)
+	if guessed != nil {
+		plainPath, guessedPath := criticalPathLength(g), criticalPathLength(*guessed)
+		fmt.Fprintf(&b, "Critical path %d cards, best speedup %.2fx; with the additive guess %d cards, best speedup %.2fx.\n\n",
+			plainPath, bestSpeedup(g, plainPath), guessedPath, bestSpeedup(*guessed, guessedPath))
+	}
 
 	b.WriteString("## Levels\n\n")
 	b.WriteString("A card's level is the number of cards on the longest chain ending at it; cards of one level have no path between them.\n\n")
@@ -71,6 +77,23 @@ func renderMarkdown(g cardGraph, planDir string) string {
 		b.WriteString("\n")
 	}
 	return b.String()
+}
+
+// criticalPathLength returns the number of cards on g's longest dependency chain.
+func criticalPathLength(g cardGraph) int {
+	longest := 0
+	for _, depth := range g.depth {
+		longest = max(longest, depth)
+	}
+	return longest
+}
+
+// bestSpeedup returns g's card count divided by its critical path, the speedup of running every level in parallel.
+func bestSpeedup(g cardGraph, criticalPath int) float64 {
+	if criticalPath == 0 {
+		return 0
+	}
+	return float64(len(g.cards)) / float64(criticalPath)
 }
 
 // kindMark returns the matrix letter naming an edge kind.
