@@ -8,6 +8,7 @@
 package loomcli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1109,6 +1110,57 @@ func TestLoomRerouteCapWayForward_IsRowNeutral(t *testing.T) {
 	for _, want := range []string{`lyx loom resume`, "parent branch has settled", "--amends-plan", "lyx loom goto --to Plan-Burler-Review"} {
 		if !strings.Contains(loomRerouteCapWayForward, want) {
 			t.Errorf("loomRerouteCapWayForward = %q; want it to contain %q", loomRerouteCapWayForward, want)
+		}
+	}
+}
+
+// TestLoomRerouteCapWayForward proves a loom shed that reroutes Finalize past the cap halts blocked at Finalize with the told clause, which names the parent-branch cause, the spent fixer cap and the over-cap fixer change, each with its way forward.
+func TestLoomRerouteCapWayForward(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	statusPath := filepath.Join(dir, "status.json")
+	statusLockPath := filepath.Join(dir, "status.lock")
+	err := state.UpdateJSON(statusPath, statusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+		cur.CurrentProducer = loomshed.NameFinalize
+		cur.State = shedengine.StateRunning
+		return cur, nil
+	})
+	if err != nil {
+		t.Fatalf("seed status: %v", err)
+	}
+	reroute := funcProducer(func(context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+		return shedengine.Stuck, shedengine.OutputPointer{Reroute: true, Reason: "the fixer's change is over the caps"}, nil
+	})
+	shed := &shedengine.Shed{
+		Producers: []shedengine.ProducerDef{
+			{Name: loomshed.NameMergeIn, Producer: doneProducer, OnDone: loomshed.NameFinalize},
+			{Name: loomshed.NameFinalize, Producer: reroute, OnReroute: loomshed.NameMergeIn},
+		},
+		StatusPath:           statusPath,
+		LockPath:             filepath.Join(dir, "run.lock"),
+		StatusLockPath:       statusLockPath,
+		RerouteCapWayForward: loomRerouteCapWayForward,
+	}
+
+	res, err := shed.Run(t.Context())
+	if err != nil {
+		t.Fatalf("Run() error = %v; want nil", err)
+	}
+	if res.Outcome != shedengine.RunBlocked || res.HaltedProducer != loomshed.NameFinalize {
+		t.Fatalf("Run() = %q at %q; want blocked at %q", res.Outcome, res.HaltedProducer, loomshed.NameFinalize)
+	}
+	if !strings.HasPrefix(res.Reason, shedengine.ReasonRerouteCapReached) {
+		t.Errorf("Run() reason = %q; want it to start with %q", res.Reason, shedengine.ReasonRerouteCapReached)
+	}
+	for _, want := range []string{
+		"for a parent-branch reroute, once the parent branch has settled",
+		"for a fixer whose attempts are spent, once the failing tests are fixed on the task branch",
+		"for a fixer whose change is over the caps, once the fixer's commits are reviewed and fixed on the task branch",
+		`run "lyx loom resume"`,
+	} {
+		if !strings.Contains(res.Reason, want) {
+			t.Errorf("Run() reason = %q; want it to contain %q", res.Reason, want)
 		}
 	}
 }

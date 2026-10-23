@@ -1117,7 +1117,7 @@ const loomMissingStatusWayForward = "way forward: run \"lyx loom start\" first t
 
 // loomRerouteCapWayForward is the told clause a reroute-cap halt ends with, whichever row's reroute hit the cap.
 // The halt is resumed once the cause its reason quotes is cleared.
-const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a parent-branch reroute, once the parent branch has settled; for a Webster plan conflict, once the run's parent has recorded the fix with \"lyx loom decision add\" and \"--amends-plan\", then run \"lyx loom goto --to Plan-Burler-Review\""
+const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a parent-branch reroute, once the parent branch has settled; for a fixer whose attempts are spent, once the failing tests are fixed on the task branch; for a fixer whose change is over the caps, once the fixer's commits are reviewed and fixed on the task branch; for a Webster plan conflict, once the run's parent has recorded the fix with \"lyx loom decision add\" and \"--amends-plan\", then run \"lyx loom goto --to Plan-Burler-Review\""
 
 // loomBudgetWayForward is the told clause a bounce-budget-exhausted halt ends with, whichever row's budget ran out.
 // Only the resume grants a budget; a goto keeps the spent one.
