@@ -241,6 +241,40 @@ func TestBolt_CommitWritten(t *testing.T) {
 		if status := gitStatusPorcelain(t, repoPath); strings.Contains(status, "seed.md") {
 			t.Errorf("git status --porcelain = %q; want the seed.md deletion committed", status)
 		}
+		if got := gitkit.Git(t, repoPath, "show", "--name-status", "--format=", "HEAD"); strings.TrimSpace(got) != "D\tseed.md" {
+			t.Errorf("HEAD's changes = %q; want only the seed.md deletion", got)
+		}
+	})
+
+	t.Run("a path neither on disk nor in HEAD commits nothing", func(t *testing.T) {
+		headBefore := gitkit.RevParse(t, repoPath, "HEAD")
+
+		sha, committed, err := b.CommitWritten("bolt never", func() ([]string, error) {
+			return []string{"never.md"}, nil
+		}, SyncOptions{})
+		if err != nil || committed || sha != "" {
+			t.Errorf("CommitWritten() = (%q, %v, %v); want no commit and no error", sha, committed, err)
+		}
+		if got := gitkit.RevParse(t, repoPath, "HEAD"); got != headBefore {
+			t.Errorf("HEAD = %q; want it unchanged at %q", got, headBefore)
+		}
+	})
+
+	t.Run("a repo with no commits stages a written file and leaves out a missing one", func(t *testing.T) {
+		unborn := newBoltRepo(t, container, "unborn", bareRemote)
+
+		sha, committed, err := NewBolt(unborn).CommitWritten("bolt first", func() ([]string, error) {
+			return []string{"missing.md", "first.md"}, os.WriteFile(filepath.Join(unborn, "first.md"), []byte("first"), 0o644)
+		}, SyncOptions{})
+		if err != nil {
+			t.Fatalf("CommitWritten() error = %v; want nil", err)
+		}
+		if !committed || sha == "" {
+			t.Fatalf("CommitWritten() = (%q, %v); want a new commit", sha, committed)
+		}
+		if got := gitkit.Git(t, unborn, "show", "--name-status", "--format=", "HEAD"); strings.TrimSpace(got) != "A\tfirst.md" {
+			t.Errorf("HEAD's changes = %q; want only first.md added", got)
+		}
 	})
 
 	t.Run("an empty path list commits nothing", func(t *testing.T) {

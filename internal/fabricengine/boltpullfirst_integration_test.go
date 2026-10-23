@@ -323,6 +323,28 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		}
 	})
 
+	t.Run("a write of only a path neither on disk nor in HEAD commits nothing", func(t *testing.T) {
+		t.Parallel()
+		f := newBoltFixture(t)
+		headBefore := f.head()
+		write := fabricengine.BoltWrite{
+			Message: "write ghost",
+			Write:   func() ([]string, error) { return []string{"notes/ghost.md"}, nil },
+		}
+		rec := fabricengine.NewMutations(f.hub.Path)
+
+		res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{write}, rec)
+		if err != nil {
+			t.Fatalf("PullThenCommitWritten: %v", err)
+		}
+		if res.Committed || len(res.SHAs) != 0 || res.Skipped != "" {
+			t.Errorf("result = %+v; want no commit and no skip", res)
+		}
+		if got := f.head(); got != headBefore {
+			t.Errorf("HEAD = %q; want it unchanged at %q", got, headBefore)
+		}
+	})
+
 	t.Run("a board with no upstream writes and commits", func(t *testing.T) {
 		t.Parallel()
 		for _, tc := range []struct {
