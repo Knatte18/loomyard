@@ -98,7 +98,7 @@ You re-launch the loop on your own in exactly these cases, a closed list:
   the guide's binary watch states the watch and the clean-tree guard that gate it.
 
 Never re-launch over an `awaiting`, `paused` or `busy` stop, an `ownership` stop, a no-kind refusal, a stop marked `hand_back`, or an `interrupted` stop under `interrupt_policy: handback`.
-A stop marked `hand_back` goes to the parent with no arbiter and no re-step, since only the parent's `lyx loom resume` lifts it.
+A stop marked `hand_back` goes to the parent with no arbiter and no re-step, since only the parent's resume lifts it.
 Before any self-initiated re-launch, remove the park marker.
 
 ## Arbiter
