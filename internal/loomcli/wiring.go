@@ -1012,7 +1012,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a loom run leaves them nil.
 	if c.recipe == shedrun.RecipeDarn {
-		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry, reviewSettings.Models, shedadapters.BouncerModels(judgeSettings.Webster)); err != nil {
+		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry, reviewSettings.Models, shedadapters.BouncerModels(judgeSettings.Code)); err != nil {
 			return err
 		}
 	}
@@ -1044,7 +1044,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 var loomPerches = map[string]loomengine.Perch{
 	loomshed.NameDiscussionBouncer: loomengine.PerchDiscussion,
 	loomshed.NamePlanBouncer:       loomengine.PerchPlan,
-	loomshed.NameWebsterBouncer:    loomengine.PerchWebster,
+	loomshed.NameWebsterBouncer:    loomengine.PerchCode,
 	loomshed.NameMergeBouncer:      loomengine.PerchMerge,
 }
 
@@ -1053,7 +1053,7 @@ var loomPerches = map[string]loomengine.Perch{
 var loomSegmentPerches = map[string]loomengine.Perch{
 	"Discussion-Review": loomengine.PerchDiscussion,
 	"Plan-Review":       loomengine.PerchPlan,
-	"Webster-Review":    loomengine.PerchWebster,
+	"Webster-Review":    loomengine.PerchCode,
 	"Merge-Review":      loomengine.PerchMerge,
 }
 
@@ -1069,25 +1069,25 @@ func loomSegmentBudgets(cfg loomengine.Config) map[string]int {
 }
 
 // loomSegmentSettings builds one shedrecipe.SegmentSettings per loom review segment.
-// Models and their keys come from review, the Bouncer pair from judge (the Merge segment takes the Webster pair), and the budget and hard cap with their keys from cfg.Caps, which resolves them through reviewbudget.
+// Models and their keys come from review, the Bouncer pair from judge (the Merge segment takes the Code pair), and the budget and hard cap with their keys from cfg.Caps, which resolves them through reviewbudget.
 func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings, judge loomengine.JudgeSettings) map[string]shedrecipe.SegmentSettings {
 	models := map[loomengine.Perch]burlerengine.RoundModels{
 		loomengine.PerchDiscussion: review.Discussion,
 		loomengine.PerchPlan:       review.Plan,
-		loomengine.PerchWebster:    review.Webster,
+		loomengine.PerchCode:       review.Code,
 		loomengine.PerchMerge:      review.Merge,
 	}
 	keys := map[loomengine.Perch]loomengine.SegmentKeys{
 		loomengine.PerchDiscussion: review.DiscussionKeys,
 		loomengine.PerchPlan:       review.PlanKeys,
-		loomengine.PerchWebster:    review.WebsterKeys,
+		loomengine.PerchCode:       review.CodeKeys,
 		loomengine.PerchMerge:      review.MergeKeys,
 	}
 	bouncers := map[loomengine.Perch]loomengine.BouncerModels{
 		loomengine.PerchDiscussion: judge.Discussion,
 		loomengine.PerchPlan:       judge.Plan,
-		loomengine.PerchWebster:    judge.Webster,
-		loomengine.PerchMerge:      judge.Webster,
+		loomengine.PerchCode:       judge.Code,
+		loomengine.PerchMerge:      judge.Code,
 	}
 	settings := make(map[string]shedrecipe.SegmentSettings, len(loomSegmentPerches))
 	for segment, perch := range loomSegmentPerches {

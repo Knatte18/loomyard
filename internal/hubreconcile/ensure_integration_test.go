@@ -140,17 +140,17 @@ func formerUnits(t *testing.T, module, template string, former map[string]string
 // loomFormerUnits are loom's tuned units at their former template values: the lens fans, the models, the driver, the bounce budgets and the auto-accept.
 func loomFormerUnits() map[string]string {
 	former := map[string]string{
-		"webster_reviewer_model": "sonnet[high]",
+		"code_reviewer_model":    "sonnet[high]",
 		"merge_reviewer_model":   "sonnet[high]",
 		"driver":                 "sonnet[medium]",
 		"discussion_max_bounces": "~",
-		"webster_max_bounces":    "~",
-		"webster_auto_accept":    "false",
+		"code_max_bounces":       "~",
+		"code_auto_accept":       "false",
 	}
-	for _, unit := range []string{"discussion_lenses", "plan_lenses", "discussion_reviewer_model", "plan_reviewer_model", "webster_fixer_model", "merge_fixer_model"} {
+	for _, unit := range []string{"discussion_lenses", "plan_lenses", "discussion_reviewer_model", "plan_reviewer_model", "code_fixer_model", "merge_fixer_model"} {
 		former[unit] = `""`
 	}
-	for _, segment := range []string{"discussion", "plan", "webster", "merge"} {
+	for _, segment := range []string{"discussion", "plan", "code", "merge"} {
 		former[segment+"_reviewer_fan"] = `""`
 		former[segment+"_fixer_fan"] = `""`
 	}
@@ -669,8 +669,8 @@ func assertBoardStrippedOnce(t *testing.T, h *hubforge.Hub, modelsBefore []byte)
 	if err != nil {
 		t.Fatalf("loomengine.LoadConfig over the board's base: %v", err)
 	}
-	if cfg.DiscussionLenses != "twill-discussion" || cfg.WebsterMaxBounces == nil || *cfg.WebsterMaxBounces != 1 {
-		t.Errorf("loom resolves DiscussionLenses %q and WebsterMaxBounces %v; want twill-discussion and 1", cfg.DiscussionLenses, cfg.WebsterMaxBounces)
+	if cfg.DiscussionLenses != "twill-discussion" || cfg.CodeMaxBounces == nil || *cfg.CodeMaxBounces != 1 {
+		t.Errorf("loom resolves DiscussionLenses %q and CodeMaxBounces %v; want twill-discussion and 1", cfg.DiscussionLenses, cfg.CodeMaxBounces)
 	}
 }
 

@@ -105,17 +105,17 @@ func templateConfig() Config {
 		DiscussionFixerModel:     burlerengine.ModelSpecList{""},
 		PlanReviewerModel:        burlerengine.ModelSpecList{"opus[medium]", "sonnet[high]"},
 		PlanFixerModel:           burlerengine.ModelSpecList{""},
-		WebsterReviewerModel:     burlerengine.ModelSpecList{"sonnet[medium]"},
-		WebsterFixerModel:        burlerengine.ModelSpecList{"sonnet[medium]"},
+		CodeReviewerModel:        burlerengine.ModelSpecList{"sonnet[medium]"},
+		CodeFixerModel:           burlerengine.ModelSpecList{"sonnet[medium]"},
 		MergeReviewerModel:       burlerengine.ModelSpecList{"sonnet[medium]"},
 		MergeFixerModel:          burlerengine.ModelSpecList{"sonnet[medium]"},
 		DiscussionReviewerFan:    lenses.FanList{"review-discussion", ""},
 		PlanReviewerFan:          lenses.FanList{"review-plan", ""},
-		WebsterReviewerFan:       lenses.FanList{"review-code", ""},
+		CodeReviewerFan:          lenses.FanList{"review-code", ""},
 		MergeReviewerFan:         lenses.FanList{"review-code", ""},
 		DiscussionFixerFan:       lenses.FanList{"fix-discussion"},
 		PlanFixerFan:             lenses.FanList{"fix-plan"},
-		WebsterFixerFan:          lenses.FanList{"fix-code"},
+		CodeFixerFan:             lenses.FanList{"fix-code"},
 		MergeFixerFan:            lenses.FanList{"fix-code"},
 		Judge:                    "sonnet[medium]",
 		ReviewTimeoutMin:         240,
@@ -141,10 +141,10 @@ func templateConfig() Config {
 		ReviewAmendMaxBounces:    1,
 		DiscussionMaxBounces:     intPtr(2),
 		PlanMaxBounces:           nil,
-		WebsterMaxBounces:        intPtr(1),
+		CodeMaxBounces:           intPtr(1),
 		DiscussionAutoAccept:     false,
 		PlanAutoAccept:           false,
-		WebsterAutoAccept:        true,
+		CodeAutoAccept:           true,
 		MergeMaxBounces:          intPtr(1),
 		MergeHardMaxBounces:      0,
 		MergeAutoAccept:          true,
@@ -177,12 +177,12 @@ review_timeout_min: 240
 			name:       "empty fan keys never read a malformed lenses.yaml",
 			lensesYAML: malformedLensesYAML,
 			values: map[string]string{
-				"discussion_reviewer_fan": `""`, "plan_reviewer_fan": `""`, "webster_reviewer_fan": `""`, "merge_reviewer_fan": `""`,
-				"discussion_fixer_fan": `""`, "plan_fixer_fan": `""`, "webster_fixer_fan": `""`, "merge_fixer_fan": `""`,
+				"discussion_reviewer_fan": `""`, "plan_reviewer_fan": `""`, "code_reviewer_fan": `""`, "merge_reviewer_fan": `""`,
+				"discussion_fixer_fan": `""`, "plan_fixer_fan": `""`, "code_fixer_fan": `""`, "merge_fixer_fan": `""`,
 			},
 			mutate: func(c *Config) {
-				c.DiscussionReviewerFan, c.PlanReviewerFan, c.WebsterReviewerFan, c.MergeReviewerFan = lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}
-				c.DiscussionFixerFan, c.PlanFixerFan, c.WebsterFixerFan, c.MergeFixerFan = lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}
+				c.DiscussionReviewerFan, c.PlanReviewerFan, c.CodeReviewerFan, c.MergeReviewerFan = lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}
+				c.DiscussionFixerFan, c.PlanFixerFan, c.CodeFixerFan, c.MergeFixerFan = lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}
 			},
 		},
 		{
@@ -206,9 +206,9 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.PlanReviewerModel = burlerengine.ModelSpecList{"sonnet[low]", "opus[high]"} },
 		},
 		{
-			name:   "webster_fixer_model as one model-spec",
-			values: map[string]string{"webster_fixer_model": "opus[low]"},
-			mutate: func(c *Config) { c.WebsterFixerModel = burlerengine.ModelSpecList{"opus[low]"} },
+			name:   "code_fixer_model as one model-spec",
+			values: map[string]string{"code_fixer_model": "opus[low]"},
+			mutate: func(c *Config) { c.CodeFixerModel = burlerengine.ModelSpecList{"opus[low]"} },
 		},
 		{
 			name:   "merge_reviewer_model and merge_fixer_model set",
@@ -224,12 +224,12 @@ review_timeout_min: 240
 		},
 		{
 			name:   "each fan key as one fan name",
-			values: map[string]string{"discussion_reviewer_fan": "standard", "plan_reviewer_fan": "full", "webster_reviewer_fan": "review-code", "merge_reviewer_fan": "standard", "discussion_fixer_fan": "fix-discussion", "plan_fixer_fan": "fix-plan", "webster_fixer_fan": "fix-code", "merge_fixer_fan": "fix-code"},
+			values: map[string]string{"discussion_reviewer_fan": "standard", "plan_reviewer_fan": "full", "code_reviewer_fan": "review-code", "merge_reviewer_fan": "standard", "discussion_fixer_fan": "fix-discussion", "plan_fixer_fan": "fix-plan", "code_fixer_fan": "fix-code", "merge_fixer_fan": "fix-code"},
 			mutate: func(c *Config) {
 				c.DiscussionReviewerFan, c.PlanReviewerFan = lenses.FanList{"standard"}, lenses.FanList{"full"}
-				c.WebsterReviewerFan, c.MergeReviewerFan = lenses.FanList{"review-code"}, lenses.FanList{"standard"}
+				c.CodeReviewerFan, c.MergeReviewerFan = lenses.FanList{"review-code"}, lenses.FanList{"standard"}
 				c.DiscussionFixerFan, c.PlanFixerFan = lenses.FanList{"fix-discussion"}, lenses.FanList{"fix-plan"}
-				c.WebsterFixerFan, c.MergeFixerFan = lenses.FanList{"fix-code"}, lenses.FanList{"fix-code"}
+				c.CodeFixerFan, c.MergeFixerFan = lenses.FanList{"fix-code"}, lenses.FanList{"fix-code"}
 			},
 		},
 		{
@@ -237,18 +237,18 @@ review_timeout_min: 240
 			values: map[string]string{
 				"discussion_reviewer_fan": "\n  - \"\"\n  - review-discussion",
 				"plan_reviewer_fan":       "\n  - review-plan\n  - \"\"",
-				"webster_reviewer_fan":    "\n  - review-code\n  - \"\"",
+				"code_reviewer_fan":       "\n  - review-code\n  - \"\"",
 				"merge_reviewer_fan":      "\n  - \"\"\n  - review-code",
 				"discussion_fixer_fan":    "\n  - \"\"\n  - fix-discussion",
 				"plan_fixer_fan":          "\n  - fix-plan\n  - \"\"",
-				"webster_fixer_fan":       "\n  - fix-code\n  - \"\"",
+				"code_fixer_fan":          "\n  - fix-code\n  - \"\"",
 				"merge_fixer_fan":         "\n  - \"\"\n  - fix-code",
 			},
 			mutate: func(c *Config) {
 				c.DiscussionReviewerFan, c.PlanReviewerFan = lenses.FanList{"", "review-discussion"}, lenses.FanList{"review-plan", ""}
-				c.WebsterReviewerFan, c.MergeReviewerFan = lenses.FanList{"review-code", ""}, lenses.FanList{"", "review-code"}
+				c.CodeReviewerFan, c.MergeReviewerFan = lenses.FanList{"review-code", ""}, lenses.FanList{"", "review-code"}
 				c.DiscussionFixerFan, c.PlanFixerFan = lenses.FanList{"", "fix-discussion"}, lenses.FanList{"fix-plan", ""}
-				c.WebsterFixerFan, c.MergeFixerFan = lenses.FanList{"fix-code", ""}, lenses.FanList{"", "fix-code"}
+				c.CodeFixerFan, c.MergeFixerFan = lenses.FanList{"fix-code", ""}, lenses.FanList{"", "fix-code"}
 			},
 		},
 		{
@@ -296,13 +296,13 @@ review_timeout_min: 240
 		{
 			name: "judge, seed and rework override keys set",
 			values: map[string]string{
-				"seed": "haiku[low]", "discussion_judge": "opus[low]", "plan_judge": "opus[high]", "webster_judge": "sonnet[low]",
-				"discussion_seed": "haiku[medium]", "plan_seed": "haiku[high]", "webster_seed": "sonnet[high]", "rework": "opus[low]",
+				"seed": "haiku[low]", "discussion_judge": "opus[low]", "plan_judge": "opus[high]", "code_judge": "sonnet[low]",
+				"discussion_seed": "haiku[medium]", "plan_seed": "haiku[high]", "code_seed": "sonnet[high]", "rework": "opus[low]",
 			},
 			mutate: func(c *Config) {
 				c.Seed, c.Rework = "haiku[low]", "opus[low]"
-				c.DiscussionJudge, c.PlanJudge, c.WebsterJudge = "opus[low]", "opus[high]", "sonnet[low]"
-				c.DiscussionSeed, c.PlanSeed, c.WebsterSeed = "haiku[medium]", "haiku[high]", "sonnet[high]"
+				c.DiscussionJudge, c.PlanJudge, c.CodeJudge = "opus[low]", "opus[high]", "sonnet[low]"
+				c.DiscussionSeed, c.PlanSeed, c.CodeSeed = "haiku[medium]", "haiku[high]", "sonnet[high]"
 			},
 		},
 		{
@@ -377,12 +377,12 @@ review_timeout_min: 240
 		{
 			name: "explicit per-perch budgets and auto-accept flags",
 			values: map[string]string{
-				"discussion_max_bounces": "1", "plan_max_bounces": "2", "webster_max_bounces": "4",
-				"discussion_auto_accept": "true", "plan_auto_accept": "true", "webster_auto_accept": "true",
+				"discussion_max_bounces": "1", "plan_max_bounces": "2", "code_max_bounces": "4",
+				"discussion_auto_accept": "true", "plan_auto_accept": "true", "code_auto_accept": "true",
 			},
 			mutate: func(c *Config) {
-				c.DiscussionMaxBounces, c.PlanMaxBounces, c.WebsterMaxBounces = intPtr(1), intPtr(2), intPtr(4)
-				c.DiscussionAutoAccept, c.PlanAutoAccept, c.WebsterAutoAccept = true, true, true
+				c.DiscussionMaxBounces, c.PlanMaxBounces, c.CodeMaxBounces = intPtr(1), intPtr(2), intPtr(4)
+				c.DiscussionAutoAccept, c.PlanAutoAccept, c.CodeAutoAccept = true, true, true
 			},
 		},
 		{
@@ -400,7 +400,7 @@ review_timeout_min: 240
 			name:     "a zero run-wide budget gives every null perch zero rounds",
 			values:   map[string]string{"review_max_bounces": "0"},
 			mutate:   func(c *Config) { c.ReviewMaxBounces = 0 },
-			wantSoft: map[Perch]int{PerchDiscussion: 2, PerchPlan: 0, PerchWebster: 1, PerchMerge: 1},
+			wantSoft: map[Perch]int{PerchDiscussion: 2, PerchPlan: 0, PerchCode: 1, PerchMerge: 1},
 		},
 		{
 			name:   "checkpoint above budget",
@@ -640,8 +640,8 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed discussion_fixer_model spec", "discussion_fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed plan_reviewer_model spec", "plan_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed plan_fixer_model spec", "plan_fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed webster_reviewer_model spec", "webster_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
-		{"malformed later webster_fixer_model entry", "webster_fixer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
+		{"malformed code_reviewer_model spec", "code_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
+		{"malformed later code_fixer_model entry", "code_fixer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
 		{"malformed merge_reviewer_model spec", "merge_reviewer_model", `"opus[effort"`, []string{`loom config key "merge_reviewer_model" entry 1`, "a non-empty list of model-specs"}, ""},
 		{"malformed later merge_fixer_model entry", "merge_fixer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{`loom config key "merge_fixer_model" entry 2`, "a non-empty list of model-specs"}, ""},
 		{"unknown discussion_reviewer_fan", "discussion_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "entry 1", `set the entry to ""`}, ""},
@@ -651,10 +651,10 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"empty plan_reviewer_fan list", "plan_reviewer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"empty discussion_fixer_fan list", "discussion_fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"empty plan_fixer_fan list", "plan_fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
-		{"unknown webster_reviewer_fan", "webster_reviewer_fan", "nosuchfan", []string{`loom config key "webster_reviewer_fan" entry 1`, `"nosuchfan"`, "known fans: ", `set the entry to ""`}, ""},
+		{"unknown code_reviewer_fan", "code_reviewer_fan", "nosuchfan", []string{`loom config key "code_reviewer_fan" entry 1`, `"nosuchfan"`, "known fans: ", `set the entry to ""`}, ""},
 		{"unknown second merge_fixer_fan entry", "merge_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{`loom config key "merge_fixer_fan" entry 2`, `"nosuchfan"`, "define the fan in lenses.yaml"}, ""},
 		{"empty merge_reviewer_fan list", "merge_reviewer_fan", "[]", []string{`loom config key "merge_reviewer_fan"`, "the list is empty", `write ""`}, ""},
-		{"mapping webster_fixer_fan value", "webster_fixer_fan", "\n  model: opus", []string{`loom config key "webster_fixer_fan"`, "neither a fan name nor a list of fan names"}, ""},
+		{"mapping code_fixer_fan value", "code_fixer_fan", "\n  model: opus", []string{`loom config key "code_fixer_fan"`, "neither a fan name nor a list of fan names"}, ""},
 		{"mapping discussion_fixer_fan value", "discussion_fixer_fan", "\n  model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
 		{"mapping inside a plan_reviewer_fan list", "plan_reviewer_fan", "\n  - full\n  - model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
 		{"set discussion_reviewer_fan with a malformed lenses.yaml", "discussion_reviewer_fan", "standard", []string{"lenses: config file ", "parse doc YAML", "fix lenses.yaml, or set the key to empty"}, malformedLensesYAML},
@@ -675,10 +675,10 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed seed spec", "seed", `"opus[effort"`, nil, ""},
 		{"malformed discussion_judge spec", "discussion_judge", `"opus[effort"`, nil, ""},
 		{"malformed plan_judge spec", "plan_judge", `"opus[effort"`, nil, ""},
-		{"malformed webster_judge spec", "webster_judge", `"opus[effort"`, nil, ""},
+		{"malformed code_judge spec", "code_judge", `"opus[effort"`, nil, ""},
 		{"malformed discussion_seed spec", "discussion_seed", `"opus[effort"`, nil, ""},
 		{"malformed plan_seed spec", "plan_seed", `"opus[effort"`, nil, ""},
-		{"malformed webster_seed spec", "webster_seed", `"opus[effort"`, nil, ""},
+		{"malformed code_seed spec", "code_seed", `"opus[effort"`, nil, ""},
 		{"malformed rework spec", "rework", `"opus[effort"`, nil, ""},
 		{"malformed friction spec", "friction", `"opus[effort"`, nil, ""},
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
@@ -699,16 +699,16 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"negative review_max_bounces", "review_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, or to a positive integer"}, ""},
 		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, to a positive integer, or to null to take review_max_bounces"}, ""},
 		{"negative plan_max_bounces", "plan_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
-		{"negative webster_max_bounces", "webster_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
+		{"negative code_max_bounces", "code_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
 		{"negative merge_max_bounces", "merge_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
 		{"negative review_amend_max_bounces", "review_amend_max_bounces", "-1", []string{"must not be negative", "set it to 0 to settle every amendment with no review round", "lyx config loom --set review_amend_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"zero review_hard_max_bounces", "review_hard_max_bounces", "0", []string{"must be at least 1", "lyx config loom --set review_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"negative discussion_hard_max_bounces", "discussion_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set discussion_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"negative plan_hard_max_bounces", "plan_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set plan_hard_max_bounces=<n>", `lyx loom resume`}, ""},
-		{"negative webster_hard_max_bounces", "webster_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set webster_hard_max_bounces=<n>", `lyx loom resume`}, ""},
+		{"negative code_hard_max_bounces", "code_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set code_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"negative merge_hard_max_bounces", "merge_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set merge_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"review_max_bounces above the default hard cap", "review_max_bounces", "5", []string{"review_hard_max_bounces", "lyx config loom --set review_hard_max_bounces=<n>", "in the task worktree", `lyx loom resume`}, ""},
-		{"webster_max_bounces above the default hard cap", "webster_max_bounces", "5", []string{"review_hard_max_bounces", "webster_max_bounces"}, ""},
+		{"code_max_bounces above the default hard cap", "code_max_bounces", "5", []string{"review_hard_max_bounces", "code_max_bounces"}, ""},
 		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative plan timeout", "plan_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"negative review timeout", "review_timeout_min", "-1", []string{"must not be negative"}, ""},
@@ -771,7 +771,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 
 	t.Run("a local fan key is refused naming the local file and the key", func(t *testing.T) {
 		t.Parallel()
-		for _, key := range []string{"discussion_reviewer_fan", "plan_reviewer_fan", "webster_reviewer_fan", "merge_reviewer_fan", "discussion_fixer_fan", "plan_fixer_fan", "webster_fixer_fan", "merge_fixer_fan"} {
+		for _, key := range []string{"discussion_reviewer_fan", "plan_reviewer_fan", "code_reviewer_fan", "merge_reviewer_fan", "discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan", "merge_fixer_fan"} {
 			t.Run(key, func(t *testing.T) {
 				t.Parallel()
 				board, anchor := t.TempDir(), t.TempDir()
@@ -1306,7 +1306,7 @@ func containsConfigKey(text, key string) bool {
 }
 
 // TestMigrateConfig_RetiredKeys pins what MigrateConfig rewrites for skip_merge_review, removes for fan_review and renames for the retired reviewer, fixer and fan keys: an old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null and skip_merge_review true turned to merge_max_bounces: 0 before the key goes;
-// a document without the key keeps its zeros as the zero-rounds meaning; a retired model or fan key takes its new name and the template's line comment unless the new name is already set, and Webster's retired models are copied onto unset Merge keys;
+// a document without the key keeps its zeros as the zero-rounds meaning; a retired model or fan key takes its new name and the template's line comment unless the new name is already set, each webster_* review-perch key then takes its code_* name, and Webster's retired models are copied onto unset Merge keys;
 // a second run changes nothing, a below-floor step_idle_timeout_min is still raised, and an unparseable document is refused.
 func TestMigrateConfig_RetiredKeys(t *testing.T) {
 	t.Parallel()
@@ -1320,9 +1320,9 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 		{
 			name:      "an old-schema zero becomes null and the skip key goes",
 			document:  "skip_merge_review: false\nplan_max_bounces: 0\nwebster_max_bounces: 2\n",
-			wantLines: []string{"plan_max_bounces: 0 rewritten to null, which takes review_max_bounces", "skip_merge_review: removed"},
-			wantKeys:  map[string]any{"plan_max_bounces": nil, "webster_max_bounces": 2},
-			wantGone:  []string{"skip_merge_review"},
+			wantLines: []string{"plan_max_bounces: 0 rewritten to null, which takes review_max_bounces", "skip_merge_review: removed", "webster_max_bounces: renamed to code_max_bounces"},
+			wantKeys:  map[string]any{"plan_max_bounces": nil, "code_max_bounces": 2},
+			wantGone:  []string{"skip_merge_review", "webster_max_bounces"},
 		},
 		{
 			name:      "skip_merge_review true becomes a merge budget of 0",
@@ -1381,12 +1381,14 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 				"merge_fixer_model: set to webster_fix's value, the models Merge-Review ran on; Darn-Review now reads darn_fixer_model in darn.yaml, which this rewrite cannot set",
 				"webster_review: renamed to webster_reviewer_model",
 				"webster_fix: renamed to webster_fixer_model",
+				"webster_reviewer_model: renamed to code_reviewer_model",
+				"webster_fixer_model: renamed to code_fixer_model",
 			},
 			wantKeys: map[string]any{
-				"webster_reviewer_model": "sonnet[medium]", "webster_fixer_model": "sonnet[low]",
+				"code_reviewer_model": "sonnet[medium]", "code_fixer_model": "sonnet[low]",
 				"merge_reviewer_model": "sonnet[medium]", "merge_fixer_model": "sonnet[low]",
 			},
-			wantGone: []string{"webster_review", "webster_fix"},
+			wantGone: []string{"webster_review", "webster_fix", "webster_reviewer_model", "webster_fixer_model"},
 		},
 		{
 			name:     "a set new webster key is the value copied onto merge",
@@ -1394,16 +1396,47 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 			wantLines: []string{
 				"merge_reviewer_model: set to webster_reviewer_model's value, the models Merge-Review ran on; Darn-Review now reads darn_reviewer_model in darn.yaml, which this rewrite cannot set",
 				"webster_review: removed, webster_reviewer_model already set",
+				"webster_reviewer_model: renamed to code_reviewer_model",
 			},
-			wantKeys: map[string]any{"webster_reviewer_model": "sonnet[low]", "merge_reviewer_model": "sonnet[low]"},
-			wantGone: []string{"webster_review"},
+			wantKeys: map[string]any{"code_reviewer_model": "sonnet[low]", "merge_reviewer_model": "sonnet[low]"},
+			wantGone: []string{"webster_review", "webster_reviewer_model"},
 		},
 		{
 			name:      "a set merge key keeps its value",
 			document:  "webster_review: sonnet[medium]\nmerge_reviewer_model: opus[high]\n",
-			wantLines: []string{"webster_review: renamed to webster_reviewer_model"},
-			wantKeys:  map[string]any{"webster_reviewer_model": "sonnet[medium]", "merge_reviewer_model": "opus[high]"},
-			wantGone:  []string{"webster_review", "merge_fixer_model"},
+			wantLines: []string{"webster_review: renamed to webster_reviewer_model", "webster_reviewer_model: renamed to code_reviewer_model"},
+			wantKeys:  map[string]any{"code_reviewer_model": "sonnet[medium]", "merge_reviewer_model": "opus[high]"},
+			wantGone:  []string{"webster_review", "webster_reviewer_model", "merge_fixer_model"},
+		},
+		{
+			name:     "each webster review-perch key is renamed to its code successor with its value",
+			document: "webster_reviewer_model: sonnet[low]\nwebster_fixer_model: sonnet[high]\nwebster_reviewer_fan: review-code\nwebster_fixer_fan: fix-code\nwebster_judge: opus[low]\nwebster_seed: haiku[low]\nwebster_max_bounces: 2\nwebster_hard_max_bounces: 5\nwebster_auto_accept: false\n",
+			wantLines: []string{
+				"webster_reviewer_model: renamed to code_reviewer_model",
+				"webster_fixer_model: renamed to code_fixer_model",
+				"webster_reviewer_fan: renamed to code_reviewer_fan",
+				"webster_fixer_fan: renamed to code_fixer_fan",
+				"webster_judge: renamed to code_judge",
+				"webster_seed: renamed to code_seed",
+				"webster_max_bounces: renamed to code_max_bounces",
+				"webster_hard_max_bounces: renamed to code_hard_max_bounces",
+				"webster_auto_accept: renamed to code_auto_accept",
+			},
+			wantKeys: map[string]any{
+				"code_reviewer_model": "sonnet[low]", "code_fixer_model": "sonnet[high]", "code_reviewer_fan": "review-code", "code_fixer_fan": "fix-code",
+				"code_judge": "opus[low]", "code_seed": "haiku[low]", "code_max_bounces": 2, "code_hard_max_bounces": 5, "code_auto_accept": false,
+			},
+			wantGone: []string{
+				"webster_reviewer_model", "webster_fixer_model", "webster_reviewer_fan", "webster_fixer_fan", "webster_judge",
+				"webster_seed", "webster_max_bounces", "webster_hard_max_bounces", "webster_auto_accept",
+			},
+		},
+		{
+			name:      "a set code key wins over its webster one",
+			document:  "webster_max_bounces: 2\ncode_max_bounces: 4\n",
+			wantLines: []string{"webster_max_bounces: removed, code_max_bounces already set"},
+			wantKeys:  map[string]any{"code_max_bounces": 4},
+			wantGone:  []string{"webster_max_bounces"},
 		},
 		{
 			name:      "a set new key wins over its retired one",
@@ -1458,7 +1491,7 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 		if err := yaml.Unmarshal([]byte(ConfigTemplate()), &template); err != nil {
 			t.Fatalf("decode template: %v", err)
 		}
-		for _, key := range []string{"webster_reviewer_fan", "merge_reviewer_model"} {
+		for _, key := range []string{"code_reviewer_fan", "merge_reviewer_model"} {
 			if got, want := mappingValueNode(document.Content[0], key).LineComment, mappingValueNode(template.Content[0], key).LineComment; got != want {
 				t.Errorf("migrated %s line comment = %q; want the template's %q", key, got, want)
 			}

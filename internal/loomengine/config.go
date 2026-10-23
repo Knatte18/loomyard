@@ -1,20 +1,20 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the shared reviewer_model and fixer_model lists' grammar via modelspec.Parse, plus every entry of each review segment's own <segment>_reviewer_model and <segment>_fixer_model list that is set, an empty value meaning the shared list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of every perch's fan and fix fan key through lenses.ValidateFanKeys,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the shared reviewer_model and fixer_model lists' grammar via modelspec.Parse, plus every entry of each review segment's own <segment>_reviewer_model and <segment>_fixer_model list that is set, an empty value meaning the shared list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces, code_max_bounces or merge_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of every perch's fan and fix fan key through lenses.ValidateFanKeys,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // implementer names the engine of the Webster row, the implementer; it is read and validated where the recipe builds that row, never here.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
-// discussion_reviewer_fan, plan_reviewer_fan, webster_reviewer_fan and merge_reviewer_fan each name a fan from lenses.yaml, or list one per round, and turn the lens fan on for Discussion-Review, Plan-Review, Webster-Review and Merge-Review; an empty entry, the default, runs that round solo.
-// discussion_fixer_fan, plan_fixer_fan, webster_fixer_fan and merge_fixer_fan do the same for the fixer: an empty entry runs the single fixer, and a fan name runs the twill fixer with that fan's lenses.
+// discussion_reviewer_fan, plan_reviewer_fan, code_reviewer_fan and merge_reviewer_fan each name a fan from lenses.yaml, or list one per round, and turn the lens fan on for Discussion-Review, Plan-Review, Code-Review and Merge-Review; an empty entry, the default, runs that round solo.
+// discussion_fixer_fan, plan_fixer_fan, code_fixer_fan and merge_fixer_fan do the same for the fixer: an empty entry runs the single fixer, and a fan name runs the twill fixer with that fan's lenses.
 // A list's last entry serves every later round, and a reviewer fanned or not runs on its segment's own reviewer list, whose model the forks inherit.
 // fan_review is retired: MigrateConfig removes it.
 // The retired review, fix, <segment>_review, <segment>_fix, <segment>_fan and <segment>_fix_fan keys are renamed by MigrateConfig.
-// discussion_max_bounces, plan_max_bounces and webster_max_bounces set one perch's bounce budget, null takes review_max_bounces and 0 gives the perch zero rounds, its Bouncer settling approved at once;
-// review_hard_max_bounces is the round number at or past which no perch continues a round, refused below 1, and discussion_hard_max_bounces, plan_hard_max_bounces, webster_hard_max_bounces and merge_hard_max_bounces set one perch's own, where 0 takes review_hard_max_bounces and a negative value is refused;
+// discussion_max_bounces, plan_max_bounces and code_max_bounces set one perch's bounce budget, null takes review_max_bounces and 0 gives the perch zero rounds, its Bouncer settling approved at once;
+// review_hard_max_bounces is the round number at or past which no perch continues a round, refused below 1, and discussion_hard_max_bounces, plan_hard_max_bounces, code_hard_max_bounces and merge_hard_max_bounces set one perch's own, where 0 takes review_hard_max_bounces and a negative value is refused;
 // review_amend_max_bounces is the review rounds an amendment generation gets after a settled segment's subject changed, clamped to the perch's own budget, refused below 0, where 0 settles every amendment approved with no review round;
 // a perch whose resolved hard cap is below its resolved budget is refused too, and every one of these refusals names the command that changes the key in the layer its value comes from.
-// discussion_auto_accept, plan_auto_accept and webster_auto_accept make that perch accept a harvested round at a spent budget instead of running the soft-cap rule.
+// discussion_auto_accept, plan_auto_accept and code_auto_accept make that perch accept a harvested round at a spent budget instead of running the soft-cap rule.
 // merge_max_bounces, merge_hard_max_bounces and merge_auto_accept do the same for the Merge-Review perch, which sends a round whose ledger holds an open BLOCKING finding to the soft-cap rule instead of accepting it;
 // merge_max_bounces: 0 skips only that review, and Merge-In, the parent lock and the reroute on a moved parent still run.
 // skip_merge_review is retired: MigrateConfig rewrites it onto merge_max_bounces.
@@ -23,7 +23,7 @@
 // discussion_lenses and plan_lenses each name the lenses.yaml fan whose lenses the Discussion-Write or Plan-Write lead forks itself for once its output is written and self-checked; empty, the default, turns the forks off.
 // Neither is the discussion_reviewer_fan or plan_reviewer_fan of a review perch, and all three of these keys are closed to the local layer.
 // The retired discussion_producer and plan_producer keys are rewritten into these by MigrateConfig.
-// seed, discussion_judge, plan_judge, webster_judge, discussion_seed, plan_seed, webster_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
+// seed, discussion_judge, plan_judge, code_judge, discussion_seed, plan_seed, code_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
 // a per-segment judge takes judge, a per-segment seed takes seed, seed takes that segment's resolved judge, and rework takes plan.
 // arbiter is a role model-spec validated only when non-empty, an empty value taking opus[high]; arbiter_timeout_min and arbiter_max_spawns are refused when negative, and a zero arbiter_max_spawns turns the arbiter off.
 // driver_kind is the driver a task's loom run is seeded with when nothing typed one, llm or go, an empty value reading as llm; tackler is a role model-spec validated only when non-empty, an empty value taking haiku;
@@ -425,29 +425,29 @@ type Config struct {
 	DiscussionFixerModel    burlerengine.ModelSpecList `yaml:"discussion_fixer_model"`
 	PlanReviewerModel       burlerengine.ModelSpecList `yaml:"plan_reviewer_model"`
 	PlanFixerModel          burlerengine.ModelSpecList `yaml:"plan_fixer_model"`
-	WebsterReviewerModel    burlerengine.ModelSpecList `yaml:"webster_reviewer_model"`
-	WebsterFixerModel       burlerengine.ModelSpecList `yaml:"webster_fixer_model"`
+	CodeReviewerModel       burlerengine.ModelSpecList `yaml:"code_reviewer_model"`
+	CodeFixerModel          burlerengine.ModelSpecList `yaml:"code_fixer_model"`
 	MergeReviewerModel      burlerengine.ModelSpecList `yaml:"merge_reviewer_model"`
 	MergeFixerModel         burlerengine.ModelSpecList `yaml:"merge_fixer_model"`
 
 	// Each review segment's per-round reviewer and fixer fan lists.
 	DiscussionReviewerFan lenses.FanList `yaml:"discussion_reviewer_fan"`
 	PlanReviewerFan       lenses.FanList `yaml:"plan_reviewer_fan"`
-	WebsterReviewerFan    lenses.FanList `yaml:"webster_reviewer_fan"`
+	CodeReviewerFan       lenses.FanList `yaml:"code_reviewer_fan"`
 	MergeReviewerFan      lenses.FanList `yaml:"merge_reviewer_fan"`
 	DiscussionFixerFan    lenses.FanList `yaml:"discussion_fixer_fan"`
 	PlanFixerFan          lenses.FanList `yaml:"plan_fixer_fan"`
-	WebsterFixerFan       lenses.FanList `yaml:"webster_fixer_fan"`
+	CodeFixerFan          lenses.FanList `yaml:"code_fixer_fan"`
 	MergeFixerFan         lenses.FanList `yaml:"merge_fixer_fan"`
 
 	Judge               string `yaml:"judge"`
 	Seed                string `yaml:"seed"`
 	DiscussionJudge     string `yaml:"discussion_judge"`
 	PlanJudge           string `yaml:"plan_judge"`
-	WebsterJudge        string `yaml:"webster_judge"`
+	CodeJudge           string `yaml:"code_judge"`
 	DiscussionSeed      string `yaml:"discussion_seed"`
 	PlanSeed            string `yaml:"plan_seed"`
-	WebsterSeed         string `yaml:"webster_seed"`
+	CodeSeed            string `yaml:"code_seed"`
 	Rework              string `yaml:"rework"`
 	ReviewTimeoutMin    int    `yaml:"review_timeout_min"`
 	Friction            string `yaml:"friction"`
@@ -503,13 +503,13 @@ type Config struct {
 	// a flag true makes the perch accept a harvested round at a spent budget instead of running the soft-cap rule.
 	DiscussionMaxBounces     *int `yaml:"discussion_max_bounces"`
 	PlanMaxBounces           *int `yaml:"plan_max_bounces"`
-	WebsterMaxBounces        *int `yaml:"webster_max_bounces"`
+	CodeMaxBounces           *int `yaml:"code_max_bounces"`
 	DiscussionHardMaxBounces int  `yaml:"discussion_hard_max_bounces"`
 	PlanHardMaxBounces       int  `yaml:"plan_hard_max_bounces"`
-	WebsterHardMaxBounces    int  `yaml:"webster_hard_max_bounces"`
+	CodeHardMaxBounces       int  `yaml:"code_hard_max_bounces"`
 	DiscussionAutoAccept     bool `yaml:"discussion_auto_accept"`
 	PlanAutoAccept           bool `yaml:"plan_auto_accept"`
-	WebsterAutoAccept        bool `yaml:"webster_auto_accept"`
+	CodeAutoAccept           bool `yaml:"code_auto_accept"`
 
 	// The Merge-Review perch's budget, hard cap and auto-accept flag.
 	// A nil budget takes ReviewMaxBounces and a budget of 0 runs no merge review round; a hard cap of 0 takes ReviewHardMaxBounces.
@@ -564,9 +564,9 @@ func ConfigOpenMaps() []string {
 	return []string{
 		"reviewer_model", "fixer_model",
 		"discussion_reviewer_model", "discussion_fixer_model", "plan_reviewer_model", "plan_fixer_model",
-		"webster_reviewer_model", "webster_fixer_model", "merge_reviewer_model", "merge_fixer_model",
-		"discussion_reviewer_fan", "plan_reviewer_fan", "webster_reviewer_fan", "merge_reviewer_fan",
-		"discussion_fixer_fan", "plan_fixer_fan", "webster_fixer_fan", "merge_fixer_fan",
+		"code_reviewer_model", "code_fixer_model", "merge_reviewer_model", "merge_fixer_model",
+		"discussion_reviewer_fan", "plan_reviewer_fan", "code_reviewer_fan", "merge_reviewer_fan",
+		"discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan", "merge_fixer_fan",
 		"discussion_advisors",
 	}
 }
@@ -600,26 +600,26 @@ func ConfigSpec() configengine.Spec {
 			"discussion_fixer_model":     none,
 			"plan_reviewer_model":        none,
 			"plan_fixer_model":           none,
-			"webster_reviewer_model":     none,
-			"webster_fixer_model":        none,
+			"code_reviewer_model":        none,
+			"code_fixer_model":           none,
 			"merge_reviewer_model":       none,
 			"merge_fixer_model":          none,
 			"discussion_reviewer_fan":    guard,
 			"plan_reviewer_fan":          guard,
-			"webster_reviewer_fan":       guard,
+			"code_reviewer_fan":          guard,
 			"merge_reviewer_fan":         guard,
 			"discussion_fixer_fan":       guard,
 			"plan_fixer_fan":             guard,
-			"webster_fixer_fan":          guard,
+			"code_fixer_fan":             guard,
 			"merge_fixer_fan":            guard,
 			"judge":                      none,
 			"seed":                       none,
 			"discussion_judge":           none,
 			"plan_judge":                 none,
-			"webster_judge":              none,
+			"code_judge":                 none,
 			"discussion_seed":            none,
 			"plan_seed":                  none,
-			"webster_seed":               none,
+			"code_seed":                  none,
 			"rework":                     none,
 			"review_timeout_min":         none,
 			"friction":                   none,
@@ -664,8 +664,8 @@ func segmentModelKeys(cfg Config) []segmentModelList {
 		{"discussion_fixer_model", cfg.DiscussionFixerModel},
 		{"plan_reviewer_model", cfg.PlanReviewerModel},
 		{"plan_fixer_model", cfg.PlanFixerModel},
-		{"webster_reviewer_model", cfg.WebsterReviewerModel},
-		{"webster_fixer_model", cfg.WebsterFixerModel},
+		{"code_reviewer_model", cfg.CodeReviewerModel},
+		{"code_fixer_model", cfg.CodeFixerModel},
 		{"merge_reviewer_model", cfg.MergeReviewerModel},
 		{"merge_fixer_model", cfg.MergeFixerModel},
 	}
@@ -716,11 +716,11 @@ func fanKeys(cfg Config) []lenses.FanKey {
 	return []lenses.FanKey{
 		{Key: "discussion_reviewer_fan", Fans: cfg.DiscussionReviewerFan},
 		{Key: "plan_reviewer_fan", Fans: cfg.PlanReviewerFan},
-		{Key: "webster_reviewer_fan", Fans: cfg.WebsterReviewerFan},
+		{Key: "code_reviewer_fan", Fans: cfg.CodeReviewerFan},
 		{Key: "merge_reviewer_fan", Fans: cfg.MergeReviewerFan},
 		{Key: "discussion_fixer_fan", Fans: cfg.DiscussionFixerFan},
 		{Key: "plan_fixer_fan", Fans: cfg.PlanFixerFan},
-		{Key: "webster_fixer_fan", Fans: cfg.WebsterFixerFan},
+		{Key: "code_fixer_fan", Fans: cfg.CodeFixerFan},
 		{Key: "merge_fixer_fan", Fans: cfg.MergeFixerFan},
 	}
 }
@@ -739,6 +739,7 @@ func fanKeys(cfg Config) []lenses.FanKey {
 // A document without skip_merge_review keeps every budget as written, since its 0 already means zero rounds.
 // The retired reviewer, fixer and fan keys, review, fix, <segment>_review, <segment>_fix, <segment>_fan and <segment>_fix_fan, are renamed to reviewer_model, fixer_model, <segment>_reviewer_model, <segment>_fixer_model, <segment>_reviewer_fan and <segment>_fixer_fan with their values, and a document already holding the new name keeps its value and drops the old key.
 // Before the rename, a document holding webster_review or webster_fix and not merge_reviewer_model or merge_fixer_model gets that Merge key set to the Webster key's value, or to the renamed webster_reviewer_model or webster_fixer_model value when the document holds that too, so Merge-Review keeps the models it ran on.
+// After those renames, each webster_* review-perch key, webster_reviewer_model to webster_auto_accept, is renamed to its code_* successor with its value, so a retired webster_review ends as code_reviewer_model, and a document already holding the code_* name keeps its value and drops the webster_* key.
 // The driver_kind, tackler, tackler_timeout_min and tackler_max_spawns keys the retired template spelled out as llm, haiku, 10 and 4 become the values that inherit shed.yaml, and each of the four keys carrying the retired template's comment gets the current one.
 // A document without a retired key or comment is returned unchanged, so a migrated file is unchanged on a second pass.
 // Everything else is carried through yaml node editing with its comments;
@@ -778,6 +779,11 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
 	}
 	rewrites = append(rewrites, renameLines...)
+	migrated, perchRenameLines, err := yamlengine.RenameKeys([]byte(ConfigTemplate()), migrated, retiredPerchKeyRenames)
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
+	}
+	rewrites = append(rewrites, perchRenameLines...)
 	migrated, shedLines, err := migrateShedOverrides(migrated)
 	if err != nil {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate loom config: %w", err))
@@ -1107,6 +1113,20 @@ var retiredReviewKeyRenames = []yamlengine.KeyRename{
 	{From: "merge_fix_fan", To: "merge_fixer_fan"},
 }
 
+// retiredPerchKeyRenames maps each webster_* review-perch key of loom.yaml onto the code_* key of the Code-Review perch.
+// MigrateConfig applies it after retiredReviewKeyRenames, so a retired webster_review reaches code_reviewer_model through webster_reviewer_model.
+var retiredPerchKeyRenames = []yamlengine.KeyRename{
+	{From: "webster_reviewer_model", To: "code_reviewer_model"},
+	{From: "webster_fixer_model", To: "code_fixer_model"},
+	{From: "webster_reviewer_fan", To: "code_reviewer_fan"},
+	{From: "webster_fixer_fan", To: "code_fixer_fan"},
+	{From: "webster_judge", To: "code_judge"},
+	{From: "webster_seed", To: "code_seed"},
+	{From: "webster_max_bounces", To: "code_max_bounces"},
+	{From: "webster_hard_max_bounces", To: "code_hard_max_bounces"},
+	{From: "webster_auto_accept", To: "code_auto_accept"},
+}
+
 // copyWebsterModelsOntoMerge sets merge_reviewer_model and merge_fixer_model of document to the values of its retired webster_review and webster_fix, each only when the document holds the Webster key and not the Merge one.
 // When the document also holds the renamed webster_reviewer_model or webster_fixer_model, that value is copied instead, since it is the one the rename keeps.
 // Merge-Review ran on Webster-Review's models before it had keys of its own, so the copy keeps it on them.
@@ -1295,10 +1315,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		{"seed", cfg.Seed},
 		{"discussion_judge", cfg.DiscussionJudge},
 		{"plan_judge", cfg.PlanJudge},
-		{"webster_judge", cfg.WebsterJudge},
+		{"code_judge", cfg.CodeJudge},
 		{"discussion_seed", cfg.DiscussionSeed},
 		{"plan_seed", cfg.PlanSeed},
-		{"webster_seed", cfg.WebsterSeed},
+		{"code_seed", cfg.CodeSeed},
 		{"rework", cfg.Rework},
 	} {
 		if override.value == "" {
@@ -1420,13 +1440,13 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		PerchSoft: map[string]*int{
 			string(PerchDiscussion): cfg.DiscussionMaxBounces,
 			string(PerchPlan):       cfg.PlanMaxBounces,
-			string(PerchWebster):    cfg.WebsterMaxBounces,
+			string(PerchCode):       cfg.CodeMaxBounces,
 			string(PerchMerge):      cfg.MergeMaxBounces,
 		},
 		PerchHard: map[string]int{
 			string(PerchDiscussion): cfg.DiscussionHardMaxBounces,
 			string(PerchPlan):       cfg.PlanHardMaxBounces,
-			string(PerchWebster):    cfg.WebsterHardMaxBounces,
+			string(PerchCode):       cfg.CodeHardMaxBounces,
 			string(PerchMerge):      cfg.MergeHardMaxBounces,
 		},
 	}); err != nil {

@@ -344,7 +344,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		// The hub base is sparse, so the new name is planted for merge_fan to sit beside.
 		var planted []string
 		for _, line := range strings.Split(strings.TrimRight(string(current), "\n"), "\n") {
-			if !strings.HasPrefix(line, "webster_reviewer_fan:") && !strings.HasPrefix(line, "merge_reviewer_fan:") {
+			if !strings.HasPrefix(line, "code_reviewer_fan:") && !strings.HasPrefix(line, "merge_reviewer_fan:") {
 				planted = append(planted, line)
 			}
 		}
@@ -453,12 +453,12 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read the board loom.yaml: %v", err)
 		}
-		for _, want := range []string{"\nwebster_reviewer_fan: review-code", "\nmerge_reviewer_fan:"} {
+		for _, want := range []string{"\ncode_reviewer_fan: review-code", "\nmerge_reviewer_fan:"} {
 			if !strings.Contains(string(after), want) {
 				t.Errorf("applied board loom.yaml lacks %q; got %q", want, after)
 			}
 		}
-		for _, gone := range []string{"\nwebster_fan:", "\nmerge_fan:", "stale-fan"} {
+		for _, gone := range []string{"\nwebster_fan:", "\nwebster_reviewer_fan:", "\nmerge_fan:", "stale-fan"} {
 			if strings.Contains(string(after), gone) {
 				t.Errorf("applied board loom.yaml still holds %q; got %q", gone, after)
 			}

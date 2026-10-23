@@ -82,7 +82,7 @@
 # plan itself, and Loom-Preflight's batcher.yaml load keeps the early failure the row gave.
 #
 # The Bouncer, review and fix rows of those segments declare no max_bounces: their budget is the
-# perch's own loom.yaml key (discussion_max_bounces, plan_max_bounces, webster_max_bounces or merge_max_bounces),
+# perch's own loom.yaml key (discussion_max_bounces, plan_max_bounces, code_max_bounces or merge_max_bounces),
 # an absent per-perch budget takes review_max_bounces, and a perch at 0 keeps its route while its
 # Bouncer settles at once, applied by internal/loomrecipe. PR-Gate keeps its literal max_bounces.
 
@@ -371,8 +371,8 @@ producers:
       run_subdir: webster
       subject: code
       role_prefix: webster
-      reviewer_fan_setting: loom.webster_reviewer_fan
-      auto_accept_setting: loom.webster_auto_accept
+      reviewer_fan_setting: loom.code_reviewer_fan
+      auto_accept_setting: loom.code_auto_accept
       # The subject under review is the committed diff, which artifact_paths cannot name at all:
       # the key is required and non-empty, every entry resolves to an absolute path under
       # Env.AnchorPath, and the generic bouncer-template-judge.md renders the list as the
@@ -410,8 +410,8 @@ producers:
       # shared run directory.
       run_subdir: webster
       role_prefix: webster
-      reviewer_fan_setting: loom.webster_reviewer_fan
-      fixer_fan_setting: loom.webster_fixer_fan
+      reviewer_fan_setting: loom.code_reviewer_fan
+      fixer_fan_setting: loom.code_fixer_fan
       profile:
         target:
           # No paths key, deliberately: burlerengine's own Profile.validate resolves and stats
@@ -446,7 +446,7 @@ producers:
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
         # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name loom.yaml's
-        # webster_reviewer_fan and webster_fixer_fan, whose forks reach the diff through read-only git.
+        # code_reviewer_fan and code_fixer_fan, whose forks reach the diff through read-only git.
       # No model/effort key: model choice lives in loom.yaml's reviewer and fixer model keys only.
       # No timeout_s key, for the same Env fallback reason as Webster-Bouncer.
 
@@ -461,7 +461,7 @@ producers:
     config:
       run_subdir: webster
       role_prefix: webster
-      fixer_fan_setting: loom.webster_fixer_fan
+      fixer_fan_setting: loom.code_fixer_fan
       review_row: Webster-Burler-Review
       # The verify gate runs on the committed tree after each round and re-prompts the round
       # session with the findings until it passes. It first runs the headroom lint from the merge

@@ -95,9 +95,9 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
-			name:     "a retired webster model key is renamed by loom's Migrate and copied onto merge",
+			name:     "a retired webster model key is renamed to its code key by loom's Migrate and copied onto merge",
 			settings: map[string]any{"loom": map[string]any{"webster_review": "sonnet[high]"}},
-			wantDocs: map[string]string{"loom": "webster_reviewer_model: sonnet[high] # model-spec for the Webster-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\nmerge_reviewer_model: sonnet[high] # model-spec for the Merge-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\n"},
+			wantDocs: map[string]string{"loom": "code_reviewer_model: sonnet[high] # model-spec for the Code-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\nmerge_reviewer_model: sonnet[high] # model-spec for the Merge-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\n"},
 		},
 		{
 			name:        "a retired darn fan key is renamed by darn's Migrate and refused as a guard key",

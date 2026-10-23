@@ -378,7 +378,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 		for segment, wantModels := range map[string]burlerengine.RoundModels{
 			"Discussion-Review": want.Discussion,
 			"Plan-Review":       want.Plan,
-			"Webster-Review":    want.Webster,
+			"Webster-Review":    want.Code,
 			"Merge-Review":      want.Merge,
 		} {
 			if got := c.env.Segments[segment].Models; !reflect.DeepEqual(got, wantModels) {
@@ -869,15 +869,15 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 // TestWire_ReviewKeysReachTheEnv verifies the loom.yaml keys that tune a review round reach the Env:
 // plan_reviewer_model lands in the Plan-Review segment's models alone, and Discussion-Review takes the template's per-round discussion_reviewer_model with the run-wide fix models.
 // Webster-Review and Merge-Review take the template's own reviewer and fixer models (one sonnet entry of effort medium each).
-// plan_judge, seed and webster_seed land in each segment's Bouncer pair, Merge-Review taking Webster-Review's.
+// plan_judge, seed and code_seed land in each segment's Bouncer pair, Merge-Review taking Webster-Review's.
 // The per-perch budget and hard cap keys land in each segment's MaxBounces and HardMaxBounces, and every segment's entry is pinned whole.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
 	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{
-		"plan_reviewer_model": "opus[effort=low]", "plan_judge": "opus[effort=high]", "seed": "haiku[effort=low]", "webster_seed": "opus[effort=low]",
-		"plan_max_bounces": "2", "webster_max_bounces": "1", "webster_auto_accept": "true", "merge_max_bounces": "0",
+		"plan_reviewer_model": "opus[effort=low]", "plan_judge": "opus[effort=high]", "seed": "haiku[effort=low]", "code_seed": "opus[effort=low]",
+		"plan_max_bounces": "2", "code_max_bounces": "1", "code_auto_accept": "true", "merge_max_bounces": "0",
 		"plan_hard_max_bounces": "5",
 	})
 
@@ -932,7 +932,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 
 	// Each loom segment's entry joins the models, keys and Bouncer pair with its resolved budget and hard cap:
-	// plan_max_bounces, webster_max_bounces, merge_max_bounces and plan_hard_max_bounces name their own keys, the rest fall back to the run-wide ones.
+	// plan_max_bounces, code_max_bounces, merge_max_bounces and plan_hard_max_bounces name their own keys, the rest fall back to the run-wide ones.
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
 	wantSegments := map[string]shedrecipe.SegmentSettings{
 		"Discussion-Review": {
@@ -948,9 +948,9 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			HardMaxBounces: 5, HardMaxBouncesKey: "plan_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		"Webster-Review": {
-			Models: c.env.Segments["Webster-Review"].Models, ReviewKey: loomKey("webster_reviewer_model"), FixKey: loomKey("webster_fixer_model"),
+			Models: c.env.Segments["Webster-Review"].Models, ReviewKey: loomKey("code_reviewer_model"), FixKey: loomKey("code_fixer_model"),
 			Bouncer:    wantBouncerModels["Webster-Review"],
-			MaxBounces: 1, MaxBouncesKey: "webster_max_bounces",
+			MaxBounces: 1, MaxBouncesKey: "code_max_bounces",
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		"Merge-Review": {
@@ -977,12 +977,12 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		"plan_reviewer_fan":         "full",
 		"discussion_fixer_fan":      "fix-discussion",
 		"plan_fixer_fan":            "\n  - fix-plan\n  - \"\"",
-		"webster_reviewer_fan":      "review-code",
+		"code_reviewer_fan":         "review-code",
 		"merge_reviewer_fan":        "\n  - review-code\n  - \"\"",
-		"webster_fixer_fan":         "fix-code",
+		"code_fixer_fan":            "fix-code",
 		"merge_fixer_fan":           "\n  - \"\"\n  - fix-code",
 		"discussion_reviewer_model": "opus[effort=low]",
-		"webster_fixer_model":       "sonnet[low]",
+		"code_fixer_model":          "sonnet[low]",
 	})
 	fanned := &loomCLI{runID: shedrun.SelfRunID}
 	if err := fanned.wire(fannedLoc, fannedLoc.AnchorPath()); err != nil {
@@ -993,8 +993,8 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if discussion.ReviewKey != loomKey("discussion_reviewer_model") {
 		t.Errorf("Segments[Discussion-Review].ReviewKey = %+v; want discussion_reviewer_model", discussion.ReviewKey)
 	}
-	if webster.FixKey != loomKey("webster_fixer_model") {
-		t.Errorf("Segments[Webster-Review].FixKey = %+v; want webster_fixer_model", webster.FixKey)
+	if webster.FixKey != loomKey("code_fixer_model") {
+		t.Errorf("Segments[Webster-Review].FixKey = %+v; want code_fixer_model", webster.FixKey)
 	}
 	// Setting answers a loom key from the pair's resolved config.
 	if fanned.env.Setting == nil {

@@ -265,7 +265,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 			_, env, paths := buildSequenceFixture(t)
 			setBudgets(&env, 3, map[string]int{"Webster-Review": 1})
 			env.Setting = func(module, key string) (any, error) {
-				if module == "loom" && key == "webster_auto_accept" {
+				if module == "loom" && key == "code_auto_accept" {
 					return true, nil
 				}
 				return envkit.TemplateSetting(module, key)
