@@ -400,14 +400,15 @@ func refuseNothingLeft(slug string, remove, endOnly bool, reading cancelMarkerRe
 	if parts.TaskBranch {
 		return nil
 	}
-	if !endOnly {
-		onOrigin, err := deps.TaskBranchOnOrigin()
-		if err != nil {
-			return probeRefusal("the task branch on origin", slug, rerun, err)
-		}
-		if onOrigin {
-			return nil
-		}
+	if endOnly {
+		return fmt.Errorf("origin was unreachable, so the task branch of %s on origin could not be read; way forward: run %s again once origin answers", slug, rerun)
+	}
+	onOrigin, err := deps.TaskBranchOnOrigin()
+	if err != nil {
+		return probeRefusal("the task branch on origin", slug, rerun, err)
+	}
+	if onOrigin {
+		return nil
 	}
 	return fmt.Errorf("nothing of %s is left to cancel; way forward: check it with \"lyx board list\"", slug)
 }

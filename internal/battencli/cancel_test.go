@@ -525,6 +525,17 @@ func TestCancelRun(t *testing.T) {
 			marker:    "none",
 		},
 		{
+			name:   "NothingLeftWithRemoveAndUnreachableOriginNamesTheRerun",
+			remove: true,
+			setup: func(f *cancelFake) {
+				f.recordsPresent, f.boardStatus, f.boardFound = false, nil, false
+				f.pullErr = pullUnreachable
+			},
+			wantErr: `origin was unreachable, so the task branch of some-slug on origin could not be read; way forward: run "lyx batten cancel some-slug --remove" again once origin answers`,
+			noCalls: append([]string{"TakeMarker", "TaskBranchOnOrigin"}, destructiveCancelCalls...),
+			marker:  "none",
+		},
+		{
 			name:   "TaskBranchOnOriginAloneIsLeftToDiscardWithRemove",
 			remove: true,
 			setup: func(f *cancelFake) {
