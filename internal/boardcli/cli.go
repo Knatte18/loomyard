@@ -258,7 +258,7 @@ Example:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Find tasks whose slug, title, brief or body contains the text, done tasks included.
 The arguments are joined with single spaces into one search text. At least one argument is required.
-Prints the same JSON as "lyx board list"; with --text it prints the compact one-line-per-task
+Prints the same tasks array as "lyx board list", in an envelope without prime_owner; with --text it prints the compact one-line-per-task
 listing instead (errors stay JSON); its columns are handle, kind, priority, age, time since last revision, slug, title, labels and, when set, [status].
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
 A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
