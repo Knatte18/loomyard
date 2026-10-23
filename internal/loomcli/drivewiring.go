@@ -19,7 +19,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
-	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -28,7 +27,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
@@ -40,7 +38,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // driveRefusal is the refusal of a second Go driver for a run one already drives.
@@ -145,7 +142,6 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 	reportRand := newDriverReportRand()
 	readStatus := circlingStatusReader(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	gotoGuard := c.settledGuard()
-	verifyPaths := verifytree.NewPaths(location.WorktreePath(), verifytree.Dir(location.AnchorPath()))
 	pauseGeometry := func() (pauserecord.Geometry, error) { return hubgeom.PauseGeometry(location) }
 
 	tacklerDeps := sheddriver.TacklerDeps{
@@ -296,16 +292,6 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 				return attempt.EnvelopePath, err
 			},
 		},
-		Verify: &sheddriver.VerifySeam{
-			Halt: func() (bool, string, error) { return publishHaltMatches(location, verifyPaths, readStatus) },
-			RetrySpentElsewhere: func() (bool, error) {
-				watch, _ := readBattenWatch(shedrun.BattenWatchedMarker(location, c.runID), proc.IsAlive)
-				if watch.ScratchDir == "" {
-					return false, nil
-				}
-				return battenshed.PublishRetrySpent(watch.ScratchDir, watch.Producer)
-			},
-		},
 		HandOver: &sheddriver.HandOverSeam{
 			OnDiskBuild: func() (buildvcs.Identity, error) { return buildvcs.OfFile(executable) },
 			BuildChanged: func(onDisk buildvcs.Identity) bool {
@@ -346,29 +332,6 @@ func (c *loomCLI) driverStep(ctx context.Context, attempt string) ([]byte, error
 func (c *loomCLI) driverGoto(ctx context.Context, target string) error {
 	_, err := shedverbs.RunGoto(ctx, c.spec, target, shedengine.CallerShed)
 	return err
-}
-
-// publishHaltMatches reports whether the Publish failure record matches the blocked stop the status shows, and the row the record names.
-// A run with no failure record matches nothing.
-func publishHaltMatches(location *lyxcwd.Location, verifyPaths verifytree.Paths, readStatus func() (shedengine.Status, bool, error)) (bool, string, error) {
-	record, found, err := verifytree.ReadPublishFailure(verifyPaths)
-	if err != nil || !found {
-		return false, "", err
-	}
-	failure := battenshed.ChildPublishFailure{Row: record.Row, Head: record.Head, Target: record.Target, WrittenAt: record.WrittenAt}
-	fab, err := fabricengine.Open(location)
-	if err != nil {
-		return false, "", err
-	}
-	head, err := fab.HeadSHA()
-	if err != nil {
-		return false, "", err
-	}
-	status, statusFound, err := readStatus()
-	if err != nil || !statusFound {
-		return false, "", fmt.Errorf("reading the status to match the failure record: found %t: %v", statusFound, err)
-	}
-	return battenshed.RecordMatchesHalt(failure, head, status, []string{loomshed.NameMergeIn, loomshed.NamePublish}), failure.Target, nil
 }
 
 // loomPark returns loom's Park seam: it commits the run's records and writes the park marker holding reportPath, through commitAndPark.

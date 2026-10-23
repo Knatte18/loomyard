@@ -31,7 +31,6 @@ func TestBattenDriverDeps(t *testing.T) {
 
 	unwired := map[string]bool{
 		"Arbiter":           deps.Arbiter == nil,
-		"Verify":            deps.Verify == nil,
 		"Watched":           deps.Watched == nil,
 		"HandOver":          deps.HandOver == nil,
 		"Tamper":            deps.Tamper == nil,

@@ -31,7 +31,6 @@
 //   - an awaiting stop the arbiter would admit: the arbiter decides;
 //   - an awaiting stop with a parent notice: relay the notice and hand back;
 //   - any other awaiting stop: hand back;
-//   - a blocked stop matching the verify halt record: hand back under a watching batten, otherwise one goto to the record's target and a re-step, and hand back once that retry is spent;
 //   - a stop the on-disk build could change, after the last step ran another build: hand over to a fresh driver of the on-disk build, once per build;
 //   - a stop an applied tackler resume returned to: the arbiter decides;
 //   - a transient error that outlived its re-step: the tackler decides;
@@ -46,7 +45,7 @@
 //
 // The settle records at `shedrun.SettleRecords` hold one line per action taken at a stop.
 // The record format and its tolerant decoder are declared in `internal/shedrun`; this package appends and reads the file, and `SettleRecord` and `StopKey` are aliases of the types declared there.
-// The repair cap, the one verify retry, the one hand-over per build and the open tackler attempt are counted from them, so a restarted driver keeps every cap.
+// The repair cap, the one hand-over per build and the open tackler attempt are counted from them, so a restarted driver keeps every cap.
 // `RestepRecorded` reads a record list for a re-step of the stop a status names, so a reader outside the driver tells a re-stepped stop from one still open.
 //
 // # Seams a recipe fills
@@ -55,7 +54,6 @@
 // The rest are optional, and an unwired one only removes rows or agents from the table:
 //
 //   - no `Arbiter`: an escalation to it hands back, relaying the parent notice at an awaiting stop;
-//   - no `Verify`: no stop is a verify halt;
 //   - no `HandOver`: the driver reads no build and never hands over;
 //   - no `Tamper`: a tackler verdict is acted on without comparing the worktree with its snapshot;
 //   - no `StartCheck`: a driver starting at a blocked stop steps it unchecked;

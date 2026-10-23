@@ -128,13 +128,8 @@ func (s Stop) Key() StopKey {
 type driveFacts struct {
 	// EscalationPending is true when the arbiter would admit the awaiting stop: its eligibility, not mere pendency of an escalation.
 	EscalationPending bool
-	// VerifyMatches is true when the Publish failure record matches the halt; VerifyTarget is the row it names.
-	VerifyMatches bool
-	VerifyTarget  string
 	// Watched is true when a live batten watches the run.
 	Watched bool
-	// VerifyRetrySpent is true when the run's one verify retry is spent, by the Go driver's settle records or batten's marker.
-	VerifyRetrySpent bool
 	// BuildChanged is true when the on-disk build differs from the last step's.
 	BuildChanged bool
 	// HandedOver is true when a hand-over settle record exists for this stop key and build.
@@ -154,7 +149,6 @@ const (
 	driveActionHandBack      driveAction = "hand-back"
 	driveActionRelayHandBack driveAction = "relay-hand-back"
 	driveActionArbiter       driveAction = "arbiter"
-	driveActionVerifyGoto    driveAction = "verify-goto"
 	driveActionHandOver      driveAction = "hand-over"
 	driveActionTackler       driveAction = "tackler"
 	driveActionRestep        driveAction = "restep"
@@ -218,14 +212,6 @@ func decideDrive(stop Stop, facts driveFacts) driveDecision {
 		return driveDecision{Action: driveActionRelayHandBack, Rule: "an awaiting stop with a parent notice: relay it and hand back"}
 	case state == string(shedengine.StateAwaiting):
 		return driveDecision{Action: driveActionHandBack, Rule: "an awaiting stop: planned hand-back"}
-	case state == string(shedengine.StateBlocked) && facts.VerifyMatches:
-		switch {
-		case facts.Watched:
-			return driveDecision{Action: driveActionHandBack, Rule: "a verify halt matching the failure record under a watching batten: hand back"}
-		case !facts.VerifyRetrySpent:
-			return driveDecision{Action: driveActionVerifyGoto, Rule: "a verify halt matching the failure record: one goto to the record's target, then re-step"}
-		}
-		return driveDecision{Action: driveActionHandBack, Rule: "a verify halt matching the failure record with the one retry spent: hand back"}
 	case binaryEligible(stop) && facts.BuildChanged && !facts.HandedOver:
 		return driveDecision{Action: driveActionHandOver, Rule: "the on-disk build changed since the last step: hand over to a fresh driver"}
 	case facts.ResumeReturned:
