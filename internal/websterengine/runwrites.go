@@ -18,7 +18,8 @@ type RunWrites struct {
 	Master []shuttleengine.WriteEvent
 	// Forks holds every fork's writes, session by session, each in discovery then transcript order.
 	Forks []shuttleengine.WriteEvent
-	// Recoveries holds every recovery session's and cold verify-gate fixer session's own writes, session by session, each in transcript order.
+	// Recoveries holds every recovery session's and cold verify-gate fixer session's own writes, session by session, each in transcript order;
+	// a contract file last written by either is reported as written by "a recovery or verify-fixer session".
 	Recoveries []shuttleengine.WriteEvent
 }
 

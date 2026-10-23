@@ -42,8 +42,8 @@ func contractCanon(geom Geometry, path string) (canon string, contract bool, err
 const (
 	// writerFork names a fork as the last writer of a contract file.
 	writerFork = "a fork"
-	// writerRecovery names a recovery session as the last writer of a contract file.
-	writerRecovery = "a recovery session"
+	// writerRecovery names a recovery session or a cold verify-gate fixer session as the last writer of a contract file.
+	writerRecovery = "a recovery or verify-fixer session"
 )
 
 // contractFileStatus reports whether path is one of this run's contract files, and whether the audit finding on it is cleared.
