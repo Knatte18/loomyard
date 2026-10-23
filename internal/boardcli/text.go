@@ -1,4 +1,4 @@
-// text.go renders the compact one-line-per-entry listing that "list --text" and "find --text" print instead of JSON.
+// text.go renders the compact one-line-per-entry listing that "list --text" and "find --text" print instead of JSON, and the prime-owner line that opens list's.
 
 package boardcli
 
@@ -57,6 +57,14 @@ func RenderCompact(tasks []boardengine.BriefTask, now time.Time) string {
 		sb.WriteByte('\n')
 	}
 	return sb.String()
+}
+
+// primeOwnerLine is the line that opens the `list --text` listing: the machine that owns the hub's prime, or none when the board records none.
+func primeOwnerLine(primeOwner string) string {
+	if primeOwner == "" {
+		primeOwner = "none"
+	}
+	return "prime owner: " + primeOwner + "\n"
 }
 
 // pad right-pads s with spaces to width characters, so a multi-byte character counts as one column.

@@ -130,7 +130,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		}
 	}
 
-	if err := RenderToDisk(b.boardPath, store.Tasks(), b.out, now); err != nil {
+	if err := RenderToDisk(b.boardPath, store.Tasks(), store.primeOwner, b.out, now); err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 
@@ -273,6 +273,18 @@ func (b *Board) EffectiveOwner(slug string) (string, error) {
 		return "", err
 	}
 	return store.effectiveOwner(slug)
+}
+
+// PrimeOwner returns the machine board.json records as owning the hub's prime, "" when none is recorded or the board directory is absent, persisting nothing.
+func (b *Board) PrimeOwner() (string, error) {
+	if _, err := os.Stat(b.boardPath); os.IsNotExist(err) {
+		return "", nil
+	}
+	store, err := b.loadStore()
+	if err != nil {
+		return "", err
+	}
+	return store.primeOwner, nil
 }
 
 // checkFilterLabels refuses a filter label that is in neither list of the vocabulary and that no entry carries.

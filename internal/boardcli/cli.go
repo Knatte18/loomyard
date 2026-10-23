@@ -738,8 +738,10 @@ Examples:
 		Use:         "list",
 		Short:       "list all tasks with computed fields",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `List all tasks in README order with their computed fields (layer, has_proposal).
-With --text, print the compact one-line-per-task listing (handle, kind, priority, age, time since last revision, slug, title, labels, [status])
+		Long: `List all tasks in README order with their computed fields (layer, has_proposal),
+beside "prime_owner", the machine that owns the hub's prime ("" when none is recorded).
+With --text, print a "prime owner: <machine>" line ("none" when none is recorded),
+then the compact one-line-per-task listing (handle, kind, priority, age, time since last revision, slug, title, labels, [status])
 instead of JSON; errors stay JSON.
 --label <name> keeps only entries carrying that label; repeat it to require several (AND).
 A label that is in neither the types nor the labels list of board.yaml and that no entry carries is refused.
@@ -759,7 +761,17 @@ Examples:
 			if err := sortByDate(tasks, listSort); err != nil {
 				return outputError(out, err.Error())
 			}
-			return writeListing(out, tasks, listText)
+			primeOwner, err := board().PrimeOwner()
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			if !listText {
+				return output.Ok(out, map[string]any{"prime_owner": primeOwner, "tasks": tasks})
+			}
+			if _, err := io.WriteString(out, primeOwnerLine(primeOwner)+RenderCompact(tasks, time.Now())); err != nil {
+				return outputError(out, err.Error())
+			}
+			return 0
 		}),
 	}
 	listCmd.Flags().BoolVar(&listText, "text", false, "print the compact one-line-per-task listing instead of JSON")
