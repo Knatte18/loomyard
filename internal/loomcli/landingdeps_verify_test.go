@@ -24,12 +24,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// gateConfigWithTwoTiers returns the gate config template with tier0 and tier1 declared, the landing gate listing both and the publish gate listing tier1.
+// gateConfigWithTwoTiers returns the gate config template with tier0 and tier1 declared, and the landing gate listing both.
 func gateConfigWithTwoTiers() string {
 	const tiers = `tiers:
   tier0: {command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}
   tier1: {command: "go test -json -tags integration {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}`
-	return strings.NewReplacer("tiers: {}", tiers, "  landing: [0]", "  landing: [0, 1]", "  publish: []", "  publish: [1]").Replace(gateslot.ConfigTemplate())
+	return strings.NewReplacer("tiers: {}", tiers, "  landing: [0]", "  landing: [0, 1]").Replace(gateslot.ConfigTemplate())
 }
 
 // writeHubGateConfig writes contents as the hub-wide gate.yaml in hub's board directory.

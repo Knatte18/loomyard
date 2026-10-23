@@ -3,6 +3,7 @@
 package gateslot
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -226,4 +227,61 @@ func (c Config) Limits() Limits {
 		Tier0Parallel: c.Tiers[tierKey(0)].Parallel,
 		BusyQuit:      time.Duration(c.BusyQuitSec) * time.Second,
 	}
+}
+
+// MigrateConfig prunes the retired gates.publish list from a gate.yaml document and returns one line, "gates.publish: retired, removed", when it did.
+// Every other gate, the round list included, and every comment is carried through yaml node editing.
+// A document without gates.publish is returned unchanged, so a migrated file is unchanged on a second pass.
+// A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
+func MigrateConfig(existing []byte) ([]byte, []string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(existing, &document); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: unmarshal yaml: %w", err))
+	}
+	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
+		return existing, nil, nil
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: yaml root is not a mapping"))
+	}
+	gates := mappingValue(root, "gates")
+	if gates == nil || gates.Kind != yaml.MappingNode {
+		return existing, nil, nil
+	}
+	at := mappingKeyIndex(gates, "publish")
+	if at < 0 {
+		return existing, nil, nil
+	}
+	gates.Content = append(gates.Content[:at], gates.Content[at+2:]...)
+
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&document); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: encode yaml: %w", err))
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: encode yaml: %w", err))
+	}
+	return out.Bytes(), []string{"gates.publish: retired, removed"}, nil
+}
+
+// mappingKeyIndex returns the index of key in mapping's Content, or -1 when the mapping holds no such key.
+func mappingKeyIndex(mapping *yaml.Node, key string) int {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return i
+		}
+	}
+	return -1
+}
+
+// mappingValue returns the value node of key in mapping, or nil when the mapping holds no such key.
+func mappingValue(mapping *yaml.Node, key string) *yaml.Node {
+	at := mappingKeyIndex(mapping, key)
+	if at < 0 {
+		return nil
+	}
+	return mapping.Content[at+1]
 }

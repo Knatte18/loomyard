@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/runprofile"
 )
 
 // TestConfigOverRealHub drives configuration edits through a real hub with one pair: a per-worktree module edit is synced into the pair's fabric worktree while the code side stays pristine, and a hub-wide module `--set` changes the hub file and commits it in _board with no per-worktree copy written.
@@ -490,6 +491,85 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		if kept, err := os.ReadFile(machineFile); err != nil || string(kept) != machineBytes {
 			t.Errorf("machine gate file = %q, %v after the apply; want it unchanged", kept, err)
+		}
+	})
+
+	t.Run("reconcile --layer default --apply prunes every retired loom, landing and gate key and leaves the profiles file as written", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, "")
+		appendPlanted := func(module, planted string) {
+			t.Helper()
+			file := configengine.ConfigFile(boardDir, module)
+			current, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("read the board %s.yaml: %v", module, err)
+			}
+			body := strings.TrimRight(string(current), "\n")
+			if body != "" {
+				body += "\n"
+			}
+			if err := os.WriteFile(file, []byte(body+planted), 0o644); err != nil {
+				t.Fatalf("plant retired keys in the board %s.yaml: %v", module, err)
+			}
+		}
+		appendPlanted("loom", "webster_max_bounces: 2\nmerge_max_bounces: 1\nalignment_pr_approve: true\nrework: true\n")
+		appendPlanted("landing", "require_pr_to_base: []\n")
+		gateFile := configengine.ConfigFile(boardDir, "gate")
+		if err := os.WriteFile(gateFile, []byte("gates:\n  round: [0]\n  publish: [0]\n"), 0o644); err != nil {
+			t.Fatalf("plant a publish gate in the board gate.yaml: %v", err)
+		}
+		appendPlanted("profiles", "retired-keys:\n  loom: {webster_max_bounces: 3, merge_max_bounces: 1}\n")
+		profilesFile := configengine.ConfigFile(boardDir, "profiles")
+		profilesBefore, err := os.ReadFile(profilesFile)
+		if err != nil {
+			t.Fatalf("read the board profiles.yaml: %v", err)
+		}
+
+		if code, result := runReconcileCLI(t, primeWorktreePath, "--layer", "default", "--apply"); code != 0 {
+			t.Fatalf("reconcile --layer default --apply = %d; want 0; result: %v", code, result)
+		}
+
+		read := func(module string) string {
+			t.Helper()
+			content, err := os.ReadFile(configengine.ConfigFile(boardDir, module))
+			if err != nil {
+				t.Fatalf("read the board %s.yaml: %v", module, err)
+			}
+			return string(content)
+		}
+		loom := read("loom")
+		if !strings.Contains(loom, "\ncode_max_bounces: 2\n") {
+			t.Errorf("applied board loom.yaml lacks code_max_bounces: 2; got %q", loom)
+		}
+		for _, gone := range []string{"webster_max_bounces", "merge_max_bounces", "alignment_pr_approve", "rework"} {
+			if strings.Contains(loom, gone) {
+				t.Errorf("applied board loom.yaml still holds %q; got %q", gone, loom)
+			}
+		}
+		if landing := read("landing"); !strings.Contains(landing, "\ndeploy_branches: []") || strings.Contains(landing, "require_pr_to_base") {
+			t.Errorf("applied board landing.yaml = %q; want an empty deploy_branches and no require_pr_to_base", landing)
+		}
+		if gate := read("gate"); !strings.Contains(gate, "round: [0]") || strings.Contains(gate, "publish") {
+			t.Errorf("applied board gate.yaml = %q; want the round list kept and no publish", gate)
+		}
+		if profilesAfter := read("profiles"); profilesAfter != string(profilesBefore) {
+			t.Errorf("board profiles.yaml = %q after the apply; want %q, byte for byte", profilesAfter, profilesBefore)
+		}
+
+		// The profile still holding the retired keys seeds a run: the Webster key reads as its Code successor and the Merge key is dropped.
+		profiles, err := runprofile.Load(configengine.Dirs{Board: boardDir})
+		if err != nil {
+			t.Fatalf("runprofile.Load: %v", err)
+		}
+		profile, err := profiles.Lookup("retired-keys")
+		if err != nil {
+			t.Fatalf("Lookup(retired-keys): %v", err)
+		}
+		documents, err := configreg.LayerRunSettings("retired-keys", profile, nil)
+		if err != nil {
+			t.Fatalf("LayerRunSettings(retired-keys): %v", err)
+		}
+		if got, want := string(documents["loom"]), "code_max_bounces: 3\n"; got != want {
+			t.Errorf("seeded loom layer = %q; want %q", got, want)
 		}
 	})
 

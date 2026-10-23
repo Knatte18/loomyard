@@ -33,7 +33,7 @@ func gateListSource(dirs configengine.Dirs, gate string) func() (loomshed.RoundG
 }
 
 // gateCallSource returns a reader of the call of the named gate over the whole tree, rendered from the config loaded over dirs at each call.
-// A config or gate-list refusal is returned with its own way forward, and an empty `publish` list renders "".
+// A config or gate-list refusal is returned with its own way forward.
 func gateCallSource(dirs configengine.Dirs, gate string) func() (string, error) {
 	return func() (string, error) {
 		cfg, err := gateslot.LoadConfig(dirs)
