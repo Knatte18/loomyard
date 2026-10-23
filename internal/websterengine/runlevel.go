@@ -1,4 +1,4 @@
-// runlevel.go implements Run, webster's `run` verb engine core: the run-level exclusive lease, the automatic validation gate (including the zero-batch pre-flight refusal), the state-phase entry-time reclaim of webster's own two reclaimable substrates (Master's own strand and any non-terminal recovery-batch strand — forks die with Master, so there is never a third), the plan-fingerprint crash/resume guard with its --fresh archive/re-init escape, the stale-outcome/summary archive, the always-fresh Master spawn (fork-authorized, both output files), the shuttle-outcome-to-RunResult mapping, and the run-exit whole-session audit cross-check that backstops record-batch's own per-batch incremental audit.
+// runlevel.go implements Run, webster's `run` verb engine core: the run-level exclusive lease, the automatic validation gate (including the zero-batch pre-flight refusal), the state-phase entry-time reclaim of webster's own reclaimable substrates (Master's own strand, any non-terminal recovery-batch strand and any non-terminal cold verify-gate fixer strand — forks die with Master, so they need none), the plan-fingerprint crash/resume guard with its --fresh archive/re-init escape, the stale-outcome/summary archive, the always-fresh Master spawn (fork-authorized, both output files), the shuttle-outcome-to-RunResult mapping, and the run-exit whole-session audit cross-check that backstops record-batch's own per-batch incremental audit.
 // Named runlevel.go, not run.go, to avoid a clash with any future poll/spawn-style file name.
 
 package websterengine
@@ -34,10 +34,10 @@ import (
 // Master spawn at once.
 const runLockName = "run.lock"
 
-// masterAwaitedShellPrefix is the backgrounded recovery verb of the failure ladder.
-// The prefix keeps that verb out of the background-shell wait marker;
+// masterAwaitedShellPrefixes are Master's two backgrounded, blocking verbs: the failure ladder's recovery verb and the verify gate's cold fixer verb.
+// A prefix keeps its verb out of the background-shell wait marker;
 // it is also what keeps the verb holding a gated turn end, which one waiting only on non-awaited shells is judged as a plain turn end.
-const masterAwaitedShellPrefix = "lyx webster recover-batch"
+var masterAwaitedShellPrefixes = []string{"lyx webster recover-batch", fixVerifyCommand}
 
 // ErrRunBusy marks Run's fail-fast refusal when another invocation already holds scratchDir's
 // run.lock.
@@ -298,32 +298,45 @@ func clearRenderedPrompts(promptsDir string) error {
 }
 
 // reclaimEntryTimeStrands stops the only substrates a crashed or killed `run` process can ever leave live behind it:
-// Master's own recorded strand and any recorded, non-terminal recovery-batch strand.
+// Master's own recorded strand, any recorded, non-terminal recovery-batch strand and any non-terminal cold verify-gate fixer strand.
 // Forks die WITH Master (same process) — there is never an orphaned
 // in-flight fork implementer to reclaim, which is what keeps webster's own
 // entry-time reclaim simple, per
 // discussion.md's crash-resume-re-drive-first-unreported decision. A nil st
 // (no run has ever started) is a no-op.
-func reclaimEntryTimeStrands(stopper StrandStopper, st *State) error {
+// A stopped cold fixer's record turns terminal dead/died, so the next fix-verify spawns a fresh fixer instead of attaching to the stopped strand;
+// stateChanged reports whether any record changed, so the caller saves st.
+func reclaimEntryTimeStrands(stopper StrandStopper, st *State) (stateChanged bool, err error) {
 	if st == nil {
-		return nil
+		return false, nil
 	}
 
 	if st.MasterStrand != "" {
 		if err := stopper.StopStrand(st.MasterStrand); err != nil {
-			return fmt.Errorf("websterengine: stop leftover master strand %s before respawn: %w", st.MasterStrand, err)
+			return false, fmt.Errorf("websterengine: stop leftover master strand %s before respawn: %w", st.MasterStrand, err)
 		}
 	}
 
 	for _, bs := range st.Batches {
 		if bs != nil && bs.Kind == "recovery" && !bs.Terminal && bs.StrandGUID != "" {
 			if err := stopper.StopStrand(bs.StrandGUID); err != nil {
-				return fmt.Errorf("websterengine: stop leftover recovery strand %s before respawn: %w", bs.StrandGUID, err)
+				return false, fmt.Errorf("websterengine: stop leftover recovery strand %s before respawn: %w", bs.StrandGUID, err)
 			}
 		}
 	}
 
-	return nil
+	for _, rec := range st.VerifyFixers {
+		if rec.Status == "" {
+			if err := stopper.StopStrand(rec.StrandGUID); err != nil {
+				return stateChanged, fmt.Errorf("websterengine: stop leftover cold verify-gate fixer strand %s before respawn: %w", rec.StrandGUID, err)
+			}
+			rec.Status = DigestStatusDead
+			rec.DeadReason = DeadReasonDied
+			stateChanged = true
+		}
+	}
+
+	return stateChanged, nil
 }
 
 // countBegunForkBatches counts st's recorded batches whose Kind is "fork"
@@ -465,8 +478,15 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// record of these strands): a prior run whose process died mid-wait
 	// leaves a live Master pane (or a live recovery strand) that keeps
 	// driving on its own.
-	if err := reclaimEntryTimeStrands(deps.Stopper, st); err != nil {
+	reclaimedFixers, err := reclaimEntryTimeStrands(deps.Stopper, st)
+	if err != nil {
 		return RunResult{}, err
+	}
+	if reclaimedFixers {
+		// Persisted before anything fallible follows, so a run that fails before its Master spawn still leaves the reclaimed fixer records terminal.
+		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
+			return RunResult{}, err
+		}
 	}
 
 	freshDrop, freshWarnings, err := freshPendingDrop(deps.Engines, deps.Geom, st, opts)
@@ -735,8 +755,8 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		ForkSubagents: true,
 		// The Master stencil ends its turn after each backgrounded fork and backgrounded recover-batch and wakes on their completion.
 		Requires: []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake},
-		// The failure ladder backgrounds recover-batch and recovery_timeout_min bounds it, so the wait marker leaves it out.
-		AwaitedShellPrefixes: []string{masterAwaitedShellPrefix},
+		// Master backgrounds recover-batch and fix-verify and recovery_timeout_min bounds both, so the wait marker leaves them out.
+		AwaitedShellPrefixes: slices.Clone(masterAwaitedShellPrefixes),
 		Role:                 MerriamStrandRole,
 		Segment:              segmentcolor.Webster,
 		Interactive:          false,
@@ -747,7 +767,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// provider's startup window (bounded by startup_timeout_s) — see AcquireStateMutation's own
 	// contract. At run entry no batch forks exist yet, so the hold stalls nothing in practice.
 	verifyGate, gateNotes := NewVerifyGate(deps.Geom, deps.Config.VerifyGateAttempts, batches, deps.ParentBranch, deps.FrictionDir, verifyFixPromptPath)
-	gate := append(slices.Clone(deps.Gate), shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts, Reprompt: verifyGateReprompt(verifyFixPromptPath)})
+	gate := append(slices.Clone(deps.Gate), shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts, Reprompt: verifyGateReprompt(verifyFixPromptPath, gateNotes)})
 	handle, err := deps.Starter.StartMaster(spec, gate)
 	if err != nil {
 		err = shuttleengine.ModelKey{Module: "webster", Key: "master"}.Wrap(err)
@@ -1188,7 +1208,7 @@ func pendingFindingsText(engines AuditEngines, st *State, geom Geometry, items [
 // A finding with no path, or a path nothing the run recorded can check (see uncheckableReason) other than a cleared contract file, clears only through the reset route,
 // so the steps are then the reset to start, then reentry:
 // accept-audit refuses every finding while any one of them cannot be checked.
-// Otherwise the steps are the restores first (git checkout of the differing tracked paths to the last batch head, restore-plan for plan paths that differ, rm for a contract path a fork or a recovery session wrote last),
+// Otherwise the steps are the restores first (git checkout of the differing tracked paths to the last batch head, restore-plan for plan paths that differ, rm for a contract path a fork, recovery or verify-fixer session wrote last),
 // then accept-audit, then reentry.
 // The error is a link-resolution or git probe failure.
 func pendingPathsWayForward(geom Geometry, st *State, writes RunWrites, paths []string, pathless bool, reentry string) (steps []string, notes map[string]string, err error) {

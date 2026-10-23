@@ -18,13 +18,14 @@ type RunWrites struct {
 	Master []shuttleengine.WriteEvent
 	// Forks holds every fork's writes, session by session, each in discovery then transcript order.
 	Forks []shuttleengine.WriteEvent
-	// Recoveries holds every recovery session's own writes, session by session, each in transcript order.
+	// Recoveries holds every recovery session's and cold verify-gate fixer session's own writes, session by session, each in transcript order;
+	// a contract file last written by either is reported as written by "a recovery or verify-fixer session".
 	Recoveries []shuttleengine.WriteEvent
 }
 
 // loadRunWrites audits every session the state records and collects the write events.
 // The Master sessions are State.MasterSessionID then each batch record's SessionID in batch-number order;
-// the recovery sessions follow, each batch's RecoverySessions in batch-number order; both are deduplicated, an empty id skipped, and each id is audited once.
+// the recovery sessions follow, each batch's RecoverySessions in batch-number order, then the cold verify-gate fixers' sessions; both are deduplicated, an empty id skipped, and each id is audited once.
 // Each session is audited through the engine its own state entry records, so a later change to the configured engine never changes it.
 // It reads only; an engine or audit error is returned naming the session.
 // A nil engines yields an empty history.
@@ -103,8 +104,8 @@ type recordedSession struct {
 	Engine string
 }
 
-// recordedSessions lists the distinct non-empty Master sessions st records, and separately the distinct recovery sessions of every batch in batch-number order, each in a stable order.
-// Master's id carries MasterEngine, each batch's SessionID its Engine and each recovery session its RecoveryEngines entry.
+// recordedSessions lists the distinct non-empty Master sessions st records, and separately the distinct recovery sessions of every batch in batch-number order followed by the cold verify-gate fixer sessions in spawn order, each in a stable order.
+// Master's id carries MasterEngine, each batch's SessionID its Engine, each recovery session its RecoveryEngines entry and each fixer session its record's Engine.
 // An id is listed once, the first sighting fixing its engine, and one recorded as a Master session is never listed again as a recovery session.
 func recordedSessions(st *State) (master, recovery []recordedSession) {
 	listed := func(id string) bool {
@@ -133,6 +134,9 @@ func recordedSessions(st *State) (master, recovery []recordedSession) {
 				add(&recovery, id, b.RecoveryEngines[id])
 			}
 		}
+	}
+	for _, rec := range st.VerifyFixers {
+		add(&recovery, rec.SessionID, rec.Engine)
 	}
 	return master, recovery
 }

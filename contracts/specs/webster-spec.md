@@ -1,6 +1,6 @@
 # Webster contract: the fork-based implementer loop's cross-module contracts
 
-> **Status: Contract — pinned.** This is webster's own consumer-facing cross-module contract — what other modules may rely on, nothing more — a durable reference doc, kept, not deleted on landing. webster's own internals (the fork-based loop shape, the bracket-verb sequence, crash/resume, the verify gate and its fixer fork, and everything else webster keeps to itself) live in `internal/websterengine`'s package documentation, not here.
+> **Status: Contract — pinned.** This is webster's own consumer-facing cross-module contract — what other modules may rely on, nothing more — a durable reference doc, kept, not deleted on landing. webster's own internals (the fork-based loop shape, the bracket-verb sequence, crash/resume, the verify gate and its fixers, and everything else webster keeps to itself) live in `internal/websterengine`'s package documentation, not here.
 
 ## What it is
 
@@ -46,7 +46,7 @@ A long-lived Master session is the only party with full oversight of what actual
 A `summary.md` may additionally carry two sections the verify gate produces.
 When the gate's rerun passes a failing plan-level verify, the identities that failed once are flaky, and `internal/websterengine`'s `AppendIntegrationTriage` appends an `## Integration suite triage` section listing them;
 the run keeps its outcome.
-When the gate sends a failure back to Merriam, Merriam spawns one fixer fork and rewrites `summary.md` with a `## Verify gate fixes` section naming the findings, what the fixer says it changed and each `fix: <summary>` commit it made.
+When the gate sends a failure back to Merriam, Merriam answers with one fixer, a fork or the cold fixer, and rewrites `summary.md` with a `## Verify gate fixes` section naming the findings, what that fixer says it changed and each `fix: <summary>` commit it made.
 Either section reaches the PR reviewer because the `Describe` stencil carries it into the change description as a check item, not because Publish passes `summary.md` through.
 
 ## The verify gate
@@ -58,7 +58,8 @@ A failing run is rerun once;
 a pass on the rerun passes the gate and records the failing identities as flaky.
 A run that exceeds the verify timeout is not rerun, since a hang is not flakiness: it fails the gate at once with the timeout, the log path and the log tail as findings.
 A failure that survives the rerun, or a tree that is not clean, is recorded in `verify-gate.yaml` in the reports directory and returned to Merriam as findings.
-Merriam answers each failure with one fixer fork, whose commits are `fix: <summary>` and are checked at the next attempt.
+Merriam answers each failure with one fixer, whose commits are `fix: <summary>` and are checked at the next attempt.
+The gate routes each failure to a fixer and records it as `fixer` in `verify-gate.yaml`: a fork in Merriam's session, on Merriam's model, or, for the last attempt, after a fixer that committed nothing and from then on, the cold fixer `lyx webster fix-verify` spawns as its own strand at the `recovery` role.
 `verify_gate_attempts` in `webster.yaml` bounds the attempts;
 an exhausted gate ends the run `stuck`, as does a fixer commit the gate rejects.
 `verify-gate.yaml` replaces the retired post-exit `integration.yaml`: nothing runs the suite after the session ends, and a run in flight with the retired record restarts with `lyx webster run --fresh`.

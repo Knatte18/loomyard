@@ -1,6 +1,6 @@
 //go:build integration
 
-// batchpause_test.go covers the pause refusal begin-batch and recover-batch make before they read or change any state, and the lookup of Master's strand it claims.
+// batchpause_test.go covers the pause refusal begin-batch, recover-batch and fix-verify make before they read or change any state, and the lookup of Master's strand it claims.
 
 package webstercli
 
@@ -69,6 +69,10 @@ func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 	}{
 		{name: "begin-batch claims Master and refuses", verb: "begin-batch", masterStrand: okStrand, wantExit: 1, wantText: refusedGoingOn("begin-batch"), wantSessions: claimedMaster, stateKept: true},
 		{name: "recover-batch claims Master and refuses", verb: "recover-batch", masterStrand: okStrand, wantExit: 1, wantText: refusedGoingOn("recover-batch"), wantSessions: claimedMaster, stateKept: true},
+		{
+			name: "fix-verify claims Master and refuses", verb: "fix-verify", masterStrand: okStrand, wantExit: 1, wantSessions: claimedMaster, stateKept: true,
+			wantText: []string{"a hub-wide pause holds this pair, so fix-verify spawns no cold fixer; way forward: end your turn now; once the resume line arrives run \"lyx webster fix-verify\" again"},
+		},
 		{name: "begin-batch refuses without a claim when Master's strand is unknown", verb: "begin-batch", masterStrand: failingStrand, wantExit: 1, wantText: refusedNoLine("begin-batch"), wantWarn: "Master could not be claimed", stateKept: true},
 		{name: "recover-batch refuses without a claim when Master's strand is unknown", verb: "recover-batch", masterStrand: failingStrand, wantExit: 1, wantText: refusedNoLine("recover-batch"), wantWarn: "Master could not be claimed", stateKept: true},
 		{
@@ -131,15 +135,18 @@ func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 				t.Fatalf("ReadFile(%q) = %v", statePath, err)
 			}
 
-			cmd := fx.CLI.beginBatchCmd()
-			if tt.verb == "recover-batch" {
+			cmd, args := fx.CLI.beginBatchCmd(), []string{"1"}
+			switch tt.verb {
+			case "recover-batch":
 				cmd = fx.CLI.recoverBatchCmd()
+			case "fix-verify":
+				cmd, args = fx.CLI.fixVerifyCmd(), nil
 			}
 			var out strings.Builder
-			exitCode := clihelp.Execute(cmd, &out, []string{"1"})
+			exitCode := clihelp.Execute(cmd, &out, args)
 
 			if exitCode != tt.wantExit {
-				t.Fatalf("%s 1 = %d; want %d, output: %s", tt.verb, exitCode, tt.wantExit, out.String())
+				t.Fatalf("%s %v = %d; want %d, output: %s", tt.verb, args, exitCode, tt.wantExit, out.String())
 			}
 			body := out.String()
 			var envelope struct {

@@ -50,9 +50,19 @@ type VerifyGateReport struct {
 	LogPath string `yaml:"log_path,omitempty"`
 	// Hint lists the NN-slug labels of the cards whose commits touched a failing package, in trail order.
 	Hint []string `yaml:"hint,omitempty"`
-	// FixCommits lists the fixer fork's commits, oldest first.
+	// FixCommits lists the fixers' commits above the pre-fix head, oldest first.
 	FixCommits []string `yaml:"fix_commits,omitempty"`
+	// Fixer names the fixer this failure goes to, FixerFork or FixerCold.
+	Fixer string `yaml:"fixer,omitempty"`
 }
+
+// The fixers a verify-gate failure goes to.
+const (
+	// FixerFork is the fixer fork Merriam spawns in its own session, on its own model.
+	FixerFork = "fork"
+	// FixerCold is the cold fixer strand `lyx webster fix-verify` spawns at the recovery role.
+	FixerCold = "cold"
+)
 
 // WriteVerifyGateReport serializes r to path, replacing any earlier file atomically.
 func WriteVerifyGateReport(path string, r VerifyGateReport) error {
@@ -136,28 +146,32 @@ func logTail(output string) string {
 	return strings.TrimSpace(output)
 }
 
-// verifyGateWayForward returns the one line naming Merriam's way forward from a verify-gate failure:
-// spawn one fixer fork with the prompt file at fixPromptPath, never fix the findings itself, then end the turn.
-func verifyGateWayForward(fixPromptPath string) string {
+// verifyGateWayForward returns the one line naming Merriam's way forward from a verify-gate failure, never fixing the findings itself and ending the turn:
+// for FixerCold, run `lyx webster fix-verify` backgrounded and spawn no fork;
+// otherwise spawn one fixer fork with the prompt file at fixPromptPath.
+func verifyGateWayForward(fixer, fixPromptPath string) string {
+	if fixer == FixerCold {
+		return fmt.Sprintf("Do not fix the findings yourself and spawn no fork; run `%s` as a backgrounded Bash command, as the gate-failure section of your prompt says; then end your turn.", fixVerifyCommand)
+	}
 	return fmt.Sprintf("Do not fix the findings yourself; spawn one fixer fork as the gate-failure section of your prompt says, with the prompt file at %s; then end your turn.", fixPromptPath)
 }
 
 // verifyGateReprompt returns the renderer for the verify entry's re-prompt line:
-// one line that opens with the `Gate findings recorded at` text Merriam's gate-failure section triggers on, then names the findings file and the way forward.
-func verifyGateReprompt(fixPromptPath string) func(findingsPath string) string {
+// one line that opens with the `Gate findings recorded at` text Merriam's gate-failure section triggers on, then names the findings file and the way forward to the fixer notes holds.
+func verifyGateReprompt(fixPromptPath string, notes *VerifyGateNotes) func(findingsPath string) string {
 	return func(findingsPath string) string {
-		return fmt.Sprintf("Gate findings recorded at %s — %s", findingsPath, verifyGateWayForward(fixPromptPath))
+		return fmt.Sprintf("Gate findings recorded at %s — %s", findingsPath, verifyGateWayForward(notes.Fixer(), fixPromptPath))
 	}
 }
 
 // renderVerifyGateFindings returns the findings text the gate returns to Merriam:
-// the way forward, the attempt and the cap, then the dirty paths, the timeout sentence, a hang or the failing identities.
+// the way forward to the report's fixer, the attempt and the cap, then the dirty paths, the timeout sentence, a hang or the failing identities.
 // A timeout carries the log path and tail, and a hang its matched marker, identities, log path and tail.
 // Identities carry their output tail, the full log path and the hint.
 // A timeout or hang says the step was not re-run, and a watchdog quit also names the window and the operator's way forward.
 func renderVerifyGateFindings(r VerifyGateReport, fixPromptPath string) string {
 	var b strings.Builder
-	b.WriteString(verifyGateWayForward(fixPromptPath) + "\n")
+	b.WriteString(verifyGateWayForward(r.Fixer, fixPromptPath) + "\n")
 	fmt.Fprintf(&b, "Verify gate failed (attempt %d of %d).\n", r.Attempt, r.Cap)
 
 	if len(r.Dirty) > 0 {

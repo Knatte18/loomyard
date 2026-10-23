@@ -333,8 +333,65 @@ func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 			t.Errorf("findings = %q; want %q in it", second.Findings, want)
 		}
 	}
-	if !strings.HasPrefix(second.Findings, verifyGateWayForward(testFixPromptPath)+"\n") {
+	if !strings.HasPrefix(second.Findings, verifyGateWayForward(FixerFork, testFixPromptPath)+"\n") {
 		t.Errorf("findings = %q; want them to open with the way forward naming %s", second.Findings, testFixPromptPath)
+	}
+}
+
+// TestVerifyGate_RoutesFailuresToFixer pins which fixer each failure goes to, as the report, the findings and the re-prompt line name it:
+// the failure that reaches the cap and one after a fixer that added no commit go cold, and every failure after a cold one stays cold.
+func TestVerifyGate_RoutesFailuresToFixer(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cap  int
+		// commits are the fix commits above the pre-fix head at each failure, one entry per evaluation.
+		commits [][]string
+		want    []string
+	}{
+		{name: "one fork then the cold fixer at the cap", cap: 2, commits: [][]string{nil, {"fix1"}}, want: []string{FixerFork, FixerCold}},
+		{name: "forks below the cap while fixers commit", cap: 3, commits: [][]string{nil, {"fix1"}, {"fix1", "fix2"}}, want: []string{FixerFork, FixerFork, FixerCold}},
+		{name: "a fixer that committed nothing escalates and routing stays cold", cap: 4, commits: [][]string{nil, nil, {"fix1"}}, want: []string{FixerFork, FixerCold, FixerCold}},
+		{name: "a cap of one goes cold at once", cap: 1, commits: [][]string{nil}, want: []string{FixerCold}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reports := t.TempDir()
+			f := &gateFake{
+				outcome: outcomeDone,
+				command: "go test ./...",
+				head:    "head0",
+				results: []verifytree.Result{failedResult()},
+				logs:    []string{failingPackageLog},
+			}
+			notes := &VerifyGateNotes{}
+			gate := newVerifyGate(reports, tt.cap, notes, testFixPromptPath, f.seams())
+			reprompt := verifyGateReprompt(testFixPromptPath, notes)
+
+			for i, want := range tt.want {
+				f.commits = tt.commits[i]
+				res, err := gate()
+				if err != nil || res.Passed {
+					t.Fatalf("gate() #%d = %+v, %v; want a failure", i+1, res, err)
+				}
+				report, err := readVerifyGateReport(VerifyGateReportPath(reports))
+				if err != nil {
+					t.Fatalf("readVerifyGateReport() error = %v", err)
+				}
+				if report.Fixer != want {
+					t.Errorf("failure #%d report fixer = %q; want %q", i+1, report.Fixer, want)
+				}
+				wayForward := verifyGateWayForward(want, testFixPromptPath)
+				if !strings.HasPrefix(res.Findings, wayForward+"\n") {
+					t.Errorf("failure #%d findings = %q; want them to open with %q", i+1, res.Findings, wayForward)
+				}
+				if got, wantLine := reprompt("/findings"), "Gate findings recorded at /findings — "+wayForward; got != wantLine {
+					t.Errorf("failure #%d re-prompt = %q; want %q", i+1, got, wantLine)
+				}
+			}
+		})
 	}
 }
 

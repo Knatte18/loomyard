@@ -32,8 +32,8 @@ than a clean parent merge; run lyx webster reset --to last-batch-head first,
 which moves HEAD back to that head.
 Restore the named paths with git first, then run it.
 A contract file (outcome.yaml or summary.md) clears when it is absent or when
-Master wrote it after every fork and recovery session did; a file a fork or a
-recovery session wrote last refuses, naming
+Master wrote it after every fork, recovery and verify-fixer session did; a file
+a fork, recovery or verify-fixer session wrote last refuses, naming
 rm as the way forward. When it accepts on an absent contract file the envelope
 also carries next, the step that has Master write both files again.
 It only edits state.json and never changes the task worktree.

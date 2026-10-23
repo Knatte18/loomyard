@@ -42,12 +42,12 @@ func contractCanon(geom Geometry, path string) (canon string, contract bool, err
 const (
 	// writerFork names a fork as the last writer of a contract file.
 	writerFork = "a fork"
-	// writerRecovery names a recovery session as the last writer of a contract file.
-	writerRecovery = "a recovery session"
+	// writerRecovery names a recovery session or a cold verify-gate fixer session as the last writer of a contract file.
+	writerRecovery = "a recovery or verify-fixer session"
 )
 
 // contractFileStatus reports whether path is one of this run's contract files, and whether the audit finding on it is cleared.
-// A contract path is cleared when the file is absent, or when the latest successful Master write to it is later than every fork write and every recovery write to it.
+// A contract path is cleared when the file is absent, or when the latest successful Master write to it is later than every fork write and every recovery or verify-fixer write to it.
 // A Master write whose result failed is not evidence.
 // An uncleared path's writer is writerFork or writerRecovery, whichever made the latest write at or after Master's;
 // it defaults to writerFork when the run recorded no write to the file.
@@ -118,7 +118,7 @@ type unclearedContract struct {
 type contractSplit struct {
 	// Cleared holds the contract paths the evidence clears, Absent the subset whose file is absent.
 	Cleared, Absent []string
-	// Uncleared holds the contract paths a fork or a recovery session wrote last.
+	// Uncleared holds the contract paths a fork, recovery or verify-fixer session wrote last.
 	Uncleared []unclearedContract
 	// Rest holds every path that is no contract file, in input order.
 	Rest []string
@@ -176,7 +176,7 @@ func contractWritesFor(engines AuditEngines, st *State, geom Geometry, paths []s
 	return RunWrites{}, nil
 }
 
-// contractDeleteClause is the delete route for contract paths a fork or a recovery session wrote last: remove the files, then re-run through rerun.
+// contractDeleteClause is the delete route for contract paths a fork, recovery or verify-fixer session wrote last: remove the files, then re-run through rerun.
 // It names each path's writer.
 func contractDeleteClause(uncleared []unclearedContract, rerun string) string {
 	var wrote, paths []string

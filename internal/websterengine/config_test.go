@@ -86,7 +86,7 @@ func TestLoadConfig(t *testing.T) {
 		SelfFixCap:         2,
 		MasterTimeoutMin:   480,
 		RecoveryTimeoutMin: 60,
-		VerifyGateAttempts: 3,
+		VerifyGateAttempts: 2,
 	}
 	absentKnobs := websterengine.Config{
 		Master:             "sonnet",
@@ -94,7 +94,7 @@ func TestLoadConfig(t *testing.T) {
 		SelfFixCap:         2,
 		MasterTimeoutMin:   480,
 		RecoveryTimeoutMin: 60,
-		VerifyGateAttempts: 3,
+		VerifyGateAttempts: 2,
 	}
 	tests := []struct {
 		name string
@@ -118,7 +118,7 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 			name: "the retired poll_wait_s key still loads",
-			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 3\npoll_wait_s: 480\n",
+			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 2\npoll_wait_s: 480\n",
 			want: absentKnobs,
 		},
 		{
@@ -128,7 +128,7 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 			name: "recovery_timeout_min absent loads the template default",
-			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nverify_gate_attempts: 3\n",
+			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nverify_gate_attempts: 2\n",
 			want: absentKnobs,
 		},
 		{
@@ -160,7 +160,7 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 			name: "a file still holding the retired kick-start pack keys loads the defaults",
-			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 3\nkickstart_pack: false\nkickstart_pack_per_card: maybe\nkickstart_pack_file: false\n",
+			body: "master: sonnet\nrecovery: opus\nself_fix_cap: 2\nmaster_timeout_min: 480\nrecovery_timeout_min: 60\nverify_gate_attempts: 2\nkickstart_pack: false\nkickstart_pack_per_card: maybe\nkickstart_pack_file: false\n",
 			want: absentKnobs,
 		},
 		{

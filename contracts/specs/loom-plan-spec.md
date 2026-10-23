@@ -306,9 +306,9 @@ and a half-done card is resumed by discarding uncommitted changes and restarting
 
 ## Pattern-Departure trailer
 
-A Webster fork, the recovery strand or the verify-fix fork that departs from its card because a PATTERN entry forbids the card's way records each departure as one trailer line in the departing commit's body, `Pattern-Departure: <PATTERN-entry-id> — <what differs from the card and why>`, in the commit message's last paragraph, where git reads trailers.
+A Webster fork, the recovery strand or a verify-gate fixer that departs from its card because a PATTERN entry forbids the card's way records each departure as one trailer line in the departing commit's body, `Pattern-Departure: <PATTERN-entry-id> — <what differs from the card and why>`, in the commit message's last paragraph, where git reads trailers.
 A departure from an entry the task declares changed in the overview's `## PATTERN changes` cites the declared new text, never the old.
-`record-batch` and `recover-batch` read the trailers of the batch's own non-merge first-parent commits into the digest's `departures`, and the verify gate reads the verify-fix fork's; Webster-Review reads them in the commit messages of its range.
+`record-batch` and `recover-batch` read the trailers of the batch's own non-merge first-parent commits into the digest's `departures`, and the verify gate reads the verify-gate fixers'; Webster-Review reads them in the commit messages of its range.
 
 ## verify model
 

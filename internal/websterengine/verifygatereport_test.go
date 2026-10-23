@@ -143,9 +143,18 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 		Hint:    []string{"03-third"},
 	}
 	const fixPromptPath = "/scratch/prompts/verify-fix.md"
-	wayForward := verifyGateWayForward(fixPromptPath)
+	wayForward := verifyGateWayForward(FixerFork, fixPromptPath)
 	if !strings.Contains(wayForward, "fixer fork") || !strings.Contains(wayForward, fixPromptPath) {
 		t.Errorf("way forward = %q; want it to name the fixer-fork step and %s", wayForward, fixPromptPath)
+	}
+	coldWayForward := verifyGateWayForward(FixerCold, fixPromptPath)
+	if !strings.Contains(coldWayForward, "`lyx webster fix-verify`") || !strings.Contains(coldWayForward, "spawn no fork") || strings.Contains(coldWayForward, fixPromptPath) {
+		t.Errorf("cold way forward = %q; want it to name the backgrounded fix-verify call, spawn no fork and not name %s", coldWayForward, fixPromptPath)
+	}
+	cold := r
+	cold.Fixer = FixerCold
+	if got := renderVerifyGateFindings(cold, fixPromptPath); !strings.HasPrefix(got, coldWayForward+"\nVerify gate failed (attempt ") {
+		t.Errorf("cold-routed findings should open with the cold way forward:\n%s", got)
 	}
 	assertOpensWithWayForward := func(findings string) {
 		t.Helper()
