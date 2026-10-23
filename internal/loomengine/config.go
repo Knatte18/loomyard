@@ -26,7 +26,7 @@
 // arbiter is a role model-spec validated only when non-empty, an empty value taking opus[high]; arbiter_timeout_min and arbiter_max_spawns are refused when negative, and a zero arbiter_max_spawns turns the arbiter off.
 // driver_kind is the driver a task's loom run is seeded with when nothing typed one, llm or go, an empty value reading as llm; tackler is a role model-spec validated only when non-empty, an empty value taking haiku;
 // tackler_timeout_min and tackler_max_spawns are refused when negative, a zero tackler_timeout_min taking 10 and a zero tackler_max_spawns turning the tackler off.
-// alignment, alignment_timeout_min, skip_alignment and alignment_pr_approve configure the alignment agent at parent review and PR-Gate:
+// alignment, alignment_timeout_min and skip_alignment configure the alignment agent at parent review:
 // alignment is a role model-spec validated only when non-empty, an empty value taking opus[high];
 // alignment_timeout_min is refused when negative, a zero taking 20, and a resolved value at or above parent_review_wait_min is refused too.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
@@ -451,12 +451,10 @@ type Config struct {
 
 	// The alignment agent's model-spec, timeout and switches.
 	// An empty Alignment takes opus[high] and a zero AlignmentTimeoutMin takes 20 minutes, kept below ParentReviewWaitMin.
-	// SkipAlignment true sends parent review and PR-Gate to the run's parent without the agent.
-	// AlignmentPRApprove false makes an agent approve at PR-Gate an escalation, so the parent gives the yes.
+	// SkipAlignment true sends parent review to the run's parent without the agent.
 	Alignment           string `yaml:"alignment"`
 	AlignmentTimeoutMin int    `yaml:"alignment_timeout_min"`
 	SkipAlignment       bool   `yaml:"skip_alignment"`
-	AlignmentPRApprove  bool   `yaml:"alignment_pr_approve"`
 
 	// PRReview turns on the PR-Review stub's log line; the stub opens no pull request and acts on nothing either way.
 	PRReview bool `yaml:"pr_review"`
@@ -537,7 +535,7 @@ func ConfigOpenMaps() []string {
 // ConfigSpec returns loom's layered-load spec.
 // Only the keys that can switch off or hollow a review or approval gate are barred from the local layer.
 // The budget, hard-cap and auto-accept keys come from reviewbudget: a budget of 0 is the per-run off switch and no guard, while the auto-accept keys are guards.
-// The agent's approve at PR-Gate lands on the parent with no later gate, so a weaker alignment model, a re-opened auto-landing (alignment_pr_approve) or a local skip_alignment: false under a hub true hollows the approval gate;
+// A weaker alignment model or a local skip_alignment: false under a hub true hollows the parent-review gate;
 // a shorter alignment_timeout_min only routes a review to the parent.
 // discussion_advisors, discussion_lenses and plan_lenses are barred too, so no local override or task run_settings can start advisors, turn the lens forks off or change their fan.
 func ConfigSpec() configengine.Spec {
@@ -593,7 +591,6 @@ func ConfigSpec() configengine.Spec {
 			"alignment":                  guard,
 			"alignment_timeout_min":      none,
 			"skip_alignment":             guard,
-			"alignment_pr_approve":       guard,
 			"pr_review":                  none,
 			"parent_review_wait_min":     guard,
 			"step_idle_timeout_min":      none,
@@ -1097,6 +1094,7 @@ var retiredLoomKeys = []string{
 	"merge_hard_max_bounces",
 	"merge_auto_accept",
 	"rework",
+	"alignment_pr_approve",
 }
 
 // copyWebsterModelsOntoMerge sets merge_reviewer_model and merge_fixer_model of document to the values of its retired webster_review and webster_fix, each only when the document holds the Webster key and not the Merge one.

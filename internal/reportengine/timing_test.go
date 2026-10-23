@@ -1094,7 +1094,7 @@ func TestComputeTiming(t *testing.T) {
 			},
 		},
 		{
-			name: "a PR-Gate alignment attempt and a parent-review alignment record each count with their time to the next row, and a parent-review point's attempt adds no spawn",
+			name: "a parent-review alignment record counts with its time to the next row, and an old run's PR-Gate and parent-review point attempts add no spawn",
 			setup: func(w *world) {
 				batten := battenRecordOf(
 					entryAt(battenrecipe.NameWorktreeCreate, run),
@@ -1114,7 +1114,7 @@ func TestComputeTiming(t *testing.T) {
 			},
 			check: func(t *testing.T, got TimingReport) {
 				got1 := runOf(t, got, "aligned")
-				wantFigure(t, "alignment", got1.Attempts.Alignment, 1, 250)
+				wantFigure(t, "alignment", got1.Attempts.Alignment, 0, -1)
 				wantFigure(t, "parent review alignment", got1.Attempts.ParentReviewAlignment, 1, 40)
 				wantFigure(t, "arbiter", got1.Attempts.Arbiter, 0, -1)
 				wantWaits(t, got1, map[string]int64{WaitParentReview: 150})
@@ -1236,7 +1236,7 @@ func TestComputeTiming(t *testing.T) {
 			},
 		},
 		{
-			name: "an applied PR-Gate alignment attempt and an applied parent-review alignment record spawned after a stop read alignment",
+			name: "an applied parent-review alignment record spawned after a stop reads alignment, and an old run's PR-Gate attempt adds nothing to it",
 			setup: func(w *world) {
 				batten := []shedengine.HistoryEntry{
 					entryAt(battenrecipe.NameWorktreeCreate, run),

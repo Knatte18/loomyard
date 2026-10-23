@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -193,7 +192,8 @@ type spawn struct {
 	file      string
 }
 
-// runAttempts returns the figures of the run's arbiter attempts, its PR-Gate alignment attempts and its parent-review rounds' alignment records, each one spawn.
+// runAttempts returns the figures of the run's arbiter attempts and its parent-review rounds' alignment records, each one spawn.
+// A PR-Gate alignment attempt of an old run is no spawn: its point is skipped.
 // An attempt's time runs, net of sleep, from its spawn to the first row of either history stamped after it, or to the span's close in a run in flight.
 // In a landed run an attempt spawned outside span, or with no row after it, has its time absent and adds a finding naming its file; its spawn still counts.
 func runAttempts(row RunRow, rows []timedRow, span Interval, sleeps []Interval) (TimingAttempts, []Finding) {
@@ -205,12 +205,6 @@ func runAttempts(row RunRow, rows []timedRow, span Interval, sleeps []Interval) 
 	var spawns []spawn
 	for _, record := range row.arbiterRecords {
 		spawns = append(spawns, spawn{kind: attemptKindArbiter, spawnedAt: record.Attempt.SpawnedAt, label: fmt.Sprintf("arbiter attempt %d", record.Attempt.Number), file: arbiterDir})
-	}
-	for _, attempt := range row.alignmentAttempts {
-		if attempt.Point != alignment.PointPRGate {
-			continue
-		}
-		spawns = append(spawns, spawn{kind: attemptKindAlignment, spawnedAt: attempt.SpawnedAt, label: fmt.Sprintf("alignment attempt %d", attempt.Number), file: attempt.Dir})
 	}
 	parentDir := filepath.ToSlash(loomengine.LoomParentReviewDirRel())
 	for _, round := range row.parentRounds {

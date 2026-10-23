@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
-// TestPrompt verifies both points render every marker with their own paths, fill the absent inputs as none, leave no unfilled marker and carry both directives.
+// TestPrompt verifies the parent-review point renders every marker with its own paths and the told measure, fills an absent brief as none, leaves no unfilled marker and carries both directives.
 func TestPrompt(t *testing.T) {
 	t.Parallel()
 	stencilsDir := t.TempDir()
@@ -46,13 +46,8 @@ func TestPrompt(t *testing.T) {
 	parentReview := base
 	parentReview.Point = PointParentReview
 	parentReview.BriefPath = "/attempt/brief.md"
-	prGate := base
-	prGate.Point = PointPRGate
-	prGate.PRNumber = 42
-	prGate.HeadSHA = "abc1234"
-	prGateDarn := prGate
-	prGateDarn.PlanDir = ""
-	prGateDarn.MeasureStencil = MeasureDarn
+	noBrief := parentReview
+	noBrief.BriefPath = ""
 
 	tests := []struct {
 		name        string
@@ -60,9 +55,8 @@ func TestPrompt(t *testing.T) {
 		contains    []string
 		notContains []string
 	}{
-		{"parent-review names its brief and fills the pull request as none", parentReview, []string{"# Alignment for `task-a` at `parent-review`", "/attempt/brief.md", "pull request none at `none`"}, nil},
-		{"pr-gate names its pull request and fills the brief as none", prGate, []string{"# Alignment for `task-a` at `pr-gate`", "pull request 42 at `abc1234`", "The brief `none`", "a recorded decision the change breaks"}, nil},
-		{"a darn pr-gate fills an empty plan directory as none and carries darn's measure", prGateDarn, []string{"the plan in `none`", "unrecorded parent correction"}, []string{"a recorded decision the change breaks"}},
+		{"parent-review names its brief and carries loom's measure", parentReview, []string{"# Alignment for `task-a` at `parent-review`", "/attempt/brief.md", "a recorded decision the change breaks"}, []string{"pull request"}},
+		{"an empty brief path fills as none", noBrief, []string{"The brief `none`"}, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -75,7 +69,7 @@ func TestPrompt(t *testing.T) {
 				t.Errorf("Prompt() leaves an unfilled marker:\n%s", got)
 			}
 			want := append([]string{
-				tt.in.Worktree, tt.in.DecisionRecordPath, tt.in.SupportLogPath, tt.in.PlanDir, tt.in.ParentBranch, tt.in.VerdictPath, tt.in.ReportPath,
+				tt.in.Worktree, tt.in.DecisionRecordPath, tt.in.SupportLogPath, tt.in.ParentBranch, tt.in.VerdictPath, tt.in.ReportPath,
 				stencilstore.Path(stencilsDir, "burler-review-format"), parentDirective, editDirective,
 			}, tt.contains...)
 			for _, phrase := range want {
@@ -93,7 +87,7 @@ func TestPrompt(t *testing.T) {
 
 	t.Run("an empty measure stencil is an error naming the field", func(t *testing.T) {
 		t.Parallel()
-		in := prGate
+		in := parentReview
 		in.MeasureStencil = ""
 		if _, err := Prompt(stencilsDir, in); err == nil || !strings.Contains(err.Error(), "MeasureStencil") {
 			t.Errorf("Prompt() error = %v; want it to name MeasureStencil", err)
@@ -104,9 +98,9 @@ func TestPrompt(t *testing.T) {
 		t.Parallel()
 		empty := t.TempDir()
 		stencilkit.SeedInto(t, empty)
-		stencilkit.Remove(t, empty, MeasureDarn)
-		if _, err := Prompt(empty, prGateDarn); err == nil || !strings.Contains(err.Error(), MeasureDarn) {
-			t.Errorf("Prompt() error = %v; want it to name %q", err, MeasureDarn)
+		stencilkit.Remove(t, empty, MeasureLoom)
+		if _, err := Prompt(empty, parentReview); err == nil || !strings.Contains(err.Error(), MeasureLoom) {
+			t.Errorf("Prompt() error = %v; want it to name %q", err, MeasureLoom)
 		}
 	})
 

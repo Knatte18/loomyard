@@ -130,7 +130,6 @@ func templateConfig() Config {
 		Alignment:                "opus[high]",
 		AlignmentTimeoutMin:      20,
 		SkipAlignment:            false,
-		AlignmentPRApprove:       true,
 		ReviewCirclingCheckpoint: 3,
 		ReviewMaxBounces:         3,
 		ReviewHardMaxBounces:     4,
@@ -328,9 +327,9 @@ review_timeout_min: 240
 		},
 		{
 			name:   "explicit alignment keys",
-			values: map[string]string{"alignment": "sonnet[low]", "alignment_timeout_min": "10", "skip_alignment": "true", "alignment_pr_approve": "false"},
+			values: map[string]string{"alignment": "sonnet[low]", "alignment_timeout_min": "10", "skip_alignment": "true"},
 			mutate: func(c *Config) {
-				c.Alignment, c.AlignmentTimeoutMin, c.SkipAlignment, c.AlignmentPRApprove = "sonnet[low]", 10, true, false
+				c.Alignment, c.AlignmentTimeoutMin, c.SkipAlignment = "sonnet[low]", 10, true
 			},
 		},
 		{
@@ -1320,6 +1319,13 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 			wantLines: []string{"rework: retired, removed"},
 			wantKeys:  map[string]any{"plan_max_bounces": 2},
 			wantGone:  []string{"rework"},
+		},
+		{
+			name:      "the retired alignment_pr_approve key is dropped",
+			document:  "alignment_pr_approve: false\nplan_max_bounces: 2\n",
+			wantLines: []string{"alignment_pr_approve: retired, removed"},
+			wantKeys:  map[string]any{"plan_max_bounces": 2},
+			wantGone:  []string{"alignment_pr_approve"},
 		},
 		{
 			name:     "a document without skip_merge_review keeps its zero",

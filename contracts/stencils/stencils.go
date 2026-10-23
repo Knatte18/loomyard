@@ -63,20 +63,15 @@ var LoomTemplatePlan []byte
 //go:embed loom/loom-template-arbiter.md
 var LoomTemplateArbiter []byte
 
-// LoomTemplateAlignment is the alignment agent's shipped-default opening prompt: the cold session that settles one parent review or PR-Gate, or escalates it to the run's parent.
+// LoomTemplateAlignment is the alignment agent's shipped-default opening prompt: the cold session that settles one parent review, or escalates it to the run's parent.
 //
 //go:embed loom/loom-template-alignment.md
 var LoomTemplateAlignment []byte
 
-// LoomFragmentPRGateLoom is loom's pr-gate measure, filled into the alignment stencil's pr_gate_measure marker.
+// LoomFragmentPRGateLoom is loom's measure, filled into the alignment stencil's pr_gate_measure marker.
 //
 //go:embed loom/loom-fragment-pr-gate-loom.md
 var LoomFragmentPRGateLoom []byte
-
-// LoomFragmentPRGateDarn is darn's pr-gate measure, filled into the alignment stencil's pr_gate_measure marker.
-//
-//go:embed loom/loom-fragment-pr-gate-darn.md
-var LoomFragmentPRGateDarn []byte
 
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by both rows of the
 // Discussion-Review perch.
@@ -457,7 +452,6 @@ var entries = []registryEntry{
 	{"loom-template-arbiter", &LoomTemplateArbiter},
 	{"loom-template-alignment", &LoomTemplateAlignment},
 	{"loom-fragment-pr-gate-loom", &LoomFragmentPRGateLoom},
-	{"loom-fragment-pr-gate-darn", &LoomFragmentPRGateDarn},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-code-review", &LoomRubricCodeReview},
