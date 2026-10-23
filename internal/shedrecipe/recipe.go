@@ -85,7 +85,7 @@ type Env struct {
 	ConfigDirs configengine.Dirs
 	// WorktreeRoot is the told worktree root, read by the gate resolver's "plan" and "verify" gates.
 	WorktreeRoot string
-	// RunScratchDir is the told ephemeral shed scratch directory of the run, read by the gate resolver's "plan" and "rework-plan" gates, which record their informational findings in a file under it.
+	// RunScratchDir is the told ephemeral shed scratch directory of the run, read by the gate resolver's "plan" gate, which records its informational findings in a file under it.
 	// Empty keeps those findings inline in the log.
 	RunScratchDir string
 	// GateFindingsFile is the told per-row file an exhausted gate's findings are kept in, read by every entry that builds a gated producer.
@@ -256,22 +256,19 @@ type Env struct {
 	// resolved on internal/loomcli's receiver, and building them here would pull friction, lock and
 	// loom-config imports into this Told-Geometry-bound package.
 	ReflectFriction func() string
-	// ReworkTable is the injected table factory the PRRework entry evaluates once per Call, with the values the producer tells that session.
-	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
-	// internal/loomcli's wire() is what supplies it.
-	ReworkTable func(loomshed.ReworkTold) (seatengine.Table, error)
-	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own precedent:
-	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
+	// Rework carries the told values and seams of the earlier rework rounds a run recorded: the Plan-Review skip seam, the plan archive and the committed-plan reads all take it, and Plan-Write's rotation takes its ArchiveWebster.
 	Rework loomshed.PRReworkDeps
 	// DarnTable is the injected table factory the DarnWrite entry evaluates once per Call, with the token texts the producer tells that session.
-	// It arrives as a closure for the reason ReworkTable does.
+	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
+	// internal/loomcli's wire() is what supplies it.
 	DarnTable func(loomshed.DarnTold) (seatengine.Table, error)
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
 	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler-Fix rows at every build.
 	DarnVerifyAttempts int
-	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, for the reason Rework is.
+	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, following Env.Landing's own precedent:
+	// the producer has behaviour of its own that per-seam fakes must be able to substitute individually.
 	Darn loomshed.DarnDeps
-	// PlanIndex is the code index the "plan" and "rework-plan" gates resolve plan refs against.
+	// PlanIndex is the code index the "plan" gate resolves plan refs against.
 	// It arrives as an interface so this package, and the recipe packages built on it, link no tree-sitter grammar.
 	PlanIndex planindex.Index
 

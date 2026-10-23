@@ -278,13 +278,13 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.Friction = "" },
 		},
 		{
-			name: "judge, seed and rework override keys set",
+			name: "judge and seed override keys set",
 			values: map[string]string{
 				"seed": "haiku[low]", "discussion_judge": "opus[low]", "plan_judge": "opus[high]", "code_judge": "sonnet[low]",
-				"discussion_seed": "haiku[medium]", "plan_seed": "haiku[high]", "code_seed": "sonnet[high]", "rework": "opus[low]",
+				"discussion_seed": "haiku[medium]", "plan_seed": "haiku[high]", "code_seed": "sonnet[high]",
 			},
 			mutate: func(c *Config) {
-				c.Seed, c.Rework = "haiku[low]", "opus[low]"
+				c.Seed = "haiku[low]"
 				c.DiscussionJudge, c.PlanJudge, c.CodeJudge = "opus[low]", "opus[high]", "sonnet[low]"
 				c.DiscussionSeed, c.PlanSeed, c.CodeSeed = "haiku[medium]", "haiku[high]", "sonnet[high]"
 			},
@@ -654,7 +654,6 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed discussion_seed spec", "discussion_seed", `"opus[effort"`, nil, ""},
 		{"malformed plan_seed spec", "plan_seed", `"opus[effort"`, nil, ""},
 		{"malformed code_seed spec", "code_seed", `"opus[effort"`, nil, ""},
-		{"malformed rework spec", "rework", `"opus[effort"`, nil, ""},
 		{"malformed friction spec", "friction", `"opus[effort"`, nil, ""},
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
 		{"malformed arbiter spec", "arbiter", `"opus[effort"`, nil, ""},
@@ -1178,9 +1177,6 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	if got, want := LandingDir(l), filepath.Join(l.AnchorPath(), "_lyx", "landing"); got != want {
 		t.Errorf("LandingDir() = %q; want %q", got, want)
 	}
-	if got, want := LoomRejectionPath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "rejection.json"); got != want {
-		t.Errorf("LoomRejectionPath() = %q; want %q", got, want)
-	}
 	if got, want := LoomReworkCoveragePath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "rework-coverage.md"); got != want {
 		t.Errorf("LoomReworkCoveragePath() = %q; want %q", got, want)
 	}
@@ -1317,6 +1313,13 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 				"merge_reviewer_model", "merge_fixer_model", "merge_reviewer_fan", "merge_fixer_fan",
 				"merge_max_bounces", "merge_hard_max_bounces", "merge_auto_accept",
 			},
+		},
+		{
+			name:      "the retired rework key is dropped",
+			document:  "rework: opus[low]\nplan_max_bounces: 2\n",
+			wantLines: []string{"rework: retired, removed"},
+			wantKeys:  map[string]any{"plan_max_bounces": 2},
+			wantGone:  []string{"rework"},
 		},
 		{
 			name:     "a document without skip_merge_review keeps its zero",

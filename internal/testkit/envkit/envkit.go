@@ -192,19 +192,13 @@ func LandingDeps(dir string) landingshed.Deps {
 func ReworkDeps(t testing.TB, dir string) loomshed.PRReworkDeps {
 	t.Helper()
 	return loomshed.PRReworkDeps{
-		PlanDir:       mustMkdir(t, filepath.Join(dir, "rework-plan")),
-		ReworkDir:     mustMkdir(t, filepath.Join(dir, "rework-rounds")),
-		ReworkDirRel:  "_lyx/loom/rework",
-		ReviewsDir:    mustMkdir(t, filepath.Join(dir, "rework-reviews")),
-		AmendmentPath: filepath.Join(dir, "rework-amendment.yaml"),
-		ReadCommitted: func(string) ([]byte, bool, error) { return nil, false, nil },
-		ReadRejection: func() (loomshed.PendingRejection, bool, error) {
-			return loomshed.PendingRejection{}, false, nil
-		},
-		ClearRejection:    func() error { return nil },
-		ArchiveWebster:    func(string) error { return nil },
-		KeepReviewRecords: func(string, string) error { return nil },
-		Commit:            func() error { return nil },
+		PlanDir:        mustMkdir(t, filepath.Join(dir, "rework-plan")),
+		ReworkDir:      mustMkdir(t, filepath.Join(dir, "rework-rounds")),
+		ReworkDirRel:   "_lyx/loom/rework",
+		ReviewsDir:     mustMkdir(t, filepath.Join(dir, "rework-reviews")),
+		AmendmentPath:  filepath.Join(dir, "rework-amendment.yaml"),
+		ReadCommitted:  func(string) ([]byte, bool, error) { return nil, false, nil },
+		ArchiveWebster: func(string) error { return nil },
 	}
 }
 
@@ -338,21 +332,11 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		CodeSubject: func() (shedadapters.Subject, bool, error) {
 			return shedadapters.Subject{Kind: shedadapters.SubjectCode, MergeBase: "merge-base", Head: "head", FullHash: "full-hash", PatchID: "patch-id"}, true, nil
 		},
-		MergeInOnly:     func(string) (bool, error) { return false, nil },
-		RecordHead:      func() (string, error) { return "record-head", nil },
-		ReviewInput:     func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
-		ReviewBase:      func() (string, error) { return "review-base", nil },
-		ReflectFriction: func() string { return "skipped" },
-		ReworkTable: func(loomshed.ReworkTold) (seatengine.Table, error) {
-			return seatengine.Table{
-				RolePrefix: "rework",
-				Segment:    segmentcolor.Webster,
-				Seats: []seatengine.Seat{{
-					Stencil: "loom-template-rework",
-					Outputs: []string{filepath.Join(dir, "rework-coverage.md")},
-				}},
-			}, nil
-		},
+		MergeInOnly:        func(string) (bool, error) { return false, nil },
+		RecordHead:         func() (string, error) { return "record-head", nil },
+		ReviewInput:        func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+		ReviewBase:         func() (string, error) { return "review-base", nil },
+		ReflectFriction:    func() string { return "skipped" },
 		Rework:             ReworkDeps(t, dir),
 		DarnVerifyAttempts: 3,
 		DarnTable: func(loomshed.DarnTold) (seatengine.Table, error) {

@@ -129,9 +129,8 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 
 // TestStatusCommitPathspec asserts the pathspec always names the run's status file, and names each of the reviews directory, the loom durable directory and the drive-reports directory only when it holds a file at any depth:
 // empty directories, segment directories and subdirectories would make the commit's pathspec match nothing and fail, and an archive sibling alone still counts.
-// A pending rejection holds the reviews root and the loom durable directory out though each holds a file, whether the highest rework round is unclassed or classed but uncommitted.
 //
-//testtiming:keep pins the status commit pathspec naming the status file always and the reviews, loom durable and drive-reports directories only once they hold a file, and a pending rejection holding the round out; the covering integration test commits one fixed layout
+//testtiming:keep pins the status commit pathspec naming the status file always and the reviews, loom durable and drive-reports directories only once they hold a file; the covering integration test commits one fixed layout
 func TestStatusCommitPathspec(t *testing.T) {
 	t.Parallel()
 
@@ -264,19 +263,8 @@ func TestStatusCommitPathspec(t *testing.T) {
 			wantDrive: true,
 		},
 		{
-			name:  "pending rejection, unclassed round",
-			setup: pendingRejectionSetup(writeFile, `{"first_card":3}`, true),
-			// The held directories are left out though each holds a file.
-			wantDrive: true,
-		},
-		{
-			name:      "pending rejection, classed but uncommitted round",
-			setup:     pendingRejectionSetup(writeFile, `{"first_card":3,"class":"exempt"}`, true),
-			wantDrive: true,
-		},
-		{
-			name:        "no pending rejection",
-			setup:       pendingRejectionSetup(writeFile, `{"first_card":3,"class":"exempt"}`, false),
+			name:        "rework round, review file and drive report",
+			setup:       reworkRoundSetup(writeFile, `{"first_card":3,"class":"exempt"}`),
 			wantReviews: true,
 			wantLoom:    true,
 			wantDrive:   true,
@@ -314,16 +302,12 @@ func TestStatusCommitPathspec(t *testing.T) {
 	}
 }
 
-// pendingRejectionSetup returns a setup that writes a rework round record, a review file and a drive report,
-// and a pending rejection when rejection is true.
-func pendingRejectionSetup(writeFile func(t *testing.T, path, content string), record string, rejection bool) func(t *testing.T, loc *lyxcwd.Location) {
+// reworkRoundSetup returns a setup that writes a rework round record, a review file and a drive report.
+func reworkRoundSetup(writeFile func(t *testing.T, path, content string), record string) func(t *testing.T, loc *lyxcwd.Location) {
 	return func(t *testing.T, loc *lyxcwd.Location) {
 		writeFile(t, filepath.Join(loomengine.LoomReworkDir(loc), "round-1", "record.json"), record)
 		writeFile(t, filepath.Join(loomengine.LoomReviewsDir(loc), "plan", "round-1-review.md"), "x\n")
 		writeFile(t, filepath.Join(shedrun.DriveReportsDir(loc, shedrun.SelfRunID), "report.md"), "x\n")
-		if rejection {
-			writeFile(t, loomengine.LoomRejectionPath(loc), "{}\n")
-		}
 	}
 }
 

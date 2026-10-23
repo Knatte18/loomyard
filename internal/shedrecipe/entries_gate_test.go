@@ -2,7 +2,6 @@ package shedrecipe
 
 import (
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,36 +10,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/seatengine"
-	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
-// reworkTestEnv returns newTestEnv(t) with ReworkTable and every Rework seam filled.
+// reworkTestEnv returns newTestEnv(t) with every Rework seam filled.
 func reworkTestEnv(t *testing.T) Env {
 	t.Helper()
 	env := newTestEnv(t)
 	dir := t.TempDir()
-	env.ReworkTable = func(loomshed.ReworkTold) (seatengine.Table, error) {
-		return seatengine.Table{
-			RolePrefix: "rework",
-			Segment:    segmentcolor.Webster,
-			Seats:      []seatengine.Seat{{Stencil: "loom-template-rework", Outputs: []string{filepath.Join(dir, "coverage.md")}}},
-		}, nil
-	}
 	env.Rework = loomshed.PRReworkDeps{
-		PlanDir:           filepath.Join(dir, "plan"),
-		ReworkDir:         filepath.Join(dir, "rework"),
-		ReworkDirRel:      "_lyx/loom/rework",
-		ReviewsDir:        filepath.Join(dir, "reviews"),
-		ReviewRunSubdirs:  []string{"plan", "webster"},
-		ReadCommitted:     func(string) ([]byte, bool, error) { return nil, false, nil },
-		ReadRejection:     func() (loomshed.PendingRejection, bool, error) { return loomshed.PendingRejection{}, false, nil },
-		ClearRejection:    func() error { return nil },
-		ArchiveWebster:    func(string) error { return nil },
-		KeepReviewRecords: func(string, string) error { return nil },
-		Commit:            func() error { return nil },
+		PlanDir:        filepath.Join(dir, "plan"),
+		ReworkDir:      filepath.Join(dir, "rework"),
+		ReworkDirRel:   "_lyx/loom/rework",
+		ReviewsDir:     filepath.Join(dir, "reviews"),
+		ReadCommitted:  func(string) ([]byte, bool, error) { return nil, false, nil },
+		ArchiveWebster: func(string) error { return nil },
 	}
 	return env
 }
@@ -72,7 +57,7 @@ func TestResolveGateSpec_AbsentKeyIsUngated(t *testing.T) {
 }
 
 func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
-	for _, name := range []string{"discussion", "plan", "rework-plan", "description"} {
+	for _, name := range []string{"discussion", "plan", "description"} {
 		t.Run(name, func(t *testing.T) {
 			env := reworkTestEnv(t)
 			env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
@@ -89,44 +74,34 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 		})
 	}
 
-	// The plan gates check a symbol Rename against the env's rename tools, so a site passing a zero PlanContext fails here.
-	for _, name := range []string{"plan", "rework-plan"} {
-		for _, tt := range []struct {
-			name  string
-			tools []string
-			want  bool
-		}{
-			{"no rename tool", nil, true},
-			{"a rename tool", []string{"gopls rename"}, false},
-		} {
-			t.Run(name+" with "+tt.name, func(t *testing.T) {
-				env := reworkTestEnv(t)
-				env.PlanIndex = noFindingsPlanIndex{}
-				env.RenameTools = tt.tools
-				plan := symbolRenamePlan()
-				plankit.Write(t, planparser.PlanDir(env.AnchorPath), plan)
-				committed := map[string][]byte{}
-				for file, data := range plankit.Render(plan) {
-					committed[path.Join(planparser.PlanDirRel(), file)] = data
-				}
-				env.Rework.ReadCommitted = func(rel string) ([]byte, bool, error) {
-					data, ok := committed[rel]
-					return data, ok, nil
-				}
+	// The plan gate checks a symbol Rename against the env's rename tools, so a site passing a zero PlanContext fails here.
+	for _, tt := range []struct {
+		name  string
+		tools []string
+		want  bool
+	}{
+		{"no rename tool", nil, true},
+		{"a rename tool", []string{"gopls rename"}, false},
+	} {
+		t.Run("plan with "+tt.name, func(t *testing.T) {
+			env := reworkTestEnv(t)
+			env.PlanIndex = noFindingsPlanIndex{}
+			env.RenameTools = tt.tools
+			plan := symbolRenamePlan()
+			plankit.Write(t, planparser.PlanDir(env.AnchorPath), plan)
 
-				spec, err := resolveGateSpec("Row", gatesCfg(name, 4), env)
-				if err != nil {
-					t.Fatalf("resolveGateSpec() error = %v; want nil", err)
-				}
-				result, err := spec[0].Gate()
-				if err != nil {
-					t.Fatalf("Gate() error = %v; want nil", err)
-				}
-				if got := strings.Contains(result.Findings, "rename-tool-missing"); got != tt.want {
-					t.Errorf("Gate() = %+v; want rename-tool-missing: %v", result, tt.want)
-				}
-			})
-		}
+			spec, err := resolveGateSpec("Row", gatesCfg("plan", 4), env)
+			if err != nil {
+				t.Fatalf("resolveGateSpec() error = %v; want nil", err)
+			}
+			result, err := spec[0].Gate()
+			if err != nil {
+				t.Fatalf("Gate() error = %v; want nil", err)
+			}
+			if got := strings.Contains(result.Findings, "rename-tool-missing"); got != tt.want {
+				t.Errorf("Gate() = %+v; want rename-tool-missing: %v", result, tt.want)
+			}
+		})
 	}
 
 	// A history seam selects the darn form of the "discussion" gate: it fails on an entry the record dropped and commits only on a pass.
@@ -175,16 +150,10 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 func TestResolveGateSpec_PlanGatesRequirePlanIndex(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"plan", "rework-plan"} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			env := reworkTestEnv(t)
-			env.PlanIndex = nil
-			_, err := resolveGateSpec("Row", gatesCfg(name, 1), env)
-			assertErrContains(t, err, "PlanIndex")
-		})
-	}
+	env := reworkTestEnv(t)
+	env.PlanIndex = nil
+	_, err := resolveGateSpec("Row", gatesCfg("plan", 1), env)
+	assertErrContains(t, err, "PlanIndex")
 }
 
 func TestResolveGateSpec_ListOrderAndPassOnCap(t *testing.T) {
@@ -366,7 +335,7 @@ func TestResolveGateSpec_ParentReviewCapEqualsAttempts(t *testing.T) {
 func TestResolveGateSpec_OtherNamesCarryNoFinal(t *testing.T) {
 	env := reworkTestEnv(t)
 	env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
-	for _, name := range []string{"discussion", "plan", "rework-plan", "description"} {
+	for _, name := range []string{"discussion", "plan", "description"} {
 		spec, err := resolveGateSpec("Row", gatesCfg(name, 1), env)
 		if err != nil {
 			t.Fatalf("%s: resolveGateSpec() error = %v", name, err)
@@ -404,10 +373,15 @@ func TestResolveGateSpec_ParentReviewMissingEnv(t *testing.T) {
 	}
 }
 
-func TestResolveGateSpec_UnknownNameListsSixValues(t *testing.T) {
-	_, err := resolveGateSpec("Row", gatesCfg("bogus", 1), newTestEnv(t))
-	for _, want := range []string{"discussion", "plan", "rework-plan", "description", "verify", "parent-review"} {
-		assertErrContains(t, err, want)
+// The retired rework-plan name is an unknown name like any other.
+func TestResolveGateSpec_UnknownNameListsFiveValues(t *testing.T) {
+	for _, unknown := range []string{"bogus", "rework-plan"} {
+		t.Run(unknown, func(t *testing.T) {
+			_, err := resolveGateSpec("Row", gatesCfg(unknown, 1), newTestEnv(t))
+			for _, want := range []string{"discussion", "plan", "description", "verify", "parent-review"} {
+				assertErrContains(t, err, want)
+			}
+		})
 	}
 }
 

@@ -68,11 +68,9 @@
 // A gate-failed Stuck keeps its record and gains the resume way forward.
 // A failed commit is a returned error, since re-running the session cannot fix a git or filesystem fault.
 //
-// The PR-Rework producer (NewPRRework) archives the plan and review run directories into the round, then recreates the review run directories and hands each archived one to the required KeepReviewRecords seam.
-// The settle record, its patch and the generation record therefore stay where the next review re-entry compares against them, on every Call that reaches the recreation, so a re-step after a failed carry carries again.
-// The archive also removes the plan amendment record, since the new generation's plan replaces the amended one.
-// PlanReviewSkippable answers false while that record exists, so the amended plan is judged and its settle records a round start.
-// LatestRejectReview returns the newest round's findings file and rejection time, the reject file a review amendment is told.
+// A rework round a run recorded before PR-Rework went stays readable.
+// PlanReviewSkippable classifies the live plan generation from the committed round records, and answers false while the plan amendment record exists, so the amended plan is judged and its settle records a round start.
+// ArchivedWebsterDirs lists each round's archived webster run record.
 //
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than
 // reusing internal/shedadapters' identically-shaped, unexported ones: shedadapters' versions are

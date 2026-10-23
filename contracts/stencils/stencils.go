@@ -58,11 +58,6 @@ var LoomTemplateDiscussionAdvisor []byte
 //go:embed loom/loom-template-plan.md
 var LoomTemplatePlan []byte
 
-// LoomTemplateRework is the loom PR-Rework producer's shipped-default autonomous prompt.
-//
-//go:embed loom/loom-template-rework.md
-var LoomTemplateRework []byte
-
 // LoomTemplateArbiter is the loom arbiter's shipped-default opening prompt: the cold session that settles one stop its run's driver could not.
 //
 //go:embed loom/loom-template-arbiter.md
@@ -459,7 +454,6 @@ var entries = []registryEntry{
 	{"loom-template-discussion-chair", &LoomTemplateDiscussionChair},
 	{"loom-template-discussion-advisor", &LoomTemplateDiscussionAdvisor},
 	{"loom-template-plan", &LoomTemplatePlan},
-	{"loom-template-rework", &LoomTemplateRework},
 	{"loom-template-arbiter", &LoomTemplateArbiter},
 	{"loom-template-alignment", &LoomTemplateAlignment},
 	{"loom-fragment-pr-gate-loom", &LoomFragmentPRGateLoom},
@@ -547,7 +541,6 @@ var roleOpeningStencils = map[string][]string{
 	"discussion":         {"loom-template-discussion-chair"},
 	"discussion-advisor": {"loom-template-discussion-advisor"},
 	"plan":               {"loom-template-plan"},
-	"rework":             {"loom-template-rework"},
 	"webster-master":     {"webster-template-master"},
 	"webster-recovery":   {"webster-prefix-recovery"},
 	"burler-review":      {"burler-template-reviewer"},

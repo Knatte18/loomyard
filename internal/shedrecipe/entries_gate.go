@@ -25,17 +25,16 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // An absent key returns the empty GateSpec, which is what every ungated row carries by saying nothing;
 // a present empty list is an error, since it is an author mistake rather than an ungated row.
 //
-// Each element carries a required "name", resolved against a closed six-value vocabulary:
+// Each element carries a required "name", resolved against a closed five-value vocabulary:
 // "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them, or, when env.DiscussionHistory is set, loomshed.NewDarnDiscussionGate over them, the history seam and a non-nil env.CommitDiscussion;
 // on a loom run, where env.DiscussionHistory is unset, "discussion" also requires env.RelevantPath to pass requireAbsRoot and passes it to the gate;
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
-// "rework-plan" requires the same two roots and index plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
 // "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand and env.Round, takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate", and env.Round as the told gate list, the `landing` list at the fix rows;
 // env.VerifyTreeScope alone selects the darn form, which requires env.VerifyMergeBase, the base of both lints in that form, and otherwise env.VerifyMergeBase is the base of the headroom lint;
 // "parent-review" requires the absolute Env.ParentReview.Store.Root, Store.LockDir, DecisionRecord and SupportLog, a non-empty Slug and both render seams, and returns parentreview.NewGate's closure pair, the second being the entry's Final closure;
 // it is must-pass and may hold the run, its "attempts" is the reject cap told to the gate, a "pass_on_cap" key on it is refused, and it carries an expiry probe the wait loop calls off the boundary;
-// any other value is an error naming the key and all six legal values.
+// any other value is an error naming the key and all five legal values.
 // A name may appear once per list, and "parent-review" must be the last element, since a must-pass entry after a pending review would read as not reached at a deadline.
 //
 // "attempts" is required, a non-negative integer read via configInt so 0 is a present value:
@@ -214,20 +213,6 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 			return nil, err
 		}
 		return loomshed.NewPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex, planContextOf(env)), nil
-	case "rework-plan":
-		if err := requireAbsRoot(entry, "AnchorPath", env.AnchorPath); err != nil {
-			return nil, err
-		}
-		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
-			return nil, err
-		}
-		if err := requireSeam(entry, "PlanIndex", env.PlanIndex); err != nil {
-			return nil, err
-		}
-		if err := requireSeam(entry, "Rework.ReadCommitted", env.Rework.ReadCommitted); err != nil {
-			return nil, err
-		}
-		return loomshed.NewReworkPlanGate(env.AnchorPath, env.WorktreeRoot, env.RunScratchDir, env.PlanIndex, env.Rework.ReadCommitted, planContextOf(env)), nil
 	case "description":
 		if err := requireAbsRoot(entry, "DescriptionPath", env.DescriptionPath); err != nil {
 			return nil, err
@@ -248,6 +233,6 @@ func resolvePlainGateClosure(entry, row string, index int, name string, env Env)
 		}
 		return loomshed.NewVerifyGate(env.WorktreeRoot, env.VerifyDir, row+" gate", env.VerifyCommand, env.VerifyMergeBase, env.VerifyTreeScope, env.Round, env.VerifyHold), nil
 	default:
-		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "rework-plan", "description", "verify", "parent-review", name)
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "description", "verify", "parent-review", name)
 	}
 }

@@ -21,8 +21,8 @@
 // discussion_lenses and plan_lenses each name the lenses.yaml fan whose lenses the Discussion-Write or Plan-Write lead forks itself for once its output is written and self-checked; empty, the default, turns the forks off.
 // Neither is the discussion_reviewer_fan or plan_reviewer_fan of a review perch, and all three of these keys are closed to the local layer.
 // The retired discussion_producer and plan_producer keys are rewritten into these by MigrateConfig.
-// seed, discussion_judge, plan_judge, code_judge, discussion_seed, plan_seed, code_seed and rework are role model-specs validated only when non-empty, an empty value meaning the fallback:
-// a per-segment judge takes judge, a per-segment seed takes seed, seed takes that segment's resolved judge, and rework takes plan.
+// seed, discussion_judge, plan_judge, code_judge, discussion_seed, plan_seed and code_seed are role model-specs validated only when non-empty, an empty value meaning the fallback:
+// a per-segment judge takes judge, a per-segment seed takes seed, and seed takes that segment's resolved judge.
 // arbiter is a role model-spec validated only when non-empty, an empty value taking opus[high]; arbiter_timeout_min and arbiter_max_spawns are refused when negative, and a zero arbiter_max_spawns turns the arbiter off.
 // driver_kind is the driver a task's loom run is seeded with when nothing typed one, llm or go, an empty value reading as llm; tackler is a role model-spec validated only when non-empty, an empty value taking haiku;
 // tackler_timeout_min and tackler_max_spawns are refused when negative, a zero tackler_timeout_min taking 10 and a zero tackler_max_spawns turning the tackler off.
@@ -71,10 +71,6 @@ const discussionDirName = "discussion"
 // directory holding the landing change description.
 // loomengine is this segment's sole declarer.
 const landingDirName = "landing"
-
-// loomRejectionFileName is the filename of the pending rejection record within LoomScratchDir.
-// loomengine is this segment's sole declarer.
-const loomRejectionFileName = "rejection.json"
 
 // loomReworkCoverageFileName is the filename of the rework agent's finding-to-card coverage map within LoomScratchDir.
 // loomengine is this segment's sole declarer.
@@ -223,14 +219,6 @@ func LoomScratchDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName)
 }
 
-// LoomRejectionPath returns the path to the pending rejection record for this worktree.
-// It is built on LoomScratchDir rather than re-joining the .lyx literal, and is ephemeral:
-// the record is never tracked, per the Durable-vs-Ephemeral State Invariant.
-// Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomRejectionPath(l *lyxcwd.Location) string {
-	return filepath.Join(LoomScratchDir(l), loomRejectionFileName)
-}
-
 // LoomReworkCoveragePath returns the path to the rework agent's completion file, which maps each finding to the new cards covering it.
 // It is built on LoomScratchDir rather than re-joining the .lyx literal, and is ephemeral:
 // the file is never tracked, per the Durable-vs-Ephemeral State Invariant.
@@ -246,7 +234,7 @@ func LoomReworkDirRel() string {
 }
 
 // LoomReworkDir returns the root holding one round-<N> directory per rejection round for this worktree.
-// It is durable: each round's findings, record, coverage map and prior-generation archive are tracked run content, committed with the new plan generation in PR-Rework's round commit.
+// It is durable: each round's findings, record, coverage map and prior-generation archive are tracked run content, committed with the new plan generation by the round that wrote them.
 // It is built on LoomDurableDirRel rather than re-joining the durable literal a second time.
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomReworkDir(l *lyxcwd.Location) string {
@@ -430,7 +418,6 @@ type Config struct {
 	DiscussionSeed      string `yaml:"discussion_seed"`
 	PlanSeed            string `yaml:"plan_seed"`
 	CodeSeed            string `yaml:"code_seed"`
-	Rework              string `yaml:"rework"`
 	ReviewTimeoutMin    int    `yaml:"review_timeout_min"`
 	Friction            string `yaml:"friction"`
 	FrictionTimeoutMin  int    `yaml:"friction_timeout_min"`
@@ -592,7 +579,6 @@ func ConfigSpec() configengine.Spec {
 			"discussion_seed":            none,
 			"plan_seed":                  none,
 			"code_seed":                  none,
-			"rework":                     none,
 			"review_timeout_min":         none,
 			"friction":                   none,
 			"friction_timeout_min":       none,
@@ -1110,6 +1096,7 @@ var retiredLoomKeys = []string{
 	"merge_max_bounces",
 	"merge_hard_max_bounces",
 	"merge_auto_accept",
+	"rework",
 }
 
 // copyWebsterModelsOntoMerge sets merge_reviewer_model and merge_fixer_model of document to the values of its retired webster_review and webster_fix, each only when the document holds the Webster key and not the Merge one.
@@ -1293,7 +1280,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		return Config{}, fmt.Errorf("loom config key %q: %w", "judge", err)
 	}
 
-	// The judge, seed and rework override keys are validated only when non-empty:
+	// The judge and seed override keys are validated only when non-empty:
 	// an empty value takes its fallback key at run start and must load cleanly.
 	for _, override := range []struct {
 		key   string
@@ -1306,7 +1293,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		{"discussion_seed", cfg.DiscussionSeed},
 		{"plan_seed", cfg.PlanSeed},
 		{"code_seed", cfg.CodeSeed},
-		{"rework", cfg.Rework},
 	} {
 		if override.value == "" {
 			continue

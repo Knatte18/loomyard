@@ -1,8 +1,7 @@
-// gates.go implements this package's gate closures: NewDiscussionGate, NewDarnDiscussionGate, NewPlanGate, NewLensReviewPlanGate and NewReworkPlanGate.
-// Each is the gate half of the Gate Self-Check Parity Invariant -- each calls the identical package
-// function its CLI self-check verb does (ValidateLoomDiscussion, ValidateDarnDiscussion, ValidatePlan, ValidatePlanLensReview and
-// ValidateReworkPlan, respectively), so the operator's own self-check verb and the automated gate can never disagree
-// about what "valid" means.
+// gates.go implements this package's gate closures: NewDiscussionGate, NewDarnDiscussionGate, NewPlanGate and NewLensReviewPlanGate, and the ValidateReworkPlan check `lyx loom validate-plan --rework` runs.
+// Each gate is the gate half of the Gate Self-Check Parity Invariant:
+// each calls the identical package function its CLI self-check verb does (ValidateLoomDiscussion, ValidateDarnDiscussion, ValidatePlan and ValidatePlanLensReview, respectively),
+// so the operator's own self-check verb and the automated gate can never disagree about what "valid" means.
 
 package loomshed
 
@@ -316,20 +315,7 @@ func ValidatePlanLensReview(plan *planparser.Plan, anchorPath, worktreeRoot stri
 // lensReviewMissingCheck names the finding ValidatePlanLensReview appends for an absent or empty lens review.
 const lensReviewMissingCheck = "lens-review-missing"
 
-// NewReworkPlanGate returns the PR-Rework row's gate closure: a shuttleengine.Gate that parses the plan under anchorPath and checks it with ValidateReworkPlan over index.
-// The whole new plan is held to the plan-format checks plus the told first_card.
-// readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.
-//
-// Parse failures, the blocking-versus-informational split and the logging follow the plan gate's contract.
-// A plan that cannot be read as committed at HEAD is a returned error, never a finding: the rework session cannot fix a missing baseline.
-func NewReworkPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index, readCommitted func(anchorRel string) ([]byte, bool, error), pc PlanContext) shuttleengine.Gate {
-	return planGate("Rework-Plan-Gate", anchorPath, scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
-		return ValidateReworkPlan(plan, worktreeRoot, index, readCommitted, pc)
-	})
-}
-
-// ValidateReworkPlan checks the whole new plan with index.ValidateRework: the plan gate's format-only set, plus the check that first_card equals the number Go told the session.
-// The told number is NextReworkCardNumber over the plan committed at HEAD, which still holds the retired generation until the round commit, so it is stable for the gate's whole window.
+// ValidateReworkPlan checks the whole new plan with index.ValidateRework: the plan gate's format-only set, plus the check that first_card equals the number one past the highest card of the plan committed at HEAD.
 // readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.
 // A plan that cannot be read as committed at HEAD is a returned error.
 // The findings of planContextFindings over pc and every card of the fresh generation follow.

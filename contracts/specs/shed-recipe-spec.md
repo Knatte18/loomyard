@@ -69,7 +69,7 @@ The row drives `Env.Seats`, and a nil seam is a construction error.
 A gate-capable row's `gates` key selects validators by name from a closed vocabulary, in order, each element carrying its own `attempts` budget (0 means off) and an optional `pass_on_cap`.
 An absent key is ungated, while an empty list, a duplicate name, or a negative budget is a construction error.
 `parent-review` must be the last element of its list, else construction fails.
-The vocabulary is `discussion`, `plan`, `rework-plan`, `description`, `verify` and `parent-review`.
+The vocabulary is `discussion`, `plan`, `description`, `verify` and `parent-review`.
 `verify` lints the comments, then runs the verify command the wiring tells in `Env.VerifyCommand`, which it requires.
 `Env.VerifyTreeScope`, when set, selects the darn form, which runs the tree-scoped command it answers for a diff wholly under the configured trees and the impact-scoped command otherwise, and the round form is the default.
 `Env.VerifyMergeBase`, when set, is the base of the headroom lint, which runs before the comment lint, or of both lints under the darn form, which requires it.
