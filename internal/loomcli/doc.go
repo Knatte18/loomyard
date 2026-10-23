@@ -273,10 +273,14 @@
 // A recipe row names its subject by its `subject` key: Discussion-Bouncer and Plan-Bouncer `document`, Webster-Bouncer and darn's Darn-Bouncer `code`, Merge-Bouncer `merge`.
 // A document subject hashes the row's artifact paths in order: the decision record through its identity text, a plan directory as its overview's identity text and its top-level card files, and an absent path as absent.
 // Its Base is the commit the run records' checkout stands at.
-// A code subject is the task worktree's change against the merge base with the recorded parent branch, leaving out the run's own state directories and the harness's own files while untracked.
+// A code subject is the task worktree's change against the task's merge base, leaving out the run's own state directories and the harness's own files while untracked.
 // A run with no recorded parent branch tells no code subject, so its code segments write no records.
 // A change confined to the harness's own files reads as an unchanged subject; the verify tiers at Publish, darn's Merge-In and loom's Merge-Review bound it.
 // A merge subject hashes the merge record's merged tip and merge commit.
+//
+// The task's merge base is the one commit every reader of the task's diff starts from: the code subject, the Code-Review rubric's range, Describe's diff, and the verify gate's lints and tree scope.
+// It is the merge base of HEAD with the parent tip the merge record names, since the local parent branch can lag a tip the task merged.
+// With no merge record, or one that cannot be decoded and is logged at Warn, it falls back to the merge base with the local parent branch.
 //
 // A loom run tells each Bouncer the findings file and time of the latest PR-Gate reject its rework directory kept.
 // A darn run's Darn-Write row writes them into `reject-review.md` in the landing directory before it clears the pending rejection, and its Commit seam commits that file.

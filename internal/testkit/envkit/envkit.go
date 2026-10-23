@@ -46,6 +46,7 @@ import (
 var nilLegal = map[string]bool{
 	"Now":                               true,
 	"VerifyMergeBase":                   true,
+	"ReviewBase":                        true,
 	"VerifyTreeScope":                   true,
 	"DiscussionHistory":                 true,
 	"WebsterRecord":                     true,
@@ -370,6 +371,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		MergeInOnly:     func(string) (bool, error) { return false, nil },
 		RecordHead:      func() (string, error) { return "record-head", nil },
 		ReviewInput:     func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+		ReviewBase:      func() (string, error) { return "review-base", nil },
 		ReflectFriction: func() string { return "skipped" },
 		ReworkTable: func(loomshed.ReworkTold) (seatengine.Table, error) {
 			return seatengine.Table{

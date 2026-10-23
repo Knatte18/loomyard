@@ -25,24 +25,11 @@ This gate sits downstream of three separate upstream gates, so a finding re-deri
 This section is the single definition of the review range;
 nothing else states it.
 
-1. Read `_lyx/shed/<slug>/status.json` and take `product.parent`, the branch this run started from.
-   `<slug>` is this worktree's own directory name;
-   a run started before the rename keeps its status at `_lyx/shed/self/status.json`, so read that path when `_lyx/shed/<slug>/` does not exist.
-2. Find the live generation's round.
-   Among `_lyx/loom/rework/round-<N>/` directories, it is the highest `N` whose `record.json` carries a `class` and whose `first_card` equals the `first_card` in `_lyx/plan/00-overview.md`'s frontmatter (absent means `1`).
-3. With such a round, take its `record.json` `head_sha` (the rejected PR head) and review only the branch's own commits after it, excluding the parent branch's changes a mid-run merge brought in:
+Review `git diff {{.review_base}}..HEAD` — every commit the current branch introduces over the merge base the run's last merged parent tip leaves.
+Nothing else widens the range.
 
-   ```
-   git log --first-parent --no-merges -p <head_sha>..HEAD
-   ```
-
-   Earlier generations' code is context, never the subject.
-4. With no such round, review `git diff $(git merge-base <product.parent> HEAD)..HEAD` — every commit the current branch introduces over that merge base.
-   Nothing else widens the range.
-
-All steps are read-only.
-If neither status file can be read, or its `product.parent` is empty or absent, raise a BLOCKING finding stating that the review range could not be determined, and review nothing.
-The same finding is raised when the live round's `record.json` is unreadable or its `head_sha` is empty.
+The step is read-only.
+If the range above reads `git diff none..HEAD`, its base could not be read: raise a BLOCKING finding stating that the review range could not be determined, and review nothing.
 Silently reviewing a guessed range is a worse failure than an honest block.
 
 ## Do not flag

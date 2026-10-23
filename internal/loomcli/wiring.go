@@ -737,7 +737,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// The check only stats, because reading the record would create the records-side lock directory and seed its exclude.
 	var verifyMergeBase func() (string, error)
 	if _, err := os.Stat(fabricengine.OriginRecordPath(location)); err == nil {
-		verifyMergeBase = pairMergeBase(location)
+		verifyMergeBase = taskMergeBase(location)
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("loomcli: stat the origin record: %w", err)
 	}
@@ -756,8 +756,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		VerifyDir:     verifytree.Dir(anchorPath),
 		VerifyCommand: planVerifySource(location).baseCommand,
 		Round:         roundGateSource(fabricengine.ConfigDirs(location)),
-		// VerifyMergeBase is nil for a standalone run, which records no parent branch.
+		// VerifyMergeBase and ReviewBase are nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
+		ReviewBase:      verifyMergeBase,
 		VerifyHold:      verifytree.NewPauseHold(pauseGeom, nil),
 		WebsterRecord: func() string {
 			return loomshed.WebsterRecordNote(anchorPath)
@@ -836,6 +837,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			if err != nil {
 				return seatengine.Table{}, err
 			}
+			mergeBase, err := taskMergeBase(location)()
+			if err != nil {
+				return seatengine.Table{}, err
+			}
 			priorDirs, err := loomshed.ArchivedWebsterDirs(loomengine.LoomReworkDir(location))
 			if err != nil {
 				return seatengine.Table{}, err
@@ -860,6 +865,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 				DescriptionPath:     summaryparser.Path(loomengine.LandingDir(location)),
 				TaskBranch:          taskBranch,
 				ParentBranch:        parentBranch,
+				MergeBase:           mergeBase,
 				Slug:                seedSlug(location.WorktreeName),
 			}, landingCfg, registry)
 		},

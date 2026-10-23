@@ -246,6 +246,9 @@ type Env struct {
 	// ReviewInput reports the file a re-entered review is told to review besides the subject's change, and when the file was written, told to every Bouncer whose subject key is set.
 	// Nil is legal and means a review with no input file.
 	ReviewInput func() (path string, writtenAt time.Time, found bool, err error)
+	// ReviewBase reads the commit a code review's range starts from, filled into a rubric's review_base marker by every Bouncer and BurlerReview row.
+	// Nil is legal and renders the marker as `none`, which the Code-Review rubric reads as a range that could not be determined.
+	ReviewBase func() (string, error)
 	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per
 	// Call, returning the reflection's status string. It arrives as a closure, following
 	// CommitWebster/CommitDiscussion/ApprovePlan, because the reflection's dependencies are already

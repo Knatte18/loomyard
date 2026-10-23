@@ -1,4 +1,4 @@
-// subjects.go builds the identities a Bouncer re-entry compares: the document, code and merge-in subjects of a loom or darn run's review segments, the record head and merge-in-only reads that go with them, and the review input seams.
+// subjects.go builds the identities a Bouncer re-entry compares: the document, code and merge-in subjects of a loom or darn run's review segments, the record head and merge-in-only reads that go with them, the review input seams, and the merge base reader of the task's diff.
 
 package loomcli
 
@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -108,7 +109,31 @@ func writeSubjectPart(digest hash.Hash, name, kind string, content []byte) {
 	digest.Write(content)
 }
 
-// codeSubject returns the identity of the task's diff against its merge base with its recorded parent branch.
+// taskMergeBase returns the reader of the commit the task's diff is taken from: the merge base of the task pair's HEAD with the parent tip the run's merge record names.
+// The local parent branch can lag a tip the task merged, so with no merge record it falls back to the merge base with that branch.
+// An unreadable merge record is logged at Warn and read as absent, so no reader errors on it and the next Merge-In or Finalize rewrites it.
+// The record and the fabric are read on each call, so a merge made after bootstrap is read as it stands.
+func taskMergeBase(l *lyxcwd.Location) func() (string, error) {
+	fallback := pairMergeBase(l)
+	recordPath := landingshed.MergeRecordPath(loomengine.LoomScratchDir(l))
+	return func() (string, error) {
+		record, found, err := landingshed.ReadMergeRecord(recordPath)
+		if err != nil {
+			logger.Warn("loom: read the merge record for the task's merge base; falling back to the parent branch", "path", recordPath, "error", err)
+			return fallback()
+		}
+		if !found || record.MergedTip == "" {
+			return fallback()
+		}
+		handle, err := fabricengine.Open(l)
+		if err != nil {
+			return "", err
+		}
+		return handle.MergeBase(record.MergedTip)
+	}
+}
+
+// codeSubject returns the identity of the task's diff against its merge base from taskMergeBase.
 // A run with no recorded parent branch, a standalone run, answers not found, so its code segments write no records.
 // The diff leaves out the run's own state directories and harnessOwnFiles while untracked; the run's records live on the records side of the fabric, so no diff of the task's code holds them.
 // Bound: a change confined to harnessOwnFiles reads as an unchanged subject; the verify tiers at Publish, darn's Merge-In and loom's Merge-Review bound it.
@@ -120,11 +145,11 @@ func codeSubject(location *lyxcwd.Location, runID string) (shedadapters.Subject,
 	if !found || origin.ParentBranch == "" {
 		return shedadapters.Subject{}, false, nil
 	}
-	handle, err := fabricengine.Open(location)
+	base, err := taskMergeBase(location)()
 	if err != nil {
 		return shedadapters.Subject{}, false, err
 	}
-	base, err := handle.MergeBase(origin.ParentBranch)
+	handle, err := fabricengine.Open(location)
 	if err != nil {
 		return shedadapters.Subject{}, false, err
 	}

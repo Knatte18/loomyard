@@ -1,5 +1,5 @@
 // darnwiring.go holds the wiring only a darn run needs: the tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the writer's and Describe's Spec sources, and the rename of retired darn rows in a run's status file.
-// A loom run leaves all of it unwired, but shares the merge base reader `pairMergeBase` builds.
+// A loom run leaves all of it unwired, but shares the merge base readers `pairMergeBase` and `taskMergeBase` build.
 
 package loomcli
 
@@ -95,7 +95,7 @@ func pairMergeBase(l *lyxcwd.Location) func() (string, error) {
 // A load error is returned with its way forward: the editor one for a malformed tree key, the hub reconcile one otherwise.
 // A scoped diff whose trees contribute no target answers an empty command.
 func darnTreeScope(l *lyxcwd.Location) func() (string, bool, error) {
-	mergeBase := pairMergeBase(l)
+	mergeBase := taskMergeBase(l)
 	return func() (string, bool, error) {
 		dirs := fabricengine.ConfigDirs(l)
 		cfg, err := darnengine.LoadConfig(dirs, "darn")
@@ -256,7 +256,7 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	// the tree-scoped command reaches the gate through VerifyTreeScope, never through this source.
 	c.env.VerifyCommand = darnVerifySource(location).baseCommand
 	c.env.Round = roundGateSource(dirs)
-	c.env.VerifyMergeBase = pairMergeBase(location)
+	c.env.VerifyMergeBase = taskMergeBase(location)
 	c.env.VerifyTreeScope = darnTreeScope(location)
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
 	if err := wireDarnReview(&c.env, cfg, shared, bouncer, registry); err != nil {
@@ -303,6 +303,10 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		if err != nil {
 			return seatengine.Table{}, err
 		}
+		mergeBase, err := taskMergeBase(location)()
+		if err != nil {
+			return seatengine.Table{}, err
+		}
 		return landingshed.DarnDescribeTable(landingshed.DarnDescribeInputs{
 			StencilsDir:        stencilsDir,
 			ReviewDir:          filepath.Join(loomengine.LoomReviewsDir(location), reviewSubdir),
@@ -310,6 +314,7 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 			DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
 			TaskBranch:         taskBranch,
 			ParentBranch:       parentBranch,
+			MergeBase:          mergeBase,
 			Slug:               seedSlug(location.WorktreeName),
 		}, landingCfg, registry)
 	}

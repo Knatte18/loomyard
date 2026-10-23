@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// noNote is what the optional webster_record, gate_tiers and amendment markers render as when their note is blank.
+// noNote is what the optional webster_record, gate_tiers, amendment and review_base markers render as when their note is blank.
 const noNote = "none"
 
 // RubricNotes are the optional notes a rubric's markers are filled from.
@@ -23,6 +23,8 @@ type RubricNotes struct {
 	GateTiers string
 	// Amendment fills the amendment marker, the note that scopes an amendment generation's review to the change since its base.
 	Amendment string
+	// ReviewBase fills the review_base marker, the commit the Code-Review rubric's review range starts from.
+	ReviewBase string
 }
 
 // ReadRubric reads the rubric stencil name from stencilsDir, strips its stamp banner, fills it as its own template with specsDir, stencilsDir and notes, and returns the filled result.
@@ -57,6 +59,7 @@ func ReadRubric(stencilsDir, name, specsDir string, notes RubricNotes) (string, 
 		"webster_record": noteOrNone(notes.WebsterRecord),
 		"gate_tiers":     noteOrNone(notes.GateTiers),
 		"amendment":      noteOrNone(notes.Amendment),
+		"review_base":    noteOrNone(notes.ReviewBase),
 	})
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)
