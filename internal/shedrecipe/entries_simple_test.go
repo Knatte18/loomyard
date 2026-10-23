@@ -25,23 +25,20 @@ func nilFabricOpener() (*fabricengine.Fabric, error) {
 }
 
 // validLandingDeps returns a landingshed.Deps filled with a synthetic-but-valid told value for
-// every field NewPublish/NewFinalize require, deriving every path from t.TempDir().
+// every field NewMergeIn/NewFinalize require, deriving every path from t.TempDir().
 func validLandingDeps(t *testing.T) landingshed.Deps {
 	t.Helper()
 	dir := t.TempDir()
 	return landingshed.Deps{
-		WorktreeRoot:      dir,
-		TaskBranch:        "task-branch",
-		ParentBranch:      "fixture-parent",
-		DescriptionPath:   summaryparser.Path(dir),
-		StencilsDir:       dir,
-		ScratchDir:        dir,
-		OriginURL:         "https://example.invalid/fixture/fixture.git",
-		PushBranch:        func() error { return nil },
-		RemoteOnlyCommits: func() (string, []string, error) { return "", nil, nil },
-		OpenFabric:        nilFabricOpener,
-		OpenParentFabric:  nilFabricOpener,
-		Shuttle:           &shedfake.MergeShuttle{},
+		WorktreeRoot:     dir,
+		TaskBranch:       "task-branch",
+		ParentBranch:     "fixture-parent",
+		DescriptionPath:  summaryparser.Path(dir),
+		StencilsDir:      dir,
+		ScratchDir:       dir,
+		OpenFabric:       nilFabricOpener,
+		OpenParentFabric: nilFabricOpener,
+		Shuttle:          &shedfake.MergeShuttle{},
 		Lock: landingshed.ParentLockDeps{
 			Store: &parentlock.Store{Dir: filepath.Join(dir, "locks")},
 			Owner: func() (parentlock.Owner, error) { return parentlock.Owner{Slug: "fixture", RunID: "fixture"}, nil },

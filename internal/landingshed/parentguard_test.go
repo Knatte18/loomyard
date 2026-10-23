@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -208,79 +207,6 @@ func TestParentGuard_ReleaseFreesOwnRecordAndLeavesAnotherProcessAlone(t *testin
 	g.release("Publish")
 	if rec, found, _ := store.Read("main"); found {
 		t.Errorf("record = %+v; want the run's own record freed", rec)
-	}
-}
-
-func TestParentGuard_Moved(t *testing.T) {
-	t.Parallel()
-
-	const mergedTip = "m1"
-	tests := []struct {
-		name        string
-		noRecord    bool
-		pushSkipped bool
-		tips        fabricengine.ParentTips
-		holds       map[string]bool
-		wantFetch   bool
-		wantReason  string
-	}{
-		{name: "equal tips", tips: fabricengine.ParentTips{Local: "m1", Upstream: "m1"}, wantFetch: true},
-		{
-			name:       "a local commit",
-			tips:       fabricengine.ParentTips{Local: "l2", Upstream: "m1"},
-			wantFetch:  true,
-			wantReason: `parent branch "main" moved since Merge-In merged m1 (local l2, upstream m1); rerouting to Merge-In`,
-		},
-		{
-			name:       "an upstream push",
-			tips:       fabricengine.ParentTips{Local: "m1", Upstream: "u2"},
-			wantFetch:  true,
-			wantReason: `parent branch "main" moved since Merge-In merged m1 (local m1, upstream u2); rerouting to Merge-In`,
-		},
-		{name: "no upstream", tips: fabricengine.ParentTips{Local: "m1"}, wantFetch: true},
-		{name: "the push skip ignores a moved upstream", pushSkipped: true, tips: fabricengine.ParentTips{Local: "m1", Upstream: "u2"}},
-		{name: "a moved tip that holds the task's work", tips: fabricengine.ParentTips{Local: "l2", Upstream: "m1"}, holds: map[string]bool{"l2": true}, wantFetch: true},
-		{name: "a missing merge record", noRecord: true, tips: fabricengine.ParentTips{Local: "m1", Upstream: "m1"}, wantReason: `no readable merge record from Merge-In for parent branch "main"; rerouting to Merge-In`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			recordPath := MergeRecordPath(t.TempDir())
-			if !tt.noRecord {
-				if err := WriteMergeRecord(recordPath, MergeRecord{ParentBranch: "main", MergedTip: mergedTip}); err != nil {
-					t.Fatal(err)
-				}
-			}
-			var gotFetch bool
-			g := parentGuard{
-				parentBranch: "main",
-				pushSkipped:  tt.pushSkipped,
-				readParentTips: func(fetch bool) (fabricengine.ParentTips, error) {
-					gotFetch = fetch
-					return tt.tips, nil
-				},
-				holdsWork: func(base, source string) (bool, error) {
-					if source != "task-head" {
-						t.Errorf("HoldsWork source = %q; want the task head", source)
-					}
-					return tt.holds[base], nil
-				},
-				taskHead:        func() (string, error) { return "task-head", nil },
-				mergeRecordPath: recordPath,
-			}
-
-			reason, err := g.moved("Publish")
-			if err != nil {
-				t.Fatalf("moved() error = %v", err)
-			}
-			if reason != tt.wantReason {
-				t.Errorf("moved() = %q; want %q", reason, tt.wantReason)
-			}
-			if !tt.noRecord && gotFetch != tt.wantFetch {
-				t.Errorf("ReadParentTips fetch = %v; want %v", gotFetch, tt.wantFetch)
-			}
-		})
 	}
 }
 

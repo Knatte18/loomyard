@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
@@ -58,9 +57,8 @@ func landingDeps(
 	l *lyxcwd.Location,
 	recipe string,
 	geom websterengine.Geometry,
-	taskBranch, originURL, parentBranch string,
+	taskBranch, parentBranch string,
 	pushSkipped bool,
-	pushBranch func() error,
 	registry modelspec.Registry,
 	runner *shuttleengine.Runner,
 	cfg landingshed.Config,
@@ -70,7 +68,6 @@ func landingDeps(
 	stopConflictSession func() (string, error),
 	verify verifySource,
 	lock landingshed.ParentLockDeps,
-	runStart time.Time,
 ) landingshed.Deps {
 	// A darn run has no plan, so only a loom run traces a failed verify to its cards.
 	var traceFailure func(log, head string) (verifytree.FailureTrace, error)
@@ -88,16 +85,7 @@ func landingDeps(
 		ConflictReroutes: recipe == shedrun.RecipeLoom,
 		StencilsDir:      geom.StencilsDir,
 		ScratchDir:       loomengine.LoomScratchDir(l),
-		OriginURL:        originURL,
 		PushSkipped:      pushSkipped,
-		PushBranch:       pushBranch,
-		RemoteOnlyCommits: func() (string, []string, error) {
-			f, err := fabricengine.Open(l)
-			if err != nil {
-				return "", nil, err
-			}
-			return f.RemoteOnlyCommits()
-		},
 		OpenFabric: func() (*fabricengine.Fabric, error) {
 			return fabricengine.Open(l)
 		},
@@ -169,8 +157,6 @@ func landingDeps(
 			return err
 		},
 		StopConflictSession: stopConflictSession,
-		ApprovalPath:        loomengine.LoomApprovalPath(l),
-		RejectionPath:       loomengine.LoomRejectionPath(l),
 		TaskHead: func() (string, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {
@@ -200,10 +186,8 @@ func landingDeps(
 			return err
 		},
 		VerifyCommand:  verify.command,
-		PublishCommand: verify.publishCommand,
 		BaseCommand:    verify.baseCommand,
 		GateTiers:      verify.gateTiers,
-		PublishSkip:    verify.publishSkip,
 		FailingTests:   failingTestsOf,
 		TraceFailure:   traceFailure,
 		VerifyDir:      verifytree.Dir(l.AnchorPath()),
@@ -214,7 +198,6 @@ func landingDeps(
 		Registry:       registry,
 		Config:         cfg,
 		Lock:           lock,
-		RunStart:       runStart,
 		// The parent reads run over the task pair, opened at call time like the other fabric seams.
 		ReadParentTips: parentTipsReader(l, parentBranch),
 		HoldsWork: func(base, source string) (bool, error) {
@@ -239,7 +222,6 @@ func landingDeps(
 			return f.MergeBase(ref)
 		},
 		MergeRecordPath:    landingshed.MergeRecordPath(loomengine.LoomScratchDir(l)),
-		Alignment:          landingAlignmentDeps(l, recipe, geom.StencilsDir, registry, runner, runner.PauseGeometry()),
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(l),
 		PlanDir:            fixerPlanDir(l, recipe),
 		LineChange: func(from, to string) (fabricengine.LineChange, error) {
@@ -367,55 +349,6 @@ func mergeableTips(tips fabricengine.ParentTips, pushSkipped bool) []string {
 	return merged
 }
 
-// alignmentNoteFile is the alignment note's file name in the PR-Gate point's alignment directory; the attempt listing skips a file there.
-const alignmentNoteFile = "note.json"
-
-// landingAlignmentDeps builds PR-Align's seams for the worktree l.
-// Its Config loads loom's config on each call, so an edit to skip_alignment or alignment_pr_approve takes effect at the next step;
-// its session works under the run's PR-Gate alignment directory, which also holds the alignment note.
-// A darn run's prompt names no plan directory and carries darn's measure; every other recipe keeps the plan directory and loom's measure.
-func landingAlignmentDeps(l *lyxcwd.Location, recipe, stencilsDir string, registry modelspec.Registry, runner *shuttleengine.Runner, pause pauserecord.Geometry) landingshed.AlignmentDeps {
-	root := shedrun.AlignmentDir(l, shedrun.SelfRunID, string(alignment.PointPRGate))
-	slug := seedSlug(l.WorktreeName)
-	planDir, measure := planparser.PlanDir(l.AnchorPath()), alignment.MeasureLoom
-	if recipe == shedrun.RecipeDarn {
-		planDir, measure = "", alignment.MeasureDarn
-	}
-	return landingshed.AlignmentDeps{
-		Config: func() (landingshed.AlignmentConfig, error) {
-			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
-			if err != nil {
-				return landingshed.AlignmentConfig{}, err
-			}
-			if alignmentOff(l, cfg) {
-				return landingshed.AlignmentConfig{Off: true}, nil
-			}
-			settings, err := alignmentSettings(cfg, registry)
-			if err != nil {
-				return landingshed.AlignmentConfig{}, err
-			}
-			return landingshed.AlignmentConfig{PRApprove: cfg.AlignmentPRApprove, Settings: settings}, nil
-		},
-		Session: alignment.NewSession(alignment.SessionConfig{
-			Root:        root,
-			StencilsDir: stencilsDir,
-			Shuttle:     alignment.RunnerShuttle(runner),
-			Now:         time.Now,
-			Pause:       pause,
-		}),
-		Snapshot: alignmentSnapshot(loomengine.DiscussionDecisionRecord(l), slug, hubBoardTasks(l)),
-		Prompt: alignment.PromptInput{
-			Slug:               slug,
-			Worktree:           l.WorktreePath(),
-			DecisionRecordPath: loomengine.DiscussionDecisionRecord(l),
-			SupportLogPath:     loomengine.DiscussionSupportLog(l),
-			PlanDir:            planDir,
-			MeasureStencil:     measure,
-		},
-		NotePath: filepath.Join(root, alignmentNoteFile),
-	}
-}
-
 // pauseCovered returns the parent lock store's Covered seam: whether the hub's pause record covers a slug now.
 // A geometry or record that cannot be read covers nothing, so a corrupt file never freezes the lock queue.
 func pauseCovered(l *lyxcwd.Location) func(slug string) bool {
@@ -508,26 +441,22 @@ type verifySource struct {
 	command func() (string, error)
 	// publishCommand returns the call of the `publish` gate, "" for an empty list.
 	publishCommand func() (string, error)
-	// baseCommand returns the call whose verified-tree entry every landing and publish pass keeps, and the round gate's told command.
+	// baseCommand returns the call whose verified-tree entry every landing pass keeps, and the round gate's told command.
 	baseCommand func() (string, error)
 	// gateTiers lists the tier numbers of a named gate, read from the hub's gate config at each call.
 	gateTiers func(gate string) ([]int, error)
-	// publishSkip answers whether Publish skips the `publish` gate for this call, read at each Publish.
-	// Nil for loom's source, which never skips.
-	publishSkip func() (bool, error)
 }
 
-// planVerifySource returns loom's verify source: the hub's `landing`, `publish` and `final` gate calls.
+// planVerifySource returns loom's verify source: the hub's `landing` and `final` gate calls.
 // Each reader loads the hub's gate config over the pair's config dirs each time it is called, never at construction:
 // landingDeps runs at bootstrap, so a gate.yaml edit between two steps must take effect.
 // A config or gate-list refusal is returned with its own way forward, not mapped to an empty command.
 func planVerifySource(l *lyxcwd.Location) verifySource {
 	dirs := fabricengine.ConfigDirs(l)
 	return verifySource{
-		command:        gateCallSource(dirs, "landing"),
-		publishCommand: gateCallSource(dirs, "publish"),
-		baseCommand:    gateCallSource(dirs, "final"),
-		gateTiers:      gateTiersLookup(dirs),
+		command:     gateCallSource(dirs, "landing"),
+		baseCommand: gateCallSource(dirs, "final"),
+		gateTiers:   gateTiersLookup(dirs),
 	}
 }
 

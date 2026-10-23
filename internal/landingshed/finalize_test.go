@@ -1,6 +1,5 @@
 // finalize_test.go covers Finalize against a faked resolver and a faked parent-pair opener closure returning a scripted merge outcome.
 // This tier lives in the package itself too, for the same reason as its sibling: the resolver seam and the parentMerger seam it substitutes are both unexported.
-// None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
 
@@ -201,7 +200,6 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var order []string
 			deps := newTestDeps(t)
-			failOnGitHubClient(t)
 			deps.Slug = "me"
 			if tt.repair != nil {
 				deps.OriginParentHoldsWork = func() (bool, error) { return tt.repair.holds, tt.repair.holdsErr }
@@ -274,7 +272,6 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
-			failOnGitHubClient(t)
 			deps.Slug = "me"
 			deps.Config.Squash = tt.squash
 			enginesRun := []string{"claude"}
@@ -378,35 +375,22 @@ func (r *orderedResolver) Resolve(ctx context.Context, source, tip string) (merg
 
 // TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once with the same composed message, and that the board seam runs once, after the retry that lands, never after a failed attempt.
 // It also pins that the parent run records are committed after each merge-in and before the parent-side merge, on the first pass and on the retry alike.
-// The retry runs only when the parent has not moved: a parent that moved again, which the tip read before the retry finds, reroutes with no retry.
-// The tip reads in order are the sync's, the first merge's, the retry check's and the retry merge's.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	tests := []struct {
 		name        string
 		secondTry   mergeCallResult
 		wantOutcome shedengine.Outcome
 		wantOrder   string
-		// movedFromRead is the 1-based tip read from which the parent reads as moved; 0 means never.
-		movedFromRead int
-		wantCalls     int
-		wantReroute   bool
+		wantCalls   int
+		wantReroute bool
 	}{
-		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push", 0, 2, false},
-		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 0, 2, false},
-		{"a parent moved again reroutes with no retry", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Stuck, "merge-in,records,merge", 3, 1, true},
+		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push", 2, false},
+		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 2, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var order []string
 			deps := newTestDeps(t)
-			reads := 0
-			deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
-				reads++
-				if tt.movedFromRead != 0 && reads >= tt.movedFromRead {
-					return fabricengine.ParentTips{Local: "newer-tip", Upstream: "newer-tip", Relation: fabricengine.ParentEqual}, nil
-				}
-				return fabricengine.ParentTips{Local: testParentTip, Upstream: testParentTip, Relation: fabricengine.ParentEqual}, nil
-			}
 			deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
 			deps.CommitParentRecords = func() error { order = append(order, "records"); return nil }
 			summary, err := summaryparser.Parse(deps.DescriptionPath)

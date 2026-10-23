@@ -20,15 +20,14 @@ import (
 // dirtyPathsShown caps how many dirty paths a Stuck reason names.
 const dirtyPathsShown = 10
 
-// verifyGate holds the told landing, publish and base command closures, the told gate tier lookup, the told wait-mark callback, the verify paths and the two verifytree seams.
+// verifyGate holds the told landing and base command closures, the told gate tier lookup, the told wait-mark callback, the verify paths and the two verifytree seams.
 // The dirty, verify and now fields are in-package seams tests replace with fakes,
 // so unit tests never spawn git or a shell and the mark's start time is fixed.
-// A zero dirty seam skips the clean-tree check, a nil command skips the landing verify, a nil publishCommand skips the publish verify, a nil baseCommand names no base command and a nil waitMark marks nothing.
+// A zero dirty seam skips the clean-tree check, a nil command skips the landing verify, a nil baseCommand names no base command and a nil waitMark marks nothing.
 type verifyGate struct {
-	// command renders the `landing` gate's call, publishCommand the `publish` gate's call, and baseCommand the call whose record entry every pass keeps.
-	command        func() (string, error)
-	publishCommand func() (string, error)
-	baseCommand    func() (string, error)
+	// command renders the `landing` gate's call, and baseCommand the call whose record entry every pass keeps.
+	command     func() (string, error)
+	baseCommand func() (string, error)
 	// tiers lists the tier numbers of a named gate; recordFailure reads it for a log that names no failing tier.
 	tiers    func(gate string) ([]int, error)
 	waitMark func(label string, start time.Time) error
@@ -38,12 +37,12 @@ type verifyGate struct {
 	dirty  func(worktree string) ([]string, error)
 	verify func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
 	now    func() time.Time
-	// recorder is set only by Publish: nil leaves a failed verify unrecorded.
+	// recorder is set by Merge-In and Finalize: nil leaves a failed verify unrecorded.
 	recorder *failureRecorder
 }
 
 // failureRecorder holds what the gate needs to write the Publish failure record.
-// mergeCommit is set by Publish after its merge-in and read when a verify fails.
+// mergeCommit is set by the producer after its merge-in and read when a verify fails.
 type failureRecorder struct {
 	failingTests func(log string) []verifytree.FailedTest
 	// traceFailure traces the log to the plan; nil traces nothing.
@@ -124,15 +123,14 @@ func (g verifyGate) clearFailure() {
 // newVerifyGate copies the gate's told values from deps and wires the real verifytree functions.
 func newVerifyGate(deps Deps) verifyGate {
 	return verifyGate{
-		command:        deps.VerifyCommand,
-		publishCommand: deps.PublishCommand,
-		baseCommand:    deps.BaseCommand,
-		tiers:          deps.GateTiers,
-		waitMark:       deps.VerifyWaitMark,
-		hold:           deps.VerifyHold,
-		paths:          verifytree.NewPaths(deps.WorktreeRoot, deps.VerifyDir),
-		dirty:          verifytree.DirtyPaths,
-		now:            time.Now,
+		command:     deps.VerifyCommand,
+		baseCommand: deps.BaseCommand,
+		tiers:       deps.GateTiers,
+		waitMark:    deps.VerifyWaitMark,
+		hold:        deps.VerifyHold,
+		paths:       verifytree.NewPaths(deps.WorktreeRoot, deps.VerifyDir),
+		dirty:       verifytree.DirtyPaths,
+		now:         time.Now,
 		verify: func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error) {
 			return verifytree.Verify(ctx, p, site, command)
 		},
@@ -233,36 +231,6 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 	}
 	g.recordFailure(verifytree.FailureKindLanding, producer, result)
 	return g.verdict(result, "landing gate", producer, parentBranch)
-}
-
-// checkPublishVerify runs the `publish` gate's call for producer after the landing call passed.
-// An empty call, which an empty `publish` list renders, runs nothing and logs nothing.
-// The base command is the site's BaseCommand, so the pass keeps the landing entry of the record.
-//
-// It returns a non-empty Stuck reason naming the `publish` gate when the call fails or the tree is dirty.
-// It returns a non-nil error for an infrastructure fault or a cancellation, and ("", nil) when the producer may proceed.
-func (g verifyGate) checkPublishVerify(ctx context.Context, producer, parentBranch string) (string, error) {
-	if g.publishCommand == nil {
-		return "", nil
-	}
-	publishCommand, err := g.publishCommand()
-	if err != nil {
-		return "", fmt.Errorf("landingshed: %s: read publish command: %w", producer, err)
-	}
-	if publishCommand == "" {
-		return "", nil
-	}
-	base, err := g.readBase(producer)
-	if err != nil {
-		return "", err
-	}
-
-	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: base, Hold: g.hold}, publishCommand)
-	if err != nil {
-		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
-	}
-	g.recordFailure(verifytree.FailureKindPublish, producer, result)
-	return g.verdict(result, "publish gate", producer, parentBranch)
 }
 
 // watchdogClause returns the clause a failed verify's reason carries when the log at logPath holds the CPU watchdog's line, and empty for an unreadable log or one without it.

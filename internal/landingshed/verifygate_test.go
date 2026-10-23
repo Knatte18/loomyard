@@ -117,7 +117,6 @@ func newGateFixture(t *testing.T, command string, closureErr error) *gateFixture
 // The calls the fixtures render for the gates, standing in for what the hub's gate config renders.
 const (
 	gateLandingCall = "lyx gate test --wait --tier 0 --tier 1 --all"
-	gatePublishCall = "lyx gate test --wait --tier 2 --all"
 	gateBaseCall    = "lyx gate test --wait --tier 0 --all"
 )
 
@@ -283,14 +282,6 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 				t.Errorf("verify got calls=%d command=%q paths=%+v site=%+v", f.fake.verifyCalls, f.fake.command, f.fake.paths, f.fake.site)
 			}
 
-			publish := newGateFixture(t, tc.command, nil)
-			publish.gate.hold = hold
-			publish.gate.publishCommand = func() (string, error) { return tc.command, nil }
-			publish.fake.result = result
-			_, _ = publish.gate.checkPublishVerify(context.Background(), tc.site, "main")
-			if publish.fake.site != (verifytree.Site{Label: tc.site, Hold: hold}) {
-				t.Errorf("publish verify got site=%+v; want the gate's hold", publish.fake.site)
-			}
 			if tc.wantErrHas != "" {
 				if reason != "" || err == nil || !strings.Contains(err.Error(), tc.wantErrHas) {
 					t.Fatalf("got (%q, %v), want an error naming %q", reason, err, tc.wantErrHas)

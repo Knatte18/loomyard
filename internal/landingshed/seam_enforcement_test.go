@@ -21,7 +21,6 @@ import (
 // landingshedAllowedImports are the only non-stdlib import paths production code in this package
 // may use.
 var landingshedAllowedImports = []string{
-	"github.com/Knatte18/loomyard/internal/alignment",
 	"github.com/Knatte18/loomyard/internal/fabricengine",
 	"github.com/Knatte18/loomyard/internal/gateslot",
 	"github.com/Knatte18/loomyard/internal/mergeresolve",
@@ -31,15 +30,12 @@ var landingshedAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/logger",
 	"github.com/Knatte18/loomyard/internal/seatengine",
 	"github.com/Knatte18/loomyard/internal/shedengine",
-	"github.com/Knatte18/loomyard/internal/shedtransient", // classifies a failed remote call as a transient hard error
-	"github.com/Knatte18/loomyard/internal/githubclient",
-	"github.com/Knatte18/loomyard/internal/gitrepo",
+	"github.com/Knatte18/loomyard/internal/shedtransient", // classifies a failed push as a transient hard error
 	"github.com/Knatte18/loomyard/internal/summaryparser",
 	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/stencilstore",
 	"github.com/Knatte18/loomyard/internal/verifytree",
-	"github.com/google/go-github/v75/github",
 	"gopkg.in/yaml.v3",
 }
 

@@ -47,7 +47,6 @@ func commitStatusRecorder(events *[]string, err error) func() error {
 }
 
 // TestFinalize_CommitStatus pins the seam's ordering and disposition in Finalize: it runs before the merge-in, a failure is an error that never merges, and an unwired seam is not an error.
-// It stays serial because newTestDeps swaps the package-level NewGitHubClient.
 func TestFinalize_CommitStatus(t *testing.T) {
 	sentinel := errors.New("git index locked")
 	cases := []struct {

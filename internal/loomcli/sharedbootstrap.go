@@ -304,9 +304,8 @@ func (c *loomCLI) ensureStatusStrand() error {
 	return nil
 }
 
-// wireLanding assembles Env.Landing: it opens the fabric, reads the landing branches and the origin URL, builds the push closure and tells landingDeps the hub's language skills.
+// wireLanding assembles Env.Landing: it opens the fabric, reads the landing branches and tells landingDeps the hub's language skills.
 // It then sets the fixer's seat runner to the seat engine wire built.
-// An origin URL that cannot be read passes through as empty.
 func (c *loomCLI) wireLanding() error {
 	handle, err := fabricengine.Open(c.location)
 	if err != nil {
@@ -316,31 +315,13 @@ func (c *loomCLI) wireLanding() error {
 	if err != nil {
 		return err
 	}
-	originURL, err := handle.OriginURL()
-	if err != nil {
-		// scalar-read-errors-refuse-or-defer-by-consumer: only Publish reads OriginURL, and only
-		// when a pull request is actually required, so an unusable origin URL passes through as an
-		// empty string rather than refusing this build itself.
-		originURL = ""
-	}
-	runStart, err := seedRunStart(c.location)
-	if err != nil {
-		return fmt.Errorf("%w; way forward: rm %s, then lyx shed seed self --recipe loom --driver go --param parent=%s; a re-seed made after Publish opened the pull request moves the run's start past it, so PR-Gate, PR-Align and Finalize find no pull request and Publish stops on it as an older open one: restore the original started_at in the seed by editing the file (any time at or before that pull request's creation), or close that pull request and resume with lyx loom start", err, shedrun.SeedFile(c.location, shedrun.SelfRunID), parentBranch)
-	}
-	syncOpts := fabricengine.EnvSyncOptions()
-	pushBranch := func() error {
-		_, err := handle.PushBranch(syncOpts)
-		return err
-	}
 	c.env.Landing = landingDeps(
 		c.location,
 		c.recipe,
 		c.runDeps.Geom,
 		taskBranch,
-		originURL,
 		parentBranch,
-		syncOpts.SkipPush,
-		pushBranch,
+		fabricengine.EnvSyncOptions().SkipPush,
 		c.registry,
 		c.runner,
 		c.landingCfg,
@@ -350,7 +331,6 @@ func (c *loomCLI) wireLanding() error {
 		conflictSessionStopper(c.reed.Status, c.runner.StopStrand),
 		c.verifySource(),
 		parentLockDeps(c.location, c.runID, c.shedPaths.StatusPath, c.shedPaths.StatusLockPath),
-		runStart,
 	)
 	// The fixer runs on the seat engine wire already built, so no second engine is constructed.
 	c.env.Landing.FixerSeats = c.env.Seats

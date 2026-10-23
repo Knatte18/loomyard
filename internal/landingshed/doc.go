@@ -1,44 +1,18 @@
-// Package landingshed owns landing's general producers, Merge-In, Publish, PR-Align, PR-Gate and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
-//
-// Publish checks the configured require_pr_to_base list (see LoadConfig) against the task's own
-// parent branch.
-// When the parent is absent from that list, Publish is a no-op: Done immediately, no push, no GitHub call.
-// When the parent is present, Publish runs the hub's `landing` and `publish` gates, pushes the task branch, and opens the pull request, or refreshes an open one's title and body, from the change description (the file the Describe row writes, one source shared with the landing commit), then returns Done.
-// Every landing row's pull-request lookup takes the newest pull request created at or after the run's start, `Deps.RunStart`, whatever its state, and a zero start keeps the unbounded lookup.
-// When the lookup finds none of the run's own but an open pull request from before the run started, Publish creates nothing, since GitHub allows one open pull request per head and base, and is Stuck with a way forward: close that pull request on GitHub, then resume the run with `lyx loom start`.
-// The merge-in is Merge-In's, which runs ahead of Publish in a recipe's order and ran the `landing` gate over the merged tree.
-// The PR-Gate producer in this package then owns approval, rejection and the wait for the reviewer;
-// PRGate.Call documents its decision table.
+// Package landingshed owns landing's general producers, Merge-In, the PR-Review stub and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
 //
 // PR-Review is the stub of the human pull-request review that is not built yet; PRReview names it for a recipe row.
 // Its call is Done every time: with its flag off it logs nothing, and with its flag on it logs one Info line that the PR review is not built.
 // It opens no pull request, calls no GitHub API, reads no file and takes no lock, and a cancelled context is an error.
 //
-// PR-Align runs between Publish and PR-Gate in a recipe that lists it.
-// For a parent in require_pr_to_base it spawns the alignment agent for the open pull request, once per pull request head, and applies the agent's verdict through RecordApproval and RecordRejection, the same write path `lyx loom approve` and `lyx loom reject` run.
-// It ends Done on every path: alignment switched off, a pull request it cannot align, an escalation, a timeout, any failure and a verdict it must not apply each leave the review to the run's parent, with an AlignmentNote naming the agent's report and the reason.
-// PR-Gate reads that note when it holds the pull request awaiting and leads its reason, and its parent notice, with the report path.
-// An agent approve is applied only when alignment_pr_approve is set, the decision snapshot is unchanged and the pull request and task heads still match; an agent reject is applied once per run, and the second goes to the parent.
-// PR-Align takes no parent lock.
-// The producer reaches the agent through the AlignmentSession interface, which `*alignment.Session` satisfies, and all its seams are told through Deps.Alignment.
-//
-// Publish, PR-Gate and Finalize hold the parent lock too, and a moved parent sends Publish and PR-Gate back to Merge-In.
-// Each takes the lock through the shared guard, which grants a run that already holds it, so a re-call after a resume takes back a record handed to batten.
-// Moved means a code-side tip, the local one or the upstream one after a fetch unless the push is skipped or the branch has no upstream, differs from the merge record's merged tip and does not hold the task's work;
-// a missing merge record counts as moved, so the row reroutes to Merge-In, which writes one.
-// A moved parent is a Stuck with Reroute set, which takes the row's on_reroute edge to Merge-In and spends no bounce budget.
+// Finalize holds the parent lock, which it takes through the shared guard; the guard grants a run that already holds it, so a re-call after a resume takes back a record handed to batten.
 // A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
-// Each constructor refuses a nil Deps.Lock.Store, a nil Deps.Lock.Owner and a nil Deps.ReadParentTips, and a row built without its guard, as a struct-literal test builds it, takes no lock and reads no tips.
-// Publish, for a parent in require_pr_to_base, takes the lock and tests the parent before its gates and the push; a parent outside the list stays a no-op that touches neither git nor GitHub.
-// PR-Gate does the same before it queries the pull request, so the orch never decides on a pull request whose base moved, and its matching-rejection Stuck releases the lock before returning:
-// the edge to PR-Rework (darn: Darn-Write) ends the hold, and the reworked run takes the lock again at the next lock-taking row.
+// Finalize's constructor refuses a nil Deps.Lock.Store, a nil Deps.Lock.Owner and a nil Deps.ReadParentTips, and a row built without its guard, as a struct-literal test builds it, takes no lock.
 // Finalize takes the lock first, after parsing the change description and committing the status file and before anything reads or moves the parent, and releases it on every way out of its Call: Done, a reroute, a Stuck and an error.
 // A lock a dead Finalize left is taken over at the next acquire, since the lock store grants a record whose owner process no longer lives.
 // Under that lock it runs the same run-scope origin reconcile and maps its ended and stopped verdicts as Merge-In does, then the owner checks.
 // It then opens the parent pair and syncs it before any merge: a pair that is missing, mid-merge or holding tracked dirt in its code checkout is Stuck with its way forward, whether the parent is behind, equal, without an upstream or under the push skip.
 // With no push skip a parent behind its upstream is fast-forwarded in its own pair, which moves it to the upstream tip and touches no local commit, and one ahead of, diverged from or no longer a fast-forward of its upstream is Stuck, since Finalize never pushes or rewrites the parent here.
 // Under the push skip it neither fetches nor fast-forwards, and a parent that already holds the task's work is past its parent-side merge and is left as it is.
-// Finalize tests no moved parent at entry.
 // A run whose Finalize merged into the local parent here is never read as ended, so a Finalize re-entered after its done mark proceeds;
 // a Finalize entering with no such merge, its entry done on origin, stops with Halt, since another machine landed the run.
 //
@@ -50,7 +24,7 @@
 // the reason names the owners and the `lyx adopt` commands that move them.
 // Merge-In proceeds on an owned_elsewhere verdict, since the owner check belongs to the landing.
 // A nil seam reads as not past the merge and as the parent owned here, so a Finalize built with no owner seams lands as before.
-// A parent that already holds the task's work, after a GitHub merge or an earlier landing, reads as not moved and lands through the already-landed path.
+// A parent that already holds the task's work, after a GitHub merge or an earlier landing, lands through the already-landed path.
 // Finalize then merges the parent branch into the task worktree under the lock and judges the merge.
 // It reads the merge record's merged tip, clears a parked merge-in, checks the tree clean and merges.
 // A loom Finalize (Deps.ConflictReroutes) merges through the task pair's merge-in and, on a conflict, aborts the merge and reroutes, leaving the merge and its conflict session to Merge-In outside the lock.
@@ -72,8 +46,8 @@
 // An attempt record that does not decode halts naming the file, with removing it, which grants a fresh cap, as the way forward.
 // A Finalize reroute leaves the entry's attempt record for the next entry to clear, and a Done clears it.
 // The size and kind caps bound what an unreviewed Finalize fix lets through: a fix within them lands with no perch, behind only the `landing` gate it passed and the finalize mode's instruction to fix failing tests only.
-// After a merge-in-required error from the parent-side merge Finalize tests the parent again, and retries once only when it has not moved, which covers a parent moved by run records alone;
-// the retry merges and judges the parent again under the same lock, and a parent that moved reroutes, so a code-side commit that arrives between the check and the parent-side merge never lands.
+// After a merge-in-required error from the parent-side merge Finalize retries once, which covers a parent moved by run records alone;
+// the retry merges and judges the parent again under the same lock, so a code-side commit that arrives between the first merge and the parent-side merge reroutes there and never lands.
 // A dirty parent is Stuck naming the parent's code checkout and its tracked dirty paths, capped at 20, with the way forward per reason.
 // The run records Finalize commits at its parent-records step never count as that dirt, since the guard reads the code checkout alone, whose `_lyx` link is excluded from its index.
 // A parent push that fails for a reason other than a transient one carries a repair note when origin's parent already holds the task's work, which an adopter-first landing leaves:
@@ -128,31 +102,19 @@
 // Merge-In has no reroute edge, and a reroute-cap halt at another row, such as Webster's, stays routed as before.
 // The recipe's owner tells it to shedverbs as Spec.HandBack, which marks the loop's stop envelope and the status as hand_back; the drivers read the predicate or that mark.
 //
-// Publish runs the `landing` call, then the `publish` call, in the task worktree through the same verify function, at site `Publish`, before it pushes, and the tree must be clean after them.
-// A dirty tree is Stuck naming the paths, before anything is pushed.
-// The `publish` gate carries the hub's extra test tiers, which the `landing` and `final` gates leave out so every round and every gate does not pay for them.
-// Both calls name the told base command as the site's base command, so neither pass prunes the entry the next review round diffs from.
-// The landing call skips on the tree Merge-In verified.
-// A failure is Stuck with the exit code and the log path, naming the `landing` or `publish` gate, and a dirty tree is Stuck as for Merge-In's verify.
-// An empty `publish` list renders an empty call, which runs nothing and logs nothing, and Finalize never runs the `publish` gate.
-// It runs only where Publish does, so a landing into a parent outside require_pr_to_base runs no such tier and only Finalize's landing call gates it.
-// A recipe may tell Publish a skip seam, Deps.PublishSkip, read at each Publish after the parent lock is held.
-// A seam answering true skips the `publish` gate and takes the path of an empty `publish` list: the Publish failure record is removed before the push.
-// A seam error is Publish's returned error, with nothing verified or pushed, and false runs the `publish` gate as usual.
-// A darn run tells the seam so a diff wholly under its configured non-production trees lands with no `publish` tiers and with only the tree-scoped command at Merge-In, Finalize and Publish, the hub's whole statement of what such a diff needs; a loom run tells none, so its `publish` gate runs whenever its list is not empty.
+// A darn run whose diff lies wholly under its configured non-production trees runs only the tree-scoped command at Merge-In and Finalize, the hub's whole statement of what such a diff needs.
 // landing.yaml's retired `publish_verify` key loads and is dropped, and `lyx config reconcile` prunes it.
 //
 // Landing.yaml's `deploy` is read only by batten's Land row, from the board dir like the rest of landing config and never from a pair.
-// It runs in the prime only for a parent branch in `require_pr_to_base` when the row runs, so it executes code PR-Gate reviewed.
-// The one exception is an edit to that list between PR-Gate and Land, which only the orch's own hub config edit can make: it deploys a tip PR-Gate passed unreviewed.
+// It runs in the prime only for a parent branch in `require_pr_to_base` when the row runs.
 // An empty value runs nothing, and `lyx config` refuses a write to it from a pair, as for every hub-wide key, as a guard against a mistaken write rather than a determined agent.
-// Landing config is hub-wide: Publish and Finalize read it from the board dir, never from a task worktree's `_lyx/config/`, and `lyx config` refuses a write to it from a pair, so a task cannot weaken the key, or set `require_pr_to_base` or `squash`, through its own tree.
+// Landing config is hub-wide: Merge-In and Finalize read it from the board dir, never from a task worktree's `_lyx/config/`, and `lyx config` refuses a write to it from a pair, so a task cannot weaken the key, or set `require_pr_to_base` or `squash`, through its own tree.
 // A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
-// Merge-In, Finalize and Publish persist their verify failure.
-// When a `landing` or `publish` call fails with a non-zero exit, Merge-In, Finalize or Publish writes the verifytree Publish failure record with the failing gate as its kind, the failing tier, the row that ran the verify, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
+// Merge-In and Finalize persist their verify failure.
+// When a `landing` call fails with a non-zero exit, Merge-In or Finalize writes the verifytree Publish failure record with the failing gate as its kind, the failing tier, the row that ran the verify, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
 // The tier is the last failing tier the log's `lyx gate test` summary lines name; a log without one, such as a refusal before the first tier, takes the highest tier of the gate's list, read through the told Deps.GateTiers.
-// The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Publish reads it from Merge-In's merge record, and Finalize takes it from its own merge.
+// The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Finalize takes it from its own merge.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
 // When Deps.TraceFailure is set and both the log and HEAD are non-empty, the record also carries the trace the seam returns: `cards`, `later_range` and `untraced`, the plan cards and commit ranges the failing locations trace to.
 // A nil seam, as for a darn run with no plan, writes none of them, and a trace error is logged at Warn and leaves the record without them, never changing the Stuck verdict or the record's other fields.
@@ -160,22 +122,15 @@
 // When the failed verify's log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, the reason names the window and says the goroutine stacks are in the log, before that clause.
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then resuming.
 // An unreadable log or one without the line leaves the reason unchanged, and the checks run no flake rerun.
-// Merge-In and Finalize remove the record once their landing call passes, and Publish removes it once its landing and publish calls pass, or at once when the publish list is empty or the skip seam answers true.
-//
-// The push that follows is never retried when the remote rejects it, because the remote task branch moved and a repeat would be rejected again.
-// Publish reads the remote task branch's tip and the commits on it that the local branch lacks through Deps.RemoteOnlyCommits, and stops Stuck with a reason stating that the merge-in already ran, the tip, the commit count, and the way forward:
-// merge `origin/<task-branch>` in the task worktree, then resume the run with `lyx loom start`, which re-runs Publish over the merged branch.
-// A failed read keeps the rejection and the way forward and names the cause.
-// A remote with no task branch, or a remote task branch that holds no commit the local branch lacks, is not cleared by a merge, so the reason names a remote rule as the cause and the way forward is to clear it, then resume.
-// Every other push failure keeps its own reason, and a transient one is returned as an error so the driver re-steps.
+// Merge-In and Finalize remove the record once their landing call passes.
 //
 // require_pr_to_base is a list of base-branch names, not a bool, because whether a pull request is
 // needed depends on which parent branch a task targets -- a per-task runtime fact no static profile
 // setting can encode as one flag. A bool would force (or skip) a pull request on every task-to-task
 // merge alike, which a stacked branch whose own parent is not the trunk branch already disproves.
 //
-// Finalize always merges the parent branch into the task worktree, regardless of which branch Publish took, and then merges the task branch into the parent pair itself.
-// Each merge of the parent, the retry after the parent moved included, runs the same three clean-tree checks and the same post-merge verify gate as Merge-In before the parent-side merge,
+// Finalize always merges the parent branch into the task worktree and then merges the task branch into the parent pair itself.
+// Each merge of the parent, the retry after a merge-in-required error included, runs the same three clean-tree checks and the same post-merge verify gate as Merge-In before the parent-side merge,
 // and a dirty tree is Stuck with the parent branch untouched, while a failing gate runs the merge fixer.
 // After each merge of the parent and before the parent-side merge, Finalize commits the parent pair's own run records through the told Deps.CommitParentRecords, so a sibling run's uncommitted status record does not trip the merge guard;
 // a clean subtree is a no-op, an absent seam skips the step, and a commit failure is Stuck naming the parent pair and its run records, with nothing merged.

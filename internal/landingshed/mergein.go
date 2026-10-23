@@ -55,7 +55,7 @@ const (
 var _ shedengine.ShedProducer = (*MergeIn)(nil)
 
 // NewMergeIn constructs a MergeIn from deps, refusing a nil OpenFabric, OpenParentFabric, ReadParentTips, ChangedPaths, MergeBase or TaskHead, a nil Lock.Store and an empty MergeRecordPath, each with its own error.
-// It builds the resolver at construction time, as NewPublish does.
+// It builds the resolver at construction time.
 func NewMergeIn(deps Deps) (*MergeIn, error) {
 	switch {
 	case deps.OpenFabric == nil:
@@ -120,7 +120,7 @@ func (m *MergeIn) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	}
 
 	// The status file is rewritten on every transition and committed only at bootstrap,
-	// and the merge guard refuses any tracked modification, so it is committed here as Publish does.
+	// and the merge guard refuses any tracked modification, so it is committed here.
 	if m.deps.CommitStatus != nil {
 		if err := m.deps.CommitStatus(); err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: commit status file: %w", mergeInName, err)

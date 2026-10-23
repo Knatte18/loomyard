@@ -43,12 +43,11 @@ func reworkRowFor(recipe string) string {
 	return loomshed.NamePRRework
 }
 
-// darnVerifySource returns the darn recipe's verify source: the hub's `landing` and `publish` gate calls.
+// darnVerifySource returns the darn recipe's verify source: the hub's `landing` gate call.
 // command resolves at each call, never at construction, so an edit between steps is seen:
 // the tree-scoped command when the task diff is wholly under the hub's configured trees, else the `landing` call;
 // a gate config refusal and a malformed tree key are errors naming the way forward.
 // baseCommand is the `landing` call, since darn has no webster gate, and stays the base command of a tree-scoped site.
-// publishSkip answers at each call whether the diff is tree-scoped, so Publish skips the `publish` gate for it.
 func darnVerifySource(l *lyxcwd.Location) verifySource {
 	dirs := fabricengine.ConfigDirs(l)
 	treeScope := darnTreeScope(l)
@@ -64,13 +63,8 @@ func darnVerifySource(l *lyxcwd.Location) verifySource {
 			}
 			return landing()
 		},
-		publishCommand: gateCallSource(dirs, "publish"),
-		baseCommand:    landing,
-		gateTiers:      gateTiersLookup(dirs),
-		publishSkip: func() (bool, error) {
-			_, scoped, err := treeScope()
-			return scoped, err
-		},
+		baseCommand: landing,
+		gateTiers:   gateTiersLookup(dirs),
 	}
 }
 

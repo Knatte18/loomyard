@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
@@ -69,7 +68,6 @@ var nilLegal = map[string]bool{
 	"InnerRun.Restepped":                true,
 	"InnerRun.HandBack":                 true,
 	"Landing.VerifyCommand":             true,
-	"Landing.PublishSkip":               true,
 	"Landing.VerifyWaitMark":            true,
 	"Landing.FailingTests":              true,
 	"Landing.TraceFailure":              true,
@@ -134,27 +132,10 @@ func (noFindingsIndex) ValidateRework(*planparser.Plan, string, int) ([]planinde
 }
 
 // nilFabricOpener is a typed-nil fabric handle with a nil error.
-// The Publish and Finalize constructors only nil-check the interface the handle is stored behind, and never dereference it.
+// The Merge-In and Finalize constructors only nil-check the interface the handle is stored behind, and never dereference it.
 func nilFabricOpener() (*fabricengine.Fabric, error) {
 	return nil, nil
 }
-
-// noopAlignmentSession is an alignment session that starts nothing and has no attempts.
-type noopAlignmentSession struct{}
-
-func (noopAlignmentSession) Begin(alignment.SpawnInput) (alignment.Attempt, error) {
-	return alignment.Attempt{}, nil
-}
-
-func (noopAlignmentSession) Poll(alignment.Attempt) (alignment.Outcome, error) {
-	return alignment.Outcome{Done: true, Cause: alignment.CauseClosed}, nil
-}
-
-func (noopAlignmentSession) Close(alignment.Attempt, string) error { return nil }
-
-func (noopAlignmentSession) MarkApplied(alignment.Attempt, string, bool) error { return nil }
-
-func (noopAlignmentSession) Attempts() ([]alignment.Attempt, error) { return nil, nil }
 
 // noopFixerSeats is a fixer seat runner that starts nothing and ends at once.
 type noopFixerSeats struct{}
@@ -163,31 +144,25 @@ func (noopFixerSeats) Run(seatengine.Table) (seatengine.Result, error) {
 	return seatengine.Result{}, nil
 }
 
-// LandingDeps returns a `landingshed.Deps` with every field the Publish and Finalize constructors require, filled with told values derived from dir.
+// LandingDeps returns a `landingshed.Deps` with every field the Merge-In and Finalize constructors require, filled with told values derived from dir.
 func LandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
-		WorktreeRoot:      dir,
-		TaskBranch:        "task-branch",
-		ParentBranch:      "fixture-parent",
-		DescriptionPath:   summaryparser.Path(dir),
-		ConflictReroutes:  true,
-		StencilsDir:       dir,
-		ParentName:        "fixture-parent-session",
-		ScratchDir:        filepath.Join(dir, "landing-scratch"),
-		OriginURL:         "https://example.invalid/fixture/fixture.git",
-		PushBranch:        func() error { return nil },
-		RemoteOnlyCommits: func() (string, []string, error) { return "", nil, nil },
-		OpenFabric:        nilFabricOpener,
-		OpenParentFabric:  nilFabricOpener,
-		Shuttle:           &shedfake.MergeShuttle{},
-		EnginesRun:        func() ([]string, error) { return nil, nil },
-		ApprovalPath:      filepath.Join(dir, "approval.json"),
-		RejectionPath:     filepath.Join(dir, "rejection.json"),
-		TaskHead:          func() (string, error) { return "head", nil },
-		PublishCommand:    func() (string, error) { return "lyx gate test --wait --tier 2 --all", nil },
-		BaseCommand:       func() (string, error) { return "lyx gate test --wait --tier 0 --all", nil },
-		GateTiers:         fixedGateTiers,
-		VerifyHold:        verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
+		WorktreeRoot:     dir,
+		TaskBranch:       "task-branch",
+		ParentBranch:     "fixture-parent",
+		DescriptionPath:  summaryparser.Path(dir),
+		ConflictReroutes: true,
+		StencilsDir:      dir,
+		ParentName:       "fixture-parent-session",
+		ScratchDir:       filepath.Join(dir, "landing-scratch"),
+		OpenFabric:       nilFabricOpener,
+		OpenParentFabric: nilFabricOpener,
+		Shuttle:          &shedfake.MergeShuttle{},
+		EnginesRun:       func() ([]string, error) { return nil, nil },
+		TaskHead:         func() (string, error) { return "head", nil },
+		BaseCommand:      func() (string, error) { return "lyx gate test --wait --tier 0 --all", nil },
+		GateTiers:        fixedGateTiers,
+		VerifyHold:       verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
 		Lock: landingshed.ParentLockDeps{
 			Store:          &parentlock.Store{Dir: filepath.Join(dir, "parent-lock")},
 			Owner:          func() (parentlock.Owner, error) { return parentlock.Owner{Slug: "fixture", RunID: "fixture"}, nil },
@@ -210,12 +185,6 @@ func LandingDeps(dir string) landingshed.Deps {
 		TaskRemoteTip:      func() (string, error) { return "", nil },
 		CodeReviewOff:      func() (bool, error) { return false, nil },
 		RerouteReviewed:    func() (bool, error) { return true, nil },
-		Alignment: landingshed.AlignmentDeps{
-			Config:   func() (landingshed.AlignmentConfig, error) { return landingshed.AlignmentConfig{Off: true}, nil },
-			Session:  noopAlignmentSession{},
-			Snapshot: func() (string, error) { return "snapshot", nil },
-			NotePath: filepath.Join(dir, "alignment-note.json"),
-		},
 	}
 }
 

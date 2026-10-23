@@ -1,6 +1,5 @@
-// guardedrows_test.go drives Publish, PR-Gate and Finalize, the rows that hold the parent lock, against fake tip reads and a real temporary lock store:
-// the reroute on a moved parent, the lock's release at the edges that end a row's hold, and the halt of a paused lock wait.
-// None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
+// guardedrows_test.go drives Finalize, the row that holds the parent lock, against fake tip reads and a real temporary lock store:
+// the lock's release at the edges that end the row's hold, and the halt of a paused lock wait.
 
 package landingshed
 
@@ -19,7 +18,7 @@ import (
 // guardedRowFixture is one lock-taking row built over deps, with a report of whether it did any work beyond taking the lock.
 type guardedRowFixture struct {
 	producer shedengine.ShedProducer
-	// touched reports whether the row pushed, reached GitHub or merged anything.
+	// touched reports whether the row merged anything.
 	touched func() bool
 }
 
@@ -30,38 +29,8 @@ type guardedRow struct {
 	build func(t *testing.T, deps Deps) guardedRowFixture
 }
 
-// guardedRowNamed returns the guardedRows entry named name.
-func guardedRowNamed(name string) guardedRow {
-	for _, row := range guardedRows {
-		if row.name == name {
-			return row
-		}
-	}
-	panic("no guarded row named " + name)
-}
-
-// guardedRows lists the three lock-taking rows, each built by the constructor or the literal its own tests use.
+// guardedRows lists the lock-taking rows, each built by the literal its own tests use.
 var guardedRows = []guardedRow{
-	{publishName, func(t *testing.T, deps Deps) guardedRowFixture {
-		pushed := false
-		deps.PushBranch = func() error { pushed = true; return nil }
-		p, err := NewPublish(deps)
-		if err != nil {
-			t.Fatalf("NewPublish() error = %v", err)
-		}
-		failOnGitHubClient(t)
-		return guardedRowFixture{producer: p, touched: func() bool { return pushed }}
-	}},
-	{prGateName, func(t *testing.T, deps Deps) guardedRowFixture {
-		deps.ApprovalPath = "approval.json"
-		deps.RejectionPath = "rejection.json"
-		g, err := NewPRGate(deps)
-		if err != nil {
-			t.Fatalf("NewPRGate() error = %v", err)
-		}
-		failOnGitHubClient(t)
-		return guardedRowFixture{producer: g, touched: func() bool { return false }}
-	}},
 	{finalizeName, func(t *testing.T, deps Deps) guardedRowFixture {
 		res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 		merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}}
@@ -72,39 +41,6 @@ var guardedRows = []guardedRow{
 
 // guardedOwnerOther is a run other than the one newTestDeps names, holding the lock in the waiting cases.
 var guardedOwnerOther = parentlock.Owner{Slug: "other", Pair: "/p/other", RunID: "r9", PID: 111, StartTime: "t1"}
-
-// TestGuardedRows_MovedParentReroutes pins that a moved parent at each row that tests it up front, Publish and PR-Gate, is a reroute Stuck, which carries no halt and so spends no bounce budget.
-// It also pins that the row has done no work beyond taking the lock, and that it keeps the lock it took.
-// Finalize merges the parent itself under its lock and tests no moved parent at entry.
-func TestGuardedRows_MovedParentReroutes(t *testing.T) {
-	for _, row := range guardedRows {
-		if row.name == finalizeName {
-			continue
-		}
-		t.Run(row.name, func(t *testing.T) {
-			deps := newTestDeps(t)
-			deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
-				return fabricengine.ParentTips{Local: "newer-tip", Upstream: "newer-tip", Relation: fabricengine.ParentEqual}, nil
-			}
-			fx := row.build(t, deps)
-
-			outcome, ptr, err := fx.producer.Call(context.Background())
-
-			if err != nil || outcome != shedengine.Stuck || !ptr.Reroute || ptr.Halt {
-				t.Fatalf("Call() = %q, %+v, %v; want a reroute Stuck with no halt", outcome, ptr, err)
-			}
-			if !strings.Contains(ptr.Reason, "moved since Merge-In merged") {
-				t.Errorf("reason = %q; want it to say the parent moved since Merge-In merged it", ptr.Reason)
-			}
-			if fx.touched() {
-				t.Error("the row pushed, reached GitHub or merged after finding the parent moved")
-			}
-			if rec, found, _ := deps.Lock.Store.Read("main"); !found || rec.Owner.Slug != "me" {
-				t.Errorf("lock record = %+v, %v; want it held by the run", rec, found)
-			}
-		})
-	}
-}
 
 // TestGuardedRows_PausedLockWaitHalts pins that a pause during the wait for a lock another run holds is a halting Stuck at each row, naming the goto back to that row, with no work done.
 func TestGuardedRows_PausedLockWaitHalts(t *testing.T) {
@@ -133,37 +69,9 @@ func TestGuardedRows_PausedLockWaitHalts(t *testing.T) {
 }
 
 // TestGuardedRows_LockLifecycle pins when the lock leaves the run.
-// PR-Gate keeps it through an approval and releases it on a matching rejection.
-// Finalize releases it on Done, whether it landed fresh or found the parent already holding the task's work.
+// Finalize releases it on Done, whether it landed fresh or found the parent already holding the task's work, and on a Stuck or an error.
 func TestGuardedRows_LockLifecycle(t *testing.T) {
-	t.Run("PR-Gate keeps the lock on approval and releases it on rejection", func(t *testing.T) {
-		for _, rejected := range []bool{false, true} {
-			f := newPRGateFixture(t, openPR(7, prGateHead))
-			if rejected {
-				writeRejectionAt(t, f.deps.RejectionPath, 7, prGateHead)
-			} else {
-				writeApprovalAt(t, f.deps.ApprovalPath, 7, prGateHead)
-			}
-
-			outcome, _, err := f.call(t)
-
-			wantOutcome := shedengine.Done
-			if rejected {
-				wantOutcome = shedengine.Stuck
-			}
-			if err != nil || outcome != wantOutcome {
-				t.Fatalf("rejected=%v: Call() = %q, %v; want %q", rejected, outcome, err, wantOutcome)
-			}
-			if _, found, _ := f.deps.Lock.Store.Read("main"); found == rejected {
-				t.Errorf("rejected=%v: lock record found = %v; want it kept on approval and freed on rejection", rejected, found)
-			}
-		}
-	})
-
-	t.Run("Finalize releases the lock on every way out: Done, a reroute, a Stuck and an error", func(t *testing.T) {
-		movedTips := func(bool) (fabricengine.ParentTips, error) {
-			return fabricengine.ParentTips{Local: "newer-tip", Upstream: "newer-tip", Relation: fabricengine.ParentEqual}, nil
-		}
+	t.Run("Finalize releases the lock on every way out: Done, a Stuck and an error", func(t *testing.T) {
 		tests := []struct {
 			name        string
 			setup       func(deps *Deps, res *recordingResolver, merger *recordingParentMerger)
@@ -175,19 +83,6 @@ func TestGuardedRows_LockLifecycle(t *testing.T) {
 			{"a parent that already holds the task's work is Done", func(deps *Deps, _ *recordingResolver, _ *recordingParentMerger) {
 				deps.ParentHoldsTaskWork = func() (bool, error) { return true, nil }
 			}, shedengine.Done, false, false},
-			{"a parent that moved again after the merge-in reroutes", func(deps *Deps, _ *recordingResolver, merger *recordingParentMerger) {
-				deps.HoldsWork = func(string, string) (bool, error) { return false, nil }
-				reads := 0
-				deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
-					reads++
-					// The sync's read and the merge's read see the tip the merge record names.
-					if reads <= 2 {
-						return fabricengine.ParentTips{Local: testParentTip, Upstream: testParentTip, Relation: fabricengine.ParentEqual}, nil
-					}
-					return movedTips(false)
-				}
-				merger.results = []mergeCallResult{{err: &fabricengine.ErrMergeInRequired{Source: deps.TaskBranch}}}
-			}, shedengine.Stuck, true, false},
 			{"a merge-in the resolver cannot finish is a Stuck", func(_ *Deps, res *recordingResolver, _ *recordingParentMerger) {
 				res.result = mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: "conflict could not be resolved"}
 			}, shedengine.Stuck, false, false},

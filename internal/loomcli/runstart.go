@@ -9,23 +9,46 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/google/go-github/v75/github"
 )
 
+// newGitHubClient is the seam through which findRunPullRequest obtains an authenticated *github.Client; a test swaps it for one pointed at a local server.
+var newGitHubClient = githubclient.New
+
 // findRunPullRequest looks up the run's pull request from head to base in owner/repo: the newest one created at or after since, whatever its state, or nil when none exists.
 // A zero since keeps the unbounded lookup.
+// The query is bounded by findRunPullRequestTimeout.
 func findRunPullRequest(ctx context.Context, owner, repo, head, base string, since time.Time) (*github.PullRequest, error) {
-	client, err := landingshed.NewGitHubClient()
+	client, err := newGitHubClient()
 	if err != nil {
 		return nil, err
 	}
-	pr, _, err := landingshed.FindPullRequest(ctx, client, owner, repo, head, base, since)
-	return pr, err
+	queryCtx, cancel := context.WithTimeout(ctx, findRunPullRequestTimeout)
+	defer cancel()
+	prs, _, err := client.PullRequests.List(queryCtx, owner, repo, &github.PullRequestListOptions{
+		State:     "all",
+		Head:      fmt.Sprintf("%s:%s", owner, head),
+		Base:      base,
+		Sort:      "created",
+		Direction: "desc",
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, candidate := range prs {
+		if !candidate.GetCreatedAt().Time.Before(since) {
+			return candidate, nil
+		}
+	}
+	return nil, nil
 }
+
+// findRunPullRequestTimeout bounds the pull-request lookup.
+const findRunPullRequestTimeout = 30 * time.Second
 
 // seedRunStartWarning is the message logged when the run's seed yields no usable start stamp.
 const seedRunStartWarning = "loom: the run's seed carries no usable start stamp, so the landing's pull-request lookup is not bounded by the run's start"

@@ -309,15 +309,10 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return fz.pushParent(ctx, parentHandle, notice)
 	}
 
-	// Retry: on the merge-in-required error, test the parent again with the same two-ref read, then re-run steps 2 to 5 under the same lock and retry
-	// the parent-side merge exactly once.
-	// The retry runs only when the parent has not moved, which covers a parent moved by run records alone;
-	// otherwise a code-side commit that arrived between the check and the parent-side merge, local or pushed, reroutes and never lands.
+	// Retry: on the merge-in-required error, re-run steps 2 to 5 under the same lock and retry the parent-side merge exactly once.
+	// Step 2 merges and judges the parent again, so a code-side commit that arrived between the check and the parent-side merge reroutes there and never lands.
 	var mergeInRequired *fabricengine.ErrMergeInRequired
 	if errors.As(mergeErr, &mergeInRequired) {
-		if outcome, out, err, stop := rerouteIfMoved(ctx, fz.guard, finalizeName); stop {
-			return outcome, out, err
-		}
 		if outcome, out, err, done := fz.mergeAndGate(ctx); done {
 			return outcome, out, err
 		}
@@ -534,7 +529,7 @@ func (fz *Finalize) markTaskDone() {
 // Any other failed push is Stuck: the merge has already landed locally, so a human pushes (or reconciles a diverged remote) by hand,
 // and a failure recorded as a failed push carries the way forward of its class in the reason instead.
 // When origin's parent already holds the task's work, the reason also carries the repair of an adopter-first landing.
-// Deps.PushSkipped suppresses the push, exactly as it does for the task branch.
+// Deps.PushSkipped suppresses the push.
 //
 // On its Done return only, a non-empty notice is queued through Deps.Notify, and a failure there is a logged warning that never changes the verdict.
 // Finalize opens, looks up and closes no pull request, so the landing makes no GitHub call.

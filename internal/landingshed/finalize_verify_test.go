@@ -1,5 +1,4 @@
 // finalize_verify_test.go covers the clean-tree checks and the post-merge verify gate as Finalize.mergeAndGate wires them around every merge of the parent, against fake verifytree seams, a scripted resolver and the package's fake merger.
-// None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
 
@@ -101,8 +100,6 @@ func TestFinalizeVerify_Lands(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(tt.alreadyUpToDate)})
 			fx.gate.fake.result = tt.result
-			// A told publish call must not run here, so the single verify call below is the landing call.
-			fx.fz.gate.publishCommand = func() (string, error) { return "lyx gate test --wait --tier 2 --all", nil }
 			shedfake.RequireOutcome(t, fx.fz, shedengine.Done)
 			if len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 1 {
 				t.Errorf("merge calls = %d, push calls = %d; want 1 each", len(fx.merger.calls), len(fx.merger.pushCalls))

@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -54,10 +53,10 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	deps := landingDeps(loc, shedrun.RecipeLoom, websterengine.Geometry{StencilsDir: "/stencils"}, "task/foo",
-		"https://example.com/origin.git", "main", true, func() error { return nil },
-		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(loc), parentLockDeps(loc, shedrun.SelfRunID, "", ""), time.Time{})
+		"main", true,
+		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(loc), parentLockDeps(loc, shedrun.SelfRunID, "", ""))
 
-	readers := map[string]func() (string, error){"VerifyCommand": deps.VerifyCommand, "PublishCommand": deps.PublishCommand, "BaseCommand": deps.BaseCommand}
+	readers := map[string]func() (string, error){"VerifyCommand": deps.VerifyCommand, "BaseCommand": deps.BaseCommand}
 	for name, read := range readers {
 		if _, err := read(); !errors.Is(err, gateslot.ErrConfigAbsent) {
 			t.Errorf("%s before any gate.yaml exists = %v; want an error wrapping gateslot.ErrConfigAbsent", name, err)
@@ -66,9 +65,8 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 
 	writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
 	for name, want := range map[string]string{
-		"VerifyCommand":  "lyx gate test --wait --tier 0 --tier 1 --all",
-		"PublishCommand": "lyx gate test --wait --tier 1 --all",
-		"BaseCommand":    "lyx gate test --wait --tier 0 --all",
+		"VerifyCommand": "lyx gate test --wait --tier 0 --tier 1 --all",
+		"BaseCommand":   "lyx gate test --wait --tier 0 --all",
 	} {
 		if got, err := readers[name](); err != nil || got != want {
 			t.Errorf("%s = (%q, %v), want (%q, nil)", name, got, err, want)
@@ -78,12 +76,9 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 		t.Errorf("GateTiers(landing) = (%v, %v), want ([0 1], nil)", got, err)
 	}
 
-	// An edit between two calls is seen: the publish list empties, and the landing list names a tier the hub does not declare.
-	edited := strings.NewReplacer("  publish: [1]", "  publish: []", "  landing: [0, 1]", "  landing: [0, 7]").Replace(gateConfigWithTwoTiers())
+	// An edit between two calls is seen: the landing list names a tier the hub does not declare.
+	edited := strings.NewReplacer("  landing: [0, 1]", "  landing: [0, 7]").Replace(gateConfigWithTwoTiers())
 	writeHubGateConfig(t, loc.HubPath, edited)
-	if got, err := deps.PublishCommand(); err != nil || got != "" {
-		t.Errorf("PublishCommand with an empty publish list = (%q, %v), want (\"\", nil)", got, err)
-	}
 	if got, err := deps.VerifyCommand(); err == nil || !strings.Contains(err.Error(), "lyx config gate") {
 		t.Errorf("VerifyCommand over a dangling landing list = (%q, %v), want an error naming lyx config gate", got, err)
 	}

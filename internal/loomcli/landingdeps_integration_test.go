@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -44,8 +43,8 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lyxcwd.ResolveWorktree(task) error = %v; want nil", err)
 	}
-	deps := landingDeps(taskLocation, shedrun.RecipeLoom, websterengine.Geometry{}, "task", "https://example.com/o.git", "main",
-		true, func() error { return nil }, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""), time.Time{})
+	deps := landingDeps(taskLocation, shedrun.RecipeLoom, websterengine.Geometry{}, "task", "main",
+		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(taskLocation), parentLockDeps(taskLocation, shedrun.SelfRunID, "", ""))
 
 	t.Run("ConfigChanges reports the per-worktree file and not the hub-wide one", func(t *testing.T) {
 		changes, err := deps.ConfigChanges()
