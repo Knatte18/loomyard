@@ -186,10 +186,20 @@ func (f *fakeCreel) Release(receiver string) error {
 	return f.fail("release")
 }
 
+// Withdraw settles every inject to receiver that reads queued as withdrawn, and leaves one creel is sending, as creel's withdraw leaves an inject a delivery attempt holds.
 func (f *fakeCreel) Withdraw(receiver string) ([]CreelWithdrawn, error) {
 	f.calls = append(f.calls, "withdraw:"+receiver)
 	if err := f.fail("withdraw"); err != nil {
 		return nil, err
+	}
+	for _, inject := range f.injects {
+		if outcome, ok := f.outcomes[inject.ID]; inject.Receiver != receiver || ok && outcome.State != CreelQueued {
+			continue
+		}
+		if f.outcomes == nil {
+			f.outcomes = map[int64]CreelOutcome{}
+		}
+		f.outcomes[inject.ID] = CreelOutcome{State: CreelWithdrawnState}
 	}
 	return append([]CreelWithdrawn(nil), f.withdrawn...), nil
 }

@@ -11,8 +11,10 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -346,8 +348,17 @@ func TestPlanCommitPathspec(t *testing.T) {
 		tracked     bool
 		trackedErr  error
 		wantWebster bool
+		// wantAmendment marks a row whose setup writes the plan amendment record.
+		wantAmendment bool
 	}{
 		{name: "no webster directory", setup: func(t *testing.T, anchorPath string) {}},
+		{
+			name: "amendment record present",
+			setup: func(t *testing.T, anchorPath string) {
+				writeFile(t, filepath.Join(anchorPath, loomengine.LoomAmendmentRecordRel()))
+			},
+			wantAmendment: true,
+		},
 		{
 			name: "empty webster and archive directories",
 			setup: func(t *testing.T, anchorPath string) {
@@ -395,9 +406,83 @@ func TestPlanCommitPathspec(t *testing.T) {
 			if tt.wantWebster {
 				want = append(want, websterengine.DirRel())
 			}
-			got := planCommitPathspecWith(location, func(string) (bool, error) { return tt.tracked, tt.trackedErr })
+			if tt.wantAmendment {
+				want = append(want, loomengine.LoomAmendmentRecordRel())
+			}
+			// The tracked answer is webster's directory's alone: the amendment record is untracked in every row.
+			got := planCommitPathspecWith(location, func(rel string) (bool, error) {
+				if rel == websterengine.DirRel() {
+					return tt.tracked, tt.trackedErr
+				}
+				return false, nil
+			})
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("planCommitPathspecWith() = %v; want %v", got, want)
+			}
+		})
+	}
+}
+
+// TestRemoveSettledAmendment asserts the amendment record is removed only when the live settle's recorded round start is after the record's latest write.
+func TestRemoveSettledAmendment(t *testing.T) {
+	t.Parallel()
+
+	const (
+		settleWithStart = `{"subject":{"kind":"document"},"generation":1,"round":1,"settled_at":"2026-10-20T10:00:00Z","settled":true,"round_started_at":"2026-10-20T09:30:00Z"}`
+		settleNoStart   = `{"subject":{"kind":"document"},"generation":1,"round":1,"settled_at":"2026-10-20T10:00:00Z","settled":true}`
+	)
+	before := time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)
+	after := time.Date(2026, 10, 20, 9, 45, 0, 0, time.UTC)
+
+	tests := []struct {
+		name string
+		// writtenAt is the amendment record's write time; the zero time writes no record.
+		writtenAt time.Time
+		// raw, when set, is written as the amendment record's bytes in place of a decoded one.
+		raw         string
+		settle      string
+		wantRemoved bool
+		wantErr     bool
+	}{
+		{name: "no record", settle: settleWithStart},
+		{name: "written before the judged round started", writtenAt: before, settle: settleWithStart, wantRemoved: true},
+		{name: "written after the judged round started", writtenAt: after, settle: settleWithStart},
+		{name: "settle with no recorded start", writtenAt: before, settle: settleNoStart},
+		{name: "undecodable record", raw: "titles: [", settle: settleWithStart, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			amendmentPath := filepath.Join(dir, "amendment.yaml")
+			planRunDir := filepath.Join(dir, "plan")
+			if err := os.MkdirAll(planRunDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(planRunDir, "settle-record.json"), []byte(tt.settle), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			switch {
+			case tt.raw != "":
+				if err := os.WriteFile(amendmentPath, []byte(tt.raw), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			case !tt.writtenAt.IsZero():
+				if err := loomshed.AppendAmendment(amendmentPath, "Keep the cache", tt.writtenAt); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			err := removeSettledAmendment(amendmentPath, planRunDir)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("removeSettledAmendment() error = %v; want error %v", err, tt.wantErr)
+			}
+			_, statErr := os.Stat(amendmentPath)
+			recordExists := statErr == nil
+			wantExists := (tt.raw != "" || !tt.writtenAt.IsZero()) && !tt.wantRemoved
+			if recordExists != wantExists {
+				t.Errorf("amendment record exists = %t; want %t", recordExists, wantExists)
 			}
 		})
 	}

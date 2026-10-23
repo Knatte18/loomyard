@@ -1,4 +1,4 @@
-// targetdirs.go holds CardTargetDirs, CardPackages, RefFile, RefScope, RefCovers, RefMember and CardCovers, the read-only mappings from a card's refs to the worktree directories and files they name.
+// targetdirs.go holds CardTargetDirs, CardPackages, RefFile, RefScope, RefCovers, RefMember, CardCovers and TargetHolds, the read-only mappings from a card's refs to the worktree directories, files and code locations they name.
 // It lives here so every ref-shape and glyph-to-path decision stays inside this package, per the Planparser Sole-Parser and Glyph Conversion Chokepoint invariants.
 
 package planparser
@@ -261,6 +261,52 @@ func RefMember(plan *Plan, ref string) (string, bool) {
 		return "", false
 	}
 	return g.String(), true
+}
+
+// TargetHolds reports whether a card target holds a code location.
+// member is the glyph quarry found at the location, empty for a location inside no member, and file is the location's repository-relative path.
+// It holds when the target is member itself or a type member belongs to, when it is the self glyph of member's unit (an external test unit read as its directory), or when it is file as a path or as its file self glyph.
+// The member check runs one way: `pkg#T` holds `pkg#T.M`, and `pkg#T.M` does not hold `pkg#T`.
+// A `plan:` handle compares as its body, and a nil plan reads as the default language.
+func TargetHolds(plan *Plan, target, member, file string) bool {
+	if plan == nil {
+		plan = &Plan{}
+	}
+	body := target
+	if b, handle := HandleBody(target); handle {
+		body = b
+	}
+	if holdsFile(body, file) {
+		return true
+	}
+	if member == "" || !plan.GlyphLanguage() {
+		return false
+	}
+	memberGlyph, err := ParseRef(plan, member)
+	if err != nil {
+		memberGlyph, err = ParseMintedCSharpID(member)
+	}
+	targetGlyph, targetErr := ParseRef(plan, body)
+	if err != nil || targetErr != nil || memberGlyph.IsSelf() {
+		return false
+	}
+	if targetGlyph.IsSelf() {
+		return targetGlyph.Unit == memberGlyph.Unit || (plan.GoToolchain() && targetGlyph.Unit == goPackageDir(memberGlyph.Unit))
+	}
+	if targetGlyph.Unit != memberGlyph.Unit {
+		return false
+	}
+	targetChain := append(slices.Clone(targetGlyph.Owner), targetGlyph.Name)
+	memberChain := append(slices.Clone(memberGlyph.Owner), memberGlyph.Name)
+	return len(targetChain) <= len(memberChain) && slices.Equal(targetChain, memberChain[:len(targetChain)])
+}
+
+// holdsFile reports whether body, a target with any plan: handle stripped, names file as a self glyph through its path or as a plain path.
+func holdsFile(body, file string) bool {
+	if entryPath, ok := PathEntryPath(body); ok {
+		return entryPath == file
+	}
+	return body == file
 }
 
 // targetDir maps one target ref to its directory and whether the ref names Go source.

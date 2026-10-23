@@ -249,11 +249,15 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"soon","title":"Soon thing","kind":"task","labels":["bug"]}`)
 	runJSON(t, 0, "set-status", `{"slug":"soon","status":"active"}`)
 
-	wantList := "T1  task  0m  0m  soon   Soon thing   bug                    [active]\n" +
+	wantList := "prime owner: none\n" +
+		"T1  task  0m  0m  soon   Soon thing   bug                    [active]\n" +
 		"E1  note  0m  0m  later  Later thing  enhancement,undecided\n"
 	exitCode, stdout := runCLI(t, "list", "--text")
 	if exitCode != 0 || stdout != wantList {
 		t.Fatalf("list --text: exit %d, stdout %q, want %q", exitCode, stdout, wantList)
+	}
+	if got, present := runJSON(t, 0, "list")["prime_owner"]; !present || got != "" {
+		t.Errorf("list: prime_owner = %v (present %t), want an empty string", got, present)
 	}
 
 	wantFind := "E1  note  0m  0m  later  Later thing  enhancement,undecided\n"
@@ -343,7 +347,8 @@ func stepGetAndRemoveByID(t *testing.T, f *cliFixture) {
 }
 
 // stepOwners seeds a board.json that records a prime owner and one task's owner, straight into the file since the owner setter is not the subject, and reads the owners back through get and list.
-// An unowned task reads as the prime's owner, an owned task as its own, and a note carries none.
+// An unowned task reads as the prime's owner, an owned task as its own, and a note carries none;
+// list prints the prime owner as prime_owner and opens its --text listing with it.
 func stepOwners(t *testing.T, f *cliFixture) {
 	seedBoardFile(t, f.cwd, `{"version":1,"prime_owner":"neve","entries":[`+
 		`{"id":0,"slug":"plain","title":"P","kind":"task","labels":["bug"]},`+
@@ -357,11 +362,18 @@ func stepOwners(t *testing.T, f *cliFixture) {
 			t.Errorf("get %s: owner_machine = %v, want %v", slug, task["owner_machine"], owner)
 		}
 	}
-	for _, entry := range runJSON(t, 0, "list")["tasks"].([]any) {
+	listed := runJSON(t, 0, "list")
+	for _, entry := range listed["tasks"].([]any) {
 		task := entry.(map[string]any)
 		if got, slug := task["owner_machine"], task["slug"].(string); got != want[slug] {
 			t.Errorf("list %s: owner_machine = %v, want %v", slug, got, want[slug])
 		}
+	}
+	if got := listed["prime_owner"]; got != "neve" {
+		t.Errorf("list: prime_owner = %v, want neve", got)
+	}
+	if exitCode, stdout := runCLI(t, "list", "--text"); exitCode != 0 || !strings.HasPrefix(stdout, "prime owner: neve\n") {
+		t.Errorf("list --text: exit %d, stdout %q, want it to open with %q", exitCode, stdout, "prime owner: neve\n")
 	}
 }
 

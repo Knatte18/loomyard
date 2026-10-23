@@ -32,6 +32,8 @@
 // The Publish failure record is the one never-tracked file Publish leaves when a verify of its `landing` or `publish` gate fails.
 // It names the failing gate as a FailureKind (`landing` or `publish`) and the failing tier of that gate, the failing tests, the failing run's own log, HEAD and the merge-in commit Publish made.
 // A record written before the gates carries the retired kinds `plan_verify` and `publish_verify` and no tier, and a reader maps them onto the two gates.
+// It may also carry a trace of the failure to the plan: `cards`, each TracedCard holding the card's number, the glyphs and `path:line` locations matched to it, its Webster batch (0 when Webster holds no record of the card) and that batch's commit range; `later_range`, the commits made after the traced batches; and `untraced`, the locations no card holds.
+// The trace fields are optional and omitted when empty, so a record written without them reads as before, and the record stores no slug or intent text, since a reader takes them from the live plan.
 // Publish writes it through WritePublishFailure, the round gate reads it through ReadPublishFailure and checks its log path with IsLogPath, and a later passing Publish removes it through RemovePublishFailure, which leaves the log to pruning.
 // The record sits in the verify directory beside the logs.
 //

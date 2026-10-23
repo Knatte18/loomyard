@@ -86,6 +86,21 @@ func TestPlanReviewSkippable(t *testing.T) {
 			f.commitRoundAt(1, 4, ReworkClassExempt)
 			f.commitRoundAt(2, 7, ReworkClassRequired)
 		}, true},
+		{"exempt generation while an amendment record exists", func(f *reworkFixture) {
+			f.writeGeneration(2, proseCard)
+			f.commitWorkingPlan()
+			f.commitRoundAt(1, 2, ReworkClassExempt)
+			f.writeAmendment()
+		}, false},
+		{"exempt generation once the amendment record is gone", func(f *reworkFixture) {
+			f.writeGeneration(2, proseCard)
+			f.commitWorkingPlan()
+			f.commitRoundAt(1, 2, ReworkClassExempt)
+			f.writeAmendment()
+			if err := os.Remove(f.amendmentPath); err != nil {
+				f.t.Fatal(err)
+			}
+		}, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -110,6 +125,29 @@ func TestPlanReviewSkippable_UndecodableRecordErrors(t *testing.T) {
 	f.committed["rework/round-1/record.json"] = []byte("{not json")
 	if got, err := f.skippable(); err == nil || got {
 		t.Errorf("PlanReviewSkippable = %v, %v; want false and an error", got, err)
+	}
+}
+
+func TestPlanReviewSkippable_UnreadableAmendmentPathErrors(t *testing.T) {
+	f := newReworkFixture(t)
+	f.writeGeneration(2, proseCard)
+	f.commitWorkingPlan()
+	f.commitRoundAt(1, 2, ReworkClassExempt)
+	notADirectory := filepath.Join(f.anchor, "regular-file")
+	if err := os.WriteFile(notADirectory, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.amendmentPath = filepath.Join(notADirectory, "amendment.yaml")
+	if got, err := f.skippable(); err == nil || got {
+		t.Errorf("PlanReviewSkippable = %v, %v; want false and an error", got, err)
+	}
+}
+
+// writeAmendment writes the plan amendment record at the fixture's amendment path.
+func (f *reworkFixture) writeAmendment() {
+	f.t.Helper()
+	if err := os.WriteFile(f.amendmentPath, []byte("titles: []\n"), 0o644); err != nil {
+		f.t.Fatal(err)
 	}
 }
 

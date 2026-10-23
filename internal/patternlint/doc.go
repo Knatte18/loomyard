@@ -8,5 +8,6 @@
 //
 // The bound is the one `pattern.Headroom` states: only growth above the line is a finding.
 // An overview that stays above the line, or shrinks, passes, so a merged tree answers only to the hard cap.
+// OverviewAt is the shared base read: it returns the overview at one revision, and the plan gate reads its base through it.
 // Lint writes nothing.
 package patternlint

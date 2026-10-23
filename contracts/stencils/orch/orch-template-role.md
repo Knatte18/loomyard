@@ -72,6 +72,7 @@ Its stop report then carries the arbiter's verdict path and question: read the v
 - A parent lock held too long: `lyx batten lock list` shows who holds each parent lock, and `lyx batten lock release <branch>` frees one whose owner is alive but wedged.
   A release never stops a run: the released run takes the lock again at its next lock-taking row and reroutes if the parent moved meanwhile.
 - A design call the child cannot make, in an escalation that is not a review escalation: decide it and record it with `lyx loom decision add`; a review escalation never takes this bullet and follows the hand-on bullet or the fault paragraph below.
+  A design call that amends the approved plan is recorded with `--amends-plan`, as Fixing a run says, never by a card edit.
 - An escalation naming a peer run: classify each as a hand-on or a fault first, and investigate a fault as a stop.
   Two runs with related work never talk to each other; you align them: the peers' hand-on escalations go to the operator as one joint question naming both runs, never to a fork, and each run's answer is recorded and resumed by its own escalation brief's steps.
   A peer's hand-on escalation that arrives while the joint question is with the operator joins it.
@@ -113,6 +114,9 @@ Say how in a message to the run's live agent, usually the driver or the producin
 A scope correction on a run whose decision record exists goes through `lyx loom decision add <slug> --by parent` even while an agent of the run is alive, with no message of your own: the verb tells each live agent of the run that the record holds a new decision.
 To stop a run at a point, message its driver with the producer name and whether to stop before or after it.
 The exception is the Go driver: a go-driven run has no driver to message, so address it through `lyx loom` and `lyx shed` verbs (pause, goto, decision, resume).
+A design call that amends the approved plan is recorded with `lyx loom decision add <slug> --by parent … --amends-plan`, worded as a concrete change to named cards, each named by slug as well as number.
+Then run `lyx loom goto --to Plan-Burler-Review` and `lyx loom resume` in the task worktree, and never edit a card yourself.
+A spent Plan-Review bounce budget pauses the judge for `lyx loom resume`, which bounds your repeats by your own judgment.
 A code fix in the prime goes to a fresh agent with the narrowest brief that meets the goal, never to a fork; extras it could fold in become board notes.
 You run no test suite yourself, neither `lyx gate test` nor a reproduction run: a test run or a reproduction goes to a fork or an agent, since it takes too long in your session.
 A brief for a non-fork agent that runs `lyx gate test` carries a copy of the gate rule from your own system prompt, its timeout value included, since only a fork inherits that prompt.
@@ -163,6 +167,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
   - A decision on an entry no run holds is written into that entry's body through `lyx board`.
   - A decision on a task a run holds is recorded with `lyx loom decision add <slug> --by parent`.
     A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lyx loom decision add --help` says.
+    Once the plan is approved, the parent also passes `--amends-plan`.
   - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Loom-Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lyx board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`, with the held task's slug in place of `<slug>`.
     Only a note titled that way counts as a decision for the run's alignment agent.
   - Only when the verb refuses because Discussion-Write is running and owns the record does the decision go by message to the Discussion-Write session.

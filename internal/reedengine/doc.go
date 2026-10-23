@@ -287,7 +287,7 @@
 //
 //	list-panes -t <strand window> -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
 //
-// and parsePaneList (parse.go) parses each output line's first six whitespace-separated fields positionally, in that exact order, into a LivePane;
+// and parsePaneList (parse.go) parses each output line's first six space-separated fields positionally, in that exact order, into a LivePane;
 // everything after the sixth field is one tail field, which splitPaneTail splits on the tab paneTailSeparator into LivePane.Title, LivePane.CurrentCommand and LivePane.StartCommand.
 // All three can hold spaces, and a tail with no separator parses as the title alone, with both commands empty.
 // The session-wide window listing (windowPaneFormat) ends in the same tail, so both listings carry both commands.

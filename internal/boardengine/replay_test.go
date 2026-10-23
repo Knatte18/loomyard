@@ -477,6 +477,19 @@ func TestFabricReplay(t *testing.T) {
 			if stored.primeOwner != tt.wantPrime {
 				t.Errorf("prime_owner = %q; want %q", stored.primeOwner, tt.wantPrime)
 			}
+			if !tt.wantEmpty {
+				readme, err := os.ReadFile(filepath.Join(dir, "README.md"))
+				if err != nil {
+					t.Fatalf("ReadFile(README.md) = %v; want nil", err)
+				}
+				wantLine := "Prime owner: none recorded.\n"
+				if tt.wantPrime != "" {
+					wantLine = "Prime owner: `" + tt.wantPrime + "`.\n"
+				}
+				if !strings.Contains(string(readme), wantLine) {
+					t.Errorf("README.md = %q; want it to contain %q", readme, wantLine)
+				}
+			}
 			if tt.check != nil {
 				tt.check(t, dir, got)
 			}

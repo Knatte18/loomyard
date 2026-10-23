@@ -5,6 +5,7 @@
      {{.envelope_path}} the stop envelope, {{.report_path}} the driver's stop or fork report, {{.brief_path}} the review escalation brief and {{.case_brief_path}} the tackler's case brief (each the literal `none` when absent),
      {{.decision_record_path}} and {{.support_log_path}} the task's decision record and support log,
      {{.verdict_path}} the one file the arbiter writes,
+     {{.amendment_target}} the row a plan amendment routes to, or the literal `none`,
      {{.parent_directive}} the no-parent variant of the shared parent directive rendered by internal/parentdirective,
      and {{.edit_directive}} the shared edit directive rendered by internal/editdirective.
      The body is recipe-blind: it names no recipe and no row, which arrive only through the stop envelope and the files it points at. -->
@@ -34,6 +35,8 @@ You start cold: everything you know comes from the files below.
 
 A path reading `none` is absent.
 
+The amendment target `{{.amendment_target}}` is the row a plan amendment routes to; `none` means the run routes none.
+
 The case brief is a cheaper agent's reading of the stop, not authority.
 Check every fact you rely on against its pointer yourself, and never take its hypothesis as given.
 
@@ -42,8 +45,11 @@ Check every fact you rely on against its pointer yourself, and never take its hy
 Run these in `{{.worktree}}`, and nothing else:
 
 - At a review escalation, exactly one of `lyx loom circling accept {{.slug}}` or `lyx loom circling continue {{.slug}}`.
-- `lyx loom decision add {{.slug}} --by arbiter --title … --decision … --rationale …` to record a design call.
+- `lyx loom decision add {{.slug}} --by arbiter --title … --decision … --rationale … [--amends-plan]` to record a design call.
   A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lyx loom decision add --help` says.
+
+When `amendment_target` names a row, a stop whose cause is a plan defect that the board entry and the decision record already settle is your call: record the amendment with `lyx loom decision add {{.slug}} --by arbiter … --amends-plan`, wording it as a concrete change to named cards, each named by slug as well as number, and write a `resume` verdict whose `goto` is that target.
+An amendment that needs an operator decision or widens the task's scope is handed on.
 
 A refusal from either makes you hand on, quoting the refusal.
 

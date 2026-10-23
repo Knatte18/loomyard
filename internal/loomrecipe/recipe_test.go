@@ -296,6 +296,35 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 	}
 }
 
+// TestAmendmentTarget pins that loom's recipe names Plan-Burler-Review, that darn's and batten's name none, and that an unknown recipe name is refused.
+func TestAmendmentTarget(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		recipe string
+		want   string
+	}{
+		{shedrun.RecipeLoom, "Plan-Burler-Review"},
+		{shedrun.RecipeDarn, ""},
+		{shedrun.RecipeBatten, ""},
+	} {
+		t.Run(tt.recipe, func(t *testing.T) {
+			t.Parallel()
+			got, err := AmendmentTarget(tt.recipe)
+			if err != nil {
+				t.Fatalf("AmendmentTarget(%q) error = %v; want nil", tt.recipe, err)
+			}
+			if got != tt.want {
+				t.Errorf("AmendmentTarget(%q) = %q; want %q", tt.recipe, got, tt.want)
+			}
+		})
+	}
+
+	if _, err := AmendmentTarget("no-such-recipe"); err == nil || !strings.Contains(err.Error(), "no-such-recipe") {
+		t.Errorf("AmendmentTarget(%q) error = %v; want a refusal naming the recipe", "no-such-recipe", err)
+	}
+}
+
 // TestEntryNumbers pins the entry numbering on the shipped recipes and on a constructed one.
 func TestEntryNumbers(t *testing.T) {
 	numbersOf := func(t *testing.T, recipe string) map[string]int {

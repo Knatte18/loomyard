@@ -172,8 +172,14 @@ func resolveParentReviewClosure(entry string, attempts int, env Env) (gate, fina
 
 // planContextOf builds the plan gates' PlanContext from env: the hub's rename tools and refused raw commands, and the decision record on a loom run.
 // A darn run has no PatternRecordPath, so its plan is not compared with a record.
+// The PATTERN.md base is read at the merge base the verify gate's headroom lint is told.
 func planContextOf(env Env) loomshed.PlanContext {
-	return loomshed.PlanContext{RenameTools: env.RenameTools, RefuseRaw: env.RefuseRaw, DecisionRecordPath: env.PatternRecordPath}
+	return loomshed.PlanContext{
+		RenameTools:        env.RenameTools,
+		RefuseRaw:          env.RefuseRaw,
+		DecisionRecordPath: env.PatternRecordPath,
+		PatternBase:        loomshed.PatternBaseReader(env.WorktreeRoot, env.VerifyMergeBase),
+	}
 }
 
 // resolvePlainGateClosure resolves the five validator names that carry no Final closure.

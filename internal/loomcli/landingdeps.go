@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/failuretrace"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -70,6 +71,11 @@ func landingDeps(
 	lock landingshed.ParentLockDeps,
 	runStart time.Time,
 ) landingshed.Deps {
+	// A darn run has no plan, so only a loom run traces a failed verify to its cards.
+	var traceFailure func(log, head string) (verifytree.FailureTrace, error)
+	if recipe == shedrun.RecipeLoom {
+		traceFailure = failuretrace.NewTracer(l.WorktreePath(), l.AnchorPath())
+	}
 	return landingshed.Deps{
 		ParentName:      parentName,
 		LanguageSkills:  languageSkills,
@@ -199,6 +205,7 @@ func landingDeps(
 		ClassifyVerifyFailure:  verify.classify,
 		PublishSkip:            verify.publishSkip,
 		FailingTests:           failingTestsOf,
+		TraceFailure:           traceFailure,
 		VerifyDir:              verifytree.Dir(l.AnchorPath()),
 		VerifyWaitMark:         verifyWaitMark,
 		VerifyHold:             verifytree.NewPauseHold(runner.PauseGeometry(), holdsParentLock(lock.Store, l.WorktreeName)),

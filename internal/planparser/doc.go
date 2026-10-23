@@ -60,6 +60,14 @@
 // An Edit group's bullet may carry the re-sign arrow, `<glyph>` -> `<new declaration head>`, which marks a signature change and states the new head.
 // Each arrow bullet is a CardResign (Target, Decl) in the group's Resigns and the card's flat Resigns, and its left token also stays in Refs, so the member remains an ordinary Edit target.
 //
+// An Extends group holds existing refs the card only adds to, and changes nothing already there.
+// Its refs join the card's flat Targets as an Edit group's do, and the readers that treat Edit targets read an Extends group alike:
+// card-missing-field requires ImpactSummary, path-missing checks the refs, CheckEditTestFile refuses a test file, and the glyph resolve pass sees them unchanged.
+// An arrow bullet in an Extends group is in the group's own Resigns only, never the card's flat Resigns, so no re-sign check reads it.
+// The extends-overlap check refuses a ref also under another type label of its card, and extends-resign refuses an arrow bullet in an Extends group.
+// CardRefKind says what a card does with a ref (RefChange, RefExtends, RefUse, or 0 when it does not name it), and DependencyEdge decides, for a pair of overlapping refs its caller found, whether they make a dependency edge.
+// Two Extends on one ref make no edge unless both cards fence a verbatim PATTERN.md line for one entry ID; every other pair of named refs makes an edge unless both are uses.
+//
 // Only path-shaped Targets/Uses/Pairs entries are normalized (see below), and a
 // path-shaped entry is further canonicalized into its glyph string at parse time
 // when it carries a file extension or carries no "/" at all (canonicalizablePath,

@@ -51,7 +51,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		}
 		seedManifest(t, dir, []string{"prop-ghost.md"})
 
-		if err := boardengine.RenderToDisk(dir, tasks, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "prop-"}, renderTime); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, "", boardengine.Outputs{Readme: "Home.md", DesignPrefix: "prop-"}, renderTime); err != nil {
 			t.Fatalf("RenderToDisk: %v", err)
 		}
 
@@ -75,14 +75,14 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		// First render produces Home.md and seeds the manifest with it.
 		out1 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, out1, renderTime); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, "", out1, renderTime); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 
 		// Second render uses Index.md; the manifest from the first render lists Home.md,
 		// so it is removed because the new output set does not contain it.
 		out2 := boardengine.Outputs{Readme: "Index.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, out2, renderTime); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, "", out2, renderTime); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "Index.md")); err != nil {
@@ -99,7 +99,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		// First render with prefix "proposal-" produces proposal-a.md.
 		out1 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, out1, renderTime); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, "", out1, renderTime); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); err != nil {
@@ -109,7 +109,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		// Second render with prefix "task-" produces task-a.md; manifest cleanup
 		// removes proposal-a.md because it is no longer in the output set.
 		out2 := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "task-"}
-		if err := boardengine.RenderToDisk(dir, tasks, out2, renderTime); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, "", out2, renderTime); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "task-a.md")); err != nil {
@@ -126,7 +126,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
 
 		// First render: task has a body → proposal-a.md is produced and recorded in the manifest.
-		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, out, renderTime); err != nil {
+		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, "", out, renderTime); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); err != nil {
@@ -136,7 +136,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		// Second render: task loses its body → proposal-a.md is absent from the new
 		// output set but present in the manifest, so the manifest cleanup removes it.
 		task.Body = ""
-		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, out, renderTime); err != nil {
+		if err := boardengine.RenderToDisk(dir, []boardengine.Task{task}, "", out, renderTime); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "proposal-a.md")); !os.IsNotExist(err) {
@@ -156,11 +156,11 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
 		// First render seeds the manifest with the rendered files (not NOTES.md).
-		if err := boardengine.RenderToDisk(dir, tasks, out, renderTime); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, "", out, renderTime); err != nil {
 			t.Fatalf("first RenderToDisk: %v", err)
 		}
 		// Second render triggers cleanup; NOTES.md was never in the manifest so it is untouched.
-		if err := boardengine.RenderToDisk(dir, tasks, out, renderTime); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, "", out, renderTime); err != nil {
 			t.Fatalf("second RenderToDisk: %v", err)
 		}
 		if _, err := os.Stat(readme); err != nil {
@@ -183,7 +183,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 
 		// First render with no prior manifest: nothing is removed (graceful degradation),
 		// and the manifest is seeded with the current output set.
-		if err := boardengine.RenderToDisk(dir, tasks, out, renderTime); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, "", out, renderTime); err != nil {
 			t.Fatalf("RenderToDisk should not fail when no manifest exists: %v", err)
 		}
 		if _, err := os.Stat(stale); err != nil {
@@ -205,7 +205,7 @@ func TestRenderToDiskManifestCleanup(t *testing.T) {
 		}
 
 		out := boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}
-		if err := boardengine.RenderToDisk(dir, tasks, out, renderTime); err != nil {
+		if err := boardengine.RenderToDisk(dir, tasks, "", out, renderTime); err != nil {
 			t.Errorf("RenderToDisk should not fail with a corrupt manifest: %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(dir, "Home.md")); err != nil {
@@ -238,7 +238,8 @@ func readmeFixture() []boardengine.Task {
 // It pins that a pipe in a title is escaped and a line break in a brief becomes a space, so each row stays one table row.
 // The same row pins that each run setting stacks as a code-span bullet in the entry cell after any brief, sorted, a nested key as its dotted path, a non-string value as JSON and a pipe escaped, adding no column.
 // Every Tasks table pins a Recipe column after the slug, loom for an empty recipe and the stored name otherwise, and the Notes and Done tables pin its absence.
-// Every README pins the render time at its top, and every table pins the one column before Labels holding the age above the time since revision, as of that time and blank for unknown dates.
+// Every README pins the render time at its top and the prime owner under it, the machine in a code span and none recorded when the board records none;
+// every table pins the one column before Labels holding the age above the time since revision, as of that time and blank for unknown dates.
 // A second row pins that Ready renders _None._ when empty, and that the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
 // Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
 // A third row pins that a task with a run status renders under Running, before Ready and in no layer, ordered by handle over ID, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the recorded owner machine and blank when none is recorded.
@@ -246,16 +247,19 @@ func readmeFixture() []boardengine.Task {
 func TestRenderReadmeGolden(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name  string
-		tasks []boardengine.Task
-		want  string
+		name       string
+		tasks      []boardengine.Task
+		primeOwner string
+		want       string
 	}{
 		{
-			name:  "tasks, notes, done and abandoned entries",
-			tasks: readmeFixture(),
+			name:       "tasks, notes, done and abandoned entries",
+			tasks:      readmeFixture(),
+			primeOwner: "neve",
 			want: "# Board\n" +
 				"\n" +
 				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
+				"Prime owner: `neve`.\n" +
 				"\n" +
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
@@ -325,6 +329,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 			want: "# Board\n" +
 				"\n" +
 				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
+				"Prime owner: none recorded.\n" +
 				"\n" +
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
@@ -358,9 +363,11 @@ func TestRenderReadmeGolden(t *testing.T) {
 				{ID: 4, Handle: "T4", Slug: "last", Title: "Last work", Kind: boardengine.KindTask, DependsOn: []string{"next"}},
 				{ID: 5, Handle: "T2", Slug: "halted", Title: "Halted work", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.RunStatus("paused", "Plan-Write")), Recipe: "darn"},
 			},
+			primeOwner: "neve",
 			want: "# Board\n" +
 				"\n" +
 				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
+				"Prime owner: `neve`.\n" +
 				"\n" +
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
@@ -410,7 +417,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := boardengine.Render(tt.tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes}, renderTime)
+			result, err := boardengine.Render(tt.tasks, tt.primeOwner, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes}, renderTime)
 			if err != nil {
 				t.Fatalf("Render: %v", err)
 			}
@@ -437,7 +444,7 @@ func TestRenderDesignDocGoldens(t *testing.T) {
 			DependsOn: []string{"linked", "bare"}, Body: "line one\n\n  indented\nline three"},
 		{ID: 4, Slug: "plain", Title: "Plain", Kind: note, Labels: []string{"enhancement"}, Body: "just a body"},
 	}
-	result, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes}, renderTime)
+	result, err := boardengine.Render(tasks, "", boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes}, renderTime)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -486,7 +493,7 @@ func TestRenderCustomOutputs(t *testing.T) {
 			Readme:       "README.md",
 			DesignPrefix: "proposal-",
 		}
-		result, err := boardengine.Render([]boardengine.Task{task}, out, renderTime)
+		result, err := boardengine.Render([]boardengine.Task{task}, "", out, renderTime)
 		if err != nil {
 			t.Fatalf("Render failed: %v", err)
 		}
@@ -513,7 +520,7 @@ func TestRenderCustomOutputs(t *testing.T) {
 			Readme:       "Home.md",
 			DesignPrefix: "prop-",
 		}
-		result, err := boardengine.Render([]boardengine.Task{task}, out, renderTime)
+		result, err := boardengine.Render([]boardengine.Task{task}, "", out, renderTime)
 		if err != nil {
 			t.Fatalf("Render failed: %v", err)
 		}

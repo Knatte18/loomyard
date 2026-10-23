@@ -30,6 +30,7 @@
 // It carries a priority column after the kind, `high`, `low` or blank, only when some listed entry is not normal.
 // Two age columns follow, the entry's age and the time since its last revision, computed as of the listing from the stored dates and blank for an unknown one;
 // each is left out when no listed entry has that date.
+// `list` names the machine that owns the hub's prime beside its entries: as the envelope's `prime_owner` key, empty when none is recorded, and with `--text` as a `prime owner: <machine>` line, `none` when none is recorded, before the entry lines.
 // `list` takes `--sort age` to list the oldest entries first and `--sort revised` the longest unrevised first, with an entry lacking the date last and ties in README order.
 //
 // `upsert` takes `--body-file <path>` to read `body` from a file, or from stdin when the path is `-`.

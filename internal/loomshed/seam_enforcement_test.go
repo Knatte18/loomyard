@@ -64,6 +64,9 @@ var loomshedAllowedImports = []string{
 	// internal/shedverbs is imported for the two interrupt-policy words and no behaviour.
 	// It imports no lyxcwd, so the told-geometry membership holds.
 	"github.com/Knatte18/loomyard/internal/shedverbs",
+	// gopkg.in/yaml.v3 decodes and encodes the amendment record, which is YAML.
+	// The package still resolves no geometry: the record's path is told.
+	"gopkg.in/yaml.v3",
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {

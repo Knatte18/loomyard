@@ -3,8 +3,8 @@
 // Render is a pure function: entries in, a map of filename → content out (a single README.md built by renderReadme, plus design-*.md for any entry with a body).
 // The README reads like a roadmap: Tasks split into Running, Ready, dependency layers and Independent, Notes with one subsection per type label, then Done.
 // Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes table adds the priority as H or L after it;
-// the README opens with the time it was rendered,
-// and the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
+// the README opens with the time it was rendered and the machine that owns the hub's prime;
+// the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
 // every Tasks table adds the recipe after the slug, loom for an empty one;
 // Running adds where its run stands and the entry's recorded owner machine, and Ready and the layers add the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
@@ -35,9 +35,9 @@ import (
 // adds commit churn, and it is never itself a member of the rendered file set.
 const renderManifestFile = ".board-rendered.json"
 
-// RenderToDisk renders the entries with their ages as of now, persisting the board's output files.
-func RenderToDisk(boardPath string, tasks []Task, out Outputs, now time.Time) error {
-	files, err := Render(tasks, out, now)
+// RenderToDisk renders the entries and the prime owner with their ages as of now, persisting the board's output files.
+func RenderToDisk(boardPath string, tasks []Task, primeOwner string, out Outputs, now time.Time) error {
+	files, err := Render(tasks, primeOwner, out, now)
 	if err != nil {
 		return err
 	}
@@ -87,15 +87,15 @@ func writeRenderManifest(boardPath string, files map[string]string) {
 	_ = fsx.AtomicWriteBytes(filepath.Join(boardPath, renderManifestFile), data)
 }
 
-// Render produces the board output files from the entry list, the README's ages as of now.
-func Render(tasks []Task, out Outputs, now time.Time) (map[string]string, error) {
+// Render produces the board output files from the entry list and the machine that owns the hub's prime, "" when none is recorded, the README's ages as of now.
+func Render(tasks []Task, primeOwner string, out Outputs, now time.Time) (map[string]string, error) {
 	ordered, err := RenderOrder(tasks)
 	if err != nil {
 		return nil, err
 	}
 
 	result := map[string]string{
-		out.Readme: renderReadme(ordered, out.DesignPrefix, out.Types, now),
+		out.Readme: renderReadme(ordered, primeOwner, out.DesignPrefix, out.Types, now),
 	}
 
 	for name, content := range renderDesigns(tasks, out.DesignPrefix) {
@@ -202,12 +202,13 @@ type readmeTable struct {
 	priority bool
 }
 
-// renderReadme builds the README: a title, the render time, an intro, Tasks split into Running, Ready, dependency layers and Independent, Notes split by type label, then Done when any entry is done.
-func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string, now time.Time) string {
+// renderReadme builds the README: a title, the render time and prime owner, an intro, Tasks split into Running, Ready, dependency layers and Independent, Notes split by type label, then Done when any entry is done.
+func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, types []string, now time.Time) string {
 	lines := []string{
 		"# Board",
 		"",
 		"Rendered " + now.UTC().Format(renderedTimeLayout) + "; every age below is as of then.",
+		"Prime owner: " + primeOwnerText(primeOwner) + ".",
 		"",
 		"Tasks are grouped by dependency layer and notes by type.",
 		"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.",
@@ -324,6 +325,14 @@ func renderReadme(ordered []TaskWithLayer, designPrefix string, types []string, 
 	}
 
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
+}
+
+// primeOwnerText is the README's statement of the prime owner: the machine in a code span, or none recorded.
+func primeOwnerText(primeOwner string) string {
+	if primeOwner == "" {
+		return "none recorded"
+	}
+	return codeSpan(primeOwner)
 }
 
 // layerSection names a computed dependency layer and says when its entries can start.

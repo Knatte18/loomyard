@@ -54,6 +54,27 @@ producers:
 			},
 		},
 		{
+			name: "amendment_target decodes into the field",
+			yaml: `
+version: 1
+entry: start
+amendment_target: row1
+terminals: [done]
+producers:
+  - name: row1
+    engine: bouncer
+`,
+			wantRecipe: &Recipe{
+				Version:         1,
+				Entry:           "start",
+				AmendmentTarget: "row1",
+				Terminals:       []string{"done"},
+				Producers: []Row{
+					{Name: "row1", Engine: "bouncer"},
+				},
+			},
+		},
+		{
 			name: "row with no config block yields nil Config",
 			yaml: `
 version: 1
