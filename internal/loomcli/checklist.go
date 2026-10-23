@@ -94,8 +94,9 @@ func (c *loomCLI) checklistCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `checklist draws the run's frame, redrawing in place until it is signalled:
 one line per recipe row in recipe order with its box, the time spent in it and
-its visit count, each visited row's visit lines under it, then the state line,
-and last the wait line with the full reason the run waits. Every line is drawn
+its visit count, each visited row's visit lines under it with no output path
+and each gate line opening with its UTC start, then the state line, and last
+the wait line with the full reason the run waits. Every line is drawn
 uncut, so a short terminal scrolls the top away and keeps the state and wait
 lines in view. The loom-status strand runs it. It reads files only.`,
 		Args: cobra.NoArgs,
@@ -634,7 +635,8 @@ func (p *checklistArbiterPlacement) endLines() []string {
 	return append(lines, p.unreadable...)
 }
 
-// checklistVisitLine renders one visit as "<start> <spent> <outcome>", the time to the second except for the open visit's in whole minutes, then " x<n>" for a folded entry, " <output>" when it has one and " gate attempts <n>" when gated and the entry carried no gate span list.
+// checklistVisitLine renders one visit as "<start> <spent> <outcome>", the time to the second except for the open visit's in whole minutes, then " x<n>" for a folded entry and " gate attempts <n>" when gated and the entry carried no gate span list.
+// The visit's output is never drawn, since its path would wrap the line.
 // A non-empty row is written before the outcome, for a list that does not sit under the row's own line.
 // A non-empty reworkFor, the gate row whose refusal the visit was rework for, ends the line as " rework for <reworkFor>".
 func checklistVisitLine(visit checklistVisit, row string, reworkFor string) string {
@@ -650,9 +652,6 @@ func checklistVisitLine(visit checklistVisit, row string, reworkFor string) stri
 	if visit.folds > 1 {
 		line += fmt.Sprintf(" x%d", visit.folds)
 	}
-	if visit.output != "" {
-		line += " " + visit.output
-	}
 	if visit.gateAttempts != nil && !visit.hasGateSpans {
 		line += fmt.Sprintf(" gate attempts %d", *visit.gateAttempts)
 	}
@@ -662,7 +661,8 @@ func checklistVisitLine(visit checklistVisit, row string, reworkFor string) stri
 	return line
 }
 
-// checklistGateLines renders the gate spans of one history entry as one line per gate entry, in the order each name first appears: "gate <name> <gate time>", then " refused <n> rework <rework time>" when the entry re-prompted.
+// checklistGateLines renders the gate spans of one history entry as one line per gate entry, in the order each name first appears: "<start> gate <name> <gate time>", then " refused <n> rework <rework time>" when the entry re-prompted.
+// The start is the UTC hh:mm of the name's first span with a parsable start, and checklistUnknownStart when none has one.
 // The gate time is the sum of the name's gate and held spans and the rework time the sum of its rework spans; n counts the rework spans.
 // Each span counts its end less its start, less paused within it, floored at zero; a span whose start or end does not parse counts zero.
 // Every span is closed, so both times are drawn to the second.
@@ -670,6 +670,8 @@ func checklistGateLines(spans []shedengine.GateSpan, paused []pauserecord.Interv
 	type gateTotals struct {
 		gate, rework time.Duration
 		refusals     int
+		start        time.Time
+		startKnown   bool
 	}
 	var names []string
 	totals := map[string]*gateTotals{}
@@ -683,6 +685,9 @@ func checklistGateLines(spans []shedengine.GateSpan, paused []pauserecord.Interv
 		var counted time.Duration
 		start, startKnown := parseChecklistTime(span.Start)
 		end, endKnown := parseChecklistTime(span.End)
+		if startKnown && !t.startKnown {
+			t.start, t.startKnown = start, true
+		}
 		if startKnown && endKnown && end.After(start) {
 			counted = end.Sub(start) - pauserecord.Excluded(paused, start, end)
 		}
@@ -697,7 +702,11 @@ func checklistGateLines(spans []shedengine.GateSpan, paused []pauserecord.Interv
 	var lines []string
 	for _, name := range names {
 		t := totals[name]
-		line := "gate " + name + " " + durfmt.FormatSeconds(t.gate)
+		start := checklistUnknownStart
+		if t.startKnown {
+			start = t.start.UTC().Format("15:04")
+		}
+		line := start + " gate " + name + " " + durfmt.FormatSeconds(t.gate)
 		if t.refusals > 0 {
 			line += fmt.Sprintf(" refused %d rework %s", t.refusals, durfmt.FormatSeconds(t.rework))
 		}
