@@ -304,21 +304,23 @@ func clearRenderedPrompts(promptsDir string) error {
 // entry-time reclaim simple, per
 // discussion.md's crash-resume-re-drive-first-unreported decision. A nil st
 // (no run has ever started) is a no-op.
-func reclaimEntryTimeStrands(stopper StrandStopper, st *State) error {
+// A stopped cold fixer's record turns terminal dead/died, so the next fix-verify spawns a fresh fixer instead of attaching to the stopped strand;
+// stateChanged reports whether any record changed, so the caller saves st.
+func reclaimEntryTimeStrands(stopper StrandStopper, st *State) (stateChanged bool, err error) {
 	if st == nil {
-		return nil
+		return false, nil
 	}
 
 	if st.MasterStrand != "" {
 		if err := stopper.StopStrand(st.MasterStrand); err != nil {
-			return fmt.Errorf("websterengine: stop leftover master strand %s before respawn: %w", st.MasterStrand, err)
+			return false, fmt.Errorf("websterengine: stop leftover master strand %s before respawn: %w", st.MasterStrand, err)
 		}
 	}
 
 	for _, bs := range st.Batches {
 		if bs != nil && bs.Kind == "recovery" && !bs.Terminal && bs.StrandGUID != "" {
 			if err := stopper.StopStrand(bs.StrandGUID); err != nil {
-				return fmt.Errorf("websterengine: stop leftover recovery strand %s before respawn: %w", bs.StrandGUID, err)
+				return false, fmt.Errorf("websterengine: stop leftover recovery strand %s before respawn: %w", bs.StrandGUID, err)
 			}
 		}
 	}
@@ -326,12 +328,15 @@ func reclaimEntryTimeStrands(stopper StrandStopper, st *State) error {
 	for _, rec := range st.VerifyFixers {
 		if rec.Status == "" {
 			if err := stopper.StopStrand(rec.StrandGUID); err != nil {
-				return fmt.Errorf("websterengine: stop leftover cold verify-gate fixer strand %s before respawn: %w", rec.StrandGUID, err)
+				return stateChanged, fmt.Errorf("websterengine: stop leftover cold verify-gate fixer strand %s before respawn: %w", rec.StrandGUID, err)
 			}
+			rec.Status = DigestStatusDead
+			rec.DeadReason = DeadReasonDied
+			stateChanged = true
 		}
 	}
 
-	return nil
+	return stateChanged, nil
 }
 
 // countBegunForkBatches counts st's recorded batches whose Kind is "fork"
@@ -473,8 +478,15 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// record of these strands): a prior run whose process died mid-wait
 	// leaves a live Master pane (or a live recovery strand) that keeps
 	// driving on its own.
-	if err := reclaimEntryTimeStrands(deps.Stopper, st); err != nil {
+	reclaimedFixers, err := reclaimEntryTimeStrands(deps.Stopper, st)
+	if err != nil {
 		return RunResult{}, err
+	}
+	if reclaimedFixers {
+		// Persisted before anything fallible follows, so a run that fails before its Master spawn still leaves the reclaimed fixer records terminal.
+		if err := SaveState(deps.Geom.WebsterDir, deps.Geom.ScratchDir, st); err != nil {
+			return RunResult{}, err
+		}
 	}
 
 	freshDrop, freshWarnings, err := freshPendingDrop(deps.Engines, deps.Geom, st, opts)

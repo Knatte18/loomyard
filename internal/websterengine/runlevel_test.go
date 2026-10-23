@@ -1567,6 +1567,17 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 					if want := []string{"prior-master-strand", "prior-recovery-strand", "prior-fixer-strand"}; !slices.Equal(fx.Stopper.Stopped, want) {
 						t.Errorf("stopped = %v; want %v", fx.Stopper.Stopped, want)
 					}
+					// A stopped fixer's record is saved terminal, so the next fix-verify spawns instead of attaching; a terminal fixer's record is left as it was.
+					fixers := loadRunState(t, fx).VerifyFixers
+					if len(fixers) != 2 {
+						t.Fatalf("saved VerifyFixers = %d records; want 2", len(fixers))
+					}
+					if fixers[0].Status != websterengine.DigestStatusDone || fixers[0].DeadReason != "" {
+						t.Errorf("terminal fixer record = %q/%q; want it left done", fixers[0].Status, fixers[0].DeadReason)
+					}
+					if fixers[1].Status != websterengine.DigestStatusDead || fixers[1].DeadReason != websterengine.DeadReasonDied {
+						t.Errorf("stopped fixer record = %q/%q; want dead/died", fixers[1].Status, fixers[1].DeadReason)
+					}
 				}
 			},
 		},
