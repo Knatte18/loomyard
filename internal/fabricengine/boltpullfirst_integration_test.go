@@ -287,7 +287,7 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		}
 	})
 
-	t.Run("a deleted path is committed but not recorded as written", func(t *testing.T) {
+	t.Run("a deleted path is committed but not recorded as written, and one HEAD never held is left out", func(t *testing.T) {
 		t.Parallel()
 		f := newBoltFixture(t)
 		gitkit.CommitFile(t, f.board, "notes/old.md", "old\n", "add old")
@@ -297,7 +297,7 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 				if err := os.Remove(filepath.Join(f.board, "notes", "old.md")); err != nil {
 					return nil, err
 				}
-				return []string{"notes/new.md", "notes/old.md"}, os.WriteFile(filepath.Join(f.board, "notes", "new.md"), []byte("new\n"), 0o644)
+				return []string{"notes/gone.md", "notes/new.md", "notes/old.md"}, os.WriteFile(filepath.Join(f.board, "notes", "new.md"), []byte("new\n"), 0o644)
 			},
 		}
 		rec := fabricengine.NewMutations(f.hub.Path)

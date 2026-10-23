@@ -43,7 +43,7 @@ func (b *Bolt) Commit(message string, opts SyncOptions) (sha string, committed b
 //
 // A write error is returned unwrapped and nothing is committed.
 // An empty path list commits nothing and returns committed == false.
-// A path that no longer exists stages its deletion.
+// A path that no longer exists stages its deletion, and one HEAD does not hold either is left out.
 // With opts.SkipGit, write still runs under the lock but nothing is committed.
 // It never pushes; callers push with Push afterwards, outside the write lock.
 func (b *Bolt) CommitWritten(message string, write func() ([]string, error), opts SyncOptions) (sha string, committed bool, err error) {
@@ -60,7 +60,41 @@ func (b *Bolt) CommitWritten(message string, write func() ([]string, error), opt
 	if opts.SkipGit {
 		return "", false, nil
 	}
-	return gitrepo.New(b.path).StageAndCommit(message, ScopedPathspec(".", writtenPaths))
+	repo := gitrepo.New(b.path)
+	stageable, err := stageablePaths(repo, b.path, writtenPaths)
+	if err != nil {
+		return "", false, err
+	}
+	return repo.StageAndCommit(message, ScopedPathspec(".", stageable))
+}
+
+// stageablePaths returns the paths, relative to the repo at root, that git can stage: each one on disk, and each missing one HEAD's tree holds, whose deletion it stages.
+// git add refuses a path that matches nothing, so a missing path HEAD does not hold, such as a name a stale local manifest kept after a pull removed the file, is left out.
+// An unborn HEAD holds no path.
+func stageablePaths(repo *gitrepo.Repo, root string, paths []string) ([]string, error) {
+	head, err := repo.CurrentSHA()
+	if err != nil && !errors.Is(err, gitrepo.ErrNoCommits) {
+		return nil, fmt.Errorf("fabricengine: resolve HEAD of %s: %w", root, err)
+	}
+	var stageable []string
+	for _, path := range paths {
+		if _, err := os.Lstat(filepath.Join(root, path)); !errors.Is(err, fs.ErrNotExist) {
+			stageable = append(stageable, path)
+			continue
+		}
+		if head == "" {
+			continue
+		}
+		_, err := repo.FileAtRevision(head, filepath.ToSlash(path))
+		switch {
+		case err == nil:
+			stageable = append(stageable, path)
+		case errors.Is(err, gitrepo.ErrPathNotAtRevision):
+		default:
+			return nil, fmt.Errorf("fabricengine: read %s at %s: %w", path, head, err)
+		}
+	}
+	return stageable, nil
 }
 
 // Push pushes any unpushed commits in the Bolt's repo, replaying them onto a moved origin as PushRecorded does.
@@ -152,7 +186,7 @@ type BoltWriteResult struct {
 // The board write lock is held across the pull and every write.
 // A write or commit error stops the sequence and is returned with the commits already landed kept in the result.
 // An empty path list commits nothing.
-// A path that no longer exists stages its deletion and is not recorded as a written file.
+// A path that no longer exists stages its deletion and is not recorded as a written file, and one HEAD does not hold either is left out of the commit.
 // It never pushes.
 func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res BoltWriteResult, err error) {
 	l, err := lock.AcquireWriteLock(filepath.Join(b.path, BoardWriteLockFile))
@@ -184,10 +218,14 @@ func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res Bo
 			}
 			rec.Append(KindFileWritten, abs, "")
 		}
-		if len(paths) == 0 {
+		stageable, err := stageablePaths(repo, b.path, paths)
+		if err != nil {
+			return res, err
+		}
+		if len(stageable) == 0 {
 			continue
 		}
-		sha, committed, err := repo.StageAndCommit(write.Message, ScopedPathspec(".", paths))
+		sha, committed, err := repo.StageAndCommit(write.Message, ScopedPathspec(".", stageable))
 		if err != nil {
 			return res, err
 		}

@@ -895,6 +895,8 @@
 //
 // **Pull-first.** `Bolt.PullThenCommitWritten(writes, rec)` brings Bolt up to date with its upstream before running an ordered list of writes, and commits each write's paths as its own commit.
 // It sits beside `CommitWritten`, which stays offline-capable for `configcli`'s hub-wide edit.
+// Both stage only the paths git can stage: a written path on disk, and a missing one HEAD's tree holds, whose deletion is committed;
+// a missing path HEAD does not hold, such as an output a stale local render manifest still names after a pull removed it, is left out, since `git add` would refuse it.
 // A Bolt with no upstream writes as before; one only behind is fast-forwarded (`repo_advanced`); one with seed commits ahead of a moved upstream has them dropped by the executor above.
 // When Bolt cannot be brought up to date, no write runs and the result's `Skipped` names why: `fetch_failed`, `diverged` (a non-seed commit ahead of a moved upstream, a drop refused on containment or ownership, or a failed replay) or `dirty` (a tracked change blocking the reset or the fast-forward).
 // Each skip is logged at Warn once, inside `Bolt.pullFirst`, with a detail naming the way forward; callers only read the result.

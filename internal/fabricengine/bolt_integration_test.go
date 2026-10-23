@@ -228,9 +228,9 @@ func TestBolt_CommitWritten(t *testing.T) {
 		}
 	})
 
-	t.Run("a deleted path is committed as a deletion", func(t *testing.T) {
+	t.Run("a deleted path is committed as a deletion and one HEAD never held is left out", func(t *testing.T) {
 		sha, committed, err := b.CommitWritten("bolt deleted", func() ([]string, error) {
-			return []string{"seed.md"}, os.Remove(filepath.Join(repoPath, "seed.md"))
+			return []string{"never.md", "seed.md"}, os.Remove(filepath.Join(repoPath, "seed.md"))
 		}, SyncOptions{})
 		if err != nil {
 			t.Fatalf("CommitWritten() error = %v; want nil", err)
