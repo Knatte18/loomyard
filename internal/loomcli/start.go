@@ -477,9 +477,8 @@ a live loom driver parked at a hand-back is resumed in its own pane. A live
 driver strand reed marked retiring is never adopted: start removes it and
 spawns a fresh driver in its place.
 
-Reach for it in a task worktree to begin the task, and again after "lyx loom
-approve", "lyx loom reject" or any other hand-back that waits on start to
-carry the run on.
+Reach for it in a task worktree to begin the task, and again after any
+hand-back that waits on start to carry the run on.
 
 It returns once the driver is up and never attaches to the session; watch it
 with "lyx reed attach". The envelope carries the run's driver, slug, run id

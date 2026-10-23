@@ -60,7 +60,7 @@
 //   - awaiting at a review segment's Bouncer row with a circling decision recorded: handled as a halted run, so a live, parked driver is woken and its step acts on the decision.
 //   - awaiting at a Bouncer row with no decision: refused, naming the circling verbs and then resume.
 //   - awaiting at a Bouncer row with an unreadable decision: refused naming the file, to fix it or delete it and record the decision again.
-//   - awaiting at any other row: refused, naming `lyx loom approve` or `lyx loom reject`, after which a batten run watching the child resumes it, or `lyx batten run <slug>` from the prime when none does.
+//   - awaiting at any other row: refused, naming the verb the run's waiting note names, after which a batten run watching the child resumes it, or `lyx batten run <slug>` from the prime when none does.
 //   - running: a no-op success when the driver is live or holds the run lock or the driver lock, and refused as a halted run otherwise.
 //   - halted with the run lock or the driver lock held, or with a live driver and no park marker: refused with the kind `driver_not_parked`, to retry shortly; a held driver lock means the Go driver is still settling the stop.
 //   - halted with a live driver and a park marker: resumed, refused with `merge_in_progress` over an unfinished merge under start's Publish and Finalize exception, and with `driver_busy` when the driver's pane would not take the resume line.
@@ -265,7 +265,6 @@
 // A darn run's prompt names no plan directory and carries darn's pr-gate measure; every other recipe's names the plan directory and loom's measure.
 //
 // The landing wiring reads the run's start from the pair's seed and fails on a seed it cannot decode.
-// `lyx loom approve` and `lyx loom reject` look up the pull request created at or after that start and refuse when the seed cannot be read.
 //
 // # Review subjects
 //

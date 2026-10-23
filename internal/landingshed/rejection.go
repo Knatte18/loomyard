@@ -1,6 +1,6 @@
 // rejection.go — the operator-rejection record.
 //
-// `lyx loom reject` writes the record and the PR gate reads it, both through Rejection, beside the approval record.
+// PR-Rework reads the record through Rejection.
 // The path is always told; this package derives none.
 
 package landingshed
@@ -28,7 +28,11 @@ type Rejection struct {
 
 // WriteRejection writes r to path, creating the parent directory and replacing any earlier record atomically, so a reader never sees a partial file.
 func WriteRejection(path string, r Rejection) error {
-	return writeRecordAtomic(path, "rejection", r)
+	data, err := json.Marshal(r)
+	if err != nil {
+		return fmt.Errorf("landingshed: encode rejection: %w", err)
+	}
+	return writeBytesAtomic(path, "rejection", data)
 }
 
 // RecordRejection records r as the latest decision: it removes the approval record at approvalPath, then writes the rejection to rejectionPath.

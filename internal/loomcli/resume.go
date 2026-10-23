@@ -167,7 +167,7 @@ func (c *loomCLI) awaitingResumability(row string) (resumeRefusal, bool) {
 		return resumeRefusal{message: "loom resume: " + err.Error() + `; the embedded loom recipe failed to parse, so this lyx build is broken; rebuild or reinstall lyx, then re-run "` + retryResume + `"`}, false
 	}
 	if !isBouncer {
-		return resumeRefusal{message: `loom resume: the run is awaiting a decision, which resume does not give; run "lyx loom approve" or "lyx loom reject" in the task worktree, after which a batten run watching the child resumes it on the recorded decision, or run "lyx batten run <slug>" from the prime when no batten run watches it`}, false
+		return resumeRefusal{message: `loom resume: the run is awaiting a decision, which resume does not give; answer it through the verb the run's waiting note names, such as "lyx loom review approve <slug>", after which a batten run watching the child resumes it, or run "lyx batten run <slug>" from the prime when no batten run watches it`}, false
 	}
 	pending, err := shedadapters.PendingCirclingDecision(filepath.Join(loomengine.LoomReviewsDir(c.location), subdir))
 	if err != nil {
@@ -245,7 +245,7 @@ stop-report path.
 
 Each refusal names its way forward: "lyx loom start" when no run or no usable
 driver strand exists, the circling verbs at a review segment awaiting a
-decision, "lyx loom approve" or "lyx loom reject" at any other awaiting row,
+decision, the verb the run's waiting note names at any other awaiting row,
 and a retry shortly for the kind "driver_not_parked", while the driver
 finishes its post-run work or a Go driver is still settling the stop. An
 unfinished merge in the worktree is refused with the kind "merge_in_progress",

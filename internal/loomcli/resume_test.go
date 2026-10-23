@@ -197,7 +197,6 @@ func TestResumeVerb(t *testing.T) {
 	}{
 		{name: "no status file", wantIn: []string{`"lyx loom start"`, "task worktree"}},
 		{name: "done is a no-op success", runState: shedengine.StateDone, directory: noDriver, wantOK: true, wantIn: []string{"done"}},
-		{name: "awaiting at PR-Gate is refused", runState: shedengine.StateAwaiting, producer: loomshed.NamePRGate, directory: liveDriver, marker: true, wantIn: []string{"lyx loom approve", "lyx loom reject", "lyx batten run"}},
 		{name: "awaiting at a Bouncer row with a pending decision wakes the parked driver", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, decision: pendingAcceptDecision, directory: liveDriver, marker: true, wantOK: true, wantSent: true, wantIn: []string{"woken"}},
 		{name: "awaiting at a Bouncer row with a pending decision and no park marker is refused", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, decision: pendingAcceptDecision, directory: liveDriver, wantKind: shedrun.StartNotParkedKind, wantIn: []string{"has not parked yet"}},
 		{name: "awaiting at a Bouncer row with no decision names the circling verbs and resume", runState: shedengine.StateAwaiting, producer: loomshed.NamePlanBouncer, bouncerRun: true, directory: liveDriver, marker: true, wantIn: []string{"lyx loom circling accept <slug>", "lyx loom circling continue <slug>", `"lyx loom resume"`}},

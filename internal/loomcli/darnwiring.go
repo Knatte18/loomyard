@@ -34,15 +34,6 @@ import (
 // darnReviewSegment is the darn recipe's review segment, the key of its entry in shedrecipe.Env.Segments.
 const darnReviewSegment = "Darn-Review"
 
-// reworkRowFor returns the name of the row that answers an operator rejection in recipe: the Darn-Write row for the darn recipe, PR-Rework otherwise.
-func reworkRowFor(recipe string) string {
-	if recipe == shedrun.RecipeDarn {
-		return loomshed.NameDarnWrite
-	}
-
-	return loomshed.NamePRRework
-}
-
 // darnVerifySource returns the darn recipe's verify source: the hub's `landing` gate call.
 // command resolves at each call, never at construction, so an edit between steps is seen:
 // the tree-scoped command when the task diff is wholly under the hub's configured trees, else the `landing` call;

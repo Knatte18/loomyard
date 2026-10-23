@@ -1004,25 +1004,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				}
 				return "parent review: " + note, nil
 			},
+			// No verb writes an approval or rejection record any more, so an awaiting child is never resumed on an operator decision.
 			ReadDecision: func() (battenshed.ChildDecision, bool, error) {
-				taskLocation, err := locateTask()
-				if err != nil {
-					return battenshed.ChildDecision{}, false, err
-				}
-				// approve and reject each remove the other's record first, so both are present only when the two verbs race.
-				// The approval wins then, as it does in the gate when both records match the pull request.
-				a, found, err := landingshed.ReadApproval(loomengine.LoomApprovalPath(taskLocation))
-				if err != nil {
-					return battenshed.ChildDecision{}, false, err
-				}
-				if found {
-					return battenshed.ChildDecision{Kind: battenshed.DecisionApprove, At: a.ApprovedAt, HeadSHA: a.HeadSHA}, true, nil
-				}
-				r, found, err := landingshed.ReadRejection(loomengine.LoomRejectionPath(taskLocation))
-				if err != nil || !found {
-					return battenshed.ChildDecision{}, false, err
-				}
-				return battenshed.ChildDecision{Kind: battenshed.DecisionReject, At: r.RejectedAt, HeadSHA: r.HeadSHA}, true, nil
+				return battenshed.ChildDecision{}, false, nil
 			},
 			DriverAlive: func(ctx context.Context) (bool, error) {
 				present, err := taskWorktreePresent(location, slug)

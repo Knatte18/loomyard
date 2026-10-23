@@ -72,10 +72,6 @@ const discussionDirName = "discussion"
 // loomengine is this segment's sole declarer.
 const landingDirName = "landing"
 
-// loomApprovalFileName is the filename of the operator approval record within LoomScratchDir.
-// loomengine is this segment's sole declarer.
-const loomApprovalFileName = "approval.json"
-
 // loomRejectionFileName is the filename of the pending rejection record within LoomScratchDir.
 // loomengine is this segment's sole declarer.
 const loomRejectionFileName = "rejection.json"
@@ -227,15 +223,7 @@ func LoomScratchDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, loomDirName)
 }
 
-// LoomApprovalPath returns the path to the operator approval record for this worktree.
-// It is built on LoomScratchDir rather than re-joining the .lyx literal, and is ephemeral: the
-// record is never tracked, per the Durable-vs-Ephemeral State Invariant.
-// Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomApprovalPath(l *lyxcwd.Location) string {
-	return filepath.Join(LoomScratchDir(l), loomApprovalFileName)
-}
-
-// LoomRejectionPath returns the path to the pending rejection record `lyx loom reject` writes for this worktree.
+// LoomRejectionPath returns the path to the pending rejection record for this worktree.
 // It is built on LoomScratchDir rather than re-joining the .lyx literal, and is ephemeral:
 // the record is never tracked, per the Durable-vs-Ephemeral State Invariant.
 // Per the Cwd Resolution Invariant, no other package may construct this path.

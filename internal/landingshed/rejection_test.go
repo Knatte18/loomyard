@@ -38,7 +38,7 @@ func TestRejection_RoundTripAndOverwrite(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		approvalPath, rejectionPath := filepath.Join(dir, "approval.json"), filepath.Join(dir, "rejection.json")
-		if err := WriteApproval(approvalPath, Approval{PRNumber: 7, HeadSHA: "abc123", ApprovedAt: "2026-01-02T03:04:05Z"}); err != nil {
+		if err := os.WriteFile(approvalPath, []byte("{}\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if err := RecordRejection(approvalPath, rejectionPath, want); err != nil {

@@ -1164,8 +1164,7 @@ func TestLoomDriverLogAndBootstrapLock(t *testing.T) {
 	}
 }
 
-// TestLandingAndApprovalAccessors pins the landing directory, its commit-pathspec form and the
-// approval record path for a hand-built location.
+// TestLandingAndApprovalAccessors pins the landing directory, its commit-pathspec form and the decision record paths for a hand-built location.
 func TestLandingAndApprovalAccessors(t *testing.T) {
 	t.Parallel()
 	l := &lyxcwd.Location{
@@ -1178,9 +1177,6 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	}
 	if got, want := LandingDir(l), filepath.Join(l.AnchorPath(), "_lyx", "landing"); got != want {
 		t.Errorf("LandingDir() = %q; want %q", got, want)
-	}
-	if got, want := LoomApprovalPath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "approval.json"); got != want {
-		t.Errorf("LoomApprovalPath() = %q; want %q", got, want)
 	}
 	if got, want := LoomRejectionPath(l), filepath.Join(l.AnchorPath(), ".lyx", "loom", "rejection.json"); got != want {
 		t.Errorf("LoomRejectionPath() = %q; want %q", got, want)

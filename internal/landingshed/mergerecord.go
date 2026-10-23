@@ -81,6 +81,34 @@ func WriteMergeRecord(path string, rec MergeRecord) error {
 	return writeBytesAtomic(path, "merge-record", data)
 }
 
+// writeBytesAtomic writes data to path through a temp file in the same directory and a rename, creating the parent directory;
+// kind names the record in error messages.
+func writeBytesAtomic(path, kind string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("landingshed: create %s directory: %w", kind, err)
+	}
+	tmp, err := os.CreateTemp(dir, "."+kind+"-*.tmp")
+	if err != nil {
+		return fmt.Errorf("landingshed: create %s temp file: %w", kind, err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("landingshed: write %s: %w", kind, err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("landingshed: close %s temp file: %w", kind, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("landingshed: replace %s: %w", kind, err)
+	}
+	return nil
+}
+
 // computeOverlap returns where the parent's changed paths and the task's changed paths meet.
 func computeOverlap(parentPaths, taskPaths []string) Overlap {
 	var overlap Overlap
