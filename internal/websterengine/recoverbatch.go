@@ -339,7 +339,9 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	runState, runDir, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Geom.AnchorRoot, run.StrandGUID())
 	if err != nil {
-		return nil, fmt.Errorf("webster: resolve spawned recovery run: %w", err)
+		// The strand is live but no record of it will be saved, so nothing later could stop it.
+		stopErr := deps.Stopper.StopStrand(run.StrandGUID())
+		return nil, errors.Join(fmt.Errorf("webster: resolve spawned recovery run: %w", err), stopErr)
 	}
 
 	// The recovery record inherits the ORIGINAL bracket's start SHA when there is one, rather than
