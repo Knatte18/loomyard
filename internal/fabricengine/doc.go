@@ -565,6 +565,10 @@
 // A failed archive returns its error with the worktrees, launchers and both branches still in place, so a plain re-run retries it; `force` and `remote` never skip it, and a weft repo with no origin proceeds with `ArchiveSkippedReason` set.
 // Just before the archive, `Remove` commits the sibling worktree's uncommitted changes under the scoped record pathspec, so the tag holds them; only changes outside that pathspec refuse without `force`.
 // `Topology.RemoveRefusal` is the read-only probe of every refusal `Remove` raises before its first mutation.
+// `Topology.PairParts` is the read-only, network-free reading of which parts of a pair are left locally (task worktree, records worktree, records branch, task branch, launchers), made from the same `inspectPair` `Remove` uses.
+// `Topology.TaskBranchOnOrigin` reports whether the task branch is on the task repository's origin: a repository with no origin remote reads false, and a failed lookup is returned.
+// `Topology.DiscardTaskBranch` archives and deletes the task branch locally and on origin whether or not its work is landed: it tags each tip `archive/<slug>/<first 12 hex>` and pushes the tag first, archiving only the containing tip when one tip holds the other, and deletes only under those tags.
+// A failed archive deletes nothing and wraps `ErrArchiveFailed`, a lost origin lease or refused gate is returned as an error naming the branch, and a branch present nowhere is a zero result.
 // A pair already half removed is finished rather than refused: `Remove` does whatever teardown remains, reports its `Steps` and any `StrayPath`, and returns `ErrPairNotFound` when nothing is left.
 // With `remote`, `Remove` also deletes the landed task branch on origin, leased to the observed tip and gated on the branch being landed; a refusal or lost lease is reported in `RemoteCodeBranchKeptReason` and does not fail the removal.
 // A pair one of whose surviving branches carries the local-only mark (`pairState.localMark`, read from the task branch first, then the sibling branch, so a pair whose other branch was deleted by hand is still local) is removed as local, after the same refusals.

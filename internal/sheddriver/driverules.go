@@ -210,6 +210,8 @@ func decideDrive(stop Stop, facts driveFacts) driveDecision {
 		return driveDecision{Action: driveActionHandBack, Rule: "the run is paused: hold and hand back", FrictionNote: stop.Reason == ""}
 	case budgetExhausted(stop):
 		return driveDecision{Action: driveActionHandBack, Rule: "a bounce-budget-exhausted halt: only the parent's resume lifts it"}
+	case preconditionUnmet(stop):
+		return driveDecision{Action: driveActionHandBack, Rule: "a precondition-unmet halt: hand back, no tackler settles it"}
 	case state == string(shedengine.StateAwaiting) && facts.EscalationPending:
 		return driveDecision{Action: driveActionArbiter, Rule: "an awaiting review escalation: the arbiter decides"}
 	case state == string(shedengine.StateAwaiting) && stop.ParentNotice != "":
@@ -247,6 +249,15 @@ func budgetExhausted(stop Stop) bool {
 		return false
 	}
 	return strings.HasPrefix(stop.Reason, shedengine.ReasonBounceBudgetExhausted) || strings.HasPrefix(stop.Error, shedengine.ReasonBounceBudgetExhausted)
+}
+
+// preconditionUnmet reports whether stop is a blocked stop whose reason, or whose error for a stop built from a status, starts with shedengine.ReasonPreconditionUnmet.
+// No tackler can settle such a halt, so the table hands it back and never resumes it.
+func preconditionUnmet(stop Stop) bool {
+	if stop.Key().State != string(shedengine.StateBlocked) {
+		return false
+	}
+	return strings.HasPrefix(stop.Reason, shedengine.ReasonPreconditionUnmet) || strings.HasPrefix(stop.Error, shedengine.ReasonPreconditionUnmet)
 }
 
 // isTacklerKind reports whether kind is an error kind the tackler judges when no earlier rule settled it.

@@ -536,6 +536,7 @@ const (
 	branchDirtinessUnlandedWork
 	branchDirtinessArchivedOnRemote
 	branchDirtinessUnlandedRemoteTip
+	branchDirtinessArchivedTip
 )
 
 // branchDirtiness declares which dirtiness probe the pipeline runs against a branchRequest's branch.
@@ -544,8 +545,16 @@ type branchDirtiness struct {
 	kind branchDirtinessKind
 	// parentBranch serves dirtyUnlandedWork and dirtyUnlandedRemoteTip; empty when the pair has no origin record.
 	parentBranch string
-	// archiveTag serves dirtyArchivedOnRemote only: the archive/<slug>/* tag the pre-flight proved covers the remote tip.
+	// archiveTag serves dirtyArchivedOnRemote and dirtyArchivedTip: the archive/<slug>/* tag the pre-flight proved covers the branch's tip.
 	archiveTag string
+}
+
+// dirtyArchivedTip declares that the local branch's tip is covered by archiveTag.
+// The tag is an archive/<slug>/* tag whose target the branch's current tip is an ancestor of or equal to, so deleting the branch loses no work even when it is unlanded.
+// It answers a local question only: checkBranchDirtiness accepts it, checkRemoteBranchRequest refuses it,
+// and an empty archiveTag is refused as covered by no archive tag.
+func dirtyArchivedTip(archiveTag string) branchDirtiness {
+	return branchDirtiness{kind: branchDirtinessArchivedTip, archiveTag: archiveTag}
 }
 
 // dirtyArchivedOnRemote declares that the remote branch's tip is covered by archiveTag, an archive/<slug>/* tag the caller's pre-flight proved reaches it,
@@ -1031,10 +1040,39 @@ func checkBranchDirtiness(req branchRequest) error {
 	if req.dirtiness.kind == branchDirtinessUnlandedRemoteTip {
 		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "unlanded-remote-tip dirtiness answers a remote question; a local branch delete has no remote tip to probe"}
 	}
+	if req.dirtiness.kind == branchDirtinessArchivedTip {
+		return checkArchivedTip(req)
+	}
 	if req.dirtiness.kind == branchDirtinessUnlandedWork {
 		return checkUnlandedWork(req)
 	}
 	return checkedOutBranchDirtiness(req.ownership.location, req.what, req.branch)
+}
+
+// checkArchivedTip is dirtyArchivedTip's probe, read-only git run from req.repoDir: the archive tag must be named and the branch's current tip must be an ancestor of or equal to the tag's target.
+// req.force is never consulted.
+func checkArchivedTip(req branchRequest) error {
+	refuse := func(reason string) error {
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: reason}
+	}
+
+	tag := req.dirtiness.archiveTag
+	if tag == "" {
+		return refuse("the branch tip is covered by no archive tag")
+	}
+	tip, err := gitexec.Run([]string{"rev-parse", "--verify", "refs/heads/" + req.branch + "^{commit}"}, req.repoDir)
+	if err != nil {
+		return refuse(fmt.Sprintf("cannot resolve the branch tip: %v", err))
+	}
+	tip = strings.TrimSpace(tip)
+	covered, err := isAncestorOrEqual(req.repoDir, tip, "refs/tags/"+tag+"^{commit}")
+	if err != nil {
+		return refuse(fmt.Sprintf("cannot compare the branch tip %s with archive tag %q: %v", tip, tag, err))
+	}
+	if !covered {
+		return refuse(fmt.Sprintf("the branch tip %s is not covered by archive tag %q", tip, tag))
+	}
+	return nil
 }
 
 // checkUnlandedRemoteTip is dirtyUnlandedRemoteTip's probe, all read-only git run from req.repoDir against the leased tip, which must already be fetched.
@@ -1175,6 +1213,10 @@ func checkRemoteBranchRequest(req remoteBranchRequest) error {
 			return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "no lease SHA: the archive-coverage proof holds only for the tip it was computed against"}
 		}
 		return nil
+	}
+
+	if req.dirtiness.kind == branchDirtinessArchivedTip {
+		return &destructiveRefusal{Check: CheckDirtiness, What: req.what, Target: req.branch, Reason: "archived-tip dirtiness answers a local question; a remote branch delete has no local tip to prove"}
 	}
 
 	if req.dirtiness.kind == branchDirtinessUnlandedRemoteTip {

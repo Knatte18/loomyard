@@ -205,47 +205,83 @@ func cleanupSlug(location *lyxcwd.Location, slug string, apply bool, deps cleanu
 	}
 	defer releaseLock(statusLock)
 
-	candidate, tracked, reason := judgeRunDirectory(location, slug, deps)
+	candidate, _, reason := judgeRunDirectory(location, slug, deps)
 	if reason != "" {
 		skip(reason)
 		return false, nil
 	}
 
 	if candidate {
-		if apply && !tracked {
-			if err := os.RemoveAll(shedrun.RunDir(location, slug)); err != nil {
-				skip("remove run directory: " + err.Error())
+		if apply {
+			committed, err = removeRunRecords(location, slug, "batten cleanup: remove the run directory of "+slug, deps)
+			var commitErr removalCommitError
+			var emptyErr scratchEmptyError
+			switch {
+			case errors.As(err, &commitErr):
+				return committed, err
+			case errors.As(err, &emptyErr):
+				report.Removed = append(report.Removed, slug)
+				skip(err.Error())
+				return committed, nil
+			case err != nil:
+				skip(err.Error())
 				return false, nil
 			}
 		}
-		if apply {
-			committed, err = deps.Commit([]string{shedrun.RunDirRel(location, slug)}, "batten cleanup: remove the run directory of "+slug)
-			if err != nil {
-				return committed, fmt.Errorf("battencli: commit the removal of %s: %w", slug, err)
-			}
-		}
 		report.Removed = append(report.Removed, slug)
-	} else {
-		if errors.Is(scratchErr, fs.ErrNotExist) {
-			// Nothing to empty: the slug was listed from the records root alone.
-			return false, nil
+		if scratchErr == nil {
+			report.Emptied = append(report.Emptied, slug)
 		}
-		if scratchErr != nil {
-			skip("read scratch age: " + scratchErr.Error())
-			return false, nil
-		}
-		if age := deps.Now().Sub(scratchNewest); age <= orphanScratchAge {
-			skip(fmt.Sprintf("orphan scratch modified %s ago, newer than %s", age.Round(time.Minute), orphanScratchAge))
-			return false, nil
-		}
-	}
-
-	if err := emptyScratch(scratchDir, apply); err != nil {
-		skip("empty scratch directory: " + err.Error())
 		return committed, nil
 	}
-	if scratchErr == nil {
-		report.Emptied = append(report.Emptied, slug)
+
+	if errors.Is(scratchErr, fs.ErrNotExist) {
+		// Nothing to empty: the slug was listed from the records root alone.
+		return false, nil
+	}
+	if scratchErr != nil {
+		skip("read scratch age: " + scratchErr.Error())
+		return false, nil
+	}
+	if age := deps.Now().Sub(scratchNewest); age <= orphanScratchAge {
+		skip(fmt.Sprintf("orphan scratch modified %s ago, newer than %s", age.Round(time.Minute), orphanScratchAge))
+		return false, nil
+	}
+	if err := emptyScratch(scratchDir, apply); err != nil {
+		skip("empty scratch directory: " + err.Error())
+		return false, nil
+	}
+	report.Emptied = append(report.Emptied, slug)
+	return false, nil
+}
+
+// removalCommitError marks the records commit failure of removeRunRecords, which stops a cleanup pass.
+type removalCommitError struct{ error }
+
+// Unwrap returns the commit failure.
+func (e removalCommitError) Unwrap() error { return e.error }
+
+// scratchEmptyError marks the scratch emptying failure of removeRunRecords, which comes after its records commit.
+type scratchEmptyError struct{ error }
+
+// Unwrap returns the emptying failure.
+func (e scratchEmptyError) Unwrap() error { return e.error }
+
+// removeRunRecords removes the records run directory of slug when it is on disk, commits that directory's removal on the records side with msg, and empties the slug's scratch contents beside its lock files.
+// It takes no lock and judges nothing; the caller holds the slug's locks and has decided the removal.
+// An already absent run directory still commits, so a removal whose commit failed earlier finishes on a re-run.
+// committed reports whether a records commit was made.
+// A commit failure is a removalCommitError and an emptying failure, which follows the commit, a scratchEmptyError.
+func removeRunRecords(location *lyxcwd.Location, slug, msg string, deps cleanupDeps) (committed bool, err error) {
+	if err := os.RemoveAll(shedrun.RunDir(location, slug)); err != nil {
+		return false, fmt.Errorf("remove run directory: %w", err)
+	}
+	committed, err = deps.Commit([]string{shedrun.RunDirRel(location, slug)}, msg)
+	if err != nil {
+		return committed, removalCommitError{fmt.Errorf("battencli: commit the removal of %s: %w", slug, err)}
+	}
+	if err := emptyScratch(shedrun.ScratchDir(location, slug), true); err != nil {
+		return committed, scratchEmptyError{fmt.Errorf("empty scratch directory: %w", err)}
 	}
 	return committed, nil
 }

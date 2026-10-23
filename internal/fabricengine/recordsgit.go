@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -64,6 +65,26 @@ func ensureWeftLockDirAt(weftPath string) (string, error) {
 		return "", err
 	}
 	return dir, nil
+}
+
+// HoldRecordsWriteLock takes the combined records write lock of the records worktree at recordsWorktreePath exclusively, waiting at most wait for it.
+// It is the lock every committing Fabric.Commit takes, so a holder keeps a records commit from running while it works.
+// It returns the lock's release and held true, or a nil release and held false when the lock is still held once wait runs out.
+// A wait of zero reports held false without trying.
+// An error reports a failed lock directory creation or lock call.
+func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (release func() error, held bool, err error) {
+	lockDir, err := ensureWeftLockDirAt(recordsWorktreePath)
+	if err != nil {
+		return nil, false, err
+	}
+	l, acquired, err := lock.AcquireWriteLockWithin(filepath.Join(lockDir, weftWriteLockFile), wait)
+	if err != nil {
+		return nil, false, fmt.Errorf("fabricengine: hold records write lock in %s: %w", recordsWorktreePath, err)
+	}
+	if !acquired {
+		return nil, false, nil
+	}
+	return l.Release, true, nil
 }
 
 // seedWeftArtifactExcludes appends the weft repo's never-tracked operational artifacts — the

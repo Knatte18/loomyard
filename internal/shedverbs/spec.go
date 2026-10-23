@@ -197,8 +197,8 @@ type Spec struct {
 	// StepBusyMessage is RunBusyMessage's sibling for step's own shed.Step call. The empty string
 	// means the same passthrough.
 	StepBusyMessage string
-	// StepBusyKind is the refusal kind step maps shedengine.ErrShedBusy onto, reported on the
-	// envelope's "kind" field.
+	// StepBusyKind is the refusal kind step maps shedengine.ErrShedBusy and shedengine.ErrLockedCheckRefused onto.
+	// It is reported on the envelope's "kind" field.
 	StepBusyKind string
 	// AbsentStatus tells status what to report when its status file does not exist; see
 	// AbsentDisposition's own field docs.

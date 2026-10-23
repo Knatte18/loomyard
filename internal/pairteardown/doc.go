@@ -64,8 +64,9 @@
 // A landed run's entry is marked done.
 // Otherwise an entry whose run batten never seeded, or whose batten run is paused, blocked, failed or awaiting, is cleared; a batten run that is done marks it done; a running one holds it, and the settle only warns, naming `lyx batten status <slug>` and `lyx batten pause <slug>`.
 // A running record holds the claim that way only while a registered batten process of the slug is alive;
-// with none alive the claim is kept all the same and the warning names `lyx board set-status <slug>` instead, since batten's own pause has no process to reach.
+// with none alive the claim is kept all the same and the warning names `lyx batten cancel <slug>` instead, to end the run and release the claim, since batten's own pause has no process to reach.
 // A board or status read failure warns and writes nothing, and a failed removal settles nothing.
+// A removal with Request.LeaveClaim set, in origin mode, reads no landed answer and settles no claim, leaving the claim to the caller, which clears it under its own locks.
 // A run whose Finalize merged but failed its done mark and stopped on its push holds no Finalize Done, so its entry ends cleared, for the operator to mark done with `lyx board set-status`.
 //
 // # Local mode
@@ -74,7 +75,7 @@
 // A busy teardown lock or records write lock surfaces from RemovePair as fabricengine.ErrPairBusy.
 // A local-mode caller passes RefuseWhenBusy with a zero QuietWait, so a busy driver is ErrDriverBusy at once with nothing ended, unless its Verdict skips the driver checks.
 //
-// Request.Snapshot, the force case, keeps the pair's task and records worktrees' uncommitted paths under a local snapshot tag before the removal.
+// Request.Snapshot, the force case, keeps the pair's task and records worktrees' uncommitted paths under a local snapshot tag before the removal, in local and origin mode alike.
 // RemovePair takes it first, after EndSession ended the driver and before the teardown lock is tried, logs its tag and paths, sets them on the result's SnapshotTag and SnapshotPaths, and puts its record ahead of the removal's.
 // Request.AfterSnapshot then runs, and the removal follows.
 // A snapshot refused busy returns that error with nothing removed and AfterSnapshot not run, so a re-run still qualifies;
@@ -82,6 +83,36 @@
 // The force case passes Force and no RefuseWhenBusy, as batten's own teardown does.
 //
 // Every refusal and both EndSession waits stay in local mode: the loop lock's seizure and the run lock's release are each bounded by runLockWait.
+//
+// # Cancel phase
+//
+// EndForCancel serves `lyx batten cancel`, the one caller, from the prime and after its own refusals.
+// It ends the run's owned processes and strands first and waits for the run lock after, since a cancel ends the holder instead of waiting for it,
+// and it skips the quiet wait, the removal refusal probe and the pre-end run-lock wait.
+// It reads whether the task worktree is gone once, then runs these steps in order and stops at the first error:
+//
+//  1. Owned-process end.
+//     The prime's records write lock and, while the pair's records worktree stands, the pair's are held, each bounded by CancelLockWait, and the registered processes are ended under them;
+//     the locks are released as soon as the end returns.
+//     A lock still held at the bound refuses with ErrDriverBusy naming its path, since the prime's lock is shared by the hub and its holder is often a healthy commit of another run or the orch.
+//     Survivors refuse with ErrDriverBusy naming each pid and role.
+//  2. Driver-lock probe, task worktree present only, and the caller's hook.
+//     A held driver lock refuses.
+//     CancelRequest.AfterEnd then takes the caller's own locks; a hook that reports one busy gets steps 1 and 2 once more and then the hook again, and a lock still busy then refuses.
+//  3. Strand stop, task worktree present only.
+//     Every live strand of the task worktree's reed directory is stopped through shuttle's stop verb.
+//     With the task worktree gone there is no reed directory to read, and step 6's end by name ends the strands' panes.
+//  4. Loop end, task worktree present only.
+//     The loop and its step tree are killed and the loop lock is taken.
+//  5. Run-lock wait, task worktree present only.
+//     It is bounded by CancelLockWait; a spent bound puts the loop's pid file back.
+//  6. Session end.
+//     It is Engine.Down with the task worktree present and reedengine.EndSessionByName once it is gone.
+//  7. Loop-lock release.
+//     With CancelRequest.Keep the teardown's mark is withdrawn, so the kept pair holds no mark; without it the mark stays for the removal that follows.
+//
+// Every refusal names `lyx batten cancel <slug>` as the way to run the phase again.
+// The removal that follows a cancel without Keep is RemovePair with Request.LeaveClaim, which leaves the board claim to the cancel.
 //
 // # Origin seams
 //

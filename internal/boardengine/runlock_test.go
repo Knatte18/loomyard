@@ -182,10 +182,13 @@ func TestRunLock(t *testing.T) {
 				t.Fatalf("err = %v, want ErrRunLocked", err)
 			}
 			status, _ := fields["status"].(string)
-			for _, want := range []string{`"locked"`, status, "lyx batten status locked", "prime worktree", `"kind":"note"`} {
+			for _, want := range []string{`"locked"`, status, "lyx batten status locked", "prime worktree", `"kind":"note"`, "lyx batten cancel locked"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("message %q lacks %q", err.Error(), want)
 				}
+			}
+			if strings.Contains(err.Error(), "lyx board set-status") {
+				t.Errorf("message %q names lyx board set-status; want the cancel as the way to abandon a run", err.Error())
 			}
 			if string(after) != string(before) {
 				t.Error("board.json changed on a refused write")

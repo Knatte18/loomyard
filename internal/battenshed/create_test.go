@@ -79,7 +79,7 @@ func readStuckFile(t *testing.T, scratchDir, producer string, ptr shedengine.Out
 	return string(data)
 }
 
-// TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim asserts every createWorktree error parks the row Stuck with the error's own text in the reason file, unreworded -- fabric's pre-existing-branch remedy wording and its bare dirty-worktree string included -- and releases the prime lock.
+// TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim asserts every createWorktree error parks the row Stuck with the error's own text in the reason file, unreworded -- fabric's pre-existing-branch remedy wording and its bare dirty-worktree string included -- and releases the prime lock; a PreconditionError, bare or wrapped, instead halts with a precondition-unmet reason naming what is unmet and its way forward.
 func TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim(t *testing.T) {
 	t.Parallel()
 
@@ -87,11 +87,25 @@ func TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim(t *testing.T) {
 		name       string
 		err        error
 		wantReason string
+		wantHalt   bool
 	}{
 		{
 			name:       "UnderlyingFailure",
 			err:        errors.New("some underlying failure"),
 			wantReason: "some underlying failure",
+			wantHalt:   false,
+		},
+		{
+			name:       "PreconditionErrorHalts",
+			err:        &PreconditionError{Unmet: "the source worktree has uncommitted tracked changes: a.go", WayForward: `commit or revert them, then run "lyx batten run myslug" again`, Err: errors.New("cause")},
+			wantReason: `the source worktree has uncommitted tracked changes: a.go; way forward: commit or revert them, then run "lyx batten run myslug" again`,
+			wantHalt:   true,
+		},
+		{
+			name:       "WrappedPreconditionErrorHalts",
+			err:        fmt.Errorf("create the pair: %w", &PreconditionError{Unmet: "task branch task-myslug is left from an earlier pair of this slug", WayForward: `run "lyx batten cancel myslug --remove" from the prime`}),
+			wantReason: `task branch task-myslug is left from an earlier pair of this slug; way forward: run "lyx batten cancel myslug --remove" from the prime`,
+			wantHalt:   true,
 		},
 		{
 			name:       "PreExistingBranchRemedySurvivesVerbatim",
@@ -123,6 +137,12 @@ func TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim(t *testing.T) {
 			reason := readStuckFile(t, scratchDir, "create", ptr)
 			if !strings.Contains(reason, tt.wantReason) {
 				t.Errorf("stuck-reason file = %q; want it to contain %q verbatim", reason, tt.wantReason)
+			}
+			if ptr.Halt != tt.wantHalt {
+				t.Errorf("OutputPointer.Halt = %v; want %v", ptr.Halt, tt.wantHalt)
+			}
+			if tt.wantHalt && !strings.HasPrefix(ptr.Reason, shedengine.ReasonPreconditionUnmet+": ") {
+				t.Errorf("OutputPointer.Reason = %q; want it to start with %q", ptr.Reason, shedengine.ReasonPreconditionUnmet+": ")
 			}
 		})
 	}

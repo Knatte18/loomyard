@@ -29,6 +29,8 @@ func TestDecideDrive(t *testing.T) {
 	}
 	budgetHaltReason := shedengine.ReasonBounceBudgetExhausted + " for Plan-Write; way forward: lyx shed resume"
 	budgetHaltStop := Stop{OK: true, State: "blocked", LoopState: "blocked", Reason: budgetHaltReason, CurrentProducer: "Plan-Write", HistoryLength: 3}
+	preconditionHaltReason := shedengine.ReasonPreconditionUnmet + ": the source worktree has uncommitted tracked changes; way forward: commit or revert them"
+	preconditionHaltStop := Stop{OK: true, State: "blocked", LoopState: "blocked", Reason: preconditionHaltReason, CurrentProducer: "Worktree-Create", HistoryLength: 3}
 	restepRecord := func(key StopKey) SettleRecord {
 		return SettleRecord{StopKey: key, Action: shedrun.SettleRestep}
 	}
@@ -55,6 +57,10 @@ func TestDecideDrive(t *testing.T) {
 		{name: "budget halt on a changed build still hands back", stop: budgetHaltStop, facts: driveFacts{BuildChanged: true}, want: driveActionHandBack},
 		{name: "budget halt after a tackler resume returned still hands back", stop: budgetHaltStop, facts: driveFacts{ResumeReturned: true}, want: driveActionHandBack},
 		{name: "budget halt matching a verify record still hands back", stop: budgetHaltStop, facts: driveFacts{VerifyMatches: true, VerifyTarget: "Webster"}, want: driveActionHandBack},
+		{name: "precondition halt from the envelope hands back", stop: preconditionHaltStop, want: driveActionHandBack},
+		{name: "precondition halt from the status hands back", stop: stopFromStatus(shedengine.Status{State: shedengine.StateBlocked, Error: preconditionHaltReason}), want: driveActionHandBack},
+		{name: "precondition halt on a changed build still hands back", stop: preconditionHaltStop, facts: driveFacts{BuildChanged: true}, want: driveActionHandBack},
+		{name: "blocked stop containing the precondition prefix past its start goes to the tackler", stop: Stop{OK: true, State: "blocked", LoopState: "blocked", Reason: "halted: " + preconditionHaltReason, CurrentProducer: "Plan-Write", HistoryLength: 3}, want: driveActionTackler},
 		{name: "awaiting with a pending escalation", stop: awaitingStop("a notice"), facts: driveFacts{EscalationPending: true}, want: driveActionArbiter},
 		{name: "awaiting with a parent notice", stop: awaitingStop("a notice"), want: driveActionRelayHandBack},
 		{name: "awaiting with nothing to relay", stop: awaitingStop(""), want: driveActionHandBack},
