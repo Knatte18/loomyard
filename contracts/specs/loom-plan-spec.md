@@ -124,6 +124,7 @@ This is strictly **per-card**: across two cards of the same plan, one card's `Cr
 
 There is no `DependsOn`/`Produces` field.
 Dependency edges are derived, never authored: a card's `Uses:` intersected against every other card's target list in the same plan is the dependency graph.
+Two `Extends` on one ref make no edge unless both cards fence a verbatim `PATTERN.md` line for one entry ID; an `Extends` against any other label, and a `Uses` against an `Extends` target, make one.
 A symbol no card in the plan touches needs no edge — its state never changes during the plan's execution.
 
 ## Card types

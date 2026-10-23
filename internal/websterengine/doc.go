@@ -40,6 +40,7 @@
 //
 // internal/batcher owns both grouping and order: a batchifier returns its batches in plan card order, and webster runs them in that order, never reordering them.
 // sequence.go's CheckBatchOrder only asserts it: it derives edges from Targets/Uses ref matching across the plan's cards — a Uses entry naming another card's Targets entry puts the producer before the consumer, and two cards writing the same Targets entry settle by declared card number — and refuses, wrapping ErrBatchOrder, when any edge runs from a batch to an earlier one.
+// planparser.DependencyEdge refines each shared ref: two Extends on one ref make no edge unless both cards fence a verbatim PATTERN.md line for one entry ID.
 // A cycle between batches always holds such an edge, so the same rule refuses it.
 // Plan-Gate's uses-later-target refusal already holds, so the assertion fires only on a plan that bypassed or predates that gate.
 // The previous-digest lookup in beginbatch.go/recoverbatch.go (predecessorDigestLine) depends on the order: it reads whichever batch sits immediately before the target batch in the execution order, not the batch one number lower.

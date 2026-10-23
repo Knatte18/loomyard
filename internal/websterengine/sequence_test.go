@@ -29,6 +29,24 @@ func oneCardBatch(number int, slug string, targets, uses []string) batcher.Batch
 	}
 }
 
+// groupedCardBatch builds a single-card batcher.Batch whose card holds ref under one target group of groupType, fencing a PATTERN.md line for each of entryIDs in its text.
+func groupedCardBatch(number int, groupType planparser.CardType, ref string, entryIDs ...string) batcher.Batch {
+	text := ""
+	if len(entryIDs) > 0 {
+		text = "```\n"
+		for _, id := range entryIDs {
+			text += "- `" + id + "` — rule.\n"
+		}
+		text += "```\n"
+	}
+	return batcher.Batch{Cards: []planparser.Card{{
+		Number:       number,
+		Targets:      []string{ref},
+		TargetGroups: []planparser.TargetGroup{{Type: groupType, Refs: []string{ref}}},
+		Text:         text,
+	}}}
+}
+
 // TestCheckBatchOrder asserts which batch lists CheckBatchOrder accepts and the findings it names for each refused shape of Targets/Uses relation.
 func TestCheckBatchOrder(t *testing.T) {
 	t.Parallel()
@@ -90,6 +108,37 @@ func TestCheckBatchOrder(t *testing.T) {
 				oneCardBatch(1, "first", []string{"internal/foo/foo.go"}, nil),
 			},
 			wantFindings: []string{`batch 1 (card 1) and batch 2 (card 2) both target "internal/foo/foo.go" and card 1 comes first, but batch 2 runs first`},
+		},
+		{
+			name: "two Extends of one ref in reverse batch order are accepted",
+			in: []batcher.Batch{
+				groupedCardBatch(2, planparser.CardTypeExtends, "docs/x.md"),
+				groupedCardBatch(1, planparser.CardTypeExtends, "docs/x.md"),
+			},
+		},
+		{
+			name: "an Extends and an Edit of one ref in reverse batch order are refused",
+			in: []batcher.Batch{
+				groupedCardBatch(2, planparser.CardTypeExtends, "docs/x.md"),
+				groupedCardBatch(1, planparser.CardTypeEdit, "docs/x.md"),
+			},
+			wantFindings: []string{`batch 1 (card 1) and batch 2 (card 2) both target "docs/x.md" and card 1 comes first, but batch 2 runs first`},
+		},
+		{
+			name: "a card using a later card's Extends target is refused",
+			in: []batcher.Batch{
+				oneCardBatch(1, "consumer", nil, []string{"docs/x.md"}),
+				groupedCardBatch(2, planparser.CardTypeExtends, "docs/x.md"),
+			},
+			wantFindings: []string{`batch 1 (card 1) uses "docs/x.md", which batch 2 (card 2) targets, but batch 1 runs first`},
+		},
+		{
+			name: "two Extends of PATTERN.md fencing a line for one entry in reverse batch order are refused",
+			in: []batcher.Batch{
+				groupedCardBatch(2, planparser.CardTypeExtends, "PATTERN.md", "PATTERN-x"),
+				groupedCardBatch(1, planparser.CardTypeExtends, "PATTERN.md", "PATTERN-x"),
+			},
+			wantFindings: []string{`batch 1 (card 1) and batch 2 (card 2) both target "PATTERN.md" and card 1 comes first, but batch 2 runs first`},
 		},
 		{
 			name: "a two-batch cycle is refused",
