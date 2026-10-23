@@ -8,4 +8,9 @@ trailer_text: ""  # fixed lines copied verbatim into every landing commit's trai
 engine_trailers:  # engine name to the trailer text copied verbatim into the landing commit when that engine ran a session in the task; an engine left out or set to "" adds nothing
   claude: "Co-Authored-By: Claude <noreply@anthropic.com>"
 deploy: ""  # shell command batten's Land row runs in the prime after a landing into a branch listed in require_pr_to_base; empty runs nothing
+fixer: opus[high]  # model-spec for the merge fixer session that Merge-In and Finalize run to fix a merge or test failure (see contracts/specs/llm-model-spec.md)
+fixer_timeout_min: 60  # minutes one fixer turn may run
+merge_fix_attempts: 2  # fixer turns one Merge-In row entry may spend
+finalize_fix_attempts: 2  # fixer turns one Finalize row entry may spend
+finalize_fix_max_lines: 40  # added plus deleted lines a fixer change may hold before it is over the cap
 parent_lock_idle_release_min: 10  # minutes a waiting run, or an undecided PR-Gate hand-off, keeps its parent lock before the lock is released; a value below 1 reads as 10

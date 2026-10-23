@@ -73,6 +73,21 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.ParentLockIdleReleaseMin != 10 {
 		t.Errorf("cfg.ParentLockIdleReleaseMin = %d; want 10", cfg.ParentLockIdleReleaseMin)
 	}
+	if cfg.Fixer != "opus[high]" {
+		t.Errorf("cfg.Fixer = %q; want %q", cfg.Fixer, "opus[high]")
+	}
+	if cfg.FixerTimeoutMin != 60 {
+		t.Errorf("cfg.FixerTimeoutMin = %d; want 60", cfg.FixerTimeoutMin)
+	}
+	if cfg.MergeFixAttempts != 2 {
+		t.Errorf("cfg.MergeFixAttempts = %d; want 2", cfg.MergeFixAttempts)
+	}
+	if cfg.FinalizeFixAttempts != 2 {
+		t.Errorf("cfg.FinalizeFixAttempts = %d; want 2", cfg.FinalizeFixAttempts)
+	}
+	if cfg.FinalizeFixMaxLines != 40 {
+		t.Errorf("cfg.FinalizeFixMaxLines = %d; want 40", cfg.FinalizeFixMaxLines)
+	}
 	if strings.Contains(ConfigTemplate(), "publish_verify") {
 		t.Error("ConfigTemplate() holds publish_verify; want the retired key gone from the template")
 	}
@@ -214,13 +229,19 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 	t.Parallel()
 
 	const wellFormed = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
-		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nengine_trailers:\n  claude: \"Co-Authored-By: Claude <noreply@anthropic.com>\"\n"
+		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nfixer: opus[high]\nfixer_timeout_min: 60\nmerge_fix_attempts: 2\n" +
+		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\nengine_trailers:\n  claude: \"Co-Authored-By: Claude <noreply@anthropic.com>\"\n"
 	cases := []struct {
 		name, valid, invalid, key string
 	}{
 		{"malformed conflict", "conflict: opus[high]", "conflict: \"opus[high\"", "conflict"},
 		{"malformed describe", "describe: sonnet[medium]", "describe: \"sonnet[medium\"", "describe"},
 		{"engine_trailers key naming no engine", "  claude:", "  claud:", "engine_trailers.claud"},
+		{"malformed fixer", "fixer: opus[high]", "fixer: \"opus[high\"", "fixer"},
+		{"fixer timeout below 1", "fixer_timeout_min: 60", "fixer_timeout_min: 0", "fixer_timeout_min"},
+		{"merge fix attempts below 1", "merge_fix_attempts: 2", "merge_fix_attempts: 0", "merge_fix_attempts"},
+		{"finalize fix attempts below 1", "finalize_fix_attempts: 2", "finalize_fix_attempts: 0", "finalize_fix_attempts"},
+		{"finalize fix max lines below 1", "finalize_fix_max_lines: 40", "finalize_fix_max_lines: 0", "finalize_fix_max_lines"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

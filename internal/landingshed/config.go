@@ -50,6 +50,16 @@ type Config struct {
 	// ParentLockIdleReleaseMin is the minutes a waiting run, or an undecided PR-Gate hand-off, keeps its parent lock before the lock is released.
 	// A value below 1 reads as the default.
 	ParentLockIdleReleaseMin int `yaml:"parent_lock_idle_release_min"`
+	// Fixer is the model-spec string selecting the model the merge fixer session runs under.
+	Fixer string `yaml:"fixer"`
+	// FixerTimeoutMin is the minutes one fixer turn may run.
+	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
+	// MergeFixAttempts is the fixer turns one Merge-In row entry may spend.
+	MergeFixAttempts int `yaml:"merge_fix_attempts"`
+	// FinalizeFixAttempts is the fixer turns one Finalize row entry may spend.
+	FinalizeFixAttempts int `yaml:"finalize_fix_attempts"`
+	// FinalizeFixMaxLines is the added plus deleted lines a fixer change may hold before it is over the cap.
+	FinalizeFixMaxLines int `yaml:"finalize_fix_max_lines"`
 }
 
 // defaultIdleReleaseMin is the idle bound in minutes that a missing or non-positive parent_lock_idle_release_min reads as.
@@ -109,6 +119,12 @@ func ConfigSpec() configengine.Spec {
 			"deploy":               configengine.CategoryExecutable,
 			// The idle bound decides when one pair's parent lock frees for the next pair waiting on it.
 			"parent_lock_idle_release_min": configengine.CategoryCrossPair,
+			"fixer":                        configengine.CategoryNone,
+			"fixer_timeout_min":            configengine.CategoryNone,
+			// The attempt caps and the line cap bound what the fixer lands on the parent unreviewed.
+			"merge_fix_attempts":     configengine.CategoryCrossPair,
+			"finalize_fix_attempts":  configengine.CategoryCrossPair,
+			"finalize_fix_max_lines": configengine.CategoryCrossPair,
 		},
 		// publish_verify moved to the hub's publish gate; a file still holding it loads and reconcile prunes it.
 		RetiredKeys: map[string]configengine.Category{
@@ -118,7 +134,7 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads and unmarshals configuration for the landing module strictly through the hub-wide layer stack under dirs.
-// It validates the conflict and describe keys' model-spec grammar at load time, and refuses an engine_trailers entry whose key names no engine.
+// It validates the conflict, describe and fixer keys' model-spec grammar at load time, refuses a fixer timeout, fixer attempt cap or fixer line cap below 1, and refuses an engine_trailers entry whose key names no engine.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -141,6 +157,23 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Describe); err != nil {
 		return Config{}, fmt.Errorf("landing config key %q: %w", "describe", err)
+	}
+
+	if _, err := modelspec.Parse(cfg.Fixer); err != nil {
+		return Config{}, fmt.Errorf("landing config key %q: %w", "fixer", err)
+	}
+	for _, positive := range []struct {
+		key   string
+		value int
+	}{
+		{"fixer_timeout_min", cfg.FixerTimeoutMin},
+		{"merge_fix_attempts", cfg.MergeFixAttempts},
+		{"finalize_fix_attempts", cfg.FinalizeFixAttempts},
+		{"finalize_fix_max_lines", cfg.FinalizeFixMaxLines},
+	} {
+		if positive.value < 1 {
+			return Config{}, fmt.Errorf("landing config key %q: %d is below 1; way forward: lyx config landing --set %s=<n> from the prime", positive.key, positive.value, positive.key)
+		}
 	}
 	engines := modelspec.EngineNames()
 	for name := range cfg.EngineTrailers {
