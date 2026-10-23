@@ -67,6 +67,13 @@ type Shed struct {
 	// ResumedBy is the caller label of the process stepping this run, recorded when the step resumes a halted run.
 	// It is told and for reports only; the empty string records none.
 	ResumedBy string
+	// LockedCheck is called once Run or Step holds the run lock, before the status file is read or written.
+	// A non-nil error refuses the drive: the call returns it wrapped by ErrLockedCheckRefused, calls no producer and leaves the status file untouched.
+	// It can only stop a drive, never route one.
+	// The error ends in its own trailing "way forward:" clause, which the wrap keeps trailing.
+	// It is told;
+	// nil means no check.
+	LockedCheck func() error
 }
 
 // RunOutcome is the whole run's terminal classification.
