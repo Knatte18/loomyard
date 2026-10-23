@@ -59,6 +59,19 @@
 // The merge is large when it needed the conflict session, or when the parent's changes since the merged tip it read touch a file the task changed since its merge base; a parent already holding the task's work is never large.
 // A large merge keeps the merge commit and reroutes with no gate run: a Stuck with Reroute set on the row's on_reroute edge, which spends no bounce budget, and the deferred release frees the lock first, with shed's reroute cap as its bound.
 // Finalize then writes the merge record with the new merged tip and the aligned tip as it was.
+// Next it runs the `landing` gate over the merged tree through verifytree, which skips a tree it already verified, so a run that went right holds the lock for one merge, a skipped gate and the landing.
+// A darn Finalize over a diff wholly under `tree_scope` runs the tree-scoped command, since darn's verify source answers it.
+// A passing gate removes the landing failure record, and a failing one writes it with row `Finalize`.
+// A failing gate spawns the merge fixer in finalize mode, which fixes failing tests only, on the attempts `finalize_fix_attempts` leaves the entry, read from the attempt record under the row's entry.
+// The fixer gets no parent tip to read from and the merged tip the merge record carries.
+// The first spawn writes the HEAD before the fixer's first turn into the record's Baseline, every resume of the entry keeps it but the one after an over-cap halt, and the fixer's whole change is judged by `LineChange(Baseline, HEAD)` against `finalize_fix_max_lines` and the run's test-file matcher, so turns that each stay under the cap but sum past it are over it.
+// An entry has no attempts left when its Spent reaches `finalize_fix_attempts`, whatever the record's Halt notes, and a resumed entry with none left spawns no fixer: over a failing gate it ends as a spent cap, and over a passing one its change since Baseline is judged.
+// A spent cap or a change over the caps keeps the fixer's commits and reroutes through the reroute reason when a review follows the reroute (Deps.RerouteReviewed), and halts with LandingStopPrefix otherwise, naming the commits and noting `spent` or `over-cap` in the record's Halt.
+// A resume after an over-cap halt writes Baseline afresh at the HEAD the gate starts from, clears the note in the same record write, reads the operator's review as acceptance of the commits and runs the gate: a passing gate lands without judging the change, and a failing one runs the fixer on the attempts left.
+// An escalate report keeps the commits and halts naming the report; a turn that ended without a usable result halts, and a failed spawn is an error that spends no attempt.
+// An attempt record that does not decode halts naming the file, with removing it, which grants a fresh cap, as the way forward.
+// A Finalize reroute leaves the entry's attempt record for the next entry to clear, and a Done clears it.
+// The size and kind caps bound what an unreviewed Finalize fix lets through: a fix within them lands with no perch, behind only the `landing` gate it passed and the finalize mode's instruction to fix failing tests only.
 // After a merge-in-required error from the parent-side merge Finalize tests the parent again, and retries once only when it has not moved, which covers a parent moved by run records alone;
 // the retry merges and judges the parent again under the same lock, and a parent that moved reroutes, so a code-side commit that arrives between the check and the parent-side merge never lands.
 // A dirty parent is Stuck naming the parent's code checkout and its tracked dirty paths, capped at 20, with the way forward per reason.
@@ -132,10 +145,10 @@
 // Landing config is hub-wide: Publish and Finalize read it from the board dir, never from a task worktree's `_lyx/config/`, and `lyx config` refuses a write to it from a pair, so a task cannot weaken the key, or set `require_pr_to_base` or `squash`, through its own tree.
 // A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
-// Merge-In and Publish persist their verify failure; Finalize neither writes nor removes the record.
-// When a `landing` or `publish` call fails with a non-zero exit, Merge-In or Publish writes the verifytree Publish failure record with the failing gate as its kind, the failing tier, the row that ran the verify, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
+// Merge-In, Finalize and Publish persist their verify failure.
+// When a `landing` or `publish` call fails with a non-zero exit, Merge-In, Finalize or Publish writes the verifytree Publish failure record with the failing gate as its kind, the failing tier, the row that ran the verify, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
 // The tier is the last failing tier the log's `lyx gate test` summary lines name; a log without one, such as a refusal before the first tier, takes the highest tier of the gate's list, read through the told Deps.GateTiers.
-// The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Publish reads it from Merge-In's merge record.
+// The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Publish reads it from Merge-In's merge record, and Finalize takes it from its own merge.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
 // When Deps.TraceFailure is set and both the log and HEAD are non-empty, the record also carries the trace the seam returns: `cards`, `later_range` and `untraced`, the plan cards and commit ranges the failing locations trace to.
 // A nil seam, as for a darn run with no plan, writes none of them, and a trace error is logged at Warn and leaves the record without them, never changing the Stuck verdict or the record's other fields.
@@ -143,7 +156,7 @@
 // When the failed verify's log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, the reason names the window and says the goroutine stacks are in the log, before that clause.
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then resuming.
 // An unreadable log or one without the line leaves the reason unchanged, and the checks run no flake rerun.
-// Merge-In removes the record once its landing call passes, and Publish removes it once its landing and publish calls pass, or at once when the publish list is empty or the skip seam answers true.
+// Merge-In and Finalize remove the record once their landing call passes, and Publish removes it once its landing and publish calls pass, or at once when the publish list is empty or the skip seam answers true.
 //
 // The push that follows is never retried when the remote rejects it, because the remote task branch moved and a repeat would be rejected again.
 // Publish reads the remote task branch's tip and the commits on it that the local branch lacks through Deps.RemoteOnlyCommits, and stops Stuck with a reason stating that the merge-in already ran, the tip, the commit count, and the way forward:

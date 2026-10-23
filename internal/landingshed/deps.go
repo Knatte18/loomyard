@@ -331,6 +331,11 @@ type Deps struct {
 	// CodeReviewOff reports whether the Code-Perch's effective review budget is 0, so no review follows Merge-In and its fixer's change is judged against the caps instead.
 	// A nil CodeReviewOff reads as the budget being 0, and a returned error is an error stop of the row.
 	CodeReviewOff func() (bool, error)
+	// RerouteReviewed reports whether a review follows Finalize's reroute, so a fixer change it keeps is seen before the run lands.
+	// For loom that is the Code-Review perch's effective budget being above 0, and for darn Finalize's reroute edge reaching a Darn-Bouncer whose budget is above 0 rather than PR-Review.
+	// It is read each time Finalize ends on a spent cap or an over-cap change.
+	// A nil RerouteReviewed reads as no review, so Finalize halts instead of rerouting, and a returned error is an error stop of the row.
+	RerouteReviewed func() (bool, error)
 
 	// Alignment is the PR-Align producer's told seams: the alignment agent's session, its config and snapshot reads, its static prompt fields and the note record it leaves for PR-Gate.
 	// PR-Gate reads only Alignment.NotePath, and an empty one reads no note.

@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // finalizeName is the producer name Finalize's log lines and error text carry.
@@ -173,12 +174,14 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 		return nil, fmt.Errorf("landingshed: NewFinalize: build resolver: %w", err)
 	}
 
+	gate := newVerifyGate(deps)
+	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, traceFailure: deps.TraceFailure, head: deps.TaskHead}
 	return &Finalize{
 		deps:       deps,
 		resolver:   res,
 		taskMerger: fabricHandle,
 		sessions:   sessions,
-		gate:       newVerifyGate(deps),
+		gate:       gate,
 		premerge:   newPreMerge(deps),
 		guard:      newParentGuard(deps),
 		parentOpener: func() (parentMerger, error) {
@@ -199,6 +202,7 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 // A parent already holding the task's work skips the owner checks and the unreachable halt, and an unreachable origin then proceeds.
 // It then opens the parent pair and syncs it: a pair that is missing, dirty or mid-merge, or a parent that cannot be fast-forwarded to its upstream, is Stuck with a way forward before any merge.
 // It then merges the parent branch into the task worktree and judges the merge: a conflict a loom Finalize aborts, a conflict a darn Finalize resolves, and a merge large by its conflict or by files both sides changed reroute, with no gate run.
+// A merge that proceeds is gated by the `landing` gate, and a failing gate runs the merge fixer in finalize mode; a spent cap or an over-cap fix reroutes or halts.
 // After a merge-in-required error from the parent-side merge it re-runs the merge and its gate once under the same lock.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
@@ -545,6 +549,10 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 	if !fz.deps.PushSkipped && contains(fz.deps.Config.RequirePRToBase, fz.deps.ParentBranch) {
 		fz.closePullRequest(ctx, parentHandle)
 	}
+	// The landing is done, so a failed removal of the attempt record changes no verdict.
+	if err := RemoveFixerAttempts(FixerAttemptsPath(fz.deps.ScratchDir, finalizeName)); err != nil {
+		logger.Warn("landingshed: remove the fixer attempt record failed", "producer", finalizeName, "cause", err)
+	}
 	if notice != "" && fz.deps.Notify != nil {
 		if err := fz.deps.Notify(notice); err != nil {
 			logger.Warn("landingshed: queue config-change notice failed", "producer", finalizeName, "cause", err)
@@ -608,20 +616,194 @@ func (fz *Finalize) closePullRequest(ctx context.Context, parentHandle parentMer
 // mergeAndGate merges the parent branch into the task worktree, judges the merge and gates the merged tree.
 // done is false when the merged tree passed and Call proceeds to the parent-side merge; otherwise the other values are what Call returns at once.
 // Every pass, the first and the retry after the parent moved again, is committed and verified before the parent-side merge.
-// A reroute, a gate failure or a dirty tree returns before the parent-side merge, the board update and the push.
+// A reroute, a halt, a gate failure or a dirty tree returns before the parent-side merge, the board update and the push.
 func (fz *Finalize) mergeAndGate(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	if outcome, out, err, done := fz.mergeParent(ctx); done {
 		return outcome, out, err, true
 	}
-	reason, err := fz.gate.check(ctx, finalizeName, fz.deps.ParentBranch)
-	if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
+	return fz.gateAndFix(ctx)
+}
+
+// gateAndFix runs the `landing` gate over the merged tree and, on a failure, the merge fixer in finalize mode, which is Finalize's step 4.
+// The gate skips a tree it already verified, so a run that went right holds the lock for one merge, a skipped gate and the landing.
+// A passing gate removes the landing failure record and a failing one writes it.
+//
+// A failing gate spawns the fixer on the attempts landing.yaml's finalize_fix_attempts leaves the entry, read from the attempt record under the row's entry.
+// The fixer's whole change is judged against the size and kind caps from the entry's Baseline, the HEAD before its first turn, so turns that each stay under the cap but sum past it are over it.
+// An entry has no attempts left when its Spent reaches the cap, whatever the record's Halt notes, and such an entry spawns no fixer: over a failing gate it ends as a spent cap, and over a passing one its change since Baseline is judged.
+// A spent cap or a change over the caps keeps the fixer's commits and reroutes when a review follows the reroute (Deps.RerouteReviewed), and halts with LandingStopPrefix otherwise, noting the cause in the attempt record's Halt.
+// A resume after such an over-cap halt writes Baseline afresh at the HEAD the gate starts from and reads the operator's review as acceptance of the fixer's commits.
+// An escalate report, an unusable turn and an attempt record that does not decode each halt with LandingStopPrefix, and a failed spawn is an error that spends no attempt.
+// done is false when the tree passed within the caps and Call proceeds; otherwise the other values are what Call returns at once.
+func (fz *Finalize) gateAndFix(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	attemptsPath := FixerAttemptsPath(fz.deps.ScratchDir, finalizeName)
+	rec, reason, err := fz.readAttempts(attemptsPath)
+	if err != nil {
+		return fz.errorStop(ctx, err)
+	}
+	if reason != "" {
+		return fz.halt(ctx, reason)
+	}
+	overCapResume := rec.Halt == fixerHaltOverCap
+	if overCapResume {
+		head, err := fz.deps.TaskHead()
+		if err != nil {
+			return fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the task head: %w", finalizeName, err))
+		}
+		rec.Baseline, rec.Halt = head, ""
+		if err := WriteFixerAttempts(attemptsPath, rec); err != nil {
+			return fz.errorStop(ctx, err)
+		}
+	}
+
+	gateReason, err := fz.gate.check(ctx, finalizeName, fz.deps.ParentBranch)
+	if outcome, out, err, stop := fz.gateStop(ctx, "", err); stop {
 		return outcome, out, err, true
 	}
-	reason, err = fz.gate.clean(finalizeName, "after the verify")
-	if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
+	passed := gateReason == ""
+	if passed {
+		fz.gate.clearFailure()
+		reason, err = fz.gate.clean(finalizeName, "after the verify")
+		if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
+			return outcome, out, err, true
+		}
+	}
+
+	switch {
+	case passed && overCapResume:
+		return "", shedengine.OutputPointer{}, nil, false
+	case passed:
+		return fz.judgeFixerChange(ctx, rec)
+	case rec.Spent >= fz.deps.Config.FinalizeFixAttempts:
+		return fz.endSpent(ctx, rec, fz.failedGateLog(gateReason))
+	}
+	return fz.runFixer(ctx, rec)
+}
+
+// readAttempts reads the fixer attempt record of the row's current entry.
+// A record that does not decode comes back as a halting reason naming the file and how to remove it.
+// A Finalize built with no row-entry read reads entry 0.
+func (fz *Finalize) readAttempts(path string) (FixerAttempts, string, error) {
+	entry := 0
+	if fz.deps.RowEntry != nil {
+		var err error
+		if entry, err = fz.deps.RowEntry(finalizeName); err != nil {
+			return FixerAttempts{}, "", fmt.Errorf("landingshed: %s: read the row entry: %w", finalizeName, err)
+		}
+	}
+	rec, err := ReadFixerAttempts(path, entry)
+	if err != nil {
+		logger.Warn("landingshed: fixer attempt record unreadable", "producer", finalizeName, "cause", err)
+		return FixerAttempts{}, fmt.Sprintf("%sthe fixer attempt record of %s does not decode: %s; way forward: remove %s, which grants the entry a fresh cap, then `lyx loom resume`", LandingStopPrefix, finalizeName, path, path), nil
+	}
+	return rec, "", nil
+}
+
+// runFixer runs the merge fixer in finalize mode on the attempts the entry has left and maps how the run ended onto Call's return.
+// The first spawn writes the HEAD before its first turn as the record's Baseline, which every resume of the entry keeps.
+// A fixed end is judged against the caps, a spent end ends as a spent cap, and every other end halts with its reason.
+func (fz *Finalize) runFixer(ctx context.Context, rec FixerAttempts) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	mergeRecord, _, err := ReadMergeRecord(fz.deps.MergeRecordPath)
+	if err != nil {
+		return fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the merge record the fixer reads: %w", finalizeName, err))
+	}
+	if rec.Baseline == "" {
+		head, err := fz.deps.TaskHead()
+		if err != nil {
+			return fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the task head: %w", finalizeName, err))
+		}
+		rec.Baseline = head
+	}
+	outcome, updated, err := newFixerRun(fz.deps, finalizeName, fz.gate).run(ctx, FixerModeFinalize, rec, fz.deps.Config.FinalizeFixAttempts, [2]string{"", mergeRecord.MergedTip})
+	if err != nil {
+		return fz.errorStop(ctx, err)
+	}
+	switch outcome.end {
+	case fixerEndFixed:
+		fz.gate.clearFailure()
+		return fz.judgeFixerChange(ctx, updated)
+	case fixerEndSpent:
+		return fz.endSpent(ctx, updated, outcome.failureLog)
+	}
+	return fz.halt(ctx, outcome.haltReason(finalizeName))
+}
+
+// failedGateLog names the log of the landing gate's failure: the failure record's log when one was written, and the gate's own reason otherwise.
+func (fz *Finalize) failedGateLog(gateReason string) string {
+	if failure, found, err := verifytree.ReadPublishFailure(fz.gate.paths); err == nil && found {
+		return failure.LogPath
+	}
+	return singleLine(gateReason)
+}
+
+// judgeFixerChange judges the entry's fixer change, from its Baseline to HEAD, against the size and kind caps.
+// An entry whose fixer never ran has no Baseline and no change.
+// A change within the caps lets Finalize go on; one over them ends as an over-cap change.
+func (fz *Finalize) judgeFixerChange(ctx context.Context, rec FixerAttempts) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	if rec.Baseline == "" {
+		return "", shedengine.OutputPointer{}, nil, false
+	}
+	head, err := fz.deps.TaskHead()
+	if err != nil {
+		return fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the task head: %w", finalizeName, err))
+	}
+	change, err := fz.deps.LineChange(rec.Baseline, head)
+	if err != nil {
+		return fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the fixer's change: %w", finalizeName, err))
+	}
+	reason := FixCap{MaxLines: fz.deps.Config.FinalizeFixMaxLines, IsTestFile: fz.deps.IsTestFile}.Exceeded(change)
+	if reason == "" {
+		return "", shedengine.OutputPointer{}, nil, false
+	}
+	return fz.keepFixerCommits(ctx, rec, fixerHaltOverCap, fmt.Sprintf("the fixer's change in %s is over the caps: %s", finalizeName, reason))
+}
+
+// endSpent ends an entry whose attempts are spent over a gate that still fails, naming the failed gate's log.
+func (fz *Finalize) endSpent(ctx context.Context, rec FixerAttempts, log string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	return fz.keepFixerCommits(ctx, rec, fixerHaltSpent, fmt.Sprintf("the fixer spent every attempt of %s and the landing gate still fails; log: %s", finalizeName, log))
+}
+
+// keepFixerCommits ends the entry on cause while keeping the fixer's commits on the task branch.
+// When a review follows the reroute, Finalize reroutes through rerouteReason so that review sees the fix.
+// Otherwise it halts with LandingStopPrefix, naming the fixer's commits and noting in the attempt record's Halt which cause it was.
+func (fz *Finalize) keepFixerCommits(ctx context.Context, rec FixerAttempts, note, cause string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	head, err := fz.deps.TaskHead()
+	if err != nil {
+		return fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the task head: %w", finalizeName, err))
+	}
+	commits := "none"
+	if rec.Baseline != "" {
+		commits = rec.Baseline + ".." + head
+	}
+	reviewed := false
+	if fz.deps.RerouteReviewed != nil {
+		if reviewed, err = fz.deps.RerouteReviewed(); err != nil {
+			return fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read whether a review follows the reroute: %w", finalizeName, err))
+		}
+	}
+	if reviewed {
+		outcome, out, err := fz.reroute(ctx, fz.rerouteReason(fmt.Sprintf("%s; fixer commits: %s", cause, commits)))
 		return outcome, out, err, true
 	}
-	return "", shedengine.OutputPointer{}, nil, false
+	rec.Halt = note
+	if err := WriteFixerAttempts(FixerAttemptsPath(fz.deps.ScratchDir, finalizeName), rec); err != nil {
+		return fz.errorStop(ctx, err)
+	}
+	return fz.halt(ctx, fmt.Sprintf("%s%s; fixer commits: %s; way forward: review and fix on the task branch, then `lyx loom resume`", LandingStopPrefix, cause, commits))
+}
+
+// halt returns a halting Stuck with reason from Call.
+func (fz *Finalize) halt(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	outcome, out, err := stuckVerdict(ctx, finalizeName, reason, true)
+	return outcome, out, err, true
+}
+
+// errorStop returns err from Call, or the cancellation error when ctx is cancelled.
+func (fz *Finalize) errorStop(ctx context.Context, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	if cerr := cancelErr(ctx, finalizeName); cerr != nil {
+		return "", shedengine.OutputPointer{}, cerr, true
+	}
+	return "", shedengine.OutputPointer{}, err, true
 }
 
 // parentMergeBefore is what Finalize reads before it merges the parent branch into the task worktree.

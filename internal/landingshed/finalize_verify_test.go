@@ -117,21 +117,30 @@ func TestFinalizeVerify_Lands(t *testing.T) {
 	}
 }
 
-// TestFinalizeVerify_Fail pins that a failed verify ends Stuck with a reason naming the exit code and the log, and lands nothing.
+// TestFinalizeVerify_Fail pins that a failed verify spawns the finalize fixer and writes the landing failure record, and that a fixer that spends its attempt without a fix halts naming the log and lands nothing.
 //
-//testtiming:keep pins the reason naming the exit code and the log path, which TestFinalizeVerify_DirtyTreeHalts and the retry cases do not assert
+//testtiming:keep pins the landing failure record's gate kind and row, which TestFinalize_GateAndFixer does not assert
 func TestFinalizeVerify_Fail(t *testing.T) {
-	fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(false)})
-	fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
-	writeVerifyLog(t, fx.gate, "verify output")
-	reason := requireFinalizeReason(t, shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck))
-	if log := filepath.Join(fx.gate.paths.Dir, "verify-1.log"); !strings.Contains(reason, "exit code 1") || !strings.Contains(reason, log) {
-		t.Errorf("reason %q lacks the exit code or the log path %s", reason, log)
+	fx := newFinalizeGateFixture(t)
+	fx.fz.deps.Config.FinalizeFixAttempts = 1
+	fx.scriptGate(verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1})
+	fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1")}
+
+	outcome, ptr := fx.call(t)
+
+	// The record names the run of the fixer's own turn, the last verify that failed.
+	log := filepath.Join(fx.gate.paths.Dir, "verify-2.log")
+	requireHalt(t, outcome, ptr, "spent every attempt", log)
+	if len(fx.seats.tables) != 1 {
+		t.Errorf("fixer sessions = %d; want 1", len(fx.seats.tables))
 	}
-	if _, ok, _ := verifytree.ReadPublishFailure(fx.gate.paths); ok {
-		t.Error("Finalize wrote a Publish failure record")
+	failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
+	if err != nil || !found || failure.Kind != verifytree.FailureKindLanding || failure.Row != finalizeName || failure.LogPath != log {
+		t.Errorf("landing failure record = %+v, %v, %v; want kind %s from row %s naming %s", failure, found, err, verifytree.FailureKindLanding, finalizeName, log)
 	}
-	fx.requireNotLanded(t)
+	if len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
+		t.Errorf("merge calls = %d, push calls = %d; want none after a halted gate", len(fx.merger.calls), len(fx.merger.pushCalls))
+	}
 }
 
 // TestFinalizeVerify_DirtyTreeHalts pins that a dirty tree at each of the three points ends Stuck naming the paths,

@@ -207,6 +207,7 @@ func LandingDeps(dir string) landingshed.Deps {
 		RowEntry:           func(string) (int, error) { return 1, nil },
 		TaskRemoteTip:      func() (string, error) { return "", nil },
 		CodeReviewOff:      func() (bool, error) { return false, nil },
+		RerouteReviewed:    func() (bool, error) { return true, nil },
 		Alignment: landingshed.AlignmentDeps{
 			Config:   func() (landingshed.AlignmentConfig, error) { return landingshed.AlignmentConfig{Off: true}, nil },
 			Session:  noopAlignmentSession{},

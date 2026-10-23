@@ -75,6 +75,7 @@ var intentionallyNil = map[string]string{
 	"Landing.RowEntry":            "loom-only seam, batten lands no branch",
 	"Landing.TaskRemoteTip":       "loom-only seam, batten lands no branch",
 	"Landing.CodeReviewOff":       "loom-only seam, batten lands no branch",
+	"Landing.RerouteReviewed":     "loom-only seam, batten lands no branch",
 	"Landing.Alignment.Config":    "loom-only seam, batten lands no branch",
 	"Landing.Alignment.Session":   "loom-only seam, batten lands no branch",
 	"Landing.Alignment.Snapshot":  "loom-only seam, batten lands no branch",

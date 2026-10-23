@@ -35,6 +35,7 @@ var intentionallyNil = map[string]string{
 	"Landing.RowEntry":                    "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.TaskRemoteTip":               "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.CodeReviewOff":               "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.RerouteReviewed":             "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.Alignment.Config":            "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.Alignment.Session":           "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.Alignment.Snapshot":          "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
