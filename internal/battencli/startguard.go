@@ -3,7 +3,6 @@
 package battencli
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -140,7 +139,7 @@ func (c *battenCLI) refuseAtStart(verb string) error {
 	}
 	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
 	if err != nil {
-		return errors.New("battencli: decode status file " + statusPath + ": " + err.Error())
+		return fmt.Errorf("battencli: read status file %s: %w", statusPath, err)
 	}
 
 	var taskPresent bool
