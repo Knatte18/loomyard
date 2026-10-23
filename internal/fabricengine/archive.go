@@ -89,31 +89,50 @@ func archiveWeftTip(rec *Mutations, l *lyxcwd.Location, slug, weftBranch string)
 		return "", "", nil
 	}
 
-	tag = ArchiveTagPrefix + slug + "/" + tip[:archiveTagSHALen]
+	tag, err = tagAndPushArchiveTip(rec, weftRoot, slug, tip, "weft")
+	return tag, "", err
+}
+
+// archiveTaskTip tags tip, a commit of the task branch of slug, as archive/<slug>/<first 12 hex of tip> in the repo at repoDir and pushes that tag to its origin.
+// A tag already at tip is reused, one of that name elsewhere is refused, and a push the remote refuses retryably is retried on archiveTagPushDelays.
+// Every returned error wraps ErrArchiveFailed.
+// KindTagPushed is recorded on rec only after the push observably succeeded.
+func archiveTaskTip(rec *Mutations, repoDir, slug, tip string) (string, error) {
+	tag, err := tagAndPushArchiveTip(rec, repoDir, slug, tip, "task")
+	if err != nil {
+		return "", fmt.Errorf("%w: %w", ErrArchiveFailed, err)
+	}
+	return tag, nil
+}
+
+// tagAndPushArchiveTip tags tip as archive/<slug>/<first 12 hex of tip> in the repo at repoDir, reusing a tag already at tip, and pushes it to origin.
+// side names the branch's side in the refusal for a tag of that name sitting elsewhere.
+func tagAndPushArchiveTip(rec *Mutations, repoDir, slug, tip, side string) (string, error) {
+	tag := ArchiveTagPrefix + slug + "/" + tip[:archiveTagSHALen]
 	tagRef := "refs/tags/" + tag
 
-	existing, err := gitexec.Run([]string{"for-each-ref", "--format=%(objectname)", tagRef}, weftRoot)
+	existing, err := gitexec.Run([]string{"for-each-ref", "--format=%(objectname)", tagRef}, repoDir)
 	if err != nil {
-		return "", "", fmt.Errorf("look up archive tag %q: %w", tag, err)
+		return "", fmt.Errorf("look up archive tag %q: %w", tag, err)
 	}
 	switch existing = strings.TrimSpace(existing); {
 	case existing == "":
-		if _, err := gitexec.Run([]string{"tag", tag, tip}, weftRoot); err != nil {
-			return "", "", fmt.Errorf("create archive tag %q at %s: %w", tag, tip, err)
+		if _, err := gitexec.Run([]string{"tag", tag, tip}, repoDir); err != nil {
+			return "", fmt.Errorf("create archive tag %q at %s: %w", tag, tip, err)
 		}
 	case existing != tip:
-		return "", "", fmt.Errorf("archive tag %q already exists at %s, not the weft tip %s", tag, existing, tip)
+		return "", fmt.Errorf("archive tag %q already exists at %s, not the %s tip %s", tag, existing, side, tip)
 	}
 
 	pushTag := func() error {
-		_, err := gitexec.Run([]string{"push", originRemoteName, tagRef}, weftRoot)
+		_, err := gitexec.Run([]string{"push", originRemoteName, tagRef}, repoDir)
 		return err
 	}
 	if err := gitrepo.PushWithRetry(pushTag, tagRef, archiveTagPushDelays(), nil); err != nil {
-		return "", "", fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
+		return "", fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
 	}
-	rec.Append(KindTagPushed, weftRoot, tag)
-	return tag, "", nil
+	rec.Append(KindTagPushed, repoDir, tag)
+	return tag, nil
 }
 
 // resolveArchiveTip returns the full SHA of weftBranch in the weft repo at weftRoot: the local branch when present, else the origin's copy fetched into the repo.

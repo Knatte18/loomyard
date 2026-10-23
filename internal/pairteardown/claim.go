@@ -94,7 +94,7 @@ func (t *Teardown) settleBoardClaim(slug string, landed bool) {
 		return
 	case claimHeldGone:
 		logger.Warn("pairteardown: batten's run for the slug reads running but its process is gone, so the board claim is kept", "slug", slug,
-			"wayForward", fmt.Sprintf("check it with `lyx batten status %s`, and release the claim with `lyx board set-status %s`", slug, slug))
+			"wayForward", fmt.Sprintf("check it with `lyx batten status %s`, and end the run and release the claim with `lyx batten cancel %s`", slug, slug))
 		return
 	case claimHeld:
 		logger.Warn("pairteardown: batten's run for the slug is still running, so the board claim is kept", "slug", slug,

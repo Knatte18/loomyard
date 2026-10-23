@@ -311,26 +311,39 @@ func reconcileTaskPair(prime *lyxcwd.Location, slug string) error {
 	return hubreconcile.Ensure(geometry, hubreconcile.Options{Pair: fabricengine.WorktreePath(prime, slug)})
 }
 
-// createRefusal rewords the one create refusal whose fabric remedy is wrong from prime, and passes
-// every other create error through verbatim (fabric's own refusals otherwise name remedies that hold
-// from here, and rewording them would only drop information).
-//
-// fabric words its leftover-branch refusal for a caller inside a pair: "switch a pair onto it with
-// lyx fabric checkout". Every batten verb runs from prime, where that command switches prime's own
-// pair onto the task's branches.
-// The branch is a leftover in the everyday flow:
-// a torn-down pair keeps its task branch locally and on the remote, and a create rolled back by an older binary keeps the branch it made.
-// So the remedy named here is the abandon path the absent-worktree refusal already names:
-// delete the leftover locally and on the remote, and any orphaned other-side branch, then resume.
-func createRefusal(err error) error {
-	var branchExists *fabricengine.ErrBranchExists
-	if !errors.As(err, &branchExists) {
-		return err
+// createRefusal maps the create refusals no tackler can settle to a *battenshed.PreconditionError, and passes every other create error through verbatim.
+// A tracked-dirty source worktree is settled by committing or reverting in it.
+// A task branch left from an earlier pair of the slug, locally or on origin, is settled by the cancel verb, which archives and deletes it.
+// fabric words that leftover refusal for a caller inside a pair ("lyx fabric checkout"), which from prime would switch prime's own pair onto the task's branches, so its text is replaced.
+// A remote leftover on any other branch, the records side included, passes through.
+func createRefusal(err error, slug, taskBranch string) error {
+	leftoverWayForward := fmt.Sprintf(`run "lyx batten cancel %s --remove" from the prime, which archives and deletes it, then "lyx batten run %s"`, slug, slug)
+
+	var sourceDirty *fabricengine.ErrSourceDirty
+	if errors.As(err, &sourceDirty) {
+		return &battenshed.PreconditionError{
+			Unmet:      "the source worktree has uncommitted tracked changes: " + strings.Join(sourceDirty.Paths, ", "),
+			WayForward: fmt.Sprintf(`commit or revert them in the source worktree, then run "lyx batten run %s" again`, slug),
+			Err:        err,
+		}
 	}
-	return fmt.Errorf(
-		"branch %q already exists, left behind by an earlier pair for this slug (a torn-down pair keeps its task branch locally and on the remote); delete it locally (\"git branch -D %s\") and on the remote (\"git push origin --delete %s\"), remove any leftover of the pair's sibling branch (\"lyx fabric cleanup --apply --remote\" removes an orphaned one), then resume this run -- never \"lyx fabric checkout\" from here, which would switch this worktree itself onto that branch",
-		branchExists.Branch, branchExists.Branch, branchExists.Branch,
-	)
+	var branchExists *fabricengine.ErrBranchExists
+	if errors.As(err, &branchExists) {
+		return &battenshed.PreconditionError{
+			Unmet:      fmt.Sprintf("task branch %s is left from an earlier pair of this slug", branchExists.Branch),
+			WayForward: leftoverWayForward,
+			Err:        err,
+		}
+	}
+	var remoteLeftover *fabricengine.ErrRemoteLeftover
+	if errors.As(err, &remoteLeftover) && remoteLeftover.Branch == taskBranch {
+		return &battenshed.PreconditionError{
+			Unmet:      fmt.Sprintf("task branch %s is left on origin from an earlier pair of this slug", remoteLeftover.Branch),
+			WayForward: leftoverWayForward,
+			Err:        err,
+		}
+	}
+	return err
 }
 
 // finishRemoval turns the composite's RemovePair outcome into the Worktree-Teardown row's verdict.
@@ -844,7 +857,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			_, err = top.Add(location, slug, fabricengine.AddOptions{})
 			logger.Info("battencli: create worktree", "slug", slug)
 			if err != nil {
-				return createRefusal(err)
+				return createRefusal(err, slug, cfg.BranchPrefix+slug)
 			}
 			if err := reconcileTaskPair(location, slug); err != nil {
 				return err

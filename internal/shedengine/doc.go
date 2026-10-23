@@ -27,6 +27,8 @@
 // The OnStuck "" escalation persists the producer's own OutputPointer.Reason as the blocked halt's
 // error (one line, falling back to ReasonNoOnStuckTarget when empty);
 // budget exhaustion persists a reason that starts with ReasonBounceBudgetExhausted, regardless of the producer's Reason, and whose trailing way forward is the told Shed.BudgetWayForward.
+// A producer that finds a precondition the run cannot settle on its own unmet halts with a reason that starts with ReasonPreconditionUnmet and ends in its own way forward; Shed itself never writes that prefix.
+// The told Shed.LockedCheck runs under the run lock in Run and Step, before the status file is read, and a refusal returns an error wrapping ErrLockedCheckRefused with the status file untouched.
 // An Awaiting outcome is the planned human hand-off and routes nowhere: the run halts in state
 // "awaiting" with the producer's Reason as the error, no bounce budget is consulted or spent, and a
 // resume re-calls the same producer, exactly as it does after a blocked halt.

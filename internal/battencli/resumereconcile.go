@@ -19,14 +19,15 @@ const (
 
 // reconcileRun runs the run-scope origin reconcile of slug from the prime, with the seams pairteardown builds for a hub.
 // The run scope tears no pair down.
+// With judgeOnly the reconcile only judges: it moves no ref and tears nothing down.
 // Each entry of the report's mutation record is logged at Info, since a resume has no envelope to carry it.
 // The report is returned with the error, so a partial record is still logged.
-func reconcileRun(location *lyxcwd.Location, slug string) (fabricengine.OriginReport, error) {
+func reconcileRun(location *lyxcwd.Location, slug string, judgeOnly bool) (fabricengine.OriginReport, error) {
 	teardown, err := pairteardown.New(location)
 	if err != nil {
 		return fabricengine.OriginReport{}, err
 	}
-	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
+	report, err := fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{Run: slug, JudgeOnly: judgeOnly}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
 	for _, mutation := range report.Mutations.Entries() {
 		logger.Info("battencli: origin reconcile mutation", "slug", slug, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}
@@ -79,7 +80,7 @@ func resumeRefusal(slug string, report fabricengine.OriginReport) error {
 		case fabricengine.EntryOwnedElsewhere:
 			return ownedElsewhereRefusal(slug, entry.Owner)
 		case fabricengine.EntryStopped:
-			return stoppedRefusal(slug, entry, report.Branches)
+			return stoppedRefusal(slug, "resume", fmt.Sprintf("then re-run lyx batten run %s", slug), entry, report.Branches)
 		}
 	}
 	return nil
@@ -93,11 +94,11 @@ func endedReason(how string) string {
 	return "its board entry was removed from the board"
 }
 
-// stoppedRefusal names the branch that stopped entry, its state and the way forward for it, then the resume's own re-entry.
+// stoppedRefusal names the branch that stopped entry, its state and the way forward for it, then reentry, the step that retries the act.
+// act is the verb the refusal says it cannot do, "resume" or "cancel".
 // A branch the entry's own run holds busy stops nothing, as the reconcile itself judges it.
 // An entry stopped by a branch every pair shares is named by that branch; one with no branch to name falls back to the entry's own way forward.
-func stoppedRefusal(slug string, entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome) error {
-	reentry := fmt.Sprintf("then re-run lyx batten run %s", slug)
+func stoppedRefusal(slug, act, reentry string, entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome) error {
 	for _, branch := range branches {
 		own := branch.Slug == slug && !(branch.Repo == sideRecords && branch.State == fabricengine.BranchBusy)
 		shared := branch.Repo == sideBolt || (branch.Repo == sideRecords && branch.Prime)
@@ -108,7 +109,7 @@ func stoppedRefusal(slug string, entry fabricengine.EntryOutcome, branches []fab
 		if branch.WayForward == "" {
 			continue
 		}
-		return fmt.Errorf("battencli: cannot resume %q: branch %s is %s against origin; %s; %s", slug, branch.Branch, branch.State, branch.WayForward, reentry)
+		return fmt.Errorf("battencli: cannot %s %q: branch %s is %s against origin; %s; %s", act, slug, branch.Branch, branch.State, branch.WayForward, reentry)
 	}
-	return fmt.Errorf("battencli: cannot resume %q: origin reconcile stopped it; %s; %s", slug, entry.WayForward, reentry)
+	return fmt.Errorf("battencli: cannot %s %q: origin reconcile stopped it; %s; %s", act, slug, entry.WayForward, reentry)
 }

@@ -90,7 +90,16 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 		wantErrors []string
 		wantPulls  int
 		wantSets   []string
+		// markerAfterPull makes the cancel marker read absent before the pull and present once it ran.
+		markerAfterPull bool
 	}{
+		{
+			name:            "CancelMarkerAppearingDuringThePullRefusesBeforeTheClaim",
+			fake:            fakeOwners{machine: "here", owners: ownedBy("", "here", false)},
+			wantErrors:      []string{"a cancel of some-slug is under way", "way forward"},
+			wantPulls:       1,
+			markerAfterPull: true,
+		},
 		{
 			name:       "EntryOwnedElsewhereRefuses",
 			fake:       fakeOwners{machine: "here", owners: ownedBy("here", "there", false)},
@@ -144,6 +153,11 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 
 			fake := tt.fake
 			c := &battenCLI{slug: slug, owner: fake.seams()}
+			if tt.markerAfterPull {
+				c.guard.Marker = func() (cancelMarkerReading, error) {
+					return cancelMarkerReading{Present: fake.pulls > 0, WriterAlive: true, Marker: cancelMarker{PID: 4242}}, nil
+				}
+			}
 
 			err := c.refuseStartOwnedElsewhere()
 

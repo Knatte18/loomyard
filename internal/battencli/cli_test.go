@@ -57,7 +57,7 @@ func battenCommandNamed(parent *cobra.Command, verb string) *cobra.Command {
 func TestCommand_EveryVerbArity(t *testing.T) {
 	t.Parallel()
 
-	for _, verb := range []string{"run", "step", "status", "pause"} {
+	for _, verb := range []string{"run", "step", "status", "pause", "cancel"} {
 		t.Run(verb, func(t *testing.T) {
 			t.Parallel()
 

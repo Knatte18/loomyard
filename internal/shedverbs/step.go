@@ -25,7 +25,9 @@ import (
 // The driver stencil (contracts/stencils/shed/shed-template-driver.md) is the single place a driver's
 // disposition per kind is stated.
 const (
-	// KindBusy means the run lock is already held by a live driver or another `step` invocation.
+	// KindBusy means the run is held and step leaves it to its holder:
+	// the run lock held by a live driver or another `step` invocation,
+	// or a check the spec runs before the drive, under the run lock or in its seeding, refusing because the run is held elsewhere or no longer seeded.
 	KindBusy = "busy"
 	// KindUnseeded means the status file specifically -- not seed.json, which "lyx shed seed"
 	// writes and this vocabulary never reports on -- could not be seeded: the bootstrap's status
@@ -387,6 +389,10 @@ func stepCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				friction := ""
 				if spec.Hooks.AfterStep != nil {
 					friction = spec.Hooks.AfterStep(ctx, res, err)
+				}
+				if errors.Is(err, shedengine.ErrLockedCheckRefused) {
+					refuse(spec.StepBusyKind, "", friction, err.Error())
+					return nil
 				}
 				if errors.Is(err, shedengine.ErrShedBusy) {
 					msg := err.Error()

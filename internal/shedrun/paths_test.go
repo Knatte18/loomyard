@@ -92,6 +92,22 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lyxcwd.Location) string { return filepath.Join(TacklerDir(l, "self"), "attempt-2") }},
 		{"TacklerMarker", func(l *lyxcwd.Location) string { return TacklerMarker(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "tackler-inflight.json") }},
+		{"CancelMarker", func(l *lyxcwd.Location) string { return CancelMarker(l, "self") },
+			func(l *lyxcwd.Location) string {
+				return filepath.Join(ScratchRoot(l), worktreeName+".cancel.json")
+			}},
+		{"CancelMarkerSlug", func(l *lyxcwd.Location) string { return CancelMarker(l, worktreeName) },
+			func(l *lyxcwd.Location) string {
+				return filepath.Join(l.AnchorPath(), ".lyx", "shed", worktreeName+".cancel.json")
+			}},
+		{"CancelMarkerLock", func(l *lyxcwd.Location) string { return CancelMarkerLock(l, "self") },
+			func(l *lyxcwd.Location) string {
+				return filepath.Join(ScratchRoot(l), worktreeName+".cancel.lock")
+			}},
+		{"CancelMarkerLockSlug", func(l *lyxcwd.Location) string { return CancelMarkerLock(l, worktreeName) },
+			func(l *lyxcwd.Location) string {
+				return filepath.Join(l.AnchorPath(), ".lyx", "shed", worktreeName+".cancel.lock")
+			}},
 		{"SettleRecords", func(l *lyxcwd.Location) string { return SettleRecords(l, "self") },
 			func(l *lyxcwd.Location) string { return filepath.Join(RunDir(l, "self"), "go-settle.jsonl") }},
 		{"PrimeRunLock", PrimeRunLock,
@@ -109,6 +125,13 @@ func TestPathConstructors(t *testing.T) {
 			l := syntheticLocation(t)
 			if got, want := tt.got(l), tt.want(l); got != want {
 				t.Errorf("%s = %q; want %q", tt.name, got, want)
+			}
+			if strings.HasPrefix(tt.name, "CancelMarker") {
+				for _, dir := range []string{RunDir(l, "self"), ScratchDir(l, "self")} {
+					if strings.HasPrefix(tt.got(l), dir+string(filepath.Separator)) {
+						t.Errorf("%s = %q lies under %q", tt.name, tt.got(l), dir)
+					}
+				}
 			}
 		})
 	}

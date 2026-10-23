@@ -27,6 +27,7 @@
 //   - an ownership error, or an error with no kind: hand back;
 //   - a paused run: hold, and hand back, asking for the friction note when neither the envelope nor the status records a reason;
 //   - a blocked stop whose reason, or for a stop built from a status whose error, starts with the bounce-budget-exhausted prefix: hand back, ahead of every hand-over, arbiter and tackler row, since only the parent's resume lifts it;
+//   - a blocked stop whose reason, or for a stop built from a status whose error, starts with the precondition-unmet prefix: hand back, ahead of every hand-over, arbiter and tackler row, since no tackler settles it;
 //   - an awaiting stop the arbiter would admit: the arbiter decides;
 //   - an awaiting stop with a parent notice: relay the notice and hand back;
 //   - any other awaiting stop: hand back;
@@ -40,7 +41,7 @@
 //   - anything else: hand back.
 //
 // A stop built from a paused status takes the status's `pause_reason` as its reason, and a stop report for a paused stop with none says `paused with no recorded reason`.
-// The budget-exhausted row only hands back; it never resumes a run.
+// The budget-exhausted and precondition-unmet rows only hand back; they never resume a run.
 // A recipe's told `GotoGuard` reaches the tackler through `TacklerDeps`: a verdict whose goto the guard refuses, or cannot decide, is rejected as an invalid resume with the guard's text.
 //
 // The settle records at `shedrun.SettleRecords` hold one line per action taken at a stop.

@@ -46,15 +46,14 @@ type RunLockedError struct {
 	Status string
 }
 
-// Error names the entry, its status and both ways forward.
+// Error names the entry, its status and both ways forward: a note for the finding, and the batten cancel for an abandoned run.
 func (e *RunLockedError) Error() string {
 	return fmt.Sprintf("entry %q is held by a run (status %q) and takes no scope edits: "+
 		"record the new finding as a note of its own with `lyx board upsert` and \"kind\":\"note\"; "+
-		"to unlock, run `lyx batten status %s` from the hub's prime worktree, and clear the status with `lyx board set-status` "+
-		"only when no run holds the entry, which is when that check refuses because the slug has no batten seed, reports state `done`, "+
-		"or reports a halted state (`paused`, `blocked`, `failed`, `awaiting`) whose run you have decided to abandon; "+
-		"a `running` state means a run holds it",
-		e.Slug, e.Status, e.Slug)
+		"to unlock, run `lyx batten status %s` from the hub's prime worktree, "+
+		"and to abandon the run end it with `lyx batten cancel %s` from the prime, "+
+		"which ends its processes, removes its records and clears this status",
+		e.Slug, e.Status, e.Slug, e.Slug)
 }
 
 // Is matches ErrRunLocked.

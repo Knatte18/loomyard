@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -65,6 +66,36 @@ func (e *ErrBranchExists) Error() string {
 		"branch %q already exists; switch a pair onto it with \"lyx fabric checkout %s\", or delete it first with \"git branch -D %s\" if it is a leftover from a removed pair",
 		e.Branch, e.Branch, e.Branch,
 	)
+}
+
+// ErrSourceDirty is Add's refusal when the source worktree has tracked uncommitted changes.
+// It is a typed error so a caller that checks the same condition before an add can read the paths the add would refuse on.
+type ErrSourceDirty struct {
+	// Paths are the tracked uncommitted paths of the source worktree, relative to it.
+	Paths []string
+}
+
+// Error implements the error interface, listing the dirty paths.
+func (e *ErrSourceDirty) Error() string {
+	return "source worktree has uncommitted changes: " + strings.Join(e.Paths, ", ")
+}
+
+// SourceDirtyPaths returns the tracked uncommitted paths of the source worktree l names, relative to it.
+// Untracked files never count, so an empty result is the condition under which Add accepts the source.
+func SourceDirtyPaths(l *lyxcwd.Location) ([]string, error) {
+	absolute, err := trackedDirtyPaths(l.WorktreePath())
+	if err != nil {
+		return nil, err
+	}
+	relative := make([]string, 0, len(absolute))
+	for _, path := range absolute {
+		rel, err := filepath.Rel(l.WorktreePath(), path)
+		if err != nil {
+			return nil, fmt.Errorf("make %s relative to %s: %w", path, l.WorktreePath(), err)
+		}
+		relative = append(relative, rel)
+	}
+	return relative, nil
 }
 
 // localAddKind says which existing branch made AddLocal refuse, which decides the way forward its message names.
@@ -154,12 +185,12 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		return AddResult{}, err
 	}
 
-	dirty, _, err := worktreeDirty(scopeTracked, l.WorktreePath())
+	dirtyPaths, err := SourceDirtyPaths(l)
 	if err != nil {
 		return AddResult{}, fmt.Errorf("read warp worktree status: %w", err)
 	}
-	if dirty {
-		return AddResult{}, fmt.Errorf("source worktree has uncommitted changes")
+	if len(dirtyPaths) > 0 {
+		return AddResult{}, &ErrSourceDirty{Paths: dirtyPaths}
 	}
 
 	warpBranch := t.cfg.BranchPrefix + slug

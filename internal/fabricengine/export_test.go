@@ -202,6 +202,26 @@ func DeleteArchivedWeftBranchForTest(l *lyxcwd.Location, repoDir, warpBranch, br
 	return rec.Snapshot(), err
 }
 
+// DeleteArchivedTaskBranchForTest drives deleteArchivedTaskBranch with a fresh recorder.
+// It serves package fabricengine_test integration tests that need a tag or lease the discard's own archive step would never produce.
+func DeleteArchivedTaskBranchForTest(repoDir, warpBranch, localTag, originTag, leaseTip string) (localDeleted, originDeleted bool, err error) {
+	return deleteArchivedTaskBranch(NewMutations(""), repoDir, warpBranch, localTag, originTag, leaseTip)
+}
+
+// DeleteRemoteWithArchivedTipForTest drives deleteRemoteBranch with the pair-warp ownership and the local-only archived-tip dirtiness kind, which the remote gate must refuse.
+func DeleteRemoteWithArchivedTipForTest(repoDir, warpBranch, archiveTag, leaseSHA string) error {
+	_, err := deleteRemoteBranch(NewMutations(""), remoteBranchRequest{
+		what:      "test delete remote branch under a local dirtiness kind",
+		repoDir:   repoDir,
+		remote:    originRemoteName,
+		branch:    warpBranch,
+		ownership: ownedPairWarpBranch(warpBranch, ""),
+		dirtiness: dirtyArchivedTip(archiveTag),
+		leaseSHA:  leaseSHA,
+	})
+	return err
+}
+
 // UpdateRemoteBranchWithLeaseForTest drives updateRemoteBranch over f's pair warp checkout with a caller-chosen lease SHA and a fresh recorder, returning the recorder's snapshot.
 // It serves package fabricengine_test tests that need a lease stale against the origin, since ResetPairCode leaves no window between its fetch and its update.
 func UpdateRemoteBranchWithLeaseForTest(f *Fabric, sha, parentBranch, leaseSHA string) (Mutations, error) {

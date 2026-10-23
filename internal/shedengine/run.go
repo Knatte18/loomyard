@@ -31,6 +31,11 @@ const ReasonNoOnStuckTarget = "stuck with no OnStuck target"
 // so a reader matches it with strings.HasPrefix, never equality.
 const ReasonBounceBudgetExhausted = "bounce budget exhausted"
 
+// ReasonPreconditionUnmet is the exact prefix of a blocked halt's reason that a producer sets when a precondition the run cannot settle on its own is unmet.
+// The reason continues with what is unmet and its way forward as a trailing clause, so a reader matches it with strings.HasPrefix, never equality.
+// Shed never writes it itself.
+const ReasonPreconditionUnmet = "precondition unmet"
+
 // stuckReason normalizes a producer's Reason to one line: trimmed, with every run of line-break
 // characters collapsed to a single space; an empty result falls back to ReasonNoOnStuckTarget.
 func stuckReason(reason string) string {
@@ -478,6 +483,10 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 	}
 	defer runLock.Release()
 
+	if err := s.refuseUnderRunLock(); err != nil {
+		return Result{}, err
+	}
+
 	for {
 		res, err := s.stepLocked(ctx)
 		if err != nil {
@@ -526,7 +535,23 @@ func (s *Shed) Step(ctx context.Context) (StepResult, error) {
 	}
 	defer runLock.Release()
 
+	if err := s.refuseUnderRunLock(); err != nil {
+		return StepResult{}, err
+	}
+
 	return s.stepLocked(ctx)
+}
+
+// refuseUnderRunLock calls LockedCheck, which Run and Step hold the run lock for, and wraps a refusal in ErrLockedCheckRefused.
+// The sentinel's text leads, so the check's own trailing way forward stays trailing.
+func (s *Shed) refuseUnderRunLock() error {
+	if s.LockedCheck == nil {
+		return nil
+	}
+	if err := s.LockedCheck(); err != nil {
+		return fmt.Errorf("%w: %w", ErrLockedCheckRefused, err)
+	}
+	return nil
 }
 
 // nowRFC3339 returns the current UTC time formatted as RFC3339, the format every history[].at

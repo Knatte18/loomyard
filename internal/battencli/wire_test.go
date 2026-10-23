@@ -674,13 +674,15 @@ func TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal(t *testing.T) {
 	}
 }
 
-// TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout asserts the create closure rewords
-// fabric's leftover-branch refusal for a caller standing in prime -- naming the branch and its
-// deletion on both the local and the remote side, and never "lyx fabric checkout", which from prime
-// switches prime itself -- while every other create error passes through unchanged.
+// TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout asserts the create closure maps a dirty source, a task branch left locally and one left on origin to a precondition error naming their way forward -- the cancel verb for a leftover branch, never "lyx fabric checkout", which from prime switches prime itself -- while every other create error, a remote leftover on another branch included, passes through unchanged.
 func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
-	leftover := &fabricengine.ErrBranchExists{Branch: "lyx-some-slug"}
-	other := errors.New("source worktree has uncommitted changes")
+	const taskBranch = "lyx-some-slug"
+	leftover := &fabricengine.ErrBranchExists{Branch: taskBranch}
+	dirty := &fabricengine.ErrSourceDirty{Paths: []string{"a.go", "dir/b.go"}}
+	remoteOnTask := &fabricengine.ErrRemoteLeftover{Slug: "some-slug", Branch: taskBranch, RemoteTip: "0123456789abcdef"}
+	remoteOnRecords := &fabricengine.ErrRemoteLeftover{Slug: "some-slug", Branch: taskBranch + "-records", RemoteTip: "0123456789abcdef"}
+	other := errors.New("some other create failure")
+	leftoverWayForward := []string{"lyx batten cancel some-slug --remove", `then "lyx batten run some-slug"`}
 
 	tests := []struct {
 		name        string
@@ -688,30 +690,38 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 		wantContain []string
 		wantSame    bool
 	}{
-		{"LeftoverBranch", leftover, []string{`"lyx-some-slug"`, "git branch -D lyx-some-slug", "git push origin --delete lyx-some-slug", "lyx fabric cleanup --apply --remote", "resume this run"}, false},
-		{"WrappedLeftoverBranch", fmt.Errorf("create: %w", leftover), []string{"git push origin --delete lyx-some-slug"}, false},
-		{"OtherError", other, []string{other.Error()}, true},
+		{"LeftoverBranch", leftover, append([]string{"task branch " + taskBranch + " is left from an earlier pair of this slug"}, leftoverWayForward...), false},
+		{"WrappedLeftoverBranch", fmt.Errorf("create: %w", leftover), leftoverWayForward, false},
+		{"BareSourceDirty", dirty, []string{"uncommitted tracked changes: a.go, dir/b.go", "commit or revert", `"lyx batten run some-slug" again`}, false},
+		{"WrappedSourceDirty", fmt.Errorf("create: %w", dirty), []string{"a.go, dir/b.go", "commit or revert"}, false},
+		{"RemoteLeftoverOnTheTaskBranch", remoteOnTask, append([]string{"task branch " + taskBranch + " is left on origin"}, leftoverWayForward...), false},
+		{"RemoteLeftoverOnAnotherBranch", remoteOnRecords, nil, true},
+		{"OtherError", other, nil, true},
 		{"NilError", nil, nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := createRefusal(tt.err)
+			got := createRefusal(tt.err, "some-slug", taskBranch)
 			if tt.wantSame {
 				if got != tt.err {
 					t.Fatalf("createRefusal(%v) = %v; want the same error passed through", tt.err, got)
 				}
 				return
 			}
-			if got == nil {
-				t.Fatal("createRefusal(leftover branch) = nil; want a reworded refusal")
+			var precondition *battenshed.PreconditionError
+			if !errors.As(got, &precondition) {
+				t.Fatalf("createRefusal(%v) = %v; want a *battenshed.PreconditionError", tt.err, got)
+			}
+			if !errors.Is(got, tt.err) {
+				t.Errorf("createRefusal(%v) = %v; want it to wrap its cause", tt.err, got)
 			}
 			for _, want := range tt.wantContain {
 				if !strings.Contains(got.Error(), want) {
 					t.Errorf("createRefusal(...) = %q; want it to contain %q", got.Error(), want)
 				}
 			}
-			if strings.Contains(got.Error(), "lyx fabric checkout") && !strings.Contains(got.Error(), "never \"lyx fabric checkout\"") {
-				t.Errorf("createRefusal(...) = %q; want it to never suggest \"lyx fabric checkout\" from prime", got.Error())
+			if strings.Contains(got.Error(), "lyx fabric checkout") || strings.Contains(got.Error(), "git stash") {
+				t.Errorf("createRefusal(...) = %q; want it to never name \"lyx fabric checkout\" or \"git stash\"", got.Error())
 			}
 		})
 	}

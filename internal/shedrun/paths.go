@@ -284,6 +284,17 @@ func TacklerMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), tacklerMarkerFileName)
 }
 
+// CancelMarker returns the path to the ephemeral batten cancel marker, <run segment>.cancel.json directly under ScratchRoot(l).
+// It sits beside the per-slug scratch directories, never inside RunDir or ScratchDir, so removing a slug's records and scratch leaves it in place.
+func CancelMarker(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchRoot(l), runSegment(l, runID)+".cancel.json")
+}
+
+// CancelMarkerLock returns the path to the lock whose holder is the cancel marker's live writer, <run segment>.cancel.lock directly under ScratchRoot(l).
+func CancelMarkerLock(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchRoot(l), runSegment(l, runID)+".cancel.lock")
+}
+
 // SettleRecords returns the path to the Go driver's settle records, settleRecordsFileName under RunDir(l, runID).
 // It sits beside the drive reports, so a run's records commit stages it with the run directory and a dirty-path check counts it as run state.
 func SettleRecords(l *lyxcwd.Location, runID string) string {

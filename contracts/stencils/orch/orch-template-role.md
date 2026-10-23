@@ -30,6 +30,8 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
    and you take it.
 3. Check a run with `lyx batten status <slug>`, hold it with `lyx batten pause <slug>`, and send it to a producer with `lyx batten goto <slug> --to <producer>`.
    Both leave the batten run paused, so resume it with `lyx batten run <slug>`, which starts or resumes the lifecycle run.
+   To give up a run for good, end it with `lyx batten cancel <slug>` from the prime, and add `--remove` to discard its pair.
+   A kept pair needs `lyx batten cancel <slug> --remove` before the slug runs again.
 4. Keep no polling shell and start no Monitor for a run.
    The wake-up is a line creel types: mail from a program or EXTERNAL is carried in full in the line itself, `[creel] #<id> from <sender>: <text>`, is already read and is answered with `lyx creel post --reply <id>` when it asks for an answer, while a reminder that you have unread agent mail names the command that reads it, `lyx creel read --from <owner>` under a hold and `lyx creel read` otherwise.
    Each notice line or mail body whose text starts with `[batten notice]` is a notice.

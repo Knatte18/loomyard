@@ -183,6 +183,9 @@
 //
 // The two producers that hold the hub's prime lock, Worktree-Create and Worktree-Teardown, wait for a contended lock instead of halting on the first try:
 // they poll it every two seconds for up to ten minutes, stop at once when the context is cancelled, and return Stuck only when the bound is spent (primelockwait.go).
+// Worktree-Create halts, blocked at its own row and with no bounce budget spent, when the create closure returns a PreconditionError, for a precondition no tackler can settle:
+// the halt's reason starts with the precondition-unmet prefix and names what is unmet and its way forward, and the Go driver hands such a halt back.
+// battenshed never imports fabric, so the closure alone builds the error.
 //
 // The Land row lands a child whose Run-Shed returned Done, in this order, each step idempotent so a resume re-runs the row from the top:
 // it takes the hub-level land lock for its whole body, polling a contended one from one second doubling to thirty with no time limit;

@@ -310,6 +310,38 @@ func TestStepCmd_BusyTreatment(t *testing.T) {
 	if err != nil || st.PendingBy != "" {
 		t.Errorf("PendingBy, err = %q, %v; want empty after the busy refusal", st.PendingBy, err)
 	}
+
+	t.Run("LockedCheckRefusalCarriesItsOwnMessage", func(t *testing.T) {
+		paths := newTestPaths(t)
+		seedBlocked(t, paths, "Only")
+		const wayForward = "way forward: end the run with the cancel verb"
+		spec := &Spec{
+			Caller:          "orch",
+			StepBusyKind:    KindBusy,
+			StepBusyMessage: "step: another driver already holds the run lock",
+			BuildShed: func() (*shedengine.Shed, error) {
+				return &shedengine.Shed{
+					Producers:      []shedengine.ProducerDef{stubRow("Only")},
+					StatusPath:     paths.StatusPath,
+					LockPath:       paths.LockPath,
+					StatusLockPath: paths.StatusLockPath,
+					LockedCheck:    func() error { return errors.New("a cancel is ending this run; " + wayForward) },
+				}, nil
+			},
+		}
+
+		env, code := execEnvelope(t, stepCmd(stepTexts(), spec), nil)
+		if code != 1 {
+			t.Fatalf("exit code = %d; want 1", code)
+		}
+		if env["kind"] != KindBusy {
+			t.Errorf("kind = %v; want %q", env["kind"], KindBusy)
+		}
+		message, _ := env["error"].(string)
+		if message == spec.StepBusyMessage || !strings.Contains(message, "a cancel is ending this run") || !strings.HasSuffix(message, wayForward) {
+			t.Errorf("error = %q; want the check's message ending in %q, not the told busy message", message, wayForward)
+		}
+	})
 }
 
 // TestStepCmd_ProducerHardErrorReachesKindProducer covers a Step producer hard error mapping onto
