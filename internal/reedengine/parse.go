@@ -28,8 +28,9 @@ type LivePane struct {
 }
 
 // paneTailSeparator joins the title, the current command and the start command in the last field of a pane listing line.
-// Each of the three can hold spaces, and tmux passes the ASCII unit separator through a format verbatim.
-const paneTailSeparator = "\x1f"
+// Each of the three can hold spaces, so the separator is a tab:
+// tmux passes a tab through a format verbatim but escapes other control characters as octal text, such as the unit separator as "\037".
+const paneTailSeparator = "\t"
 
 // splitPaneTail splits the last field of a pane listing line into the title, the current command and the start command.
 // A part the tail does not carry reads empty, so a tail holding only a title parses with both commands empty.
