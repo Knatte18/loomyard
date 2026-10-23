@@ -115,6 +115,7 @@ type arbiterFixture struct {
 	interruptPolicy  map[string]string
 	producerRowNames []string
 	gotoGuard        shedengine.GotoGuard
+	amendmentTarget  func() string
 }
 
 const arbiterTestRun = "operator-surface"
@@ -164,6 +165,10 @@ func (f *arbiterFixture) deps() arbiterDeps {
 	for i, name := range f.producerRowNames {
 		producers[i] = shedengine.ProducerDef{Name: name}
 	}
+	amendmentTarget := f.amendmentTarget
+	if amendmentTarget == nil {
+		amendmentTarget = func() string { return arbiterAbsentPath }
+	}
 	return arbiterDeps{
 		ReadStatus: func() (shedengine.Status, bool, error) {
 			if f.statusErr != nil {
@@ -200,10 +205,11 @@ func (f *arbiterFixture) deps() arbiterDeps {
 			DecisionRecordPath: filepath.Join(f.root, "decision-record.md"),
 			SupportLogPath:     filepath.Join(f.root, "support-log.md"),
 		},
-		StencilsDir:   seededStencils(f.t),
-		Shuttle:       f.fake,
-		Now:           func() time.Time { return f.now },
-		RelaunchRunID: arbiterTestRun,
+		StencilsDir:     seededStencils(f.t),
+		AmendmentTarget: amendmentTarget,
+		Shuttle:         f.fake,
+		Now:             func() time.Time { return f.now },
+		RelaunchRunID:   arbiterTestRun,
 	}
 }
 
@@ -270,6 +276,8 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		wantBrief   bool
 		wantRefusal string
 		wantNoSpawn bool
+		// wantPromptHas is a fragment the spawned prompt must carry.
+		wantPromptHas string
 		// keepsArbiterDir is set for the row that seeds the attempt records it is refused over.
 		keepsArbiterDir bool
 	}{
@@ -281,6 +289,19 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		},
 		{name: "transient failure that failed twice", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"busy","transient":"network"}`},
 		{name: "blocked stop", producer: "Plan-Write", state: shedengine.StateBlocked},
+		{
+			// The target answers only once the attempt record exists, so the prompt naming it pins the read at the spawn, after settleFresh writes the record.
+			name: "amendment target read at the spawn", producer: "Plan-Write", state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) {
+				f.amendmentTarget = func() string {
+					if _, err := loomengine.ReadArbiterAttempt(f.attemptDir(1)); err != nil {
+						return arbiterAbsentPath
+					}
+					return "Plan-Burler-Review"
+				}
+			},
+			wantPromptHas: "Plan-Burler-Review",
+		},
 		{
 			name: "blocked stop carrying a tackler case brief", producer: "Plan-Write", state: shedengine.StateBlocked,
 			setup: func(f *arbiterFixture) {
@@ -446,6 +467,9 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 			}
 			if captured.prompt != spec.Prompt || !strings.Contains(spec.Prompt, verdictPath) || !strings.Contains(spec.Prompt, f.envelopePath) {
 				t.Errorf("prompt.md does not equal the spec prompt, or the prompt lacks the verdict and envelope paths")
+			}
+			if !strings.Contains(spec.Prompt, tt.wantPromptHas) {
+				t.Errorf("prompt lacks %q", tt.wantPromptHas)
 			}
 			if tt.wantBrief && !strings.Contains(spec.Prompt, f.escalationBrief) {
 				t.Errorf("prompt lacks the escalation brief %q", f.escalationBrief)

@@ -134,6 +134,11 @@
 // An absent file passes the gate, and once its re-prompt budget is spent the gate lets the run through, so a verdict that still does not read hands on with cause `unparseable`.
 // The arbiter stencil asks for every free-text value as a literal block scalar, so a `: ` or ` #` in a command or sentence keeps its meaning.
 //
+// The prompt carries `amendment_target`: the run's recipe's `amendment_target` key (loom's `Plan-Burler-Review`; darn and batten set none) once the current generation's plan is approved, and `none` otherwise.
+// It is read at each spawn, since the driver holds its arbiter seams for the whole drive and the plan is approved mid-drive, so a drive that began before approval still routes.
+// The arbiter may then record a plan amendment and name that target as its goto.
+// Each `--amends-plan` call re-admits one goto onto the target, the arbiter's repeats are capped by `arbiter_max_spawns` counted from its attempt records, and scope widening is bounded by the stencil's hand-on rule, since the arbiter's entry joins the answer key Plan-Review and PR-Gate's alignment agent judge against.
+//
 // The stop key is the status file's current producer, history length and state.
 // A re-run for a stop key an attempt already arbitrated spawns nothing:
 // it returns that attempt's verdict, waits on its live arbiter for the time left to its deadline, or stops an arbiter past its deadline through shuttle's stop verb and reads `hand-on` with cause `timeout`.
