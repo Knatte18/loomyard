@@ -10,6 +10,10 @@
 // The PR-Gate producer in this package then owns approval, rejection and the wait for the reviewer;
 // PRGate.Call documents its decision table.
 //
+// PR-Review is the stub of the human pull-request review that is not built yet; PRReview names it for a recipe row.
+// Its call is Done every time: with its flag off it logs nothing, and with its flag on it logs one Info line that the PR review is not built.
+// It opens no pull request, calls no GitHub API, reads no file and takes no lock, and a cancelled context is an error.
+//
 // PR-Align runs between Publish and PR-Gate in a recipe that lists it.
 // For a parent in require_pr_to_base it spawns the alignment agent for the open pull request, once per pull request head, and applies the agent's verdict through RecordApproval and RecordRejection, the same write path `lyx loom approve` and `lyx loom reject` run.
 // It ends Done on every path: alignment switched off, a pull request it cannot align, an escalation, a timeout, any failure and a verdict it must not apply each leave the review to the run's parent, with an AlignmentNote naming the agent's report and the reason.

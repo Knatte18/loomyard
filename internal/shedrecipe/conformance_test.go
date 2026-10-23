@@ -81,6 +81,7 @@ func minimalEntries() map[string]minimalEntry {
 		"SeedChild":        {newTestEnvWithSeedChild, emptyConfig},
 		"WorktreeTeardown": {newTestEnv, emptyConfig},
 		"Command":          {newCommandTestEnv, commandTestConfig},
+		"PRReview":         {newPRReviewTestEnv, prReviewTestConfig},
 	}
 }
 

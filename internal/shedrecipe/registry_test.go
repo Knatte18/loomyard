@@ -99,6 +99,7 @@ func TestNames(t *testing.T) {
 			"MultiLLM",
 			"PRAlign",
 			"PRGate",
+			"PRReview",
 			"PRRework",
 			"PlanWrite",
 			"Preflight",

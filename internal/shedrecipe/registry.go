@@ -46,6 +46,7 @@ var registry = map[string]Constructor{
 	"WorktreeTeardown": worktreeTeardownEntry,
 	"Land":             landEntry,
 	"Command":          commandEntry,
+	"PRReview":         prReviewEntry,
 }
 
 // Lookup resolves name against the registry, returning its Constructor.

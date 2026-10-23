@@ -489,6 +489,9 @@ type Config struct {
 	SkipAlignment       bool   `yaml:"skip_alignment"`
 	AlignmentPRApprove  bool   `yaml:"alignment_pr_approve"`
 
+	// PRReview turns on the PR-Review stub's log line; the stub opens no pull request and acts on nothing either way.
+	PRReview bool `yaml:"pr_review"`
+
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
 	ReviewHardMaxBounces     int `yaml:"review_hard_max_bounces"`
@@ -633,6 +636,7 @@ func ConfigSpec() configengine.Spec {
 			"alignment_timeout_min":      none,
 			"skip_alignment":             guard,
 			"alignment_pr_approve":       guard,
+			"pr_review":                  none,
 			"parent_review_wait_min":     guard,
 			"step_idle_timeout_min":      none,
 			"review_circling_checkpoint": none,

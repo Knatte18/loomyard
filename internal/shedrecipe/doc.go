@@ -38,6 +38,12 @@
 // a row without the key, and a setting holding anything but one implementer name, refuse when the recipe builds.
 // contracts/specs/implementer-spec.md pins what every implementer takes in and delivers.
 //
+// # The PRReview row
+//
+// The PRReview entry builds the PR-Review stub, the seat the human pull-request review will take over.
+// Its one required key, "pr_review_setting", is a `module.key` reference to a bool setting that says whether the stub logs on each call; every other key is refused.
+// A missing key and a setting that is not a bool each refuse when the row is built, with the way forward in the message.
+//
 // # The review segment rows
 //
 // The Bouncer, BurlerReview and BurlerFix rows each take the optional keys "color_segment" and "role_prefix".
@@ -64,7 +70,7 @@
 // BurlerFix reads fixer_fan_setting; naming it makes the row require the round's recorded fan names, and the reference, as `<key> in <module>.yaml`, is the source a refusal cites.
 //
 // A fan value is a fan name or a list of fan names; a null, an empty string and a list of empty names count as no fan, and any other shape is refused.
-// An auto-accept value is a bool, and a null is false.
+// An auto-accept value, like the PRReview flag, is a bool, and a null is false.
 // Every setting a row names is read when the row is built, so a malformed reference, a nil Env.Setting, a lookup error and a value of the wrong shape each refuse before any row runs.
 //
 // The lookup is read-only and answers only template keys of registered config modules, a guard-category key included.
