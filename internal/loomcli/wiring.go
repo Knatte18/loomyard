@@ -153,6 +153,7 @@ func reworkCommitPathspec(location *lyxcwd.Location) []string {
 // It is left out otherwise, since git refuses a pathspec that matches nothing in the index or the working tree;
 // an archived run record alone does not match, because once its deletions are committed nothing under webster's directory is left.
 // A failed tracked check keeps the path, since dropping it could leave the deletions unstaged.
+// The plan amendment record joins when it exists or is tracked, so its removal is staged in the same commit.
 func planCommitPathspec(location *lyxcwd.Location) []string {
 	return planCommitPathspecWith(location, func(rel string) (bool, error) {
 		return fabricengine.PathTracked(location.AnchorPath(), rel)
@@ -163,12 +164,30 @@ func planCommitPathspec(location *lyxcwd.Location) []string {
 func planCommitPathspecWith(location *lyxcwd.Location, tracked func(rel string) (bool, error)) []string {
 	paths := []string{planparser.PlanDirRel()}
 	if holdsFile(websterengine.Dir(location.AnchorPath())) {
-		return append(paths, websterengine.DirRel())
-	}
-	if isTracked, err := tracked(websterengine.DirRel()); err != nil || isTracked {
+		paths = append(paths, websterengine.DirRel())
+	} else if isTracked, err := tracked(websterengine.DirRel()); err != nil || isTracked {
 		paths = append(paths, websterengine.DirRel())
 	}
-	return paths
+	return append(paths, amendmentPathspec(location, tracked)...)
+}
+
+// removeSettledAmendment removes the plan amendment record at amendmentPath when the live settle record in planRunDir judged it:
+// the settle's recorded round start is after the record's latest write.
+// An absent record, or a settle with no recorded round start, removes nothing.
+// A read or removal error is returned, so the commit seam fails and the settle is retried.
+func removeSettledAmendment(amendmentPath, planRunDir string) error {
+	record, found, err := loomshed.ReadAmendment(amendmentPath)
+	if err != nil || !found {
+		return err
+	}
+	roundStart, _, err := shedadapters.SettleRoundStart(planRunDir)
+	if err != nil {
+		return err
+	}
+	if !loomshed.AmendmentSettledBy(record, roundStart) {
+		return nil
+	}
+	return loomshed.RemoveAmendment(amendmentPath)
 }
 
 // holdsFileAt is holdsFile with an empty dir meaning no directory, hence no file.
@@ -873,8 +892,16 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// planparser.PlanDirRel(), never a hand-built filepath.Join naming the _lyx literal, which
 		// the Lyxdirs Single-Declarer Invariant forbids in production path-construction context;
 		// planCommitPathspec adds webster's durable directory when Plan-Write's rotation moved a run record out of it.
+		// An amendment record the settle judged is removed first, so the deletion is staged by the same commit.
 		CommitPlan: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, planCommitPathspec(location), fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			subdir, _, err := loomrecipe.BouncerRunSubdir(loomshed.NamePlanBouncer)
+			if err != nil {
+				return err
+			}
+			if err := removeSettledAmendment(loomengine.LoomAmendmentRecord(location), filepath.Join(loomengine.LoomReviewsDir(location), subdir)); err != nil {
+				return err
+			}
+			_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, planCommitPathspec(location), fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
 		// ApprovePlan is what flips approved: true on the Plan-Bouncer row's approved settle. It runs
