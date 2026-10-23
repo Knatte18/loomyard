@@ -1,12 +1,10 @@
 // patternentry_test.go covers CardPatternEntries, the reader of a card's fenced PATTERN.md entry lines.
 
-package planparser_test
+package planparser
 
 import (
 	"reflect"
 	"testing"
-
-	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
 func TestCardPatternEntries(t *testing.T) {
@@ -14,17 +12,17 @@ func TestCardPatternEntries(t *testing.T) {
 	tests := []struct {
 		name string
 		text string
-		want []planparser.PatternEntryLine
+		want []PatternEntryLine
 	}{
 		{
 			name: "a fenced entry line is read with its ID",
 			text: "# Card 1 — x\n\n```\n- `PATTERN-a` — rule a.\n```\n",
-			want: []planparser.PatternEntryLine{{ID: "PATTERN-a", Line: "- `PATTERN-a` — rule a."}},
+			want: []PatternEntryLine{{ID: "PATTERN-a", Line: "- `PATTERN-a` — rule a."}},
 		},
 		{
 			name: "two fenced lines for one ID are both returned in order",
 			text: "```markdown\n- `PATTERN-a` — first.\n- `PATTERN-b` — b.\n- `PATTERN-a` — second.\n```\n",
-			want: []planparser.PatternEntryLine{
+			want: []PatternEntryLine{
 				{ID: "PATTERN-a", Line: "- `PATTERN-a` — first."},
 				{ID: "PATTERN-b", Line: "- `PATTERN-b` — b."},
 				{ID: "PATTERN-a", Line: "- `PATTERN-a` — second."},
@@ -38,17 +36,17 @@ func TestCardPatternEntries(t *testing.T) {
 		{
 			name: "a line under a tilde fence is read",
 			text: "~~~\n- `PATTERN-a` — tilde.\n~~~\n",
-			want: []planparser.PatternEntryLine{{ID: "PATTERN-a", Line: "- `PATTERN-a` — tilde."}},
+			want: []PatternEntryLine{{ID: "PATTERN-a", Line: "- `PATTERN-a` — tilde."}},
 		},
 		{
 			name: "a line in an unclosed fence is read",
 			text: "```\n- `PATTERN-a` — unclosed.\n",
-			want: []planparser.PatternEntryLine{{ID: "PATTERN-a", Line: "- `PATTERN-a` — unclosed."}},
+			want: []PatternEntryLine{{ID: "PATTERN-a", Line: "- `PATTERN-a` — unclosed."}},
 		},
 		{
 			name: "a CRLF line is returned without its carriage return",
 			text: "```\r\n- `PATTERN-a` — crlf.\r\n```\r\n",
-			want: []planparser.PatternEntryLine{{ID: "PATTERN-a", Line: "- `PATTERN-a` — crlf."}},
+			want: []PatternEntryLine{{ID: "PATTERN-a", Line: "- `PATTERN-a` — crlf."}},
 		},
 		{
 			name: "a card with no fence returns nil",
@@ -59,7 +57,7 @@ func TestCardPatternEntries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := planparser.CardPatternEntries(planparser.Card{Text: tt.text})
+			got := CardPatternEntries(Card{Text: tt.text})
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CardPatternEntries() = %#v; want %#v", got, tt.want)
 			}
