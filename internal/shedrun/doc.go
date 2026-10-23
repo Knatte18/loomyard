@@ -33,6 +33,9 @@
 // DriverLock is the ephemeral Go-driver lock under ScratchDir, distinct from the run lock and the status lock.
 // TacklerDir is the durable directory of a run's tackler attempts, TacklerRel its anchor-relative form and TacklerAttemptDir one attempt's directory (attempt-<N>, 1-based).
 // TacklerMarker is the ephemeral in-flight marker under ScratchDir.
+// CancelMarker is the ephemeral marker `lyx batten cancel` writes, and CancelMarkerLock the lock whose holder is its live writer.
+// Both sit directly under ScratchRoot beside the per-slug scratch directories, never inside RunDir or ScratchDir, so a slug's records removal leaves them.
+// Batten's verbs read the marker.
 // SettleRecords is the Go driver's settle-record file under a run's directory, beside its drive reports.
 // The settle-record format is declared here too: SettleRecord, StopKey, the settler and action names, and ParseSettleRecords, the tolerant decoder that skips a line that does not decode and reports it by line number.
 // The Go driver appends and reads the file.
