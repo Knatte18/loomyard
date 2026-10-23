@@ -808,7 +808,8 @@ type parentMerge struct {
 // The merge is large when it needed the conflict session, or when the parent's changes since the merged tip the merge record names touch a file the task changed.
 // A merge record that cannot be read is logged and read as absent, so the parent side is measured from the task's merge base; a parent already holding the task's work is never large.
 // The merge record is written with the new merged tip and the aligned tip as it was.
-// A large merge keeps the merge commit and reroutes, with no gate run and no fixer.
+// A large merge keeps the merge commit and reroutes, with no gate run and no fixer;
+// a darn Finalize first writes the overlap note naming the parent's changes to the overlapping files since the tip the parent side was measured from.
 // done is false when the merge is within bounds and Call goes on to the gate; otherwise the other values are what Call returns at once.
 func (fz *Finalize) mergeParent(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	reason, err := fz.premerge.clear(finalizeName, fz.deps.ParentBranch)
@@ -869,6 +870,14 @@ func (fz *Finalize) mergeParent(ctx context.Context) (shedengine.Outcome, sheden
 	}
 	if err := WriteMergeRecord(fz.deps.MergeRecordPath, record); err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err), true
+	}
+
+	// A darn run's re-entered Darn-Bouncer reads the note as its review input; a loom run's Code-Perch reads the fixer's report instead.
+	if (merge.conflicted || len(overlap.Files) > 0) && !fz.deps.ConflictReroutes {
+		measured := MergeRecord{ParentBranch: fz.deps.ParentBranch, MergedTip: fz.mergedTipRead(before)}
+		if err := WriteOverlapNote(OverlapNotePath(fz.deps.ScratchDir), measured, overlap.Files); err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err), true
+		}
 	}
 
 	switch {

@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
@@ -269,7 +268,8 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		return loomrecipe.DarnRouting(map[string]int{darnReviewSegment: cfg.ReviewMaxBounces})
 	})
 	c.env.Darn = darnDeps(location, c.runID)
-	c.env.RejectReview = func() (string, time.Time, bool, error) { return darnRejectReview(location) }
+	// The overlap note Finalize writes on a large-merge reroute is the Darn-Bouncer's review input.
+	c.env.ReviewInput = overlapNoteInput(loomengine.LoomScratchDir(location))
 	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate.
 	c.env.DiscussionHistory = discussionHistory(location)
 	c.env.DarnTable = func(told loomshed.DarnTold) (seatengine.Table, error) {

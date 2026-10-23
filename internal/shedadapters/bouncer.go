@@ -199,11 +199,11 @@ type BouncerConfig struct {
 	// FullGeneration makes a changed subject start a full generation with the perch's own budget and hard cap, instead of an amendment.
 	// It is true for a segment whose changed subject is a new subject rather than an amended one.
 	FullGeneration bool
-	// RejectReview reports the review file of the PR-Gate reject a re-entry is told, and when the reject happened.
-	// A found reject later than the settle it follows is recorded in the new generation's record, and the amendment note names it.
+	// ReviewInput reports the file a re-entry is told to review besides the subject's change, and when the file was written.
+	// An input written after the settle re-opens an unchanged subject as an amendment generation, records its path in that generation's record, and the amendment note names it.
 	// An error is returned as the Call's own error, before the run directory is archived.
-	// Nil is the absent value: no reject is recorded.
-	RejectReview func() (path string, rejectedAt time.Time, found bool, err error)
+	// Nil is the absent value: no input is recorded and an unchanged subject always re-settles.
+	ReviewInput func() (path string, writtenAt time.Time, found bool, err error)
 }
 
 // Bouncer is the shedadapters adapter implementing the generic review-gate producer: it composes
@@ -669,6 +669,7 @@ const (
 
 // reenterUnchanged is the re-entry's case 1: a live settle record whose subject is unchanged against the live one is settled again through resettle.
 // It reports handled false, with nothing read from disk when the Subject seam is nil, when there is no live record, the seam answers no subject or the subject changed.
+// It also reports handled false when the ReviewInput seam reports an input written after the record's settle time, which leaves the Call to start a new generation over it.
 func (b *Bouncer) reenterUnchanged() (outcome shedengine.Outcome, ptr shedengine.OutputPointer, handled bool, err error) {
 	if b.cfg.Subject == nil {
 		return "", shedengine.OutputPointer{}, false, nil
@@ -693,6 +694,15 @@ func (b *Bouncer) reenterUnchanged() (outcome shedengine.Outcome, ptr shedengine
 	}
 	if !unchanged {
 		return "", shedengine.OutputPointer{}, false, nil
+	}
+	if !b.cfg.FullGeneration {
+		newer, err := b.keptReviewInput(record.SettledAt)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, true, err
+		}
+		if newer != "" {
+			return "", shedengine.OutputPointer{}, false, nil
+		}
 	}
 	outcome, ptr, err = b.resettle(record)
 	return outcome, ptr, true, err

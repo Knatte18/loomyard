@@ -1,4 +1,4 @@
-// subjects.go builds the identities a Bouncer re-entry compares: the document, code and merge-in subjects of a loom or darn run's review segments, the record head and merge-in-only reads that go with them, and the darn reject file.
+// subjects.go builds the identities a Bouncer re-entry compares: the document, code and merge-in subjects of a loom or darn run's review segments, the record head and merge-in-only reads that go with them, and the review input seams.
 
 package loomcli
 
@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -30,9 +31,6 @@ import (
 // harnessOwnFiles are the worktree-relative files the harness itself writes into a task worktree.
 // A code subject leaves each out of the task's patch while it is untracked.
 var harnessOwnFiles = []string{".scratch_task.json"}
-
-// darnRejectReviewFile is the file in the landing directory that holds a darn PR-Gate reject's findings and its time.
-const darnRejectReviewFile = "reject-review.md"
 
 // planOverviewFile is the plan directory's overview file, whose identity text leaves Approve's flag out.
 const planOverviewFile = "00-overview.md"
@@ -206,38 +204,28 @@ func documentSubjectWithHead(location *lyxcwd.Location, head func() (string, err
 	}
 }
 
-// recordDarnRejection writes a darn PR-Gate reject's findings and time into the landing directory's reject file, replacing an earlier one.
-// It is the body of the RecordRejection seam; the Commit seam then commits the landing directory.
-func recordDarnRejection(location *lyxcwd.Location, rejection loomshed.PendingRejection) error {
-	path := filepath.Join(loomengine.LandingDir(location), darnRejectReviewFile)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("loom: create the landing directory for the reject file: %w", err)
-	}
-	body := "```yaml\nrejected_at: " + rejection.RejectedAt + "\n```\n\n" + strings.TrimSpace(rejection.Findings) + "\n"
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		return fmt.Errorf("loom: write the reject file: %w", err)
-	}
-	return nil
+// fixerReportInput returns the review input seam of a loom run: the merge fixer's latest Merge-In report under scratchDir, with the time it was written.
+// A session that never ran leaves no report, which answers not found.
+func fixerReportInput(scratchDir string) func() (string, time.Time, bool, error) {
+	return reviewInputFile(filepath.Join(scratchDir, loomshed.NameMergeIn+"-fixer-report.md"))
 }
 
-// darnRejectReview reads the reject file recordDarnRejection wrote: its path and the rejection time.
-// An absent file answers not found; a file without the time header or with a time that is not RFC 3339 is an error.
-func darnRejectReview(location *lyxcwd.Location) (string, time.Time, bool, error) {
-	path := filepath.Join(loomengine.LandingDir(location), darnRejectReviewFile)
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", time.Time{}, false, nil
+// overlapNoteInput returns the review input seam of a darn run: the overlap note Finalize writes under scratchDir on a large-merge reroute, with the time it was written.
+// A run that never rerouted leaves no note, which answers not found.
+func overlapNoteInput(scratchDir string) func() (string, time.Time, bool, error) {
+	return reviewInputFile(landingshed.OverlapNotePath(scratchDir))
+}
+
+// reviewInputFile returns the seam that reports the file at path and its modification time, and not found while the file is absent.
+func reviewInputFile(path string) func() (string, time.Time, bool, error) {
+	return func() (string, time.Time, bool, error) {
+		info, err := os.Stat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", time.Time{}, false, nil
+		}
+		if err != nil {
+			return "", time.Time{}, false, fmt.Errorf("loom: read the review input %s: %w", path, err)
+		}
+		return path, info.ModTime(), true, nil
 	}
-	if err != nil {
-		return "", time.Time{}, false, fmt.Errorf("loom: read the reject file: %w", err)
-	}
-	lines := strings.SplitN(string(data), "\n", 4)
-	if len(lines) < 3 || lines[0] != "```yaml" || !strings.HasPrefix(lines[1], "rejected_at: ") || lines[2] != "```" {
-		return "", time.Time{}, false, fmt.Errorf("loom: the reject file %s has no rejected_at header", path)
-	}
-	rejectedAt, err := time.Parse(time.RFC3339, strings.TrimPrefix(lines[1], "rejected_at: "))
-	if err != nil {
-		return "", time.Time{}, false, fmt.Errorf("loom: the reject file %s rejected_at: %w", path, err)
-	}
-	return path, rejectedAt, true, nil
 }

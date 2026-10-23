@@ -921,10 +921,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		CodeSubject:     func() (shedadapters.Subject, bool, error) { return codeSubject(location, c.runID) },
 		MergeInOnly:     parentMergeInOnly(location),
 		RecordHead:      recordHead(location),
-		// RejectReview is the findings file of the latest PR-Gate reject that PR-Rework kept in its rework directory.
-		RejectReview: func() (string, time.Time, bool, error) {
-			return loomshed.LatestRejectReview(loomengine.LoomReworkDir(location))
-		},
+		// ReviewInput is the merge fixer's latest Merge-In report, so a report newer than the Code-Perch's settled verdict re-opens the perch as an amendment over it.
+		ReviewInput: fixerReportInput(loomengine.LoomScratchDir(location)),
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge; it reads committed state on demand and opens nothing at wire time.
 		SkipPlanReview: func() (bool, error) { return loomshed.PlanReviewSkippable(reworkDeps) },
 		// ReworkTable is evaluated per Call like PlanTable above, so the stencil is read at call time.

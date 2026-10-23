@@ -250,9 +250,9 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	default:
 		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q or %q, got %q", "subject", shedadapters.SubjectDocument, shedadapters.SubjectCode, subjectKind)
 	}
-	var rejectReview func() (string, time.Time, bool, error)
+	var reviewInput func() (string, time.Time, bool, error)
 	if subject != nil {
-		rejectReview = env.RejectReview
+		reviewInput = env.ReviewInput
 	}
 
 	// Slug and SegmentBounces are both optional:
@@ -299,7 +299,7 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		MergeInOnly:       mergeInOnly,
 		SettledBase:       settledBase,
 		AmendAllowance:    segment.AmendMaxBounces,
-		RejectReview:      rejectReview,
+		ReviewInput:       reviewInput,
 
 		BlockingEscalates: blockingEscalates,
 		ColorSegment:      colorSegment,

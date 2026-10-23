@@ -100,6 +100,12 @@ Do not flag any of the following as a finding:
 
 When the note above is not `none`, this round reviews an amendment: review only the change it names, and report nothing about the settled remainder.
 
+## Review input
+
+When the amendment note names a review input, that file is the merge fixer's report of the latest Merge-In, written after this perch last settled.
+Read it as an input besides the diff: judge from it whether the alignment the fixer made, and the parent changes it reports on, keep the code consistent with the decision record and the plan.
+A finding about the report itself is never raised; each finding is about the code.
+
 ## Finding class
 
 Every finding carries one class: `design`, `scope`, `decision` or `consistency`.

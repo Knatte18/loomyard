@@ -1,4 +1,4 @@
-// subjects_test.go drives the document and merge-in subjects and the darn reject file over plain directories, with no git.
+// subjects_test.go drives the document and merge-in subjects and the review input seams over plain directories, with no git.
 
 package loomcli
 
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -125,35 +126,40 @@ func TestDocumentSubject(t *testing.T) {
 	})
 }
 
-// TestDarnRejectReview asserts the reject file recordDarnRejection writes is read back with its path and time, an absent file reads as not found, and a time that does not parse is an error.
-func TestDarnRejectReview(t *testing.T) {
+// TestReviewInputSeams asserts each review input seam answers not found while its file is absent under the scratch directory, and the file's path with its modification time once it is there.
+func TestReviewInputSeams(t *testing.T) {
 	t.Parallel()
+	tests := []struct {
+		name string
+		seam func(scratchDir string) func() (string, time.Time, bool, error)
+		path func(scratchDir string) string
+	}{
+		{"FixerReport", fixerReportInput, func(scratchDir string) string {
+			return filepath.Join(scratchDir, loomshed.NameMergeIn+"-fixer-report.md")
+		}},
+		{"OverlapNote", overlapNoteInput, landingshed.OverlapNotePath},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			scratchDir := t.TempDir()
+			seam := tt.seam(scratchDir)
+			if path, _, found, err := seam(); err != nil || found {
+				t.Fatalf("seam() with no file = %q, %v, %v; want not found, nil", path, found, err)
+			}
 
-	location := subjectLocation(t)
-	if path, _, found, err := darnRejectReview(location); err != nil || found {
-		t.Fatalf("darnRejectReview() with no file = %q, %v, %v; want not found, nil", path, found, err)
-	}
-
-	rejection := loomshed.PendingRejection{RejectedAt: "2026-06-01T10:00:00Z", Findings: "- the diff drops the retry\n"}
-	if err := recordDarnRejection(location, rejection); err != nil {
-		t.Fatalf("recordDarnRejection() = %v; want nil", err)
-	}
-	path, rejectedAt, found, err := darnRejectReview(location)
-	if err != nil || !found {
-		t.Fatalf("darnRejectReview() = %q, %v, %v; want the file, found, nil", path, found, err)
-	}
-	if want := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC); !rejectedAt.Equal(want) {
-		t.Errorf("darnRejectReview() rejectedAt = %v; want %v", rejectedAt, want)
-	}
-	if body, _ := os.ReadFile(path); !strings.Contains(string(body), rejection.Findings) {
-		t.Errorf("reject file = %q; want it to hold the findings %q", body, rejection.Findings)
-	}
-
-	rejection.RejectedAt = "yesterday"
-	if err := recordDarnRejection(location, rejection); err != nil {
-		t.Fatalf("recordDarnRejection() = %v; want nil", err)
-	}
-	if _, _, _, err := darnRejectReview(location); err == nil {
-		t.Error("darnRejectReview() with an unparseable time = nil; want an error")
+			want := tt.path(scratchDir)
+			if err := os.WriteFile(want, []byte("input\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) = %v; want nil", want, err)
+			}
+			writtenAt := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+			if err := os.Chtimes(want, writtenAt, writtenAt); err != nil {
+				t.Fatalf("Chtimes(%q) = %v; want nil", want, err)
+			}
+			path, gotAt, found, err := seam()
+			if err != nil || !found || path != want || !gotAt.Equal(writtenAt) {
+				t.Errorf("seam() = %q, %v, %v, %v; want %q, %v, found, nil", path, gotAt, found, err, want, writtenAt)
+			}
+		})
 	}
 }

@@ -243,9 +243,9 @@ type Env struct {
 	// RecordHead reads the record head a document segment's settled artifacts stand at, told to a Bouncer whose subject is "document" as its settled base.
 	// Nil is legal for a caller whose Bouncer rows name no document subject.
 	RecordHead func() (string, error)
-	// RejectReview reports the review file of the PR-Gate reject a re-entry is told, and when the reject happened, told to every Bouncer whose subject key is set.
-	// Nil is legal and means a reject with no review file.
-	RejectReview func() (path string, rejectedAt time.Time, found bool, err error)
+	// ReviewInput reports the file a re-entered review is told to review besides the subject's change, and when the file was written, told to every Bouncer whose subject key is set.
+	// Nil is legal and means a review with no input file.
+	ReviewInput func() (path string, writtenAt time.Time, found bool, err error)
 	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per
 	// Call, returning the reflection's status string. It arrives as a closure, following
 	// CommitWebster/CommitDiscussion/ApprovePlan, because the reflection's dependencies are already

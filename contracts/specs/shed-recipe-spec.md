@@ -55,7 +55,7 @@ The value is the segment name the entry is filed under, so a recipe test pins it
 A `Bouncer` row's optional `subject` key takes one of exactly two literal values, `document` and `code`, and selects the seams that tell the Bouncer what its segment judges.
 `document` selects `Env.DocumentSubject`, told the row's resolved artifact paths, and `Env.RecordHead`, told as the settled base.
 `code` selects `Env.CodeSubject` and `Env.MergeInOnly`.
-Every kind also tells the Bouncer `Env.RejectReview`, which stays optional, and the segment's `AmendMaxBounces` as the amendment allowance.
+Every kind also tells the Bouncer `Env.ReviewInput`, which stays optional, and the segment's `AmendMaxBounces` as the amendment allowance.
 It follows the same two rules as `commit_seam`: absent tells no subject and keeps the Bouncer on its clear-and-reseed path, and a present key naming a seam the `Env` does not carry is a construction error naming that seam.
 An unknown value is a construction error naming the key, the value and the two legal ones.
 

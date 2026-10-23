@@ -63,6 +63,8 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 		wantMergeCommit string
 		wantOverlap     []string
 		wantUpToDate    bool
+		// wantNote are the fragments the overlap note holds; nil means no note is written.
+		wantNote []string
 	}{
 		{
 			name: "an up-to-date merge proceeds to the gate", loom: true, merge: fabricengine.MergeResult{AlreadyUpToDate: true}, record: "keep",
@@ -80,6 +82,19 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 		{
 			name: "a darn conflict runs the conflict session and reroutes as a large merge", merge: committed, session: true, record: "keep",
 			wantReroute: true, wantInReason: "conflict session", wantChanged: []string{"p1..p2", "b0..t1"}, wantRecord: true, wantMergeCommit: "t2",
+			wantNote: []string{"conflict session", "since p1"},
+		},
+		{
+			name: "a darn overlap reroute writes the note from the merged tip the record names", merge: committed, record: "keep",
+			paths:       map[string][]string{"p1..p2": {"a.go", "b.go"}, "b0..t1": {"b.go", "c.go"}},
+			wantReroute: true, wantInReason: "b.go", wantChanged: []string{"p1..p2", "b0..t1"}, wantRecord: true, wantMergeCommit: "t2", wantOverlap: []string{"b.go"},
+			wantNote: []string{"since its tip p1", "- b.go", "git diff p1 "},
+		},
+		{
+			name: "a darn overlap reroute with no merge record writes the note from the task's merge base", merge: committed, record: "absent",
+			paths:       map[string][]string{"b0..p2": {"x.go"}, "b0..t1": {"x.go"}},
+			wantReroute: true, wantInReason: "x.go", wantChanged: []string{"b0..p2", "b0..t1"}, wantRecord: true, wantMergeCommit: "t2", wantOverlap: []string{"x.go"},
+			wantNote: []string{"since its tip b0", "- x.go", "git diff b0 "},
 		},
 		{
 			name: "an overlapping parent change reroutes with the merge commit kept", loom: true, merge: committed, record: "keep",
@@ -154,6 +169,18 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 				}
 			} else if outcome != shedengine.Done || gate.fake.verifyCalls != 1 {
 				t.Fatalf("Call() = %q, %+v with %d verify call(s); want Done after one", outcome, ptr, gate.fake.verifyCalls)
+			}
+			note, noteErr := os.ReadFile(OverlapNotePath(deps.ScratchDir))
+			if tt.wantNote == nil {
+				if noteErr == nil {
+					t.Errorf("overlap note = %q; want none written", note)
+				}
+			} else {
+				for _, fragment := range tt.wantNote {
+					if !strings.Contains(string(note), fragment) {
+						t.Errorf("overlap note = %q, %v; want it to hold %q", note, noteErr, fragment)
+					}
+				}
 			}
 			if taskMerger.aborted != tt.wantAborted {
 				t.Errorf("MergeAbort ran = %v; want %v", taskMerger.aborted, tt.wantAborted)

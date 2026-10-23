@@ -942,9 +942,9 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if !reflect.DeepEqual(c.env.Segments, wantSegments) {
 		t.Errorf("Segments = %+v; want %+v", c.env.Segments, wantSegments)
 	}
-	// envkit.NilSeams skips RejectReview through nilLegal, so a direct check pins that wire tells it.
-	if c.env.RejectReview == nil {
-		t.Error("c.env.RejectReview = nil; want the rework directory's reject reader")
+	// envkit.NilSeams skips ReviewInput through nilLegal, so a direct check pins that wire tells it.
+	if c.env.ReviewInput == nil {
+		t.Error("c.env.ReviewInput = nil; want the merge fixer report reader")
 	}
 
 	// Per-round fan lists reach each segment's Bouncer and review row, and the fixer fan lists the review rows alone.

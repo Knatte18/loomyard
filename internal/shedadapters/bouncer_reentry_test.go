@@ -159,6 +159,33 @@ func openFindingLedger(t *testing.T) func(round int) string {
 	}
 }
 
+// reentryInputRow settles round 1 over an unchanged subject, then re-enters it with a review input written offset after the settle.
+// It checks whether the Call starts an amendment generation over the input or re-settles with no spawn.
+func reentryInputRow(name string, offset time.Duration, wantAmendment bool) amendmentRow {
+	const inputPath = "/review/review-input.md"
+	return amendmentRow{name, func(t *testing.T) {
+		verdict := "CONVERGED"
+		h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInput(inputPath, offset))
+		if err := h.settleRoundOne(nil); err != nil {
+			t.Fatalf("first Call() error = %v; want nil", err)
+		}
+		before := len(h.shuttle.Specs)
+
+		if wantAmendment {
+			shedfake.RequireOutcome(t, h.b, shedengine.Stuck)
+			if generation := h.generation(); generation.Number != 2 || !generation.Amendment || generation.ReviewInput != inputPath {
+				t.Errorf("generation record = %+v; want generation 2, an amendment over %q", generation, inputPath)
+			}
+			return
+		}
+		shedfake.RequireOutcome(t, h.b, shedengine.Done)
+		if got := len(h.shuttle.Specs); got != before {
+			t.Errorf("shuttle runs = %d; want %d, no spawn on a re-settle", got, before)
+		}
+		assertNoArchivedRunDirSibling(t, h.cfg.RunDir)
+	}}
+}
+
 //testtiming:keep pins the settle record's writes and the re-entry cases over a settled verdict, whose spawn-free and clearing paths no other test reaches
 func TestBouncer_Reentry(t *testing.T) {
 	t.Parallel()
@@ -461,6 +488,8 @@ func TestBouncer_Reentry(t *testing.T) {
 			}
 			h.requireNoSpawn()
 		}},
+		reentryInputRow("NewerReviewInputOverAnUnchangedSubjectStartsAnAmendment", time.Hour, true),
+		reentryInputRow("OlderReviewInputOverAnUnchangedSubjectReSettles", -time.Hour, false),
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

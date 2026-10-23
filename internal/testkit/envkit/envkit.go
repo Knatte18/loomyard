@@ -116,7 +116,7 @@ var nilLegal = map[string]bool{
 	"CodeSubject":                       true,
 	"MergeInOnly":                       true,
 	"RecordHead":                        true,
-	"RejectReview":                      true,
+	"ReviewInput":                       true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
@@ -369,7 +369,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		},
 		MergeInOnly:     func(string) (bool, error) { return false, nil },
 		RecordHead:      func() (string, error) { return "record-head", nil },
-		RejectReview:    func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+		ReviewInput:     func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
 		ReflectFriction: func() string { return "skipped" },
 		ReworkTable: func(loomshed.ReworkTold) (seatengine.Table, error) {
 			return seatengine.Table{

@@ -126,14 +126,15 @@
 //     SettleRoundStart reads it from the live record.
 //     A settle with no known round start, a round-0 settle, an absent usage record and a record written before the field existing among them, carries none and reads as unknown.
 //     Re-entry over a settled verdict then has four cases:
-//     a live settle record over an unchanged subject re-settles with no spawn, re-running the carry-over (except for a round-0 record), Approve and Commit and keeping the settle time;
+//     a live settle record over an unchanged subject re-settles with no spawn, re-running the carry-over (except for a round-0 record), Approve and Commit and keeping the settle time,
+//     unless BouncerConfig.ReviewInput reports an input written after the settle time, which starts an amendment generation over the input instead;
 //     a live record over a changed subject, and a generation record whose judge subject differs from the live one, start a new generation;
 //     a generation record whose judge subject equals the live one settles the verdict as a harvest;
 //     and no record at all clears and re-seeds.
 //     A record that is not live settles on the round-by-round path and never clears.
 //     A new generation archives the run directory, the records travelling along, and writes the generation record with the next number, then seeds.
 //     For every segment but one with BouncerConfig.FullGeneration it is an amendment under the BouncerConfig.AmendAllowance:
-//     the record carries the Amendment mark, the base (the settle record's, or the judge base after the third case) and the path of the PR-Gate reject's review file when BouncerConfig.RejectReview reports a reject later than the settle or judge time,
+//     the record carries the Amendment mark, the base (the settle record's, or the judge base after the third case) and the path of the review input when BouncerConfig.ReviewInput reports an input written after the settle or judge time,
 //     and AmendmentNote renders from it the note the rubric's optional `amendment` marker is filled with, which scopes the seed, the reviewers and the judge to the change:
 //     for a document the artifacts' change since the base commit, for code the stored settle-record.patch against the working-tree diff at the current merge base.
 //     An amendment spends the allowance clamped to the Bounces seam's budget, and its hard cap is the allowance plus one clamped to HardCap;
