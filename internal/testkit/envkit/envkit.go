@@ -159,6 +159,13 @@ func (noopAlignmentSession) MarkApplied(alignment.Attempt, string, bool) error {
 
 func (noopAlignmentSession) Attempts() ([]alignment.Attempt, error) { return nil, nil }
 
+// noopFixerSeats is a fixer seat runner that starts nothing and ends at once.
+type noopFixerSeats struct{}
+
+func (noopFixerSeats) Run(seatengine.Table) (seatengine.Result, error) {
+	return seatengine.Result{}, nil
+}
+
 // LandingDeps returns a `landingshed.Deps` with every field the Publish and Finalize constructors require, filled with told values derived from dir.
 func LandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
@@ -192,11 +199,18 @@ func LandingDeps(dir string) landingshed.Deps {
 		ReadParentTips: func(bool) (fabricengine.ParentTips, error) {
 			return fabricengine.ParentTips{Local: "tip", Upstream: "tip", Relation: fabricengine.ParentEqual}, nil
 		},
-		HoldsWork:         func(string, string) (bool, error) { return false, nil },
-		ChangedPaths:      func(string, string) ([]string, error) { return nil, nil },
-		MergeBase:         func(string) (string, error) { return "base", nil },
-		MergeRecordPath:   landingshed.MergeRecordPath(filepath.Join(dir, "landing-scratch")),
-		MergeReviewedPath: landingshed.MergeReviewedPath(filepath.Join(dir, "landing-scratch")),
+		HoldsWork:          func(string, string) (bool, error) { return false, nil },
+		ChangedPaths:       func(string, string) ([]string, error) { return nil, nil },
+		MergeBase:          func(string) (string, error) { return "base", nil },
+		MergeRecordPath:    landingshed.MergeRecordPath(filepath.Join(dir, "landing-scratch")),
+		MergeReviewedPath:  landingshed.MergeReviewedPath(filepath.Join(dir, "landing-scratch")),
+		FixerSeats:         noopFixerSeats{},
+		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
+		PlanDir:            filepath.Join(dir, "plan"),
+		LineChange:         func(string, string) (fabricengine.LineChange, error) { return fabricengine.LineChange{}, nil },
+		IsTestFile:         func(string) bool { return false },
+		RowEntry:           func(string) (int, error) { return 1, nil },
+		TaskRemoteTip:      func() (string, error) { return "", nil },
 		Alignment: landingshed.AlignmentDeps{
 			Config:   func() (landingshed.AlignmentConfig, error) { return landingshed.AlignmentConfig{Off: true}, nil },
 			Session:  noopAlignmentSession{},

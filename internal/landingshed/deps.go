@@ -320,6 +320,23 @@ type Deps struct {
 	MergeRecordPath   string
 	MergeReviewedPath string
 
+	// FixerSeats is the seat runner the merge fixer session runs on, which `*seatengine.Engine` satisfies.
+	// Merge-In and Finalize run the fixer through it, and the fixer loop refuses to run without it.
+	FixerSeats fixerSeats
+	// DecisionRecordPath is the run's decision record, which the fixer session reads.
+	DecisionRecordPath string
+	// PlanDir is the run's plan directory, which the fixer session reads; empty for a darn run, which has none.
+	PlanDir string
+	// LineChange reads the paths, line count and added lines of the change between two commits of the task pair, which the fixer's caps judge.
+	LineChange func(from, to string) (fabricengine.LineChange, error)
+	// IsTestFile reports whether a slash-separated repository-relative path is a test file of the run's language, which the fixer's kind cap judges.
+	IsTestFile func(path string) bool
+	// RowEntry answers the current entry of the named row from the run's status history, so a row's attempt record keeps one identity across its resumes.
+	RowEntry func(row string) (int, error)
+	// TaskRemoteTip reads the task branch's remote-tracking tip, `origin/<task branch>`, without a fetch, and answers "" when there is none.
+	// A push the fixer session makes from the task pair updates that ref, so a changed tip shows the push.
+	TaskRemoteTip func() (string, error)
+
 	// Alignment is the PR-Align producer's told seams: the alignment agent's session, its config and snapshot reads, its static prompt fields and the note record it leaves for PR-Gate.
 	// PR-Gate reads only Alignment.NotePath, and an empty one reads no note.
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
