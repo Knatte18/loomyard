@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -124,32 +123,6 @@ func TestDocumentSubject(t *testing.T) {
 			t.Error("subject after creating the path = the absent subject; want a changed one")
 		}
 	})
-}
-
-// TestMergeSubject asserts the merge-in's subject is read from the merge record alone: none answers not found, and another merged tip changes the subject.
-func TestMergeSubject(t *testing.T) {
-	t.Parallel()
-
-	location := subjectLocation(t)
-	if subject, found, err := mergeSubject(location); err != nil || found {
-		t.Fatalf("mergeSubject() with no merge record = %+v, %v, %v; want not found, nil", subject, found, err)
-	}
-
-	recordPath := landingshed.MergeRecordPath(loomengine.LoomScratchDir(location))
-	if err := landingshed.WriteMergeRecord(recordPath, landingshed.MergeRecord{MergedTip: "aaa", MergeCommit: "mmm"}); err != nil {
-		t.Fatalf("WriteMergeRecord() = %v; want nil", err)
-	}
-	first, found, err := mergeSubject(location)
-	if err != nil || !found || first.Kind != shedadapters.SubjectMerge || first.Hash == "" {
-		t.Fatalf("mergeSubject() = %+v, %v, %v; want a merge subject with a hash, found, nil", first, found, err)
-	}
-
-	if err := landingshed.WriteMergeRecord(recordPath, landingshed.MergeRecord{MergedTip: "bbb", MergeCommit: "mmm"}); err != nil {
-		t.Fatalf("WriteMergeRecord() = %v; want nil", err)
-	}
-	if second, _, _ := mergeSubject(location); second.Hash == first.Hash {
-		t.Errorf("mergeSubject() hash after another merged tip = %q; want it to differ from %q", second.Hash, first.Hash)
-	}
 }
 
 // TestDarnRejectReview asserts the reject file recordDarnRejection writes is read back with its path and time, an absent file reads as not found, and a time that does not parse is an error.

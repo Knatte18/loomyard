@@ -95,9 +95,6 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	if env.WebsterRecord != nil {
 		notes.WebsterRecord = env.WebsterRecord()
 	}
-	if env.MergeReview != nil {
-		notes.MergeReview = env.MergeReview()
-	}
 	profile, err := burlerRoundProfile(profileCfg, env.StencilsDir, env.SpecsDir, notes)
 	if err != nil {
 		return nil, err

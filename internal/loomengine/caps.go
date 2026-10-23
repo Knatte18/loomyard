@@ -16,12 +16,10 @@ const (
 	PerchPlan Perch = "plan"
 	// PerchCode is the Code-Review perch.
 	PerchCode Perch = "code"
-	// PerchMerge is the Merge-Review perch.
-	PerchMerge Perch = "merge"
 )
 
 // reviewPerches lists the loom review perches, the one place ConfigSpec, LoadConfig and ValidateLocalValues take them from.
-var reviewPerches = []Perch{PerchDiscussion, PerchPlan, PerchCode, PerchMerge}
+var reviewPerches = []Perch{PerchDiscussion, PerchPlan, PerchCode}
 
 // reviewPerchNames returns reviewPerches' names as reviewbudget takes them.
 func reviewPerchNames() []string {
@@ -43,8 +41,6 @@ func (cfg Config) Caps(p Perch) reviewbudget.Caps {
 		ownSoft, ownHard = cfg.PlanMaxBounces, cfg.PlanHardMaxBounces
 	case PerchCode:
 		ownSoft, ownHard = cfg.CodeMaxBounces, cfg.CodeHardMaxBounces
-	case PerchMerge:
-		ownSoft, ownHard = cfg.MergeMaxBounces, cfg.MergeHardMaxBounces
 	}
 	return reviewbudget.Resolve(string(p), cfg.ReviewMaxBounces, cfg.ReviewHardMaxBounces, ownSoft, ownHard)
 }

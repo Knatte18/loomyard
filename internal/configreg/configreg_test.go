@@ -80,7 +80,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 		"claude":  {"binary", "deny_agent_tool", "deny_ask_user_question"},
 		"reed":    {"debug_log", "mouse", "shell", "tmux", "tmux_conf"},
 		"shuttle": {"deny_python", "run_dir"},
-		"loom":    {"alignment", "alignment_pr_approve", "code_auto_accept", "code_fixer_fan", "code_reviewer_fan", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "merge_auto_accept", "merge_fixer_fan", "merge_reviewer_fan", "parent_review_wait_min", "plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan", "skip_alignment"},
+		"loom":    {"alignment", "alignment_pr_approve", "code_auto_accept", "code_fixer_fan", "code_reviewer_fan", "discussion_advisors", "discussion_auto_accept", "discussion_fixer_fan", "discussion_lenses", "discussion_reviewer_fan", "parent_review_wait_min", "plan_auto_accept", "plan_fixer_fan", "plan_lenses", "plan_reviewer_fan", "skip_alignment"},
 		"lenses":  {"fans", "lens_set", "lenses", "remove"},
 	}
 	for _, m := range Modules() {
@@ -266,9 +266,9 @@ func TestLookup(t *testing.T) {
 		{"loom", true, []string{
 			"reviewer_model", "fixer_model",
 			"discussion_reviewer_model", "discussion_fixer_model", "plan_reviewer_model", "plan_fixer_model",
-			"code_reviewer_model", "code_fixer_model", "merge_reviewer_model", "merge_fixer_model",
-			"discussion_reviewer_fan", "plan_reviewer_fan", "code_reviewer_fan", "merge_reviewer_fan",
-			"discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan", "merge_fixer_fan",
+			"code_reviewer_model", "code_fixer_model",
+			"discussion_reviewer_fan", "plan_reviewer_fan", "code_reviewer_fan",
+			"discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan",
 			"discussion_advisors",
 		}},
 		{"darn", true, []string{"darn_reviewer_model", "darn_fixer_model", "darn_reviewer_fan", "darn_fixer_fan", "tree_scope"}},

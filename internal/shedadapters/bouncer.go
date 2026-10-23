@@ -91,9 +91,6 @@ type BouncerConfig struct {
 	// WebsterRecord returns the note the rubric's webster_record marker is filled from, called each time the seed or judge reads the rubric.
 	// Nil renders `none`.
 	WebsterRecord func() string
-	// MergeReview returns the note the rubric's merge_review marker is filled from, called each time the seed or judge reads the rubric.
-	// Nil renders `none`.
-	MergeReview func() string
 	// RubricStencil is the stencilstore name of the rubric this Bouncer's judge applies.
 	RubricStencil string
 	// Models holds the already-resolved seed and judge pairs, threaded verbatim into the shuttleengine.Spec of each pass.
@@ -200,7 +197,7 @@ type BouncerConfig struct {
 	// It never applies to a FullGeneration.
 	AmendAllowance int
 	// FullGeneration makes a changed subject start a full generation with the perch's own budget and hard cap, instead of an amendment.
-	// It is true for a segment whose changed subject is a new subject, such as a changed merge-in.
+	// It is true for a segment whose changed subject is a new subject rather than an amended one.
 	FullGeneration bool
 	// RejectReview reports the review file of the PR-Gate reject a re-entry is told, and when the reject happened.
 	// A found reject later than the settle it follows is recorded in the new generation's record, and the amendment note names it.
@@ -1539,9 +1536,6 @@ func (b *Bouncer) rubricNotes() RubricNotes {
 	notes := RubricNotes{GateTiers: b.cfg.GateTiers, Amendment: AmendmentNote(b.cfg.RunDir)}
 	if b.cfg.WebsterRecord != nil {
 		notes.WebsterRecord = b.cfg.WebsterRecord()
-	}
-	if b.cfg.MergeReview != nil {
-		notes.MergeReview = b.cfg.MergeReview()
 	}
 	return notes
 }

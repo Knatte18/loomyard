@@ -51,9 +51,9 @@
 // "role_prefix" leads their sessions' roles, as <prefix>-bouncer-seed, <prefix>-bouncer-judge, <prefix>-burler-review and <prefix>-burler-fix, so reed's strand, window and bar names tell the segments apart;
 // a value agentname.ValidateRole rejects is refused when the row is built, before any spawn.
 //
-// The Bouncer also takes the optional key "subject", "document", "code" or "merge", which selects the Env seams that tell it what its segment judges:
-// "document" selects Env.DocumentSubject and Env.RecordHead, "code" Env.CodeSubject and Env.MergeInOnly, and "merge" Env.MergeSubject and a full generation over a changed subject.
-// A named seam the Env does not carry, and a value outside the three, are refused when the row is built; an absent key tells no subject.
+// The Bouncer also takes the optional key "subject", "document" or "code", which selects the Env seams that tell it what its segment judges:
+// "document" selects Env.DocumentSubject and Env.RecordHead, and "code" Env.CodeSubject and Env.MergeInOnly.
+// A named seam the Env does not carry, and a value outside the two, are refused when the row is built; an absent key tells no subject.
 // BurlerReview renders the amendment note of its run directory into the rubric's amendment marker.
 //
 // # Segment settings and row settings

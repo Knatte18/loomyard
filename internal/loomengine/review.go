@@ -21,16 +21,14 @@ import (
 type ReviewSettings struct {
 	// Models holds the resolved shared reviewer and fixer model lists, the fallback of every segment whose own key is empty.
 	Models burlerengine.RoundModels
-	// Discussion, Plan, Code and Merge hold each loom review segment's resolved models: its own list where loom.yaml sets one, else the shared list in Models.
+	// Discussion, Plan and Code hold each loom review segment's resolved models: its own list where loom.yaml sets one, else the shared list in Models.
 	Discussion burlerengine.RoundModels
 	Plan       burlerengine.RoundModels
 	Code       burlerengine.RoundModels
-	Merge      burlerengine.RoundModels
-	// DiscussionKeys, PlanKeys, CodeKeys and MergeKeys name the config keys each of those segments' models came from.
+	// DiscussionKeys, PlanKeys and CodeKeys name the config keys each of those segments' models came from.
 	DiscussionKeys SegmentKeys
 	PlanKeys       SegmentKeys
 	CodeKeys       SegmentKeys
-	MergeKeys      SegmentKeys
 	// Timeout is one review round's shuttle-run deadline, derived from cfg.ReviewTimeoutMin.
 	Timeout time.Duration
 }
@@ -162,7 +160,6 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 		{loomSegmentModelSource("discussion", cfg.DiscussionReviewerModel, cfg.DiscussionFixerModel), &settings.Discussion, &settings.DiscussionKeys},
 		{loomSegmentModelSource("plan", cfg.PlanReviewerModel, cfg.PlanFixerModel), &settings.Plan, &settings.PlanKeys},
 		{loomSegmentModelSource("code", cfg.CodeReviewerModel, cfg.CodeFixerModel), &settings.Code, &settings.CodeKeys},
-		{loomSegmentModelSource("merge", cfg.MergeReviewerModel, cfg.MergeFixerModel), &settings.Merge, &settings.MergeKeys},
 	} {
 		*segment.models, *segment.keys, err = resolveSegmentModels(segment.source, settings.Models, reg)
 		if err != nil {

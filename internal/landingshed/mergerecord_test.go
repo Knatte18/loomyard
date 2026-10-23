@@ -1,4 +1,4 @@
-// mergerecord_test.go covers the merge record codec, the overlap computation, the skip decision, the reviewed-tip hand-over and the review note.
+// mergerecord_test.go covers the merge record codec, the overlap computation and the reviewed-tip hand-over.
 
 package landingshed
 
@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -105,30 +104,6 @@ func TestComputeOverlap(t *testing.T) {
 	}
 }
 
-func TestMergeRecord_SkipsReview(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		rec  MergeRecord
-		want bool
-	}{
-		{"up to date", MergeRecord{UpToDate: true, Overlap: Overlap{Files: []string{"a"}}}, true},
-		{"empty overlap", MergeRecord{}, true},
-		{"a shared file", MergeRecord{Overlap: Overlap{Files: []string{"a"}}}, false},
-		{"a shared package", MergeRecord{Overlap: Overlap{Packages: []string{"p"}}}, false},
-		{"a pattern change", MergeRecord{Overlap: Overlap{Pattern: []string{"PATTERN.md"}}}, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := tt.rec.SkipsReview(); got != tt.want {
-				t.Errorf("SkipsReview() = %v; want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestRecordMergeReviewed(t *testing.T) {
 	t.Parallel()
 
@@ -162,32 +137,6 @@ func TestRecordMergeReviewed(t *testing.T) {
 		}
 		if _, found, err := ReadReviewedTip(filepath.Join(scratch, "none")); found || err != nil {
 			t.Errorf("ReadReviewedTip(absent) = found %v, err %v; want not found, nil", found, err)
-		}
-	})
-}
-
-func TestMergeReviewNote(t *testing.T) {
-	t.Parallel()
-
-	t.Run("a record renders its ranges, merge commit and overlap", func(t *testing.T) {
-		t.Parallel()
-		recordPath := MergeRecordPath(t.TempDir())
-		if err := WriteMergeRecord(recordPath, sampleMergeRecord()); err != nil {
-			t.Fatal(err)
-		}
-		note := MergeReviewNote(recordPath)
-		for _, want := range []string{"`bbb222..aaa111`", "`ccc333..ddd444`", "eee555", "`internal/x/a.go`", "`internal/x`", "`PATTERN.md`"} {
-			if !strings.Contains(note, want) {
-				t.Errorf("note lacks %q:\n%s", want, note)
-			}
-		}
-	})
-
-	t.Run("a missing record falls back to the whole merge-in diff", func(t *testing.T) {
-		t.Parallel()
-		note := MergeReviewNote(MergeRecordPath(t.TempDir()))
-		if !strings.Contains(note, "whole merge-in diff of the latest merge") {
-			t.Errorf("note = %q; want the whole-diff fallback", note)
 		}
 	})
 }

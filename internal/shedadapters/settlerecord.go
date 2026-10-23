@@ -27,13 +27,11 @@ const (
 	SubjectDocument = "document"
 	// SubjectCode is a code segment's subject: the task's diff against its merge base.
 	SubjectCode = "code"
-	// SubjectMerge is a merge-in's subject, identified by the merge-in's own identity hash.
-	SubjectMerge = "merge"
 )
 
 // Subject is the identity of what a review segment judges, compared to tell a re-entry over an unchanged subject from one over a changed subject.
 // Kind is one of the Subject constants.
-// Hash is a document's identity-text hash or a merge-in's identity.
+// Hash is a document's identity-text hash.
 // MergeBase, Head, FullHash and PatchID describe a code segment: the merge base and the branch head the diff was taken at, the hash of the full diff and the diff's patch-id.
 // Base is the amendment base read with the subject, the record head a document settled at or a code segment's merge base, and Patch is a code segment's full diff.
 // Base and Patch are never encoded: a record holds them beside the subject.
@@ -49,7 +47,7 @@ type Subject struct {
 }
 
 // Unchanged reports whether s is the same subject as settled.
-// A document or a merge-in is unchanged when its Kind and Hash are equal.
+// A document is unchanged when its Kind and Hash are equal.
 // A code segment is unchanged when its merge base is the settled one and its FullHash is equal.
 // It is also unchanged when the merge base moved, mergeInOnly(settled.Head) reports that the history since then holds only merge-ins, and the PatchID is equal.
 // A nil mergeInOnly reads a moved merge base as changed, and a mergeInOnly error is returned.
@@ -62,7 +60,7 @@ func (s Subject) Unchanged(settled Subject, mergeInOnly func(since string) (bool
 		return false, nil
 	}
 	switch s.Kind {
-	case SubjectDocument, SubjectMerge:
+	case SubjectDocument:
 		return s.Hash == settled.Hash, nil
 	case SubjectCode:
 		if s.MergeBase == settled.MergeBase {

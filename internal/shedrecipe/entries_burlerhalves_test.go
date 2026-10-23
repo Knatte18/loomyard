@@ -191,17 +191,6 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 		}
 	})
 
-	t.Run("FillsTheMergeReviewNote", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.MergeReview = func() string { return "A merge note." }
-		writeStencil(t, env.StencilsDir, "round-rubric", "Merge: {{.merge_review}}\n")
-
-		profile, _ := captureReview(t, "review-row", stencilCfg, env)
-		if profile.Rubric != "Merge: A merge note.\n" {
-			t.Errorf("profile.Rubric = %q; want the env's merge review note filled into the marker", profile.Rubric)
-		}
-	})
-
 	t.Run("FillsTheAmendmentNote", func(t *testing.T) {
 		env := newTestEnv(t)
 		writeStencil(t, env.StencilsDir, "round-rubric", "Amendment: {{.amendment}}\n")

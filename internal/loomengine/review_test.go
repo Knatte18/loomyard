@@ -29,12 +29,11 @@ func TestResolveReview(t *testing.T) {
 		ReviewerModel:    burlerengine.ModelSpecList{"opus[effort=high]", "sonnet[medium]"},
 		FixerModel:       burlerengine.ModelSpecList{"opus[effort=low]"},
 		ReviewTimeoutMin: 240,
-		// Discussion sets its fixer list only, Plan and Merge their reviewer list only, and Code leaves both unset (one empty entry, as the template loads).
+		// Discussion sets its fixer list only, Plan its reviewer list only, and Code leaves both unset (one empty entry, as the template loads).
 		DiscussionFixerModel: burlerengine.ModelSpecList{"sonnet[effort=high]"},
 		PlanReviewerModel:    burlerengine.ModelSpecList{"sonnet[effort=low]", "opus[effort=high]"},
 		CodeReviewerModel:    burlerengine.ModelSpecList{""},
 		CodeFixerModel:       burlerengine.ModelSpecList{""},
-		MergeReviewerModel:   burlerengine.ModelSpecList{"sonnet[effort=low]"},
 	}
 
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
@@ -68,9 +67,6 @@ func TestResolveReview(t *testing.T) {
 	if !reflect.DeepEqual(settings.Code, settings.Models) {
 		t.Errorf("ResolveReview(...).Code = %+v; want the run-wide %+v", settings.Code, settings.Models)
 	}
-	if got := settings.Merge; len(got.Review) != 1 || got.Review[0].Effort != "low" || !reflect.DeepEqual(got.Fix, settings.Models.Fix) {
-		t.Errorf("ResolveReview(...).Merge = %+v; want a one-entry low-effort review list and the run-wide fix list", got)
-	}
 	wantTimeout := 240 * time.Minute
 	if settings.Timeout != wantTimeout {
 		t.Errorf("ResolveReview(...).Timeout = %s; want %s", settings.Timeout, wantTimeout)
@@ -85,7 +81,6 @@ func TestResolveReview(t *testing.T) {
 		{"Discussion", settings.DiscussionKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("discussion_fixer_model")}},
 		{"Plan", settings.PlanKeys, SegmentKeys{Review: loomKey("plan_reviewer_model"), Fix: loomKey("fixer_model")}},
 		{"Code", settings.CodeKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("fixer_model")}},
-		{"Merge", settings.MergeKeys, SegmentKeys{Review: loomKey("merge_reviewer_model"), Fix: loomKey("fixer_model")}},
 	} {
 		if tt.got != tt.want {
 			t.Errorf("ResolveReview(...).%sKeys = %+v; want %+v", tt.segment, tt.got, tt.want)
@@ -109,7 +104,7 @@ func TestResolveReview(t *testing.T) {
 	cfg.PlanReviewerFan = lenses.FanList{"", "full"}
 	cfg.DiscussionFixerFan = lenses.FanList{"fix-discussion"}
 	cfg.CodeReviewerFan = lenses.FanList{"review-code"}
-	cfg.MergeFixerFan = lenses.FanList{"fix-code"}
+	cfg.CodeFixerFan = lenses.FanList{"fix-code"}
 	fanned, err := ResolveReview(cfg, reg)
 	if err != nil {
 		t.Fatalf("ResolveReview(fanned cfg) = _, %v; want nil error", err)
@@ -285,9 +280,9 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 			},
 		},
 		{
-			name:   "merge_fixer_model entry",
-			role:   "merge_fixer_model",
-			cfg:    Config{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]"}, MergeFixerModel: burlerengine.ModelSpecList{"ghost"}},
+			name:   "code_fixer_model entry",
+			role:   "code_fixer_model",
+			cfg:    Config{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]"}, CodeFixerModel: burlerengine.ModelSpecList{"ghost"}},
 			wantIn: []string{"entry 1", "in loom.yaml"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveReview(cfg, reg)

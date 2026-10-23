@@ -114,7 +114,6 @@ var nilLegal = map[string]bool{
 	"Command.ExecutableSetting":         true,
 	"DocumentSubject":                   true,
 	"CodeSubject":                       true,
-	"MergeSubject":                      true,
 	"MergeInOnly":                       true,
 	"RecordHead":                        true,
 	"RejectReview":                      true,
@@ -356,21 +355,15 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				}},
 			}, nil
 		},
-		CommitPlan:         func() error { return nil },
-		ApprovePlan:        func() error { return nil },
-		SkipPlanReview:     func() (bool, error) { return false, nil },
-		SkipMergeReview:    func() (bool, error) { return false, nil },
-		ApproveMergeReview: func() error { return nil },
-		MergeReview:        func() string { return "none" },
-		CarryOver:          func(discussionparser.CarryOver) error { return nil },
+		CommitPlan:     func() error { return nil },
+		ApprovePlan:    func() error { return nil },
+		SkipPlanReview: func() (bool, error) { return false, nil },
+		CarryOver:      func(discussionparser.CarryOver) error { return nil },
 		DocumentSubject: func([]string) (shedadapters.Subject, bool, error) {
 			return shedadapters.Subject{Kind: shedadapters.SubjectDocument, Hash: "document-hash"}, true, nil
 		},
 		CodeSubject: func() (shedadapters.Subject, bool, error) {
 			return shedadapters.Subject{Kind: shedadapters.SubjectCode, MergeBase: "merge-base", Head: "head", FullHash: "full-hash", PatchID: "patch-id"}, true, nil
-		},
-		MergeSubject: func() (shedadapters.Subject, bool, error) {
-			return shedadapters.Subject{Kind: shedadapters.SubjectMerge, Hash: "merge-hash"}, true, nil
 		},
 		MergeInOnly:     func(string) (bool, error) { return false, nil },
 		RecordHead:      func() (string, error) { return "record-head", nil },

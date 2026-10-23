@@ -228,15 +228,6 @@ type Env struct {
 	// SkipPlanReview is the injected closure answering whether the live plan generation skips its Plan-Review judge, read by the Bouncer entry's skip_seam key.
 	// An error makes the Bouncer review for real.
 	SkipPlanReview func() (bool, error)
-	// SkipMergeReview is the injected closure answering whether the merge-in needs no review, read by the Bouncer entry's skip_seam key.
-	// An error makes the Bouncer review for real.
-	SkipMergeReview func() (bool, error)
-	// ApproveMergeReview is the injected closure recording the merge review as finished, read by the Bouncer entry's approve_seam key.
-	// It runs on every approved settle of that Bouncer, a skip included.
-	ApproveMergeReview func() error
-	// MergeReview returns the merge record note the Merge-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
-	// Nil renders `none`.
-	MergeReview func() string
 	// CarryOver is the injected closure that writes and commits one review segment's carry-over entry into the decision record, read by the Bouncer entry's carry_over key.
 	// It is run-wide, and the entry the Bouncer passes names its own segment.
 	CarryOver func(discussionparser.CarryOver) error
@@ -246,9 +237,6 @@ type Env struct {
 	// CodeSubject is the injected closure reading a code segment's subject, read by the Bouncer entry's subject key when it is "code".
 	// Nil is legal for a caller whose Bouncer rows name no code subject.
 	CodeSubject func() (shedadapters.Subject, bool, error)
-	// MergeSubject is the injected closure reading a merge-in's subject, read by the Bouncer entry's subject key when it is "merge".
-	// Nil is legal for a caller whose Bouncer rows name no merge subject.
-	MergeSubject func() (shedadapters.Subject, bool, error)
 	// MergeInOnly reports whether the history since the commit since holds only merge-ins, told to a Bouncer whose subject is "code".
 	// Nil is legal for a caller whose Bouncer rows name no code subject.
 	MergeInOnly func(since string) (bool, error)

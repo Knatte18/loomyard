@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -159,19 +158,6 @@ func patchSkipEntries(location *lyxcwd.Location, runID string) []string {
 		skip = append(skip, filepath.ToSlash(rel)+"/")
 	}
 	return append(skip, harnessOwnFiles...)
-}
-
-// mergeSubject returns the identity of the merge-in the merge record names: its merged tip and merge commit.
-// No merge record answers not found.
-func mergeSubject(location *lyxcwd.Location) (shedadapters.Subject, bool, error) {
-	record, found, err := landingshed.ReadMergeRecord(landingshed.MergeRecordPath(loomengine.LoomScratchDir(location)))
-	if err != nil || !found {
-		return shedadapters.Subject{}, false, err
-	}
-	digest := sha256.New()
-	writeSubjectPart(digest, "merged_tip", "value", []byte(record.MergedTip))
-	writeSubjectPart(digest, "merge_commit", "value", []byte(record.MergeCommit))
-	return shedadapters.Subject{Kind: shedadapters.SubjectMerge, Hash: hex.EncodeToString(digest.Sum(nil))}, true, nil
 }
 
 // recordHead returns the reader of the commit the run records' checkout stands at.

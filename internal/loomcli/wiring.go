@@ -919,7 +919,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// Each reads on demand and opens nothing at wire time.
 		DocumentSubject: documentSubjectWithHead(location, recordHead(location)),
 		CodeSubject:     func() (shedadapters.Subject, bool, error) { return codeSubject(location, c.runID) },
-		MergeSubject:    func() (shedadapters.Subject, bool, error) { return mergeSubject(location) },
 		MergeInOnly:     parentMergeInOnly(location),
 		RecordHead:      recordHead(location),
 		// RejectReview is the findings file of the latest PR-Gate reject that PR-Rework kept in its rework directory.
@@ -928,22 +927,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge; it reads committed state on demand and opens nothing at wire time.
 		SkipPlanReview: func() (bool, error) { return loomshed.PlanReviewSkippable(reworkDeps) },
-		// SkipMergeReview answers from the merge record alone, so an absent or unreadable record reviews the whole merge-in diff.
-		SkipMergeReview: func() (bool, error) {
-			record, found, err := landingshed.ReadMergeRecord(landingshed.MergeRecordPath(loomengine.LoomScratchDir(location)))
-			if err != nil || !found {
-				return false, nil
-			}
-			return record.SkipsReview(), nil
-		},
-		// ApproveMergeReview records the merged tip as reviewed on every approved settle of the Merge-Bouncer, a skip included.
-		ApproveMergeReview: func() error {
-			scratchDir := loomengine.LoomScratchDir(location)
-			return landingshed.RecordMergeReviewed(landingshed.MergeRecordPath(scratchDir), landingshed.MergeReviewedPath(scratchDir))
-		},
-		MergeReview: func() string {
-			return landingshed.MergeReviewNote(landingshed.MergeRecordPath(loomengine.LoomScratchDir(location)))
-		},
 		// ReworkTable is evaluated per Call like PlanTable above, so the stencil is read at call time.
 		// The values the session is told arrive from the PR-Rework producer, which decides them.
 		ReworkTable: func(told loomshed.ReworkTold) (seatengine.Table, error) {
@@ -1045,7 +1028,6 @@ var loomPerches = map[string]loomengine.Perch{
 	loomshed.NameDiscussionBouncer: loomengine.PerchDiscussion,
 	loomshed.NamePlanBouncer:       loomengine.PerchPlan,
 	loomshed.NameCodeBouncer:       loomengine.PerchCode,
-	loomshed.NameMergeBouncer:      loomengine.PerchMerge,
 }
 
 // loomSegmentPerches maps each loom review segment's name to its review perch, the table the segment settings are read through.
@@ -1054,7 +1036,6 @@ var loomSegmentPerches = map[string]loomengine.Perch{
 	"Discussion-Review": loomengine.PerchDiscussion,
 	"Plan-Review":       loomengine.PerchPlan,
 	"Code-Review":       loomengine.PerchCode,
-	"Merge-Review":      loomengine.PerchMerge,
 }
 
 // loomSegmentBudgets maps each loom review segment to its perch's resolved soft bounce cap, the value loomSegmentSettings puts in MaxBounces.
@@ -1069,25 +1050,22 @@ func loomSegmentBudgets(cfg loomengine.Config) map[string]int {
 }
 
 // loomSegmentSettings builds one shedrecipe.SegmentSettings per loom review segment.
-// Models and their keys come from review, the Bouncer pair from judge (the Merge segment takes the Code pair), and the budget and hard cap with their keys from cfg.Caps, which resolves them through reviewbudget.
+// Models and their keys come from review, the Bouncer pair from judge, and the budget and hard cap with their keys from cfg.Caps, which resolves them through reviewbudget.
 func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings, judge loomengine.JudgeSettings) map[string]shedrecipe.SegmentSettings {
 	models := map[loomengine.Perch]burlerengine.RoundModels{
 		loomengine.PerchDiscussion: review.Discussion,
 		loomengine.PerchPlan:       review.Plan,
 		loomengine.PerchCode:       review.Code,
-		loomengine.PerchMerge:      review.Merge,
 	}
 	keys := map[loomengine.Perch]loomengine.SegmentKeys{
 		loomengine.PerchDiscussion: review.DiscussionKeys,
 		loomengine.PerchPlan:       review.PlanKeys,
 		loomengine.PerchCode:       review.CodeKeys,
-		loomengine.PerchMerge:      review.MergeKeys,
 	}
 	bouncers := map[loomengine.Perch]loomengine.BouncerModels{
 		loomengine.PerchDiscussion: judge.Discussion,
 		loomengine.PerchPlan:       judge.Plan,
 		loomengine.PerchCode:       judge.Code,
-		loomengine.PerchMerge:      judge.Code,
 	}
 	settings := make(map[string]shedrecipe.SegmentSettings, len(loomSegmentPerches))
 	for segment, perch := range loomSegmentPerches {

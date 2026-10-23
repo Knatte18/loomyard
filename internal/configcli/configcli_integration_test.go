@@ -340,15 +340,15 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read the board loom.yaml: %v", err)
 		}
-		// webster_fan holds a value under the old name alone, and merge_fan sits beside the new name it was renamed to.
-		// The hub base is sparse, so the new name is planted for merge_fan to sit beside.
+		// webster_fan holds a value under the old name alone, and plan_fan sits beside the new name it was renamed to.
+		// The hub base is sparse, so the new name is planted for plan_fan to sit beside.
 		var planted []string
 		for _, line := range strings.Split(strings.TrimRight(string(current), "\n"), "\n") {
-			if !strings.HasPrefix(line, "code_reviewer_fan:") && !strings.HasPrefix(line, "merge_reviewer_fan:") {
+			if !strings.HasPrefix(line, "code_reviewer_fan:") && !strings.HasPrefix(line, "plan_reviewer_fan:") {
 				planted = append(planted, line)
 			}
 		}
-		planted = append(planted, "webster_fan: review-code", "merge_reviewer_fan: review-code", "merge_fan: stale-fan")
+		planted = append(planted, "webster_fan: review-code", "plan_reviewer_fan: review-plan", "plan_fan: stale-fan")
 		before := []byte(strings.Join(planted, "\n") + "\n")
 		if err := os.WriteFile(loomFile, before, 0o644); err != nil {
 			t.Fatalf("plant old keys in the board loom.yaml: %v", err)
@@ -377,7 +377,7 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Errorf("dry-run loom entry = %v; want layer default, seed hub, applied false", loom)
 		}
 		migrated := fmt.Sprint(loom["migrated"])
-		for _, want := range []string{"webster_fan", "merge_fan"} {
+		for _, want := range []string{"webster_fan", "plan_fan"} {
 			if !strings.Contains(migrated, want) {
 				t.Errorf("dry-run loom migrated = %s; want it to name %s", migrated, want)
 			}
@@ -453,12 +453,12 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read the board loom.yaml: %v", err)
 		}
-		for _, want := range []string{"\ncode_reviewer_fan: review-code", "\nmerge_reviewer_fan:"} {
+		for _, want := range []string{"\ncode_reviewer_fan: review-code", "\nplan_reviewer_fan: review-plan"} {
 			if !strings.Contains(string(after), want) {
 				t.Errorf("applied board loom.yaml lacks %q; got %q", want, after)
 			}
 		}
-		for _, gone := range []string{"\nwebster_fan:", "\nwebster_reviewer_fan:", "\nmerge_fan:", "stale-fan"} {
+		for _, gone := range []string{"\nwebster_fan:", "\nwebster_reviewer_fan:", "\nplan_fan:", "stale-fan"} {
 			if strings.Contains(string(after), gone) {
 				t.Errorf("applied board loom.yaml still holds %q; got %q", gone, after)
 			}

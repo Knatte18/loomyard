@@ -379,7 +379,6 @@ func TestWire_DefaultConfig(t *testing.T) {
 			"Discussion-Review": want.Discussion,
 			"Plan-Review":       want.Plan,
 			"Code-Review":       want.Code,
-			"Merge-Review":      want.Merge,
 		} {
 			if got := c.env.Segments[segment].Models; !reflect.DeepEqual(got, wantModels) {
 				t.Errorf("c.env.Segments[%q].Models = %+v; want %+v", segment, got, wantModels)
@@ -446,13 +445,6 @@ func TestWire_DefaultConfig(t *testing.T) {
 	t.Run("commit status seam is filled", func(t *testing.T) {
 		if c.shedPaths.CommitStatus == nil {
 			t.Error("c.shedPaths.CommitStatus = nil; want a non-nil seam")
-		}
-	})
-
-	// The template's merge_max_bounces is 1, so the Merge-Review segment has a budget.
-	t.Run("merge review stays on by default", func(t *testing.T) {
-		if budget := c.env.Segments["Merge-Review"].MaxBounces; budget == 0 {
-			t.Error("c.env.Segments[Merge-Review].MaxBounces = 0; want a non-zero budget under the template")
 		}
 	})
 
@@ -868,8 +860,8 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 
 // TestWire_ReviewKeysReachTheEnv verifies the loom.yaml keys that tune a review round reach the Env:
 // plan_reviewer_model lands in the Plan-Review segment's models alone, and Discussion-Review takes the template's per-round discussion_reviewer_model with the run-wide fix models.
-// Code-Review and Merge-Review take the template's own reviewer and fixer models (one sonnet entry of effort medium each).
-// plan_judge, seed and code_seed land in each segment's Bouncer pair, Merge-Review taking Code-Review's.
+// Code-Review takes the template's own reviewer and fixer models (one sonnet entry of effort medium each).
+// plan_judge, seed and code_seed land in each segment's Bouncer pair.
 // The per-perch budget and hard cap keys land in each segment's MaxBounces and HardMaxBounces, and every segment's entry is pinned whole.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	t.Parallel()
@@ -877,7 +869,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	loc := hubLocation(t, "pair", ".")
 	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{
 		"plan_reviewer_model": "opus[effort=low]", "plan_judge": "opus[effort=high]", "seed": "haiku[effort=low]", "code_seed": "opus[effort=low]",
-		"plan_max_bounces": "2", "code_max_bounces": "1", "code_auto_accept": "true", "merge_max_bounces": "0",
+		"plan_max_bounces": "2", "code_max_bounces": "1", "code_auto_accept": "true",
 		"plan_hard_max_bounces": "5",
 	})
 
@@ -900,11 +892,6 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "low"},
 			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet", Effort: "medium"},
 		},
-		// The merge review takes Code-Review's pair.
-		"Merge-Review": {
-			Seed:  shuttleengine.ModelChoice{Engine: "claude", Model: "opus", Effort: "low"},
-			Judge: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet", Effort: "medium"},
-		},
 	}
 
 	// Discussion-Review keeps the run-wide models, which the other segments' fixers fall back to.
@@ -916,14 +903,12 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	if !reflect.DeepEqual(plan.Fix, shared.Fix) {
 		t.Errorf("Segments[Plan-Review].Models.Fix = %+v; want the run-wide %+v", plan.Fix, shared.Fix)
 	}
-	for _, segment := range []string{"Code-Review", "Merge-Review"} {
-		webster := c.env.Segments[segment].Models
-		if len(webster.Review) != 1 || webster.Review[0].Model != "sonnet" || webster.Review[0].Effort != "medium" {
-			t.Errorf("Segments[%q].Models.Review = %+v; want one sonnet entry of effort medium", segment, webster.Review)
-		}
-		if len(webster.Fix) != 1 || webster.Fix[0].Model != "sonnet" || webster.Fix[0].Effort != "medium" {
-			t.Errorf("Segments[%q].Models.Fix = %+v; want one sonnet entry of effort medium", segment, webster.Fix)
-		}
+	code := c.env.Segments["Code-Review"].Models
+	if len(code.Review) != 1 || code.Review[0].Model != "sonnet" || code.Review[0].Effort != "medium" {
+		t.Errorf("Segments[Code-Review].Models.Review = %+v; want one sonnet entry of effort medium", code.Review)
+	}
+	if len(code.Fix) != 1 || code.Fix[0].Model != "sonnet" || code.Fix[0].Effort != "medium" {
+		t.Errorf("Segments[Code-Review].Models.Fix = %+v; want one sonnet entry of effort medium", code.Fix)
 	}
 	if c.env.WebsterRecord == nil {
 		t.Error("c.env.WebsterRecord = nil; want the closure over loomshed.WebsterRecordNote")
@@ -932,7 +917,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 
 	// Each loom segment's entry joins the models, keys and Bouncer pair with its resolved budget and hard cap:
-	// plan_max_bounces, code_max_bounces, merge_max_bounces and plan_hard_max_bounces name their own keys, the rest fall back to the run-wide ones.
+	// plan_max_bounces, code_max_bounces and plan_hard_max_bounces name their own keys, the rest fall back to the run-wide ones.
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
 	wantSegments := map[string]shedrecipe.SegmentSettings{
 		"Discussion-Review": {
@@ -953,12 +938,6 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 			MaxBounces: 1, MaxBouncesKey: "code_max_bounces",
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
-		"Merge-Review": {
-			Models: c.env.Segments["Merge-Review"].Models, ReviewKey: loomKey("merge_reviewer_model"), FixKey: loomKey("merge_fixer_model"),
-			Bouncer:    wantBouncerModels["Merge-Review"],
-			MaxBounces: 0, MaxBouncesKey: "merge_max_bounces",
-			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
-		},
 	}
 	if !reflect.DeepEqual(c.env.Segments, wantSegments) {
 		t.Errorf("Segments = %+v; want %+v", c.env.Segments, wantSegments)
@@ -970,7 +949,6 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 
 	// Per-round fan lists reach each segment's Bouncer and review row, and the fixer fan lists the review rows alone.
 	// A fanned reviewer runs on its segment's own reviewer list, discussion_reviewer_model here.
-	// Merge-Review keeps the shared fixer while Code-Review's own fixer is set.
 	fannedLoc := hubLocation(t, "pair", ".")
 	seedLoomConfigWithKeys(t, fannedLoc.AnchorPath(), map[string]string{
 		"discussion_reviewer_fan":   "\n  - \"\"\n  - review-discussion",
@@ -978,9 +956,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		"discussion_fixer_fan":      "fix-discussion",
 		"plan_fixer_fan":            "\n  - fix-plan\n  - \"\"",
 		"code_reviewer_fan":         "review-code",
-		"merge_reviewer_fan":        "\n  - review-code\n  - \"\"",
 		"code_fixer_fan":            "fix-code",
-		"merge_fixer_fan":           "\n  - \"\"\n  - fix-code",
 		"discussion_reviewer_model": "opus[effort=low]",
 		"code_fixer_model":          "sonnet[low]",
 	})
@@ -1005,46 +981,6 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 	if got := discussion.Models.Review; len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
 		t.Errorf("Segments[Discussion-Review].Models.Review = %+v; want the discussion_reviewer_model entry, opus of effort low", got)
-	}
-}
-
-// TestWire_MergeReviewSeams verifies the merge review seams read the run's merge record.
-// The skip seam answers false with no record and the record's skip decision once one exists.
-// The approve seam records the merged tip as reviewed, the note renders the record, and merge_max_bounces: 0 reaches the Env.
-func TestWire_MergeReviewSeams(t *testing.T) {
-	t.Parallel()
-
-	loc := hubLocation(t, "pair", ".")
-	seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"merge_max_bounces": "0"})
-	c := &loomCLI{runID: shedrun.SelfRunID}
-	if err := c.wire(loc, loc.AnchorPath()); err != nil {
-		t.Fatalf("wire() = %v; want nil", err)
-	}
-
-	if budget := c.env.Segments["Merge-Review"].MaxBounces; budget != 0 {
-		t.Errorf("c.env.Segments[Merge-Review].MaxBounces = %d; want 0 from merge_max_bounces: 0", budget)
-	}
-	if skip, err := c.env.SkipMergeReview(); err != nil || skip {
-		t.Errorf("SkipMergeReview() with no record = %v, %v; want false, nil", skip, err)
-	}
-
-	scratchDir := loomengine.LoomScratchDir(loc)
-	record := landingshed.MergeRecord{ParentBranch: "main", MergedTip: "m9", ReviewedTip: "r1", TaskBase: "b1", TaskHead: "h1", UpToDate: true}
-	if err := landingshed.WriteMergeRecord(landingshed.MergeRecordPath(scratchDir), record); err != nil {
-		t.Fatalf("WriteMergeRecord() = %v; want nil", err)
-	}
-	if skip, err := c.env.SkipMergeReview(); err != nil || !skip {
-		t.Errorf("SkipMergeReview() over an up-to-date record = %v, %v; want true, nil", skip, err)
-	}
-	if note := c.env.MergeReview(); !strings.Contains(note, "`r1..m9`") {
-		t.Errorf("MergeReview() = %q; want the parent range r1..m9", note)
-	}
-
-	if err := c.env.ApproveMergeReview(); err != nil {
-		t.Fatalf("ApproveMergeReview() = %v; want nil", err)
-	}
-	if tip, found, err := landingshed.ReadReviewedTip(landingshed.MergeReviewedPath(scratchDir)); err != nil || !found || tip != "m9" {
-		t.Errorf("reviewed tip = %q, %v, %v; want m9 recorded", tip, found, err)
 	}
 }
 

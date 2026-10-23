@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// noNote is what the optional webster_record, merge_review and amendment markers render as when their note is blank.
+// noNote is what the optional webster_record, gate_tiers and amendment markers render as when their note is blank.
 const noNote = "none"
 
 // RubricNotes are the optional notes a rubric's markers are filled from.
@@ -19,8 +19,6 @@ const noNote = "none"
 type RubricNotes struct {
 	// WebsterRecord fills the webster_record marker, the rendered webster run record only the Plan-Review rubric carries.
 	WebsterRecord string
-	// MergeReview fills the merge_review marker, the rendered merge record only the Merge-Review rubric carries.
-	MergeReview string
 	// GateTiers fills the gate_tiers marker, the rendered tier and gate-list lines only the Plan-Review rubric carries.
 	GateTiers string
 	// Amendment fills the amendment marker, the note that scopes an amendment generation's review to the change since its base.
@@ -57,7 +55,6 @@ func ReadRubric(stencilsDir, name, specsDir string, notes RubricNotes) (string, 
 		"specs_dir":      specsDir,
 		"stencils_dir":   stencilsDir,
 		"webster_record": noteOrNone(notes.WebsterRecord),
-		"merge_review":   noteOrNone(notes.MergeReview),
 		"gate_tiers":     noteOrNone(notes.GateTiers),
 		"amendment":      noteOrNone(notes.Amendment),
 	})

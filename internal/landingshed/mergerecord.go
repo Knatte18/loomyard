@@ -1,4 +1,4 @@
-// mergerecord.go — the merge record Merge-In writes and the merge review reads.
+// mergerecord.go — the merge record Merge-In writes and the reviewed-tip file.
 //
 // The record and the reviewed-tip file live in the run's told scratch directory, so they stay under `.lyx` and are never committed.
 // This package derives no path of its own beyond the two fixed file names joined onto that directory.
@@ -150,46 +150,4 @@ func sortedUnique(list []string) []string {
 	}
 	slices.Sort(list)
 	return slices.Compact(list)
-}
-
-// SkipsReview reports whether the merge needs no review: an up-to-date merge, or one whose overlap lists are all empty.
-// Bound: it skips only when the git-computed sides share no file, no Go package and no PATTERN change.
-func (r MergeRecord) SkipsReview() bool {
-	return r.UpToDate || (len(r.Overlap.Files) == 0 && len(r.Overlap.Packages) == 0 && len(r.Overlap.Pattern) == 0)
-}
-
-// MergeReviewNote renders the merge review's subject as the markdown note the rubric's merge_review marker carries.
-// A missing or unreadable record at recordPath renders a note telling the reviewer to review the whole merge-in diff of the latest merge of the parent into the task.
-func MergeReviewNote(recordPath string) string {
-	rec, found, err := ReadMergeRecord(recordPath)
-	if err != nil || !found {
-		return "No merge record is available.\n" +
-			"Review the whole merge-in diff of the latest merge of the parent into the task.\n"
-	}
-
-	mergeCommit := rec.MergeCommit
-	if mergeCommit == "" {
-		mergeCommit = "none (the merge was up to date)"
-	}
-	var note strings.Builder
-	fmt.Fprintf(&note, "Review how the task's code interacts with what `%s` gained in this merge.\n\n", rec.ParentBranch)
-	fmt.Fprintf(&note, "- Parent range: `%s..%s`\n", rec.ReviewedTip, rec.MergedTip)
-	fmt.Fprintf(&note, "- Task range: `%s..%s`\n", rec.TaskBase, rec.TaskHead)
-	fmt.Fprintf(&note, "- Merge commit: %s\n", mergeCommit)
-	fmt.Fprintf(&note, "- Overlapping files: %s\n", noteList(rec.Overlap.Files))
-	fmt.Fprintf(&note, "- Overlapping packages: %s\n", noteList(rec.Overlap.Packages))
-	fmt.Fprintf(&note, "- Changed pattern files: %s\n", noteList(rec.Overlap.Pattern))
-	return note.String()
-}
-
-// noteList renders list as comma-separated code spans, or "none" when it is empty.
-func noteList(list []string) string {
-	if len(list) == 0 {
-		return "none"
-	}
-	quoted := make([]string, len(list))
-	for i, item := range list {
-		quoted[i] = "`" + item + "`"
-	}
-	return strings.Join(quoted, ", ")
 }

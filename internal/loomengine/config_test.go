@@ -107,16 +107,12 @@ func templateConfig() Config {
 		PlanFixerModel:           burlerengine.ModelSpecList{""},
 		CodeReviewerModel:        burlerengine.ModelSpecList{"sonnet[medium]"},
 		CodeFixerModel:           burlerengine.ModelSpecList{"sonnet[medium]"},
-		MergeReviewerModel:       burlerengine.ModelSpecList{"sonnet[medium]"},
-		MergeFixerModel:          burlerengine.ModelSpecList{"sonnet[medium]"},
 		DiscussionReviewerFan:    lenses.FanList{"review-discussion", ""},
 		PlanReviewerFan:          lenses.FanList{"review-plan", ""},
 		CodeReviewerFan:          lenses.FanList{"review-code", ""},
-		MergeReviewerFan:         lenses.FanList{"review-code", ""},
 		DiscussionFixerFan:       lenses.FanList{"fix-discussion"},
 		PlanFixerFan:             lenses.FanList{"fix-plan"},
 		CodeFixerFan:             lenses.FanList{"fix-code"},
-		MergeFixerFan:            lenses.FanList{"fix-code"},
 		Judge:                    "sonnet[medium]",
 		ReviewTimeoutMin:         240,
 		Friction:                 "sonnet[medium]",
@@ -145,9 +141,6 @@ func templateConfig() Config {
 		DiscussionAutoAccept:     false,
 		PlanAutoAccept:           false,
 		CodeAutoAccept:           true,
-		MergeMaxBounces:          intPtr(1),
-		MergeHardMaxBounces:      0,
-		MergeAutoAccept:          true,
 	}
 }
 
@@ -177,12 +170,12 @@ review_timeout_min: 240
 			name:       "empty fan keys never read a malformed lenses.yaml",
 			lensesYAML: malformedLensesYAML,
 			values: map[string]string{
-				"discussion_reviewer_fan": `""`, "plan_reviewer_fan": `""`, "code_reviewer_fan": `""`, "merge_reviewer_fan": `""`,
-				"discussion_fixer_fan": `""`, "plan_fixer_fan": `""`, "code_fixer_fan": `""`, "merge_fixer_fan": `""`,
+				"discussion_reviewer_fan": `""`, "plan_reviewer_fan": `""`, "code_reviewer_fan": `""`,
+				"discussion_fixer_fan": `""`, "plan_fixer_fan": `""`, "code_fixer_fan": `""`,
 			},
 			mutate: func(c *Config) {
-				c.DiscussionReviewerFan, c.PlanReviewerFan, c.CodeReviewerFan, c.MergeReviewerFan = lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}
-				c.DiscussionFixerFan, c.PlanFixerFan, c.CodeFixerFan, c.MergeFixerFan = lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}
+				c.DiscussionReviewerFan, c.PlanReviewerFan, c.CodeReviewerFan = lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}
+				c.DiscussionFixerFan, c.PlanFixerFan, c.CodeFixerFan = lenses.FanList{""}, lenses.FanList{""}, lenses.FanList{""}
 			},
 		},
 		{
@@ -211,25 +204,18 @@ review_timeout_min: 240
 			mutate: func(c *Config) { c.CodeFixerModel = burlerengine.ModelSpecList{"opus[low]"} },
 		},
 		{
-			name:   "merge_reviewer_model and merge_fixer_model set",
-			values: map[string]string{"merge_reviewer_model": "\n  - opus[high]\n  - sonnet[low]", "merge_fixer_model": "sonnet[medium]"},
-			mutate: func(c *Config) {
-				c.MergeReviewerModel, c.MergeFixerModel = burlerengine.ModelSpecList{"opus[high]", "sonnet[low]"}, burlerengine.ModelSpecList{"sonnet[medium]"}
-			},
-		},
-		{
 			name:   "empty segment list takes the shared list",
 			values: map[string]string{"discussion_fixer_model": "[]"},
 			mutate: func(c *Config) { c.DiscussionFixerModel = burlerengine.ModelSpecList{} },
 		},
 		{
 			name:   "each fan key as one fan name",
-			values: map[string]string{"discussion_reviewer_fan": "standard", "plan_reviewer_fan": "full", "code_reviewer_fan": "review-code", "merge_reviewer_fan": "standard", "discussion_fixer_fan": "fix-discussion", "plan_fixer_fan": "fix-plan", "code_fixer_fan": "fix-code", "merge_fixer_fan": "fix-code"},
+			values: map[string]string{"discussion_reviewer_fan": "standard", "plan_reviewer_fan": "full", "code_reviewer_fan": "review-code", "discussion_fixer_fan": "fix-discussion", "plan_fixer_fan": "fix-plan", "code_fixer_fan": "fix-code"},
 			mutate: func(c *Config) {
 				c.DiscussionReviewerFan, c.PlanReviewerFan = lenses.FanList{"standard"}, lenses.FanList{"full"}
-				c.CodeReviewerFan, c.MergeReviewerFan = lenses.FanList{"review-code"}, lenses.FanList{"standard"}
+				c.CodeReviewerFan = lenses.FanList{"review-code"}
 				c.DiscussionFixerFan, c.PlanFixerFan = lenses.FanList{"fix-discussion"}, lenses.FanList{"fix-plan"}
-				c.CodeFixerFan, c.MergeFixerFan = lenses.FanList{"fix-code"}, lenses.FanList{"fix-code"}
+				c.CodeFixerFan = lenses.FanList{"fix-code"}
 			},
 		},
 		{
@@ -238,17 +224,15 @@ review_timeout_min: 240
 				"discussion_reviewer_fan": "\n  - \"\"\n  - review-discussion",
 				"plan_reviewer_fan":       "\n  - review-plan\n  - \"\"",
 				"code_reviewer_fan":       "\n  - review-code\n  - \"\"",
-				"merge_reviewer_fan":      "\n  - \"\"\n  - review-code",
 				"discussion_fixer_fan":    "\n  - \"\"\n  - fix-discussion",
 				"plan_fixer_fan":          "\n  - fix-plan\n  - \"\"",
 				"code_fixer_fan":          "\n  - fix-code\n  - \"\"",
-				"merge_fixer_fan":         "\n  - \"\"\n  - fix-code",
 			},
 			mutate: func(c *Config) {
 				c.DiscussionReviewerFan, c.PlanReviewerFan = lenses.FanList{"", "review-discussion"}, lenses.FanList{"review-plan", ""}
-				c.CodeReviewerFan, c.MergeReviewerFan = lenses.FanList{"review-code", ""}, lenses.FanList{"", "review-code"}
+				c.CodeReviewerFan = lenses.FanList{"review-code", ""}
 				c.DiscussionFixerFan, c.PlanFixerFan = lenses.FanList{"", "fix-discussion"}, lenses.FanList{"fix-plan", ""}
-				c.CodeFixerFan, c.MergeFixerFan = lenses.FanList{"fix-code", ""}, lenses.FanList{"", "fix-code"}
+				c.CodeFixerFan = lenses.FanList{"fix-code", ""}
 			},
 		},
 		{
@@ -386,11 +370,6 @@ review_timeout_min: 240
 			},
 		},
 		{
-			name:   "explicit merge perch keys",
-			values: map[string]string{"merge_max_bounces": "0", "merge_auto_accept": "false"},
-			mutate: func(c *Config) { c.MergeMaxBounces, c.MergeAutoAccept = intPtr(0), false },
-		},
-		{
 			name:     "a zero per-perch budget loads as zero rounds, not as null",
 			values:   map[string]string{"plan_max_bounces": "0"},
 			mutate:   func(c *Config) { c.PlanMaxBounces = intPtr(0) },
@@ -400,7 +379,7 @@ review_timeout_min: 240
 			name:     "a zero run-wide budget gives every null perch zero rounds",
 			values:   map[string]string{"review_max_bounces": "0"},
 			mutate:   func(c *Config) { c.ReviewMaxBounces = 0 },
-			wantSoft: map[Perch]int{PerchDiscussion: 2, PerchPlan: 0, PerchCode: 1, PerchMerge: 1},
+			wantSoft: map[Perch]int{PerchDiscussion: 2, PerchPlan: 0, PerchCode: 1},
 		},
 		{
 			name:   "checkpoint above budget",
@@ -642,8 +621,6 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed plan_fixer_model spec", "plan_fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed code_reviewer_model spec", "code_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed later code_fixer_model entry", "code_fixer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
-		{"malformed merge_reviewer_model spec", "merge_reviewer_model", `"opus[effort"`, []string{`loom config key "merge_reviewer_model" entry 1`, "a non-empty list of model-specs"}, ""},
-		{"malformed later merge_fixer_model entry", "merge_fixer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{`loom config key "merge_fixer_model" entry 2`, "a non-empty list of model-specs"}, ""},
 		{"unknown discussion_reviewer_fan", "discussion_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "entry 1", `set the entry to ""`}, ""},
 		{"unknown plan_reviewer_fan", "plan_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "full", "entry 1", `set the entry to ""`}, ""},
 		{"unknown second discussion_fixer_fan entry", "discussion_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{"entry 2", `"nosuchfan"`, "known fans: ", "define the fan in lenses.yaml", `set the entry to ""`}, ""},
@@ -652,8 +629,6 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"empty discussion_fixer_fan list", "discussion_fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"empty plan_fixer_fan list", "plan_fixer_fan", "[]", []string{"the list is empty", `write ""`}, ""},
 		{"unknown code_reviewer_fan", "code_reviewer_fan", "nosuchfan", []string{`loom config key "code_reviewer_fan" entry 1`, `"nosuchfan"`, "known fans: ", `set the entry to ""`}, ""},
-		{"unknown second merge_fixer_fan entry", "merge_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{`loom config key "merge_fixer_fan" entry 2`, `"nosuchfan"`, "define the fan in lenses.yaml"}, ""},
-		{"empty merge_reviewer_fan list", "merge_reviewer_fan", "[]", []string{`loom config key "merge_reviewer_fan"`, "the list is empty", `write ""`}, ""},
 		{"mapping code_fixer_fan value", "code_fixer_fan", "\n  model: opus", []string{`loom config key "code_fixer_fan"`, "neither a fan name nor a list of fan names"}, ""},
 		{"mapping discussion_fixer_fan value", "discussion_fixer_fan", "\n  model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
 		{"mapping inside a plan_reviewer_fan list", "plan_reviewer_fan", "\n  - full\n  - model: opus", []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}, ""},
@@ -700,13 +675,11 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"negative discussion_max_bounces", "discussion_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, to a positive integer, or to null to take review_max_bounces"}, ""},
 		{"negative plan_max_bounces", "plan_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
 		{"negative code_max_bounces", "code_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
-		{"negative merge_max_bounces", "merge_max_bounces", "-1", []string{"must not be negative", "or to null to take review_max_bounces"}, ""},
 		{"negative review_amend_max_bounces", "review_amend_max_bounces", "-1", []string{"must not be negative", "set it to 0 to settle every amendment with no review round", "lyx config loom --set review_amend_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"zero review_hard_max_bounces", "review_hard_max_bounces", "0", []string{"must be at least 1", "lyx config loom --set review_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"negative discussion_hard_max_bounces", "discussion_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set discussion_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"negative plan_hard_max_bounces", "plan_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set plan_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"negative code_hard_max_bounces", "code_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set code_hard_max_bounces=<n>", `lyx loom resume`}, ""},
-		{"negative merge_hard_max_bounces", "merge_hard_max_bounces", "-1", []string{"set it to 0 to take review_hard_max_bounces", "lyx config loom --set merge_hard_max_bounces=<n>", `lyx loom resume`}, ""},
 		{"review_max_bounces above the default hard cap", "review_max_bounces", "5", []string{"review_hard_max_bounces", "lyx config loom --set review_hard_max_bounces=<n>", "in the task worktree", `lyx loom resume`}, ""},
 		{"code_max_bounces above the default hard cap", "code_max_bounces", "5", []string{"review_hard_max_bounces", "code_max_bounces"}, ""},
 		{"negative discussion timeout", "discussion_timeout_min", "-1", []string{"must not be negative"}, ""},
@@ -771,7 +744,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 
 	t.Run("a local fan key is refused naming the local file and the key", func(t *testing.T) {
 		t.Parallel()
-		for _, key := range []string{"discussion_reviewer_fan", "plan_reviewer_fan", "code_reviewer_fan", "merge_reviewer_fan", "discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan", "merge_fixer_fan"} {
+		for _, key := range []string{"discussion_reviewer_fan", "plan_reviewer_fan", "code_reviewer_fan", "discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan"} {
 			t.Run(key, func(t *testing.T) {
 				t.Parallel()
 				board, anchor := t.TempDir(), t.TempDir()
@@ -1306,7 +1279,7 @@ func containsConfigKey(text, key string) bool {
 }
 
 // TestMigrateConfig_RetiredKeys pins what MigrateConfig rewrites for skip_merge_review, removes for fan_review and renames for the retired reviewer, fixer and fan keys: an old-schema document, recognised by its skip_merge_review key, has each zero per-perch budget turned to null and skip_merge_review true turned to merge_max_bounces: 0 before the key goes;
-// a document without the key keeps its zeros as the zero-rounds meaning; a retired model or fan key takes its new name and the template's line comment unless the new name is already set, each webster_* review-perch key then takes its code_* name, and Webster's retired models are copied onto unset Merge keys;
+// a document without the key keeps its zeros as the zero-rounds meaning; a retired model or fan key takes its new name and the template's line comment unless the new name is already set, each webster_* review-perch key then takes its code_* name, Webster's retired models are copied onto unset Merge keys, and every Merge-Review key is then dropped;
 // a second run changes nothing, a below-floor step_idle_timeout_min is still raised, and an unparseable document is refused.
 func TestMigrateConfig_RetiredKeys(t *testing.T) {
 	t.Parallel()
@@ -1325,18 +1298,29 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 			wantGone:  []string{"skip_merge_review", "webster_max_bounces"},
 		},
 		{
-			name:      "skip_merge_review true becomes a merge budget of 0",
+			name:      "skip_merge_review true runs through to no merge key at all",
 			document:  "skip_merge_review: true\nmerge_max_bounces: 1\n",
-			wantLines: []string{"skip_merge_review: true rewritten to merge_max_bounces: 0", "skip_merge_review: removed"},
-			wantKeys:  map[string]any{"merge_max_bounces": 0},
-			wantGone:  []string{"skip_merge_review"},
+			wantLines: []string{"skip_merge_review: true rewritten to merge_max_bounces: 0", "skip_merge_review: removed", "merge_max_bounces: retired, removed"},
+			wantGone:  []string{"skip_merge_review", "merge_max_bounces"},
 		},
 		{
-			name:      "skip_merge_review true over a zero merge budget rewrites it twice",
-			document:  "skip_merge_review: true\nmerge_max_bounces: 0\n",
-			wantLines: []string{"merge_max_bounces: 0 rewritten to null, which takes review_max_bounces", "skip_merge_review: true rewritten to merge_max_bounces: 0", "skip_merge_review: removed"},
-			wantKeys:  map[string]any{"merge_max_bounces": 0},
-			wantGone:  []string{"skip_merge_review"},
+			name: "each retired merge key is dropped",
+			document: "merge_reviewer_model: sonnet[low]\nmerge_fixer_model: sonnet[low]\nmerge_reviewer_fan: review-code\nmerge_fixer_fan: fix-code\n" +
+				"merge_max_bounces: 1\nmerge_hard_max_bounces: 0\nmerge_auto_accept: true\nplan_max_bounces: 2\n",
+			wantLines: []string{
+				"merge_reviewer_model: retired, removed",
+				"merge_fixer_model: retired, removed",
+				"merge_reviewer_fan: retired, removed",
+				"merge_fixer_fan: retired, removed",
+				"merge_max_bounces: retired, removed",
+				"merge_hard_max_bounces: retired, removed",
+				"merge_auto_accept: retired, removed",
+			},
+			wantKeys: map[string]any{"plan_max_bounces": 2},
+			wantGone: []string{
+				"merge_reviewer_model", "merge_fixer_model", "merge_reviewer_fan", "merge_fixer_fan",
+				"merge_max_bounces", "merge_hard_max_bounces", "merge_auto_accept",
+			},
 		},
 		{
 			name:     "a document without skip_merge_review keeps its zero",
@@ -1366,15 +1350,16 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 				"plan_fix: renamed to plan_fixer_model",
 				"discussion_fan: renamed to discussion_reviewer_fan",
 				"merge_fix_fan: renamed to merge_fixer_fan",
+				"merge_fixer_fan: retired, removed",
 			},
 			wantKeys: map[string]any{
 				"reviewer_model": "opus[high]", "fixer_model": "sonnet[low]", "discussion_reviewer_model": "", "plan_fixer_model": "opus[low]",
-				"discussion_reviewer_fan": "standard", "merge_fixer_fan": "fix-code",
+				"discussion_reviewer_fan": "standard",
 			},
-			wantGone: []string{"review", "fix", "discussion_review", "plan_fix", "discussion_fan", "merge_fix_fan"},
+			wantGone: []string{"review", "fix", "discussion_review", "plan_fix", "discussion_fan", "merge_fix_fan", "merge_fixer_fan"},
 		},
 		{
-			name:     "webster's models are copied onto the unset merge keys",
+			name:     "webster's models are copied onto the unset merge keys and the drop then removes them",
 			document: "webster_review: sonnet[medium]\nwebster_fix: sonnet[low]\n",
 			wantLines: []string{
 				"merge_reviewer_model: set to webster_review's value, the models Merge-Review ran on; Darn-Review now reads darn_reviewer_model in darn.yaml, which this rewrite cannot set",
@@ -1383,30 +1368,30 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 				"webster_fix: renamed to webster_fixer_model",
 				"webster_reviewer_model: renamed to code_reviewer_model",
 				"webster_fixer_model: renamed to code_fixer_model",
+				"merge_reviewer_model: retired, removed",
+				"merge_fixer_model: retired, removed",
 			},
-			wantKeys: map[string]any{
-				"code_reviewer_model": "sonnet[medium]", "code_fixer_model": "sonnet[low]",
-				"merge_reviewer_model": "sonnet[medium]", "merge_fixer_model": "sonnet[low]",
-			},
-			wantGone: []string{"webster_review", "webster_fix", "webster_reviewer_model", "webster_fixer_model"},
+			wantKeys: map[string]any{"code_reviewer_model": "sonnet[medium]", "code_fixer_model": "sonnet[low]"},
+			wantGone: []string{"webster_review", "webster_fix", "webster_reviewer_model", "webster_fixer_model", "merge_reviewer_model", "merge_fixer_model"},
 		},
 		{
-			name:     "a set new webster key is the value copied onto merge",
+			name:     "a set new webster key is the value copied onto merge before the drop",
 			document: "webster_review: opus[high]\nwebster_reviewer_model: sonnet[low]\n",
 			wantLines: []string{
 				"merge_reviewer_model: set to webster_reviewer_model's value, the models Merge-Review ran on; Darn-Review now reads darn_reviewer_model in darn.yaml, which this rewrite cannot set",
 				"webster_review: removed, webster_reviewer_model already set",
 				"webster_reviewer_model: renamed to code_reviewer_model",
+				"merge_reviewer_model: retired, removed",
 			},
-			wantKeys: map[string]any{"code_reviewer_model": "sonnet[low]", "merge_reviewer_model": "sonnet[low]"},
-			wantGone: []string{"webster_review", "webster_reviewer_model"},
+			wantKeys: map[string]any{"code_reviewer_model": "sonnet[low]"},
+			wantGone: []string{"webster_review", "webster_reviewer_model", "merge_reviewer_model"},
 		},
 		{
-			name:      "a set merge key keeps its value",
+			name:      "a set merge key is dropped with the rest",
 			document:  "webster_review: sonnet[medium]\nmerge_reviewer_model: opus[high]\n",
-			wantLines: []string{"webster_review: renamed to webster_reviewer_model", "webster_reviewer_model: renamed to code_reviewer_model"},
-			wantKeys:  map[string]any{"code_reviewer_model": "sonnet[medium]", "merge_reviewer_model": "opus[high]"},
-			wantGone:  []string{"webster_review", "webster_reviewer_model", "merge_fixer_model"},
+			wantLines: []string{"webster_review: renamed to webster_reviewer_model", "webster_reviewer_model: renamed to code_reviewer_model", "merge_reviewer_model: retired, removed"},
+			wantKeys:  map[string]any{"code_reviewer_model": "sonnet[medium]"},
+			wantGone:  []string{"webster_review", "webster_reviewer_model", "merge_reviewer_model", "merge_fixer_model"},
 		},
 		{
 			name:     "each webster review-perch key is renamed to its code successor with its value",
@@ -1478,9 +1463,9 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 		})
 	}
 
-	t.Run("a renamed key and a copied merge key carry the template's line comment", func(t *testing.T) {
+	t.Run("a renamed key carries the template's line comment", func(t *testing.T) {
 		t.Parallel()
-		got, _, err := MigrateConfig([]byte("webster_fan: review-code # the retired comment\nwebster_review: sonnet[medium]\n"))
+		got, _, err := MigrateConfig([]byte("webster_fan: review-code # the retired comment\n"))
 		if err != nil {
 			t.Fatalf("MigrateConfig() error = %v; want nil", err)
 		}
@@ -1491,10 +1476,9 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 		if err := yaml.Unmarshal([]byte(ConfigTemplate()), &template); err != nil {
 			t.Fatalf("decode template: %v", err)
 		}
-		for _, key := range []string{"code_reviewer_fan", "merge_reviewer_model"} {
-			if got, want := mappingValueNode(document.Content[0], key).LineComment, mappingValueNode(template.Content[0], key).LineComment; got != want {
-				t.Errorf("migrated %s line comment = %q; want the template's %q", key, got, want)
-			}
+		const key = "code_reviewer_fan"
+		if got, want := mappingValueNode(document.Content[0], key).LineComment, mappingValueNode(template.Content[0], key).LineComment; got != want {
+			t.Errorf("migrated %s line comment = %q; want the template's %q", key, got, want)
 		}
 	})
 

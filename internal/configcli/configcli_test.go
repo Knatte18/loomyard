@@ -1177,8 +1177,8 @@ func TestDispatchSetProfiles(t *testing.T) {
 		},
 		{
 			name:     "an existing profile is replaced whole",
-			setFlag:  `light={"loom":{"merge_max_bounces":1}}`,
-			wantFile: "# operator notes\nlight:\n    loom: {merge_max_bounces: 1}\n",
+			setFlag:  `light={"loom":{"code_max_bounces":1}}`,
+			wantFile: "# operator notes\nlight:\n    loom: {code_max_bounces: 1}\n",
 		},
 		{
 			name:        "an absent hub file starts from the template's profiles",

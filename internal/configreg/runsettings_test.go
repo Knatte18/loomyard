@@ -95,9 +95,14 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
-			name:     "a retired webster model key is renamed to its code key by loom's Migrate and copied onto merge",
+			name:     "a retired webster model key is renamed to its code key by loom's Migrate",
 			settings: map[string]any{"loom": map[string]any{"webster_review": "sonnet[high]"}},
-			wantDocs: map[string]string{"loom": "code_reviewer_model: sonnet[high] # model-spec for the Code-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\nmerge_reviewer_model: sonnet[high] # model-spec for the Merge-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\n"},
+			wantDocs: map[string]string{"loom": "code_reviewer_model: sonnet[high] # model-spec for the Code-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\n"},
+		},
+		{
+			name:     "a retired merge_max_bounces is dropped by loom's Migrate and never refused",
+			settings: map[string]any{"loom": map[string]any{"merge_max_bounces": float64(1), "plan_max_bounces": float64(2)}},
+			wantDocs: map[string]string{"loom": "plan_max_bounces: 2\n"},
 		},
 		{
 			name:        "a retired darn fan key is renamed by darn's Migrate and refused as a guard key",
@@ -321,9 +326,15 @@ func TestLayerRunSettings(t *testing.T) {
 	}{
 		{
 			name:     "a task key replaces the profile's and a profile key the task lacks stays",
+			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1), "code_max_bounces": float64(1)}},
+			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}},
+			wantDocs: map[string]string{"loom": "code_max_bounces: 1\nplan_max_bounces: 3\n"},
+		},
+		{
+			name:     "a profile's retired merge_max_bounces is dropped rather than refused",
 			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1), "merge_max_bounces": float64(1)}},
 			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}},
-			wantDocs: map[string]string{"loom": "merge_max_bounces: 1\nplan_max_bounces: 3\n"},
+			wantDocs: map[string]string{"loom": "plan_max_bounces: 3\n"},
 		},
 		{
 			name:     "a module only one side names is written as that side has it",
