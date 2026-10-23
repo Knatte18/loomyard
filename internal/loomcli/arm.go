@@ -43,6 +43,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -301,6 +302,8 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 			RefuseMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; run \"lyx loom start\" first to bootstrap this task",
 		},
 		PauseAbsentMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; there is nothing running to pause -- run \"lyx loom start\" first to bootstrap this task",
+		// The landing halts go to the orch on loom and darn runs alike, so both tell the one predicate.
+		HandBack: landingshed.HandsBack,
 		Hooks: shedverbs.Hooks{
 			PreRun:             c.loomPreRun,
 			PostRun:            c.loomPostRun,

@@ -498,6 +498,42 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 			if v, ok := env["last_step"]; !ok || v != nil {
 				t.Errorf("last_step = %v (present %v); want present and null with no StepsDir", v, ok)
 			}
+			if env["hand_back"] != false {
+				t.Errorf("hand_back = %v; want false with no check told", env["hand_back"])
+			}
+		})
+	}
+
+	rerouteCapError := shedengine.ReasonRerouteCapReached + ": Finalize rerouted to Merge-In 3 times since its last done"
+	handBackCheck := func(producer, reason string) bool {
+		return producer == "Finalize" && strings.HasPrefix(reason, shedengine.ReasonRerouteCapReached)
+	}
+	handBackTests := []struct {
+		name     string
+		producer string
+		state    shedengine.State
+		check    func(producer, reason string) bool
+		want     bool
+	}{
+		{"BlockedFinalizeRerouteCap", "Finalize", shedengine.StateBlocked, handBackCheck, true},
+		{"BlockedWebsterRerouteCap", "Webster", shedengine.StateBlocked, handBackCheck, false},
+		{"NoCheckTold", "Finalize", shedengine.StateBlocked, nil, false},
+		{"FailedFinalize", "Finalize", shedengine.StateFailed, handBackCheck, false},
+	}
+	for _, tt := range handBackTests {
+		t.Run("HandBack_"+tt.name, func(t *testing.T) {
+			spec := seededStatusSpec(t, Hooks{})
+			spec.HandBack = tt.check
+			if err := state.UpdateJSON(spec.StatusPath, spec.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+				cur.CurrentProducer, cur.State, cur.Error = tt.producer, tt.state, rerouteCapError
+				return cur, nil
+			}); err != nil {
+				t.Fatalf("record the halt: %v", err)
+			}
+			env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
+			if code != 0 || env["hand_back"] != tt.want {
+				t.Errorf("status = exit %d, hand_back %v; want exit 0, hand_back %v", code, env["hand_back"], tt.want)
+			}
 		})
 	}
 }

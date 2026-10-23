@@ -124,6 +124,10 @@
 // An up-to-date merge records an empty overlap, and a failed record write is an error, never Stuck.
 // Merge-In holds no lock on any way out of the row, so no later row inherits one.
 //
+// HandsBack is the one predicate that names the halts the orch takes over: a blocked stop at Merge-In or Finalize whose reason opens with LandingStopPrefix, and a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
+// Merge-In has no reroute edge, and a reroute-cap halt at another row, such as Webster's, stays routed as before.
+// The recipe's owner tells it to shedverbs as Spec.HandBack, which marks the loop's stop envelope and the status as hand_back; the drivers read the predicate or that mark.
+//
 // Publish runs the `landing` call, then the `publish` call, in the task worktree through the same verify function, at site `Publish`, before it pushes, and the tree must be clean after them.
 // A dirty tree is Stuck naming the paths, before anything is pushed.
 // The `publish` gate carries the hub's extra test tiers, which the `landing` and `final` gates leave out so every round and every gate does not pay for them.

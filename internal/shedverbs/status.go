@@ -191,6 +191,7 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				"current_producer": st.CurrentProducer,
 				"state":            string(st.State),
 				"error":            st.Error,
+				"hand_back":        spec.handsBack(st),
 				"pause_reason":     st.PauseReason,
 				"activity":         st.Activity,
 				"history_length":   len(st.History),

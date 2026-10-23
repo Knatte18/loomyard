@@ -89,6 +89,13 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
   A version stamp here would be a rarely-exercised guard that goes stale;
   it is deliberately omitted, to be reintroduced only if a real incompatibility ever forces it.
 
+## The `hand_back` key
+
+`lyx loom status` carries a top-level `hand_back` key, and the loop's stop envelope carries `loop.hand_back`.
+Both are true when the run is blocked and the recipe's told check answers true for the status's `current_producer` and `error`, and false otherwise, including when no check is told.
+For loom and darn the check is `landingshed.HandsBack`: a blocked stop at Merge-In or Finalize whose reason opens with the landing-stop prefix, or a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
+A true key marks a halt that goes to the orch, so every driver hands it back instead of routing it.
+
 ## The `waiting` key
 
 `lyx loom status` adds a `waiting` key to its envelope while the run's state is `running` and one of five waits is present.
