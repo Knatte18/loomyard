@@ -1,5 +1,3 @@
-//go:build !integration
-
 // cancelmarker_test.go pins the cancel marker's record, its writer-liveness reading and the refusal words a reading earns.
 
 package battencli

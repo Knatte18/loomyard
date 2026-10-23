@@ -118,6 +118,8 @@ type battenCLI struct {
 	reconcile func(slug string) (fabricengine.OriginReport, error)
 	// owner carries the seams of the owner checks; armAt fills it with hubOwnerSeams when it is zero, and a receiver that calls no arm leaves it zero, which reads as no owner check.
 	owner ownerSeams
+	// guard carries the pre-run's refusals of a cancel under way, a dirty source and a left pair; armAt fills it with hubStartGuard when its Marker is nil, and a hand-populated receiver leaves it zero, which checks nothing.
+	guard startGuard
 	// clientAttached reports whether any client is attached to the task worktree's reed session; wire fills it, and nil reads as no reopening, which only a hand-populated receiver has.
 	clientAttached func() (bool, error)
 }

@@ -273,6 +273,10 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 	if c.childDriverFlagSet {
 		params = map[string]string{"child_driver": c.childDriverFlag}
 	}
+	// A cancel that began while the start was pulling the board writes no seed.
+	if err := c.refuseCancelMarker(); err != nil {
+		return err
+	}
 	if err := shedrun.WriteSeed(location, runID, shedrun.Seed{
 		Recipe: shedrun.RecipeBatten,
 		Driver: driver,
@@ -372,6 +376,14 @@ func (c *battenCLI) armAt(location *lyxcwd.Location, runID string, explicit bool
 	c.caller = agentname.CallerLabel(os.Getenv(agentname.StrandNameEnv))
 	if c.owner.Machine == nil {
 		c.owner = hubOwnerSeams(location)
+	}
+	if c.guard.Marker == nil {
+		c.guard = hubStartGuard(location, runID)
+	}
+
+	// The guard's reads are local and its refusals come before the board pull, the prime claim and every write below.
+	if err := c.refuseAtStart(verb); err != nil {
+		return shedverbs.Spec{}, err
 	}
 
 	// A start writes its seed below, so its owner check runs first: a task another machine owns leaves no seed behind.

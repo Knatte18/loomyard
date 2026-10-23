@@ -113,6 +113,10 @@ func (c *battenCLI) refuseStartOwnedElsewhere() error {
 	if err := c.owner.Pull(); err != nil {
 		return c.startRefusal(err)
 	}
+	// A cancel that began while the pull ran claims nothing for the prime.
+	if err := c.refuseCancelMarker(); err != nil {
+		return err
+	}
 	if err := c.claimPrimeOwner(); err != nil {
 		return c.startRefusal(err)
 	}
