@@ -72,6 +72,7 @@ var nilLegal = map[string]bool{
 	"Landing.ClassifyVerifyFailure":     true,
 	"Landing.VerifyWaitMark":            true,
 	"Landing.FailingTests":              true,
+	"Landing.TraceFailure":              true,
 	"Landing.Registry":                  true,
 	"Landing.Config.EngineTrailers":     true,
 	"ParentReview.Store":                true,

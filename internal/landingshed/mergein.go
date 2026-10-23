@@ -92,7 +92,7 @@ func NewMergeIn(deps Deps) (*MergeIn, error) {
 	}
 
 	gate := newVerifyGate(deps)
-	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, head: deps.TaskHead}
+	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, traceFailure: deps.TraceFailure, head: deps.TaskHead}
 	return &MergeIn{
 		deps:     deps,
 		resolver: res,

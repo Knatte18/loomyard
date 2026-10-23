@@ -448,6 +448,38 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 		}
 	})
 
+	t.Run("a told trace lands in the record through the recorder NewPublish builds", func(t *testing.T) {
+		fx := newPublishVerifyFixture(t, gateLandingCall, gatePublishCall)
+		fx.p.deps.TaskHead = func() (string, error) { return "merged-head", nil }
+		fx.p.deps.FailingTests = func(string) []verifytree.FailedTest { return wantTests }
+		fx.p.deps.TraceFailure = func(log, head string) (verifytree.FailureTrace, error) {
+			if log != plainLog || head != "merged-head" {
+				t.Errorf("TraceFailure(%q, %q); want the verify log and the record's head", log, head)
+			}
+			return tracedFailure, nil
+		}
+		built, err := NewPublish(fx.p.deps)
+		if err != nil {
+			t.Fatalf("NewPublish() error = %v", err)
+		}
+		fx.p.gate.recorder = built.gate.recorder
+		fx.gate.fake.resultByCommand = map[string]verifytree.Result{gatePublishCall: failed}
+		writeVerifyLog(t, fx.gate, plainLog)
+		failOnGitHubClient(t)
+
+		if outcome, _, err := fx.call(t); err != nil || outcome != shedengine.Stuck {
+			t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
+		}
+		got, ok, err := verifytree.ReadPublishFailure(fx.gate.paths)
+		if err != nil || !ok {
+			t.Fatalf("ReadPublishFailure() = %+v, %v, %v; want a record", got, ok, err)
+		}
+		gotTrace := verifytree.FailureTrace{Cards: got.Cards, LaterRange: got.LaterRange, Untraced: got.Untraced}
+		if !reflect.DeepEqual(gotTrace, tracedFailure) {
+			t.Errorf("record trace fields = %+v; want %+v", gotTrace, tracedFailure)
+		}
+	})
+
 	t.Run("a passing publish removes a present record", func(t *testing.T) {
 		for _, publishCommand := range []string{"", gatePublishCall} {
 			fx := newPublishVerifyFixture(t, gateLandingCall, publishCommand)

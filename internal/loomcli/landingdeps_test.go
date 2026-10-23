@@ -66,26 +66,34 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	lock := parentLockDeps(loc, shedrun.SelfRunID, "", "")
 	lock.Store.Alive = func(int, string) bool { return true }
 
-	deps := landingDeps(
-		loc,
-		shedrun.RecipeLoom,
-		geom,
-		"task/foo",
-		"https://example.com/origin.git",
-		"main",
-		true,
-		pushBranch,
-		registry,
-		runner,
-		cfg,
-		"parent-session",
-		languageSkills,
-		func(string, time.Time) error { return nil },
-		func() (string, error) { return "", nil },
-		planVerifySource(loc),
-		lock,
-		time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
-	)
+	build := func(recipe string) landingshed.Deps {
+		return landingDeps(
+			loc,
+			recipe,
+			geom,
+			"task/foo",
+			"https://example.com/origin.git",
+			"main",
+			true,
+			pushBranch,
+			registry,
+			runner,
+			cfg,
+			"parent-session",
+			languageSkills,
+			func(string, time.Time) error { return nil },
+			func() (string, error) { return "", nil },
+			planVerifySource(loc),
+			lock,
+			time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		)
+	}
+	deps := build(shedrun.RecipeLoom)
+
+	// A darn run has no plan to trace a failure to.
+	if build(shedrun.RecipeDarn).TraceFailure != nil {
+		t.Error("landingDeps(...).TraceFailure is set for the darn recipe; want nil")
+	}
 
 	// The slug entry stops the verify until the run holds its parent lock, which exempts the slug's entries.
 	if !deps.VerifyHold.PastGrace() {
