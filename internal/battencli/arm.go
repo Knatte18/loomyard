@@ -380,6 +380,7 @@ func (c *battenCLI) armAt(location *lyxcwd.Location, runID string, explicit bool
 	if c.guard.Marker == nil {
 		c.guard = hubStartGuard(location, runID)
 	}
+	c.preDrive = c.preDriveCheck
 
 	// The guard's reads are local and its refusals come before the board pull, the prime claim and every write below.
 	if err := c.refuseAtStart(verb); err != nil {
@@ -470,7 +471,15 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 	// work that a second construction would duplicate, so there is no reason for step to take a
 	// different path than run does.
 	if verb == "run" || verb == "step" {
-		spec.BuildShed = func() (*shedengine.Shed, error) { return battenrecipe.New(c.env, c.shedPaths) }
+		// LockedCheck makes the built shed's Run and Step call the pre-drive check once they hold the run lock, for a resume whose status was already present.
+		spec.BuildShed = func() (*shedengine.Shed, error) {
+			shed, err := battenrecipe.New(c.env, c.shedPaths)
+			if err != nil {
+				return nil, err
+			}
+			shed.LockedCheck = c.preDrive
+			return shed, nil
+		}
 	}
 
 	spec.Caller = c.caller
@@ -654,19 +663,52 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 	// the entry row, before the Shed ever reads it. The mutate closure is idempotent against a
 	// concurrently-seeded file: it leaves an already-present status untouched rather than
 	// overwriting it.
+	// The pre-drive check and the marker clear run inside it, under the status lock, so a refused seeding writes no status and clears no marker.
+	return state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, c.seedAbsentStatus)
+}
+
+// preDriveRefusal marks the refusal of the pre-drive check inside the seeding closure, so a caller can tell it from a failed marker clear or write.
+type preDriveRefusal struct{ error }
+
+// Unwrap returns the check's refusal.
+func (e preDriveRefusal) Unwrap() error { return e.error }
+
+// seedAbsentStatus is the mutate closure of the status seeding: a found status stays as it is; otherwise the pre-drive check runs, the run markers are cleared, and the Worktree-Create running status is returned.
+// A refusal of the check comes back as a preDriveRefusal with nothing cleared and nothing written.
+func (c *battenCLI) seedAbsentStatus(cur shedengine.Status, found bool) (shedengine.Status, error) {
+	if found {
+		return cur, nil
+	}
+	if c.preDrive != nil {
+		if err := c.preDrive(); err != nil {
+			return cur, preDriveRefusal{err}
+		}
+	}
 	if err := battenshed.ClearRunMarkers(c.env.ScratchDir); err != nil {
+		return cur, err
+	}
+	return shedengine.Status{
+		CurrentProducer: battenrecipe.NameWorktreeCreate,
+		State:           shedengine.StateRunning,
+		History:         []shedengine.HistoryEntry{},
+	}, nil
+}
+
+// preDriveCheck re-reads the cancel marker and the seed, the second gate a batten that passed armAt before a cancel began still reaches.
+// A present marker refuses with the cancel refusal, and an absent seed refuses naming the fresh start, since the run was cancelled or never started.
+// It writes nothing.
+func (c *battenCLI) preDriveCheck() error {
+	if err := c.refuseCancelMarker(); err != nil {
 		return err
 	}
-	return state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
-		if found {
-			return cur, nil
-		}
-		return shedengine.Status{
-			CurrentProducer: battenrecipe.NameWorktreeCreate,
-			State:           shedengine.StateRunning,
-			History:         []shedengine.HistoryEntry{},
-		}, nil
-	})
+	_, found, err := shedrun.ReadSeed(c.location, c.slug)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("battencli: %s has no seed, so its run was cancelled or never started; way forward: run \"lyx batten run %s\" for a fresh start", c.slug, c.slug)
+	}
+	return nil
 }
 
 // openWindowTimeout is the time the reopened Open-Window command may run, the default of any Command row.
@@ -738,12 +780,12 @@ func (c *battenCLI) doneSlugRefusal() error {
 // shedverbs/step.go reports as kind: "producer" -- the one kind the loom driver retries, so a fresh slug's
 // first step would loop rather than seed.
 //
-// Its refusal-kind mapping stays inside the closed five: the run lock already held is
-// shedverbs.KindBusy; a status decode failure or a failed status seed is shedverbs.KindUnseeded; any
-// other pre-producer failure (the unrecognized-state default and the done-slug refusal alike) is
-// shedverbs.KindBootstrap. shedverbs.KindOwnership is not used -- it exists for loom's own
-// seeded-status-belongs-to-another-slug check, which has no batten analogue -- and
-// shedverbs.KindProducer is shed.Step's own to emit, never this hook's.
+// Its refusal-kind mapping stays inside the closed five.
+// The run lock already held is shedverbs.KindBusy, and so is a seeding the pre-drive check refuses, since the run is held by a cancel or no longer seeded and the driver leaves it to its holder.
+// A status decode failure, a failed marker clear or a failed status seed is shedverbs.KindUnseeded.
+// Any other pre-producer failure (the unrecognized-state default and the done-slug refusal alike) is shedverbs.KindBootstrap.
+// shedverbs.KindOwnership is not used -- it exists for loom's own seeded-status-belongs-to-another-slug check, which has no batten analogue --
+// and shedverbs.KindProducer is shed.Step's own to emit, never this hook's.
 //
 // Every returned error passes through shedtransient.Mark, the bootstrap boundary of the Transient Stop Invariant.
 // Only the owner pre-flight reaches a remote, so the mark is inert for every other sub-step.
@@ -786,19 +828,11 @@ func (c *battenCLI) battenPreStepUnmarked(ctx context.Context) (string, error) {
 		return "", nil
 	}
 
-	if err := battenshed.ClearRunMarkers(c.env.ScratchDir); err != nil {
-		return shedverbs.KindUnseeded, err
-	}
-	if err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
-		if found {
-			return cur, nil
+	if err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, c.seedAbsentStatus); err != nil {
+		var refused preDriveRefusal
+		if errors.As(err, &refused) {
+			return shedverbs.KindBusy, refused.error
 		}
-		return shedengine.Status{
-			CurrentProducer: battenrecipe.NameWorktreeCreate,
-			State:           shedengine.StateRunning,
-			History:         []shedengine.HistoryEntry{},
-		}, nil
-	}); err != nil {
 		return shedverbs.KindUnseeded, err
 	}
 

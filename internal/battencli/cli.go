@@ -120,6 +120,8 @@ type battenCLI struct {
 	owner ownerSeams
 	// guard carries the pre-run's refusals of a cancel under way, a dirty source and a left pair; armAt fills it with hubStartGuard when its Marker is nil, and a hand-populated receiver leaves it zero, which checks nothing.
 	guard startGuard
+	// preDrive re-reads the cancel marker and the seed at the seeding of an absent status and under the shed's run lock; armAt sets it to preDriveCheck, and nil checks nothing, which only a hand-populated receiver has.
+	preDrive func() error
 	// clientAttached reports whether any client is attached to the task worktree's reed session; wire fills it, and nil reads as no reopening, which only a hand-populated receiver has.
 	clientAttached func() (bool, error)
 }
