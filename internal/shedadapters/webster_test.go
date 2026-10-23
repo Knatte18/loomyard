@@ -173,7 +173,7 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 				seedWebsterConflictRecord(t, deps, "finding-a", "finding-b")
 				writeWebsterFile(t, websterengine.RoutedConflictPath(scratch), "- finding-a\n- finding-b\n")
 			},
-			wantReasonHas:  []string{"the same webster plan conflict recurred", stuckReason, "lyx loom resume"},
+			wantReasonHas:  []string{"the same webster plan conflict recurred", stuckReason, "--amends-plan", "lyx loom goto --to Plan-Burler-Review", "lyx loom resume"},
 			wantReasonLack: []string{"review"},
 			wantRouted:     "- finding-a\n- finding-b\n",
 		},
@@ -501,7 +501,7 @@ func (doneProducer) Call(context.Context) (shedengine.Outcome, shedengine.Output
 // TestWebsterProducer_ConflictRerouteCapThenRepeatHalts proves a new plan conflict that meets shed's reroute cap halts with the told clause and counts as routed.
 // Resuming the halt without the hand edit halts again as a repeat and adds no reroute.
 func TestWebsterProducer_ConflictRerouteCapThenRepeatHalts(t *testing.T) {
-	const capWayForward = "run \"lyx loom resume\" in the task worktree once the named pending cards are edited by hand"
+	const capWayForward = "run \"lyx loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a Webster plan conflict, once the run's parent has recorded the fix with \"lyx loom decision add\" and \"--amends-plan\""
 	deps := websterDepsWithScratch(t)
 	seedWebsterConflictRecord(t, deps, "finding-a")
 	dir := t.TempDir()

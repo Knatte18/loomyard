@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -169,26 +170,97 @@ func TestDiscussionCommitPathspec_IncludesParentReviewDir(t *testing.T) {
 
 	withoutDir := []string{loomengine.DiscussionDirRel()}
 	withDir := []string{loomengine.DiscussionDirRel(), loomengine.LoomParentReviewDirRel()}
+	withAmendment := []string{loomengine.DiscussionDirRel(), loomengine.LoomAmendmentRecordRel()}
 	for _, tc := range []struct {
 		name  string
-		setup func(root string)
+		setup func(t *testing.T, loc *lyxcwd.Location)
 		want  []string
 	}{
-		{"absent", func(string) {}, withoutDir},
-		{"empty round", func(root string) { mustMkdir(t, filepath.Join(root, "round-1")) }, withoutDir},
-		{"request written", func(root string) {
+		{"absent", func(*testing.T, *lyxcwd.Location) {}, withoutDir},
+		{"empty round", func(t *testing.T, loc *lyxcwd.Location) {
+			mustMkdir(t, filepath.Join(loomengine.LoomParentReviewDir(loc), "round-1"))
+		}, withoutDir},
+		{"request written", func(t *testing.T, loc *lyxcwd.Location) {
+			root := loomengine.LoomParentReviewDir(loc)
 			mustMkdir(t, filepath.Join(root, "round-1"))
 			if err := os.WriteFile(filepath.Join(root, "round-1", "request.json"), []byte("{}"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 		}, withDir},
+		{"amendment record present", func(t *testing.T, loc *lyxcwd.Location) {
+			mustMkdir(t, filepath.Dir(loomengine.LoomAmendmentRecord(loc)))
+			if err := os.WriteFile(loomengine.LoomAmendmentRecord(loc), []byte("titles: []\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, withAmendment},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-			tc.setup(loomengine.LoomParentReviewDir(loc))
+			tc.setup(t, loc)
 			if got := discussionCommitPathspec(loc); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("discussionCommitPathspec() = %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestReworkCommitPathspec asserts a present amendment record joins PR-Rework's round pathspec, so the archive's removal of it is staged, and an absent untracked one does not.
+func TestReworkCommitPathspec(t *testing.T) {
+	t.Parallel()
+
+	base := []string{planparser.PlanDirRel(), loomengine.LoomReworkDirRel()}
+	for _, tc := range []struct {
+		name    string
+		present bool
+		want    []string
+	}{
+		{"absent untracked record", false, base},
+		{"present record", true, append(append([]string{}, base...), loomengine.LoomAmendmentRecordRel())},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			if tc.present {
+				mustMkdir(t, filepath.Dir(loomengine.LoomAmendmentRecord(loc)))
+				if err := os.WriteFile(loomengine.LoomAmendmentRecord(loc), []byte("titles: []\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := reworkCommitPathspec(loc); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("reworkCommitPathspec() = %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestAmendmentPathspec asserts the amendment record joins a pathspec when it exists or git tracks it, and a failed tracked check adds nothing.
+func TestAmendmentPathspec(t *testing.T) {
+	t.Parallel()
+
+	record := []string{loomengine.LoomAmendmentRecordRel()}
+	for _, tc := range []struct {
+		name    string
+		present bool
+		tracked func(rel string) (bool, error)
+		want    []string
+	}{
+		{"present record", true, func(string) (bool, error) { return false, nil }, record},
+		{"absent untracked record", false, func(string) (bool, error) { return false, nil }, nil},
+		{"absent tracked record", false, func(string) (bool, error) { return true, nil }, record},
+		{"tracked check error", false, func(string) (bool, error) { return true, errors.New("git boom") }, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+			if tc.present {
+				mustMkdir(t, filepath.Dir(loomengine.LoomAmendmentRecord(loc)))
+				if err := os.WriteFile(loomengine.LoomAmendmentRecord(loc), []byte("titles: []\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := amendmentPathspec(loc, tc.tracked); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("amendmentPathspec() = %v; want %v", got, tc.want)
 			}
 		})
 	}

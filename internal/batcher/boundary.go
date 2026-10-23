@@ -74,12 +74,12 @@ func coversAny(plan *planparser.Plan, cover string, targets []string) bool {
 	return false
 }
 
-// cardTargets returns the refs card writes: its Create, Edit and Delete refs and the New side of each Rename pair.
+// cardTargets returns the refs card writes: its Create, Edit, Extends and Delete refs and the New side of each Rename pair.
 func cardTargets(card planparser.Card) []string {
 	var targets []string
 	for _, group := range card.TargetGroups {
 		switch group.Type {
-		case planparser.CardTypeCreate, planparser.CardTypeEdit, planparser.CardTypeDelete:
+		case planparser.CardTypeCreate, planparser.CardTypeEdit, planparser.CardTypeExtends, planparser.CardTypeDelete:
 			targets = append(targets, group.Refs...)
 		case planparser.CardTypeRename:
 			for _, pair := range group.Pairs {

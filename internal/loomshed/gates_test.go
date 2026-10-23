@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -635,6 +636,24 @@ func TestNewPlanGate(t *testing.T) {
 		}
 		return n
 	}
+	// The PATTERN rows build overviews around the headroom line with overviewOf.
+	const (
+		entryB      = "- `PATTERN-b` — b."
+		shortEntryA = "- `PATTERN-a` — short."
+		sameSizeA   = "- `PATTERN-a` — other."
+		removesA    = "- `PATTERN-a` — removes"
+		removesB    = "- `PATTERN-b` — removes"
+	)
+	longEntryA := "- `PATTERN-a` — " + strings.Repeat("l", 200)
+	bigEntryB := "- `PATTERN-b` — " + strings.Repeat("b", 150)
+	underLine := overviewOf(pattern.HeadroomBytes-100, shortEntryA, entryB)
+	smallOverview := "# PATTERN\n\n- `PATTERN-other` — o.\n"
+	const (
+		headroomWayForward     = "lyx loom decision add"
+		removesWayForward      = "drop the fenced line"
+		unprescribedWayForward = "lyx loom insert-card"
+	)
+
 	for _, tt := range []struct {
 		name                       string
 		renamePair                 string
@@ -648,7 +667,36 @@ func TestNewPlanGate(t *testing.T) {
 		wantRaw          int
 		wantNoWait       int
 		wantRetired      int
+		// patternOverview is the worktree's PATTERN.md, absent when empty, and patternBase the overview the fixed PatternBase closure returns, or patternBaseErr the error it returns instead.
+		// A row setting neither leaves PatternBase nil.
+		patternOverview string
+		patternBase     string
+		patternBaseErr  bool
+		// cardFence is fenced text on the sole card, secondFence the Text of a second card added to the parsed plan, and noRecordPath clears the context's decision record path.
+		cardFence, secondFence string
+		noRecordPath           bool
+		// wantDetail is a fragment every finding of the three PATTERN checks must hold, the way forward its message names.
+		wantDetail                                  string
+		wantHeadroom, wantRemoves, wantUnprescribed int
+		wantErr                                     bool
 	}{
+		{name: "PatternLinesGrowingPastTheLineFromABaseUnderIt", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(longEntryA), wantHeadroom: 1, wantDetail: headroomWayForward},
+		{name: "PatternLinesReplacingBulletsAtEqualSizePass", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA)},
+		{name: "PatternOverviewPastTheLineWithNoRemovesIsFlagged", recordSection: "absent", patternOverview: overviewOf(pattern.HeadroomBytes+20, shortEntryA, bigEntryB), patternBase: underLine, wantHeadroom: 1, wantDetail: headroomWayForward},
+		{name: "PatternRemovesWithNoFencedLineShrinksTheProjection", planSection: removesB, recordSection: "absent", patternOverview: overviewOf(pattern.HeadroomBytes+20, shortEntryA, bigEntryB), patternBase: underLine},
+		{name: "PatternRemovesFencedLineIsFlagged", planSection: removesA, recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA), wantRemoves: 1, wantDetail: removesWayForward},
+		{name: "PatternRemovesFencedByADoneCardPasses", planSection: removesA, recordSection: "absent", doneCard: true, patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA)},
+		{name: "TwoCardsFencingOneIDWhereTheLaterFitsPass", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(longEntryA), secondFence: fenceOf(sameSizeA)},
+		{name: "TwoCardsFencingOneIDWhereTheLaterOverflowsIsFlagged", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA), secondFence: fenceOf(longEntryA), wantHeadroom: 1, wantDetail: headroomWayForward},
+		{name: "TwoLinesOfOneCardWhereTheLaterFitsPass", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(longEntryA, sameSizeA)},
+		{name: "TwoLinesOfOneCardWhereTheLaterOverflowsIsFlagged", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA, longEntryA), wantHeadroom: 1, wantDetail: headroomWayForward},
+		{name: "OverviewAlreadyHoldingTheLinesProjectsTheBaseSize", recordSection: "absent", patternOverview: overviewOf(pattern.HeadroomBytes+50, longEntryA, entryB), patternBase: overviewOf(pattern.HeadroomBytes+50, longEntryA, entryB), cardFence: fenceOf(longEntryA)},
+		{name: "DeclaredEntryWithNoFencedLineAndAnUnchangedBulletIsFlagged", planSection: bullet, recordSection: bullet, patternOverview: smallOverview, patternBase: smallOverview, wantUnprescribed: 1, wantDetail: unprescribedWayForward},
+		{name: "DeclaredEntryWithAFencedLinePasses", planSection: bullet, recordSection: bullet, patternOverview: smallOverview, patternBase: smallOverview, cardFence: fenceOf("- `PATTERN-cwd-resolution` — the new text")},
+		{name: "DeclaredEntryAnEarlierGenerationBuiltPasses", planSection: bullet, recordSection: bullet, patternOverview: smallOverview + "- `PATTERN-cwd-resolution` — built.\n", patternBase: smallOverview},
+		{name: "DeclaredEntryWithNoDecisionRecordPathPasses", planSection: bullet, noRecordPath: true, patternOverview: smallOverview, patternBase: smallOverview},
+		{name: "NoWorktreePatternSkipsTheBaseRead", recordSection: "absent", patternBaseErr: true, cardFence: fenceOf(longEntryA)},
+		{name: "PatternBaseErrorIsReturned", recordSection: "absent", patternOverview: underLine, patternBaseErr: true, wantErr: true},
 		{name: "RawTestVerifyIsRefused", recordSection: "absent", verify: "go test ./internal/x", refuseRaw: []string{"go test"}, wantRaw: 1},
 		{name: "RawTestAfterAChainIsRefused", recordSection: "absent", verify: "cd x && go test ./...", refuseRaw: []string{"go test"}, wantRaw: 1},
 		{name: "RawTestPastALauncherIsRefused", recordSection: "absent", verify: "env go test ./x", refuseRaw: []string{"go test"}, wantRaw: 1},
@@ -676,9 +724,29 @@ func TestNewPlanGate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			anchorPath := t.TempDir()
-			pc := seedPlanContextFixture(t, anchorPath, tt.renamePair, tt.planSection, tt.recordSection)
+			pc := seedPlanContextFixture(t, anchorPath, tt.renamePair, tt.planSection, tt.recordSection, tt.cardFence)
 			pc.RenameTools = tt.tools
 			pc.RefuseRaw = tt.refuseRaw
+			if tt.noRecordPath {
+				pc.DecisionRecordPath = ""
+			}
+			worktreeRoot := t.TempDir()
+			if tt.patternOverview != "" {
+				if err := os.WriteFile(pattern.File(worktreeRoot), []byte(tt.patternOverview), 0o644); err != nil {
+					t.Fatalf("write PATTERN.md: %v", err)
+				}
+			}
+			if tt.patternOverview != "" || tt.patternBaseErr {
+				var base []byte
+				if tt.patternBase != "" {
+					base = []byte(tt.patternBase)
+				}
+				var baseErr error
+				if tt.patternBaseErr {
+					baseErr = errors.New("base unavailable")
+				}
+				pc.PatternBase = func() ([]byte, error) { return base, baseErr }
+			}
 			if tt.doneCard {
 				saveState(t, anchorPath, doneBatchOne)
 			}
@@ -688,10 +756,33 @@ func TestNewPlanGate(t *testing.T) {
 			}
 			plan.Cards[0].Verify = tt.verify
 			plan.Verify = tt.overview
+			if tt.secondFence != "" {
+				second := plan.Cards[0]
+				second.Number = 2
+				second.Text = tt.secondFence
+				plan.Cards = append(plan.Cards, second)
+			}
 
-			findings, err := ValidatePlan(plan, anchorPath, t.TempDir(), planglyph.NewIndex(fabricengine.NewReferenceRule()), pc)
+			findings, err := ValidatePlan(plan, anchorPath, worktreeRoot, planglyph.NewIndex(fabricengine.NewReferenceRule()), pc)
+			if tt.wantErr {
+				if err == nil || findings != nil {
+					t.Errorf("ValidatePlan() = %v, %v; want a returned error and no findings", findings, err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("ValidatePlan() error = %v; want nil", err)
+			}
+			for check, want := range map[string]int{patternHeadroomCheck: tt.wantHeadroom, patternRemovesPrescribedCheck: tt.wantRemoves, patternLineUnprescribedCheck: tt.wantUnprescribed} {
+				if got := countCheck(findings, check); got != want {
+					t.Errorf("ValidatePlan() %s findings = %d; want %d (%v)", check, got, want, findings)
+				}
+			}
+			for _, f := range findings {
+				isPatternCheck := f.Check == patternHeadroomCheck || f.Check == patternRemovesPrescribedCheck || f.Check == patternLineUnprescribedCheck
+				if isPatternCheck && (f.Severity != planindex.SeverityBlocking || !strings.Contains(f.Detail, tt.wantDetail)) {
+					t.Errorf("ValidatePlan() %s finding = %+v; want a blocking finding whose detail holds %q", f.Check, f, tt.wantDetail)
+				}
 			}
 			if got := countCheck(findings, renameToolMissingCheck); got != tt.wantRename {
 				t.Errorf("ValidatePlan() %s findings = %d; want %d (%v)", renameToolMissingCheck, got, tt.wantRename, findings)
@@ -718,7 +809,7 @@ func TestNewPlanGate(t *testing.T) {
 	t.Run("MalformedRecordSectionIsAReturnedError", func(t *testing.T) {
 		t.Parallel()
 		anchorPath := t.TempDir()
-		pc := seedPlanContextFixture(t, anchorPath, "", "", "not a bullet")
+		pc := seedPlanContextFixture(t, anchorPath, "", "", "not a bullet", "")
 		plan, err := planparser.ParsePlan(planparser.PlanDir(anchorPath))
 		if err != nil {
 			t.Fatalf("ParsePlan: %v", err)
@@ -733,7 +824,7 @@ func TestNewPlanGate(t *testing.T) {
 	t.Run("LensReviewGateReportsRenameToolMissing", func(t *testing.T) {
 		t.Parallel()
 		anchorPath := t.TempDir()
-		pc := seedPlanContextFixture(t, anchorPath, symbolPair, "", "absent")
+		pc := seedPlanContextFixture(t, anchorPath, symbolPair, "", "absent", "")
 
 		result, err := NewLensReviewPlanGate(anchorPath, t.TempDir(), "", planglyph.NewIndex(fabricengine.NewReferenceRule()), pc)()
 		if err != nil {
@@ -1014,7 +1105,7 @@ func TestNewReworkPlanGate(t *testing.T) {
 
 	t.Run("SymbolPairWithNoRenameToolFails", func(t *testing.T) {
 		anchorPath := t.TempDir()
-		pc := seedPlanContextFixture(t, anchorPath, "`sub#Foo` -> `plan:sub#Bar`", "", "absent")
+		pc := seedPlanContextFixture(t, anchorPath, "`sub#Foo` -> `plan:sub#Bar`", "", "absent", "")
 		committed := map[string][]byte{}
 		for name, data := range plankit.Render(firstCardPlan(true, "go", "sub#Foo", "")) {
 			committed[path.Join(planparser.PlanDirRel(), name)] = data
@@ -1026,6 +1117,27 @@ func TestNewReworkPlanGate(t *testing.T) {
 		}
 		if result.Passed || !strings.Contains(result.Findings, renameToolMissingCheck) {
 			t.Errorf("gate() = %+v; want a %s failure", result, renameToolMissingCheck)
+		}
+	})
+
+	t.Run("PatternHeadroomIsReportedThroughTheReworkGate", func(t *testing.T) {
+		anchorPath := t.TempDir()
+		baseOverview := overviewOf(pattern.HeadroomBytes-100, "- `PATTERN-a` — short.")
+		longLine := "- `PATTERN-a` — " + strings.Repeat("l", 200)
+		pc := seedPlanContextFixture(t, anchorPath, "", "", "absent", fenceOf(longLine))
+		pc.PatternBase = func() ([]byte, error) { return []byte(baseOverview), nil }
+		committed := map[string][]byte{}
+		for name, data := range plankit.Render(firstCardPlan(true, "go", "sub#Foo", "")) {
+			committed[path.Join(planparser.PlanDirRel(), name)] = data
+		}
+		worktreeRoot := plankit.Repo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n", "PATTERN.md": baseOverview})
+
+		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed), pc)()
+		if err != nil {
+			t.Fatalf("gate() error = %v; want nil", err)
+		}
+		if result.Passed || !strings.Contains(result.Findings, patternHeadroomCheck) {
+			t.Errorf("gate() = %+v; want a %s failure", result, patternHeadroomCheck)
 		}
 	})
 

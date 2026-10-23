@@ -39,6 +39,8 @@ type reworkFixture struct {
 	reworkDir  string
 	reviewsDir string
 	committed  map[string][]byte
+	// amendmentPath is the plan amendment record's path, absent until a test writes it.
+	amendmentPath string
 
 	pending      *PendingRejection
 	pendingErr   error
@@ -73,8 +75,10 @@ func newReworkFixture(t *testing.T) *reworkFixture {
 		reworkDir:  filepath.Join(anchor, "rework"),
 		reviewsDir: filepath.Join(anchor, "reviews"),
 		committed:  map[string][]byte{},
-		pending:    &PendingRejection{PRNumber: 7, HeadSHA: reworkTestHead, RejectedAt: reworkTestRejectedAt, Findings: reworkTestFindings},
-		coverage:   filepath.Join(anchor, "coverage-out.md"),
+
+		amendmentPath: filepath.Join(anchor, "amendment.yaml"),
+		pending:       &PendingRejection{PRNumber: 7, HeadSHA: reworkTestHead, RejectedAt: reworkTestRejectedAt, Findings: reworkTestFindings},
+		coverage:      filepath.Join(anchor, "coverage-out.md"),
 	}
 	f.writeGeneration(1, reworkGenCard{"first-card", "Create", "internal/firstcard/new.go"})
 	f.commitWorkingPlan()
@@ -179,6 +183,7 @@ func (f *reworkFixture) deps() PRReworkDeps {
 		ReworkDir:        f.reworkDir,
 		ReworkDirRel:     "rework",
 		ReviewsDir:       f.reviewsDir,
+		AmendmentPath:    f.amendmentPath,
 		ReviewRunSubdirs: []string{"plan", "webster"},
 		ReadCommitted: func(rel string) ([]byte, bool, error) {
 			data, ok := f.committed[rel]
@@ -314,8 +319,15 @@ func TestPRRework_FirstRoundMovesGenerationZero(t *testing.T) {
 	f.writeFile(f.reviewsDir, "plan/report.md", "plan review\n")
 	f.writeFile(f.reviewsDir, "webster/report.md", "webster review\n")
 	f.writeFile(f.reviewsDir, "discussion/report.md", "discussion review\n")
+	if err := AppendAmendment(f.amendmentPath, "Keep the cache", time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
 	f.onInner = f.newGeneration(2, reworkNewCard)
 	f.mustDone()
+
+	if _, err := os.Stat(f.amendmentPath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("amendment record stat error = %v; want it removed by the archive", err)
+	}
 
 	prior := filepath.Join(f.reworkDir, "round-1", "prior-generation")
 	for _, rel := range []string{"plan/00-overview.md", "plan/01-first-card.md", "plan/amendments.md", "plan/archive-20260101T000000Z/old.md", "reviews/plan/report.md", "reviews/webster/report.md", "webster/state.json"} {

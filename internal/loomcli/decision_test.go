@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -15,8 +16,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
 const decisionPriorRecord = "# Record\n\n## Decisions\n\n### First\n\nDecision: a.\n"
@@ -68,6 +71,27 @@ type decisionFake struct {
 	notifyErrs map[string]error
 	// posts records every post the verb made, receiver and line.
 	posts []decisionPost
+
+	// amendmentPath is the plan amendment record the fake's seams write, in a temp dir.
+	amendmentPath string
+	// planApproved and planErr are the answer of the approved-plan seam.
+	planApproved bool
+	planErr      error
+	// amendErr makes the amendment append fail before it writes.
+	amendErr error
+	// appendClobbers makes a failing record append leave the decision record overwritten, as an append that dies midway would.
+	appendClobbers bool
+	// amendWrote is the amendment record's bytes the last append wrote.
+	amendWrote []byte
+	// amendCommittedCopy, amendCommittedFound and amendCommittedErr are the amendment record as committed at HEAD.
+	amendCommittedCopy  []byte
+	amendCommittedFound bool
+	amendCommittedErr   error
+	// statusCommitLanded makes HEAD hold the bytes the call wrote, as a status commit that landed them would.
+	statusCommitLanded bool
+	// amendCommitErr is what the amendment-only commit returns, and amendCommits counts its calls.
+	amendCommitErr error
+	amendCommits   int
 }
 
 // decisionPost is one notice the verb posted.
@@ -81,7 +105,11 @@ func newDecisionFake(t *testing.T) *decisionFake {
 	if err := os.WriteFile(path, []byte(decisionPriorRecord), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return &decisionFake{path: path, clock: time.Date(2026, 3, 3, 23, 30, 0, 0, time.FixedZone("late", -5*3600))}
+	return &decisionFake{
+		path:          path,
+		clock:         time.Date(2026, 3, 3, 23, 30, 0, 0, time.FixedZone("late", -5*3600)),
+		amendmentPath: filepath.Join(t.TempDir(), "amendment.yaml"),
+	}
 }
 
 // newDarnDecisionFake is a fake of a darn run whose record is committed and unchanged since, with a history holding only that version.
@@ -106,6 +134,11 @@ func (f *decisionFake) deps() decisionDeps {
 			f.appends++
 			f.lastAdded = d
 			if f.appendErr != nil {
+				if f.appendClobbers {
+					if err := os.WriteFile(f.path, []byte("clobbered"), 0o644); err != nil {
+						return nil, err
+					}
+				}
 				return nil, f.appendErr
 			}
 			if f.findings != nil {
@@ -167,6 +200,29 @@ func (f *decisionFake) deps() decisionDeps {
 			}
 			f.posts = append(f.posts, decisionPost{receiver: receiver, line: line})
 			return nil
+		},
+		amendmentPath: f.amendmentPath,
+		approvedPlan:  func() (bool, error) { return f.planApproved, f.planErr },
+		appendAmendment: func(title string, at time.Time) error {
+			if f.amendErr != nil {
+				return f.amendErr
+			}
+			if err := loomshed.AppendAmendment(f.amendmentPath, title, at); err != nil {
+				return err
+			}
+			var err error
+			f.amendWrote, err = os.ReadFile(f.amendmentPath)
+			return err
+		},
+		committedAmendment: func() ([]byte, bool, error) {
+			if f.statusCommitLanded {
+				return f.amendWrote, true, nil
+			}
+			return f.amendCommittedCopy, f.amendCommittedFound, f.amendCommittedErr
+		},
+		commitAmendment: func() error {
+			f.amendCommits++
+			return f.amendCommitErr
 		},
 	}
 }
@@ -766,4 +822,302 @@ func TestDecisionVerb_CommitFailureNamesWayForward(t *testing.T) {
 	if !strings.Contains(msg, "index locked") || !strings.Contains(msg, "way forward:") || !strings.Contains(msg, "a session lyx refuses the verb from reports status: FAILED and the orch runs it") {
 		t.Errorf("message %q; want the commit error and a way forward naming the orch", msg)
 	}
+}
+
+// decisionEntryRecord is the decision record holding the entry the fake appends for goodDecisionInput on the fake's clock.
+const decisionEntryRecord = decisionPriorRecord + "\n### Added after Discussion (parent, 2026-03-04): Keep the cache\n\nDecision: Keep it per run.\n"
+
+// seedAmendment writes an amendment record holding titles at the fake's amendment path, as earlier --amends-plan calls would have left it.
+func seedAmendment(t *testing.T, f *decisionFake, titles ...string) {
+	t.Helper()
+	for _, title := range titles {
+		if err := loomshed.AppendAmendment(f.amendmentPath, title, f.clock.Add(-time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// amendmentBytesAfterCall is the amendment record's bytes a call on the fake's clock leaves holding titles.
+func amendmentBytesAfterCall(t *testing.T, f *decisionFake, titles ...string) []byte {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "amendment.yaml")
+	for _, title := range titles {
+		if err := loomshed.AppendAmendment(path, title, f.clock); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// TestDecisionVerb_AmendsPlan asserts a call with --amends-plan records the entry and the amendment title together.
+// It refuses where there is no plan to amend, and leaves both records as they were on every failed append or commit that did not land.
+// It also asserts the approved-plan reader's answers over a plan directory.
+func TestDecisionVerb_AmendsPlan(t *testing.T) {
+	t.Parallel()
+	const title = "Keep the cache"
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, f *decisionFake)
+		// want lists the fragments of a refusal; empty means the call succeeds.
+		want    []string
+		notWant []string
+		// wantTitles are the amendment record's titles afterwards, nil when no record exists.
+		wantTitles []string
+		// entry reports whether the decision record holds the entry afterwards; decisionAbsent that it does not exist.
+		entry          bool
+		decisionAbsent bool
+		// wantCommits and wantAmendCommits are the record commits and the amendment-only commits.
+		wantCommits      int
+		wantAmendCommits int
+		wantCommitError  bool
+	}{
+		{
+			name:       "ApprovedPlan_LandsEntryAndTitleInOneCommit",
+			wantTitles: []string{title}, entry: true, wantCommits: 1,
+		},
+		{
+			name:       "SecondCall_AppendsItsTitle",
+			setup:      func(t *testing.T, f *decisionFake) { seedAmendment(t, f, "First") },
+			wantTitles: []string{"First", title}, entry: true, wantCommits: 1,
+		},
+		{
+			name:  "DarnRun_Refused",
+			setup: func(_ *testing.T, f *decisionFake) { f.darn = true },
+			want:  []string{"--amends-plan has no plan to amend on a darn run", "way forward:", "without --amends-plan"},
+		},
+		{
+			name:  "UnapprovedPlan_Refused",
+			setup: func(_ *testing.T, f *decisionFake) { f.planApproved = false },
+			want:  []string{"no approved plan to amend", "way forward:", "without --amends-plan", "Plan-Write and Plan-Review read the decision record"},
+		},
+		{
+			name:  "PlanReadError_RefusedWithRetry",
+			setup: func(_ *testing.T, f *decisionFake) { f.planErr = errors.New("stat boom") },
+			want:  []string{"read the plan: stat boom", "way forward:", "nothing is appended"},
+		},
+		{
+			name:  "PlanUnparsed_RefusedNamingValidatePlan",
+			setup: func(_ *testing.T, f *decisionFake) { f.planErr = fmt.Errorf("%w: bad frontmatter", errPlanUnparsed) },
+			want:  []string{"bad frontmatter", "way forward:", "lyx loom validate-plan", "without --amends-plan"},
+		},
+		{
+			name: "AbsentDecisionRecord_RefusedLeavingBothAbsent",
+			setup: func(t *testing.T, f *decisionFake) {
+				if err := os.Remove(f.path); err != nil {
+					t.Fatal(err)
+				}
+				f.appendErr = fmt.Errorf("read: %w", fs.ErrNotExist)
+			},
+			want:           []string{"no decision record", "way forward:", "lyx loom start"},
+			decisionAbsent: true,
+		},
+		{
+			name: "AmendmentAppendFails_RefusedLeavingBothRecords",
+			setup: func(t *testing.T, f *decisionFake) {
+				seedAmendment(t, f, "First")
+				f.amendErr = errors.New("disk boom")
+			},
+			want:       []string{"write the amendment record: disk boom", "way forward:", "nothing is appended"},
+			wantTitles: []string{"First"},
+		},
+		{
+			name: "CheckFindings_KeepsTheFirstTitle",
+			setup: func(t *testing.T, f *decisionFake) {
+				seedAmendment(t, f, "First")
+				f.findings = []discussionparser.Finding{{Check: "sections", Detail: "missing ## Scope"}}
+			},
+			want:       []string{"discussion check flags the record", "sections: missing ## Scope", "the record is restored"},
+			wantTitles: []string{"First"},
+		},
+		{
+			name: "AppendError_RestoresBothRecords",
+			setup: func(t *testing.T, f *decisionFake) {
+				seedAmendment(t, f, "First")
+				f.appendErr, f.appendClobbers = errors.New("disk full"), true
+			},
+			want:       []string{"disk full", "way forward:", "nothing is appended"},
+			wantTitles: []string{"First"},
+		},
+		{
+			name: "FindingsAfterStatusCommit_CommitsTheRestoredRecord",
+			setup: func(_ *testing.T, f *decisionFake) {
+				f.statusCommitLanded = true
+				f.findings = []discussionparser.Finding{{Check: "sections", Detail: "missing ## Scope"}}
+			},
+			want:             []string{"discussion check flags the record"},
+			wantAmendCommits: 1,
+		},
+		{
+			name: "FindingsAfterStatusCommit_CommitFailureNamesFabricCommit",
+			setup: func(_ *testing.T, f *decisionFake) {
+				f.statusCommitLanded = true
+				f.amendCommitErr = errors.New("index locked")
+				f.findings = []discussionparser.Finding{{Check: "sections", Detail: "missing ## Scope"}}
+			},
+			want:             []string{"index locked", "way forward:", "lyx fabric commit"},
+			wantAmendCommits: 1,
+		},
+		{
+			name: "CommitErrorWithHeadHoldingBoth_SucceedsWithCommitError",
+			setup: func(t *testing.T, f *decisionFake) {
+				f.commitErr = errors.New("index locked")
+				f.committedCopy, f.committedFound = []byte(decisionEntryRecord), true
+				f.amendCommittedCopy, f.amendCommittedFound = amendmentBytesAfterCall(t, f, title), true
+			},
+			wantTitles: []string{title}, entry: true, wantCommits: 1, wantCommitError: true,
+		},
+		{
+			name: "CommitErrorWithHeadHoldingRecordAlone_KeepsBothAndNamesFabricCommit",
+			setup: func(t *testing.T, f *decisionFake) {
+				f.commitErr = errors.New("index locked")
+				f.committedCopy, f.committedFound = []byte(decisionPriorRecord), true
+				f.amendCommittedCopy, f.amendCommittedFound = amendmentBytesAfterCall(t, f, title), true
+			},
+			want:       []string{"index locked", "without the entry", "way forward:", "lyx fabric commit"},
+			wantTitles: []string{title}, entry: true, wantCommits: 1,
+		},
+		{
+			name: "CommitErrorWithHeadDiffering_RestoresBothAndNamesTheRerun",
+			setup: func(t *testing.T, f *decisionFake) {
+				seedAmendment(t, f, "First")
+				f.commitErr = errors.New("index locked")
+				f.amendCommittedCopy, f.amendCommittedFound = amendmentBytesAfterCall(t, f, "First"), true
+			},
+			want:       []string{"index locked", "way forward:", "re-run \"lyx loom decision add ... --amends-plan\""},
+			notWant:    []string{"lyx fabric commit"},
+			wantTitles: []string{"First"}, wantCommits: 1,
+		},
+		{
+			name: "CommitErrorWithUnreadableHead_KeepsBothAndNamesFabricCommit",
+			setup: func(_ *testing.T, f *decisionFake) {
+				f.commitErr = errors.New("index locked")
+				f.amendCommittedErr = errors.New("head boom")
+			},
+			want:       []string{"index locked", "head boom", "way forward:", "lyx fabric commit"},
+			wantTitles: []string{title}, entry: true, wantCommits: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newDecisionFake(t)
+			f.planApproved = true
+			if tt.setup != nil {
+				tt.setup(t, f)
+			}
+			input := goodDecisionInput()
+			input.amendsPlan = true
+
+			var out bytes.Buffer
+			code := decisionVerb(&out, "task-a", f.deps(), input)
+			if len(tt.want) == 0 {
+				if code != 0 {
+					t.Fatalf("exit = %d, out %s; want 0", code, out.String())
+				}
+				_, hasCommitError := envelope.RequireOK(t, out.String()).Raw["commit_error"]
+				if hasCommitError != tt.wantCommitError {
+					t.Errorf("envelope has commit_error = %t; want %t", hasCommitError, tt.wantCommitError)
+				}
+			} else {
+				if code == 0 {
+					t.Fatalf("exit = 0, out %s; want a refusal", out.String())
+				}
+				msg := envelope.Decode(t, out.String()).Error
+				for _, w := range tt.want {
+					if !strings.Contains(msg, w) {
+						t.Errorf("message %q lacks %q", msg, w)
+					}
+				}
+				for _, w := range tt.notWant {
+					if strings.Contains(msg, w) {
+						t.Errorf("message %q contains %q", msg, w)
+					}
+				}
+			}
+
+			record, found, err := loomshed.ReadAmendment(f.amendmentPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if found != (tt.wantTitles != nil) || !reflect.DeepEqual(record.Titles, tt.wantTitles) {
+				t.Errorf("amendment record titles = %v (found %t); want %v", record.Titles, found, tt.wantTitles)
+			}
+			switch data, err := os.ReadFile(f.path); {
+			case tt.decisionAbsent:
+				if !errors.Is(err, fs.ErrNotExist) {
+					t.Errorf("decision record read error = %v; want it absent", err)
+				}
+			case err != nil:
+				t.Fatal(err)
+			case tt.entry:
+				if !strings.HasPrefix(string(data), decisionPriorRecord) || !strings.Contains(string(data), "### Added after Discussion (parent, 2026-03-04): Keep the cache") {
+					t.Errorf("decision record = %q; want the prior text and the entry", data)
+				}
+			default:
+				if string(data) != decisionPriorRecord {
+					t.Errorf("decision record = %q; want it as before", data)
+				}
+			}
+			if f.commits != tt.wantCommits || f.amendCommits != tt.wantAmendCommits {
+				t.Errorf("record commits = %d, amendment commits = %d; want %d and %d", f.commits, f.amendCommits, tt.wantCommits, tt.wantAmendCommits)
+			}
+		})
+	}
+
+	readerTests := []struct {
+		name    string
+		write   func(t *testing.T, anchor string)
+		want    bool
+		wantErr error
+	}{
+		{name: "AbsentOverview_AnswersFalse", write: func(*testing.T, string) {}},
+		{
+			name:  "ApprovedPlan_AnswersTrue",
+			write: func(t *testing.T, anchor string) { writeDecisionPlan(t, anchor, true) },
+			want:  true,
+		},
+		{
+			name:  "UnapprovedPlan_AnswersFalse",
+			write: func(t *testing.T, anchor string) { writeDecisionPlan(t, anchor, false) },
+		},
+		{
+			name: "PlanThatDoesNotParse_WrapsErrPlanUnparsed",
+			write: func(t *testing.T, anchor string) {
+				plankit.WriteTree(t, anchor, map[string]string{"_lyx/plan/00-overview.md": "not a plan\n"})
+			},
+			wantErr: errPlanUnparsed,
+		},
+	}
+	for _, tt := range readerTests {
+		t.Run("PlanApprovedReader_"+tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchor := t.TempDir()
+			tt.write(t, anchor)
+			got, err := planApprovedReader(anchor)()
+			if !errors.Is(err, tt.wantErr) || got != tt.want {
+				t.Errorf("planApprovedReader() = %t, %v; want %t, %v", got, err, tt.want, tt.wantErr)
+			}
+		})
+	}
+}
+
+// writeDecisionPlan writes a one-card plan under the plan directory of the worktree anchored at anchor.
+func writeDecisionPlan(t *testing.T, anchor string, approved bool) {
+	t.Helper()
+	plankit.Write(t, planparser.PlanDir(anchor), plankit.Plan{
+		Approved: approved,
+		Language: "none",
+		Cards: []plankit.Card{{
+			Number:        1,
+			Slug:          "first-card",
+			Summary:       "the first card",
+			Groups:        []plankit.Group{{Label: "Edit", Targets: []string{"docs/a.md"}}},
+			Intent:        "change the doc.",
+			ImpactSummary: "none",
+		}},
+	})
 }

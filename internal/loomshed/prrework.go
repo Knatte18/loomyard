@@ -63,6 +63,8 @@ type PRReworkDeps struct {
 	ReworkDirRel string
 	// ReviewsDir is the absolute root every review segment's run directory lives under.
 	ReviewsDir string
+	// AmendmentPath is the absolute plan amendment record; empty means the run has none to read.
+	AmendmentPath string
 	// ReviewRunSubdirs names the run directories under ReviewsDir that belong to one generation, each archived with the round.
 	ReviewRunSubdirs []string
 	// ReadCommitted returns an anchor-relative file as committed at HEAD; found is false when HEAD has no such file.
@@ -447,6 +449,10 @@ func (p *prRework) archive(pending PendingRejection, roundDir string) (roundReco
 	}
 	if err := p.deps.ArchiveWebster(filepath.Join(priorDir, reworkPriorWebster)); err != nil {
 		return roundRecord{}, fmt.Errorf("loomshed: %s: archive webster run record: %w", p.name, err)
+	}
+	// The new generation's plan replaces the amended one, so the amendment is spent.
+	if err := RemoveAmendment(p.deps.AmendmentPath); err != nil {
+		return roundRecord{}, fmt.Errorf("loomshed: %s: %w", p.name, err)
 	}
 
 	rec := roundRecord{PRNumber: pending.PRNumber, HeadSHA: pending.HeadSHA, RejectedAt: pending.RejectedAt, FirstCard: firstCard}

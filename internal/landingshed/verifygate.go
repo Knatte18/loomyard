@@ -60,6 +60,8 @@ type FailureRoute struct {
 // mergeCommit is set by Publish after its merge-in and read when a verify fails.
 type failureRecorder struct {
 	failingTests func(log string) []verifytree.FailedTest
+	// traceFailure traces the log to the plan; nil traces nothing.
+	traceFailure func(log, head string) (verifytree.FailureTrace, error)
 	head         func() (string, error)
 	mergeCommit  string
 }
@@ -93,6 +95,16 @@ func (g verifyGate) recordFailure(ctx context.Context, kind verifytree.FailureKi
 		log = string(content)
 		if g.recorder.failingTests != nil {
 			failure.Tests = g.recorder.failingTests(log)
+		}
+	}
+	if g.recorder.traceFailure != nil && log != "" && failure.Head != "" {
+		trace, err := g.recorder.traceFailure(log, failure.Head)
+		if err != nil {
+			logger.Warn("landingshed: could not trace the failed verify to the plan", "kind", kind, "cause", err)
+		} else {
+			failure.Cards = trace.Cards
+			failure.LaterRange = trace.LaterRange
+			failure.Untraced = trace.Untraced
 		}
 	}
 	if tier, found := gateslot.FailedTier(log); found {

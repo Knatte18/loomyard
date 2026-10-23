@@ -40,6 +40,15 @@ func Lint(worktree, base string) (pattern.Finding, bool, error) {
 	return finding, found, nil
 }
 
+// OverviewAt returns the overview's bytes at revision in worktree's repository, nil when the overview is absent there.
+// An empty revision is an error, since the working tree is no base to read.
+func OverviewAt(worktree, revision string) ([]byte, error) {
+	if revision == "" {
+		return nil, fmt.Errorf("patternlint: no revision to read %s at; the working tree is not a base", overviewPath)
+	}
+	return readOverview(worktree, revision)
+}
+
 // readOverview returns the overview's bytes at revision, or from the working tree when revision is empty.
 // An overview absent there answers nil, and every CRLF in the result is turned into LF.
 func readOverview(worktree, revision string) ([]byte, error) {

@@ -88,6 +88,8 @@
 
 version: 1
 entry: Preflight
+# The arbiter's prompt names this row once the plan is approved: a decision that amends the plan routes here.
+amendment_target: Plan-Burler-Review
 terminals:
   - Friction-Reflect
 
@@ -301,7 +303,17 @@ producers:
             because it runs fix-scope: overlay with the plan directory in its target paths. When
             .lyx/webster/plan-conflict.md exists, Webster's begin-batch refused the approved plan
             against the current tree: each blocking finding it lists is a finding of this round,
-            fixed by editing only cards whose batch has not begun.
+            fixed by editing only cards Webster's auto-rebaseline accepts: a pending card, or a
+            card of a failed or in-flight batch. When _lyx/loom/amendment.yaml exists, each
+            decision-record entry it names by title is a finding for each card that entry names
+            while the entry's change is uncarried for that card, or, when the entry names no
+            card, a finding until some card carries it. An entry's change is carried for a named
+            card when that card carries it, or, for a named card whose batch is done, when a card
+            inserted with lyx loom insert-card after the last begun batch carries it. A decision
+            names each card by slug as well as number, because insert-card renumbers every later
+            card, so match cards by slug. Such a finding is fixed by editing only cards Webster's
+            auto-rebaseline accepts, a pending card or a card of a failed or in-flight batch, or
+            by inserting a card with lyx loom insert-card after the last begun batch.
         rubric_stencil: loom-rubric-plan-review
         # fix-scope: overlay, matching the Discussion-Burler-Review row above. The plan directory is fabric
         # records content reached through the junction, and the Fabric Git Invariant reserves committing that
