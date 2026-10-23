@@ -88,9 +88,6 @@ type BouncerConfig struct {
 	// SpecsDir is the absolute deployed-specs directory the rubric's {{.specs_dir}} marker is
 	// filled from.
 	SpecsDir string
-	// PublishFailure returns the note the rubric's publish_failure marker is filled from, called each time the seed or judge reads the rubric.
-	// Nil renders `none`.
-	PublishFailure func() string
 	// WebsterRecord returns the note the rubric's webster_record marker is filled from, called each time the seed or judge reads the rubric.
 	// Nil renders `none`.
 	WebsterRecord func() string
@@ -1540,9 +1537,6 @@ func (b *Bouncer) seedCall(ctx context.Context) (shedengine.Outcome, shedengine.
 // rubricNotes gathers the notes the rubric's markers are filled from, each blank when no function is configured for it.
 func (b *Bouncer) rubricNotes() RubricNotes {
 	notes := RubricNotes{GateTiers: b.cfg.GateTiers, Amendment: AmendmentNote(b.cfg.RunDir)}
-	if b.cfg.PublishFailure != nil {
-		notes.PublishFailure = b.cfg.PublishFailure()
-	}
 	if b.cfg.WebsterRecord != nil {
 		notes.WebsterRecord = b.cfg.WebsterRecord()
 	}

@@ -11,14 +11,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// noNote is what the optional publish_failure, webster_record, merge_review and amendment markers render as when their note is blank.
+// noNote is what the optional webster_record, merge_review and amendment markers render as when their note is blank.
 const noNote = "none"
 
 // RubricNotes are the optional notes a rubric's markers are filled from.
 // A blank note fills its marker as `none`, and a rubric with no such marker ignores it.
 type RubricNotes struct {
-	// PublishFailure fills the publish_failure marker, the rendered Publish failure note only the Webster-Review rubric carries.
-	PublishFailure string
 	// WebsterRecord fills the webster_record marker, the rendered webster run record only the Plan-Review rubric carries.
 	WebsterRecord string
 	// MergeReview fills the merge_review marker, the rendered merge record only the Merge-Review rubric carries.
@@ -56,13 +54,12 @@ func ReadRubric(stencilsDir, name, specsDir string, notes RubricNotes) (string, 
 	}
 	stripped := stencil.StripLeadingComment(string(raw))
 	filled, err := stencil.Fill([]byte(stripped), map[string]string{
-		"specs_dir":       specsDir,
-		"stencils_dir":    stencilsDir,
-		"publish_failure": noteOrNone(notes.PublishFailure),
-		"webster_record":  noteOrNone(notes.WebsterRecord),
-		"merge_review":    noteOrNone(notes.MergeReview),
-		"gate_tiers":      noteOrNone(notes.GateTiers),
-		"amendment":       noteOrNone(notes.Amendment),
+		"specs_dir":      specsDir,
+		"stencils_dir":   stencilsDir,
+		"webster_record": noteOrNone(notes.WebsterRecord),
+		"merge_review":   noteOrNone(notes.MergeReview),
+		"gate_tiers":     noteOrNone(notes.GateTiers),
+		"amendment":      noteOrNone(notes.Amendment),
 	})
 	if err != nil {
 		return "", fmt.Errorf("shedadapters: read rubric %q: %w", name, err)

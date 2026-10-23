@@ -48,7 +48,6 @@ var nilLegal = map[string]bool{
 	"VerifyMergeBase":                   true,
 	"VerifyTreeScope":                   true,
 	"DiscussionHistory":                 true,
-	"PublishFailure":                    true,
 	"WebsterRecord":                     true,
 	"Landing.CommitStatus":              true,
 	"Landing.CommitParentRecords":       true,

@@ -92,9 +92,6 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 		return nil, err
 	}
 	notes := shedadapters.RubricNotes{GateTiers: env.GateTiers, Amendment: shedadapters.AmendmentNote(runDir)}
-	if env.PublishFailure != nil {
-		notes.PublishFailure = env.PublishFailure()
-	}
 	if env.WebsterRecord != nil {
 		notes.WebsterRecord = env.WebsterRecord()
 	}

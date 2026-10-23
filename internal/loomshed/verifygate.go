@@ -51,10 +51,6 @@ type RoundGate struct {
 // any other diff runs the round call over `--base` the merge base.
 // The form has no skip path: an empty told command is an error naming the source, never a pass, and so is a nil mergeBase.
 //
-// While a Publish failure record is present, the command also confirms the fix.
-// It first runs each failing test the checked record names, by name in its package under the record's failing tier, so a failure that still holds ends the run in seconds, and last one package pass of that tier over the failing tests' packages.
-// The record's fields are shape-checked first, and a field that fails is dropped and logged, so no record text reaches the command as shell.
-//
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
 // `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward; a test file the round call's guard scan rejects, such as a misplaced `//lyx:guard` marker, reaches the findings through that tail with its file and line.
@@ -140,21 +136,6 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 				runCommand = scoped
 			default:
 				runCommand = roundGate.Render("--base", lintBase)
-			}
-		}
-		if failure, ok := checkedPublishFailure(paths, worktreeRoot, roundGate.GateTiers); ok {
-			failedTests, packagePass, err := publishFailureSteps(failure, roundGate.GateTiers)
-			if err != nil {
-				return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: confirm the publish failure: %w", err)
-			}
-			if failedTests != "" {
-				runCommand = failedTests + " && " + runCommand
-			}
-			if packagePass != "" {
-				runCommand += " && " + packagePass
-			}
-			if failedTests != "" || packagePass != "" {
-				logger.Info("loomshed: verify gate confirms a publish failure", "gate", siteLabel, "attempt", attempt, "kind", failure.Kind)
 			}
 		}
 

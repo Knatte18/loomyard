@@ -47,11 +47,6 @@
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then re-stepping the row.
 // The gate runs no flake rerun.
 // The round runs the tiers the `round` gate lists and nothing else, so `tmux` and `llm` tiers run only if the hub lists them there.
-// While a checked Publish failure record is present, the round also confirms the fix under the record's failing tier.
-// The failing top-level tests the record names, one `lyx gate test --wait --tier <failing tier> <package> -- -run '^<Test>$'` step per package and test with the subtests collapsed into it, run before the round command, so a failure that still holds is known in seconds;
-// one package pass of that tier over the failing tests' packages runs after it.
-// A record of the retired kinds `plan_verify` and `publish_verify`, and a record whose tier its gate no longer lists, reads as the highest tier of its `landing` or `publish` gate.
-// A record the gate's tier list cannot place is ignored with a logged warning.
 // Publish reruns both verifies in full regardless, and stays the guard.
 // Told a tree scope reader, it takes the darn form the `Darn-Write` and `Darn-Burler-Fix` rows run, and requires the merge base reader:
 // the headroom lint and then the comment lint run from the task branch's merge base with the parent to HEAD, so every attempt diffs from the merge base and a PR-Gate rework is never narrowed to a stale pass.
@@ -60,7 +55,6 @@
 // Any other diff runs the round call over `--base` the merge base, with the same guard step the round form gets from it.
 // The told command is the site's base command in every case, so a pass keeps its record entry and Publish skips on the same tree and command.
 // That form has no skip path: an empty told command, a command read error, a round read error, a merge base read error and a tree scope read error are each the gate's returned error.
-// With a checked Publish failure record present it runs the failing tests before that command and the failing tier's package pass after it.
 // An impact-scoped pass lets through a break only the whole module shows;
 // Merge-In's whole run catches it for every diff touching production code.
 //

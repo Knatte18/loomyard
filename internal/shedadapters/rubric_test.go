@@ -39,8 +39,6 @@ func TestReadRubric(t *testing.T) {
 		rubric   string
 		body     string
 		specsDir string
-		// publishFailure is the note ReadRubric fills the publish_failure marker from.
-		publishFailure string
 		// websterRecord is the note ReadRubric fills the webster_record marker from.
 		websterRecord string
 		// mergeReview is the note ReadRubric fills the merge_review marker from.
@@ -113,21 +111,6 @@ func TestReadRubric(t *testing.T) {
 			want:     "# Rubric\n\nRecord: none\n",
 		},
 		{
-			name:           "renders the publish failure note",
-			rubric:         "bouncer-rubric-test",
-			body:           "# Rubric\n\nFailure: {{.publish_failure}}\n",
-			specsDir:       "/abs/specs",
-			publishFailure: "Publish failed on the plan's verify.",
-			want:           "# Rubric\n\nFailure: Publish failed on the plan's verify.\n",
-		},
-		{
-			name:     "a blank note renders none",
-			rubric:   "bouncer-rubric-test",
-			body:     "# Rubric\n\nFailure: {{.publish_failure}}\n",
-			specsDir: "/abs/specs",
-			want:     "# Rubric\n\nFailure: none\n",
-		},
-		{
 			name:     "substitutes the specs dir",
 			rubric:   "bouncer-rubric-test",
 			body:     "# Rubric\n\nSee {{.specs_dir}} for the format contract.\n",
@@ -184,7 +167,7 @@ func TestReadRubric(t *testing.T) {
 				writeStampedRubric(t, dir, tt.rubric, tt.body)
 			}
 
-			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, RubricNotes{PublishFailure: tt.publishFailure, WebsterRecord: tt.websterRecord, MergeReview: tt.mergeReview, Amendment: tt.amendment, GateTiers: tt.gateTiers})
+			got, err := ReadRubric(dir, tt.rubric, tt.specsDir, RubricNotes{WebsterRecord: tt.websterRecord, MergeReview: tt.mergeReview, Amendment: tt.amendment, GateTiers: tt.gateTiers})
 			if tt.wantErr != "" {
 				if err == nil {
 					t.Fatalf("ReadRubric() = nil error; want one containing %q", tt.wantErr)

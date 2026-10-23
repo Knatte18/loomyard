@@ -289,23 +289,6 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 	})
 	paths := verifytree.NewPaths(f.worktree, f.verifyDir)
 
-	// confirmCall spells the call the gate runs while a failure record names failing tier tier: the failing test first, the round call, then the package pass.
-	confirmCall := func(tier, roundScope string) string {
-		return "lyx gate test --wait --tier " + tier + " example.com/m/b -- -run '^TestB$' && " + roundScope + " && lyx gate test --wait --tier " + tier + " example.com/m/b"
-	}
-	writeFailure := func(t *testing.T, failure verifytree.PublishFailure) {
-		t.Helper()
-		if err := verifytree.WritePublishFailure(paths, failure); err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			if err := verifytree.RemovePublishFailure(paths); err != nil {
-				t.Error(err)
-			}
-		})
-	}
-	failingB := []verifytree.FailedTest{{Package: "example.com/m/b", Test: "TestB"}}
-
 	if !t.Run("runs the plan's command and passes the lint with no recorded pass", func(t *testing.T) {
 		if passed, findings := f.runGate(t, nil); !passed {
 			t.Fatalf("gate() findings = %q; want a pass", findings)
@@ -347,64 +330,6 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		}
 		if logs := verifyLogs(t, f.verifyDir); len(logs) != len(logsBefore) {
 			t.Errorf("verify logs = %q; want %q, the command not to have run", logs, logsBefore)
-		}
-	}) {
-		return
-	}
-
-	if !t.Run("runs the failing tests first and the package pass last under the record's tier while a publish failure record is present", func(t *testing.T) {
-		head := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 2\n"})
-		writeFailure(t, verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 2, Head: head, Tests: failingB})
-
-		if passed, findings := f.runGate(t, nil); !passed {
-			t.Fatalf("gate() findings = %q; want a pass", findings)
-		}
-		want := confirmCall("2", roundCall("--base", planPass.Commit))
-		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != head {
-			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, head, want)
-		}
-		if _, ok := verifytree.LatestPass(paths, roundCall("--base", planPass.Commit)); ok {
-			t.Errorf("a pass of the plain round call is recorded; want the extended command to have run instead")
-		}
-	}) {
-		return
-	}
-
-	if !t.Run("maps a retired plan_verify record onto the landing list's highest tier, in the round form and the darn form", func(t *testing.T) {
-		head := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 4\n"})
-		writeFailure(t, verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Head: head, Tests: failingB})
-
-		if passed, findings := f.runGate(t, nil); !passed {
-			t.Fatalf("gate() findings = %q; want a pass", findings)
-		}
-		want := confirmCall("1", roundCall("--base", planPass.Commit))
-		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != head {
-			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, head, want)
-		}
-
-		darnHead := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 6\n"})
-		got, err := f.diffGate(func() (string, error) { return f.planCommand, nil }, func() (string, error) { return planPass.Commit, nil }, func() (string, bool, error) { return "", false, nil })
-		if err != nil || !got.Passed {
-			t.Fatalf("darn gate() = %+v, %v; want a pass", got, err)
-		}
-		darnWant := confirmCall("1", roundCall("--base", planPass.Commit))
-		if pass, ok := verifytree.LatestPass(paths, darnWant); !ok || pass.Commit != darnHead {
-			t.Errorf("LatestPass(darn extended command) = %+v, %v; want a pass at %s of %q", pass, ok, darnHead, darnWant)
-		}
-	}) {
-		return
-	}
-
-	if !t.Run("passes a failing test the fix renamed away, which discovers zero", func(t *testing.T) {
-		head := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 8\n"})
-		writeFailure(t, verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 0, Head: head, Tests: []verifytree.FailedTest{{Package: "example.com/m/b", Test: "TestRenamedAway"}}})
-
-		if passed, findings := f.runGate(t, nil); !passed {
-			t.Fatalf("gate() findings = %q; want a pass with the failing test discovering zero", findings)
-		}
-		want := "lyx gate test --wait --tier 0 example.com/m/b -- -run '^TestRenamedAway$' && " + roundCall("--base", planPass.Commit) + " && lyx gate test --wait --tier 0 example.com/m/b"
-		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != head {
-			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, head, want)
 		}
 	}) {
 		return
@@ -466,39 +391,21 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		return
 	}
 
-	if !t.Run("darn form told a tree-scoped answer runs the failing tests and the scoped command, and the package pass, while a publish failure record is present", func(t *testing.T) {
-		head := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 11\n"})
-		writeFailure(t, verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 2, Head: head, Tests: failingB})
-
-		got, err := f.diffGate(toldCommand, baseOf(planPass.Commit), scoped)
-		if err != nil || !got.Passed {
-			t.Fatalf("gate() = %+v, %v; want a pass", got, err)
-		}
-		want := confirmCall("2", scopedCommand)
-		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != head {
-			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, head, want)
-		}
-	}) {
-		return
-	}
-
 	if !t.Run("darn form told a not-scoped answer runs the round call over the told merge base, not over the told command's last pass", func(t *testing.T) {
 		f.commitFiles(t, map[string]string{"a/a.go": "package a\n\nconst Changed = 1\n"})
 		base := head(t)
 		tip := f.commitFiles(t, map[string]string{"b/b.go": "package b\n\nconst Changed = 12\n"})
-		writeFailure(t, verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 2, Head: tip, Tests: failingB})
 
 		got, err := f.diffGate(toldCommand, baseOf(base), notScoped)
 		if err != nil || !got.Passed {
 			t.Fatalf("gate() = %+v, %v; want a pass", got, err)
 		}
-		want := confirmCall("2", roundCall("--base", base))
+		want := roundCall("--base", base)
 		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != tip {
-			t.Errorf("LatestPass(extended command) = %+v, %v; want a pass at %s of %q", pass, ok, tip, want)
+			t.Errorf("LatestPass(round call) = %+v, %v; want a pass at %s of %q", pass, ok, tip, want)
 		}
-		other := confirmCall("2", roundCall("--base", planPass.Commit))
-		if pass, ok := verifytree.LatestPass(paths, other); ok {
-			t.Errorf("LatestPass(command over the last pass) = %+v; want none", pass)
+		if pass, ok := verifytree.LatestPass(paths, roundCall("--base", planPass.Commit)); !ok || pass.Commit == tip {
+			t.Errorf("LatestPass(round call over the last pass) = %+v, %v; want the earlier pass, not one at %s", pass, ok, tip)
 		}
 	}) {
 		return
