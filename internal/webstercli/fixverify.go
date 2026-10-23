@@ -6,6 +6,7 @@
 package webstercli
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -131,7 +132,10 @@ Example:
 
 			rec, spawned, err := websterengine.FixVerifySpawnOrAttach(deps, st, recoverRealClock{})
 			if err == nil && spawned {
-				err = websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st)
+				if err = websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
+					// The strand is live but unrecorded, so nothing later could stop it.
+					err = errors.Join(err, deps.Stopper.StopStrand(rec.StrandGUID))
+				}
 			}
 			_ = mutateLock.Release()
 			mutateHeld = false
