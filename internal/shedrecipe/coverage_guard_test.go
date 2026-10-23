@@ -26,10 +26,8 @@ import (
 // stays registered because internal/shedrecipe's registry is generic Shed machinery shared by
 // reference with a future product's producer list rather than loom's private property.
 // MultiLLM is tolerated the same way: no loom row uses it yet.
-// PRReview is tolerated until a recipe names the PR-Review rows.
 var coverageGuardAllowedUnreachableEngines = map[string]bool{
 	"MultiLLM": true,
-	"PRReview": true,
 	"Stub":     true,
 }
 

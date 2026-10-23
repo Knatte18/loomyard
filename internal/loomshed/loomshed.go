@@ -48,4 +48,9 @@ const (
 	NameMergeBurlerFix         = "Merge-Burler-Fix"
 	NameDarnBurlerReview       = "Darn-Burler-Review"
 	NameDarnBurlerFix          = "Darn-Burler-Fix"
+
+	NameCodeBouncer      = "Code-Bouncer"
+	NameCodeBurlerReview = "Code-Burler-Review"
+	NameCodeBurlerFix    = "Code-Burler-Fix"
+	NamePRReview         = "PR-Review"
 )

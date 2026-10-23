@@ -94,11 +94,10 @@ var LoomRubricDiscussionReview []byte
 //go:embed loom/loom-rubric-plan-review.md
 var LoomRubricPlanReview []byte
 
-// LoomRubricWebsterReview is the Webster-Review rubric, read by both rows of the Webster-Review
-// perch.
+// LoomRubricCodeReview is the Code-Review rubric, read by both rows of the Code-Review perch.
 //
-//go:embed loom/loom-rubric-webster-review.md
-var LoomRubricWebsterReview []byte
+//go:embed loom/loom-rubric-code-review.md
+var LoomRubricCodeReview []byte
 
 // LoomRubricDarnReview is the Darn-Review rubric, read by both rows of the darn recipe's Darn-Review perch.
 //
@@ -472,7 +471,7 @@ var entries = []registryEntry{
 	{"loom-fragment-pr-gate-darn", &LoomFragmentPRGateDarn},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
-	{"loom-rubric-webster-review", &LoomRubricWebsterReview},
+	{"loom-rubric-code-review", &LoomRubricCodeReview},
 	{"loom-rubric-darn-review", &LoomRubricDarnReview},
 	{"loom-rubric-merge-review", &LoomRubricMergeReview},
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},

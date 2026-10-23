@@ -1,5 +1,5 @@
 // entries_simple.go implements the registry entries that take an empty Config and validate only the
-// Env fields they read: preflightEntry, mergeInEntry, publishEntry, prAlignEntry, finalizeEntry, frictionReflectEntry,
+// Env fields they read: preflightEntry, mergeInEntry, finalizeEntry, frictionReflectEntry,
 // loomPreflightEntry, stubEntry, and websterEntry, the webster implementer.
 
 package shedrecipe
@@ -25,32 +25,9 @@ func preflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	return preflightshed.NewPreflight(row.Name, env.Cwd), nil
 }
 
-// publishEntry is the Constructor for the "Publish" registry row: it returns
-// landingshed.NewPublish(env.Landing), wrapping that constructor's own error with this package's
-// error-text prefix rather than surfacing it raw.
+// mergeInEntry is the Constructor for the "MergeIn" registry row: it returns landingshed.NewMergeIn(env.Landing), wrapping that constructor's own error with this package's error-text prefix rather than surfacing it raw.
 //
-// name is deliberately discarded: landingshed.Deps carries no name field, and Publish's own
-// identity is the package constant publishName. The coverage-guard test in
-// internal/loomrecipe/coverage_guard_test.go is what pins this row's registry key ("Publish") to
-// match that constant.
-//
-// It validates no Env field of its own: landingshed.NewPublish already rejects the nil closures in
-// landingshed.Deps, so this entry inherits that check rather than duplicating it.
-func publishEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg); err != nil {
-		return nil, err
-	}
-	p, err := landingshed.NewPublish(env.Landing)
-	if err != nil {
-		return nil, fmt.Errorf("shedrecipe: Publish: %w", err)
-	}
-	return p, nil
-}
-
-// mergeInEntry is the Constructor for the "MergeIn" registry row: publishEntry's twin over landingshed.NewMergeIn(env.Landing).
-//
-// name is deliberately discarded, for the same reason as publishEntry:
-// landingshed.Deps carries no name field, and Merge-In's own identity is a package constant.
+// name is deliberately discarded: landingshed.Deps carries no name field, and Merge-In's own identity is a package constant.
 //
 // It validates no Env field of its own: landingshed.NewMergeIn already rejects the nil seams and the empty merge record path it requires.
 func mergeInEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
@@ -64,48 +41,12 @@ func mergeInEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, 
 	return m, nil
 }
 
-// prGateEntry is the Constructor for the "PRGate" registry row: publishEntry's twin over landingshed.NewPRGate(env.Landing).
+// finalizeEntry is the Constructor for the "Finalize" registry row: it returns landingshed.NewFinalize(env.Landing), wrapping that constructor's own error with this package's error-text prefix rather than surfacing it raw.
 //
-// name is deliberately discarded, for the same reason as publishEntry:
-// landingshed.Deps carries no name field, and the gate's own identity is a package constant.
+// name is deliberately discarded: landingshed.Deps carries no name field, and Finalize's own identity is the package constant finalizeName.
+// The coverage-guard test in internal/loomrecipe/coverage_guard_test.go is what pins this row's registry key ("Finalize") to match that constant.
 //
-// It validates no Env field of its own: landingshed.NewPRGate already rejects an empty ApprovalPath, an empty RejectionPath and a nil TaskHead.
-func prGateEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg); err != nil {
-		return nil, err
-	}
-	g, err := landingshed.NewPRGate(env.Landing)
-	if err != nil {
-		return nil, fmt.Errorf("shedrecipe: PRGate: %w", err)
-	}
-	return g, nil
-}
-
-// prAlignEntry is the Constructor for the "PRAlign" registry row: prGateEntry's twin over landingshed.NewPRAlign(env.Landing).
-//
-// name is discarded for the same reason as prGateEntry's, and it validates no Env field of its own:
-// landingshed.NewPRAlign already rejects the missing record paths, TaskHead and Alignment seams.
-func prAlignEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg); err != nil {
-		return nil, err
-	}
-	a, err := landingshed.NewPRAlign(env.Landing)
-	if err != nil {
-		return nil, fmt.Errorf("shedrecipe: PRAlign: %w", err)
-	}
-	return a, nil
-}
-
-// finalizeEntry is the Constructor for the "Finalize" registry row: publishEntry's twin over
-// landingshed.NewFinalize(env.Landing).
-//
-// name is deliberately discarded, for the same reason as publishEntry: landingshed.Deps carries no
-// name field, and Finalize's own identity is the package constant finalizeName. The coverage-guard
-// test in internal/loomrecipe/coverage_guard_test.go is what pins this row's registry key
-// ("Finalize") to match that constant.
-//
-// It validates no Env field of its own, for the same reason as publishEntry: landingshed.NewFinalize
-// already rejects the nil closures in landingshed.Deps.
+// It validates no Env field of its own: landingshed.NewFinalize already rejects the nil closures in landingshed.Deps.
 func finalizeEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
@@ -121,8 +62,7 @@ func finalizeEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer,
 // loomshed.NewFrictionReflect(name, env.ReflectFriction), wrapping that constructor's own error with
 // this package's error-text prefix.
 //
-// It validates no Env field of its own and inherits loomshed.NewFrictionReflect's nil-closure
-// refusal, the same delegate-to-constructor split publishEntry uses with landingshed.NewPublish.
+// It validates no Env field of its own and inherits loomshed.NewFrictionReflect's nil-closure refusal.
 func frictionReflectEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err

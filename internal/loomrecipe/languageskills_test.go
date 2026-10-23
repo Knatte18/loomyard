@@ -22,7 +22,7 @@ func TestShippedRecipes_LanguageSkillsOnCodeRounds(t *testing.T) {
 		{
 			name:     "loom",
 			data:     recipes.LoomRecipe,
-			wantRows: []string{"Merge-Burler-Fix", "Merge-Burler-Review", "Webster-Burler-Fix", "Webster-Burler-Review"},
+			wantRows: []string{"Code-Burler-Fix", "Code-Burler-Review"},
 		},
 		{
 			name:     "darn",

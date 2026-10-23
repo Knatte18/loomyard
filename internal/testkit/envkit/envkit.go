@@ -314,7 +314,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Segments: map[string]shedrecipe.SegmentSettings{
 			"Discussion-Review": fullEnvSegment(3, "loom.yaml"),
 			"Plan-Review":       fullEnvSegment(3, "loom.yaml"),
-			"Webster-Review":    fullEnvSegment(3, "loom.yaml"),
+			"Code-Review":       fullEnvSegment(3, "loom.yaml"),
 			"Merge-Review":      fullEnvSegment(3, "loom.yaml"),
 			"Darn-Review":       fullEnvSegment(1, "darn.yaml"),
 		},

@@ -1,6 +1,6 @@
 //go:build integration
 
-// reviewrange_integration_test.go settles, against a real repository, that the rework-branch review-range command the Webster-Review rubric states lists the live generation's own commits and nothing a mid-run parent merge brought in.
+// reviewrange_integration_test.go settles, against a real repository, that the rework-branch review-range command the Code-Review rubric states lists the live generation's own commits and nothing a mid-run parent merge brought in.
 
 package loomcli
 
@@ -58,7 +58,7 @@ func TestReviewRange_ReworkBranchListsOnlyOwnCommitsAfterHead(t *testing.T) {
 	commit("b.txt", "B")
 
 	var line string
-	for _, l := range strings.Split(string(stencils.LoomRubricWebsterReview), "\n") {
+	for _, l := range strings.Split(string(stencils.LoomRubricCodeReview), "\n") {
 		if t := strings.TrimSpace(l); strings.HasPrefix(t, "git log --first-parent") {
 			line = t
 			break

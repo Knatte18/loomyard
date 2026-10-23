@@ -25,7 +25,7 @@ func DarnRetiredRows() map[string]string {
 }
 
 // NewDarn parses recipes.DarnRecipe, stamps env.DarnVerifyAttempts onto the verify gates of Darn-Write and Darn-Burler-Fix, builds it against env, applies env.Segments["Darn-Review"].MaxBounces to the Darn-Review perch, and returns the assembled *shedengine.Shed.
-// A review budget of 0 routes Darn-Write's Done straight to Merge-In, so neither the perch nor Describe runs.
+// A review budget of 0 routes Darn-Write's Done and Finalize's reroute straight to PR-Review, so neither the perch nor Describe runs.
 // It makes the status-path coherence checks New makes, then refuses an env.DarnVerifyAttempts below 1, a missing Darn-Review entry in env.Segments, naming the darn wiring's entry, and a Darn-Review budget below 0 before any row builds.
 func NewDarn(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error) {
 	if err := checkStatusPaths(env, paths); err != nil {
@@ -98,12 +98,15 @@ func checkVerifyAttempts(attempts int) error {
 	return nil
 }
 
-// applyDarnReviewBudget sets MaxBounces to budgets' Darn-Review entry on every row of the darn recipe's review segments, or, for a budget of 0, routes Darn-Write's Done to Merge-In so neither a review row nor Describe is reached and the merge-in still runs under the parent lock.
+// applyDarnReviewBudget sets MaxBounces to budgets' Darn-Review entry on every row of the darn recipe's review segments, or, for a budget of 0, routes Darn-Write's Done and Finalize's reroute to PR-Review so neither a review row nor Describe is reached.
 func applyDarnReviewBudget(producers []shedengine.ProducerDef, budgets map[string]int) error {
 	if budgets[darnReviewSegment] == 0 {
 		for i := range producers {
-			if producers[i].Name == loomshed.NameDarnWrite {
-				producers[i].OnDone = loomshed.NameMergeIn
+			switch producers[i].Name {
+			case loomshed.NameDarnWrite:
+				producers[i].OnDone = loomshed.NamePRReview
+			case loomshed.NameFinalize:
+				producers[i].OnReroute = loomshed.NamePRReview
 			}
 		}
 		return nil

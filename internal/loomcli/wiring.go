@@ -708,8 +708,8 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ReworkDirRel:  loomengine.LoomReworkDirRel(),
 		ReviewsDir:    loomengine.LoomReviewsDir(location),
 		AmendmentPath: loomengine.LoomAmendmentRecord(location),
-		// The run subdirectories are the recipe's own run_subdir values for the Plan-Review and Webster-Review segments, the two reviews a generation owns.
-		ReviewRunSubdirs: []string{"plan", "webster"},
+		// The run subdirectories are the recipe's own run_subdir values for the Plan-Review and Code-Review segments, the two reviews a generation owns.
+		ReviewRunSubdirs: []string{"plan", "code"},
 		ReadCommitted:    committedAnchoredReader(location),
 		ArchiveWebster: func(dest string) error {
 			return websterengine.ArchiveRunRecord(websterGeom, dest)
@@ -1044,7 +1044,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 var loomPerches = map[string]loomengine.Perch{
 	loomshed.NameDiscussionBouncer: loomengine.PerchDiscussion,
 	loomshed.NamePlanBouncer:       loomengine.PerchPlan,
-	loomshed.NameWebsterBouncer:    loomengine.PerchCode,
+	loomshed.NameCodeBouncer:       loomengine.PerchCode,
 	loomshed.NameMergeBouncer:      loomengine.PerchMerge,
 }
 
@@ -1053,7 +1053,7 @@ var loomPerches = map[string]loomengine.Perch{
 var loomSegmentPerches = map[string]loomengine.Perch{
 	"Discussion-Review": loomengine.PerchDiscussion,
 	"Plan-Review":       loomengine.PerchPlan,
-	"Webster-Review":    loomengine.PerchCode,
+	"Code-Review":       loomengine.PerchCode,
 	"Merge-Review":      loomengine.PerchMerge,
 }
 

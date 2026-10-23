@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -54,41 +53,6 @@ func validLandingDeps(t *testing.T) landingshed.Deps {
 		MergeRecordPath: landingshed.MergeRecordPath(dir),
 	}
 }
-
-// armPRGate adds the three fields landingshed.NewPRGate requires on top of validLandingDeps: both decision-record paths and a TaskHead closure.
-func armPRGate(deps *landingshed.Deps) {
-	deps.ApprovalPath = filepath.Join(deps.ScratchDir, "approval.json")
-	deps.RejectionPath = filepath.Join(deps.ScratchDir, "rejection.json")
-	deps.TaskHead = func() (string, error) { return "head", nil }
-}
-
-// armPRAlign adds the Alignment seams landingshed.NewPRAlign requires on top of armPRGate's fields.
-func armPRAlign(deps *landingshed.Deps) {
-	armPRGate(deps)
-	deps.Alignment = landingshed.AlignmentDeps{
-		Config:   func() (landingshed.AlignmentConfig, error) { return landingshed.AlignmentConfig{Off: true}, nil },
-		Session:  noopAlignmentSession{},
-		Snapshot: func() (string, error) { return "", nil },
-		NotePath: filepath.Join(deps.ScratchDir, "note.json"),
-	}
-}
-
-// noopAlignmentSession is an alignment session that starts nothing and has no attempts.
-type noopAlignmentSession struct{}
-
-func (noopAlignmentSession) Begin(alignment.SpawnInput) (alignment.Attempt, error) {
-	return alignment.Attempt{}, nil
-}
-
-func (noopAlignmentSession) Poll(alignment.Attempt) (alignment.Outcome, error) {
-	return alignment.Outcome{}, nil
-}
-
-func (noopAlignmentSession) Close(alignment.Attempt, string) error { return nil }
-
-func (noopAlignmentSession) MarkApplied(alignment.Attempt, string, bool) error { return nil }
-
-func (noopAlignmentSession) Attempts() ([]alignment.Attempt, error) { return nil, nil }
 
 // zeroEnvField returns a copy of env with the named field set to its Go zero value.
 // field is either a top-level Env field name, or a dotted WebsterDeps.<Field> name for one of the
@@ -166,41 +130,6 @@ func simpleEntryCases() []simpleEntryCase {
 			buildEnv: func(t *testing.T) Env {
 				env := newTestEnv(t)
 				env.Landing = validLandingDeps(t)
-				return env
-			},
-			validatedFields: nil,
-			unreadField:     "Cwd",
-		},
-		{
-			registryKey: "Publish",
-			entry:       publishEntry,
-			buildEnv: func(t *testing.T) Env {
-				env := newTestEnv(t)
-				env.Landing = validLandingDeps(t)
-				return env
-			},
-			validatedFields: nil,
-			unreadField:     "Cwd",
-		},
-		{
-			registryKey: "PRAlign",
-			entry:       prAlignEntry,
-			buildEnv: func(t *testing.T) Env {
-				env := newTestEnv(t)
-				env.Landing = validLandingDeps(t)
-				armPRAlign(&env.Landing)
-				return env
-			},
-			validatedFields: nil,
-			unreadField:     "Cwd",
-		},
-		{
-			registryKey: "PRGate",
-			entry:       prGateEntry,
-			buildEnv: func(t *testing.T) Env {
-				env := newTestEnv(t)
-				env.Landing = validLandingDeps(t)
-				armPRGate(&env.Landing)
 				return env
 			},
 			validatedFields: nil,
@@ -349,51 +278,9 @@ func TestWebsterEntry_GateKeys(t *testing.T) {
 	})
 }
 
-// TestPublishEntry_LandingRejected asserts publishEntry surfaces landingshed.NewPublish's own
+// TestFinalizeEntry_LandingRejected asserts finalizeEntry surfaces landingshed.NewFinalize's own
 // rejection of a zero Deps wrapped with this package's own error-text prefix, not passed through
 // raw.
-func TestPublishEntry_LandingRejected(t *testing.T) {
-	env := newTestEnv(t)
-	_, err := publishEntry(RowIdentity{Name: "row-name"}, Config{}, env)
-	if err == nil {
-		t.Fatalf("publishEntry() error = nil; want non-nil for a zero Env.Landing")
-	}
-	if !strings.HasPrefix(err.Error(), "shedrecipe: Publish: ") {
-		t.Errorf("publishEntry() error = %v; want it to carry this package's own %q prefix, not a raw pass-through", err, "shedrecipe: Publish: ")
-	}
-}
-
-// TestPRGateEntry covers prGateEntry's construction: it builds a *landingshed.PRGate from a full Env.Landing, and wraps the constructor's refusal of a nil TaskHead with this package's prefix.
-func TestPRGateEntry(t *testing.T) {
-	t.Run("BuildsPRGate", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.Landing = validLandingDeps(t)
-		armPRGate(&env.Landing)
-		producer, err := prGateEntry(RowIdentity{Name: "row-name"}, Config{}, env)
-		if err != nil {
-			t.Fatalf("prGateEntry() error = %v; want nil", err)
-		}
-		if _, ok := producer.(*landingshed.PRGate); !ok {
-			t.Errorf("prGateEntry() = %T; want *landingshed.PRGate", producer)
-		}
-	})
-
-	t.Run("NilTaskHead", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.Landing = validLandingDeps(t)
-		armPRGate(&env.Landing)
-		env.Landing.TaskHead = nil
-		_, err := prGateEntry(RowIdentity{Name: "row-name"}, Config{}, env)
-		if err == nil {
-			t.Fatalf("prGateEntry() error = nil; want non-nil for a nil TaskHead")
-		}
-		if !strings.HasPrefix(err.Error(), "shedrecipe: PRGate: ") {
-			t.Errorf("prGateEntry() error = %v; want the %q prefix", err, "shedrecipe: PRGate: ")
-		}
-	})
-}
-
-// TestFinalizeEntry_LandingRejected is publishEntry's failure-path twin over finalizeEntry.
 func TestFinalizeEntry_LandingRejected(t *testing.T) {
 	env := newTestEnv(t)
 	_, err := finalizeEntry(RowIdentity{Name: "row-name"}, Config{}, env)

@@ -120,7 +120,7 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 		{"record I/O failure", "", circlingFake{status: atPlanBouncer, found: true, recordErr: errors.New("write circling decision: disk full")}, []string{"re-run the verb"}},
 		{"running run", "", circlingFake{status: shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NamePlanBouncer}, found: true}, []string{"not awaiting"}},
 		{"awaiting at PR-Gate", "", circlingFake{status: awaitingAt(loomshed.NamePRGate), found: true}, []string{"not a review segment's Bouncer row"}},
-		{"latest round not escalated", "", circlingFake{status: awaitingAt(loomshed.NameWebsterBouncer), found: true, recordErr: shedadapters.ErrNotEscalated}, []string{"is not escalated"}},
+		{"latest round not escalated", "", circlingFake{status: awaitingAt(loomshed.NameCodeBouncer), found: true, recordErr: shedadapters.ErrNotEscalated}, []string{"is not escalated"}},
 		{"malformed escalation record", "", circlingFake{status: atPlanBouncer, found: true, recordErr: fmt.Errorf("%w: round-2-escalation.md: bad cause", shedadapters.ErrEscalationMalformed)}, []string{"fix or delete the named escalation file"}},
 		{"second decision", "", circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, []string{`already recorded for the escalated round at Discussion-Bouncer; way forward: the decision for this round is recorded and stays; run "lyx loom resume"`}},
 		{

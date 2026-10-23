@@ -171,7 +171,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 				Models:         c.env.Segments["Darn-Review"].Models,
 				ReviewKey:      tt.wantReviewKey,
 				FixKey:         tt.wantFixKey,
-				Bouncer:        c.env.Segments["Webster-Review"].Bouncer,
+				Bouncer:        c.env.Segments["Code-Review"].Bouncer,
 				MaxBounces:     1,
 				MaxBouncesKey:  "review_max_bounces",
 				HardMaxBounces: 2, HardMaxBouncesKey: "review_hard_max_bounces",
@@ -349,9 +349,9 @@ func TestRecipeRouting(t *testing.T) {
 		wantRow string
 		absent  string
 	}{
-		{shedrun.RecipeLoom, loomshed.NamePRRework, loomshed.NameDarnWrite},
-		{"", loomshed.NamePRRework, loomshed.NameDarnWrite},
-		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NamePRRework},
+		{shedrun.RecipeLoom, loomshed.NameMergeIn, loomshed.NameDarnWrite},
+		{"", loomshed.NameMergeIn, loomshed.NameDarnWrite},
+		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NameMergeIn},
 	}
 	for _, tt := range tests {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {

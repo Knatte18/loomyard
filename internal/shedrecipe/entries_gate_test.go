@@ -8,11 +8,42 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
+
+// reworkTestEnv returns newTestEnv(t) with ReworkTable and every Rework seam filled.
+func reworkTestEnv(t *testing.T) Env {
+	t.Helper()
+	env := newTestEnv(t)
+	dir := t.TempDir()
+	env.ReworkTable = func(loomshed.ReworkTold) (seatengine.Table, error) {
+		return seatengine.Table{
+			RolePrefix: "rework",
+			Segment:    segmentcolor.Webster,
+			Seats:      []seatengine.Seat{{Stencil: "loom-template-rework", Outputs: []string{filepath.Join(dir, "coverage.md")}}},
+		}, nil
+	}
+	env.Rework = loomshed.PRReworkDeps{
+		PlanDir:           filepath.Join(dir, "plan"),
+		ReworkDir:         filepath.Join(dir, "rework"),
+		ReworkDirRel:      "_lyx/loom/rework",
+		ReviewsDir:        filepath.Join(dir, "reviews"),
+		ReviewRunSubdirs:  []string{"plan", "webster"},
+		ReadCommitted:     func(string) ([]byte, bool, error) { return nil, false, nil },
+		ReadRejection:     func() (loomshed.PendingRejection, bool, error) { return loomshed.PendingRejection{}, false, nil },
+		ClearRejection:    func() error { return nil },
+		ArchiveWebster:    func(string) error { return nil },
+		KeepReviewRecords: func(string, string) error { return nil },
+		Commit:            func() error { return nil },
+	}
+	return env
+}
 
 // gatesCfg builds a row Config carrying a one-entry "gates" list, the shape every shipped gated row has.
 func gatesCfg(name string, attempts int) Config {
@@ -25,7 +56,6 @@ func gateCapableEntries() map[string]Constructor {
 		"DiscussionWrite": discussionWriteEntry,
 		"PlanWrite":       planWriteEntry,
 		"Describe":        describeEntry,
-		"PRRework":        prReworkEntry,
 		"DarnWrite":       darnWriteEntry,
 		"Webster":         websterEntry,
 	}

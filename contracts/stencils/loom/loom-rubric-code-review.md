@@ -1,22 +1,23 @@
-<!-- This is the Webster-Review rubric. It is read by the Bouncer row and the review row of the Webster-Review perch:
-     the Webster-Bouncer row interpolates it as bouncer-template-seed.md's and
-     bouncer-template-judge.md's rubric marker value, and the Webster-Burler-Review row interpolates it
+<!-- This is the Code-Review rubric. It is read by the Bouncer row and the review row of the Code-Review perch:
+     the Code-Bouncer row interpolates it as bouncer-template-seed.md's and
+     bouncer-template-judge.md's rubric marker value, and the Code-Burler-Review row interpolates it
      the same way into internal/burlerengine's own review prompt.
      It is a marker VALUE, never a template -- it carries no top-level stencil markers of its own, and
      internal/stencil's StripLeadingComment removes this leading comment before either consumer ever
      sees it. -->
 
-# Webster-Review rubric
+# Code-Review rubric
 
 The subject under review is the **committed diff**, not a file and not a directory.
 Ordinary diff review is the base: read the diff as code, with no checklist supplied, and judge it the way a careful reviewer judges any change.
 The dimensions under `## Also flag` are added on top of that base, never a replacement for it.
 
-The measuring stick is the plan — `_lyx/plan/00-overview.md` and the card files its Card Index names.
+The measuring stick is the decision record, `_lyx/discussion/decision-record.md`, and the plan, `_lyx/plan/00-overview.md` with the card files its Card Index names.
+The decision record settles what the task's change must do, and the plan is how the cards carry it out.
 The Card model the plan implements is described in `{{.specs_dir}}/loom/loom-plan-spec.md`, and the format contract is `{{.specs_dir}}/loom/loom-plan-spec.md`.
 This rubric points at both and restates neither.
 
-`Webster-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
+`Code-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
 This gate sits downstream of three separate upstream gates, so a finding re-derived from one of their subjects is duplicated work rather than coverage.
 
 ## Determining the review range
@@ -50,16 +51,18 @@ Do not flag any of the following as a finding:
 
 - **Anything the plan's own gates already check.**
   The plan's *format* is enforced deterministically by `Plan-Write`'s and `Plan-Burler-Fix`'s own gates and is not this gate's subject.
-- **Findings raised against the plan itself.**
-  The plan is the measuring stick and never the subject, exactly as the decision record is for `Plan-Review`.
-  A plan-authoring finding cannot be satisfied by changing the diff, which is the only thing this segment can fix.
+- **Findings raised against the decision record or the plan themselves.**
+  Both are the measuring stick and never the subject, exactly as the decision record is for `Plan-Review`.
+  A plan-authoring or decision finding cannot be satisfied by changing the diff, which is the only thing this segment can fix.
 - **A missing `ImpactSummary` on any card, or an incomplete `DependsOn`/`Produces` list.**
   Both belong to `Plan-Review`, which has already passed.
 - **Anything that is not the diff.**
-  The discussion pair and the plan directory under `_lyx`, and this segment's own round artifacts under `_lyx/reviews/webster/`, are never the subject of a finding.
+  The discussion pair and the plan directory under `_lyx`, and this segment's own round artifacts under `_lyx/reviews/code/`, are never the subject of a finding.
 
 ## Also flag
 
+- **Code in general.**
+  Review the code for correctness beyond plan compliance: logic errors, unhandled failure paths, broken invariants and behavior that contradicts the decision record, each judged against the code as a careful reviewer reads it and against both the decision record and the plan.
 - **Comment-convention compliance.**
   Any new or changed doc comment follows the target repository's own conventions — its own constraints document if it has one, and the conventions the surrounding code already follows.
   A rule written in the target repository's constraints document outranks a convention inferred from the surrounding code.

@@ -234,9 +234,9 @@ func TestEscalation_RuleContinuesOneRoundThenHardCapThenAccept(t *testing.T) {
 	}
 }
 
-// TestEscalation_PerchBudgetOneWithAutoAccept drives the sequence fixture with Webster-Bouncer's own budget at 1 and its auto-accept flag set, and a Webster judge that rules CONTINUE.
-// With the fix half passing, the Webster-Review segment runs one review and one fix and Webster-Bouncer settles Done with an automatic accept on disk, and the run reaches Describe.
-// With the fix half's gate failing in round 1 no round is left to judge, so the run halts blocked, with no circling decision and no Webster-Bouncer Done.
+// TestEscalation_PerchBudgetOneWithAutoAccept drives the sequence fixture with Code-Bouncer's own budget at 1 and its auto-accept flag set, and a Code judge that rules CONTINUE.
+// With the fix half passing, the Code-Review segment runs one review and one fix and Code-Bouncer settles Done with an automatic accept on disk, and the run reaches Describe.
+// With the fix half's gate failing in round 1 no round is left to judge, so the run halts blocked, with no circling decision and no Code-Bouncer Done.
 func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -263,7 +263,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, env, paths := buildSequenceFixture(t)
-			setBudgets(&env, 3, map[string]int{"Webster-Review": 1})
+			setBudgets(&env, 3, map[string]int{"Code-Review": 1})
 			env.Setting = func(module, key string) (any, error) {
 				if module == "loom" && key == "code_auto_accept" {
 					return true, nil
@@ -274,9 +274,9 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 
 			shuttle := env.Shuttle.(*shedfake.Shuttle)
 			dispatch := shuttle.RunFn
-			websterRunDir := string(filepath.Separator) + "webster" + string(filepath.Separator)
+			codeRunDir := string(filepath.Separator) + "code" + string(filepath.Separator)
 			shuttle.RunFn = func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
-				if spec.Role == "webster-bouncer-judge" && len(spec.OutputFiles) > 0 && strings.Contains(spec.OutputFiles[0], websterRunDir) {
+				if spec.Role == "code-bouncer-judge" && len(spec.OutputFiles) > 0 && strings.Contains(spec.OutputFiles[0], codeRunDir) {
 					return writeBouncerJudge(spec, "CONTINUE")
 				}
 				return dispatch(spec)
@@ -299,6 +299,14 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 				t.Fatalf("New() error = %v; want nil", err)
 			}
 			shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
+			for i := range shed.Producers {
+				switch shed.Producers[i].Name {
+				case loomshed.NameMergeIn:
+					shed.Producers[i].Producer = fakeAlwaysDoneProducer{}
+				case loomshed.NamePRReview:
+					shed.Producers[i].Producer = &haltingProducer{}
+				}
+			}
 
 			result, err := shed.Run(context.Background())
 			if err != nil {
@@ -311,24 +319,24 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 			bouncerDone, reviews, fixes, describeDone := 0, 0, 0, 0
 			for _, e := range result.History {
 				switch {
-				case e.Producer == loomshed.NameWebsterBouncer && e.Outcome == shedengine.Done:
+				case e.Producer == loomshed.NameCodeBouncer && e.Outcome == shedengine.Done:
 					bouncerDone++
-				case e.Producer == loomshed.NameWebsterBurlerReview:
+				case e.Producer == loomshed.NameCodeBurlerReview:
 					reviews++
-				case e.Producer == loomshed.NameWebsterBurlerFix:
+				case e.Producer == loomshed.NameCodeBurlerFix:
 					fixes++
 				case e.Producer == loomshed.NameDescribe && e.Outcome == shedengine.Done:
 					describeDone++
 				}
 			}
-			decision, err := os.ReadFile(filepath.Join(env.RunRoot, "webster", "round-1-circling-decision.md"))
+			decision, err := os.ReadFile(filepath.Join(env.RunRoot, "code", "round-1-circling-decision.md"))
 
 			if tt.wantAccepted {
 				if reviews != 1 || fixes != 1 {
-					t.Errorf("Webster-Review review/fix calls = %d/%d; want exactly 1/1", reviews, fixes)
+					t.Errorf("Code-Review review/fix calls = %d/%d; want exactly 1/1", reviews, fixes)
 				}
 				if bouncerDone != 1 || describeDone != 1 {
-					t.Errorf("Webster-Bouncer Done = %d, Describe Done = %d; want 1 and 1, the accept reaching Describe", bouncerDone, describeDone)
+					t.Errorf("Code-Bouncer Done = %d, Describe Done = %d; want 1 and 1, the accept reaching Describe", bouncerDone, describeDone)
 				}
 				if err != nil || !strings.Contains(string(decision), "automatic: true") || !strings.Contains(string(decision), "settled: true") {
 					t.Errorf("round-1 decision = %q, %v; want a settled automatic accept", decision, err)
@@ -336,7 +344,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 				return
 			}
 			if bouncerDone != 0 || describeDone != 0 {
-				t.Errorf("Webster-Bouncer Done = %d, Describe Done = %d; want neither", bouncerDone, describeDone)
+				t.Errorf("Code-Bouncer Done = %d, Describe Done = %d; want neither", bouncerDone, describeDone)
 			}
 			if !errors.Is(err, fs.ErrNotExist) {
 				t.Errorf("round-1 decision = %q, %v; want none recorded", decision, err)

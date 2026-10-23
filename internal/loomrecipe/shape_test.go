@@ -71,18 +71,12 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePlanBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NamePlanBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NameWebster, "Implementer", reflect.TypeOf(loomshed.NewWebsterProducer("", configengine.Dirs{}, nil, websterengine.RunDeps{}, nil))},
-	{loomshed.NameWebsterBouncer, "Bouncer", bouncerType},
-	{loomshed.NameWebsterBurlerReview, "BurlerReview", burlerReviewType},
-	{loomshed.NameWebsterBurlerFix, "BurlerFix", burlerFixType},
-	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameMergeIn, "MergeIn", reflect.TypeOf(&landingshed.MergeIn{})},
-	{loomshed.NameMergeBouncer, "Bouncer", bouncerType},
-	{loomshed.NameMergeBurlerReview, "BurlerReview", burlerReviewType},
-	{loomshed.NameMergeBurlerFix, "BurlerFix", burlerFixType},
-	{loomshed.NamePublish, "Publish", reflect.TypeOf(&landingshed.Publish{})},
-	{loomshed.NamePRAlign, "PRAlign", reflect.TypeOf(&landingshed.PRAlign{})},
-	{loomshed.NamePRGate, "PRGate", reflect.TypeOf(&landingshed.PRGate{})},
-	{loomshed.NamePRRework, "PRRework", reflect.TypeOf(loomshed.NewPRRework("", func(loomshed.ReworkTold) shedengine.ShedProducer { return nil }, loomshed.PRReworkDeps{}))},
+	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},
+	{loomshed.NameCodeBurlerReview, "BurlerReview", burlerReviewType},
+	{loomshed.NameCodeBurlerFix, "BurlerFix", burlerFixType},
+	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
+	{loomshed.NamePRReview, "PRReview", reflect.TypeOf(&landingshed.PRReview{})},
 	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},
 	{loomshed.NameFrictionReflect, "FrictionReflect", frictionReflectProducerType()},
 }
@@ -134,40 +128,40 @@ func TestNew_ToldShedFields(t *testing.T) {
 	}
 }
 
-// TestNew_PublishAndFinalizeAreRealProducers asserts the row named Publish and the row named
+// TestNew_MergeInAndFinalizeAreRealProducers asserts the row named Merge-In and the row named
 // Finalize are each backed by the real landingshed producer type, not the stub type, and both keep
 // their escalate-on-stuck setting.
-func TestNew_PublishAndFinalizeAreRealProducers(t *testing.T) {
+func TestNew_MergeInAndFinalizeAreRealProducers(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
 	if err != nil {
 		t.Fatalf("New() error = %v; want nil", err)
 	}
 
-	var publishRow, finalizeRow *shedengine.ProducerDef
+	var mergeInRow, finalizeRow *shedengine.ProducerDef
 	for i := range shed.Producers {
 		switch shed.Producers[i].Name {
-		case loomshed.NamePublish:
-			publishRow = &shed.Producers[i]
+		case loomshed.NameMergeIn:
+			mergeInRow = &shed.Producers[i]
 		case loomshed.NameFinalize:
 			finalizeRow = &shed.Producers[i]
 		}
 	}
-	if publishRow == nil {
-		t.Fatalf("New() producer list has no row named %q", loomshed.NamePublish)
+	if mergeInRow == nil {
+		t.Fatalf("New() producer list has no row named %q", loomshed.NameMergeIn)
 	}
 	if finalizeRow == nil {
 		t.Fatalf("New() producer list has no row named %q", loomshed.NameFinalize)
 	}
 
-	if _, ok := publishRow.Producer.(*landingshed.Publish); !ok {
-		t.Errorf("row %q Producer = %T; want *landingshed.Publish, not the stub", loomshed.NamePublish, publishRow.Producer)
+	if _, ok := mergeInRow.Producer.(*landingshed.MergeIn); !ok {
+		t.Errorf("row %q Producer = %T; want *landingshed.MergeIn, not the stub", loomshed.NameMergeIn, mergeInRow.Producer)
 	}
 	if _, ok := finalizeRow.Producer.(*landingshed.Finalize); !ok {
 		t.Errorf("row %q Producer = %T; want *landingshed.Finalize, not the stub", loomshed.NameFinalize, finalizeRow.Producer)
 	}
-	if publishRow.OnStuck != "" {
-		t.Errorf("row %q OnStuck = %q; want \"\" (escalate, never bounce)", loomshed.NamePublish, publishRow.OnStuck)
+	if mergeInRow.OnStuck != "" {
+		t.Errorf("row %q OnStuck = %q; want \"\" (escalate, never bounce)", loomshed.NameMergeIn, mergeInRow.OnStuck)
 	}
 	if finalizeRow.OnStuck != "" {
 		t.Errorf("row %q OnStuck = %q; want \"\" (escalate, never bounce)", loomshed.NameFinalize, finalizeRow.OnStuck)
@@ -176,11 +170,10 @@ func TestNew_PublishAndFinalizeAreRealProducers(t *testing.T) {
 
 // TestNew_MissingLandingClosureReturnsError asserts that an Env whose landing passthrough is
 // missing a required closure makes New return an error rather than a list that panics at call
-// time: New surfaces landingshed.NewPublish's and landingshed.NewFinalize's own construction
-// failure instead of discarding it.
+// time: New surfaces landingshed.NewMergeIn's own construction failure instead of discarding it.
 func TestNew_MissingLandingClosureReturnsError(t *testing.T) {
 	env, paths := testEnv(t)
-	env.Landing.PushBranch = nil
+	env.Landing.MergeBase = nil
 
 	shed, err := New(env, paths)
 	if err == nil {
@@ -189,8 +182,8 @@ func TestNew_MissingLandingClosureReturnsError(t *testing.T) {
 	if shed != nil {
 		t.Errorf("New() shed = %+v; want nil alongside a non-nil error", shed)
 	}
-	if !strings.Contains(err.Error(), "Publish") {
-		t.Errorf("New() error = %q; want it to name the offending row %q", err.Error(), "Publish")
+	if !strings.Contains(err.Error(), "MergeIn") {
+		t.Errorf("New() error = %q; want it to name the offending row %q", err.Error(), "MergeIn")
 	}
 }
 

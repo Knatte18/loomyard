@@ -22,16 +22,12 @@ func TestSettledSegmentGuard(t *testing.T) {
 		{Name: "Plan-Bouncer", Segment: "Plan-Review", OnStuck: "Plan-Burler-Review", OnDone: "Webster"},
 		{Name: "Plan-Burler-Review", Segment: "Plan-Review", OnStuck: "Plan-Burler-Fix", OnDone: "Plan-Burler-Fix"},
 		{Name: "Plan-Burler-Fix", Segment: "Plan-Review", OnStuck: "Plan-Bouncer", OnDone: "Plan-Bouncer"},
-		{Name: "Webster", OnDone: "Webster-Bouncer"},
-		{Name: "Webster-Bouncer", Segment: "Webster-Review", OnStuck: "Webster-Burler-Review", OnDone: "Describe"},
-		{Name: "Webster-Burler-Review", Segment: "Webster-Review", OnStuck: "Webster-Burler-Fix", OnDone: "Webster-Burler-Fix"},
-		{Name: "Webster-Burler-Fix", Segment: "Webster-Review", OnStuck: "Webster-Bouncer", OnDone: "Webster-Bouncer"},
-		{Name: "Merge-In", OnDone: "Merge-Bouncer"},
-		{Name: "Merge-Bouncer", Segment: "Merge-Review", OnStuck: "Merge-Burler-Review", OnDone: "Publish"},
-		{Name: "Merge-Burler-Review", Segment: "Merge-Review", OnStuck: "Merge-Burler-Fix", OnDone: "Merge-Burler-Fix"},
-		{Name: "Merge-Burler-Fix", Segment: "Merge-Review", OnStuck: "Merge-Bouncer", OnDone: "Merge-Bouncer"},
-		{Name: "PR-Gate", Segment: "PR-Review", OnStuck: "PR-Rework", OnDone: "Finalize"},
-		{Name: "PR-Rework", Segment: "PR-Review", OnDone: "Plan-Bouncer"},
+		{Name: "Webster", OnDone: "Merge-In"},
+		{Name: "Merge-In", OnDone: "Code-Bouncer"},
+		{Name: "Code-Bouncer", Segment: "Code-Review", OnStuck: "Code-Burler-Review", OnDone: "Describe"},
+		{Name: "Code-Burler-Review", Segment: "Code-Review", OnStuck: "Code-Burler-Fix", OnDone: "Code-Burler-Fix"},
+		{Name: "Code-Burler-Fix", Segment: "Code-Review", OnStuck: "Code-Bouncer", OnDone: "Code-Bouncer"},
+		{Name: "Bounceless-Row", Segment: "Bounceless-Segment", OnDone: "Finalize"},
 	}
 
 	const (
@@ -75,8 +71,8 @@ func TestSettledSegmentGuard(t *testing.T) {
 			target: "Plan-Burler-Fix", wantRefusal: []string{"goto --to Plan-Bouncer", "goto --to Plan-Write"},
 		},
 		{
-			name: "Merge-Review review row", bouncer: "Merge-Bouncer", files: map[string]string{"settle-record.json": settled},
-			target: "Merge-Burler-Review", wantRefusal: []string{"goto --to Merge-Bouncer", "goto --to Merge-In"},
+			name: "Code-Review review row", bouncer: "Code-Bouncer", files: map[string]string{"settle-record.json": settled},
+			target: "Code-Burler-Review", wantRefusal: []string{"goto --to Code-Bouncer", "goto --to Merge-In"},
 		},
 		{
 			name: "interrupted live record", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": interrupted},
@@ -94,7 +90,7 @@ func TestSettledSegmentGuard(t *testing.T) {
 		},
 		{name: "segment with no record", bouncer: "Plan-Bouncer", target: "Plan-Burler-Review"},
 		{name: "row outside every review segment", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled}, target: "Plan-Write"},
-		{name: "segment holding no Bouncer", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled}, target: "PR-Gate"},
+		{name: "segment holding no Bouncer", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled}, target: "Bounceless-Row"},
 		{
 			name: "settle record unreadable as JSON", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": "{"},
 			target: "Plan-Burler-Review", wantErr: true,
@@ -116,8 +112,8 @@ func TestSettledSegmentGuard(t *testing.T) {
 			amendment: amendmentAt(after), target: "Plan-Burler-Fix", wantRefusal: []string{"goto --to Plan-Bouncer"},
 		},
 		{
-			name: "amendment does not admit another segment's review row", bouncer: "Merge-Bouncer", files: map[string]string{"settle-record.json": roundStarted},
-			amendment: amendmentAt(after), target: "Merge-Burler-Review", wantRefusal: []string{"goto --to Merge-Bouncer"},
+			name: "amendment does not admit another segment's review row", bouncer: "Code-Bouncer", files: map[string]string{"settle-record.json": roundStarted},
+			amendment: amendmentAt(after), target: "Code-Burler-Review", wantRefusal: []string{"goto --to Code-Bouncer"},
 		},
 		{
 			name: "amendment record unreadable", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": roundStarted},
@@ -163,9 +159,6 @@ func TestSettledSegmentGuard(t *testing.T) {
 				if !strings.Contains(refusal, want) {
 					t.Errorf("guard(%q) = %q; want it to contain %q", tt.target, refusal, want)
 				}
-			}
-			if strings.Contains(refusal, "PR-Rework") {
-				t.Errorf("guard(%q) = %q; want the writer to be the row before the segment, never PR-Rework", tt.target, refusal)
 			}
 		})
 	}

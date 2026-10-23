@@ -90,7 +90,7 @@ func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
 		t.Fatalf("CommitWebster() = %v; want nil", err)
 	}
 	writeTestFile(t, filepath.Join(reviewsDir, "plan", "report.md"), "plan review\n")
-	writeTestFile(t, filepath.Join(reviewsDir, "webster", "report.md"), "webster review\n")
+	writeTestFile(t, filepath.Join(reviewsDir, "code", "report.md"), "code review\n")
 	if _, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LoomReviewsDirRel()}, "reviews", fabricengine.EnvSyncOptions()); err != nil {
 		t.Fatalf("commit reviews: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestWire_Real_ReworkRoundsArchiveGenerations(t *testing.T) {
 		"A\t" + round1Prior + "/webster/summary.md",
 		"D\t" + websterengine.DirRel() + "/summary.md",
 		"A\t" + round1Prior + "/reviews/plan/report.md",
-		"D\t" + filepath.ToSlash(loomengine.LoomReviewsDirRel()) + "/webster/report.md",
+		"D\t" + filepath.ToSlash(loomengine.LoomReviewsDirRel()) + "/code/report.md",
 		"A\t" + filepath.ToSlash(loomengine.LoomReworkDirRel()) + "/round-1/record.json",
 		"A\t" + planparser.PlanDirRel() + "/02-second-card.md",
 	} {

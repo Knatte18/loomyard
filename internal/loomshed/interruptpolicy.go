@@ -37,14 +37,10 @@ var InterruptPolicies = map[string]string{
 	NamePlanWrite:         shedverbs.InterruptPolicyReinvoke,
 	NamePlanBouncer:       shedverbs.InterruptPolicyReinvoke,
 	NameWebster:           shedverbs.InterruptPolicyHandback,
-	NameWebsterBouncer:    shedverbs.InterruptPolicyReinvoke,
+	NameCodeBouncer:       shedverbs.InterruptPolicyReinvoke,
 	NameDescribe:          shedverbs.InterruptPolicyReinvoke,
 	NameMergeIn:           shedverbs.InterruptPolicyReinvoke, // spawns only the conflict session the resolver reattaches
-	NameMergeBouncer:      shedverbs.InterruptPolicyReinvoke,
-	NamePublish:           shedverbs.InterruptPolicyReinvoke,
-	NamePRAlign:           shedverbs.InterruptPolicyReinvoke, // re-entry reuses the live spawn or its verdict
-	NamePRGate:            shedverbs.InterruptPolicyReinvoke, // spawns nothing
-	NamePRRework:          shedverbs.InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
+	NamePRReview:          shedverbs.InterruptPolicyReinvoke, // spawns nothing
 	NameDarnWrite:         shedverbs.InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
 	NameDarnBouncer:       shedverbs.InterruptPolicyReinvoke,
 	NameFinalize:          shedverbs.InterruptPolicyReinvoke,
@@ -55,10 +51,8 @@ var InterruptPolicies = map[string]string{
 	NameDiscussionBurlerFix:    shedverbs.InterruptPolicyReinvoke,
 	NamePlanBurlerReview:       shedverbs.InterruptPolicyReinvoke,
 	NamePlanBurlerFix:          shedverbs.InterruptPolicyReinvoke,
-	NameWebsterBurlerReview:    shedverbs.InterruptPolicyReinvoke,
-	NameWebsterBurlerFix:       shedverbs.InterruptPolicyReinvoke,
-	NameMergeBurlerReview:      shedverbs.InterruptPolicyReinvoke,
-	NameMergeBurlerFix:         shedverbs.InterruptPolicyReinvoke,
+	NameCodeBurlerReview:       shedverbs.InterruptPolicyReinvoke,
+	NameCodeBurlerFix:          shedverbs.InterruptPolicyReinvoke,
 	NameDarnBurlerReview:       shedverbs.InterruptPolicyReinvoke,
 	NameDarnBurlerFix:          shedverbs.InterruptPolicyReinvoke,
 }
