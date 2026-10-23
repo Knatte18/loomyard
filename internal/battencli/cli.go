@@ -10,6 +10,13 @@
 //
 // "lyx batten cleanup [--apply]" (cleanup.go) removes done runs' records and scratch and aged orphan scratch, as a dry run unless given --apply.
 //
+// "lyx batten cancel <slug> [--remove]" (cancel.go, cancelcmd.go) ends a run for good from the prime, whatever its state.
+// It refuses first, with nothing ended: a hub pause, work that reached the parent, an owner on another machine, a stopped origin entry, a cancel already under way and a slug with nothing left.
+// It then takes the cancel marker, a record whose writer's liveness is a lock it holds, which every driving verb refuses on and a second cancel reads to finish an interrupted one.
+// The order is: end the registered processes, take batten's locks, stop the pair's strands and the tackler, remove the pair and its task branches with --remove, remove the records, clear the claim, lift the slug's own pauses, push and notify, and remove the marker last.
+// Without --remove the pair is kept and the cancel names "lyx batten cancel <slug> --remove" as the step before the slug runs again.
+// An unreachable origin ends only the processes and strands, leaves the marker and posts a notice naming the cancel to run once origin answers.
+//
 // "lyx batten overview" (overview.go) is the hidden pane verb the orch start runs in the prime's runs strand.
 // The first line is the orch session's: its latest context tokens against the soft and hard thresholds, its cycle phase and cycle count, with `watcher down` appended once the watcher has exited; no state file draws no orch line, and a state file unreadable on two polls in a row shows `orch  state unreadable`.
 // Below it come the batten runs in flight, one line each: the slug, batten's state, the stage, the time in that stage, the run's age and the pair's reed session.
@@ -270,7 +277,7 @@ Example:
 // Command returns the cobra command tree for the batten module.
 func Command() *cobra.Command {
 	c := &battenCLI{spec: &shedverbs.Spec{}}
-	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug) }
+	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug, false) }
 
 	parent := &cobra.Command{
 		Use:   "batten",
@@ -286,6 +293,10 @@ current state; "pause" requests a pause at the run's next producer boundary;
 "cleanup" takes no slug and, as a dry run unless given --apply, removes the
 records and scratch of every done run, and the scratch of aged orphans.
 
+"cancel" ends one slug's run for good, whatever its state: it ends the run's
+processes and strands, clears its board claim and removes its records, and with
+--remove also its pair and task branches.
+
 Every verb runs from the hub's prime worktree only: they refuse when invoked
 from a task worktree, from the pair's fabric sibling, or from _board.
 
@@ -296,7 +307,8 @@ Example:
   lyx batten pause some-slug
   lyx batten goto some-slug --to Run-Shed
   lyx batten lock list
-  lyx batten cleanup --apply`,
+  lyx batten cleanup --apply
+  lyx batten cancel some-slug --remove`,
 		// RunE is set so that bare "lyx batten" lists subcommands and "lyx batten bogus"
 		// emits a JSON error envelope instead of falling through to cobra's plain-text help.
 		RunE:              clihelp.GroupRunE,
@@ -335,7 +347,7 @@ Example:
 	stepVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	stepVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
 
-	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, lockCommand(), c.cleanupCmd(), c.overviewCmd())
+	parent.AddCommand(runVerb, stepVerb, statusVerb, pauseVerb, gotoVerb, lockCommand(), c.cleanupCmd(), c.cancelCmd(), c.overviewCmd())
 
 	return parent
 }
@@ -347,10 +359,10 @@ Example:
 //
 // Skips resolution entirely when the batten group command itself is invoked (bare listing or
 // unknown-subcommand error path via clihelp.GroupRunE), so neither path requires a git repository to
-// be present, and for "cleanup" and "overview", which take no run-id, arm no shed spec and resolve their own location.
+// be present, and for "cleanup", "cancel" and "overview", which arm no shed spec and resolve their own location.
 // The lock group is skipped too: its verbs address no slug, and resolve the prime in lockStore.
 func (c *battenCLI) resolvePersistentPreRun(cmd *cobra.Command, args []string) error {
-	if cmd.Name() == "batten" || cmd.Name() == "cleanup" || cmd.Name() == "overview" || inLockGroup(cmd) {
+	if cmd.Name() == "batten" || cmd.Name() == "cleanup" || cmd.Name() == "cancel" || cmd.Name() == "overview" || inLockGroup(cmd) {
 		return nil
 	}
 
@@ -472,7 +484,7 @@ func (c *battenCLI) openWindowInPrimeSession(name string, lyxArgs []string) (ree
 // The adopting process opens the window and never drives the run, so it sets the window flag and registers no batten; only the in-window run it opens registers.
 func ResumeInWindow(location *lyxcwd.Location, slug string) (map[string]any, error) {
 	c := &battenCLI{spec: &shedverbs.Spec{}, windowFlag: true}
-	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug) }
+	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug, false) }
 	armed, err := c.armAt(location, slug, true, "run")
 	if err != nil {
 		return nil, err
