@@ -172,19 +172,24 @@
 //
 // Finalize always merges the parent branch into the task worktree, regardless of which branch Publish took, and then merges the task branch into the parent pair itself.
 // Each merge of the parent, the retry after the parent moved included, runs the same three clean-tree checks and the same post-merge verify gate as Merge-In before the parent-side merge,
-// and a dirty tree or a failure is Stuck with the parent branch untouched.
+// and a dirty tree is Stuck with the parent branch untouched, while a failing gate runs the merge fixer.
 // After each merge of the parent and before the parent-side merge, Finalize commits the parent pair's own run records through the told Deps.CommitParentRecords, so a sibling run's uncommitted status record does not trip the merge guard;
 // a clean subtree is a no-op, an absent seam skips the step, and a commit failure is Stuck naming the parent pair and its run records, with nothing merged.
-// The landing commit carries the change description, then a blank line and a trailer block when the block is non-empty.
-// The block is landing.yaml's trailer_text, then the engine_trailers text of each engine the task's sessions ran under, in engine-name order, each copied verbatim with no prefix.
+// The landing commit carries the change description, then a blank line and the trailer block.
+// The block is landing.yaml's trailer_text, then the engine_trailers text of each engine the task's sessions ran under, in engine-name order, each copied verbatim with no prefix, and then a `Lyx-Task: <slug>` line naming the task.
 // Finalize reads those engines through the told Deps.EnginesRun before any parent-side mutation, and a read failure is an error with nothing merged.
-// An empty trailer_text adds no fixed line, an engine left out of engine_trailers or mapped to empty text adds no engine line, and both empty land the commit with no trailer block.
+// An empty trailer_text adds no fixed line, and an engine left out of engine_trailers or mapped to empty text adds no engine line, so the block is the task line alone.
 // lyx config reconcile moves a retired co_authored_by value into engine_trailers as the claude entry `Co-Authored-By: <value>`, and drops an empty one without an entry.
 // Before the merge of the parent, Finalize reads the per-worktree config files the task changed away from both its fork point and the parent's current tip, so a parent-side change never reads as a task edit, and, at Done, queues one notice about them naming the base, task tip and parent tip for the hub's orchestrator;
 // it never carries those files to the parent,
 // and a read failure or a failed notice never stops the landing.
-// After the parent-side merge and before the push, Finalize marks the board task done; after a
-// successful push it closes the open pull request with a comment naming the landing commit. A parent
+// Immediately before each landing attempt, the retry's included, Finalize re-reads the parent lock record through the guard's store.
+// A record that names this run passes; one that no longer names it means something released it: an owner pause, another machine's ownership or an operator's `lyx batten lock release`.
+// Finalize then lands nothing, takes no lock and is Stuck with Halt naming the release and its three causes, with `lyx loom resume` once no owner pause stands and the run is this machine's as the way forward.
+// An unreadable record is a Stuck with Halt too, as at the acquire, and both halts open with LandingStopPrefix, so only the orch's resume lifts them.
+// The resume re-runs Finalize from its first step under a lock taken afresh, so a resume made before the cause clears lands nothing.
+// The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
+// After the parent-side merge and before the push, Finalize marks the board task done, and it opens, looks up and closes no pull request, so the landing makes no GitHub call. A parent
 // that already holds the task's work makes Finalize idempotent: it takes the already-landed path
 // rather than merging again. The parent branch is pushed to its upstream, so a landing reaches the
 // remote rather than only the hub's own parent worktree. That parent-side merge is this producer's own

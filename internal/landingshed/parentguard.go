@@ -109,6 +109,32 @@ func (g parentGuard) release(producer string) {
 	}
 }
 
+// stillHeld re-reads the parent lock record just before a landing and returns "" when it still names this run.
+// A record that no longer names the run, or none, means something released the lock: an owner pause, another machine's ownership of the run or an operator's `lyx batten lock release`.
+// An unreadable record is a reason too, as at ensure.
+// Both reasons open with LandingStopPrefix, so only the orch's `lyx loom resume` lifts the halt they make.
+// A guard with no lock store holds no lock and checks none.
+// Any other failure is returned as an error.
+func (g parentGuard) stillHeld(producer string) (string, error) {
+	if g.lock.Store == nil {
+		return "", nil
+	}
+	owner, err := g.lock.Owner()
+	if err != nil {
+		return "", fmt.Errorf("landingshed: %s: resolve the parent lock owner: %w", producer, err)
+	}
+	record, found, err := g.lock.Store.Read(g.parentBranch)
+	switch {
+	case errors.Is(err, parentlock.ErrUnreadable):
+		return fmt.Sprintf("%sthe parent lock record of %q is unreadable before the landing: %v; nothing was landed; way forward: run \"lyx batten lock release %s\" from the prime, then \"lyx loom resume\" in the task worktree", LandingStopPrefix, g.parentBranch, err, g.parentBranch), nil
+	case err != nil:
+		return "", fmt.Errorf("landingshed: %s: re-read the parent lock on %q: %w", producer, g.parentBranch, err)
+	case found && record.Owner.SameRun(owner):
+		return "", nil
+	}
+	return fmt.Sprintf("%sthe parent lock on %q no longer names this run, so something released it before the landing: an owner pause, another machine's ownership of the run or an operator's `lyx batten lock release`; nothing was landed; way forward: `lyx loom resume` once no owner pause stands and the run is this machine's, which after an operator's release holds already", LandingStopPrefix, g.parentBranch), nil
+}
+
 // moved decides whether the parent moved since Merge-In merged it, returning the reroute reason or "" when it has not.
 // A missing or unreadable merge record counts as moved, so the row reroutes to Merge-In, which writes one.
 // The parent has moved when a tip differs from the merge record's merged tip and does not hold the task's work;

@@ -6,19 +6,12 @@ package landingshed
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/google/go-github/v75/github"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -154,6 +147,7 @@ func TestNewFinalize_Refusals(t *testing.T) {
 
 // TestFinalize_MergeMarkPushOrderAndVerdict pins that a landed merge is marked done on the board and then pushed to the parent's upstream before Done, honouring Deps.PushSkipped, that a failed push is Stuck rather than Done, and that neither a failing push nor a failing board seam changes what the other is called for.
 // A failed push also carries the adopter-first repair note only when origin's parent holds the work and a parent commit is listed: a reset for the squash alone, a rebase dropping it when another commit is listed.
+// No case makes a GitHub call.
 func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 	failedPush := func(record fabricengine.FailedPush, cause error) *fabricengine.PushFailedError {
 		return &fabricengine.PushFailedError{Record: record, Err: cause}
@@ -207,6 +201,7 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var order []string
 			deps := newTestDeps(t)
+			failOnGitHubClient(t)
 			deps.Slug = "me"
 			if tt.repair != nil {
 				deps.OriginParentHoldsWork = func() (bool, error) { return tt.repair.holds, tt.repair.holdsErr }
@@ -279,6 +274,8 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
+			failOnGitHubClient(t)
+			deps.Slug = "me"
 			deps.Config.Squash = tt.squash
 			enginesRun := []string{"claude"}
 			if tt.nilEnginesRun {
@@ -304,13 +301,16 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 				t.Errorf("parent-side merge source = %q; want %q", merger.calls[0].source, deps.TaskBranch)
 			}
 			got := merger.calls[0].opts
-			want := summary.LandingMessage(deps.Config.TrailerBlock(enginesRun))
+			want := summary.LandingMessage(taskTrailer(deps.Config.TrailerBlock(enginesRun), "me"))
 			if got.Message != want {
 				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, want)
 			}
 			trailer := deps.Config.EngineTrailers["claude"]
-			if hasLine := strings.HasSuffix(got.Message, "\n\n"+trailer); hasLine == tt.nilEnginesRun {
+			if hasLine := strings.HasSuffix(got.Message, "\n\n"+trailer+"\nLyx-Task: me"); hasLine == tt.nilEnginesRun {
 				t.Errorf("MergeOptions.Message = %q; engine line %q present = %v; want %v", got.Message, trailer, hasLine, !tt.nilEnginesRun)
+			}
+			if !strings.HasSuffix(got.Message, "\nLyx-Task: me") {
+				t.Errorf("MergeOptions.Message = %q; want it to end in the Lyx-Task trailer line", got.Message)
 			}
 			if got.Squash != tt.squash {
 				t.Errorf("MergeOptions.Squash = %v; want %v (threaded from configuration)", got.Squash, tt.squash)
@@ -427,7 +427,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 			if ptr.Reroute != tt.wantReroute {
 				t.Errorf("OutputPointer.Reroute = %v; want %v", ptr.Reroute, tt.wantReroute)
 			}
-			want := summary.LandingMessage(deps.Config.TrailerBlock([]string{"claude"}))
+			want := summary.LandingMessage(taskTrailer(deps.Config.TrailerBlock([]string{"claude"}), deps.Slug))
 			for i, call := range merger.calls {
 				if call.opts.Message != want {
 					t.Errorf("attempt %d MergeOptions.Message = %q; want %q (the same composed message every attempt)", i+1, call.opts.Message, want)
@@ -806,119 +806,6 @@ func TestFinalize_CancellationAtEntry_SurfacesAsError(t *testing.T) {
 	}
 	if outcome != "" {
 		t.Errorf("Call() outcome = %q; want empty on a cancelled entry", outcome)
-	}
-}
-
-// --- Closing the pull request after landing ---
-
-// closeServer records every request the GitHub fake receives as "METHOD path" plus decoded body.
-type closeServer struct {
-	requests []string
-	bodies   []map[string]any
-	listBody string
-	// failClose makes the PATCH (close) call answer 500.
-	failClose bool
-}
-
-func installCloseServer(t *testing.T, s *closeServer) {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.requests = append(s.requests, r.Method+" "+r.URL.Path)
-		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		s.bodies = append(s.bodies, body)
-		switch r.Method {
-		case http.MethodGet:
-			_, _ = w.Write([]byte(s.listBody))
-		case http.MethodPost:
-			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"id":1}`))
-		case http.MethodPatch:
-			if s.failClose {
-				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte(`{"message":"boom"}`))
-				return
-			}
-			_, _ = w.Write([]byte(`{"number":7,"state":"closed"}`))
-		}
-	}))
-	t.Cleanup(srv.Close)
-	client := github.NewClient(nil).WithAuthToken("test-token")
-	parsed, err := url.Parse(srv.URL + "/")
-	if err != nil {
-		t.Fatalf("url.Parse: %v", err)
-	}
-	client.BaseURL = parsed
-	orig := NewGitHubClient
-	NewGitHubClient = func() (*github.Client, error) { return client, nil }
-	t.Cleanup(func() { NewGitHubClient = orig })
-}
-
-// TestFinalize_ClosingPullRequestAfterLanding pins what a landed task does to its pull request:
-// an open one gets a comment naming the landing head and the parent branch and is closed, a merge that reports AlreadyUpToDate counts as landed and names the head the parent reports, and a non-open pull request, a failed close, a parent needing no pull request and a skipped push each still end Done.
-// Every case marks the task done and calls the push once.
-func TestFinalize_ClosingPullRequestAfterLanding(t *testing.T) {
-	lookupOnly := []string{"GET /repos/acme/widgets/pulls"}
-	lookupCommentClose := []string{"GET /repos/acme/widgets/pulls", "POST /repos/acme/widgets/issues/7/comments", "PATCH /repos/acme/widgets/pulls/7"}
-	committed := fabricengine.MergeResult{Committed: true}
-	runStart := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	tests := []struct {
-		name         string
-		listBody     string
-		failClose    bool
-		mutate       func(*Deps)
-		merge        fabricengine.MergeResult
-		headSHA      string
-		wantRequests []string
-		// wantCommentHas names what the comment on the pull request carries; empty when no comment is expected.
-		wantCommentHas []string
-	}{
-		{"closes the open pull request", `[{"number":7,"state":"open"}]`, false, nil, committed, "abc123landed", lookupCommentClose, []string{"abc123landed", "main"}},
-		{"already up to date counts as landed", `[{"number":7,"state":"open"}]`, false, nil, fabricengine.MergeResult{AlreadyUpToDate: true}, "parentheadsha", lookupCommentClose, []string{"parentheadsha"}},
-		{"leaves a non-open pull request alone", `[{"number":7,"state":"closed"}]`, false, nil, committed, "abc123landed", lookupOnly, nil},
-		{"a failed close still ends Done", `[{"number":7,"state":"open"}]`, true, nil, committed, "abc123landed", lookupCommentClose, nil},
-		{"leaves an older open pull request alone", `[{"number":7,"state":"open","created_at":"2026-01-01T00:00:00Z"}]`, false, func(d *Deps) { d.RunStart = runStart }, committed, "abc123landed", lookupOnly, nil},
-		{"closes an open pull request created after the run started", `[{"number":7,"state":"open","created_at":"2026-07-01T00:00:00Z"}]`, false, func(d *Deps) { d.RunStart = runStart }, committed, "abc123landed", lookupCommentClose, []string{"abc123landed"}},
-		{"no GitHub call when the parent needs no pull request", `[{"number":7,"state":"open"}]`, false, func(d *Deps) { d.Config.RequirePRToBase = []string{"other"} }, committed, "abc123landed", nil, nil},
-		{"no GitHub call when the push is skipped", `[{"number":7,"state":"open"}]`, false, func(d *Deps) { d.PushSkipped = true }, committed, "abc123landed", nil, nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := &closeServer{listBody: tt.listBody, failClose: tt.failClose}
-			deps := newTestDeps(t)
-			installCloseServer(t, s)
-			deps.OriginURL = "https://github.com/acme/widgets.git"
-			markedDone := 0
-			deps.MarkTaskDone = func() error { markedDone++; return nil }
-			if tt.mutate != nil {
-				tt.mutate(&deps)
-			}
-			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: tt.merge}}, headSHA: tt.headSHA}
-			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
-
-			shedfake.RequireOutcome(t, fz, shedengine.Done)
-			if markedDone != 1 {
-				t.Errorf("MarkTaskDone called %d time(s); want 1", markedDone)
-			}
-			if len(merger.pushCalls) != 1 {
-				t.Errorf("PushBranch called %d time(s); want 1", len(merger.pushCalls))
-			}
-			if strings.Join(s.requests, "|") != strings.Join(tt.wantRequests, "|") {
-				t.Fatalf("requests = %v; want %v", s.requests, tt.wantRequests)
-			}
-			if len(tt.wantCommentHas) > 0 {
-				comment, _ := s.bodies[1]["body"].(string)
-				for _, want := range tt.wantCommentHas {
-					if !strings.Contains(comment, want) {
-						t.Errorf("comment = %q; want it to carry %q", comment, want)
-					}
-				}
-				if got := s.bodies[2]["state"]; got != "closed" {
-					t.Errorf("close state = %v; want closed", got)
-				}
-			}
-		})
 	}
 }
 

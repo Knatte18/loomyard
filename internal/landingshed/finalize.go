@@ -21,10 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/google/go-github/v75/github"
-
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -205,12 +202,15 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 // A merge that proceeds is gated by the `landing` gate, and a failing gate runs the merge fixer in finalize mode; a spent cap or an over-cap fix reroutes or halts.
 // After a merge-in-required error from the parent-side merge it re-runs the merge and its gate once under the same lock.
 //
+// Immediately before each landing attempt it re-reads the parent lock record, so a lock something released lands nothing and is a halting Stuck.
+// The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
+// The landing commit carries the change description and a trailer block ending in a `Lyx-Task: <slug>` line, and Finalize opens, looks up and closes no pull request.
+//
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
-// changes -- an operator squash-merged the pull request on GitHub, or an earlier Finalize landed and
+// changes -- an operator squash-merged the task on the remote, or an earlier Finalize landed and
 // failed later -- the empty squash is classified as already-up-to-date, so Fabric.Merge commits
 // nothing and returns no error. Finalize then proceeds exactly as for a fresh landing: the board
-// task is marked done, the push is a no-op, the pull request is closed naming the parent's current
-// head, and the verdict is Done.
+// task is marked done, the push is a no-op, and the verdict is Done.
 func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, finalizeName); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -232,7 +232,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the engines the task ran under: %w", finalizeName, err)
 		}
 	}
-	landingMessage := summary.LandingMessage(fz.deps.Config.TrailerBlock(enginesRun))
+	landingMessage := summary.LandingMessage(taskTrailer(fz.deps.Config.TrailerBlock(enginesRun), fz.deps.Slug))
 
 	// Step 1b: commit the product's own status file, so the pair carries no tracked modification
 	// when the merge guard below runs. This must happen inside Call rather than once at bootstrap:
@@ -294,7 +294,12 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return outcome, out, err
 	}
 
-	// Step 4: the parent-side merge, this producer's own merge critical section. Message is set
+	// Step 5: re-check the lock immediately before the landing, so a release since the acquire lands nothing.
+	if outcome, out, err, stop := fz.recheckLock(ctx); stop {
+		return outcome, out, err
+	}
+
+	// Step 6: the parent-side merge, this producer's own merge critical section. Message is set
 	// whether or not Config.Squash is true -- it is the conclude-commit message for both merge
 	// shapes, so gating it on Squash would leave the non-squash landing commit with an unset message.
 	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash, Message: landingMessage}
@@ -304,7 +309,7 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return fz.pushParent(ctx, parentHandle, notice)
 	}
 
-	// Step 5: on the merge-in-required error, test the parent again with the same two-ref read, then re-run steps 2 to 4 under the same lock and retry
+	// Retry: on the merge-in-required error, test the parent again with the same two-ref read, then re-run steps 2 to 5 under the same lock and retry
 	// the parent-side merge exactly once.
 	// The retry runs only when the parent has not moved, which covers a parent moved by run records alone;
 	// otherwise a code-side commit that arrived between the check and the parent-side merge, local or pushed, reroutes and never lands.
@@ -317,6 +322,9 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 			return outcome, out, err
 		}
 		if outcome, out, err, done := fz.commitParentRecords(ctx); done {
+			return outcome, out, err
+		}
+		if outcome, out, err, stop := fz.recheckLock(ctx); stop {
 			return outcome, out, err
 		}
 		_, retryErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
@@ -529,9 +537,7 @@ func (fz *Finalize) markTaskDone() {
 // Deps.PushSkipped suppresses the push, exactly as it does for the task branch.
 //
 // On its Done return only, a non-empty notice is queued through Deps.Notify, and a failure there is a logged warning that never changes the verdict.
-//
-// After a successful push into a parent that requires a pull request, the task's pull request is
-// closed best-effort (closePullRequest): the landing has already happened and is irreversible.
+// Finalize opens, looks up and closes no pull request, so the landing makes no GitHub call.
 func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, notice string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if _, err := parentHandle.PushBranch(fabricengine.SyncOptions{SkipPush: fz.deps.PushSkipped}); err != nil {
 		if terr := transientFailure(ctx, finalizeName, "push parent branch", err); terr != nil {
@@ -546,9 +552,6 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 		reason += fz.adopterFirstRepair(parentHandle)
 		return fz.stuckOrCancelled(ctx, reason, "error", err)
 	}
-	if !fz.deps.PushSkipped && contains(fz.deps.Config.RequirePRToBase, fz.deps.ParentBranch) {
-		fz.closePullRequest(ctx, parentHandle)
-	}
 	// The landing is done, so a failed removal of the attempt record changes no verdict.
 	if err := RemoveFixerAttempts(FixerAttemptsPath(fz.deps.ScratchDir, finalizeName)); err != nil {
 		logger.Warn("landingshed: remove the fixer attempt record failed", "producer", finalizeName, "cause", err)
@@ -561,56 +564,27 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// closePullRequest closes the task branch's still-open pull request against the parent branch,
-// after commenting the landing commit's SHA on it, so the inspection-only pull request does not
-// linger as open after its work landed. Every failure is a logged warning and nothing more: the
-// landing is the irreversible part and has already happened. A pull request that is already closed
-// or merged is left alone.
-func (fz *Finalize) closePullRequest(ctx context.Context, parentHandle parentMerger) {
-	warn := func(action string, err error) {
-		logger.Warn("landingshed: close pull request failed", "producer", finalizeName, "action", action, "cause", err)
+// taskTrailer appends the `Lyx-Task: <slug>` line to block, the landing commit's trailer block, which is empty when the commit carries no other trailer.
+func taskTrailer(block, slug string) string {
+	line := "Lyx-Task: " + slug
+	if block == "" {
+		return line
 	}
+	return block + "\n" + line
+}
 
-	sha, err := parentHandle.HeadSHA()
+// recheckLock re-reads the parent lock record immediately before a landing attempt.
+// stop is false when the record still names this run, so Call lands.
+// Otherwise the other values are what Call returns at once: a halting Stuck for a release or an unreadable record, an error for an infrastructure fault.
+func (fz *Finalize) recheckLock(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	reason, err := fz.guard.stillHeld(finalizeName)
 	if err != nil {
-		warn("read parent head", err)
-		return
+		return fz.errorStop(ctx, err)
 	}
-	owner, repo, err := githubclient.ParseOwnerRepo(fz.deps.OriginURL)
-	if err != nil {
-		warn("resolve origin URL", err)
-		return
+	if reason != "" {
+		return fz.halt(ctx, reason)
 	}
-	client, err := NewGitHubClient()
-	if err != nil {
-		warn("new github client", err)
-		return
-	}
-	pr, _, err := FindPullRequest(ctx, client, owner, repo, fz.deps.TaskBranch, fz.deps.ParentBranch, fz.deps.RunStart)
-	if err != nil {
-		warn("query pull request", err)
-		return
-	}
-	if pr == nil || pr.GetState() != "open" {
-		return
-	}
-
-	commentCtx, commentCancel := context.WithTimeout(ctx, publishGitHubTimeout)
-	defer commentCancel()
-	body := fmt.Sprintf("Landed on `%s` as %s.", fz.deps.ParentBranch, sha)
-	if _, _, err := client.Issues.CreateComment(commentCtx, owner, repo, pr.GetNumber(), &github.IssueComment{Body: &body}); err != nil {
-		warn("comment on pull request", err)
-		return
-	}
-
-	closeCtx, closeCancel := context.WithTimeout(ctx, publishGitHubTimeout)
-	defer closeCancel()
-	closed := "closed"
-	if _, _, err := client.PullRequests.Edit(closeCtx, owner, repo, pr.GetNumber(), &github.PullRequest{State: &closed}); err != nil {
-		warn("close pull request", err)
-		return
-	}
-	logger.Info("landingshed: pull request closed after landing", "owner", owner, "repo", repo, "number", pr.GetNumber())
+	return "", shedengine.OutputPointer{}, nil, false
 }
 
 // mergeAndGate merges the parent branch into the task worktree, judges the merge and gates the merged tree.
