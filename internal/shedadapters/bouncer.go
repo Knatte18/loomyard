@@ -574,7 +574,7 @@ func (b *Bouncer) startGeneration() error {
 	return nil
 }
 
-// recordSettle writes the settle record for round over subject: the run directory's current generation, now as the settle time, Settled false, and for a code subject its full diff beside it.
+// recordSettle writes the settle record for round over subject: the run directory's current generation, now as the settle time, the start of round's review half when the round's usage record holds one, Settled false, and for a code subject its full diff beside it.
 // The record stays unsettled until markSettled runs, so a settle that dies before Commit returns is told apart from a finished one.
 func (b *Bouncer) recordSettle(round int, subject Subject) error {
 	generation, found, err := readGenerationRecord(b.cfg.RunDir)
@@ -591,6 +591,9 @@ func (b *Bouncer) recordSettle(round int, subject Subject) error {
 		Generation: number,
 		Round:      round,
 		SettledAt:  b.cfg.Now().UTC().Format(time.RFC3339),
+	}
+	if start := roundReviewStart(b.cfg.RunDir, round); !start.IsZero() {
+		record.RoundStartedAt = start.UTC().Truncate(time.Second).Format(time.RFC3339)
 	}
 	if err := writeSettleRecord(b.cfg.RunDir, record, subject.Patch); err != nil {
 		return b.recordFailure("settle record", err)

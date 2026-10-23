@@ -134,6 +134,11 @@
 // An absent file passes the gate, and once its re-prompt budget is spent the gate lets the run through, so a verdict that still does not read hands on with cause `unparseable`.
 // The arbiter stencil asks for every free-text value as a literal block scalar, so a `: ` or ` #` in a command or sentence keeps its meaning.
 //
+// The prompt carries `amendment_target`: the run's recipe's `amendment_target` key (loom's `Plan-Burler-Review`; darn and batten set none) once the current generation's plan is approved, and `none` otherwise.
+// It is read at each spawn, since the driver holds its arbiter seams for the whole drive and the plan is approved mid-drive, so a drive that began before approval still routes.
+// The arbiter may then record a plan amendment and name that target as its goto.
+// Each `--amends-plan` call re-admits one goto onto the target, the arbiter's repeats are capped by `arbiter_max_spawns` counted from its attempt records, and scope widening is bounded by the stencil's hand-on rule, since the arbiter's entry joins the answer key Plan-Review and PR-Gate's alignment agent judge against.
+//
 // The stop key is the status file's current producer, history length and state.
 // A re-run for a stop key an attempt already arbitrated spawns nothing:
 // it returns that attempt's verdict, waits on its live arbiter for the time left to its deadline, or stops an arbiter past its deadline through shuttle's stop verb and reads `hand-on` with cause `timeout`.
@@ -225,6 +230,24 @@
 // The verbs write nothing and read only the board, the peers' two records and git history through `internal/fabricengine`.
 // They resolve the location through `lyxcwd` in the group's own pre-run, as the `review` and `decision` groups do; every loom verb is hub-only, so `internal/cliwire` does not apply.
 // A bare `lyx loom peers` outside a lyx worktree lists the group's verbs instead of resolving.
+//
+// # Decision amends-plan
+//
+// `lyx loom decision add --amends-plan` records a decision that amends the approved plan:
+// besides the entry, the call appends the entry's title to the tracked plan amendment record, and one commit lands both.
+// The commit pathspec of the discussion artifacts names the record when it exists or git tracks it, and nothing otherwise, so git is never handed a pathspec matching nothing.
+// The flag is refused on a darn run, which has no plan to amend, and while the current generation has no approved plan;
+// a plan that does not parse is refused naming `lyx loom validate-plan`, and a plan or record read failure is refused with the verb's retry way forward.
+// Both refusals tell the caller to record the decision without the flag, since Plan-Write and Plan-Review read the decision record.
+// After a successful call the parent runs `lyx loom goto --to Plan-Burler-Review` and `lyx loom resume`.
+//
+// A failed append puts both records back to their bytes before the call, removing the amendment record when the call created it, and leaves a decision record that was absent absent.
+// When a status commit has already landed the call's amendment bytes, the verb commits the restored record alone, so HEAD never keeps a title whose entry did not land;
+// a failure of that commit is refused naming `lyx fabric commit`.
+// A failed commit of the entry reads HEAD:
+// both records at HEAD succeeds with `commit_error` on the envelope;
+// the amendment record without the entry, or a HEAD that cannot be read, keeps both files and names `lyx fabric commit`;
+// a HEAD that differs restores both files and names the re-run of the verb, never `lyx fabric commit`.
 //
 // # Parent-review alignment
 //

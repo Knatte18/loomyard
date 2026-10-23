@@ -601,6 +601,32 @@ Framing paragraph.
 			},
 		},
 		{
+			name: "Extends group: refs land in Targets, an arrow bullet in the group's Resigns only",
+			body: "# Card 1 — extends\n\n**Extends:**\n" +
+				"- `internal/foo#Thing` -> `func Thing(count int) *Thing`\n" +
+				"- `internal/foo#Other`\n" +
+				"**Intent:** placeholder.\n",
+			check: func(t *testing.T, card planparser.Card) {
+				if card.Type != planparser.CardTypeExtends {
+					t.Errorf("card.Type = %q; want %q", card.Type, planparser.CardTypeExtends)
+				}
+				wantRefs := []string{"internal/foo#Thing", "internal/foo#Other"}
+				if !slices.Equal(card.Targets, wantRefs) {
+					t.Errorf("card.Targets = %v; want %v", card.Targets, wantRefs)
+				}
+				if len(card.Resigns) != 0 {
+					t.Errorf("card.Resigns = %+v; want none, since an Extends group's re-sign never reaches the card", card.Resigns)
+				}
+				if len(card.TargetGroups) != 1 {
+					t.Fatalf("len(card.TargetGroups) = %d; want 1", len(card.TargetGroups))
+				}
+				wantResigns := []planparser.CardResign{{Target: "internal/foo#Thing", Decl: "func Thing(count int) *Thing"}}
+				if group := card.TargetGroups[0]; group.Type != planparser.CardTypeExtends || !slices.Equal(group.Resigns, wantResigns) {
+					t.Errorf("card.TargetGroups[0] = %+v; want an Extends group with Resigns %+v", group, wantResigns)
+				}
+			},
+		},
+		{
 			name: "Edit grammar: a plain bullet alone carries no resign",
 			body: "# Card 1 — plain\n\n**Edit:**\n- `internal/foo#Other`\n**Intent:** placeholder.\n",
 			check: func(t *testing.T, card planparser.Card) {
@@ -739,7 +765,7 @@ Framing paragraph.
 	}
 }
 
-// goodPlanDir is this package's format-5 golden happy-path fixture, exercising all seven card
+// goodPlanDir is this package's format-5 golden happy-path fixture, exercising seven of the eight card
 // types.
 func goodPlanDir() string {
 	return filepath.Join("testdata", "goodplan")

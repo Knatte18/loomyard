@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -81,16 +82,18 @@ func (s Subject) Unchanged(settled Subject, mergeInOnly func(since string) (bool
 
 // settleRecord is the record of one settled review verdict, kept in the run directory as settle-record.json.
 // Base is the amendment base, Generation and Round are the generation and round that settled, and SettledAt is the settle time in RFC 3339.
+// RoundStartedAt is the start of the review half of the round the settle judged, whole seconds in RFC 3339 UTC, and empty when the start is unknown.
 // Settled is true once the segment's Commit returned, so a record with it false is a settle that was interrupted before the commit.
 // A code segment's full diff lives beside it in settle-record.patch.
 // A Generation below 1 reads as 1.
 type settleRecord struct {
-	Subject    Subject `json:"subject"`
-	Base       string  `json:"base,omitempty"`
-	Generation int     `json:"generation,omitempty"`
-	Round      int     `json:"round"`
-	SettledAt  string  `json:"settled_at"`
-	Settled    bool    `json:"settled"`
+	Subject        Subject `json:"subject"`
+	Base           string  `json:"base,omitempty"`
+	Generation     int     `json:"generation,omitempty"`
+	Round          int     `json:"round"`
+	SettledAt      string  `json:"settled_at"`
+	RoundStartedAt string  `json:"round_started_at,omitempty"`
+	Settled        bool    `json:"settled"`
 }
 
 // generationRecord is the record of a run directory's review generation, kept as generation-record.json.
@@ -208,6 +211,26 @@ func SettleLive(runDir string) (settledAt time.Time, live bool, err error) {
 		return time.Time{}, false, fmt.Errorf("shedadapters: settle record in %s: settled_at %q: %w", runDir, record.SettledAt, err)
 	}
 	return settledAt, true, nil
+}
+
+// SettleRoundStart returns the round start the run directory's live settle record holds, and true.
+// It returns the zero time and false when no record is live or the live record has no or a zero round start.
+// A round start that does not parse reads as an absent one and is logged at Warn, so a caller keeps its amendment when the start is unknown.
+// The error carries only a failed read of the settle record itself.
+func SettleRoundStart(runDir string) (time.Time, bool, error) {
+	record, live, err := liveSettleRecord(runDir)
+	if err != nil || !live || record.RoundStartedAt == "" {
+		return time.Time{}, false, err
+	}
+	start, err := time.Parse(time.RFC3339, record.RoundStartedAt)
+	if err != nil {
+		logger.Warn("shedadapters: settle record round start does not parse; reading it as unknown", "run_dir", runDir, "round_started_at", record.RoundStartedAt, "error", err)
+		return time.Time{}, false, nil
+	}
+	if start.IsZero() {
+		return time.Time{}, false, nil
+	}
+	return start.UTC(), true, nil
 }
 
 // CarryRecords copies the settle record, its patch and the generation record that exist in fromDir into toDir, byte for byte.

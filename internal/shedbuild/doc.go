@@ -2,6 +2,9 @@
 // assembling a Recipe plus a caller-supplied shedrecipe.Env into the []shedengine.ProducerDef that
 // shedengine.Shed already consumes unchanged.
 //
+// A recipe may set an optional top-level amendment_target naming the row a plan amendment routes to.
+// Parse decodes it into Recipe.AmendmentTarget without checking that it names a row, since routing is shedengine's and shedcheck's.
+//
 // This package holds PATTERN-told-geometry: Load reads
 // exactly the absolute path it is told, and the package derives no path of its own.
 //

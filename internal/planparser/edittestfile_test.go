@@ -42,6 +42,7 @@ func TestCheckEditTestFile(t *testing.T) {
 		want     []planparser.ValidationError
 	}{
 		{name: "test file self glyph under Edit", cards: []planparser.Card{underEdit(testFile)}, want: []planparser.ValidationError{finding("1-one", testFile)}},
+		{name: "test file self glyph under Extends", cards: []planparser.Card{underGroup(planparser.CardTypeExtends, testFile)}, want: []planparser.ValidationError{finding("1-one", testFile)}},
 		{name: "test file self glyph under Create", cards: []planparser.Card{underGroup(planparser.CardTypeCreate, testFile)}},
 		{name: "test file self glyph under Delete", cards: []planparser.Card{underGroup(planparser.CardTypeDelete, testFile)}},
 		{name: "test file self glyph in Uses", cards: []planparser.Card{usesTestFile}},

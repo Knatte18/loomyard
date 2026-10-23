@@ -40,6 +40,7 @@
 //
 // internal/batcher owns both grouping and order: a batchifier returns its batches in plan card order, and webster runs them in that order, never reordering them.
 // sequence.go's CheckBatchOrder only asserts it: it derives edges from Targets/Uses ref matching across the plan's cards — a Uses entry naming another card's Targets entry puts the producer before the consumer, and two cards writing the same Targets entry settle by declared card number — and refuses, wrapping ErrBatchOrder, when any edge runs from a batch to an earlier one.
+// planparser.DependencyEdge refines each shared ref: two Extends on one ref make no edge unless both cards fence a verbatim PATTERN.md line for one entry ID.
 // A cycle between batches always holds such an edge, so the same rule refuses it.
 // Plan-Gate's uses-later-target refusal already holds, so the assertion fires only on a plan that bypassed or predates that gate.
 // The previous-digest lookup in beginbatch.go/recoverbatch.go (predecessorDigestLine) depends on the order: it reads whichever batch sits immediately before the target batch in the execution order, not the batch one number lower.
@@ -515,7 +516,7 @@
 // A failed removal or write is logged at Warn and changes no refusal, class or outcome.
 // Under loom, the Webster producer claims the record when Master ends stuck (ClaimConflictRoute) and decides three ways:
 // findings that differ, as a set, from the routed file's are new, so the claim rewrites the routed file and the stuck outcome reroutes to plan review;
-// findings equal to the routed file's are a recurrence, and the stuck outcome halts for a hand edit of the named pending cards;
+// findings equal to the routed file's are a recurrence, and the stuck outcome halts for the plan amendment route, a parent's `--amends-plan` decision on the named pending cards and a goto to Plan-Burler-Review, rather than a hand edit of them;
 // no record, or one naming no finding line, claims nothing.
 // A read or write error is returned, and the producer then halts rather than reroutes.
 //

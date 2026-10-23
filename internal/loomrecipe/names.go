@@ -69,6 +69,29 @@ func RowNames(recipe string) ([]string, error) {
 // Rows returns the rows of the named recipe in file order: shedrun.RecipeLoom is the loom recipe, shedrun.RecipeDarn the darn recipe and shedrun.RecipeBatten the batten recipe.
 // Any other recipe name is refused with an error naming it.
 func Rows(recipe string) ([]RecipeRow, error) {
+	parsed, err := parseEmbeddedRecipe(recipe)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]RecipeRow, 0, len(parsed.Producers))
+	for _, row := range parsed.Producers {
+		rows = append(rows, RecipeRow{Name: row.Name, Segment: row.Segment, OnStuck: row.OnStuck, Bouncer: row.Engine == bouncerEngine})
+	}
+	return rows, nil
+}
+
+// AmendmentTarget returns the optional `amendment_target` of the named recipe: the row a plan amendment routes to, empty when the recipe sets none.
+// The recipe names are Rows': shedrun.RecipeLoom, shedrun.RecipeDarn and shedrun.RecipeBatten, and any other name is refused with an error naming it.
+func AmendmentTarget(recipe string) (string, error) {
+	parsed, err := parseEmbeddedRecipe(recipe)
+	if err != nil {
+		return "", err
+	}
+	return parsed.AmendmentTarget, nil
+}
+
+// parseEmbeddedRecipe parses the embedded recipe the name selects, refusing a name that selects none.
+func parseEmbeddedRecipe(recipe string) (shedbuild.Recipe, error) {
 	var source []byte
 	switch recipe {
 	case shedrun.RecipeLoom:
@@ -78,17 +101,13 @@ func Rows(recipe string) ([]RecipeRow, error) {
 	case shedrun.RecipeBatten:
 		source = recipes.BattenRecipe
 	default:
-		return nil, fmt.Errorf("loomrecipe: no row names for recipe %q", recipe)
+		return shedbuild.Recipe{}, fmt.Errorf("loomrecipe: no embedded recipe named %q", recipe)
 	}
 	parsed, err := shedbuild.Parse(source)
 	if err != nil {
-		return nil, fmt.Errorf("loomrecipe: parse the %s recipe: %w", recipe, err)
+		return shedbuild.Recipe{}, fmt.Errorf("loomrecipe: parse the %s recipe: %w", recipe, err)
 	}
-	rows := make([]RecipeRow, 0, len(parsed.Producers))
-	for _, row := range parsed.Producers {
-		rows = append(rows, RecipeRow{Name: row.Name, Segment: row.Segment, OnStuck: row.OnStuck, Bouncer: row.Engine == bouncerEngine})
-	}
-	return rows, nil
+	return parsed, nil
 }
 
 // EntryNumbers numbers a recipe's entries 1, 2, … in row order, the numbers every status pane draws.

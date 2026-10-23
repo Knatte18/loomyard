@@ -5,12 +5,10 @@
 // fail-loud discipline admits no silent-default reading of a malformed plan document structure.
 // Per-card content defects (a missing field, a malformed Rename: bullet) are recorded leniently
 // into the Card model instead, per the lenient-card-parse decision documented in doc.go.
-// The card body grammar itself is format-5's type-label model
-// (contracts/specs/loom-plan-spec.md): a card's own body carries one or more bold type labels
-// (Create/Edit/Delete/Rename/Move/Prosa/Custom), each carrying its own target list and
-// contributing its own TargetGroup, Uses:/Intent:/ImpactSummary: are the remaining recognized
-// field labels, and the eight format-3 labels stay recognized but retired — they route into
-// Card.RetiredLabels instead of being silently discarded or swallowed into Intent:'s prose.
+// The card body grammar itself is format-5's type-label model (contracts/specs/loom-plan-spec.md).
+// A card's own body carries one or more bold type labels (Create/Edit/Extends/Delete/Rename/Move/Prosa/Custom), each carrying its own target list and contributing its own TargetGroup.
+// Uses:/Intent:/ImpactSummary: are the remaining recognized field labels.
+// The eight format-3 labels stay recognized but retired: they route into Card.RetiredLabels instead of being silently discarded or swallowed into Intent:'s prose.
 
 package planparser
 
@@ -434,32 +432,34 @@ func parseCardFile(planDir string, entry cardIndexEntry, read func(name string) 
 	return card, nil
 }
 
-// Bold-label prefixes for the seven type labels format-5 recognizes as a card's own target-list
+// Bold-label prefixes for the eight type labels format-5 recognizes as a card's own target-list
 // key (contracts/specs/loom-plan-spec.md's "Card fields and order"). The type name is the key — there is
 // no separate "Type:" label. A card body carries one or more of these labels, each contributing
 // its own TargetGroup.
 const (
-	createLabel = "**Create:**"
-	editLabel   = "**Edit:**"
-	deleteLabel = "**Delete:**"
-	renameLabel = "**Rename:**"
-	moveLabel   = "**Move:**"
-	prosaLabel  = "**Prosa:**"
-	customLabel = "**Custom:**"
+	createLabel  = "**Create:**"
+	editLabel    = "**Edit:**"
+	extendsLabel = "**Extends:**"
+	deleteLabel  = "**Delete:**"
+	renameLabel  = "**Rename:**"
+	moveLabel    = "**Move:**"
+	prosaLabel   = "**Prosa:**"
+	customLabel  = "**Custom:**"
 )
 
-// typeLabels maps each of the seven type labels to the CardType it declares. parseCardBody's
+// typeLabels maps each of the eight type labels to the CardType it declares. parseCardBody's
 // switch and card-type resolution share this one table so the two never drift apart. A card body
 // carrying more than one of these labels — even the same label twice — is the supported
 // one-or-more grammar, not a defect: each occurrence contributes its own TargetGroup.
 var typeLabels = map[string]CardType{
-	createLabel: CardTypeCreate,
-	editLabel:   CardTypeEdit,
-	deleteLabel: CardTypeDelete,
-	renameLabel: CardTypeRename,
-	moveLabel:   CardTypeMove,
-	prosaLabel:  CardTypeProsa,
-	customLabel: CardTypeCustom,
+	createLabel:  CardTypeCreate,
+	editLabel:    CardTypeEdit,
+	extendsLabel: CardTypeExtends,
+	deleteLabel:  CardTypeDelete,
+	renameLabel:  CardTypeRename,
+	moveLabel:    CardTypeMove,
+	prosaLabel:   CardTypeProsa,
+	customLabel:  CardTypeCustom,
 }
 
 // Bold-label prefixes for format-5's five remaining recognized field labels.
@@ -488,10 +488,10 @@ const (
 	legacyVerifyLabel = "**verify:**"
 )
 
-// cardLabels lists every bold-label prefix parseCardBody recognizes: the seven type labels, the
+// cardLabels lists every bold-label prefix parseCardBody recognizes: the eight type labels, the
 // five field labels, and the eight retired labels.
 var cardLabels = []string{
-	createLabel, editLabel, deleteLabel, renameLabel, moveLabel, prosaLabel, customLabel,
+	createLabel, editLabel, extendsLabel, deleteLabel, renameLabel, moveLabel, prosaLabel, customLabel,
 	usesLabel, intentLabel, impactSummaryLabel, commitLabel, cardVerifyLabel,
 	whatLabel, contextLabel, editsLabel, createsLabel, deletesLabel, movesLabel, dependsOnLabel, legacyVerifyLabel,
 }
@@ -535,6 +535,8 @@ func parseCardBody(card *Card, lines []string) error {
 			i, fieldErr = parseTypeLabelCase(card, trimmed, createLabel, lines, i+1)
 		case strings.HasPrefix(trimmed, editLabel):
 			i, fieldErr = parseTypeLabelCase(card, trimmed, editLabel, lines, i+1)
+		case strings.HasPrefix(trimmed, extendsLabel):
+			i, fieldErr = parseTypeLabelCase(card, trimmed, extendsLabel, lines, i+1)
 		case strings.HasPrefix(trimmed, deleteLabel):
 			i, fieldErr = parseTypeLabelCase(card, trimmed, deleteLabel, lines, i+1)
 		case strings.HasPrefix(trimmed, renameLabel):
@@ -658,12 +660,14 @@ func parseTypeLabelCase(card *Card, labelLine, label string, lines []string, sta
 		return next, err
 	}
 
-	if label == editLabel {
+	if label == editLabel || label == extendsLabel {
 		var refs []string
 		var resigns []CardResign
-		refs, resigns, next, err = parseEditField(labelLine, lines, start)
+		refs, resigns, next, err = parseEditField(labelLine, label, lines, start)
 		card.Targets = append(card.Targets, refs...)
-		card.Resigns = append(card.Resigns, resigns...)
+		if label == editLabel {
+			card.Resigns = append(card.Resigns, resigns...)
+		}
 		group.Refs = refs
 		group.Resigns = resigns
 		card.TargetGroups = append(card.TargetGroups, group)
@@ -792,14 +796,14 @@ func parseCreateField(labelLine string, lines []string, start int) (refs []strin
 	return refs, decls, raw, i, nil
 }
 
-// parseEditField parses an "**Edit:**" field's sub-bullets, recognizing the re-sign arrow grammar `<glyph>` -> `<new declaration head>` alongside the plain backtick-wrapped ref form.
-// A payload matching moveLineRe contributes a CardResign and its left token to refs, so the member stays an ordinary Edit target for every other consumer;
+// parseEditField parses an "**Edit:**" or "**Extends:**" field's sub-bullets, label naming which, recognizing the re-sign arrow grammar `<glyph>` -> `<new declaration head>` alongside the plain backtick-wrapped ref form.
+// A payload matching moveLineRe contributes a CardResign and its left token to refs, so the member stays an ordinary target for every other consumer;
 // any other bullet, a malformed arrow included, parses as parseRefField would.
 // Like parseCreateField it matches the raw payload before stripBackticks, which would remove the outer backtick pair the arrow grammar needs intact.
-func parseEditField(labelLine string, lines []string, start int) (refs []string, resigns []CardResign, next int, err error) {
-	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, editLabel))
+func parseEditField(labelLine, label string, lines []string, start int) (refs []string, resigns []CardResign, next int, err error) {
+	rest := strings.TrimSpace(strings.TrimPrefix(labelLine, label))
 	if rest != "" {
-		return nil, nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only \"- `ref`\" sub-bullets on the following lines", editLabel, rest)
+		return nil, nil, start, fmt.Errorf("card field %s carries an inline value %q; plan-format admits only \"- `ref`\" sub-bullets on the following lines", label, rest)
 	}
 
 	refs = []string{}

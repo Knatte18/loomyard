@@ -13,9 +13,26 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+var (
+	// hexA and hexB are full SHA-1 object names.
+	hexA = strings.Repeat("a", 40)
+	hexB = strings.Repeat("b", 40)
+)
+
+// tracePlan describes a one-card plan whose card has the given number, slug and intent.
+func tracePlan(number int, slug, intent string) *plankit.Plan {
+	return &plankit.Plan{Approved: true, Language: "none", Framing: "Framing.", Cards: []plankit.Card{{
+		Number: number,
+		Slug:   slug,
+		Groups: []plankit.Group{{Label: "Create", Targets: []string{"internal/a/new.go"}}},
+		Intent: intent,
+	}}}
+}
 
 // testGateTiers is a tier-list lookup over fixed `landing` and `publish` lists, refusing any other gate.
 func testGateTiers(gate string) ([]int, error) {
@@ -94,6 +111,40 @@ func TestPublishFailure(t *testing.T) {
 				}},
 				wantKept:  true,
 				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindPublish, Tier: 2, Tests: []verifytree.FailedTest{goodTest}},
+			},
+			{
+				name: "trace elements that fail their shape check are dropped and valid ones kept",
+				record: verifytree.PublishFailure{
+					Kind: verifytree.FailureKindLanding, Tier: 1,
+					Cards: []verifytree.TracedCard{
+						{
+							Number:    3,
+							Glyphs:    []string{"internal/a#Run", "bad`glyph", "with space", ""},
+							Locations: []string{"internal/a/a.go:3", "has space.go:4", "-flag.go:1", "internal/a/a.go"},
+							Batch:     2,
+							Range:     verifytree.CommitRange{From: "abc1234", To: hexB},
+						},
+						{Number: 0, Glyphs: []string{"internal/z#Z"}},
+						{Number: 4, Glyphs: []string{"internal/b#T"}, Locations: []string{"internal/b/b.go:9"}, Range: verifytree.CommitRange{From: hexA, To: hexB}},
+					},
+					LaterRange: verifytree.CommitRange{From: hexA, To: "short"},
+					Untraced:   []string{"ok/x.go:1", "no line.go", "y.go:z"},
+				},
+				wantKept: true,
+				wantAfter: verifytree.PublishFailure{
+					Kind: verifytree.FailureKindLanding, Tier: 1,
+					Cards: []verifytree.TracedCard{
+						{Number: 3, Glyphs: []string{"internal/a#Run"}, Locations: []string{"internal/a/a.go:3"}, Batch: 2},
+						{Number: 4, Glyphs: []string{"internal/b#T"}, Locations: []string{"internal/b/b.go:9"}, Range: verifytree.CommitRange{From: hexA, To: hexB}},
+					},
+					Untraced: []string{"ok/x.go:1"},
+				},
+			},
+			{
+				name:      "a later range of full object names is kept",
+				record:    verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, LaterRange: verifytree.CommitRange{From: hexA, To: hexB}},
+				wantKept:  true,
+				wantAfter: verifytree.PublishFailure{Kind: verifytree.FailureKindLanding, Tier: 1, LaterRange: verifytree.CommitRange{From: hexA, To: hexB}},
 			},
 			{
 				name:      "log path outside the verify directory is dropped",
@@ -276,6 +327,8 @@ func TestPublishFailureNote(t *testing.T) {
 	tests := []struct {
 		name   string
 		record *verifytree.PublishFailure
+		// plan is written as the live plan; nil passes an empty plan directory.
+		plan *plankit.Plan
 		// tiers defaults to testGateTiers.
 		tiers func(gate string) ([]int, error)
 		want  string
@@ -318,6 +371,49 @@ func TestPublishFailureNote(t *testing.T) {
 			tiers:  failingGateTiers,
 			want:   "none",
 		},
+		{
+			name: "a traced card shows its number, slug, first intent line, members, locations and batch range",
+			plan: tracePlan(3, "alpha", "Trace alpha.\nA second line."),
+			record: &verifytree.PublishFailure{
+				Kind: verifytree.FailureKindLanding,
+				Tier: 1,
+				Cards: []verifytree.TracedCard{{
+					Number: 3, Glyphs: []string{"internal/a#Run", "internal/a#Stop"}, Locations: []string{"internal/a/a.go:3"}, Batch: 2,
+					Range: verifytree.CommitRange{From: hexA, To: hexB},
+				}},
+			},
+			want: "Publish failed on tier 1 of the `landing` gate.\n\nPlan cards the failing locations trace to:\n\n- card 3 `alpha`: Trace alpha.\n  - members: `internal/a#Run`, `internal/a#Stop`\n  - locations: `internal/a/a.go:3`\n  - range to diff when starting the fix: `git diff " + hexA + " " + hexB + "`",
+		},
+		{
+			name: "a later range and untraced locations show after the cards",
+			plan: tracePlan(3, "alpha", "Trace alpha."),
+			record: &verifytree.PublishFailure{
+				Kind:       verifytree.FailureKindLanding,
+				Tier:       1,
+				LaterRange: verifytree.CommitRange{From: hexA, To: hexB},
+				Untraced:   []string{"x.go:1", "y/z.go:2"},
+			},
+			want: "Publish failed on tier 1 of the `landing` gate.\n\nLater commits touching the same members: `git diff " + hexA + " " + hexB + "`\n\nLocations no plan card holds: `x.go:1`, `y/z.go:2`",
+		},
+		{
+			name: "a card number the plan no longer holds renders its number alone",
+			plan: tracePlan(3, "alpha", "Trace alpha."),
+			record: &verifytree.PublishFailure{
+				Kind:  verifytree.FailureKindLanding,
+				Tier:  1,
+				Cards: []verifytree.TracedCard{{Number: 9}},
+			},
+			want: "Publish failed on tier 1 of the `landing` gate.\n\nPlan cards the failing locations trace to:\n\n- card 9\n  - Webster holds no commit range for this card.",
+		},
+		{
+			name: "a plan that does not parse renders the card numbers alone",
+			record: &verifytree.PublishFailure{
+				Kind:  verifytree.FailureKindLanding,
+				Tier:  1,
+				Cards: []verifytree.TracedCard{{Number: 3, Locations: []string{"internal/a/a.go:3"}}},
+			},
+			want: "Publish failed on tier 1 of the `landing` gate.\n\nPlan cards the failing locations trace to:\n\n- card 3\n  - locations: `internal/a/a.go:3`\n  - Webster holds no commit range for this card.",
+		},
 	}
 	for _, tt := range tests {
 		if tt.record != nil {
@@ -327,7 +423,12 @@ func TestPublishFailureNote(t *testing.T) {
 		if tiers == nil {
 			tiers = testGateTiers
 		}
-		if got := PublishFailureNote(worktree, verifyDir, tiers); got != tt.want {
+		planDir := ""
+		if tt.plan != nil {
+			planDir = t.TempDir()
+			plankit.Write(t, planDir, *tt.plan)
+		}
+		if got := PublishFailureNote(worktree, verifyDir, planDir, tiers); got != tt.want {
 			t.Errorf("%s: note = %q; want %q", tt.name, got, tt.want)
 		}
 	}

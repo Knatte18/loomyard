@@ -1,4 +1,4 @@
-// plancontext.go holds the plan gate's context checks: rename-tool-missing, pattern-changes-mismatch, verify-raw-command, verify-gate-no-wait and plan-verify-retired.
+// plancontext.go holds the plan gate's context checks: rename-tool-missing, pattern-changes-mismatch, verify-raw-command, verify-gate-no-wait and plan-verify-retired, and calls the PATTERN checks of patternplan.go.
 // Each compares the plan with something outside the plan directory, such as the hub's config or the decision record, so they live here rather than in planparser.
 
 package loomshed
@@ -43,12 +43,16 @@ type PlanContext struct {
 	// DecisionRecordPath is the decision record whose `## PATTERN changes` section the plan must carry.
 	// Empty skips the comparison.
 	DecisionRecordPath string
+	// PatternBase returns the PATTERN.md overview at the task branch's merge base with its parent, or at HEAD with no parent recorded; nil bytes mean the file is absent there.
+	// Nil skips the PATTERN checks.
+	PatternBase func() ([]byte, error)
 }
 
 // planContextFindings returns the context checks' findings over cards, in this order: one rename-tool-missing per symbol Rename pair when pc.RenameTools is empty, one pattern-changes-mismatch per bullet the plan and the decision record do not both declare, then per card the verify-raw-command and verify-gate-no-wait findings of its Verify line, then an informational plan-verify-retired when the overview carries a `## verify:` section.
+// The PATTERN findings of patternPlanFindings follow the mismatch findings; they read worktreeRoot's PATTERN.md.
 // The record comparison and the retired-section check are over plan, not cards.
 // An absent record adds nothing; a read error is returned, and so is a record whose section is malformed, since the plan writer cannot fix the record.
-func planContextFindings(plan *planparser.Plan, cards []planparser.Card, pc PlanContext) ([]planindex.Finding, error) {
+func planContextFindings(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string, pc PlanContext) ([]planindex.Finding, error) {
 	var findings []planindex.Finding
 	if len(pc.RenameTools) == 0 {
 		for _, card := range cards {
@@ -68,6 +72,11 @@ func planContextFindings(plan *planparser.Plan, cards []planparser.Card, pc Plan
 		return nil, err
 	}
 	findings = append(findings, mismatches...)
+	patternFindings, err := patternPlanFindings(plan, cards, worktreeRoot, pc)
+	if err != nil {
+		return nil, err
+	}
+	findings = append(findings, patternFindings...)
 	findings = append(findings, verifyLineFindings(cards, pc.RefuseRaw)...)
 	if plan.Verify != "" {
 		findings = append(findings, planindex.Finding{

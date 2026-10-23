@@ -273,3 +273,79 @@ func TestCarryRecords(t *testing.T) {
 		})
 	}
 }
+
+func TestSettleRoundStart(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 10, 23, 7, 30, 15, 0, time.UTC)
+	withStart := func(startedAt string) settleRecord {
+		record := documentSettleRecord(1, 1)
+		record.RoundStartedAt = startedAt
+		return record
+	}
+	tests := []struct {
+		name      string
+		setup     func(t *testing.T, runDir string)
+		want      time.Time
+		wantFound bool
+	}{
+		{
+			name: "a live record with a whole-second start reads it back",
+			setup: func(t *testing.T, runDir string) {
+				if err := writeSettleRecord(runDir, withStart(start.Format(time.RFC3339)), nil); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want:      start,
+			wantFound: true,
+		},
+		{
+			name: "a live record without the field reads as unknown",
+			setup: func(t *testing.T, runDir string) {
+				if err := writeSettleRecord(runDir, withStart(""), nil); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "an older record with no field in its file reads as unknown",
+			setup: func(t *testing.T, runDir string) {
+				writeRecordFiles(t, runDir, map[string]string{settleRecordFile: `{"subject":{"kind":"document","hash":"h"},"round":1,"settled_at":"2026-08-16T15:13:26Z","settled":true}`})
+			},
+		},
+		{
+			name: "a record that is not live reads as unknown",
+			setup: func(t *testing.T, runDir string) {
+				if err := writeSettleRecord(runDir, withStart(start.Format(time.RFC3339)), nil); err != nil {
+					t.Fatal(err)
+				}
+				writeRecordFiles(t, runDir, map[string]string{"round-2-review.md": "review"})
+			},
+		},
+		{
+			name:  "no record reads as unknown",
+			setup: func(t *testing.T, runDir string) {},
+		},
+		{
+			name: "an unparsable start reads as unknown",
+			setup: func(t *testing.T, runDir string) {
+				if err := writeSettleRecord(runDir, withStart("yesterday"), nil); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runDir := t.TempDir()
+			tt.setup(t, runDir)
+			got, found, err := SettleRoundStart(runDir)
+			if err != nil {
+				t.Fatalf("SettleRoundStart() error = %v; want nil", err)
+			}
+			if found != tt.wantFound || !got.Equal(tt.want) {
+				t.Errorf("SettleRoundStart() = %v, %t; want %v, %t", got, found, tt.want, tt.wantFound)
+			}
+		})
+	}
+}

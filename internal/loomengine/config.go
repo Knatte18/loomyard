@@ -106,6 +106,10 @@ const reviewsDirName = "reviews"
 // loomengine is this segment's sole declarer.
 const parentReviewDirName = "parent-review"
 
+// amendmentRecordFileName is the file name loomengine joins onto LoomDurableDir to form the plan amendment record's path.
+// loomengine is this segment's sole declarer.
+const amendmentRecordFileName = "amendment.yaml"
+
 // frictionDirName is the relative-path segment loomengine joins onto LoomDurableDir to form the Tier 2 friction leaf's directory, and onto LoomScratchDir (with a .lock suffix) for its lock.
 // loomengine is this segment's sole declarer.
 const frictionDirName = "friction"
@@ -308,6 +312,19 @@ func LoomDurableDirRel() string {
 // Per the Cwd Resolution Invariant, no other package may construct this path.
 func LoomDurableDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomDurableDirRel())
+}
+
+// LoomAmendmentRecordRel returns the worktree-anchor-relative form of LoomAmendmentRecord's path: the join of LoomDurableDirRel and amendmentRecordFileName.
+// It exists so a caller building a fabric commit pathspec never has to name a segment loomengine owns.
+func LoomAmendmentRecordRel() string {
+	return filepath.Join(LoomDurableDirRel(), amendmentRecordFileName)
+}
+
+// LoomAmendmentRecord returns the path of the plan amendment record for this worktree: LoomAmendmentRecordRel joined onto l.AnchorPath().
+// It is durable: the run's routing reads it, so it is tracked content that survives adoption on another machine.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func LoomAmendmentRecord(l *lyxcwd.Location) string {
+	return filepath.Join(l.AnchorPath(), LoomAmendmentRecordRel())
 }
 
 // PathsOutsideRunRecords returns the absolute paths that lie outside the run's own records directories, in their input order.

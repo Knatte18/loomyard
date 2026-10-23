@@ -29,8 +29,10 @@ const (
 	CardTypeMove CardType = "Move"
 	// CardTypeProsa marks a card touching file(s) with no single-symbol owner (docs, design notes).
 	CardTypeProsa CardType = "Prosa"
-	// CardTypeCustom marks a card that is an explicit escape hatch from the other six types.
+	// CardTypeCustom marks a card that is an explicit escape hatch from the other seven types.
 	CardTypeCustom CardType = "Custom"
+	// CardTypeExtends marks a card whose targets are existing symbol(s) or file(s) it only adds to, changing nothing already there.
+	CardTypeExtends CardType = "Extends"
 )
 
 // Plan is the in-memory form of a fully parsed plan-format plan directory.
@@ -238,9 +240,10 @@ type TargetGroup struct {
 	// is CardTypeCreate only.
 	CreateRaw []string
 
-	// Resigns is every "**Edit:**" sub-bullet this group's own label carried in the `<glyph>` -> `<new declaration head>` arrow grammar.
-	// Populated when Type is CardTypeEdit only.
-	// The arrow's left token is also in Refs, so the member stays an ordinary Edit target.
+	// Resigns is every "**Edit:**" or "**Extends:**" sub-bullet this group's own label carried in the `<glyph>` -> `<new declaration head>` arrow grammar.
+	// Populated when Type is CardTypeEdit or CardTypeExtends only.
+	// The arrow's left token is also in Refs, so the member stays an ordinary target.
+	// An Extends group's resigns stay out of the card's own Resigns.
 	Resigns []CardResign
 }
 

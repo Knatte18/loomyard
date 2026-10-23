@@ -22,31 +22,48 @@ func checkPatternEntryLineCap(plan *Plan) []ValidationError {
 	var findings []ValidationError
 
 	for _, c := range plan.Cards {
-		for _, span := range codeSpans(c.Text) {
-			if !span.spelling {
+		for _, entry := range CardPatternEntries(c) {
+			length := len([]rune(entry.Line))
+			if length <= pattern.MaxEntryLineChars {
 				continue
 			}
-			for _, line := range strings.Split(span.text, "\n") {
-				line = strings.TrimRight(line, "\r")
-				if !strings.HasPrefix(line, patternEntryLinePrefix) {
-					continue
-				}
-				length := len([]rune(line))
-				if length <= pattern.MaxEntryLineChars {
-					continue
-				}
-				entry, _, _ := strings.Cut(strings.TrimPrefix(line, "- `"), "`")
-				findings = append(findings, ValidationError{
-					Check: patternEntryLineCapCheck,
-					Card:  cardID(c),
-					Detail: fmt.Sprintf(
-						"card %d prescribes the entry line for `%s` at %d characters, over the %d cap; shorten the line or move the detail to the entry's background file",
-						c.Number, entry, length, pattern.MaxEntryLineChars,
-					),
-				})
-			}
+			findings = append(findings, ValidationError{
+				Check: patternEntryLineCapCheck,
+				Card:  cardID(c),
+				Detail: fmt.Sprintf(
+					"card %d prescribes the entry line for `%s` at %d characters, over the %d cap; shorten the line or move the detail to the entry's background file",
+					c.Number, entry.ID, length, pattern.MaxEntryLineChars,
+				),
+			})
 		}
 	}
 
 	return findings
+}
+
+// PatternEntryLine is one verbatim PATTERN.md entry line a card prescribes in a fenced code block.
+// ID is the entry's ID without backticks, such as PATTERN-cwd-resolution, and Line is the whole line as written with any trailing carriage return trimmed.
+type PatternEntryLine struct {
+	ID   string
+	Line string
+}
+
+// CardPatternEntries returns, in the card's text order, every line inside one of its fenced code blocks that opens like a PATTERN.md entry line.
+// Inline code spans and prose are never read, and every line is kept, a repeated ID included.
+func CardPatternEntries(card Card) []PatternEntryLine {
+	var entries []PatternEntryLine
+	for _, span := range codeSpans(card.Text) {
+		if !span.spelling {
+			continue
+		}
+		for _, line := range strings.Split(span.text, "\n") {
+			line = strings.TrimRight(line, "\r")
+			if !strings.HasPrefix(line, patternEntryLinePrefix) {
+				continue
+			}
+			id, _, _ := strings.Cut(strings.TrimPrefix(line, "- `"), "`")
+			entries = append(entries, PatternEntryLine{ID: id, Line: line})
+		}
+	}
+	return entries
 }

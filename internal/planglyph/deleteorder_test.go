@@ -58,6 +58,12 @@ func TestLaterDeleteReferences(t *testing.T) {
 			wantRefs: []string{"blocking sub/b.go:3"},
 		},
 		{
+			name:     "a later card's Extends that still calls the deleted function is refused",
+			deleting: deleteFoo,
+			later:    groupCard(2, "extend", planparser.CardTypeExtends, "sub#Bar"),
+			wantRefs: []string{"blocking sub/b.go:3"},
+		},
+		{
 			name:     "the delete numbered after the editing card passes",
 			deleting: groupCard(2, "del", planparser.CardTypeDelete, "sub#Foo"),
 			later:    groupCard(1, "edit", planparser.CardTypeEdit, "sub#Bar"),

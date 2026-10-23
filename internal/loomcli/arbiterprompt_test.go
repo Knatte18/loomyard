@@ -1,6 +1,7 @@
 package loomcli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestArbiterPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, brief and case brief, no unfilled marker and a verdict example the verdict reader accepts.
+// TestArbiterPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, brief, case brief and amendment target, no unfilled marker and a verdict example the verdict reader accepts.
 func TestArbiterPrompt(t *testing.T) {
 	t.Parallel()
 
@@ -29,6 +30,7 @@ func TestArbiterPrompt(t *testing.T) {
 		DecisionRecordPath: "/hub/wt/_lyx/discussion/decision-record.md",
 		SupportLogPath:     "/hub/wt/_lyx/discussion/support-log.md",
 		VerdictPath:        "/hub/wt/.lyx/arbiter/attempt-1/verdict.yaml",
+		AmendmentTarget:    "Plan-Burler-Review",
 	}
 	cases := []struct {
 		name string
@@ -39,10 +41,10 @@ func TestArbiterPrompt(t *testing.T) {
 		{
 			name: "every marker value",
 			in:   in,
-			want: []string{in.RunID, in.Slug, in.Worktree, in.EnvelopePath, in.ReportPath, in.BriefPath, in.CaseBriefPath, in.DecisionRecordPath, in.SupportLogPath, in.VerdictPath},
+			want: []string{in.RunID, in.Slug, in.Worktree, in.EnvelopePath, in.ReportPath, in.BriefPath, in.CaseBriefPath, in.DecisionRecordPath, in.SupportLogPath, in.VerdictPath, "amendment target `" + in.AmendmentTarget + "`"},
 		},
 		{
-			name: "absent report, brief and case brief read none",
+			name: "absent report, brief, case brief and amendment target read none",
 			in:   arbiterPromptInput{RunID: in.RunID, Slug: in.Slug, Worktree: in.Worktree, EnvelopePath: in.EnvelopePath, DecisionRecordPath: in.DecisionRecordPath, SupportLogPath: in.SupportLogPath, VerdictPath: in.VerdictPath},
 			want: []string{"`none`"},
 			none: 3,
@@ -62,7 +64,7 @@ func TestArbiterPrompt(t *testing.T) {
 				}
 			}
 			if tc.none > 0 {
-				for _, line := range []string{"driver's stop or fork report `none`", "escalation brief `none`", "case brief `none`"} {
+				for _, line := range []string{"driver's stop or fork report `none`", "escalation brief `none`", "case brief `none`", "amendment target `none`"} {
 					if !strings.Contains(got, line) {
 						t.Errorf("arbiterPrompt() does not carry %q", line)
 					}
@@ -92,6 +94,31 @@ func TestArbiterPrompt(t *testing.T) {
 			}
 			if _, _, err := loomengine.ReadArbiterVerdict(verdictPath); err != nil {
 				t.Errorf("ReadArbiterVerdict(the prompt's verdict example) error = %v; want nil", err)
+			}
+		})
+	}
+}
+
+// TestArbiterAmendmentTarget asserts the target is the recipe's once the plan is approved, and none for an unapproved plan, an approval read error and a recipe that sets none.
+func TestArbiterAmendmentTarget(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		recipeTarget string
+		approved     func() (bool, error)
+		want         string
+	}{
+		{"ApprovedPlan", "Plan-Burler-Review", func() (bool, error) { return true, nil }, "Plan-Burler-Review"},
+		{"UnapprovedPlan", "Plan-Burler-Review", func() (bool, error) { return false, nil }, "none"},
+		{"ApprovalReadError", "Plan-Burler-Review", func() (bool, error) { return false, errors.New("unreadable") }, "none"},
+		{"RecipeSetsNone", "", func() (bool, error) { return true, nil }, "none"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := arbiterAmendmentTarget(tt.recipeTarget, tt.approved); got != tt.want {
+				t.Errorf("arbiterAmendmentTarget(%q, approved) = %q; want %q", tt.recipeTarget, got, tt.want)
 			}
 		})
 	}

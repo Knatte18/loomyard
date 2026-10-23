@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
+	"github.com/Knatte18/loomyard/internal/planparser"
 )
 
 // ErrBatchOrder is the sentinel CheckBatchOrder's error wraps when a batch depends on a batch that runs after it.
@@ -50,12 +51,12 @@ func backwardEdgeFinding(producer, consumer batcher.Batch) string {
 	consumerNumber, _ := batchIdentity(consumer)
 	for _, a := range producer.Cards {
 		for _, b := range consumer.Cards {
-			if ref := firstSharedRef(b.Uses, a.Targets); ref != "" {
+			if ref := firstSharedRef(a, b, true); ref != "" {
 				return fmt.Sprintf("batch %d (card %d) uses %q, which batch %d (card %d) targets, but batch %d runs first",
 					consumerNumber, b.Number, ref, producerNumber, a.Number, consumerNumber)
 			}
 			if a.Number < b.Number {
-				if ref := firstSharedRef(a.Targets, b.Targets); ref != "" {
+				if ref := firstSharedRef(a, b, false); ref != "" {
 					return fmt.Sprintf("batch %d (card %d) and batch %d (card %d) both target %q and card %d comes first, but batch %d runs first",
 						producerNumber, a.Number, consumerNumber, b.Number, ref, a.Number, consumerNumber)
 				}
@@ -65,30 +66,42 @@ func backwardEdgeFinding(producer, consumer batcher.Batch) string {
 	return fmt.Sprintf("batch %d depends on batch %d, which runs later", consumerNumber, producerNumber)
 }
 
-// firstSharedRef returns the first entry of left that right also holds under refsIntersect's comparison, or "" when there is none.
-func firstSharedRef(left, right []string) string {
+// firstSharedRef returns the first ref the two cards share that makes a dependency edge under planparser.DependencyEdge, or "" when there is none.
+// With consumerUses it walks the consumer's Uses entries against the producer's Targets; otherwise it walks the producer's Targets against the consumer's.
+func firstSharedRef(producer, consumer planparser.Card, consumerUses bool) string {
+	left, right := producer.Targets, consumer.Targets
+	if consumerUses {
+		left, right = consumer.Uses, producer.Targets
+	}
 	for _, ref := range left {
-		if refsIntersect([]string{ref}, right) {
-			return strings.TrimSpace(ref)
+		ref = strings.TrimSpace(ref)
+		if ref == "" || !refsIntersect([]string{ref}, right) {
+			continue
+		}
+		consumerKind := planparser.CardRefKind(consumer, ref)
+		if consumerUses {
+			consumerKind = planparser.RefUse
+		}
+		if planparser.DependencyEdge(producer, planparser.CardRefKind(producer, ref), consumer, consumerKind) {
+			return ref
 		}
 	}
 	return ""
 }
 
-// deriveEdges builds the vertex adjacency list — one entry per input batch index — by comparing
-// every ordered pair of cards drawn from different batches.
+// deriveEdges builds the vertex adjacency list, one entry per input batch index, by comparing every ordered pair of cards drawn from different batches.
 // Each vertex's successor list is deduplicated and sorted ascending, which keeps the result deterministic.
 //
 // An edge i -> j is added when:
-//   - batch j's card b has a Uses entry matching batch i's card a's Targets entry (producer before
-//     consumer); or
-//   - batch i's card a and batch j's card b share a Targets entry AND a.Number < b.Number (declared
-//     card order settles two writers of the same ref).
+//   - batch j's card b has a Uses entry matching batch i's card a's Targets entry (producer before consumer); or
+//   - batch i's card a and batch j's card b share a Targets entry and a.Number < b.Number (declared card order settles two writers of the same ref);
 //
-// A shared entry between two cards' Uses never produces an edge — a read creates no ordering
-// against another read. Refs that are empty or whitespace-only after strings.TrimSpace are ignored
-// on both sides of every comparison. Ref classification (symbol-shaped vs. path-shaped) is not
-// consulted: both kinds participate identically.
+// and planparser.DependencyEdge holds for that shared ref.
+// Two Extends on one ref therefore make no edge unless both cards fence a line for one PATTERN.md entry ID.
+//
+// A shared entry between two cards' Uses never produces an edge, since a read creates no ordering against another read.
+// Refs that are empty or whitespace-only after strings.TrimSpace are ignored on both sides of every comparison.
+// Ref classification (symbol-shaped vs. path-shaped) is not consulted: both kinds participate identically.
 func deriveEdges(batches []batcher.Batch) [][]int {
 	n := len(batches)
 	adj := make([][]int, n)
@@ -115,10 +128,10 @@ func deriveEdges(batches []batcher.Batch) [][]int {
 					continue
 				}
 				for _, b := range batches[j].Cards {
-					if refsIntersect(b.Uses, a.Targets) {
+					if firstSharedRef(a, b, true) != "" {
 						addEdge(i, j)
 					}
-					if a.Number < b.Number && refsIntersect(a.Targets, b.Targets) {
+					if a.Number < b.Number && firstSharedRef(a, b, false) != "" {
 						addEdge(i, j)
 					}
 				}

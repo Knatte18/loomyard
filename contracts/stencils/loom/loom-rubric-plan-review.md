@@ -66,11 +66,14 @@ Do not flag any of the following as a finding:
   It never fires for an interface method or a struct field, which take no arrow.
 - **`ImpactSummary` carries a real conclusion.**
   A one-line blast-radius conclusion — "3 callers, all local to the billing package, no cross-module effects" — never a restatement of `Intent`.
+- **`Extends` on a ref the card rewrites.**
+  An `Extends` on a ref the card rewrites, reorders or removes content of is a finding, as a missing `Uses:` is; the finding names the ref and moves it under `**Edit:**`.
+  It flags only what the plan-writer stencil tells the writer to do: `Extends` is for adding to a ref without changing anything already there.
 - **`Custom` is a last resort.**
-  Used only where none of `Create`, `Edit`, `Delete`, `Rename`, `Move`, or `Prosa` genuinely fits, never as a shortcut around correct typing.
+  Used only where none of `Create`, `Edit`, `Extends`, `Delete`, `Rename`, `Move`, or `Prosa` genuinely fits, never as a shortcut around correct typing.
   A `Custom` card is exempt from `path-missing` on its own targets and from `prosa-symbol-target` — which under the glyph alphabet means a `Prosa` group may only target file and unit self glyphs, with a member glyph (or anything else that fails to parse as a self glyph) the finding — so a mistyped `Custom` card silently escapes two checks the rest of the plan is held to.
   It escapes only those two: `bare-symbol-target` and `directory-target` bind a card's flat `Targets`/`Uses` with no group scoping at all, so this round's own gate already blocks a `Custom` card carrying either — do not hunt for one here.
-  A `Custom` card whose targets could instead be expressed as a multi-label combination of the other six is a finding — the format's one-or-more-labels grammar means `Custom` is never the only way to name a mixed target list.
+  A `Custom` card whose targets could instead be expressed as a multi-label combination of the other seven is a finding — the format's one-or-more-labels grammar means `Custom` is never the only way to name a mixed target list.
 - **PATTERN fit.**
   When the repository has a `PATTERN.md`, each card is checked against its entries and against the `pattern/` background files the plan names as relevant to the change;
   a card that breaks one of their rules is a finding, and the finding names the entry.

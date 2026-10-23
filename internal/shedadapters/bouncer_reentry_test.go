@@ -469,3 +469,47 @@ func TestBouncer_Reentry(t *testing.T) {
 		})
 	}
 }
+
+func TestBouncer_SettleRecordsRoundStart(t *testing.T) {
+	t.Parallel()
+	reviewStart := time.Date(2026, 10, 23, 7, 30, 15, 0, time.UTC)
+
+	tests := []struct {
+		name string
+		run  func(t *testing.T) settleRecord
+		want string
+	}{
+		{"ConvergedSettleRecordsTheReviewHalfsStart", func(t *testing.T) settleRecord {
+			h := newReentry(t, convergingShuttle(nil))
+			if err := writeRoundUsage(h.cfg.RunDir, 1, roundUsage{Review: &halfUsage{Start: reviewStart}}); err != nil {
+				t.Fatal(err)
+			}
+			if err := h.settleRoundOne(nil); err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			return h.settleRecord()
+		}, "2026-10-23T07:30:15Z"},
+		{"ConvergedSettleWithNoUsageRecordRecordsNone", func(t *testing.T) settleRecord {
+			h := newReentry(t, convergingShuttle(nil))
+			if err := h.settleRoundOne(nil); err != nil {
+				t.Fatalf("Call() error = %v; want nil", err)
+			}
+			return h.settleRecord()
+		}, ""},
+		{"SkipSeamApprovalRecordsNone", func(t *testing.T) settleRecord {
+			h := newReentry(t, convergingShuttle(nil), func(h *reentry, cfg *BouncerConfig) {
+				cfg.Skip = func() (bool, error) { return true, nil }
+			})
+			shedfake.RequireOutcome(t, h.b, shedengine.Done)
+			return h.settleRecord()
+		}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.run(t).RoundStartedAt; got != tt.want {
+				t.Errorf("settle record round_started_at = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}

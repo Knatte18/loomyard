@@ -94,6 +94,9 @@ A card that needs a corpus or a fixture takes it from committed test data in the
 `card-fabric-reference` in `{{.specs_dir}}/loom/loom-plan-spec.md` names what the plan gate refuses.
 
 A card that prescribes an addition to a `PATTERN.md` entry line leaves the line under the cap, `pattern-entry-line-cap` in the same spec: the gate fails a fenced verbatim entry line over it.
+A declared `adds` or `changes` entry is prescribed verbatim as its whole overview line in a fenced block on a card that edits `PATTERN.md`.
+A card fences only the new line, never the old one or an example, since the gate reads every fenced line that opens like an entry.
+The plan gate measures the overview those lines project against the headroom line, so a line that grows `PATTERN.md` past it is refused.
 
 ### On-disk layout
 
@@ -157,10 +160,10 @@ A symbol `Rename` needs the hub's `rename_tools` in `language.yaml`; the plan ga
 ### Each `NN-<card-slug>.md`
 
 In this exact order: `# Card N — <name>`;
-one or more bold type labels from `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**`, each label's own indented backtick-wrapped sub-bullets are the card's targets for that label;
+one or more bold type labels from `**Create:**`, `**Edit:**`, `**Extends:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**`, each label's own indented backtick-wrapped sub-bullets are the card's targets for that label;
 optionally `**Uses:**`, in the same bullet shape, for what the card reads but does not change;
 a required, multi-line `**Intent:**` (prose — what, and why);
-`**ImpactSummary:**` on `Edit`/`Delete` cards only, taking its value inline on the label line;
+`**ImpactSummary:**` on `Edit`/`Extends`/`Delete` cards only, taking its value inline on the label line;
 optionally `**Commit:**` (must start `N: `) and `**Verify:**`.
 
 An implementation card lists the implementation's member glyphs under `**Edit:**`, beside the test members it changes or the `**Create:**` handles of the tests it adds.
@@ -180,8 +183,13 @@ A card that deletes or re-signs a member lists every caller of it: the file, or 
 For a caller in a `_test.go` file the card lists only the member glyph whose body holds the call.
 `caller-uncovered` in `{{.specs_dir}}/loom/loom-plan-spec.md` says what counts.
 
-`**Custom:**` is a last resort, used only where none of the other six genuinely fits.
-A card whose targets can be expressed as a multi-label combination of the other six is not `Custom`.
+`**Extends:**` lists a ref that already exists and that the card only adds to, without changing anything already there: a flag, a list line, a doc paragraph, a spec entry, a verb in a wire function.
+A ref whose existing content the card rewrites, reorders or removes goes under `**Edit:**`, and a re-sign arrow never goes under `**Extends:**`.
+Two cards that extend one ref make no dependency on each other, unless both cards fence a verbatim line for one PATTERN entry ID.
+The card that writes the code writes its docs too, naming the doc files under `**Extends:**`, so no separate closing docs card is planned.
+
+`**Custom:**` is a last resort, used only where none of the other seven genuinely fits.
+A card whose targets can be expressed as a multi-label combination of the other seven is not `Custom`.
 A `**Custom:**` group may not be combined with a group of a different type.
 
 A card that introduces a new verb, flag, escape hatch or routing edge, or removes, downgrades or makes bypassable a guard, states in its `**Intent:**` what the change can now skip or let through and what bounds it.

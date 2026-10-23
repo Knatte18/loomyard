@@ -273,6 +273,12 @@ type Deps struct {
 	// Nil records no tests.
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	FailingTests func(log string) []verifytree.FailedTest
+	// TraceFailure traces a failed verify's log, run at head, to the plan cards that hold the failing code, for the failure record's cards, later range and untraced locations.
+	// It is told so this package stays free of the plan and quarry modules.
+	// Nil traces nothing, as for a run with no plan.
+	// A trace error is logged and leaves the record without the fields.
+	// internal/loomcli's landingDeps fills it for a loom run and leaves it nil for a darn run.
+	TraceFailure func(log, head string) (verifytree.FailureTrace, error)
 	// VerifyDir is the told directory internal/verifytree keeps the verified-tree record, the running marker and the verify log in.
 	// Every plan-verify site of the worktree shares it, so a pass at one site lets the next skip.
 	// Told, never derived, per the Told-Geometry Invariant.

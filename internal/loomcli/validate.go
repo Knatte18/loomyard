@@ -269,7 +269,12 @@ Example:
 					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: "+gateErr.Error()))
 					return nil
 				}
-				pc = loomshed.PlanContext{RenameTools: language.RenameTools, RefuseRaw: refuseRaw, DecisionRecordPath: c.env.PatternRecordPath}
+				pc = loomshed.PlanContext{
+					RenameTools:        language.RenameTools,
+					RefuseRaw:          refuseRaw,
+					DecisionRecordPath: c.env.PatternRecordPath,
+					PatternBase:        loomshed.PatternBaseReader(c.env.WorktreeRoot, c.env.VerifyMergeBase),
+				}
 			}
 
 			var findings []planglyph.Finding

@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
@@ -61,6 +62,8 @@ type arbiterDeps struct {
 	// Prompt holds the prompt inputs that do not vary per attempt; StencilsDir is where the arbiter stencil is read from.
 	Prompt      arbiterPromptInput
 	StencilsDir string
+	// AmendmentTarget answers the row a plan amendment routes to, or "none"; it is read at each spawn, never at wiring time, since the plan is approved mid-drive.
+	AmendmentTarget func() string
 	// Shuttle starts, attaches to and stops the arbiter.
 	Shuttle sheddriver.AgentShuttle
 	// Now is the clock.
@@ -250,6 +253,7 @@ func (c *arbiterCall) settleFresh(attempts []loomengine.ArbiterAttempt) (loomeng
 	promptInput.BriefPath = briefPath
 	promptInput.CaseBriefPath = c.in.CaseBriefPath
 	promptInput.VerdictPath = loomengine.ArbiterVerdictPath(dir)
+	promptInput.AmendmentTarget = c.deps.AmendmentTarget()
 	prompt, err := arbiterPrompt(c.deps.StencilsDir, promptInput)
 	if err != nil {
 		return loomengine.ArbiterEnvelope{}, err
@@ -457,8 +461,13 @@ func (c *loomCLI) arbiterDepsFor() (arbiterDeps, error) {
 	if err != nil {
 		return arbiterDeps{}, err
 	}
+	recipeTarget, err := loomrecipe.AmendmentTarget(c.recipe)
+	if err != nil {
+		return arbiterDeps{}, err
+	}
 	location := c.location
 	runID := shedrun.ResolveRunID(location, c.runID)
+	planApproved := planApprovedReader(location.AnchorPath())
 	reviewsDir := loomengine.LoomReviewsDir(location)
 	bouncerRunDir := func(producer string) (string, bool, error) {
 		subdir, isBouncer, err := c.bouncerSubdir(producer)
@@ -490,8 +499,22 @@ func (c *loomCLI) arbiterDepsFor() (arbiterDeps, error) {
 			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 			SupportLogPath:     loomengine.DiscussionSupportLog(location),
 		},
-		Shuttle:       sheddriver.RunnerShuttle{Runner: c.runner},
-		Now:           time.Now,
-		RelaunchRunID: runID,
+		AmendmentTarget: func() string { return arbiterAmendmentTarget(recipeTarget, planApproved) },
+		Shuttle:         sheddriver.RunnerShuttle{Runner: c.runner},
+		Now:             time.Now,
+		RelaunchRunID:   runID,
 	}, nil
+}
+
+// arbiterAmendmentTarget returns recipeTarget when it is non-empty and approved answers true, and the literal "none" otherwise.
+// An approved error answers "none", since a target the arbiter cannot rely on is no target.
+func arbiterAmendmentTarget(recipeTarget string, approved func() (bool, error)) string {
+	if recipeTarget == "" {
+		return arbiterAbsentPath
+	}
+	ok, err := approved()
+	if err != nil || !ok {
+		return arbiterAbsentPath
+	}
+	return recipeTarget
 }

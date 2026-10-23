@@ -113,6 +113,8 @@
 // The tier is the last failing tier the log's `lyx gate test` summary lines name; a log without one, such as a refusal before the first tier, takes the highest tier of the gate's list, read through the told Deps.GateTiers.
 // The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Publish reads it from Merge-In's merge record.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
+// When Deps.TraceFailure is set and both the log and HEAD are non-empty, the record also carries the trace the seam returns: `cards`, `later_range` and `untraced`, the plan cards and commit ranges the failing locations trace to.
+// A nil seam, as for a darn run with no plan, writes none of them, and a trace error is logged at Warn and leaves the record without them, never changing the Stuck verdict, the route or the record's other fields.
 // The record's target and the reason's way forward come from the told Deps.ClassifyVerifyFailure when it is set, and from Deps.VerifyFailureTarget and Deps.VerifyFailedWayForward otherwise.
 // A not-owned route's lead names the packages before the merge clause.
 // The Stuck reason of a failed verify ends with the way-forward clause only when the record was written; otherwise, and when none is told, it asks to fix forward on the task branch.

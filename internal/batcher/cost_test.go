@@ -215,6 +215,15 @@ func TestCostBatchifier_Limits(t *testing.T) {
 			wantSizes: []int{1, 1},
 		},
 		{
+			name:   "a delete of a file an earlier card extends starts a new batch",
+			params: batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
+			cards: []planparser.Card{
+				groupCard(1, planparser.TargetGroup{Type: planparser.CardTypeExtends, Refs: []string{"internal/a/a.go#Run"}}),
+				groupCard(2, planparser.TargetGroup{Type: planparser.CardTypeDelete, Refs: []string{"internal/a/a.go#"}}),
+			},
+			wantSizes: []int{1, 1},
+		},
+		{
 			name:   "a card whose own rename covers its own edit forms no boundary",
 			params: batcher.CostParams{Budget: unlimited, MaxCards: 5, Weights: costWeights},
 			cards: []planparser.Card{

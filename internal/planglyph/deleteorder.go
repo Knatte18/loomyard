@@ -81,12 +81,12 @@ type editTarget struct {
 	path  string
 }
 
-// collectEditTargets returns, in card and body order, every Edit-group target of cards, limited to member glyphs and files.
+// collectEditTargets returns, in card and body order, every Edit- and Extends-group target of cards, limited to member glyphs and files.
 func collectEditTargets(plan *planparser.Plan, cards []planparser.Card) []editTarget {
 	var edits []editTarget
 	for _, c := range cards {
 		for _, group := range c.TargetGroups {
-			if group.Type != planparser.CardTypeEdit {
+			if group.Type != planparser.CardTypeEdit && group.Type != planparser.CardTypeExtends {
 				continue
 			}
 			for _, ref := range group.Refs {

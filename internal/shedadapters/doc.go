@@ -122,6 +122,9 @@
 //     The settle record is written on every approved settle before the carry-over, Approve and Commit, with Settled false, and marked settled once Commit returned;
 //     the skip seam's approval writes a generation record when none exists and then a round-0 record.
 //     A Subject seam that is nil or answers no subject writes no record.
+//     The settle record also carries round_started_at, the start of the settled round's review half from the round's usage record, floored to the second in RFC 3339 UTC;
+//     SettleRoundStart reads it from the live record.
+//     A settle with no known round start, a round-0 settle, an absent usage record and a record written before the field existing among them, carries none and reads as unknown.
 //     Re-entry over a settled verdict then has four cases:
 //     a live settle record over an unchanged subject re-settles with no spawn, re-running the carry-over (except for a round-0 record), Approve and Commit and keeping the settle time;
 //     a live record over a changed subject, and a generation record whose judge subject differs from the live one, start a new generation;

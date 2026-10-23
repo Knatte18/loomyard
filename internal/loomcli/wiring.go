@@ -136,6 +136,7 @@ func rejectionPending(location *lyxcwd.Location) bool {
 // The reviews root and webster's directory are left out when they match nothing in the index or the working tree, since git refuses such a pathspec (see statusCommitPathspec):
 // that is when neither holds a file now and the round archived no file out of it, so nothing under it was ever tracked for this round to delete.
 // The plan and rework directories always hold files by the time the round commits.
+// The plan amendment record joins when it exists or is tracked, so the archive's removal of it is staged in the round's commit.
 func reworkCommitPathspec(location *lyxcwd.Location) []string {
 	reworkDir := loomengine.LoomReworkDir(location)
 	paths := []string{planparser.PlanDirRel(), loomengine.LoomReworkDirRel()}
@@ -145,7 +146,9 @@ func reworkCommitPathspec(location *lyxcwd.Location) []string {
 	if holdsFile(websterengine.Dir(location.AnchorPath())) || holdsFileAt(loomshed.LatestArchivedWebsterDir(reworkDir)) {
 		paths = append(paths, websterengine.DirRel())
 	}
-	return paths
+	return append(paths, amendmentPathspec(location, func(rel string) (bool, error) {
+		return fabricengine.PathTracked(location.AnchorPath(), rel)
+	})...)
 }
 
 // planCommitPathspec returns the pathspec the plan commit stages: the plan directory, and webster's durable directory too when it holds a file or git still tracks a path under it.
@@ -153,6 +156,7 @@ func reworkCommitPathspec(location *lyxcwd.Location) []string {
 // It is left out otherwise, since git refuses a pathspec that matches nothing in the index or the working tree;
 // an archived run record alone does not match, because once its deletions are committed nothing under webster's directory is left.
 // A failed tracked check keeps the path, since dropping it could leave the deletions unstaged.
+// The plan amendment record joins when it exists or is tracked, so its removal is staged in the same commit.
 func planCommitPathspec(location *lyxcwd.Location) []string {
 	return planCommitPathspecWith(location, func(rel string) (bool, error) {
 		return fabricengine.PathTracked(location.AnchorPath(), rel)
@@ -163,12 +167,30 @@ func planCommitPathspec(location *lyxcwd.Location) []string {
 func planCommitPathspecWith(location *lyxcwd.Location, tracked func(rel string) (bool, error)) []string {
 	paths := []string{planparser.PlanDirRel()}
 	if holdsFile(websterengine.Dir(location.AnchorPath())) {
-		return append(paths, websterengine.DirRel())
-	}
-	if isTracked, err := tracked(websterengine.DirRel()); err != nil || isTracked {
+		paths = append(paths, websterengine.DirRel())
+	} else if isTracked, err := tracked(websterengine.DirRel()); err != nil || isTracked {
 		paths = append(paths, websterengine.DirRel())
 	}
-	return paths
+	return append(paths, amendmentPathspec(location, tracked)...)
+}
+
+// removeSettledAmendment removes the plan amendment record at amendmentPath when the live settle record in planRunDir judged it:
+// the settle's recorded round start is after the record's latest write.
+// An absent record, or a settle with no recorded round start, removes nothing.
+// A read or removal error is returned, so the commit seam fails and the settle is retried.
+func removeSettledAmendment(amendmentPath, planRunDir string) error {
+	record, found, err := loomshed.ReadAmendment(amendmentPath)
+	if err != nil || !found {
+		return err
+	}
+	roundStart, _, err := shedadapters.SettleRoundStart(planRunDir)
+	if err != nil {
+		return err
+	}
+	if !loomshed.AmendmentSettledBy(record, roundStart) {
+		return nil
+	}
+	return loomshed.RemoveAmendment(amendmentPath)
 }
 
 // holdsFileAt is holdsFile with an empty dir meaning no directory, hence no file.
@@ -371,7 +393,23 @@ func discussionCommitPathspec(location *lyxcwd.Location) []string {
 	if holdsFile(loomengine.LoomParentReviewDir(location)) {
 		paths = append(paths, loomengine.LoomParentReviewDirRel())
 	}
-	return paths
+	return append(paths, amendmentPathspec(location, func(rel string) (bool, error) {
+		return fabricengine.PathTracked(location.AnchorPath(), rel)
+	})...)
+}
+
+// amendmentPathspec is the plan amendment record's pathspec: the record when it exists or git tracks it, and nothing otherwise.
+// A tracked record that is absent is a deletion to stage.
+// A failed tracked check adds nothing, so git is never handed a pathspec matching nothing.
+func amendmentPathspec(location *lyxcwd.Location, tracked func(rel string) (bool, error)) []string {
+	rel := loomengine.LoomAmendmentRecordRel()
+	if _, err := os.Stat(loomengine.LoomAmendmentRecord(location)); err == nil {
+		return []string{rel}
+	}
+	if isTracked, err := tracked(rel); err == nil && isTracked {
+		return []string{rel}
+	}
+	return nil
 }
 
 // commitDiscussion commits the discussion artifacts of location's worktree through the fabric.
@@ -665,10 +703,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// reworkDeps opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
 	// PR-Rework and the Plan-Review skip seam share it.
 	reworkDeps := loomshed.PRReworkDeps{
-		PlanDir:      planparser.PlanDir(anchorPath),
-		ReworkDir:    loomengine.LoomReworkDir(location),
-		ReworkDirRel: loomengine.LoomReworkDirRel(),
-		ReviewsDir:   loomengine.LoomReviewsDir(location),
+		PlanDir:       planparser.PlanDir(anchorPath),
+		ReworkDir:     loomengine.LoomReworkDir(location),
+		ReworkDirRel:  loomengine.LoomReworkDirRel(),
+		ReviewsDir:    loomengine.LoomReviewsDir(location),
+		AmendmentPath: loomengine.LoomAmendmentRecord(location),
 		// The run subdirectories are the recipe's own run_subdir values for the Plan-Review and Webster-Review segments, the two reviews a generation owns.
 		ReviewRunSubdirs: []string{"plan", "webster"},
 		ReadCommitted:    committedAnchoredReader(location),
@@ -721,7 +760,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		VerifyMergeBase: verifyMergeBase,
 		VerifyHold:      verifytree.NewPauseHold(pauseGeom, nil),
 		PublishFailure: func() string {
-			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath), gateTiersLookup(fabricengine.ConfigDirs(location)))
+			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath), planparser.PlanDir(anchorPath), gateTiersLookup(fabricengine.ConfigDirs(location)))
 		},
 		WebsterRecord: func() string {
 			return loomshed.WebsterRecordNote(anchorPath)
@@ -857,8 +896,16 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// planparser.PlanDirRel(), never a hand-built filepath.Join naming the _lyx literal, which
 		// the Lyxdirs Single-Declarer Invariant forbids in production path-construction context;
 		// planCommitPathspec adds webster's durable directory when Plan-Write's rotation moved a run record out of it.
+		// An amendment record the settle judged is removed first, so the deletion is staged by the same commit.
 		CommitPlan: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, planCommitPathspec(location), fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			subdir, _, err := loomrecipe.BouncerRunSubdir(loomshed.NamePlanBouncer)
+			if err != nil {
+				return err
+			}
+			if err := removeSettledAmendment(loomengine.LoomAmendmentRecord(location), filepath.Join(loomengine.LoomReviewsDir(location), subdir)); err != nil {
+				return err
+			}
+			_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, planCommitPathspec(location), fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
 		// ApprovePlan is what flips approved: true on the Plan-Bouncer row's approved settle. It runs
@@ -1091,7 +1138,7 @@ const loomMissingStatusWayForward = "way forward: run \"lyx loom start\" first t
 
 // loomRerouteCapWayForward is the told clause a reroute-cap halt ends with, whichever row's reroute hit the cap.
 // The halt is resumed once the cause its reason quotes is cleared.
-const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a parent-branch reroute, once the parent branch has settled; for a Webster plan conflict, once the named pending cards are edited by hand to match the tree"
+const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a parent-branch reroute, once the parent branch has settled; for a Webster plan conflict, once the run's parent has recorded the fix with \"lyx loom decision add\" and \"--amends-plan\", then run \"lyx loom goto --to Plan-Burler-Review\""
 
 // loomBudgetWayForward is the told clause a bounce-budget-exhausted halt ends with, whichever row's budget ran out.
 // Only the resume grants a budget; a goto keeps the spent one.

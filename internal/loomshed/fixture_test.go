@@ -102,10 +102,14 @@ func firstCardPlan(approved bool, language, createTarget, useTarget string) plan
 // seedPlanContextFixture writes a one-card plan under anchorPath whose card renames by renamePair, a complete "`old` -> `new`" line, or edits a file when renamePair is empty.
 // planSection is the body of the overview's `## PATTERN changes` section, omitted when empty.
 // It writes a decision record next to the plan holding recordSection as its `## PATTERN changes` body, a record without the section when recordSection is empty, and no record when it is the literal "absent".
+// cardFence is fenced text written into the card's Intent, omitted when empty.
 // The returned PlanContext names the record path and lists no rename tool.
-func seedPlanContextFixture(t *testing.T, anchorPath, renamePair, planSection, recordSection string) PlanContext {
+func seedPlanContextFixture(t *testing.T, anchorPath, renamePair, planSection, recordSection, cardFence string) PlanContext {
 	t.Helper()
 	plan := firstCardPlan(true, "none", "internal/firstcard/new.go", "")
+	if cardFence != "" {
+		plan.Cards[0].Intent += "\n\n" + cardFence
+	}
 	if renamePair != "" {
 		plan.Cards[0].Groups = []plankit.Group{{Label: "Rename", Targets: []string{renamePair}}}
 		plan.Sections = append(plan.Sections, plankit.Section{Heading: "Rename mechanic", Body: "1. Run the rename tool."})
@@ -126,6 +130,19 @@ func seedPlanContextFixture(t *testing.T, anchorPath, renamePair, planSection, r
 		}
 	}
 	return PlanContext{DecisionRecordPath: recordPath}
+}
+
+// overviewOf returns a PATTERN.md of exactly total bytes: a heading, one filler line, then entries.
+// The filler sits above the entries, so a replaced bullet never swallows it as a continuation line.
+func overviewOf(total int, entries ...string) string {
+	const heading = "# PATTERN\n"
+	tail := strings.Join(entries, "\n") + "\n"
+	return heading + strings.Repeat("x", total-len(heading)-len("\n\n")-len(tail)) + "\n\n" + tail
+}
+
+// fenceOf returns lines as one fenced code block, the form a card carries a verbatim PATTERN.md entry line in.
+func fenceOf(lines ...string) string {
+	return "```\n" + strings.Join(lines, "\n") + "\n```"
 }
 
 // seedFormatInvalidPlanFixture writes a plan whose overview declares an unrecognized format,

@@ -24,6 +24,7 @@ var treeSitterAllowedLinks = []scankit.Entry{
 	{Key: "cmd/lyx", Why: "mounts every CLI, including the ones that link planglyph"},
 	{Key: "internal/websterengine", Why: "its tests drive the real index through the seam"},
 	{Key: "internal/loomshed", Why: "its gate tests assert resolve-backed findings through planglyph.NewIndex"},
+	{Key: "internal/failuretrace", Why: "traces a failed verify through planglyph's EncloseAt"},
 }
 
 // treeSitterLinkMinTestBinaries is the vacuous-scan floor for the test binaries `go list` reports.

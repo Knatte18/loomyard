@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -48,7 +49,7 @@ func TestRun_WritesMatrixLevelsAndReducedGraph(t *testing.T) {
 	outDir := filepath.Join(t.TempDir(), "out")
 
 	var stdout strings.Builder
-	if err := run(planDir, outDir, "", &stdout); err != nil {
+	if err := run(planDir, outDir, "", false, &stdout); err != nil {
 		t.Fatalf("run() = %v; want nil", err)
 	}
 
@@ -141,7 +142,7 @@ func TestRun_CSharpMemberGlyphsOverlapByOwnerPrefix(t *testing.T) {
 	outDir := filepath.Join(t.TempDir(), "out")
 
 	var stdout strings.Builder
-	if err := run(planDir, outDir, "", &stdout); err != nil {
+	if err := run(planDir, outDir, "", false, &stdout); err != nil {
 		t.Fatalf("run() = %v; want nil", err)
 	}
 
@@ -164,11 +165,115 @@ func TestRun_UnparseablePlanFailsWithoutOutput(t *testing.T) {
 	outDir := filepath.Join(t.TempDir(), "out")
 
 	var stdout strings.Builder
-	if err := run(t.TempDir(), outDir, "", &stdout); err == nil {
+	if err := run(t.TempDir(), outDir, "", false, &stdout); err == nil {
 		t.Error("run(empty dir) = nil; want an error naming the missing overview")
 	}
 	if _, err := os.Stat(outDir); !os.IsNotExist(err) {
 		t.Errorf("os.Stat(%s) = %v; want not exist", outDir, err)
+	}
+}
+
+func TestRun_AdditiveGuessReportsBothCriticalPaths(t *testing.T) {
+	t.Parallel()
+	// Consecutive cards share one column, alternating a column the guess keeps, an ordinary member, with one it drops, so every dropped link sits beside a kept one:
+	// a guessed class that were kept would join two kept pairs into a longer chain.
+	// The guessed member name is built in two parts because a test file may not spell a bare side token.
+	addVerbsMember := "internal/f#fabricCLI.add" + "We" + "ftVerbs"
+	cardEdits := [][]string{
+		{"docs/x.md"},
+		{"docs/x.md", "internal/a#T"},
+		{"internal/a#T", "internal/q/doc.go"},
+		{"internal/q/doc.go", "internal/b#T"},
+		{"internal/b#T", "PATTERN.md"},
+		{"PATTERN.md", "internal/c#T"},
+		{"internal/c#T", "contracts/specs/x.md"},
+		{"contracts/specs/x.md", "internal/d#T"},
+		{"internal/d#T", addVerbsMember},
+		{addVerbsMember, "internal/e#T"},
+		{"internal/e#T", "internal/z#loomCLI.wireThings"},
+		{"internal/z#loomCLI.wireThings"},
+	}
+	var cardIndex strings.Builder
+	cards := map[string]string{}
+	for i, edits := range cardEdits {
+		number := i + 1
+		name := fmt.Sprintf("card%d", number)
+		fmt.Fprintf(&cardIndex, "%d — %s — edit\n", number, name)
+		body := fmt.Sprintf("# Card %d — %s\n\n**Edit:**\n", number, name)
+		for _, edit := range edits {
+			body += "- `" + edit + "`\n"
+		}
+		cards[fmt.Sprintf("%02d-%s.md", number, name)] = body + "\n**Intent:** x\n"
+	}
+	planDir := writePlan(t, cardIndex.String(), cards)
+	outDir := filepath.Join(t.TempDir(), "out")
+
+	var stdout strings.Builder
+	if err := run(planDir, outDir, "", true, &stdout); err != nil {
+		t.Fatalf("run() = %v; want nil", err)
+	}
+
+	report := readFile(t, filepath.Join(outDir, "plandag.md"))
+	wantLine := "Critical path 12 cards, best speedup 1.00x; with the additive guess 2 cards, best speedup 6.00x.\n"
+	if !strings.Contains(report, wantLine) {
+		t.Errorf("plandag.md = %q; want it to contain %q", report, wantLine)
+	}
+}
+
+func TestRun_ExtendsCellsDropExtendsEdges(t *testing.T) {
+	t.Parallel()
+	planDir := writePlan(t, `1 — ext-a — extend x
+2 — ext-b — extend x
+3 — edit-x — edit x
+4 — edit-y-a — edit y
+5 — edit-y-b — edit y
+6 — ext-y — extend y
+`, map[string]string{
+		"01-ext-a.md":    "# Card 1 — ext-a\n\n**Extends:**\n- `docs/x.md`\n\n**Intent:** x\n",
+		"02-ext-b.md":    "# Card 2 — ext-b\n\n**Extends:**\n- `docs/x.md`\n\n**Intent:** x\n",
+		"03-edit-x.md":   "# Card 3 — edit-x\n\n**Edit:**\n- `docs/x.md`\n\n**Intent:** x\n",
+		"04-edit-y-a.md": "# Card 4 — edit-y-a\n\n**Edit:**\n- `docs/y.md`\n\n**Intent:** x\n",
+		"05-edit-y-b.md": "# Card 5 — edit-y-b\n\n**Edit:**\n- `docs/y.md`\n\n**Intent:** x\n",
+		"06-ext-y.md":    "# Card 6 — ext-y\n\n**Extends:**\n- `docs/y.md`\n\n**Intent:** x\n",
+	})
+
+	tests := []struct {
+		name          string
+		additiveGuess bool
+		want          []string
+	}{
+		{
+			name: "without the guess",
+			want: []string{
+				"| 1-ext-a | E |  |\n| 2-ext-b | E |  |\n| 3-edit-x | C |  |\n| 4-edit-y-a |  | C |\n| 5-edit-y-b |  | C |\n| 6-ext-y |  | E |\n",
+				"| 1-ext-a |  |\n| 2-ext-b |  |\n| 3-edit-x | 1-ext-a (C), 2-ext-b (C) |\n| 4-edit-y-a |  |\n| 5-edit-y-b | 4-edit-y-a (C) |\n| 6-ext-y | 4-edit-y-a (C), 5-edit-y-b (C) |\n",
+				"`E` it only adds to the ref",
+			},
+		},
+		{
+			name:          "with the guess a labelled column keeps the rule's edges",
+			additiveGuess: true,
+			want: []string{
+				"| 5-edit-y-b | 4-edit-y-a (C) |\n| 6-ext-y | 4-edit-y-a (C), 5-edit-y-b (C) |\n",
+				"Critical path 3 cards, best speedup 2.00x; with the additive guess 3 cards, best speedup 2.00x.\n",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			outDir := filepath.Join(t.TempDir(), "out")
+			var stdout strings.Builder
+			if err := run(planDir, outDir, "", tt.additiveGuess, &stdout); err != nil {
+				t.Fatalf("run() = %v; want nil", err)
+			}
+			report := readFile(t, filepath.Join(outDir, "plandag.md"))
+			for _, want := range tt.want {
+				if !strings.Contains(report, want) {
+					t.Errorf("plandag.md = %q; want it to contain %q", report, want)
+				}
+			}
+		})
 	}
 }
 

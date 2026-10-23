@@ -1,6 +1,6 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (contracts/specs/loom-plan-spec.md), run in this fixed order.
-// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-language-mismatch (checkLanguageMismatch), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), resign-not-member (checkResignNotMember), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), rename-namespace-pair (checkRenameNamespacePair), commit-subject-mismatch (checkCommitSubjectMismatch), verify-nested-module (checkVerifyNestedModule, verifymodule.go), verify-module-wide (checkVerifyModuleWide, verifymodule.go), verify-package-missing (checkVerifyPackageMissing, verifypackage.go), and pattern-entry-line-cap (checkPatternEntryLineCap, patternentry.go).
+// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-language-mismatch (checkLanguageMismatch), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), resign-not-member (checkResignNotMember), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), extends-overlap (checkExtendsOverlap, extends.go), extends-resign (checkExtendsResign, extends.go),uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), rename-namespace-pair (checkRenameNamespacePair), commit-subject-mismatch (checkCommitSubjectMismatch), verify-nested-module (checkVerifyNestedModule, verifymodule.go), verify-module-wide (checkVerifyModuleWide, verifymodule.go), verify-package-missing (checkVerifyPackageMissing, verifypackage.go), and pattern-entry-line-cap (checkPatternEntryLineCap, patternentry.go).
 // The plan gate's context checks verify-raw-command, verify-gate-no-wait and plan-verify-retired are appended by loomshed outside both entry points, over VerifyCommands.
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
@@ -91,6 +91,8 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkCardMissingField(plan)...)
 	findings = append(findings, checkCardFieldEmpty(plan)...)
 	findings = append(findings, checkCardFieldOverlap(plan)...)
+	findings = append(findings, checkExtendsOverlap(plan)...)
+	findings = append(findings, checkExtendsResign(plan)...)
 	findings = append(findings, checkUsesLaterTarget(plan)...)
 	findings = append(findings, checkRedundantPackageTarget(plan)...)
 	findings = append(findings, checkImpactSummaryMultiline(plan)...)
@@ -321,7 +323,7 @@ func checkCardTypeMissing(plan *Plan) []ValidationError {
 			findings = append(findings, ValidationError{
 				Check:  "card-type-missing",
 				Card:   cardID(c),
-				Detail: fmt.Sprintf("card %d carries no recognized type label (Create/Edit/Delete/Rename/Move/Prosa/Custom)", c.Number),
+				Detail: fmt.Sprintf("card %d carries no recognized type label (Create/Edit/Extends/Delete/Rename/Move/Prosa/Custom)", c.Number),
 			})
 		}
 	}
@@ -332,7 +334,7 @@ func checkCardTypeMissing(plan *Plan) []ValidationError {
 // checkCustomNotAlone implements card-custom-not-alone: a card carrying a Custom TargetGroup
 // alongside a TargetGroup whose Type differs from CardTypeCustom is a defect, because Custom is
 // meant as a last-resort escape hatch, not a way to bundle an untyped target list onto an
-// otherwise ordinary card. Repetition of a label is legal for all seven labels including Custom,
+// otherwise ordinary card. Repetition of a label is legal for all eight labels including Custom,
 // so the predicate is "a Custom group coexists with a group whose Type differs", not "a Custom
 // group coexists with any other group" — a card carrying two Custom groups and nothing else is
 // unaffected. At most one finding is emitted per offending card, never one per offending group.
@@ -904,7 +906,7 @@ type cardFieldLabel struct {
 }
 
 // checkCardMissingField implements card-missing-field: every card must carry Intent:, and a card
-// carrying any Edit or Delete TargetGroup must also carry ImpactSummary: — the requirement is a
+// carrying any Edit, Extends or Delete TargetGroup must also carry ImpactSummary: — the requirement is a
 // union over the card's own groups, not the card's first-label Type.
 func checkCardMissingField(plan *Plan) []ValidationError {
 	var findings []ValidationError
@@ -915,7 +917,7 @@ func checkCardMissingField(plan *Plan) []ValidationError {
 		}
 		needsImpactSummary := false
 		for _, g := range c.TargetGroups {
-			if g.Type == CardTypeEdit || g.Type == CardTypeDelete {
+			if g.Type == CardTypeEdit || g.Type == CardTypeExtends || g.Type == CardTypeDelete {
 				needsImpactSummary = true
 				break
 			}
@@ -1264,7 +1266,7 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 
 		for _, g := range c.TargetGroups {
 			switch g.Type {
-			case CardTypeEdit, CardTypeDelete, CardTypeMove, CardTypeProsa:
+			case CardTypeEdit, CardTypeExtends, CardTypeDelete, CardTypeMove, CardTypeProsa:
 				for _, t := range g.Refs {
 					checkRef(c, t)
 				}

@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
@@ -39,7 +41,16 @@ func TestSettledSegmentGuard(t *testing.T) {
 		amendment   = `{"number":2,"amendment":true}`
 		before      = "2026-10-20T09:00:00Z"
 		after       = "2026-10-20T11:00:00Z"
+		// roundStarted is a settle whose judged round started at 09:30, between before and after.
+		roundStarted = `{"subject":{"kind":"document"},"generation":1,"round":1,"settled_at":"2026-10-20T10:00:00Z","settled":true,"round_started_at":"2026-10-20T09:30:00Z"}`
 	)
+	amendmentAt := func(writtenAt string) *loomshed.AmendmentRecord {
+		parsed, err := time.Parse(time.RFC3339, writtenAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &loomshed.AmendmentRecord{Titles: []string{"Keep the cache"}, WrittenAt: parsed}
+	}
 	failureFor := func(target, writtenAt string) *verifytree.PublishFailure {
 		return &verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Row: "Webster-Burler-Fix", Target: target, WrittenAt: writtenAt}
 	}
@@ -52,7 +63,10 @@ func TestSettledSegmentGuard(t *testing.T) {
 		files      map[string]string
 		failure    *verifytree.PublishFailure
 		failureErr error
-		target     string
+		// amendment is the plan amendment record, nil when none exists; amendmentErr is its read error.
+		amendment    *loomshed.AmendmentRecord
+		amendmentErr error
+		target       string
 		// wantRefusal lists the substrings of the refusal; empty means the target is admitted.
 		wantRefusal []string
 		wantErr     bool
@@ -111,6 +125,30 @@ func TestSettledSegmentGuard(t *testing.T) {
 			name: "failure record that does not decode", bouncer: "Webster-Bouncer", files: map[string]string{"settle-record.json": settled},
 			failureErr: errors.New("decode publish failure"), target: "Webster-Burler-Review", wantErr: true,
 		},
+		{
+			name: "amendment written after the judged round started", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": roundStarted},
+			amendment: amendmentAt("2026-10-20T09:45:00Z"), target: "Plan-Burler-Review",
+		},
+		{
+			name: "amendment written before the judged round started", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": roundStarted},
+			amendment: amendmentAt(before), target: "Plan-Burler-Review", wantRefusal: []string{"the Plan-Review verdict is settled", "goto --to Plan-Bouncer"},
+		},
+		{
+			name: "amendment over a settle with no round start", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled},
+			amendment: amendmentAt(before), target: "Plan-Burler-Review",
+		},
+		{
+			name: "amendment does not admit the fix row", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": roundStarted},
+			amendment: amendmentAt(after), target: "Plan-Burler-Fix", wantRefusal: []string{"goto --to Plan-Bouncer"},
+		},
+		{
+			name: "amendment does not admit another segment's review row", bouncer: "Merge-Bouncer", files: map[string]string{"settle-record.json": roundStarted},
+			amendment: amendmentAt(after), target: "Merge-Burler-Review", wantRefusal: []string{"goto --to Merge-Bouncer"},
+		},
+		{
+			name: "amendment record unreadable", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": roundStarted},
+			amendmentErr: errors.New("decode amendment"), target: "Plan-Burler-Review", wantErr: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -134,6 +172,11 @@ func TestSettledSegmentGuard(t *testing.T) {
 					return verifytree.PublishFailure{}, false, tt.failureErr
 				}
 				return *tt.failure, true, nil
+			}, func() (loomshed.AmendmentRecord, bool, error) {
+				if tt.amendment == nil {
+					return loomshed.AmendmentRecord{}, false, tt.amendmentErr
+				}
+				return *tt.amendment, true, nil
 			})
 
 			refusal, err := guard(tt.target)

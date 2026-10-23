@@ -8,11 +8,13 @@ package shedbuild
 //
 // Entry and Terminals are graph metadata Build never consumes, surfaced because shedcheck.Check
 // takes both as told arguments and refuses to infer either.
+// AmendmentTarget is optional graph metadata of the same kind: it names the row a plan amendment routes to, empty when the recipe sets none.
 type Recipe struct {
-	Version   int      `yaml:"version"`
-	Entry     string   `yaml:"entry"`
-	Terminals []string `yaml:"terminals"`
-	Producers []Row    `yaml:"producers"`
+	Version         int      `yaml:"version"`
+	Entry           string   `yaml:"entry"`
+	AmendmentTarget string   `yaml:"amendment_target"`
+	Terminals       []string `yaml:"terminals"`
+	Producers       []Row    `yaml:"producers"`
 }
 
 // Row is one producer entry in a Recipe: the row's identity, its engine name, its portable

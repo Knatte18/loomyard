@@ -181,6 +181,26 @@ func readRoundUsage(runDir string, round int) (roundUsage, error) {
 	return u, nil
 }
 
+// roundReviewStart returns the start of round's review half from its usage record under runDir.
+// It returns the zero time for round 0, an absent or undecodable record, a record with no review half and a zero start;
+// a read or decode failure is logged at Warn, since a missing start only means the start is unknown.
+func roundReviewStart(runDir string, round int) time.Time {
+	if round == 0 {
+		return time.Time{}
+	}
+	u, err := readRoundUsage(runDir, round)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			logger.Warn("shedadapters: round usage record unreadable; reading the round start as unknown", "round", round, "error", err)
+		}
+		return time.Time{}
+	}
+	if u.Review == nil {
+		return time.Time{}
+	}
+	return u.Review.Start
+}
+
 // readCompletedRoundUsage is readRoundUsage for a reader that needs the Burler's part of the record:
 // a record with no review half is an error naming the round, since only the Bouncer has written to it.
 func readCompletedRoundUsage(runDir string, round int) (roundUsage, error) {

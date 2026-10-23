@@ -1,10 +1,7 @@
-// repo.go is planglyph's one call site for quarry.Open and every quarry.Repo query method (TOC,
-// Glyphs, Resolve, Expand) — the package's entry points into quarry.Repo — and aliases the finding types planindex declares.
+// repo.go is planglyph's one call site for quarry.Open and every quarry.Repo query method (TOC, Glyphs, Resolve, EncloseAt, Expand) — the package's entry points into quarry.Repo — and aliases the finding types planindex declares.
 //
-// Beside openRepo and resolveTargets, this file exports four query wrappers — TOC, Glyphs,
-// Resolve and Expand — each taking worktreeRoot plus that verb's own argument, opening the
-// repository and delegating to the matching quarry.Repo method unchanged. internal/quarrycli calls
-// these rather than importing the facade directly, per the package-ownership-seam Shared Decision.
+// Beside openRepo and resolveTargets, this file exports five query wrappers — TOC, Glyphs, Resolve, EncloseAt and Expand — each taking worktreeRoot plus that verb's own argument, opening the repository and delegating to the matching quarry.Repo method unchanged.
+// internal/quarrycli calls these rather than importing the facade directly, per the package-ownership-seam Shared Decision.
 
 package planglyph
 
@@ -109,6 +106,25 @@ func Resolve(worktreeRoot string, targets []string) ([]quarry.ResolveResult, err
 		return nil, err
 	}
 	return resolveTargets(repo, targets)
+}
+
+// EncloseAt opens a quarry.Repo rooted at worktreeRoot and maps each of targets, spelled path:line, to the innermost members enclosing it, positionally.
+// A non-empty rev answers against the files committed at rev, and an empty rev against the working tree.
+// It returns quarry's own result slice unchanged; a failed call, or an answer that does not carry exactly one result per target, is wrapped in ErrQuarryUnavailable.
+// It is this package's one call to (*quarry.Repo).EncloseAt.
+func EncloseAt(worktreeRoot, rev string, targets []string) ([]quarry.EncloseResult, error) {
+	repo, err := openRepo(worktreeRoot)
+	if err != nil {
+		return nil, err
+	}
+	results, err := repo.EncloseAt(rev, targets)
+	if err != nil {
+		return nil, fmt.Errorf("%w: enclose at %q: %v", ErrQuarryUnavailable, rev, err)
+	}
+	if len(results) != len(targets) {
+		return nil, fmt.Errorf("%w: enclose returned %d result(s) for %d target(s)", ErrQuarryUnavailable, len(results), len(targets))
+	}
+	return results, nil
 }
 
 // Expand opens a quarry.Repo rooted at worktreeRoot and answers an expand query for target. It

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -18,6 +19,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
+
+// tracedFailure is a failure trace with every field set, which the failure record tests tell the trace seam to return.
+var tracedFailure = verifytree.FailureTrace{
+	Cards: []verifytree.TracedCard{{
+		Number: 3, Glyphs: []string{"internal/a#Run"}, Locations: []string{"internal/a/a.go:3"}, Batch: 2,
+		Range: verifytree.CommitRange{From: "aaa", To: "bbb"},
+	}},
+	LaterRange: verifytree.CommitRange{From: "bbb", To: "ccc"},
+	Untraced:   []string{"internal/z/z.go:1"},
+}
 
 // eventResolver is a resolver that records its call in the shared event log.
 type eventResolver struct {
@@ -492,6 +503,69 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 		failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
 		if err != nil || !found || failure.Target != "Merge-In" {
 			t.Errorf("ReadPublishFailure() = %+v, %v, %v; want a record with target Merge-In", failure, found, err)
+		}
+	})
+
+	t.Run("a told trace lands in the record, and a failing, absent or head-less trace leaves today's record", func(t *testing.T) {
+		t.Parallel()
+		const verifyLog = "verify output"
+		tests := []struct {
+			name string
+			// trace is the told seam; nil leaves it unwired.
+			trace func(log, head string) (verifytree.FailureTrace, error)
+			// head overrides the recorder's HEAD read when non-nil.
+			head      func() (string, error)
+			wantTrace verifytree.FailureTrace
+			wantCalls int
+		}{
+			{name: "a trace is copied onto the record", trace: func(string, string) (verifytree.FailureTrace, error) { return tracedFailure, nil }, wantTrace: tracedFailure, wantCalls: 1},
+			{name: "a trace error writes the record without the fields", trace: func(string, string) (verifytree.FailureTrace, error) {
+				return verifytree.FailureTrace{}, errors.New("no webster state")
+			}, wantCalls: 1},
+			{name: "a nil seam writes today's record"},
+			{name: "an empty HEAD calls no trace", trace: func(string, string) (verifytree.FailureTrace, error) { return tracedFailure, nil }, head: func() (string, error) { return "", nil }},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				fx := newMergeInFixture(t)
+				fx.taskHeads = []string{"t1", "m1"}
+				fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
+				writeVerifyLog(t, fx.gate, verifyLog)
+				calls := 0
+				if tt.trace != nil {
+					fx.m.gate.recorder.traceFailure = func(log, head string) (verifytree.FailureTrace, error) {
+						calls++
+						if log != verifyLog || head != "m1" {
+							t.Errorf("traceFailure(%q, %q); want the verify log and the record's head %q", log, head, "m1")
+						}
+						return tt.trace(log, head)
+					}
+				}
+				if tt.head != nil {
+					fx.m.gate.recorder.head = tt.head
+				}
+
+				outcome, ptr := fx.call(t)
+
+				if outcome != shedengine.Stuck || !strings.Contains(ptr.Reason, "landing gate failed after merging parent branch") {
+					t.Fatalf("Call() = %q, %+v; want Stuck for the failed landing gate", outcome, ptr)
+				}
+				failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
+				if err != nil || !found {
+					t.Fatalf("ReadPublishFailure() = %v, %v; want a record", found, err)
+				}
+				if failure.Target != "Told-Row" || failure.Row != "Merge-In" {
+					t.Errorf("failure record = %+v; want row Merge-In and target Told-Row", failure)
+				}
+				got := verifytree.FailureTrace{Cards: failure.Cards, LaterRange: failure.LaterRange, Untraced: failure.Untraced}
+				if !reflect.DeepEqual(got, tt.wantTrace) {
+					t.Errorf("record trace fields = %+v; want %+v", got, tt.wantTrace)
+				}
+				if calls != tt.wantCalls {
+					t.Errorf("traceFailure calls = %d; want %d", calls, tt.wantCalls)
+				}
+			})
 		}
 	})
 

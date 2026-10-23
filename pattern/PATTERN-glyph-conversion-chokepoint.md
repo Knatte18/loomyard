@@ -12,4 +12,5 @@ loomyard performs no glyph-to-path or path-to-glyph conversion of its own, bar t
   An id quarry minted for a C# member is no plan ref, and `planparser.ParseMintedCSharpID` is the one parse of it.
 - Path self glyphs use the Go unit alphabet under every glyph-enabled language, since quarry spells a path in that alphabet.
   `planparser.PathEntryPath` is the one Go-alphabet reading of a canonicalized path entry back to its path.
+- Quarry's `Enclose` is a location-to-glyph conversion that quarry does, and `planglyph.EncloseAt` is its one sanctioned call.
 - Forbidden: a `#`-trimming suffix operation over a glyph-typed value, reading `Glyph.Unit` as a disk path, and a local regex over a glyph string.

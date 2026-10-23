@@ -72,6 +72,7 @@ var nilLegal = map[string]bool{
 	"Landing.ClassifyVerifyFailure":     true,
 	"Landing.VerifyWaitMark":            true,
 	"Landing.FailingTests":              true,
+	"Landing.TraceFailure":              true,
 	"Landing.Registry":                  true,
 	"Landing.Config.EngineTrailers":     true,
 	"ParentReview.Store":                true,
@@ -213,6 +214,7 @@ func ReworkDeps(t testing.TB, dir string) loomshed.PRReworkDeps {
 		ReworkDir:     mustMkdir(t, filepath.Join(dir, "rework-rounds")),
 		ReworkDirRel:  "_lyx/loom/rework",
 		ReviewsDir:    mustMkdir(t, filepath.Join(dir, "rework-reviews")),
+		AmendmentPath: filepath.Join(dir, "rework-amendment.yaml"),
 		ReadCommitted: func(string) ([]byte, bool, error) { return nil, false, nil },
 		ReadRejection: func() (loomshed.PendingRejection, bool, error) {
 			return loomshed.PendingRejection{}, false, nil

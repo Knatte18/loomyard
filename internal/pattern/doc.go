@@ -82,6 +82,10 @@
 // It names the smallest cut that passes: the head size minus the larger of the base size and the line.
 // The line binds a branch's own change, so a base already above it is told to cut only the branch's growth.
 // A merged tree answers only to the cap.
+// ProjectOverview computes the overview a plan's prescribed entry lines would leave, for the plan gate to measure with Headroom.
+// A prescribed line replaces the whole bullet of its entry, continuation lines included, or is appended when the entry is absent, and the last line of an entry wins.
+// Each removed entry's bullet is then deleted, and an absent one is no change.
+// The projection is idempotent over an overview that already holds the prescribed lines, and EntryBullet returns the bullet an entry has as it stands.
 // PATTERN text states rules for the code only:
 // it never says how an agent, a run, a stencil or a workflow uses it.
 // Nothing in the render path calls Check, so Directive inlines a malformed overview verbatim.

@@ -10,7 +10,7 @@ import (
 // editTestFileCheck is the Check ID of a `_test.go` file listed under an Edit group.
 const editTestFileCheck = "edit-test-file"
 
-// CheckEditTestFile reports one edit-test-file finding per file self glyph under an Edit group of a card not in done whose path ends in `_test.go`.
+// CheckEditTestFile reports one edit-test-file finding per file self glyph under an Edit or Extends group of a card not in done whose path ends in `_test.go`.
 // A path with a segment the go tool ignores (`testdata`, `vendor`, or a name starting with `.` or `_`) is exempt, since no test there is compiled.
 // A member glyph, a plan: handle and a path are skipped, as are the Create, Delete, Rename, Move, Prosa and Custom groups and Uses.
 // A plan whose language has no glyph alphabet is never checked.
@@ -33,7 +33,7 @@ func CheckEditTestFile(plan *Plan, done []Card) []ValidationError {
 			continue
 		}
 		for _, group := range card.TargetGroups {
-			if group.Type != CardTypeEdit {
+			if group.Type != CardTypeEdit && group.Type != CardTypeExtends {
 				continue
 			}
 			for _, ref := range group.Refs {

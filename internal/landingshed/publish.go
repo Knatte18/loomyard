@@ -68,7 +68,7 @@ func NewPublish(deps Deps) (*Publish, error) {
 	}
 
 	gate := newVerifyGate(deps)
-	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, head: deps.TaskHead}
+	gate.recorder = &failureRecorder{failingTests: deps.FailingTests, traceFailure: deps.TraceFailure, head: deps.TaskHead}
 	return &Publish{deps: deps, gate: gate, guard: newParentGuard(deps)}, nil
 }
 

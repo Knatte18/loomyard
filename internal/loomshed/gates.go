@@ -268,7 +268,7 @@ func ValidatePlan(plan *planparser.Plan, anchorPath, worktreeRoot string, index 
 			pending = append(pending, c)
 		}
 	}
-	contextFindings, err := planContextFindings(plan, pending, pc)
+	contextFindings, err := planContextFindings(plan, pending, worktreeRoot, pc)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +342,7 @@ func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, index planin
 	if err != nil {
 		return nil, err
 	}
-	contextFindings, err := planContextFindings(plan, plan.Cards, pc)
+	contextFindings, err := planContextFindings(plan, plan.Cards, worktreeRoot, pc)
 	if err != nil {
 		return nil, err
 	}
