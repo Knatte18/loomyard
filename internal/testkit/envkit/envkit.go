@@ -121,7 +121,6 @@ var nilLegal = map[string]bool{
 	"MergeInOnly":                       true,
 	"RecordHead":                        true,
 	"RejectReview":                      true,
-	"Darn.RecordRejection":              true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
@@ -403,20 +402,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			}, nil
 		},
 		Darn: loomshed.DarnDeps{
-			ReadRejection: func() (loomshed.PendingRejection, bool, error) {
-				return loomshed.PendingRejection{}, false, nil
-			},
-			ClearRejection: func() error { return nil },
-			Commit:         func() error { return nil },
-			LatestOutcome:  func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
-			PublishFailure: func() (string, verifytree.PublishFailure, bool, error) {
-				return "", verifytree.PublishFailure{}, false, nil
-			},
-			RunStart:   func() (time.Time, error) { return time.Time{}, nil },
-			TaskHead:   func() (string, error) { return "", nil },
-			Dirty:      func() ([]string, error) { return nil, nil },
-			ParentTips: func() ([]string, error) { return nil, nil },
-			IsAncestor: func(string) (bool, error) { return true, nil },
+			Commit:        func() error { return nil },
+			LatestOutcome: func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
 		},
 		PlanIndex: noFindingsIndex{},
 

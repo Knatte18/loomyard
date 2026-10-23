@@ -68,23 +68,11 @@
 // It first archives webster's run record into the archive's `webster` subdirectory through a told seam, so the next Webster run starts a new run over the new plan instead of refusing the old record's plan drift.
 // A run holding webster's run lock refuses the archive before any plan file moves, and ArchivedPlanWebsterDirs lists the subdirectories a rotation writes the record into.
 //
-// The Darn-Write row's producer (NewDarnWrite) wraps the gated darn writer session and tells it two texts, each empty when absent:
-// the pending rejection's findings, and a prior-work note, written in Go, that the change is already under way on the task branch, naming the latest Darn-Write history entry's halt reason and the Publish failure record's path.
-// On a non-empty output pointer, Done or a gate-failed Stuck, it commits the landing directory;
-// on Done of a spawn that was told a rejection it then records the rejection through the optional RecordRejection seam, so the darn amendment can name its findings, and removes the pending rejection.
+// The Darn-Write row's producer (NewDarnWrite) wraps the gated darn writer session and tells it a prior-work note, empty when absent.
+// The note, written in Go, says the change is already under way on the task branch and names the latest Darn-Write history entry's halt reason.
+// On a non-empty output pointer, Done or a gate-failed Stuck, it commits the landing directory.
 // A gate-failed Stuck keeps its record and gains the resume way forward.
-// A failed commit, record or removal is a returned error, since re-running the session cannot fix a git or filesystem fault.
-// Before any session is built, a Publish failure record this run wrote reroutes the row to Merge-In when four facts hold, checked in order:
-// the record's written_at is at or after the run's start, as whole-second UTC, with a zero start counting as not this run's;
-// the task branch is still at the record's head;
-// the task worktree has no uncommitted path;
-// and some parent tip the told ParentTips seam returns is not an ancestor of HEAD.
-// The reroute spawns no writer, commits nothing and spends no bounce budget.
-// Its reason says the parent moved since the recorded failure while the task branch and worktree did not, and that Merge-In merges the parent and re-runs the failing gate.
-// It adds that a Merge-In stuck on a parent pair that is dirty, mid-merge, ahead of or diverged from its upstream needs that pair repaired before any resume, since a resume over it reroutes back to the same stop.
-// The reroute cap halts a row rerouted back from such a stop, and the halt embeds this reason.
-// A RunStart, TaskHead, ParentTips or IsAncestor error runs the writer as today, and a Dirty error counts as a dirty tree.
-// The reroute skips the review perch and Describe only while the task branch carries no commit and the worktree no edit since the failed verify, which ran on reviewed code.
+// A failed commit is a returned error, since re-running the session cannot fix a git or filesystem fault.
 //
 // The PR-Rework producer (NewPRRework) archives the plan and review run directories into the round, then recreates the review run directories and hands each archived one to the required KeepReviewRecords seam.
 // The settle record, its patch and the generation record therefore stay where the next review re-entry compares against them, on every Call that reaches the recreation, so a re-step after a failed carry carries again.

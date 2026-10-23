@@ -163,13 +163,8 @@ func latestDarnOutcome(statusPath, statusLockPath string) (loomshed.DarnOutcome,
 
 // darnDeps assembles the Darn-Write row's seams for location and the run addressed by runID.
 // Every closure reads or writes on demand and opens nothing at build time.
-func darnDeps(l *lyxcwd.Location, runID, verifyDir string) loomshed.DarnDeps {
-	paths := verifytree.NewPaths(l.WorktreePath(), verifyDir)
+func darnDeps(l *lyxcwd.Location, runID string) loomshed.DarnDeps {
 	return loomshed.DarnDeps{
-		ReadRejection:  pendingRejectionReader(l),
-		ClearRejection: rejectionClearer(l),
-		// RecordRejection keeps the reject's findings in the landing directory before the pending record is cleared, so the amendment reads them and Commit commits them.
-		RecordRejection: func(rejection loomshed.PendingRejection) error { return recordDarnRejection(l, rejection) },
 		// Commit mirrors CommitDescription, including its discard of (sha, committed), which makes a repeat commit over an unchanged directory a no-op.
 		Commit: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{loomengine.LandingDirRel()}, fmt.Sprintf("loom: change description for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
@@ -177,40 +172,6 @@ func darnDeps(l *lyxcwd.Location, runID, verifyDir string) loomshed.DarnDeps {
 		},
 		LatestOutcome: func() (loomshed.DarnOutcome, bool, error) {
 			return latestDarnOutcome(shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID))
-		},
-		PublishFailure: func() (string, verifytree.PublishFailure, bool, error) {
-			record, found, err := verifytree.ReadPublishFailure(paths)
-			if err != nil || !found {
-				return "", verifytree.PublishFailure{}, false, err
-			}
-			return paths.PublishFailure, record, true, nil
-		},
-		RunStart: func() (time.Time, error) { return seedRunStart(l) },
-		TaskHead: func() (string, error) {
-			handle, err := fabricengine.Open(l)
-			if err != nil {
-				return "", err
-			}
-			return handle.HeadSHA()
-		},
-		Dirty: func() ([]string, error) { return verifytree.DirtyPaths(l.WorktreePath()) },
-		ParentTips: func() ([]string, error) {
-			parent, err := readRecordedParentBranch(l)
-			if err != nil {
-				return nil, err
-			}
-			tips, err := parentTipsReader(l, parent)(false)
-			if err != nil {
-				return nil, err
-			}
-			return mergeableTips(tips, fabricengine.EnvSyncOptions().SkipPush), nil
-		},
-		IsAncestor: func(sha string) (bool, error) {
-			handle, err := fabricengine.Open(l)
-			if err != nil {
-				return false, err
-			}
-			return handle.IsAncestor(sha, "HEAD")
 		},
 	}
 }
@@ -315,8 +276,7 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {
 		return loomrecipe.DarnRouting(map[string]int{darnReviewSegment: cfg.ReviewMaxBounces})
 	})
-	c.env.Darn = darnDeps(location, c.runID, c.env.VerifyDir)
-	// The darn amendment reads the reject file darnDeps' RecordRejection wrote, not a rework round's findings.
+	c.env.Darn = darnDeps(location, c.runID)
 	c.env.RejectReview = func() (string, time.Time, bool, error) { return darnRejectReview(location) }
 	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate.
 	c.env.DiscussionHistory = discussionHistory(location)
@@ -330,7 +290,6 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 			DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
 			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 			SupportLogPath:     loomengine.DiscussionSupportLog(location),
-			RejectionFindings:  told.RejectionFindings,
 			PriorWork:          told.PriorWork,
 			LanguageSkills:     c.languageSkills,
 		}, cfg, registry)

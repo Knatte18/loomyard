@@ -69,6 +69,11 @@ var intentionallyNil = map[string]string{
 	"Landing.HoldsWork":           "loom-only seam, batten lands no branch",
 	"Landing.ChangedPaths":        "loom-only seam, batten lands no branch",
 	"Landing.MergeBase":           "loom-only seam, batten lands no branch",
+	"Landing.FixerSeats":          "loom-only seam, batten lands no branch",
+	"Landing.LineChange":          "loom-only seam, batten lands no branch",
+	"Landing.IsTestFile":          "loom-only seam, batten lands no branch",
+	"Landing.RowEntry":            "loom-only seam, batten lands no branch",
+	"Landing.TaskRemoteTip":       "loom-only seam, batten lands no branch",
 	"Landing.Alignment.Config":    "loom-only seam, batten lands no branch",
 	"Landing.Alignment.Session":   "loom-only seam, batten lands no branch",
 	"Landing.Alignment.Snapshot":  "loom-only seam, batten lands no branch",
@@ -93,16 +98,8 @@ var intentionallyNil = map[string]string{
 	"Rework.KeepReviewRecords":    "loom-only seam, batten has no rework segment",
 	"Rework.Commit":               "loom-only seam, batten has no rework segment",
 	"DarnTable":                   "darn-only seam, batten has no darn segment",
-	"Darn.ReadRejection":          "darn-only seam, batten has no darn segment",
-	"Darn.ClearRejection":         "darn-only seam, batten has no darn segment",
 	"Darn.Commit":                 "darn-only seam, batten has no darn segment",
 	"Darn.LatestOutcome":          "darn-only seam, batten has no darn segment",
-	"Darn.PublishFailure":         "darn-only seam, batten has no darn segment",
-	"Darn.RunStart":               "darn-only seam, batten has no darn segment",
-	"Darn.TaskHead":               "darn-only seam, batten has no darn segment",
-	"Darn.Dirty":                  "darn-only seam, batten has no darn segment",
-	"Darn.ParentTips":             "darn-only seam, batten has no darn segment",
-	"Darn.IsAncestor":             "darn-only seam, batten has no darn segment",
 }
 
 func TestWire_EverySeamFilled(t *testing.T) {

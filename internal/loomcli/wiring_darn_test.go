@@ -15,14 +15,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // wantDarnLandingCall is the landing call gateConfigWithTwoTiers renders over the whole tree.
@@ -46,7 +44,7 @@ func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ..
 func TestWire_DarnRecipe(t *testing.T) {
 	t.Parallel()
 
-	darnSeams := []string{"DarnTable", "Darn.ReadRejection", "Darn.ClearRejection", "Darn.Commit", "Darn.LatestOutcome", "Darn.PublishFailure", "Darn.RunStart", "Darn.TaskHead", "Darn.Dirty", "Darn.ParentTips", "Darn.IsAncestor"}
+	darnSeams := []string{"DarnTable", "Darn.Commit", "Darn.LatestOutcome"}
 
 	t.Run("a darn seed fills the darn seams, the verify source and the attempts", func(t *testing.T) {
 		t.Parallel()
@@ -66,9 +64,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 				}
 			}
 		}
-		// envkit.NilSeams skips these two through nilLegal, so direct checks pin that wireDarn tells them.
-		if c.env.RejectReview == nil || c.env.Darn.RecordRejection == nil {
-			t.Errorf("RejectReview nil = %v, Darn.RecordRejection nil = %v after wire() of a darn seed; want both told", c.env.RejectReview == nil, c.env.Darn.RecordRejection == nil)
+		// envkit.NilSeams skips RejectReview through nilLegal, so a direct check pins that wireDarn tells it.
+		if c.env.RejectReview == nil {
+			t.Error("RejectReview is nil after wire() of a darn seed; want it told")
 		}
 		if c.env.VerifyMergeBase == nil {
 			t.Error("c.env.VerifyMergeBase is nil after wire() of a darn seed; want the merge base reader")
@@ -452,39 +450,4 @@ func firstNonEmptyState(st shedengine.State) shedengine.State {
 		return shedengine.StateRunning
 	}
 	return st
-}
-
-func TestDarnDeps_PublishFailureNamesThePresentRecord(t *testing.T) {
-	t.Parallel()
-
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-	verifyDir := t.TempDir()
-	deps := darnDeps(loc, shedrun.SelfRunID, verifyDir)
-
-	if path, _, found, err := deps.PublishFailure(); err != nil || found || path != "" {
-		t.Fatalf("PublishFailure() with no record = %q, %v, %v; want empty, false, nil", path, found, err)
-	}
-
-	paths := verifytree.NewPaths(loc.WorktreePath(), verifyDir)
-	if err := verifytree.WritePublishFailure(paths, verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Head: "abc123"}); err != nil {
-		t.Fatalf("WritePublishFailure() = %v; want nil", err)
-	}
-	path, record, found, err := deps.PublishFailure()
-	if err != nil || !found || path != paths.PublishFailure || record.Head != "abc123" {
-		t.Errorf("PublishFailure() with a record = %q, head %q, %v, %v; want %q, head abc123, true, nil", path, record.Head, found, err, paths.PublishFailure)
-	}
-}
-
-func TestDarnDeps_RejectionSeamsReadAndClearTheRecord(t *testing.T) {
-	t.Parallel()
-
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-	deps := darnDeps(loc, shedrun.SelfRunID, t.TempDir())
-
-	if _, found, err := deps.ReadRejection(); err != nil || found {
-		t.Fatalf("ReadRejection() with no record = found %v, %v; want false, nil", found, err)
-	}
-	if err := deps.ClearRejection(); err != nil {
-		t.Errorf("ClearRejection() with no record = %v; want nil", err)
-	}
 }
