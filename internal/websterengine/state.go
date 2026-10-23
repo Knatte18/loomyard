@@ -173,6 +173,29 @@ type State struct {
 	// PreFixHead is the HEAD the latest verify-gate run started its fixes from.
 	// The gate records it at its first failed evaluation and clears it on a pass, so a later verb can reset to it.
 	PreFixHead string `json:"preFixHead,omitempty"`
+	// VerifyFixers records every cold verify-gate fixer strand fix-verify spawned, in spawn order; only the last can be running.
+	// A state written before this field existed loads with it nil.
+	VerifyFixers []*VerifyFixerState `json:"verifyFixers,omitempty"`
+}
+
+// VerifyFixerState is one cold verify-gate fixer strand's record.
+type VerifyFixerState struct {
+	// StrandGUID identifies the reed strand the fixer runs in.
+	StrandGUID string `json:"strandGuid"`
+	// SessionID and Engine identify the fixer's session and the engine it ran under, so the run's write evidence reads it.
+	SessionID string `json:"sessionId,omitempty"`
+	Engine    string `json:"engine,omitempty"`
+	// SpawnedAt is the spawn time in RFC 3339, from which the recovery timeout runs.
+	SpawnedAt string `json:"spawnedAt"`
+	// ShuttleRunDir is the fixer's shuttle run directory, removed once the fixer reaches done.
+	ShuttleRunDir string `json:"shuttleRunDir,omitempty"`
+	// EventsPath and EventsOffset locate the fixer's turn events after its skill-load turns.
+	EventsPath   string `json:"eventsPath,omitempty"`
+	EventsOffset int64  `json:"eventsOffset,omitempty"`
+	// Status is empty while the fixer runs, then DigestStatusDone or DigestStatusDead.
+	Status string `json:"status,omitempty"`
+	// DeadReason is set only when Status is DigestStatusDead.
+	DeadReason string `json:"deadReason,omitempty"`
 }
 
 // PendingAuditFinding is one run-exit correctness finding that stays pending until accepted.

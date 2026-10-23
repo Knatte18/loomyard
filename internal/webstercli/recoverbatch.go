@@ -243,6 +243,8 @@ Example:
 			// A pure attach mutated nothing and needs no save.
 			if spawned {
 				if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
+					// The strand is live but unrecorded, so nothing later could stop it.
+					err = errors.Join(err, deps.Stopper.StopStrand(bs.StrandGUID))
 					_ = mutateLock.Release()
 					mutateHeld = false
 					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))

@@ -1,4 +1,4 @@
-// batchpause.go holds the up-front refusal begin-batch and recover-batch make under a pause, and the lookup of Master's own strand that refusal claims into the pause.
+// batchpause.go holds the up-front refusal begin-batch, recover-batch and fix-verify make under a pause, and the lookup of Master's own strand that refusal claims into the pause.
 
 package webstercli
 
@@ -29,17 +29,24 @@ func envMasterStrand(resolve func(name string) (string, error)) func() (name, gu
 }
 
 // refuseCoveredBatch returns the refusal message of a batch verb a pause holds, or the empty string when the verb goes on.
+// It is refuseCovered for the call `<verb> <batch>`.
+func (c *websterCLI) refuseCoveredBatch(verb, batch string) string {
+	return c.refuseCovered(verb+" "+batch, verb+" starts no new batch", "a running batch finishes, and ")
+}
+
+// refuseCovered returns the refusal message of the `lyx webster <call>` a pause holds, or the empty string when the call goes on.
+// held says what the refused call does not start, and running, empty or ending in a space, what keeps running meanwhile.
 // Under a covering entry it claims Master into the pause, so `lyx tender resume` gives Master its resume line;
 // a Master that cannot be claimed is refused with a way forward that needs no resume line.
 // A pair with no pause geometry, an unreadable record and an entry lifted before the claim all go on.
-func (c *websterCLI) refuseCoveredBatch(verb, batch string) string {
+func (c *websterCLI) refuseCovered(call, held, running string) string {
 	if c.pause == (pauserecord.Geometry{}) {
 		return ""
 	}
 	now := time.Now()
 	coverage, err := pauserecord.ReadCoverage(c.pause.RecordPath, c.pause.Slug, now)
 	if err != nil {
-		logger.Warn("webstercli: the pause record could not be read, so the batch verb goes on", "record", c.pause.RecordPath, "err", err)
+		logger.Warn("webstercli: the pause record could not be read, so the verb goes on", "call", call, "record", c.pause.RecordPath, "err", err)
 		return ""
 	}
 	if !coverage.Covered {
@@ -57,9 +64,9 @@ func (c *websterCLI) refuseCoveredBatch(verb, batch string) string {
 			return ""
 		}
 		if err == nil {
-			return fmt.Sprintf("webster: %s holds this pair, so %s starts no new batch; way forward: end your turn now; a running batch finishes, and once the resume line arrives run \"lyx webster %s %s\" again", holder, verb, verb, batch)
+			return fmt.Sprintf("webster: %s holds this pair, so %s; way forward: end your turn now; %sonce the resume line arrives run \"lyx webster %s\" again", holder, held, running, call)
 		}
 	}
 	logger.Warn("webstercli: Master could not be claimed into the pause", "strand", name, "err", err)
-	return fmt.Sprintf("webster: %s holds this pair, so %s starts no new batch, and no resume line will come; way forward: end your turn now, then run \"lyx webster %s %s\" again once \"lyx tender status\" shows no pause", holder, verb, verb, batch)
+	return fmt.Sprintf("webster: %s holds this pair, so %s, and no resume line will come; way forward: end your turn now, then run \"lyx webster %s\" again once \"lyx tender status\" shows no pause", holder, held, call)
 }

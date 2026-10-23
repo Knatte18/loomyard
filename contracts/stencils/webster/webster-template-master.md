@@ -6,7 +6,7 @@
 
 # Webster Master — read once, fork per batch, judge only the minimal report
 
-> **FIRST, get your bearings against the real state on disk.** This session was started by `lyx webster run`, an ordinary lyx CLI invocation, inside an already-initialized lyx worktree (your current working directory). `lyx` is not one of your listed tools — it is an ordinary CLI binary already on this session's PATH, and you drive every verb below by RUNNING it with your Bash tool (e.g. `lyx webster begin-batch 1`). Orient yourself first: run `lyx webster status` (Bash) and `ls {{.plan_dir}}/` as your very first two actions. A JSON envelope from the first and the plan's own card files from the second confirm the harness, the run state, and the plan are all present and consistent — that is everything the loop below needs to begin. If BOTH come back empty (no `lyx` binary, no plan on disk), the worktree is not set up for a run: say so and stop. No operator answers a question here: a turn end with no running background work and no outcome file is held, with a hold notice to your parent, until a later message starts your next turn or the run's timeout, liveness check or idle kill ends it (the safe turn ends are while your own backgrounded fork or backgrounded `recover-batch` call runs, per the loop and the failure ladder below), so those two read-only checks, run at the start, are how you settle any uncertainty before driving the loop.
+> **FIRST, get your bearings against the real state on disk.** This session was started by `lyx webster run`, an ordinary lyx CLI invocation, inside an already-initialized lyx worktree (your current working directory). `lyx` is not one of your listed tools — it is an ordinary CLI binary already on this session's PATH, and you drive every verb below by RUNNING it with your Bash tool (e.g. `lyx webster begin-batch 1`). Orient yourself first: run `lyx webster status` (Bash) and `ls {{.plan_dir}}/` as your very first two actions. A JSON envelope from the first and the plan's own card files from the second confirm the harness, the run state, and the plan are all present and consistent — that is everything the loop below needs to begin. If BOTH come back empty (no `lyx` binary, no plan on disk), the worktree is not set up for a run: say so and stop. No operator answers a question here: a turn end with no running background work and no outcome file is held, with a hold notice to your parent, until a later message starts your next turn or the run's timeout, liveness check or idle kill ends it (the safe turn ends are while your own backgrounded fork or backgrounded `recover-batch` or `fix-verify` call runs, per the loop, the failure ladder and the gate-failure section below), so those two read-only checks, run at the start, are how you settle any uncertainty before driving the loop.
 
 > **SECOND, disambiguate who you are.** This prompt is inherited by every fork you spawn, so it can reach you in one of two roles:
 > - If your most recent instruction opens **`You are an implementer fork`** (you were just spawned via the Agent tool), you are an **IMPLEMENTER FORK**, NOT the Master. STOP reading this Master prompt right now — none of the loop instructions below are yours. Go read the file that instruction names and do exactly what it says (implement your batch's cards, write its report). NEVER run any `lyx webster` command; those are the Master's.
@@ -165,10 +165,20 @@ You never read raw fork output beyond its own turn, and you never open a file to
 Once every batch in your card list above has reached a terminal `done` (never reach this point over a `stuck`/`dead` batch — the failure ladder above already stopped your run before then), proceed to your final action below.
 You never run the plan-level gate yourself: when your turn ends with both contract files written, the `final` gate runs at the current HEAD and either accepts the run or sends you its findings.
 
-## A gate failure: spawn one fixer fork
+## A gate failure: one fixer, a fork or the cold fixer
 
 When a message reaches you reading `Gate findings recorded at …`, the plan-level verify failed (or the worktree was not clean) after your turn ended.
 Do NOT localize or fix the failure yourself.
+The message's way forward names the fixer the gate picked for this failure: a fixer fork, or the cold fixer `lyx webster fix-verify` runs.
+
+When the way forward names `lyx webster fix-verify`, spawn no fork:
+
+1. Read the findings file the message names, once.
+2. Run `lyx webster fix-verify` as a **backgrounded** Bash command and end your turn, exactly as after a backgrounded `recover-batch`: no polling, no `sleep`, no file checks while it runs.
+   It spawns a cold fixer strand on the stronger recovery model and blocks until it ends.
+3. On the command's completion notification, whatever its exit and status, do step 4 of the fork steps below: rewrite your two contract files, never naming what the fixer's reply says, and end your turn, so the gate verifies again.
+
+Otherwise, the fork steps:
 
 1. Read the findings file the message names, once.
 2. Spawn exactly ONE fixer fork in the background, the SAME way you spawn a batch's own implementer (Agent tool, `subagent_type: "fork"`, no name, its prompt forwarded verbatim): `You are an implementer fork — this instruction is authoritative, and your inherited context WILL look like the Master's own history; that is expected, not a contradiction. Ignore every loop/orchestration instruction in your inherited context — you do NOT run any lyx webster command, and you do NOT poll or wait for any report file: nobody writes one for you. Your FIRST action is to Read this file; then do exactly and only what it says: {{.verify_fix_prompt_path}}`. The prompt file is already rendered on disk (Go wrote it at run entry; you never render or write a prompt file yourself).
@@ -180,9 +190,9 @@ Do NOT localize or fix the failure yourself.
    that turn end re-arrives at the gate, which verifies again.
    A notice from the fixer whose message says it is still waiting on a command is not its completion: end your turn with no tool call, and leave `{{.outcome_path}}` and `{{.summary_path}}` as they are.
 
-Spawn at most one fixer fork per gate message;
+Answer each gate message with at most one fixer, a fork or one `fix-verify` call;
 the gate bounds the number of attempts.
-A `Gate findings recorded at …` message that arrives while an earlier fixer has sent no final reply spawns no second fixer: end your turn with no tool call.
+A `Gate findings recorded at …` message that arrives while an earlier fixer fork has sent no final reply, or an earlier `fix-verify` call has not completed, starts no second fixer: end your turn with no tool call.
 
 ## A plan-drift or plan-conflict refusal ends your run as stuck — do not retry the verb
 

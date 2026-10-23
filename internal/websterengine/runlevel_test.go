@@ -1547,9 +1547,9 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 			},
 		},
 		{
-			// The recorded Master strand and each recorded, non-terminal recovery-batch strand are stopped through the stopper.
-			// A terminal recovery batch's strand is not.
-			name: "the Master and non-terminal recovery strands are stopped",
+			// The recorded Master strand and each recorded, non-terminal recovery-batch and cold fixer strand are stopped through the stopper.
+			// A terminal recovery batch's strand and a terminal fixer's are not.
+			name: "the Master and non-terminal recovery and cold fixer strands are stopped",
 			setup: func(t *testing.T, fx *runFixture) func(t *testing.T) {
 				seedMatchingState(t, fx, &websterengine.State{
 					MasterStrand: "prior-master-strand",
@@ -1557,11 +1557,26 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 						1: {Slug: "batch1", Kind: "recovery", Terminal: false, StrandGUID: "prior-recovery-strand"},
 						2: {Slug: "batch2", Kind: "recovery", Terminal: true, StrandGUID: "terminal-recovery-strand"},
 					},
+					VerifyFixers: []*websterengine.VerifyFixerState{
+						{StrandGUID: "terminal-fixer-strand", Status: websterengine.DigestStatusDone},
+						{StrandGUID: "prior-fixer-strand"},
+					},
 				})
 
 				return func(t *testing.T) {
-					if want := []string{"prior-master-strand", "prior-recovery-strand"}; !slices.Equal(fx.Stopper.Stopped, want) {
+					if want := []string{"prior-master-strand", "prior-recovery-strand", "prior-fixer-strand"}; !slices.Equal(fx.Stopper.Stopped, want) {
 						t.Errorf("stopped = %v; want %v", fx.Stopper.Stopped, want)
+					}
+					// A stopped fixer's record is saved terminal, so the next fix-verify spawns instead of attaching; a terminal fixer's record is left as it was.
+					fixers := loadRunState(t, fx).VerifyFixers
+					if len(fixers) != 2 {
+						t.Fatalf("saved VerifyFixers = %d records; want 2", len(fixers))
+					}
+					if fixers[0].Status != websterengine.DigestStatusDone || fixers[0].DeadReason != "" {
+						t.Errorf("terminal fixer record = %q/%q; want it left done", fixers[0].Status, fixers[0].DeadReason)
+					}
+					if fixers[1].Status != websterengine.DigestStatusDead || fixers[1].DeadReason != websterengine.DeadReasonDied {
+						t.Errorf("stopped fixer record = %q/%q; want dead/died", fixers[1].Status, fixers[1].DeadReason)
 					}
 				}
 			},
@@ -1720,12 +1735,12 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
-			name:  "the recover-batch shell is declared awaited",
+			name:  "the recover-batch and fix-verify shells are declared awaited",
 			cards: 1,
 			check: func(t *testing.T, fx *runFixture) {
 				got := fx.Starter.startCalls[0].AwaitedShellPrefixes
-				if !slices.Equal(got, []string{"lyx webster recover-batch"}) {
-					t.Errorf("Spec.AwaitedShellPrefixes = %q; want the recover-batch prefix", got)
+				if want := []string{"lyx webster recover-batch", "lyx webster fix-verify"}; !slices.Equal(got, want) {
+					t.Errorf("Spec.AwaitedShellPrefixes = %q; want %q", got, want)
 				}
 			},
 		},

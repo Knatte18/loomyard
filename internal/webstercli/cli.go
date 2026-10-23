@@ -14,7 +14,7 @@
 // standalone has no fabric repo by construction, and the closure is never called during wiring in
 // either mode.
 //
-// websterCLI stores TWO adapted views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of the spawn seam, consumed by recover-batch's cold-strand spawn) and masterStarter (websterengine.MasterStarter, behind the runnerMasterStarter adapter, consumed by run's Master spawn) -- because the two verbs each need a distinct narrow seam onto the same underlying *shuttleengine.Runner, neither of which the other exposes.
+// websterCLI stores TWO adapted views of the one constructed Runner: starter (websterengine.Starter, webster's own local copy of the spawn seam, consumed by the cold-strand spawns of recover-batch and fix-verify) and masterStarter (websterengine.MasterStarter, behind the runnerMasterStarter adapter, consumed by run's Master spawn) -- because the two verbs each need a distinct narrow seam onto the same underlying *shuttleengine.Runner, neither of which the other exposes.
 
 package webstercli
 
@@ -248,7 +248,8 @@ and drives it through a long-lived Master session that reads the plan once
 and forks one implementer per batch in-session, bracketing each fork with
 begin-batch and record-batch, until the plan is built or the run reports
 stuck. A fork that reports stuck, or never reports, is escalated
-to a cold recovery strand with recover-batch.
+to a cold recovery strand with recover-batch, and a verify-gate failure the
+gate escalates goes to a cold fixer strand with fix-verify.
 
 Reach for "lyx webster run" to build an approved plan, "lyx webster validate"
 to lint one first, and "lyx webster status" to see where a run stands.
@@ -320,6 +321,7 @@ func (c *websterCLI) addVerbs(parent *cobra.Command) {
 		c.awaitBatchCmd(),
 		c.recordBatchCmd(),
 		c.recoverBatchCmd(),
+		c.fixVerifyCmd(),
 		c.rebaselineCmd(),
 		c.acceptAuditCmd(),
 		c.restorePlanCmd(),

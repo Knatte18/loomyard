@@ -239,10 +239,20 @@ var TreadleTemplateTargeting []byte
 //go:embed webster/webster-template-master.md
 var WebsterTemplateMaster []byte
 
-// WebsterBodyVerifyFix is webster's shipped-default verify-gate fixer fork prompt.
+// WebsterBodyVerifyFix is webster's shipped-default shared verify-gate fixer body, composed with both WebsterPrefixVerifyFixFork and WebsterPrefixVerifyFixCold.
 //
 //go:embed webster/webster-body-verify-fix.md
 var WebsterBodyVerifyFix []byte
+
+// WebsterPrefixVerifyFixFork is webster's shipped-default verify-gate fixer fork prompt prefix, joined ahead of WebsterBodyVerifyFix to compose the fixer fork prompt.
+//
+//go:embed webster/webster-prefix-verify-fix-fork.md
+var WebsterPrefixVerifyFixFork []byte
+
+// WebsterPrefixVerifyFixCold is webster's shipped-default cold verify-gate fixer prompt prefix, joined ahead of WebsterBodyVerifyFix to compose the cold fixer strand's prompt.
+//
+//go:embed webster/webster-prefix-verify-fix-cold.md
+var WebsterPrefixVerifyFixCold []byte
 
 // WebsterPrefixFork is webster's shipped-default in-session fork prompt prefix, joined ahead of
 // WebsterBodyImplementer to compose the fork prompt.
@@ -496,6 +506,8 @@ var entries = []registryEntry{
 	{"treadle-template-targeting", &TreadleTemplateTargeting},
 	{"webster-template-master", &WebsterTemplateMaster},
 	{"webster-body-verify-fix", &WebsterBodyVerifyFix},
+	{"webster-prefix-verify-fix-fork", &WebsterPrefixVerifyFixFork},
+	{"webster-prefix-verify-fix-cold", &WebsterPrefixVerifyFixCold},
 	{"webster-prefix-fork", &WebsterPrefixFork},
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},
@@ -551,6 +563,7 @@ var roleOpeningStencils = map[string][]string{
 	"rework":             {"loom-template-rework"},
 	"webster-master":     {"webster-template-master"},
 	"webster-recovery":   {"webster-prefix-recovery"},
+	"verify-fixer":       {"webster-prefix-verify-fix-cold"},
 	"burler-review":      {"burler-template-reviewer"},
 	"burler-fix":         {"burler-template-fixer"},
 	"conflict":           {"landing-template-conflict"},

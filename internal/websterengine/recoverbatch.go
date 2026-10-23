@@ -339,7 +339,9 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 
 	runState, runDir, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Geom.AnchorRoot, run.StrandGUID())
 	if err != nil {
-		return nil, fmt.Errorf("webster: resolve spawned recovery run: %w", err)
+		// The strand is live but no record of it will be saved, so nothing later could stop it.
+		stopErr := deps.Stopper.StopStrand(run.StrandGUID())
+		return nil, errors.Join(fmt.Errorf("webster: resolve spawned recovery run: %w", err), stopErr)
 	}
 
 	// The recovery record inherits the ORIGINAL bracket's start SHA when there is one, rather than
@@ -523,7 +525,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), wayForward)}
 		}
 		if len(contracts.Uncleared) > 0 {
-			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork or a recovery session wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lyx webster recover-batch %d", batchNumber)))
+			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork, recovery or verify-fixer session wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lyx webster recover-batch %d", batchNumber)))
 		}
 	}
 

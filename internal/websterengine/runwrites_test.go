@@ -58,7 +58,7 @@ func TestLoadRunWrites(t *testing.T) {
 		}
 	})
 
-	t.Run("recovery sessions are audited after the Master sessions, once each", func(t *testing.T) {
+	t.Run("recovery and cold fixer sessions are audited after the Master sessions, once each", func(t *testing.T) {
 		t.Parallel()
 
 		st := &State{
@@ -67,6 +67,7 @@ func TestLoadRunWrites(t *testing.T) {
 				1: {SessionID: "s1", RecoverySessions: []string{"r1", "r2"}},
 				2: {SessionID: "s2", RecoverySessions: []string{"r2", "s1"}},
 			},
+			VerifyFixers: []*VerifyFixerState{{SessionID: "v1"}, {SessionID: "r1"}},
 		}
 		var audited []string
 		engine := &shuttlefake.Engine{AuditForksFn: func(session, _ string) (shuttleengine.ForkAudit, error) {
@@ -81,14 +82,14 @@ func TestLoadRunWrites(t *testing.T) {
 		if err != nil {
 			t.Fatalf("loadRunWrites: %v", err)
 		}
-		if want := []string{"s1", "s2", "r1", "r2"}; !reflect.DeepEqual(audited, want) {
+		if want := []string{"s1", "s2", "r1", "r2", "v1"}; !reflect.DeepEqual(audited, want) {
 			t.Errorf("audited sessions = %v, want %v", audited, want)
 		}
-		wantRecoveries := []shuttleengine.WriteEvent{{Path: "r1-parent", Succeeded: true}, {Path: "r2-parent", Succeeded: true}}
+		wantRecoveries := []shuttleengine.WriteEvent{{Path: "r1-parent", Succeeded: true}, {Path: "r2-parent", Succeeded: true}, {Path: "v1-parent", Succeeded: true}}
 		if !reflect.DeepEqual(got.Recoveries, wantRecoveries) {
 			t.Errorf("Recoveries = %v, want %v", got.Recoveries, wantRecoveries)
 		}
-		wantForks := []shuttleengine.WriteEvent{{Path: "s1-fork"}, {Path: "s2-fork"}, {Path: "r1-fork"}, {Path: "r2-fork"}}
+		wantForks := []shuttleengine.WriteEvent{{Path: "s1-fork"}, {Path: "s2-fork"}, {Path: "r1-fork"}, {Path: "r2-fork"}, {Path: "v1-fork"}}
 		if !reflect.DeepEqual(got.Forks, wantForks) {
 			t.Errorf("Forks = %v, want %v", got.Forks, wantForks)
 		}
