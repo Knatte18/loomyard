@@ -228,6 +228,10 @@
 //
 // A boundary found while the `/compact` inject is still queued, or while creel never answered its send, means the session compacted on its own;
 // before the phase completes the watcher withdraws its queued creel items to the orch strand, so a second compaction never follows.
+// Creel's withdraw leaves an inject a delivery attempt holds, and an attempt the session refuses as busy puts it back in the queue,
+// so the watcher reads the `/compact`'s outcome again after the withdraw, and one still queued or sending leaves the phase compacting with the step pending and the boundary unconsumed, for the next tick to withdraw again.
+// Past the handoff timeout from the phase entry the step is dropped with a warning and the phase completes.
+// Bound: a `/compact` that attempt types still compacts the session a second time.
 // A typed `/compact` is never withdrawn, and a creel failure leaves the phase compacting with the boundary unconsumed, for the next tick to retry.
 // The withdraw clears the resume-noticed mark of a hub-pause resume line it removed, as the reset for another strand does, and a failed clear is retried at the next tick's boundary before the phase completes.
 // Bound: the withdraw is receiver-wide, so it also removes any other queued watcher item to the orch, which the reload that follows queues again as it needs.

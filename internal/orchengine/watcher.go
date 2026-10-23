@@ -57,6 +57,9 @@ var errNotBound = errors.New("orch: the watcher is not bound to the recorded str
 // errCompactWithdrawHeld reports that withdrawing the still-queued `/compact` was held by a creel failure, so the compacting phase keeps its boundary for the next tick.
 var errCompactWithdrawHeld = errors.New("orch: withdrawing the queued compact is held by a creel failure")
 
+// errCompactInFlight reports that the queued `/compact` was in a creel delivery attempt the withdraw could not remove, so the compacting phase keeps its boundary and the pending step for the next tick.
+var errCompactInFlight = errors.New("orch: the queued compact is in a creel delivery attempt")
+
 // errResetPending reports that a phase belonging to another strand could not be reset because a creel call failed; the next tick runs the reset again.
 var errResetPending = errors.New("orch: resetting a phase of another strand is held by a creel failure")
 
@@ -1464,7 +1467,10 @@ func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 // withdrawQueuedCompact withdraws the `/compact` inject still queued when the session compacted on its own, so it never compacts the session a second time.
 // The inject counts as still queued when its step is pending, not yet typed, and either creel never answered its send or creel reads it queued or sending.
 // The withdraw is receiver-wide: it also removes any other queued watcher item to the orch.
-// A resume line the withdraw removed has its pause-record mark cleared; a failed clear drops the withdrawn step, keeps the line in State.ResumeLineWithdrawn and fails the call,
+// Creel's withdraw leaves an inject a delivery attempt holds, and a busy attempt puts it back in the queue, so the outcome is read again after the withdraw:
+// one still queued or sending keeps the step pending and answers errCompactInFlight, so the next call withdraws again,
+// until the handoff timeout from the phase entry, past which the step is dropped with a warning.
+// A resume line the withdraw removed has its pause-record mark cleared; a failed clear drops a withdrawn step, keeps the line in State.ResumeLineWithdrawn and fails the call,
 // and a later call clears the mark although no withdraw runs.
 // A creel failure is recorded through creelFailed and answered with errCompactWithdrawHeld, which leaves the phase as it was for the next call to retry.
 func (w *Watcher) withdrawQueuedCompact(st *State) error {
@@ -1490,7 +1496,21 @@ func (w *Watcher) withdrawQueuedCompact(st *State) error {
 	if err != nil {
 		return w.holdOnCreelFailure(st, err)
 	}
-	st.Pending = nil
+	inFlight := false
+	if st.Pending.ID != 0 {
+		outcome, err := w.creel.InjectOutcome(st.Pending.ID)
+		if err != nil {
+			return w.holdOnCreelFailure(st, err)
+		}
+		inFlight = outcome.State == CreelQueued || outcome.State == CreelSending
+	}
+	if inFlight && w.clock.Now().Sub(st.PhaseEnteredAt) >= w.cfg.HandoffTimeout() {
+		logger.Warn("orch: the queued compact stayed in a delivery attempt past the handoff timeout; the reload goes on", "strandGUID", st.Strand, "id", st.Pending.ID)
+		inFlight = false
+	}
+	if !inFlight {
+		st.Pending = nil
+	}
 	if w.pause != nil {
 		if st.ResumeLineWithdrawn {
 			withdrawn = append(withdrawn, CreelWithdrawn{Subject: pauserecord.ResumeLine})
@@ -1503,6 +1523,10 @@ func (w *Watcher) withdrawQueuedCompact(st *State) error {
 			return err
 		}
 		st.ResumeLineWithdrawn = false
+	}
+	if inFlight {
+		logger.Debug("orch: the queued compact is in a delivery attempt; withdrawing again at the next tick", "strandGUID", st.Strand, "id", st.Pending.ID)
+		return errCompactInFlight
 	}
 	return nil
 }
@@ -1557,7 +1581,7 @@ func (w *Watcher) tickCompacting(st State, now time.Time) error {
 	if qualifying {
 		logger.Info("orch: compaction boundary found", "strandGUID", st.Strand, "boundaryAt", boundary.At)
 		if err := w.withdrawQueuedCompact(&st); err != nil {
-			if errors.Is(err, errCompactWithdrawHeld) {
+			if errors.Is(err, errCompactWithdrawHeld) || errors.Is(err, errCompactInFlight) {
 				return nil
 			}
 			return err
