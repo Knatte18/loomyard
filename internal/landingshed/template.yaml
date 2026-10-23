@@ -13,4 +13,4 @@ fixer_timeout_min: 60  # minutes one fixer turn may run
 merge_fix_attempts: 2  # fixer turns one Merge-In row entry may spend
 finalize_fix_attempts: 2  # fixer turns one Finalize row entry may spend
 finalize_fix_max_lines: 40  # added plus deleted lines a fixer change may hold before it is over the cap
-parent_lock_idle_release_min: 10  # minutes a waiting run, or an undecided PR-Gate hand-off, keeps its parent lock before the lock is released; a value below 1 reads as 10
+parent_lock_idle_release_min: 10  # minutes a waiting run keeps its parent lock before the lock is released, bar a run at Finalize and running or with a live verify, which keeps it; a value below 1 reads as 10

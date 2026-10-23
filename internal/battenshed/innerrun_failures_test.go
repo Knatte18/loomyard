@@ -119,6 +119,16 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 			},
 		},
 		{
+			name: "the landing hold read", message: "could not tell whether a landing holds the child's parent lock",
+			status: shedengine.Status{State: shedengine.StateRunning},
+			wire: func(deps *InnerRunDeps, fail func() error) {
+				lock := failureLockSeams()
+				lock.Read = func() (parentlock.Record, bool, error) { return *loopRecord(), true, nil }
+				lock.KeepsLock = func() (bool, error) { return false, fail() }
+				deps.ParentLock = lock
+			},
+		},
+		{
 			name: "the parent lock release", message: "could not release the child's parent lock",
 			status: blocked,
 			wire: func(deps *InnerRunDeps, fail func() error) {

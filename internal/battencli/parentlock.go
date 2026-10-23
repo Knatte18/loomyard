@@ -3,6 +3,8 @@
 package battencli
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"time"
 
@@ -14,8 +16,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // childParentLock builds the parent lock seams of the task pair for slug, over the lock store under boardDir.
@@ -55,7 +61,28 @@ func childParentLock(slug string, locateTask func() (*lyxcwd.Location, error), b
 			return parentMovedSinceMergeIn(landingshed.MergeRecordPath(loomengine.LoomScratchDir(taskLocation)), fab.ReadParentTips, fab.HeadSHA, fab.HoldsWork)
 		},
 		GateRow: loomshed.NamePRGate,
+		KeepsLock: func() (bool, error) {
+			taskLocation, err := locateTask()
+			if err != nil {
+				return false, err
+			}
+			return landingInFlight(taskLocation)
+		},
 	}
+}
+
+// landingInFlight reports whether the task pair's run is at Finalize and running, or a verify marker of the pair is live, which holds the run's parent lock.
+// A status directory that does not exist yet reads as no status; any other failed read of the status file or the marker returns its error.
+func landingInFlight(taskLocation *lyxcwd.Location) (bool, error) {
+	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](shedrun.StatusFile(taskLocation, shedrun.SelfRunID), shedrun.StatusLock(taskLocation, shedrun.SelfRunID))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, err
+	}
+	if found && status.CurrentProducer == loomshed.NameFinalize && status.State == shedengine.StateRunning {
+		return true, nil
+	}
+	_, live, err := verifytree.ReadMarker(verifytree.NewPaths(taskLocation.WorktreePath(), verifytree.Dir(taskLocation.AnchorPath())).Marker)
+	return live, err
 }
 
 // lockIdleBound returns landing's idle bound for the parent lock of the hub of prime.

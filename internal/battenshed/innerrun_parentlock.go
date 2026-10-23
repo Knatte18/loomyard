@@ -91,10 +91,27 @@ func (p *innerRunProducer) handedLockStep(w *childWait, record parentlock.Record
 	}
 }
 
+// failKeepsLockRead is the failure message, and episode key, of the read that tells whether a landing holds the lock.
+const failKeepsLockRead = "battenshed: could not tell whether a landing holds the child's parent lock; keeping it"
+
 // loopLockStep releases a record owned by a process other than this batten once the idle rule holds for its owner.
+// It releases nothing while deps.ParentLock.KeepsLock answers true, and restarts the idle watch; a failed read keeps the lock and warns once per episode.
 func (p *innerRunProducer) loopLockStep(w *childWait, record parentlock.Record) {
 	lock := p.deps.ParentLock
 	w.lock.awaiting = false
+	if lock.KeepsLock != nil {
+		keeps, err := lock.KeepsLock()
+		if err != nil {
+			p.seamFailed(failKeepsLockRead, err)
+			w.lock.idle = nil
+			return
+		}
+		p.seamRecovered(failKeepsLockRead)
+		if keeps {
+			w.lock.idle = nil
+			return
+		}
+	}
 	if w.lock.idle == nil || w.lock.idleOwner != record.Owner {
 		w.lock.idle = &parentlock.IdleWatch{Bound: lock.IdleBound}
 		w.lock.idleOwner = record.Owner

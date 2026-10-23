@@ -56,6 +56,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"gopkg.in/yaml.v3"
 )
 
@@ -331,9 +332,10 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		self := selfLockOwner(c.location, c.runID)
 		spec.Loop.OnExit = loopLockExit(locks, self, battenWatcher(c.location, c.runID))
 		covered := pauseCovered(c.location)
+		keep := finalizeKeepsLock(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, verifytree.Dir(c.location.AnchorPath()))
 		spec.Loop.OnWake = builtOnFirstCall(func() func() {
 			return loopIdleRelease(locks, self, readAgentStates(c.location, c.shuttleCfg), c.landingCfg.IdleRelease(),
-				func() bool { return covered(c.location.WorktreeName) })
+				func() bool { return covered(c.location.WorktreeName) }, keep)
 		})
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt

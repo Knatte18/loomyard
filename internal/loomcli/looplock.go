@@ -3,6 +3,8 @@
 package loomcli
 
 import (
+	"errors"
+	"io/fs"
 	"sync"
 	"time"
 
@@ -18,6 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // runLockIdentity returns the run part of a parent lock owner for the run runID of the worktree loc: the slug, the pair path and the resolved run id.
@@ -139,16 +143,17 @@ func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner, batten 
 // A failed agent read counts as not waiting and releases nothing.
 // A list or agent read failure that repeats on every wake logs a Warn at its first wake, Debug while it lasts and an Info at recovery.
 // While covered reports true, a pause holds the run: the record is kept and the watch restarts, so the bound is measured afresh after the resume.
-func loopIdleRelease(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, covered func() bool) func() {
-	return idleReleaseOn(locks, self, agents, bound, pauserecord.MonotonicAwake(), covered)
+// While keep reports true, a landing in flight holds the run and the hook does the same.
+func loopIdleRelease(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, covered func() bool, keep func() bool) func() {
+	return idleReleaseOn(locks, self, agents, bound, pauserecord.MonotonicAwake(), covered, keep)
 }
 
 // idleReleaseOn is loopIdleRelease over an awake clock, which must not advance while the host is suspended.
-func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, awake func() time.Duration, covered func() bool) func() {
+func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, awake func() time.Duration, covered func() bool, keep func() bool) func() {
 	watch := &parentlock.IdleWatch{Bound: bound}
 	var listFailures, agentFailures logger.Episode
 	return func() {
-		if covered() {
+		if covered() || keep() {
 			watch = &parentlock.IdleWatch{Bound: bound}
 			return
 		}
@@ -183,5 +188,26 @@ func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents
 			}
 		}
 		watch = &parentlock.IdleWatch{Bound: bound}
+	}
+}
+
+// finalizeKeepsLock returns the reading that tells whether the run holds its parent lock for a landing in flight: its status names Finalize running, or a verify marker of the run is live.
+// A status directory that does not exist yet reads as no status; any other failed read of either file keeps the lock for as long as it fails, and logs a Warn at its first failure, Debug while it lasts and an Info at recovery.
+func finalizeKeepsLock(statusPath, statusLockPath, verifyDir string) func() bool {
+	markerPath := verifytree.NewPaths("", verifyDir).Marker
+	var failures logger.Episode
+	return func() bool {
+		status, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			failures.Fail("loomcli: could not read the run's status for the parent lock's idle rule; keeping the lock", "cause", err)
+			return true
+		}
+		_, live, err := verifytree.ReadMarker(markerPath)
+		if err != nil {
+			failures.Fail("loomcli: could not read the verify marker for the parent lock's idle rule; keeping the lock", "cause", err)
+			return true
+		}
+		failures.Recover("loomcli: the run's status and verify marker read again for the parent lock's idle rule")
+		return live || (found && status.CurrentProducer == loomshed.NameFinalize && status.State == shedengine.StateRunning)
 	}
 }

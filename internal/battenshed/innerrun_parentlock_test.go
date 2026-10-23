@@ -34,8 +34,11 @@ type lockHarness struct {
 	record   *parentlock.Record
 	released []parentlock.Record
 
-	agents     []parentlock.AgentState
-	agentsErr  error
+	agents    []parentlock.AgentState
+	agentsErr error
+	// keeps is the fake KeepsLock's answer to its nth call, counted from one; nil never keeps the lock.
+	keeps      func(n int) (bool, error)
+	keepsCalls int
 	moved      bool
 	movedErr   error
 	movedCalls int
@@ -159,6 +162,13 @@ func newLockHarness(t *testing.T, status shedengine.Status) *lockHarness {
 			return h.moved, h.movedErr
 		},
 		GateRow: lockGateRow,
+		KeepsLock: func() (bool, error) {
+			h.keepsCalls++
+			if h.keeps == nil {
+				return false, nil
+			}
+			return h.keeps(h.keepsCalls)
+		},
 	}
 	h.scratchDir = t.TempDir()
 	h.producer = NewInnerRun("innerrun", "myslug", deps, lockCheckGap, h.scratchDir, testGrace)
@@ -213,14 +223,19 @@ func TestInnerRun_ParentLockKeepsOrReleasesAHandedRecord(t *testing.T) {
 
 // TestInnerRun_ParentLockReleasesAStalledLoopsRecord asserts a record owned by the child's loop is released once every agent has waited for the idle bound with none busy.
 // It asserts the record is kept when the owner changed meanwhile, beside a busy agent and on a failed agent read.
+// It asserts the record is kept while KeepsLock answers true or fails, and released once the bound passes again after it answers false.
 func TestInnerRun_ParentLockReleasesAStalledLoopsRecord(t *testing.T) {
 	t.Parallel()
 	waiting := []parentlock.AgentState{{Name: "writer", Waiting: true}}
 	busyBeside := []parentlock.AgentState{{Name: "writer", Waiting: true}, {Name: "fixer", Busy: true}}
+	keepsThrough := func(n int) func(int) (bool, error) {
+		return func(call int) (bool, error) { return call <= n, nil }
+	}
 	tests := []struct {
 		name         string
 		agents       []parentlock.AgentState
 		agentsErr    error
+		keeps        func(n int) (bool, error)
 		newOwnerAt   int
 		coveredUntil int
 		// checks is how many checks the Call makes; zero means eleven, just past the bound.
@@ -234,6 +249,9 @@ func TestInnerRun_ParentLockReleasesAStalledLoopsRecord(t *testing.T) {
 		{name: "kept when the owner changed meanwhile", agents: waiting, newOwnerAt: 6},
 		{name: "kept beside a busy agent", agents: busyBeside},
 		{name: "kept on a failed read", agents: waiting, agentsErr: errors.New("unreadable")},
+		{name: "kept while a landing holds it", agents: waiting, keeps: keepsThrough(100), checks: 18},
+		{name: "released once the bound passes again after the landing", agents: waiting, keeps: keepsThrough(6), checks: 18, wantReleased: true},
+		{name: "kept when the landing hold cannot be read", agents: waiting, keeps: func(int) (bool, error) { return false, errors.New("unreadable") }, checks: 18},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -241,6 +259,7 @@ func TestInnerRun_ParentLockReleasesAStalledLoopsRecord(t *testing.T) {
 			h := newLockHarness(t, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Webster"})
 			h.record = loopRecord()
 			h.agents, h.agentsErr = tt.agents, tt.agentsErr
+			h.keeps = tt.keeps
 			h.coveredThrough = tt.coveredUntil
 			if tt.newOwnerAt > 0 {
 				h.clock.onSleep = func(call int) {

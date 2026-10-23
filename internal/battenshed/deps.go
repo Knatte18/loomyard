@@ -313,6 +313,9 @@ type ChildParentLock struct {
 	ParentMoved func() (bool, error)
 	// GateRow is the row a child awaits the orch's decision at.
 	GateRow string
+	// KeepsLock reports whether the child's run is at Finalize and running, or a verify of it is live, which keeps a loop's record whatever its agents' waits.
+	// A read error keeps the record, and a nil KeepsLock reads as never keeping it.
+	KeepsLock func() (bool, error)
 }
 
 // AgentActivity is the reading of one live agent run of the child's task worktree.

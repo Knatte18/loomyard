@@ -47,7 +47,8 @@ type Config struct {
 	// Deploy is the shell command batten's Land row runs in the prime after a landing into the prime's branch.
 	// Empty runs nothing.
 	Deploy string `yaml:"deploy"`
-	// ParentLockIdleReleaseMin is the minutes a waiting run, or an undecided PR-Gate hand-off, keeps its parent lock before the lock is released.
+	// ParentLockIdleReleaseMin is the minutes a waiting run keeps its parent lock before the lock is released.
+	// A run at Finalize and running, or with a live verify, keeps the lock past it.
 	// A value below 1 reads as the default.
 	ParentLockIdleReleaseMin int `yaml:"parent_lock_idle_release_min"`
 	// Fixer is the model-spec string selecting the model the merge fixer session runs under.
