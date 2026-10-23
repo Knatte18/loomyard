@@ -401,11 +401,15 @@ The rows that name `internal/planglyph` as their emitter are an exception: that 
 `glyph-ambiguous` is not raised for a member declared once per mutually exclusive build-constraint set, which resolves as one member.
 `card-fabric-reference` is the other exception: it is a `planparser` function outside both entry points, which the plan index appends to its own format validation.
 `done-card-edited` is the third: `loomshed.ValidatePlan` appends it after the index's validation.
-`rename-tool-missing` and `pattern-changes-mismatch` join it, appended by `loomshed` outside the `planparser` entry points in every mode (default, `--lens-review` and `--rework`, and the Plan-Write, Plan-Burler-Fix and PR-Rework gates).
+`rename-tool-missing`, `pattern-changes-mismatch`, `pattern-removes-prescribed`, `pattern-headroom` and `pattern-line-unprescribed` join it, appended by `loomshed` outside the `planparser` entry points in every mode (default, `--lens-review` and `--rework`, and the Plan-Write, Plan-Burler-Fix and PR-Rework gates).
 `rename-tool-missing` is one blocking finding per symbol `Rename` pair of a card not recorded done, raised when `language.yaml` lists no `rename_tools`; its way forward is to set `rename_tools` with `lyx config language` from the prime, or recast the card.
 A file pair raises none.
 `pattern-changes-mismatch` is one blocking finding per entry (ID, action and text) that the decision record's `## PATTERN changes` section and the overview's section do not both declare; its way forward is to copy the record's bullets into the overview's section, one per entry, without the added-after-Discussion suffix.
 It runs only on a loom run, and an absent record adds nothing; a record whose section is malformed is a returned error naming `lyx loom validate-discussion`, since the plan writer cannot fix the record.
+The three PATTERN checks run only in a worktree holding a `PATTERN.md` and with a base overview told to the gate, and read the overview at the task branch's merge base with its parent, or at `HEAD` with no parent recorded.
+`pattern-removes-prescribed` is one blocking finding per `removes` entry of the overview's `## PATTERN changes` section that a card not recorded done fences a line for; its way forward is to drop the fenced line from the card.
+`pattern-headroom` is one blocking finding when the overview projected from every card's fenced entry lines and the `removes` entries grows past the headroom line; its way forward is to shorten the prescribed lines or move detail into background files, and when that is not enough to record a `changes` decision that shortens other entries with `lyx loom decision add`, passing `--amends-plan` once the plan is approved.
+`pattern-line-unprescribed` runs only on a loom run: it is one blocking finding per `adds` or `changes` entry that no card fences a line for and whose overview bullet still equals the base's; its way forward is to prescribe the entry's whole overview line in a fenced block on a pending card that edits `PATTERN.md`, or on a card inserted with `lyx loom insert-card` when that card is done.
 `fabric-vocabulary-name` is the fourth: it is a `planparser` function outside both entry points, which the plan index appends to its format, rework and dispatch validation.
 `edit-test-file` is the fifth: it is a `planparser` function outside both entry points, which the plan index appends to its format and rework validation.
 The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
@@ -532,7 +536,8 @@ The rows below stay in one fixed order regardless of which entry point runs them
     It scans fenced blocks only, whatever the fence's info string and including an unclosed fence; inline spans and prose are never scanned, since an entry line carries backticks of its own.
     One finding per line, attributed to the card, naming the entry, the length and the cap; its way forward is to shorten the line or move the detail to the entry's background file.
     Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
-    It measures verbatim lines only: a prose instruction to append a sentence to an entry passes, and the plan-writer stencil states that rule.
+    It measures verbatim lines only, so a declared `adds` or `changes` entry is prescribed as its whole overview line in a fenced block, which `pattern-headroom` and `pattern-line-unprescribed` then check.
+    An undeclared prose edit of `PATTERN.md` passes, and the plan-writer stencil states that rule.
 40. `done-card-edited` — a card of a batch webster's run record holds done whose file no longer hashes to what the batch recorded at begin.
     `loomshed.ValidatePlan` appends it outside both planparser entry points, from the run record and the card bytes alone, so both plan gates and `lyx loom validate-plan` report it.
     A plan with no run record, a record without recorded hashes and a card of a batch that is not done report nothing; an unreadable card file is a returned error.
