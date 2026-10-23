@@ -1472,7 +1472,8 @@ func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 // Past the handoff timeout from the phase entry, such a step is dropped with a warning.
 // A resume line the withdraw removed has its pause-record mark cleared; a failed clear drops a withdrawn step, keeps the line in State.ResumeLineWithdrawn and fails the call,
 // and a later call clears the mark although no withdraw runs.
-// A creel failure is recorded through creelFailed and answered with errCompactWithdrawHeld, which leaves the phase as it was for the next call to retry.
+// A creel failure is recorded through creelFailed and answered with errCompactWithdrawHeld, which leaves the phase as it was for the next call to retry;
+// a failure of the read after the withdraw also keeps a withdrawn resume line in State.ResumeLineWithdrawn.
 func (w *Watcher) withdrawQueuedCompact(st *State) error {
 	if st.Pending == nil || st.PhaseInjected {
 		return w.clearWithdrawnResumeLine(st)
@@ -1500,6 +1501,10 @@ func (w *Watcher) withdrawQueuedCompact(st *State) error {
 	if st.Pending.ID != 0 {
 		outcome, err := w.creel.InjectOutcome(st.Pending.ID)
 		if err != nil {
+			st.ResumeLineWithdrawn = st.ResumeLineWithdrawn || slices.ContainsFunc(withdrawn, func(message CreelWithdrawn) bool { return message.Subject == pauserecord.ResumeLine })
+			if saveErr := w.save(*st); saveErr != nil {
+				return saveErr
+			}
 			return w.holdOnCreelFailure(st, err)
 		}
 		inFlight = outcome.State == CreelQueued || outcome.State == CreelSending

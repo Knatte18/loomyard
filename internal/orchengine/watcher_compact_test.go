@@ -240,6 +240,7 @@ func TestCompact_BoundaryWithdrawsAStillQueuedCompact(t *testing.T) {
 			wantWithdraws int
 		}{
 			{"Typed_CompletesWithNoFurtherWithdraw", CreelInjected, 0, 1},
+			{"Unconfirmed_CompletesWithNoFurtherWithdraw", CreelUnconfirmed, 0, 1},
 			{"BackInTheQueue_IsWithdrawnAndCompletes", CreelQueued, 0, 2},
 			{"StillSendingPastTheHandoffTimeout_Completes", CreelSending, time.Hour, 2},
 		}
@@ -268,6 +269,56 @@ func TestCompact_BoundaryWithdrawsAStillQueuedCompact(t *testing.T) {
 					t.Errorf("last inject = %q, want a reload step queued after the compact", got)
 				}
 			})
+		}
+	})
+
+	t.Run("AWithdrawnResumeLineHasItsMarkClearedWhileTheCompactIsStillInFlight", func(t *testing.T) {
+		t.Parallel()
+		e, boundaryAt := compactingEnv(t)
+		e.noticedResumedEntry()
+		e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+		compactID := e.lastInjectID()
+		e.setOutcome(compactID, CreelOutcome{State: CreelSending})
+		e.landBoundary(boundaryAt, 150)
+		e.tick()
+		if resumeNoticed(e) {
+			t.Error("the resume-noticed mark is still set after the withdraw removed the resume line")
+		}
+		if st := e.state(); st.Phase != PhaseCompacting || st.Pending == nil || st.Pending.ID != compactID || st.ResumeLineWithdrawn {
+			t.Errorf("state = %+v, want compacting with the compact %d still pending and no withdrawn line kept", st, compactID)
+		}
+	})
+
+	t.Run("AFailedReadAfterTheWithdrawKeepsTheLineAndTheNextTickClearsIt", func(t *testing.T) {
+		t.Parallel()
+		e, boundaryAt := compactingEnv(t)
+		e.noticedResumedEntry()
+		e.c.withdrawn = []CreelWithdrawn{{ID: 5, Subject: pauserecord.ResumeLine}}
+		// A tick settles the start color's outcome read, so the next tick's only reads are the compact's.
+		for _, inject := range e.c.injects {
+			if inject.Step.Command != commandCompact {
+				e.setOutcome(inject.ID, CreelOutcome{State: CreelInjected})
+			}
+		}
+		e.tick()
+		// The first read, before the withdraw, succeeds; the second, after it, fails.
+		e.c.failNext("injectoutcome", nil)
+		e.c.failNext("injectoutcome", errBoom)
+		e.landBoundary(boundaryAt, 150)
+		e.tick()
+		st := e.state()
+		if st.Phase != PhaseCompacting || st.Pending == nil || !st.ResumeLineWithdrawn || !st.StuckByCreel {
+			t.Fatalf("state = %+v, want compacting with the step pending, the withdrawn line kept and the creel failure shown", st)
+		}
+		e.tick()
+		if resumeNoticed(e) {
+			t.Error("the resume-noticed mark is still set after the next tick")
+		}
+		if got := e.c.count(withdrawCall); got != 1 {
+			t.Errorf("withdraws = %d, want only the first tick's", got)
+		}
+		if st := e.state(); st.Phase != PhaseResuming || st.ResumeLineWithdrawn {
+			t.Errorf("state = %+v, want resuming with the withdrawn line cleared", st)
 		}
 	})
 
