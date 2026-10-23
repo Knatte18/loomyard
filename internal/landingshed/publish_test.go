@@ -54,7 +54,7 @@ func newTestDeps(t *testing.T) Deps {
 		StencilsDir:     t.TempDir(),
 		ScratchDir:      scratchDir,
 		Config: Config{
-			RequirePRToBase:    []string{"main"},
+			DeployBranches:     []string{"main"},
 			Squash:             true,
 			Conflict:           "sonnet",
 			ConflictTimeoutMin: 30,

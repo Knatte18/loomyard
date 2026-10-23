@@ -13,7 +13,7 @@ import (
 const (
 	openMapSetTemplate = "name: tmpl\nlabels: {}\n"
 	preservedMarker    = "# preserved (not in current template)"
-	listKeyTemplate    = "require_pr_to_base: [\"main\"] # bases\nsquash: true\n"
+	listKeyTemplate    = "deploy_branches: [\"main\"] # bases\nsquash: true\n"
 	nullBudgetTemplate = "plan_max_bounces: ~\nreview_max_bounces: 1\n"
 	roundListTemplate  = "plan_review: \"\" # rounds\n"
 	perNameSetTemplate = "names:\n  a: default a\nlists:\n  l: [x]\n"
@@ -134,28 +134,28 @@ func TestSetValues(t *testing.T) {
 		{
 			name:     "emptied list survives an unrelated set",
 			template: listKeyTemplate,
-			existing: "require_pr_to_base: []\nsquash: true\n",
+			existing: "deploy_branches: []\nsquash: true\n",
 			pairs:    []KV{{Key: "squash", Value: "false"}},
-			contains: []string{"require_pr_to_base: []"},
+			contains: []string{"deploy_branches: []"},
 		},
 		{
 			name:     "lengthened list survives an unrelated set",
 			template: listKeyTemplate,
-			existing: "require_pr_to_base: [a, b]\nsquash: true\n",
+			existing: "deploy_branches: [a, b]\nsquash: true\n",
 			pairs:    []KV{{Key: "squash", Value: "false"}},
-			contains: []string{"require_pr_to_base: [a, b]"},
+			contains: []string{"deploy_branches: [a, b]"},
 		},
 		{
 			name:     "list key can be set to the empty list",
 			template: listKeyTemplate,
-			pairs:    []KV{{Key: "require_pr_to_base", Value: "[]"}},
-			contains: []string{"require_pr_to_base: []"},
+			pairs:    []KV{{Key: "deploy_branches", Value: "[]"}},
+			contains: []string{"deploy_branches: []"},
 		},
 		{
 			name:     "list key can be set to two elements",
 			template: listKeyTemplate,
-			pairs:    []KV{{Key: "require_pr_to_base", Value: "[main, develop]"}},
-			contains: []string{"require_pr_to_base: [main, develop]"},
+			pairs:    []KV{{Key: "deploy_branches", Value: "[main, develop]"}},
+			contains: []string{"deploy_branches: [main, develop]"},
 		},
 		{
 			name:     "open map adds an entry and rewrites another",
@@ -475,9 +475,9 @@ func TestSetValues_Refusals(t *testing.T) {
 	}{
 		{
 			name:     "scalar for a list key",
-			template: "require_pr_to_base: [\"main\"]\n",
-			pair:     KV{Key: "require_pr_to_base", Value: "main"},
-			want:     []string{"list key require_pr_to_base"},
+			template: "deploy_branches: [\"main\"]\n",
+			pair:     KV{Key: "deploy_branches", Value: "main"},
+			want:     []string{"list key deploy_branches"},
 		},
 		{
 			name:     "entry into an open map that holds a list",

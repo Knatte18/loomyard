@@ -477,7 +477,7 @@ func buildConfigLong() string {
 		"with no editor, e.g.\n" +
 		"  lyx config board --set design_prefix=foo- --set readme=Home.md\n" +
 		"A list-valued key takes a YAML flow list and is replaced whole, e.g.\n" +
-		"  lyx config landing --set 'require_pr_to_base=[]'\n" +
+		"  lyx config landing --set 'deploy_branches=[]'\n" +
 		"A module may declare an open map, whose keys are the repo's own; --set\n" +
 		"adds or rewrites one entry of it with a scalar value, e.g.\n" +
 		"  lyx config board --set labels.quarry=\"glyphs and the quarry index\"\n" +

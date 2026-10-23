@@ -43,8 +43,8 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig(%q, \"landing\") = _, %v; want nil error", baseDir, err)
 	}
-	if len(cfg.RequirePRToBase) != 1 || cfg.RequirePRToBase[0] != "main" {
-		t.Errorf("cfg.RequirePRToBase = %v; want [\"main\"]", cfg.RequirePRToBase)
+	if len(cfg.DeployBranches) != 1 || cfg.DeployBranches[0] != "main" {
+		t.Errorf("cfg.DeployBranches = %v; want [\"main\"]", cfg.DeployBranches)
 	}
 	if !cfg.Squash {
 		t.Error("cfg.Squash = false; want true")
@@ -151,7 +151,7 @@ func TestConfig_TrailerBlock(t *testing.T) {
 	}
 }
 
-// TestMigrateConfig verifies a retired co_authored_by moves into engine_trailers as the claude line, an engine_trailers already set wins over it, and a migrated document passes unchanged.
+// TestMigrateConfig verifies a retired co_authored_by moves into engine_trailers as the claude line, an engine_trailers already set wins over it, a retired require_pr_to_base moves to deploy_branches keeping its value, and a migrated document passes unchanged.
 func TestMigrateConfig(t *testing.T) {
 	t.Parallel()
 
@@ -160,14 +160,20 @@ func TestMigrateConfig(t *testing.T) {
 		existing     string
 		wantTrailers map[string]string
 		wantLines    int
+		// wantDeploy is deploy_branches as fmt.Sprint renders the decoded value; empty skips the check.
+		wantDeploy string
 	}{
-		{"MovesToClaudeLine", "squash: true\nco_authored_by: Someone <s@x>\n", map[string]string{"claude": "Co-Authored-By: Someone <s@x>"}, 1},
-		{"ExistingEngineTrailersWins", "co_authored_by: Someone <s@x>\nengine_trailers: {}\n", map[string]string{}, 1},
-		{"ExistingEntriesKept", "co_authored_by: Someone <s@x>\nengine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 1},
-		{"EmptyValueDroppedWithoutEntry", "squash: true\nco_authored_by: \"  \"\n", nil, 1},
-		{"NonScalarValueDroppedWithoutEntry", "co_authored_by: [a, b]\n", nil, 1},
-		{"NoRetiredKeyUnchanged", "engine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 0},
-		{"RetiredPublishVerifyLeftToReconcilesPrune", "publish_verify: go test -tags tmux ./...\n", nil, 0},
+		{"MovesToClaudeLine", "squash: true\nco_authored_by: Someone <s@x>\n", map[string]string{"claude": "Co-Authored-By: Someone <s@x>"}, 1, ""},
+		{"ExistingEngineTrailersWins", "co_authored_by: Someone <s@x>\nengine_trailers: {}\n", map[string]string{}, 1, ""},
+		{"ExistingEntriesKept", "co_authored_by: Someone <s@x>\nengine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 1, ""},
+		{"EmptyValueDroppedWithoutEntry", "squash: true\nco_authored_by: \"  \"\n", nil, 1, ""},
+		{"NonScalarValueDroppedWithoutEntry", "co_authored_by: [a, b]\n", nil, 1, ""},
+		{"NoRetiredKeyUnchanged", "engine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 0, ""},
+		{"RetiredPublishVerifyLeftToReconcilesPrune", "publish_verify: go test -tags tmux ./...\n", nil, 0, ""},
+		{"RequirePRToBaseListMovesToDeployBranches", "require_pr_to_base: [main, develop]\nsquash: true\n", nil, 1, "[main develop]"},
+		{"RequirePRToBaseEmptyListStaysEmpty", "require_pr_to_base: []\nsquash: true\n", nil, 1, "[]"},
+		{"ExistingDeployBranchesWins", "require_pr_to_base: [old]\ndeploy_branches: [main]\n", nil, 1, "[main]"},
+		{"CoAuthoredByAndRequirePRToBaseBothMove", "co_authored_by: Someone <s@x>\nrequire_pr_to_base: [main]\n", map[string]string{"claude": "Co-Authored-By: Someone <s@x>"}, 2, "[main]"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -185,6 +191,14 @@ func TestMigrateConfig(t *testing.T) {
 			}
 			if _, ok := got["co_authored_by"]; ok {
 				t.Errorf("migrated document %q still holds co_authored_by", migrated)
+			}
+			if _, ok := got["require_pr_to_base"]; ok {
+				t.Errorf("migrated document %q still holds require_pr_to_base", migrated)
+			}
+			if tt.wantDeploy != "" {
+				if gotDeploy := fmt.Sprint(got["deploy_branches"]); gotDeploy != tt.wantDeploy {
+					t.Errorf("migrated deploy_branches = %s; want %s", gotDeploy, tt.wantDeploy)
+				}
 			}
 			var trailers struct {
 				EngineTrailers map[string]string `yaml:"engine_trailers"`
@@ -228,7 +242,7 @@ func TestMigrateConfig_InvalidDocument(t *testing.T) {
 func TestLoadConfig_InvalidKeys(t *testing.T) {
 	t.Parallel()
 
-	const wellFormed = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
+	const wellFormed = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
 		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nfixer: opus[high]\nfixer_timeout_min: 60\nmerge_fix_attempts: 2\n" +
 		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\nengine_trailers:\n  claude: \"Co-Authored-By: Claude <noreply@anthropic.com>\"\n"
 	cases := []struct {
@@ -332,7 +346,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 func TestLoadConfig_OptionalStringKeys(t *testing.T) {
 	t.Parallel()
 
-	const withoutKeys = "require_pr_to_base: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
+	const withoutKeys = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
 		"describe: sonnet[medium]\ndescribe_timeout_min: 30\n"
 	cases := []struct {
 		name, contents, want string

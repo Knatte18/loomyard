@@ -458,7 +458,7 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	}
 
 	landing := envkit.LandingDeps(dir)
-	landing.Config.RequirePRToBase = []string{landing.ParentBranch}
+	landing.Config.DeployBranches = []string{landing.ParentBranch}
 	// The local parent reads as ahead of its upstream, so Merge-In halts before it merges anything.
 	landing.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
 		return fabricengine.ParentTips{Local: "local-tip", Upstream: "upstream-tip", Relation: fabricengine.ParentAhead}, nil

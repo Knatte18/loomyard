@@ -184,7 +184,7 @@ func TestModules_LocalLayerRefusals(t *testing.T) {
 		allowed bool
 	}{
 		{"darn", "review_max_bounces: 0\n", "review_max_bounces", true},
-		{"landing", "require_pr_to_base: false\n", "require_pr_to_base", false},
+		{"landing", "deploy_branches: false\n", "deploy_branches", false},
 		{"language", "skills:\n  - scribe:a\n", "skills", false},
 		{"reed", "mouse: true\n", "mouse", false},
 		{"loom", "discussion_advisors:\n  - name: critic\n    model: sonnet[low]\n", "discussion_advisors", false},

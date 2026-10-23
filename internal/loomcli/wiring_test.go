@@ -299,8 +299,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 	})
 
 	// c.registry, c.runner and c.landingCfg are the three fields run.go passes to landingDeps.
-	// c.landingCfg is compared via reflect.DeepEqual, not !=, because landingshed.Config carries a
-	// RequirePRToBase []string field, which makes the struct non-comparable.
+	// c.landingCfg is compared via reflect.DeepEqual, not !=, because landingshed.Config carries a DeployBranches []string field, which makes the struct non-comparable.
 	t.Run("landing seam fields are populated", func(t *testing.T) {
 		if c.registry == nil {
 			t.Error("c.registry = nil; want the resolved model-spec registry")

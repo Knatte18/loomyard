@@ -106,9 +106,9 @@
 // landing.yaml's retired `publish_verify` key loads and is dropped, and `lyx config reconcile` prunes it.
 //
 // Landing.yaml's `deploy` is read only by batten's Land row, from the board dir like the rest of landing config and never from a pair.
-// It runs in the prime only for a parent branch in `require_pr_to_base` when the row runs.
+// It runs in the prime only for a parent branch in `deploy_branches` when the row runs.
 // An empty value runs nothing, and `lyx config` refuses a write to it from a pair, as for every hub-wide key, as a guard against a mistaken write rather than a determined agent.
-// Landing config is hub-wide: Merge-In and Finalize read it from the board dir, never from a task worktree's `_lyx/config/`, and `lyx config` refuses a write to it from a pair, so a task cannot weaken the key, or set `require_pr_to_base` or `squash`, through its own tree.
+// Landing config is hub-wide: Merge-In and Finalize read it from the board dir, never from a task worktree's `_lyx/config/`, and `lyx config` refuses a write to it from a pair, so a task cannot weaken the key, or set `deploy_branches` or `squash`, through its own tree.
 // A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
 // Merge-In and Finalize persist their verify failure.
@@ -124,10 +124,9 @@
 // An unreadable log or one without the line leaves the reason unchanged, and the checks run no flake rerun.
 // Merge-In and Finalize remove the record once their landing call passes.
 //
-// require_pr_to_base is a list of base-branch names, not a bool, because whether a pull request is
-// needed depends on which parent branch a task targets -- a per-task runtime fact no static profile
-// setting can encode as one flag. A bool would force (or skip) a pull request on every task-to-task
-// merge alike, which a stacked branch whose own parent is not the trunk branch already disproves.
+// deploy_branches is read only by batten's Land row, to decide whether a landing deploys:
+// a landing into a listed base branch runs the hub-wide `deploy` command, and an empty list deploys nothing.
+// It is a list of base-branch names, not a bool, because tasks branch off other tasks and only a landing into a listed branch is a deploy.
 //
 // Finalize always merges the parent branch into the task worktree and then merges the task branch into the parent pair itself.
 // Each merge of the parent, the retry after a merge-in-required error included, runs the same three clean-tree checks and the same post-merge verify gate as Merge-In before the parent-side merge,

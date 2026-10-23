@@ -37,7 +37,7 @@ func newMergeInDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 		return shuttleengine.Result{}, nil
 	}}
 	deps.Config = landingshed.Config{
-		RequirePRToBase:    []string{"main"},
+		DeployBranches:     []string{"main"},
 		Conflict:           "claude:test-model",
 		ConflictTimeoutMin: 1,
 	}

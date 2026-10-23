@@ -40,8 +40,8 @@ const (
 type LandingSettings struct {
 	// Deploy is the shell command run in the prime after a landing; empty runs nothing.
 	Deploy string
-	// RequirePRToBase lists the base branches a landing into which is deployed.
-	RequirePRToBase []string
+	// DeployBranches lists the base branches a landing into which is deployed; an empty list deploys nothing.
+	DeployBranches []string
 }
 
 // DeployResult is how a deploy command ended once its shell started.
@@ -285,8 +285,8 @@ func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (step, 
 	if settings.Deploy == "" {
 		return "", "", recordsStop, nil
 	}
-	if !slices.Contains(settings.RequirePRToBase, parent) {
-		logger.Info("battenshed: parent branch is not in require_pr_to_base; skipping deploy", "producer", p.name, "slug", p.slug, "parent", parent)
+	if !slices.Contains(settings.DeployBranches, parent) {
+		logger.Info("battenshed: parent branch is not in deploy_branches; skipping deploy", "producer", p.name, "slug", p.slug, "parent", parent)
 		return "", "", recordsStop, nil
 	}
 

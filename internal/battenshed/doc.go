@@ -180,7 +180,7 @@
 // it takes the hub-level land lock for its whole body, polling a contended one from one second doubling to thirty with no time limit;
 // it checks the prime, where a child whose parent branch is not the prime's branch skips the pull and deploy and a prime with uncommitted tracked paths is waited on for ten minutes;
 // it pulls the prime under the prime lock and releases that lock at once, since batten never pushes the prime;
-// outside the prime lock it runs the landing config's hub-wide `deploy` command in the prime, for a parent branch in `require_pr_to_base` only, with a thirty-minute timeout and its output in the row's deploy log;
+// outside the prime lock it runs the landing config's hub-wide `deploy` command in the prime, for a parent branch in `deploy_branches` only, with a thirty-minute timeout and its output in the row's deploy log;
 // it writes the ready snapshot before pruning the board, so the tasks the prune made ready are named exactly once across a restart; and it posts one landing notice per batten run, naming the tasks the prune made ready when there are any.
 // The two locks differ in what they hold: the land lock serialises whole landings, the prime lock only the pull.
 // A failed step is Stuck naming it, with one failure notice per episode.
