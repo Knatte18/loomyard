@@ -218,6 +218,15 @@ func TestSetOwners(t *testing.T) {
 			if origin.Prime != tt.wantPrime {
 				t.Errorf("origin prime owner = %q; want %q", origin.Prime, tt.wantPrime)
 			}
+			if tt.wantSubject != "" {
+				readme, err := os.ReadFile(filepath.Join(f.boardDir, "README.md"))
+				if err != nil {
+					t.Fatalf("read README.md: %v", err)
+				}
+				if want := "Prime owner: `" + tt.wantPrime + "`.\n"; !strings.Contains(string(readme), want) {
+					t.Errorf("README.md = %q; want it to contain %q", readme, want)
+				}
+			}
 			if tt.wantClaim != "" {
 				tasks, err := ParseBoardTasks([]byte(gitkit.Git(t, f.bare, "show", "main:board.json")))
 				if err != nil {

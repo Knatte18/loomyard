@@ -104,6 +104,7 @@ lyx board find --text retry backoff
 lyx board find --label bug retry
 ```
 
+`list` names the machine that owns the hub's prime: `prime_owner` in its JSON, and the first line of its `--text` output.
 List every entry, with `--text` for a one-line-per-entry scan that opens with each entry's handle and shows its age and time since its last revision, `--sort age` or `--sort revised` to put the longest-lying entries first, and fetch one entry in full:
 
 ```
