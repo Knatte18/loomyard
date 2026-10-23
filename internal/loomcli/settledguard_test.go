@@ -11,7 +11,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // TestSettledSegmentGuard covers which gotos the guard admits and refuses over a loom producer list and run directories holding records.
@@ -51,18 +50,13 @@ func TestSettledSegmentGuard(t *testing.T) {
 		}
 		return &loomshed.AmendmentRecord{Titles: []string{"Keep the cache"}, WrittenAt: parsed}
 	}
-	failureFor := func(target, writtenAt string) *verifytree.PublishFailure {
-		return &verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Row: "Webster-Burler-Fix", Target: target, WrittenAt: writtenAt}
-	}
 
 	tests := []struct {
 		name string
 		// bouncer is the Bouncer row whose run directory holds the files below.
 		bouncer string
 		// files maps a file name in that run directory to its content.
-		files      map[string]string
-		failure    *verifytree.PublishFailure
-		failureErr error
+		files map[string]string
 		// amendment is the plan amendment record, nil when none exists; amendmentErr is its read error.
 		amendment    *loomshed.AmendmentRecord
 		amendmentErr error
@@ -102,28 +96,8 @@ func TestSettledSegmentGuard(t *testing.T) {
 		{name: "row outside every review segment", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled}, target: "Plan-Write"},
 		{name: "segment holding no Bouncer", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled}, target: "PR-Gate"},
 		{
-			name: "verify retry onto the failure's target", bouncer: "Webster-Bouncer", files: map[string]string{"settle-record.json": settled},
-			failure: failureFor("Webster-Burler-Review", after), target: "Webster-Burler-Review",
-		},
-		{
-			name: "verify retry bypass leaves the other row refused", bouncer: "Webster-Bouncer", files: map[string]string{"settle-record.json": settled},
-			failure: failureFor("Webster-Burler-Review", after), target: "Webster-Burler-Fix", wantRefusal: []string{"goto --to Webster-Bouncer", "goto --to Webster\" re-runs the writer"},
-		},
-		{
-			name: "failure written before the settle", bouncer: "Webster-Bouncer", files: map[string]string{"settle-record.json": settled},
-			failure: failureFor("Webster-Burler-Review", before), target: "Webster-Burler-Review", wantRefusal: []string{"goto --to Webster-Bouncer"},
-		},
-		{
-			name: "failure with no write time", bouncer: "Webster-Bouncer", files: map[string]string{"settle-record.json": settled},
-			failure: failureFor("Webster-Burler-Review", ""), target: "Webster-Burler-Review",
-		},
-		{
 			name: "settle record unreadable as JSON", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": "{"},
 			target: "Plan-Burler-Review", wantErr: true,
-		},
-		{
-			name: "failure record that does not decode", bouncer: "Webster-Bouncer", files: map[string]string{"settle-record.json": settled},
-			failureErr: errors.New("decode publish failure"), target: "Webster-Burler-Review", wantErr: true,
 		},
 		{
 			name: "amendment written after the judged round started", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": roundStarted},
@@ -167,12 +141,7 @@ func TestSettledSegmentGuard(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			guard := settledSegmentGuard(producers, reviewsDir, func() (verifytree.PublishFailure, bool, error) {
-				if tt.failure == nil {
-					return verifytree.PublishFailure{}, false, tt.failureErr
-				}
-				return *tt.failure, true, nil
-			}, func() (loomshed.AmendmentRecord, bool, error) {
+			guard := settledSegmentGuard(producers, reviewsDir, func() (loomshed.AmendmentRecord, bool, error) {
 				if tt.amendment == nil {
 					return loomshed.AmendmentRecord{}, false, tt.amendmentErr
 				}
