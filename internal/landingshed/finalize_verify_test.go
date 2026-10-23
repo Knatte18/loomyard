@@ -131,9 +131,9 @@ func TestFinalizeVerify_Fail(t *testing.T) {
 	if len(fx.seats.tables) != 1 {
 		t.Errorf("fixer sessions = %d; want 1", len(fx.seats.tables))
 	}
-	failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
-	if err != nil || !found || failure.Kind != verifytree.FailureKindLanding || failure.Row != finalizeName || failure.LogPath != log {
-		t.Errorf("landing failure record = %+v, %v, %v; want kind %s from row %s naming %s", failure, found, err, verifytree.FailureKindLanding, finalizeName, log)
+	failure, found, err := verifytree.ReadLandingFailure(fx.gate.paths)
+	if err != nil || !found || failure.Kind != verifytree.FailureKindLanding || failure.LogPath != log {
+		t.Errorf("landing failure record = %+v, %v, %v; want kind %s naming %s", failure, found, err, verifytree.FailureKindLanding, log)
 	}
 	if len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
 		t.Errorf("merge calls = %d, push calls = %d; want none after a halted gate", len(fx.merger.calls), len(fx.merger.pushCalls))

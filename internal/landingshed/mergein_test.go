@@ -531,14 +531,14 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 		if outcome != shedengine.Stuck || !ptr.Halt || !strings.HasPrefix(ptr.Reason, LandingStopPrefix) || len(fx.seats.tables) != 1 {
 			t.Fatalf("Call() = %q, %+v with %d fixer session(s); want the fixer spawned and a halting Stuck opening with %q", outcome, ptr, len(fx.seats.tables), LandingStopPrefix)
 		}
-		failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
+		failure, found, err := verifytree.ReadLandingFailure(fx.gate.paths)
 		if err != nil || !found {
-			t.Fatalf("ReadPublishFailure() = %v, %v; want a record", found, err)
+			t.Fatalf("ReadLandingFailure() = %v, %v; want a record", found, err)
 		}
 		// The log names no failing tier, so the record takes the highest tier of the landing list.
 		wantTier := slices.Max(fixedGateTierLists["landing"])
-		if failure.Row != "Merge-In" || failure.Target != "" || failure.MergeCommit != "m1" || failure.Kind != verifytree.FailureKindLanding || failure.Tier != wantTier {
-			t.Errorf("failure record = %+v; want row Merge-In, no target, merge commit m1, kind landing, tier %d", failure, wantTier)
+		if failure.MergeCommit != "m1" || failure.Kind != verifytree.FailureKindLanding || failure.Tier != wantTier {
+			t.Errorf("failure record = %+v; want merge commit m1, kind landing, tier %d", failure, wantTier)
 		}
 		if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
 			t.Error("a merge record was written after a failed verify")
@@ -590,12 +590,9 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 				if outcome != shedengine.Stuck || !strings.HasPrefix(ptr.Reason, LandingStopPrefix) || len(fx.seats.tables) != 1 {
 					t.Fatalf("Call() = %q, %+v with %d fixer session(s); want the fixer spawned and a halting Stuck", outcome, ptr, len(fx.seats.tables))
 				}
-				failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
+				failure, found, err := verifytree.ReadLandingFailure(fx.gate.paths)
 				if err != nil || !found {
-					t.Fatalf("ReadPublishFailure() = %v, %v; want a record", found, err)
-				}
-				if failure.Target != "" || failure.Row != "Merge-In" {
-					t.Errorf("failure record = %+v; want row Merge-In and no target", failure)
+					t.Fatalf("ReadLandingFailure() = %v, %v; want a record", found, err)
 				}
 				got := verifytree.FailureTrace{Cards: failure.Cards, LaterRange: failure.LaterRange, Untraced: failure.Untraced}
 				if !reflect.DeepEqual(got, tt.wantTrace) {
@@ -611,13 +608,13 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 	t.Run("a passing verify clears an earlier failure record", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		if err := verifytree.WritePublishFailure(fx.gate.paths, verifytree.PublishFailure{Row: "Merge-In"}); err != nil {
+		if err := verifytree.WriteLandingFailure(fx.gate.paths, verifytree.LandingFailure{Kind: verifytree.FailureKindLanding}); err != nil {
 			t.Fatal(err)
 		}
 
 		fx.call(t)
 
-		if _, found, _ := verifytree.ReadPublishFailure(fx.gate.paths); found {
+		if _, found, _ := verifytree.ReadLandingFailure(fx.gate.paths); found {
 			t.Error("the earlier failure record is still present after a passing verify")
 		}
 	})

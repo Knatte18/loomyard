@@ -157,7 +157,7 @@ func (fx *finalizeGateFixture) requireLanded(t *testing.T, outcome shedengine.Ou
 	if _, found := fx.attempts(t); found {
 		t.Error("the attempt record outlived a Done")
 	}
-	if _, found, _ := verifytree.ReadPublishFailure(fx.gate.paths); found {
+	if _, found, _ := verifytree.ReadLandingFailure(fx.gate.paths); found {
 		t.Error("the landing failure record outlived a passing gate")
 	}
 }

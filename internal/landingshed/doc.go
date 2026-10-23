@@ -84,7 +84,7 @@
 // The mark is display only: a failing or absent callback changes no Stuck reason, error or verify outcome.
 // The record is keyed on the tree, so the verify runs after a resolved conflict, after new parent commits and after a crash between a merge and its verify, and a no-op merge onto a verified tree skips it.
 // A missing command logs a warning and proceeds.
-// A failed verify writes the Publish failure record with row `Merge-In`, and a passing one removes it.
+// A failed verify writes the landing failure record, and a passing one, or a skip over a tree recorded as passed, removes it.
 // After the gate Merge-In aligns: the parent brought in commits when its merged tip adds something over the aligned tip, or over the task's fork point from the parent when the merge record holds none.
 // A merge that brought none over a passing gate is aligned with no fixer and advances the aligned tip to the merged tip.
 // Parent commits brought in, or a failing gate, run the merge fixer in merge-in mode on the attempts `merge_fix_attempts` leaves the entry; a `fixed` report over a passing gate advances the aligned tip and is Done.
@@ -112,7 +112,7 @@
 // A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
 // Merge-In and Finalize persist their verify failure.
-// When a `landing` call fails with a non-zero exit, Merge-In or Finalize writes the verifytree Publish failure record with the failing gate as its kind, the failing tier, the row that ran the verify, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
+// When a `landing` call fails with a non-zero exit, Merge-In or Finalize writes the verifytree landing failure record with the failing gate as its kind, the failing tier, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
 // The tier is the last failing tier the log's `lyx gate test` summary lines name; a log without one, such as a refusal before the first tier, takes the highest tier of the gate's list, read through the told Deps.GateTiers.
 // The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Finalize takes it from its own merge.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.

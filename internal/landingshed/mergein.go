@@ -385,7 +385,7 @@ func (m *MergeIn) haltStop(ctx context.Context, reason string) (shedengine.Outco
 // haltSpent halts the entry whose attempts are spent over a gate that still fails, naming the failed gate's log.
 func (m *MergeIn) haltSpent(ctx context.Context, gateReason string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	log := singleLine(gateReason)
-	failure, found, err := verifytree.ReadPublishFailure(m.gate.paths)
+	failure, found, err := verifytree.ReadLandingFailure(m.gate.paths)
 	if err != nil {
 		return m.alignError(ctx, err)
 	}

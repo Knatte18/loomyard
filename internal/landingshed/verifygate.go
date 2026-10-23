@@ -41,7 +41,7 @@ type verifyGate struct {
 	recorder *failureRecorder
 }
 
-// failureRecorder holds what the gate needs to write the Publish failure record.
+// failureRecorder holds what the gate needs to write the landing failure record.
 // mergeCommit is set by the producer after its merge-in and read when a verify fails.
 type failureRecorder struct {
 	failingTests func(log string) []verifytree.FailedTest
@@ -51,19 +51,17 @@ type failureRecorder struct {
 	mergeCommit  string
 }
 
-// recordFailure writes the Publish failure record for a verify of the given kind, run by the producer row row, that ended in result.
+// recordFailure writes the landing failure record for a verify of the given kind that ended in result.
 // The kind is the name of the gate that failed, and the record's tier is the last failing tier the log's summary lines name;
 // a log without one, such as a refusal before the first tier, takes the highest tier of the gate's list.
 // A result that is not a failed run, a timeout and a shell that could not start write none, since none of them names a failing test.
-// The record names no target.
 // It returns whether it wrote the record: a write failure is logged, reported as false and changes nothing else.
-func (g verifyGate) recordFailure(kind verifytree.FailureKind, row string, result verifytree.Result) bool {
+func (g verifyGate) recordFailure(kind verifytree.FailureKind, result verifytree.Result) bool {
 	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.ExitCode < 0 {
 		return false
 	}
-	failure := verifytree.PublishFailure{
+	failure := verifytree.LandingFailure{
 		Kind:        kind,
-		Row:         row,
 		LogPath:     result.Log,
 		MergeCommit: g.recorder.mergeCommit,
 		WrittenAt:   g.now().UTC().Format(time.RFC3339),
@@ -71,7 +69,7 @@ func (g verifyGate) recordFailure(kind verifytree.FailureKind, row string, resul
 	if g.recorder.head != nil {
 		head, err := g.recorder.head()
 		if err != nil {
-			logger.Warn("landingshed: could not read HEAD for the publish failure record", "cause", err)
+			logger.Warn("landingshed: could not read HEAD for the landing failure record", "cause", err)
 		}
 		failure.Head = head
 	}
@@ -97,26 +95,26 @@ func (g verifyGate) recordFailure(kind verifytree.FailureKind, row string, resul
 	} else {
 		list, err := g.tiers(string(kind))
 		if err != nil || len(list) == 0 {
-			logger.Warn("landingshed: could not read the gate's tiers for the publish failure record", "gate", kind, "tiers", len(list), "cause", err)
+			logger.Warn("landingshed: could not read the gate's tiers for the landing failure record", "gate", kind, "tiers", len(list), "cause", err)
 			return false
 		}
 		failure.Tier = slices.Max(list)
 	}
-	if err := verifytree.WritePublishFailure(g.paths, failure); err != nil {
-		logger.Warn("landingshed: could not write the publish failure record", "kind", kind, "cause", err)
+	if err := verifytree.WriteLandingFailure(g.paths, failure); err != nil {
+		logger.Warn("landingshed: could not write the landing failure record", "kind", kind, "cause", err)
 		return false
 	}
 	return true
 }
 
-// clearFailure removes the Publish failure record of an earlier failed verify.
+// clearFailure removes the landing failure record of an earlier failed verify.
 // It does nothing for a gate with no recorder, and a removal failure is logged.
 func (g verifyGate) clearFailure() {
 	if g.recorder == nil {
 		return
 	}
-	if err := verifytree.RemovePublishFailure(g.paths); err != nil {
-		logger.Warn("landingshed: could not remove the publish failure record", "cause", err)
+	if err := verifytree.RemoveLandingFailure(g.paths); err != nil {
+		logger.Warn("landingshed: could not remove the landing failure record", "cause", err)
 	}
 }
 
@@ -204,6 +202,7 @@ func (g verifyGate) readBase(producer string) (string, error) {
 //
 // It returns a non-empty Stuck reason naming the `landing` gate when the call fails or the tree is dirty,
 // a non-nil error for an infrastructure fault or a cancellation, and ("", nil) when the producer may proceed.
+// A pass, and a skip over a tree already recorded as passed, remove a landing failure record an earlier failed call left.
 func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (string, error) {
 	if g.command == nil {
 		return "", nil
@@ -229,8 +228,12 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
-	g.recordFailure(verifytree.FailureKindLanding, producer, result)
-	return g.verdict(result, "landing gate", producer, parentBranch)
+	g.recordFailure(verifytree.FailureKindLanding, result)
+	reason, err := g.verdict(result, "landing gate", producer, parentBranch)
+	if reason == "" && err == nil {
+		g.clearFailure()
+	}
+	return reason, err
 }
 
 // watchdogClause returns the clause a failed verify's reason carries when the log at logPath holds the CPU watchdog's line, and empty for an unreadable log or one without it.

@@ -699,7 +699,7 @@ func (fz *Finalize) runFixer(ctx context.Context, rec FixerAttempts) (shedengine
 
 // failedGateLog names the log of the landing gate's failure: the failure record's log when one was written, and the gate's own reason otherwise.
 func (fz *Finalize) failedGateLog(gateReason string) string {
-	if failure, found, err := verifytree.ReadPublishFailure(fz.gate.paths); err == nil && found {
+	if failure, found, err := verifytree.ReadLandingFailure(fz.gate.paths); err == nil && found {
 		return failure.LogPath
 	}
 	return singleLine(gateReason)

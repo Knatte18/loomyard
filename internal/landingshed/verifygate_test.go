@@ -221,10 +221,13 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 		wantReasonExact func(logPath string) string
 		wantReasonHas   []string
 		wantErrHas      string
+		// staleRecord, when set, leaves a landing failure record from an earlier failed call that the verdict must remove.
+		staleRecord bool
 	}{
 		{name: "pass", command: "go test ./...", site: "Publish", result: verifytree.Result{Status: verifytree.StatusPassed}},
 		{name: "site label follows the producer", command: "true", site: "Finalize", result: verifytree.Result{Status: verifytree.StatusPassed}},
 		{name: "skipped proceeds", command: "true", site: "Finalize", result: verifytree.Result{Status: verifytree.StatusSkipped, Tree: "abc"}},
+		{name: "skipped over a recorded pass removes a present failure record", command: "true", site: "Finalize", result: verifytree.Result{Status: verifytree.StatusSkipped, Tree: "abc"}, staleRecord: true},
 		{
 			name: "failed", command: "false", site: "Publish",
 			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3, Log: failedLog},
@@ -276,7 +279,21 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			f := newGateFixture(t, tc.command, nil)
 			f.gate.hold = hold
 			f.fake.result = result
+			if tc.staleRecord {
+				f.gate.recorder = &failureRecorder{}
+				if err := os.MkdirAll(f.paths.Dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := verifytree.WriteLandingFailure(f.paths, verifytree.LandingFailure{Kind: verifytree.FailureKindLanding}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			reason, err := f.gate.check(context.Background(), tc.site, "main")
+			if tc.staleRecord {
+				if _, found, readErr := verifytree.ReadLandingFailure(f.paths); readErr != nil || found {
+					t.Errorf("ReadLandingFailure() = (_, %v, %v); want the stale record removed", found, readErr)
+				}
+			}
 
 			if f.fake.verifyCalls != 1 || f.fake.command != tc.command || f.fake.paths != f.paths || f.fake.site != (verifytree.Site{Label: tc.site, Hold: hold}) {
 				t.Errorf("verify got calls=%d command=%q paths=%+v site=%+v", f.fake.verifyCalls, f.fake.command, f.fake.paths, f.fake.site)

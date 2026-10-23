@@ -172,10 +172,10 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 
 // failureRecordPath returns the landing failure record's path when a failed gate left one, and "" before any gate has failed.
 func (f fixerRun) failureRecordPath() string {
-	if _, err := os.Stat(f.gate.paths.PublishFailure); err != nil {
+	if _, err := os.Stat(f.gate.paths.LandingFailure); err != nil {
 		return ""
 	}
-	return f.gate.paths.PublishFailure
+	return f.gate.paths.LandingFailure
 }
 
 // archiveStaleReport renames a report an earlier fixer run left at reportPath, so a new session never starts beside a finished report.
@@ -275,7 +275,7 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 		return passed, nil
 	}
 	if s.rec.Spent >= s.cap {
-		failure, found, err := verifytree.ReadPublishFailure(gate.paths)
+		failure, found, err := verifytree.ReadLandingFailure(gate.paths)
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
