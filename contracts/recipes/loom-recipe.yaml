@@ -88,6 +88,8 @@
 
 version: 1
 entry: Preflight
+# The arbiter's prompt names this row once the plan is approved: a decision that amends the plan routes here.
+amendment_target: Plan-Burler-Review
 terminals:
   - Friction-Reflect
 

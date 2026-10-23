@@ -88,6 +88,7 @@ Its production import set is one-way: it imports `internal/shedrecipe`, `interna
 
 **Document shape.** A recipe document decodes straight into the package's own `Recipe` type, with no intermediate struct.
 It requires a `version` (currently only `1` is accepted), a told `entry` producer name, a told `terminals` list, and a `producers` list.
+It may also set an optional top-level `amendment_target`, the name of the row a plan amendment routes to; `Parse` decodes it without checking that it names a row, since routing is `shedengine`'s and `shedcheck`'s.
 Each row carries `name`, `engine`, `config`, `on_done`, `on_stuck`, `on_reroute`, `segment`, and `max_bounces` — the same field set `shedengine.ProducerDef` itself carries, `segment` included per the reversal recorded above.
 
 **Four exported functions.** `Parse` decodes a byte slice into a `Recipe` and runs every shape check the value must pass before `Build` may consume it.
