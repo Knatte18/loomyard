@@ -732,40 +732,34 @@ section. It re-runs the discussion check over the record, restores the record
 when the check flags it, and commits the record. It resumes nothing and
 changes neither the support log nor the plan.
 
-After the commit it notifies the run's other live agents; the envelope
-lists "notified" and "notice_errors".
+It then notifies the run's other live agents ("notified", "notice_errors").
 
---by is parent, operator or arbiter; arbiter is the run's own arbiter strand's
-label, refused from any other caller. --title, --decision and --rationale are
-all required. It is refused for a named session other than the run's recorded
-parent or, for --by arbiter, its arbiter: ask the parent to run it, or run it
-from the operator's own shell. It is refused while Discussion-Write runs;
-message that session with the decision instead.
+--by is parent, operator or arbiter; arbiter is refused from any caller but the
+run's own arbiter strand. --title, --decision and --rationale are all required.
+A named session other than the run's recorded parent or, for --by arbiter, its
+arbiter is refused: ask the parent, or run it from the operator's own shell.
+It is refused while Discussion-Write runs; message that session instead.
 
 On a darn run it works once Darn-Write has validated and committed its record,
-also while Darn-Write runs. It refuses a record that is missing, not
-committed, differing from its committed copy or missing an entry its history
-held, and a commit after which the committed record lacks the entry.
-That bounds the append to a record the writer validated and has not touched,
-and to an entry that reached the fabric.
+also while Darn-Write runs. It refuses a record that is missing, uncommitted,
+differing from its committed copy or missing an entry its history held, and a
+commit after which the committed record lacks the entry.
 
 --amends-plan marks a decision that amends the approved plan: the call also
 appends the entry's title to the plan amendment record, and one commit lands
-the entry and the record. It is refused on a darn run and while the current
-generation has no approved plan, where the decision is recorded without the
-flag. When the append or the commit fails, both records are put back, and
-nothing is left half recorded. After a successful call the parent runs
+both. It is refused on a darn run and while the current generation has no
+approved plan; record the decision without the flag there. A failed append or
+commit puts both records back. Afterwards the parent runs
 "lyx loom goto --to Plan-Burler-Review" and "lyx loom resume".
 
 A decision that adds, changes or removes a PATTERN entry also passes
 --pattern-entry <PATTERN-id>, --pattern-action adds|changes|removes and, for
-adds or changes, --pattern-text <new entry text>. One call then appends the
-entry and one bullet of the record's "## PATTERN changes" section, creating the
-section when the record has none; the bullet is checked with the record.
+adds or changes, --pattern-text <new entry text>. The call then also appends
+one bullet to the record's "## PATTERN changes" section, creating it when
+absent.
 
 Example:
-  lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."
-  lyx loom decision add <slug> --by parent --title "..." --decision "..." --rationale "..." --pattern-entry PATTERN-x --pattern-action adds --pattern-text "..."`,
+  lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
