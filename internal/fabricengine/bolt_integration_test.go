@@ -173,7 +173,7 @@ func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
 
 // TestBolt_CommitWritten asserts that CommitWritten commits only the paths write returns, leaving
 // other dirty files for the next sync, and that a write error is returned as is with HEAD unchanged.
-// It also pins deletion staging, the empty path list and the SkipGit gate.
+// It also pins deletion staging, a path HEAD never held being left out, an unborn HEAD, the empty path list and the SkipGit gate.
 func TestBolt_CommitWritten(t *testing.T) {
 	t.Parallel()
 
