@@ -1,6 +1,6 @@
 # Webster contract: the fork-based implementer loop's cross-module contracts
 
-> **Status: Contract — pinned.** This is webster's own consumer-facing cross-module contract — what other modules may rely on, nothing more — a durable reference doc, kept, not deleted on landing. webster's own internals (the fork-based loop shape, the bracket-verb sequence, crash/resume, the verify gate and its fixer fork, and everything else webster keeps to itself) live in `internal/websterengine`'s package documentation, not here.
+> **Status: Contract — pinned.** This is webster's own consumer-facing cross-module contract — what other modules may rely on, nothing more — a durable reference doc, kept, not deleted on landing. webster's own internals (the fork-based loop shape, the bracket-verb sequence, crash/resume, the verify gate and its fixers, and everything else webster keeps to itself) live in `internal/websterengine`'s package documentation, not here.
 
 ## What it is
 
