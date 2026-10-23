@@ -79,6 +79,37 @@ func TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting(t *testing.T) {
 	}
 }
 
+// TestPrimeOwnerReadAndRendered pins Board.PrimeOwner for an absent board directory and a recorded owner,
+// and that the README a write renders states the recorded prime owner.
+func TestPrimeOwnerReadAndRendered(t *testing.T) {
+	t.Parallel()
+	missing := filepath.Join(t.TempDir(), "absent")
+	absent := boardengine.New(boardengine.Config{Path: missing, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+	if got, err := absent.PrimeOwner(); err != nil || got != "" {
+		t.Errorf("PrimeOwner() on an absent board directory = %q, %v; want empty and no error", got, err)
+	}
+
+	boardPath := t.TempDir()
+	seed := `{"version":1,"prime_owner":"neve","entries":[]}`
+	if err := os.WriteFile(filepath.Join(boardPath, "board.json"), []byte(seed), 0o644); err != nil {
+		t.Fatalf("seed board.json: %v", err)
+	}
+	w := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+	if got, err := w.PrimeOwner(); err != nil || got != "neve" {
+		t.Errorf("PrimeOwner() = %q, %v; want neve and no error", got, err)
+	}
+	if _, err := w.UpsertTask(map[string]any{"slug": "test-task", "title": "Test Task", "labels": bugLabels}); err != nil {
+		t.Fatalf("UpsertTask failed: %v", err)
+	}
+	readme, err := os.ReadFile(filepath.Join(boardPath, "Home.md"))
+	if err != nil {
+		t.Fatalf("read Home.md: %v", err)
+	}
+	if !strings.Contains(string(readme), "Prime owner: `neve`.\n") {
+		t.Errorf("Home.md = %q; want it to state the prime owner neve", readme)
+	}
+}
+
 func TestRerender(t *testing.T) {
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true}

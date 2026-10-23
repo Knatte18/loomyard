@@ -108,7 +108,7 @@ func BenchmarkRender(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				if _, err := boardengine.Render(tasks, boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}, time.Now()); err != nil {
+				if _, err := boardengine.Render(tasks, "", boardengine.Outputs{Readme: "Home.md", DesignPrefix: "proposal-"}, time.Now()); err != nil {
 					b.Fatal(err)
 				}
 			}

@@ -186,7 +186,7 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 	if err := store.Save(); err != nil {
 		return nil, nil, fmt.Errorf("save store: %w", err)
 	}
-	rendered, err := renderOwnerWrite(boardDir, store.Tasks())
+	rendered, err := renderOwnerWrite(boardDir, store.Tasks(), store.primeOwner)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -195,19 +195,19 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 
 // renderOwnerWrite renders the board's output files when its config loads, and returns the paths the render wrote or removed.
 // A board whose config does not load is left unrendered, and the next write renders it.
-func renderOwnerWrite(boardDir string, tasks []Task) ([]string, error) {
+func renderOwnerWrite(boardDir string, tasks []Task, primeOwner string) ([]string, error) {
 	cfg, err := LoadConfig(configengine.Dirs{Board: boardDir}, "board")
 	if err != nil {
 		logger.Warn("boardengine: the owner write is not rendered, since the board config did not load", "path", boardDir, "error", err)
 		return nil, nil
 	}
 	now := time.Now()
-	files, err := Render(tasks, cfg.Outputs(), now)
+	files, err := Render(tasks, primeOwner, cfg.Outputs(), now)
 	if err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 	previous := readRenderManifest(boardDir)
-	if err := RenderToDisk(boardDir, tasks, cfg.Outputs(), now); err != nil {
+	if err := RenderToDisk(boardDir, tasks, primeOwner, cfg.Outputs(), now); err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}
 	var paths []string
