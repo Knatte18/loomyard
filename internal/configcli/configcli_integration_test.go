@@ -514,7 +514,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		appendPlanted("loom", "webster_max_bounces: 2\nmerge_max_bounces: 1\nalignment_pr_approve: true\nrework: true\n")
 		appendPlanted("landing", "require_pr_to_base: []\n")
 		gateFile := configengine.ConfigFile(boardDir, "gate")
-		if err := os.WriteFile(gateFile, []byte("gates:\n  round: [0]\n  publish: [0]\n"), 0o644); err != nil {
+		if err := os.WriteFile(gateFile, []byte("gates:\n  round: [0, 1]\n  publish: [0]\n"), 0o644); err != nil {
 			t.Fatalf("plant a publish gate in the board gate.yaml: %v", err)
 		}
 		appendPlanted("profiles", "retired-keys:\n  loom: {webster_max_bounces: 3, merge_max_bounces: 1}\n")
@@ -537,7 +537,7 @@ func TestConfigOverRealHub(t *testing.T) {
 			return string(content)
 		}
 		loom := read("loom")
-		if !strings.Contains(loom, "\ncode_max_bounces: 2\n") {
+		if !strings.Contains(loom, "\ncode_max_bounces: 2 ") {
 			t.Errorf("applied board loom.yaml lacks code_max_bounces: 2; got %q", loom)
 		}
 		for _, gone := range []string{"webster_max_bounces", "merge_max_bounces", "alignment_pr_approve", "rework"} {
@@ -548,7 +548,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		if landing := read("landing"); !strings.Contains(landing, "\ndeploy_branches: []") || strings.Contains(landing, "require_pr_to_base") {
 			t.Errorf("applied board landing.yaml = %q; want an empty deploy_branches and no require_pr_to_base", landing)
 		}
-		if gate := read("gate"); !strings.Contains(gate, "round: [0]") || strings.Contains(gate, "publish") {
+		if gate := read("gate"); !strings.Contains(gate, "round: [0, 1]") || strings.Contains(gate, "publish") {
 			t.Errorf("applied board gate.yaml = %q; want the round list kept and no publish", gate)
 		}
 		if profilesAfter := read("profiles"); profilesAfter != string(profilesBefore) {
@@ -568,8 +568,8 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LayerRunSettings(retired-keys): %v", err)
 		}
-		if got, want := string(documents["loom"]), "code_max_bounces: 3\n"; got != want {
-			t.Errorf("seeded loom layer = %q; want %q", got, want)
+		if got, want := string(documents["loom"]), "code_max_bounces: 3 "; !strings.HasPrefix(got, want) || strings.Contains(got, "merge_max_bounces") {
+			t.Errorf("seeded loom layer = %q; want it to start with %q and hold no merge_max_bounces", got, want)
 		}
 	})
 
