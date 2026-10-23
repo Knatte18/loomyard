@@ -1225,6 +1225,11 @@
 // worktrees genuinely differ (see `_mill/discussion-meta.md`'s `two-verbs-mergein-then-merge`
 // rejection).
 //
+// **`MergeInAt(source, warpSHA)` merges a told commit instead of the freshness rule's pick.** It runs `MergeIn`'s whole body, and only the code side's merged commit differs: `warpSHA` replaces the commit the freshness rule picks for `source`, once it resolves to a commit in the pair's code repository.
+// A `warpSHA` that does not is the `source branch not found` guard reason, with nothing merged.
+// The records side and every other guard still resolve from `source`, and the merge record names `source` as the merged branch and `warpSHA` as its code-side source, so `MergeContinue` and `MergeAbort` treat the call as a merge-in of `source`.
+// A caller that reviewed a given upstream tip uses it to merge exactly that tip, whatever the local branch has moved to since.
+//
 // **The weft is never a merge participant, in either verb or either direction.** Everything routed
 // to the weft belongs to exactly one worktree and one branch, so there is nothing there for a merge
 // to reconcile — a merge carries code, and the weft carries system files, not code. Two consequences
