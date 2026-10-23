@@ -71,6 +71,7 @@ func (b *Bolt) CommitWritten(message string, write func() ([]string, error), opt
 // stageablePaths returns the paths, relative to the repo at root, that git can stage: each one on disk, and each missing one HEAD's tree holds, whose deletion it stages.
 // git add refuses a path that matches nothing, so a missing path HEAD does not hold, such as a name a stale local manifest kept after a pull removed the file, is left out.
 // An unborn HEAD holds no path.
+// Paths are file paths: a path HEAD holds as a directory is not recognised as held.
 func stageablePaths(repo *gitrepo.Repo, root string, paths []string) ([]string, error) {
 	head, err := repo.CurrentSHA()
 	if err != nil && !errors.Is(err, gitrepo.ErrNoCommits) {
