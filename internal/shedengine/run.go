@@ -36,6 +36,10 @@ const ReasonBounceBudgetExhausted = "bounce budget exhausted"
 // Shed never writes it itself.
 const ReasonPreconditionUnmet = "precondition unmet"
 
+// ReasonRerouteCapReached is the exact prefix of the reason the reroute-cap blocked halt persists.
+// The reason continues with the capped row, its reroute target, the producer's own reason and the told way forward, so a reader matches it with strings.HasPrefix, never equality.
+const ReasonRerouteCapReached = "reroute cap reached"
+
 // stuckReason normalizes a producer's Reason to one line: trimmed, with every run of line-break
 // characters collapsed to a single space; an empty result falls back to ReasonNoOnStuckTarget.
 func stuckReason(reason string) string {
