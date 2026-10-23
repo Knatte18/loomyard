@@ -584,6 +584,33 @@ func TestTeardown_CallSequence(t *testing.T) {
 			wantSnapshotTag:   "set-aside/slug/abc",
 		},
 		{
+			name:              "OriginSnapshotRunsBeforeArchiveAndRemoveAndCarriesTheTag",
+			run:               true,
+			quiets:            []quietState{{quiet: true}},
+			request:           Request{Slug: "slug", Snapshot: true},
+			withAfterSnapshot: true,
+			wantCalls:         sessionEnd + ",snapshot,after,landed,archive,remove,readClaim",
+			wantSnapshotTag:   "set-aside/slug/abc",
+		},
+		{
+			name:        "OriginSnapshotRefusedRemovesNothing",
+			run:         true,
+			quiets:      []quietState{{quiet: true}},
+			request:     Request{Slug: "slug", Snapshot: true},
+			snapshotErr: fabricengine.ErrPairBusy,
+			wantErrIs:   fabricengine.ErrPairBusy,
+			wantCalls:   sessionEnd + ",snapshot",
+		},
+		{
+			name:       "LeaveClaimReadsNoLandedAnswerAndSettlesNoClaim",
+			run:        true,
+			quiets:     []quietState{{quiet: true}},
+			request:    Request{Slug: "slug", Verdict: fabricengine.EntryEnded, LeaveClaim: true},
+			claim:      runClaim,
+			claimFound: true,
+			wantCalls:  skippedEnd + ",archive,remove",
+		},
+		{
 			name:              "SnapshotRefusedBusyStopsBeforeAfterSnapshotAndRemove",
 			run:               true,
 			quiets:            []quietState{{quiet: true}},
@@ -795,7 +822,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 }
 
 // TestSettleBoardClaim_RunningBattenRecordWayForward pins which way forward the kept claim of a running batten record warns with:
-// batten's own pause while a registered batten is alive, and the board status verb once that process is gone.
+// batten's own pause while a registered batten is alive, and batten's cancel once that process is gone.
 // It captures the process-global logger, so it is not parallel.
 func TestSettleBoardClaim_RunningBattenRecordWayForward(t *testing.T) {
 	tests := []struct {
@@ -804,8 +831,8 @@ func TestSettleBoardClaim_RunningBattenRecordWayForward(t *testing.T) {
 		want        string
 		notWant     string
 	}{
-		{"LiveRegisteredBattenKeepsThePauseWayForward", true, "lyx batten pause slug", "lyx board set-status"},
-		{"NoLiveRegisteredBattenNamesTheBoardStatusVerb", false, "lyx board set-status slug", "lyx batten pause"},
+		{"LiveRegisteredBattenKeepsThePauseWayForward", true, "lyx batten pause slug", "lyx batten cancel"},
+		{"NoLiveRegisteredBattenNamesTheCancelVerb", false, "lyx batten cancel slug", "lyx board set-status"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
