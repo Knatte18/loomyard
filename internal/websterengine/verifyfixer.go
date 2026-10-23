@@ -76,6 +76,7 @@ type FixVerifyResult struct {
 // the caller saves st.
 // It refuses, spawning nothing, when no verify-gate report is on disk, when the recovery role's engine cannot audit forks, and when the gate config has no `round` list.
 // A stale reply file is removed before the spawn.
+// A spawned strand whose run cannot be resolved is stopped, since no record of it will be saved.
 func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFixerState, bool, error) {
 	if n := len(st.VerifyFixers); n > 0 && st.VerifyFixers[n-1].Status == "" {
 		return st.VerifyFixers[n-1], false, nil
@@ -94,7 +95,7 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 
 	choice, ok := deps.Roles[RoleRecovery]
 	if !ok {
-		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q", RoleRecovery)
+		return nil, false, fmt.Errorf("webster: no resolved model-spec for role %q; way forward: set %s in webster.yaml with lyx config webster, then re-run `%s`", RoleRecovery, RoleRecovery, fixVerifyCommand)
 	}
 	if err := roleAuditEngine(deps.Engines, RoleRecovery, choice); err != nil {
 		return nil, false, err
@@ -149,7 +150,9 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 	}
 	runState, runDir, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Geom.AnchorRoot, run.StrandGUID())
 	if err != nil {
-		return nil, false, fmt.Errorf("webster: resolve spawned cold fixer run: %w", err)
+		// The strand is live but no record of it will be saved, so nothing later could stop it.
+		stopErr := deps.Stopper.StopStrand(run.StrandGUID())
+		return nil, false, errors.Join(fmt.Errorf("webster: resolve spawned cold fixer run: %w; way forward: transient, re-run `%s`", err, fixVerifyCommand), stopErr)
 	}
 
 	rec := &VerifyFixerState{
