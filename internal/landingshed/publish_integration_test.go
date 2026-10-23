@@ -107,7 +107,7 @@ func newPublishDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 }
 
 // newMergeInDepsAt builds Merge-In's Deps over the task worktree at taskWorktree on top of newPublishDepsAt's: the real pair's tip, path and head reads, and a temporary lock store.
-// The push is told skipped, so the parent tip is read locally with no fetch and no fast-forward;
+// The push is told skipped, so the parent tip is read locally with no fetch;
 // the caller sets PushSkipped back for the Publish that follows.
 func newMergeInDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 	t.Helper()
@@ -143,34 +143,72 @@ func mergeInAt(t *testing.T, taskWorktree string) landingshed.Deps {
 }
 
 // TestMergeIn_ConflictSessionLoadsLanguageSkills drives Merge-In over a real pair whose branches conflict on one file, and asserts the one conflict session it spawns loads the told language skills after its own.
+// A second row stages a local parent branch holding a commit its upstream lacks, and asserts the merge brings in the upstream tip and leaves the local parent branch's ref alone.
 func TestMergeIn_ConflictSessionLoadsLanguageSkills(t *testing.T) {
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	taskWorktree := h.PrimeWorktree()
+	t.Run("a conflict session loads the told language skills", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		taskWorktree := h.PrimeWorktree()
 
-	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "-b", "task-branch")
-	gitkit.CommitFile(t, taskWorktree, "conflict.txt", "task content\n", "task: add conflict.txt")
-	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "main")
-	gitkit.CommitFile(t, taskWorktree, "conflict.txt", "parent content\n", "main: add conflict.txt")
-	gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "task-branch")
+		gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "-b", "task-branch")
+		gitkit.CommitFile(t, taskWorktree, "conflict.txt", "task content\n", "task: add conflict.txt")
+		gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "main")
+		gitkit.CommitFile(t, taskWorktree, "conflict.txt", "parent content\n", "main: add conflict.txt")
+		gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "task-branch")
 
-	shuttle := resolutionShuttle(taskWorktree, "resolved content\n", "conflict.txt")
-	deps := newMergeInDepsAt(t, taskWorktree)
-	deps.StencilsDir = seedConflictStencil(t)
-	deps.Shuttle = shuttle
-	deps.LanguageSkills = []string{"scribe:golang-testing"}
+		shuttle := resolutionShuttle(taskWorktree, "resolved content\n", "conflict.txt")
+		deps := newMergeInDepsAt(t, taskWorktree)
+		deps.StencilsDir = seedConflictStencil(t)
+		deps.Shuttle = shuttle
+		deps.LanguageSkills = []string{"scribe:golang-testing"}
 
-	m, err := landingshed.NewMergeIn(deps)
-	if err != nil {
-		t.Fatalf("NewMergeIn() error = %v; want nil", err)
-	}
-	shedfake.RequireOutcome(t, m, shedengine.Done)
+		m, err := landingshed.NewMergeIn(deps)
+		if err != nil {
+			t.Fatalf("NewMergeIn() error = %v; want nil", err)
+		}
+		shedfake.RequireOutcome(t, m, shedengine.Done)
 
-	if len(shuttle.Specs) != 1 {
-		t.Fatalf("fake shuttle Run() called %d time(s); want exactly 1 conflict-resolution session", len(shuttle.Specs))
-	}
-	if want := []string{"scribe:prose", "scribe:code-quality", "scribe:golang-testing"}; !slices.Equal(shuttle.Specs[0].Skills, want) {
-		t.Errorf("conflict session Skills = %v; want %v", shuttle.Specs[0].Skills, want)
-	}
+		if len(shuttle.Specs) != 1 {
+			t.Fatalf("fake shuttle Run() called %d time(s); want exactly 1 conflict-resolution session", len(shuttle.Specs))
+		}
+		if want := []string{"scribe:prose", "scribe:code-quality", "scribe:golang-testing"}; !slices.Equal(shuttle.Specs[0].Skills, want) {
+			t.Errorf("conflict session Skills = %v; want %v", shuttle.Specs[0].Skills, want)
+		}
+	})
+
+	t.Run("a local parent ahead of its upstream merges the upstream tip", func(t *testing.T) {
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		taskWorktree := h.PrimeWorktree()
+
+		gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "-b", "task-branch")
+		gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "main")
+		upstreamTip := gitkit.CommitFile(t, taskWorktree, "pushed.txt", "pushed\n", "main: pushed")
+		gitkit.Git(t, taskWorktree, "push", "origin", "main")
+		gitkit.CommitFile(t, taskWorktree, "local-only.txt", "local only\n", "main: local only")
+		localTip := gitkit.RevParse(t, taskWorktree, "main")
+		gitkit.MustRun(t, taskWorktree, "git", "checkout", "-q", "task-branch")
+
+		deps := newMergeInDepsAt(t, taskWorktree)
+		deps.PushSkipped = false
+		m, err := landingshed.NewMergeIn(deps)
+		if err != nil {
+			t.Fatalf("NewMergeIn() error = %v; want nil", err)
+		}
+		shedfake.RequireOutcome(t, m, shedengine.Done)
+
+		rec, found, err := landingshed.ReadMergeRecord(deps.MergeRecordPath)
+		if err != nil || !found || rec.MergedTip != upstreamTip {
+			t.Errorf("merge record = %+v, %v, %v; want merged_tip %s, the upstream tip", rec, found, err, upstreamTip)
+		}
+		if _, err := os.Stat(filepath.Join(taskWorktree, "pushed.txt")); err != nil {
+			t.Errorf("pushed.txt missing from the task tree: %v; want the upstream tip merged in", err)
+		}
+		if _, err := os.Stat(filepath.Join(taskWorktree, "local-only.txt")); err == nil {
+			t.Error("local-only.txt is in the task tree; want the local-only commit left out")
+		}
+		if got := gitkit.RevParse(t, taskWorktree, "main"); got != localTip {
+			t.Errorf("local main = %s; want it unchanged at %s", got, localTip)
+		}
+	})
 }
 
 // TestPublish_MergesInCleanlyBeforeCreatingPullRequest drives Merge-In and then Publish against a real pair:

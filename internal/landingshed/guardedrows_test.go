@@ -1,5 +1,5 @@
 // guardedrows_test.go drives Publish, PR-Gate and Finalize, the rows that hold the parent lock, against fake tip reads and a real temporary lock store:
-// the reroute on a moved parent, the lock's release at the edges that leave the Merge-In-to-Finalize window, and the halt of a paused lock wait.
+// the reroute on a moved parent, the lock's release at the edges that end a row's hold, and the halt of a paused lock wait.
 // None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed

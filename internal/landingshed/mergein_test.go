@@ -1,4 +1,4 @@
-// mergein_test.go drives Merge-In's Call against a real parentlock.Store in a temporary directory and fake tip reads, parent puller, resolver and verify seams.
+// mergein_test.go drives Merge-In's Call against a real parentlock.Store in a temporary directory and fake tip reads, resolver and verify seams.
 
 package landingshed
 
@@ -30,30 +30,24 @@ var tracedFailure = verifytree.FailureTrace{
 	Untraced:   []string{"internal/z/z.go:1"},
 }
 
-// eventResolver is a resolver that records its call in the shared event log.
+// eventResolver is a resolver that records its call in the shared event log and the tip it was told to merge.
+// lockHeld reads, when set, reports whether the parent lock was held at the call.
 type eventResolver struct {
-	events *[]string
-	result mergeresolve.Result
-	err    error
+	events      *[]string
+	result      mergeresolve.Result
+	err         error
+	tip         string
+	lockHeld    func() bool
+	heldAtMerge bool
 }
 
-func (r *eventResolver) Resolve(_ context.Context, source, _ string) (mergeresolve.Result, error) {
+func (r *eventResolver) Resolve(_ context.Context, source, tip string) (mergeresolve.Result, error) {
 	*r.events = append(*r.events, "merge "+source)
+	r.tip = tip
+	if r.lockHeld != nil {
+		r.heldAtMerge = r.lockHeld()
+	}
 	return r.result, r.err
-}
-
-// fakeParentPuller is a parentPuller that records its call in the shared event log.
-type fakeParentPuller struct {
-	events *[]string
-	opts   fabricengine.SyncOptions
-	result fabricengine.FastForwardResult
-	err    error
-}
-
-func (p *fakeParentPuller) FastForwardPair(opts fabricengine.SyncOptions) (fabricengine.FastForwardResult, error) {
-	*p.events = append(*p.events, "fast-forward")
-	p.opts = opts
-	return p.result, p.err
 }
 
 // mergeInFixture is a MergeIn over a real lock store, with every seam but the lock a fake that logs into events.
@@ -64,15 +58,19 @@ type mergeInFixture struct {
 	events []string
 
 	tips         fabricengine.ParentTips
-	tipsFetch    *bool
-	lockHeld     bool
+	tipsErr      error
+	tipsReads    []tipsRead
 	taskHeads    []string
 	mergeBase    string
 	changedPaths map[string][]string
 	changedCalls []string
-	puller       *fakeParentPuller
-	pullerOpen   error
 	resolver     *eventResolver
+}
+
+// tipsRead is one ReadParentTips call: whether it fetched and whether the run held the parent lock during it.
+type tipsRead struct {
+	fetch    bool
+	lockHeld bool
 }
 
 func newMergeInFixture(t *testing.T) *mergeInFixture {
@@ -87,8 +85,12 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 		changedPaths: map[string][]string{},
 	}
 	fx.resolver = &eventResolver{events: &fx.events, result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	fx.puller = &fakeParentPuller{events: &fx.events}
 	owner := parentlock.Owner{Slug: "me", Pair: "/p/me", RunID: "r1", PID: 222, StartTime: "t2"}
+	lockHeld := func() bool {
+		rec, found, _ := fx.store.Read("main")
+		return found && rec.Owner.SameProcess(owner)
+	}
+	fx.resolver.lockHeld = lockHeld
 
 	headCalls := 0
 	deps := Deps{
@@ -102,10 +104,8 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 		},
 		ReadParentTips: func(fetch bool) (fabricengine.ParentTips, error) {
 			fx.events = append(fx.events, "tips")
-			fx.tipsFetch = &fetch
-			rec, found, _ := fx.store.Read("main")
-			fx.lockHeld = found && rec.Owner.SameProcess(owner)
-			return fx.tips, nil
+			fx.tipsReads = append(fx.tipsReads, tipsRead{fetch: fetch, lockHeld: lockHeld()})
+			return fx.tips, fx.tipsErr
 		},
 		TaskHead: func() (string, error) {
 			head := fx.taskHeads[min(headCalls, len(fx.taskHeads)-1)]
@@ -125,11 +125,10 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 	fx.gate.gate.baseCommand = func() (string, error) { return gateBaseCall, nil }
 	fx.gate.gate.recorder = &failureRecorder{head: deps.TaskHead}
 	fx.m = &MergeIn{
-		deps:         deps,
-		resolver:     fx.resolver,
-		gate:         fx.gate.gate,
-		guard:        newParentGuard(deps),
-		parentOpener: func() (parentPuller, error) { return fx.puller, fx.pullerOpen },
+		deps:     deps,
+		resolver: fx.resolver,
+		gate:     fx.gate.gate,
+		guard:    newParentGuard(deps),
 	}
 	return fx
 }
@@ -167,22 +166,21 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 		wantHalt     bool
 		wantInReason []string
 		wantNotIn    []string
-		wantLock     bool
 	}{
 		{
-			name:        "an active run proceeds to the lock and the merge",
+			name:        "an active run proceeds to the merge",
 			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryActive}}},
-			wantOutcome: shedengine.Done, wantEvents: proceeds, wantLock: true,
+			wantOutcome: shedengine.Done, wantEvents: proceeds,
 		},
 		{
-			name:        "an unreachable origin proceeds to the lock and the merge",
+			name:        "an unreachable origin proceeds to the merge",
 			report:      fabricengine.OriginReport{Unreachable: true},
-			wantOutcome: shedengine.Done, wantEvents: proceeds, wantLock: true,
+			wantOutcome: shedengine.Done, wantEvents: proceeds,
 		},
 		{
-			name:        "a run owned elsewhere proceeds to the lock and the merge",
+			name:        "a run owned elsewhere proceeds to the merge",
 			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryOwnedElsewhere, Owner: "desk"}}},
-			wantOutcome: shedengine.Done, wantEvents: proceeds, wantLock: true,
+			wantOutcome: shedengine.Done, wantEvents: proceeds,
 		},
 		{
 			name:        "an ended run that landed halts naming the landing",
@@ -246,84 +244,51 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 					t.Errorf("reason = %q; want it free of %q", ptr.Reason, unwanted)
 				}
 			}
-			rec, found, _ := fx.store.Read("main")
-			if found != tt.wantLock {
-				t.Fatalf("parent lock held = %v; want %v", found, tt.wantLock)
-			}
-			if tt.wantLock {
-				if !fx.lockHeld {
-					t.Error("the parent lock was not held when the tips were read")
-				}
-				if rec.Owner.Slug != "me" {
-					t.Errorf("lock record after Done = %+v; want it kept by the run", rec)
-				}
+			if rec, found, _ := fx.store.Read("main"); found {
+				t.Errorf("lock record = %+v; want Merge-In to take no parent lock", rec)
 			}
 		})
 	}
 }
 
-func TestMergeIn_SyncParent(t *testing.T) {
+func TestMergeIn_MergeTip(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name        string
 		tips        fabricengine.ParentTips
 		pushSkipped bool
-		openErr     error
-		fastForward fabricengine.FastForwardResult
-		wantFetch   bool
-		wantPulled  bool
-		wantStuck   string
+		otherHolds  bool
 		wantTip     string
+		wantReads   []tipsRead
+		wantHeld    bool
 	}{
-		{name: "equal", tips: fabricengine.ParentTips{Local: "p1", Upstream: "p1", Relation: fabricengine.ParentEqual}, wantFetch: true, wantTip: "p1"},
-		{name: "no upstream", tips: fabricengine.ParentTips{Local: "p1", Relation: fabricengine.ParentNoUpstream}, wantFetch: true, wantTip: "p1"},
-		{name: "the push skip ignores a moved upstream", tips: fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind}, pushSkipped: true, wantTip: "p1"},
 		{
-			name:        "behind fast-forwards to the tip the pair moved to",
+			name:       "an upstream tip is merged while another run holds the lock, and no lock is taken",
+			tips:       fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
+			otherHolds: true,
+			wantTip:    "u2", wantReads: []tipsRead{{fetch: true}}, wantHeld: true,
+		},
+		{
+			name:    "a local parent ahead of its upstream merges the upstream tip, never the local-only commit",
+			tips:    fabricengine.ParentTips{Local: "p2", Upstream: "p1", Relation: fabricengine.ParentAhead},
+			wantTip: "p1", wantReads: []tipsRead{{fetch: true}},
+		},
+		{
+			name:    "a diverged local parent merges the upstream tip",
+			tips:    fabricengine.ParentTips{Local: "p2", Upstream: "u2", Relation: fabricengine.ParentDiverged},
+			wantTip: "u2", wantReads: []tipsRead{{fetch: true}},
+		},
+		{
+			name:        "the push skip holds the lock for the local-tip read only",
 			tips:        fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
-			fastForward: fabricengine.FastForwardResult{NewHead: "u3"},
-			wantFetch:   true, wantPulled: true, wantTip: "u3",
+			pushSkipped: true,
+			wantTip:     "p1", wantReads: []tipsRead{{fetch: false, lockHeld: true}},
 		},
 		{
-			name:      "ahead",
-			tips:      fabricengine.ParentTips{Local: "p2", Upstream: "p1", Relation: fabricengine.ParentAhead},
-			wantFetch: true,
-			wantStuck: `the local parent branch "main" is ahead of its upstream; way forward: push or reconcile "main" in its own pair, then run "lyx loom resume"`,
-		},
-		{
-			name:      "diverged",
-			tips:      fabricengine.ParentTips{Local: "p2", Upstream: "u2", Relation: fabricengine.ParentDiverged},
-			wantFetch: true,
-			wantStuck: `the local parent branch "main" has diverged from its upstream; way forward: push or reconcile "main" in its own pair, then run "lyx loom resume"`,
-		},
-		{
-			name:      "no parent pair",
-			tips:      fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
-			openErr:   errors.New("not wired"),
-			wantFetch: true,
-			wantStuck: `no live pair for parent branch "main": not wired; way forward: re-create the parent pair, then run "lyx loom resume"`,
-		},
-		{
-			name:        "dirty parent pair",
-			tips:        fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
-			fastForward: fabricengine.FastForwardResult{Refusal: fabricengine.FastForwardDirty},
-			wantFetch:   true, wantPulled: true,
-			wantStuck: `the parent pair of "main" has uncommitted changes; way forward: commit or stash them in the parent pair, then run "lyx loom resume"`,
-		},
-		{
-			name:        "merge in progress in the parent pair",
-			tips:        fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
-			fastForward: fabricengine.FastForwardResult{Refusal: fabricengine.FastForwardMergeInProgress},
-			wantFetch:   true, wantPulled: true,
-			wantStuck: `a merge is in progress in the parent pair of "main"; way forward: finish or abort that merge in the parent pair, then run "lyx loom resume"`,
-		},
-		{
-			name:        "upstream no longer a fast-forward",
-			tips:        fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
-			fastForward: fabricengine.FastForwardResult{Refusal: fabricengine.FastForwardNotFastForward},
-			wantFetch:   true, wantPulled: true,
-			wantStuck: `the upstream of "main" is no longer a fast-forward of the parent pair; way forward: reconcile "main" with its upstream in its own pair, then run "lyx loom resume"`,
+			name:    "no upstream holds the lock for the local-tip read only",
+			tips:    fabricengine.ParentTips{Local: "p1", Relation: fabricengine.ParentNoUpstream},
+			wantTip: "p1", wantReads: []tipsRead{{fetch: true}, {fetch: false, lockHeld: true}},
 		},
 	}
 	for _, tt := range tests {
@@ -332,38 +297,62 @@ func TestMergeIn_SyncParent(t *testing.T) {
 			fx := newMergeInFixture(t)
 			fx.tips = tt.tips
 			fx.m.deps.PushSkipped = tt.pushSkipped
-			fx.pullerOpen = tt.openErr
-			fx.puller.result = tt.fastForward
+			if tt.otherHolds {
+				if _, err := fx.store.TryAcquire("main", parentlock.Owner{Slug: "other", Pair: "/p/other", RunID: "r9", PID: 111, StartTime: "t1"}); err != nil {
+					t.Fatal(err)
+				}
+			}
 
 			outcome, ptr := fx.call(t)
 
-			if fx.tipsFetch == nil || *fx.tipsFetch != tt.wantFetch {
-				t.Errorf("ReadParentTips fetch = %v; want %v", fx.tipsFetch, tt.wantFetch)
-			}
-			pulled := strings.Contains(strings.Join(fx.events, ","), "fast-forward")
-			if pulled != tt.wantPulled {
-				t.Errorf("fast-forward ran = %v; want %v (events %v)", pulled, tt.wantPulled, fx.events)
-			}
-			if tt.wantStuck != "" {
-				if outcome != shedengine.Stuck || ptr.Reason != tt.wantStuck || ptr.Halt {
-					t.Errorf("Call() = %q, %+v; want a non-halting Stuck %q", outcome, ptr, tt.wantStuck)
-				}
-				if strings.Contains(strings.Join(fx.events, ","), "merge") {
-					t.Errorf("a merge ran after a Stuck sync: %v", fx.events)
-				}
-				return
-			}
 			if outcome != shedengine.Done {
 				t.Fatalf("Call() = %q, %+v; want Done", outcome, ptr)
+			}
+			if fx.resolver.tip != tt.wantTip {
+				t.Errorf("resolver tip = %q; want %q", fx.resolver.tip, tt.wantTip)
 			}
 			if got := fx.readRecord(t).MergedTip; got != tt.wantTip {
 				t.Errorf("merged_tip = %q; want %q", got, tt.wantTip)
 			}
-			if tt.wantPulled && (fx.puller.opts.SkipGit || fx.puller.opts.SkipPush) {
-				t.Errorf("FastForwardPair options = %+v; want the told push skip, false", fx.puller.opts)
+			if !slices.Equal(fx.tipsReads, tt.wantReads) {
+				t.Errorf("ReadParentTips calls = %+v; want %+v", fx.tipsReads, tt.wantReads)
+			}
+			if fx.resolver.heldAtMerge {
+				t.Error("the parent lock was held while the resolver ran")
+			}
+			if rec, found, _ := fx.store.Read("main"); found != tt.wantHeld {
+				t.Errorf("lock record after Done = %+v, %v; want found = %v", rec, found, tt.wantHeld)
 			}
 		})
 	}
+
+	t.Run("a resolver answer that the upstream ref is missing is Stuck with its way forward", func(t *testing.T) {
+		t.Parallel()
+		fx := newMergeInFixture(t)
+		const reason = `the upstream ref of "main" is missing; way forward: fetch it, then run "lyx loom resume"`
+		fx.resolver.result = mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: reason}
+
+		outcome, ptr := fx.call(t)
+
+		if outcome != shedengine.Stuck || ptr.Reason != reason || ptr.Halt {
+			t.Errorf("Call() = %q, %+v; want a non-halting Stuck %q", outcome, ptr, reason)
+		}
+	})
+
+	t.Run("a failed tips read is the returned error", func(t *testing.T) {
+		t.Parallel()
+		fx := newMergeInFixture(t)
+		fx.tipsErr = errors.New("fetch failed")
+
+		_, _, err := fx.m.Call(context.Background())
+
+		if err == nil || !strings.Contains(err.Error(), "fetch failed") {
+			t.Errorf("Call() error = %v; want the tips read's cause", err)
+		}
+		if strings.Contains(strings.Join(fx.events, ","), "merge") {
+			t.Errorf("a merge ran after a failed tips read: %v", fx.events)
+		}
+	})
 }
 
 func TestMergeIn_MergeRecord(t *testing.T) {
@@ -737,6 +726,7 @@ func TestMergeIn_UnreadableLockRecordHaltsNamingTheReleaseVerb(t *testing.T) {
 	t.Parallel()
 
 	fx := newMergeInFixture(t)
+	fx.m.deps.PushSkipped = true
 	if err := os.MkdirAll(fx.store.Dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -751,7 +741,7 @@ func TestMergeIn_UnreadableLockRecordHaltsNamingTheReleaseVerb(t *testing.T) {
 		t.Errorf("Call() = %q, %+v; want a halting Stuck naming lyx batten lock release", outcome, ptr)
 	}
 	if got := strings.Join(fx.events, ","); got != "commit-status" {
-		t.Errorf("events = %q; want only the status commit before the lock", got)
+		t.Errorf("events = %q; want only the status commit before the local-tip read's lock", got)
 	}
 }
 

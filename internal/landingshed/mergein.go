@@ -1,4 +1,4 @@
-// mergein.go implements the Merge-In producer: under the parent lock it brings the local parent branch level with its upstream, merges that tip into the task worktree, runs the `landing` gate over the merged tree and writes the merge record the merge review and the guarded landing rows read.
+// mergein.go implements the Merge-In producer: it merges the parent's tip into the task worktree with no parent lock and no write to the parent pair, runs the `landing` gate over the merged tree and writes the merge record the guarded landing rows read.
 
 package landingshed
 
@@ -16,8 +16,7 @@ import (
 // mergeInName is the producer name Merge-In's log lines and error text carry, and the row name its failure record carries.
 const mergeInName = "Merge-In"
 
-// parentPuller is the narrow seam Merge-In holds the opened parent pair's handle behind.
-// Production has exactly one way to obtain it, deps.OpenParentFabric, and the seam exists so in-package tests substitute a fake.
+// parentPuller is the narrow seam over the parent pair's fast-forward, which `*fabricengine.Fabric` satisfies.
 type parentPuller interface {
 	// FastForwardPair moves the parent pair to its upstream as a fast-forward only. See fabricengine.Fabric.FastForwardPair.
 	FastForwardPair(opts fabricengine.SyncOptions) (fabricengine.FastForwardResult, error)
@@ -33,17 +32,14 @@ type mergeBefore struct {
 	alignedTip string
 }
 
-// MergeIn is the ShedProducer that merges the parent branch into the task worktree under the parent lock and records the merge.
+// MergeIn is the ShedProducer that merges the parent branch's tip into the task worktree and records the merge.
 type MergeIn struct {
 	deps     Deps
 	resolver resolver
 	gate     verifyGate
 	premerge preMerge
 	guard    parentGuard
-	// parentOpener adapts deps.OpenParentFabric's concrete return type onto the parentPuller seam.
-	// It is called only when the parent pair has to be fast-forwarded, never at construction.
-	parentOpener func() (parentPuller, error)
-	// before is set by Call after the parent is synced and read by writeRecord.
+	// before is set by Call before the merge and read by writeRecord.
 	before mergeBefore
 }
 
@@ -99,22 +95,14 @@ func NewMergeIn(deps Deps) (*MergeIn, error) {
 		gate:     gate,
 		premerge: newPreMerge(deps),
 		guard:    newParentGuard(deps),
-		parentOpener: func() (parentPuller, error) {
-			h, err := deps.OpenParentFabric()
-			if err != nil {
-				return nil, err
-			}
-			return h, nil
-		},
 	}, nil
 }
 
 // Call runs one Merge-In iteration.
 //
-// It runs the run-scope origin reconcile after the status commit and before the lock: a run origin ended or stopped is Stuck, and an unreachable origin proceeds.
-// It takes the parent lock before it touches the parent and keeps it on every way out: a later row or the loop's exit frees it.
-// A paused wait and an unreadable lock record are Stuck with Halt, so the run stops at this row.
-// A parent branch that is ahead of or diverged from its upstream, a parent pair that cannot be fast-forwarded and a failed `landing` gate are Stuck for a human;
+// It runs the run-scope origin reconcile after the status commit: a run origin ended or stopped is Stuck, and an unreachable origin proceeds.
+// It writes nothing in the parent pair and holds no parent lock across the merge; a paused lock wait and an unreadable lock record for the local-tip read are Stuck with Halt, so the run stops at this row.
+// A failed `landing` gate is Stuck for a human;
 // a failed record write and every infrastructure fault are errors.
 func (m *MergeIn) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, mergeInName); err != nil {
@@ -129,32 +117,27 @@ func (m *MergeIn) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		}
 	}
 
-	// The run-scope reconcile judges and never moves the parent: the fast-forward below does, under the lock.
+	// The run-scope reconcile judges and never moves the parent.
 	if outcome, out, err, stop := reconcileVerdict(ctx, mergeInName, m.deps.Reconcile); stop {
 		return outcome, out, err
 	}
 
-	reason, err := m.guard.ensure(ctx, mergeInName)
+	tip, lockReason, err := m.mergeTip(ctx)
 	if err != nil {
 		if cerr := cancelErr(ctx, mergeInName); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
 		return "", shedengine.OutputPointer{}, err
 	}
-	if reason != "" {
-		return stuckVerdict(ctx, mergeInName, reason, true)
-	}
-
-	tip, reason, err := m.syncParent(ctx)
-	if outcome, out, err, stop := gateStop(ctx, mergeInName, reason, err); stop {
-		return outcome, out, err
+	if lockReason != "" {
+		return stuckVerdict(ctx, mergeInName, lockReason, true)
 	}
 
 	if err := m.readBefore(); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	reason, err = m.premerge.clear(mergeInName, m.deps.ParentBranch)
+	reason, err := m.premerge.clear(mergeInName, m.deps.ParentBranch)
 	if outcome, out, err, stop := gateStop(ctx, mergeInName, reason, err); stop {
 		return outcome, out, err
 	}
@@ -163,7 +146,7 @@ func (m *MergeIn) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return outcome, out, err
 	}
 
-	merge, err := m.resolver.Resolve(ctx, m.deps.ParentBranch, "")
+	merge, err := m.resolver.Resolve(ctx, m.deps.ParentBranch, tip)
 	if err != nil {
 		if cerr := cancelErr(ctx, mergeInName); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
@@ -205,59 +188,36 @@ func (m *MergeIn) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// syncParent brings the local parent branch level with its upstream and returns the tip to merge, or a Stuck reason.
-// Under the told push skip it neither fetches nor fast-forwards and returns the local tip.
-// A parent branch that is ahead of or diverged from its upstream is Stuck before any pull runs, since Merge-In never pushes or rewrites the parent.
-// A fast-forward runs only from the behind state and only moves the parent pair to its upstream tip, so it never touches local commits;
-// the lock the caller holds keeps another run's landing from merging into the same pair meanwhile.
-// After a fast-forward the returned tip is the one the pair was moved to, which can be newer than the upstream the tips read saw.
-func (m *MergeIn) syncParent(ctx context.Context) (string, string, error) {
+// mergeTip picks the parent tip to merge and returns it, or a Stuck reason of the parent lock wait.
+// With an upstream and no push skip it fetches and takes the upstream tip, never the local tip, so a landing another run made locally and has not pushed is never merged in.
+// Under the told push skip, or with no upstream, it takes the parent lock only for the read of the local tip and releases it before returning, so the merge itself runs unlocked.
+// A paused lock wait and an unreadable lock record come back as the reason, for a halting Stuck.
+func (m *MergeIn) mergeTip(ctx context.Context) (string, string, error) {
 	branch := m.deps.ParentBranch
-	if m.deps.PushSkipped {
-		tips, err := m.deps.ReadParentTips(false)
+	if !m.deps.PushSkipped {
+		tips, err := m.deps.ReadParentTips(true)
 		if err != nil {
 			return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", mergeInName, branch, err)
 		}
-		return tips.Local, "", nil
+		switch tips.Relation {
+		case fabricengine.ParentNoUpstream:
+		case fabricengine.ParentEqual, fabricengine.ParentAhead, fabricengine.ParentBehind, fabricengine.ParentDiverged:
+			return tips.Upstream, "", nil
+		default:
+			return "", "", fmt.Errorf("landingshed: %s: unknown relation %q of parent branch %q to its upstream", mergeInName, tips.Relation, branch)
+		}
 	}
 
-	tips, err := m.deps.ReadParentTips(true)
+	reason, err := m.guard.ensure(ctx, mergeInName)
+	if err != nil || reason != "" {
+		return "", reason, err
+	}
+	defer m.guard.release(mergeInName)
+	tips, err := m.deps.ReadParentTips(false)
 	if err != nil {
 		return "", "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", mergeInName, branch, err)
 	}
-	const resume = `then run "lyx loom resume"`
-	switch tips.Relation {
-	case fabricengine.ParentNoUpstream, fabricengine.ParentEqual:
-		return tips.Local, "", nil
-	case fabricengine.ParentAhead:
-		return "", fmt.Sprintf("the local parent branch %q is ahead of its upstream; way forward: push or reconcile %q in its own pair, %s", branch, branch, resume), nil
-	case fabricengine.ParentDiverged:
-		return "", fmt.Sprintf("the local parent branch %q has diverged from its upstream; way forward: push or reconcile %q in its own pair, %s", branch, branch, resume), nil
-	case fabricengine.ParentBehind:
-	default:
-		return "", "", fmt.Errorf("landingshed: %s: unknown relation %q of parent branch %q to its upstream", mergeInName, tips.Relation, branch)
-	}
-
-	parent, err := m.parentOpener()
-	if err != nil {
-		return "", fmt.Sprintf("no live pair for parent branch %q: %v; way forward: re-create the parent pair, %s", branch, err, resume), nil
-	}
-	result, err := parent.FastForwardPair(fabricengine.SyncOptions{SkipPush: m.deps.PushSkipped})
-	if err != nil {
-		return "", "", fmt.Errorf("landingshed: %s: fast-forward the parent pair of %q: %w", mergeInName, branch, err)
-	}
-	switch result.Refusal {
-	case "":
-		return result.NewHead, "", nil
-	case fabricengine.FastForwardDirty:
-		return "", fmt.Sprintf("the parent pair of %q has uncommitted changes; way forward: commit or stash them in the parent pair, %s", branch, resume), nil
-	case fabricengine.FastForwardMergeInProgress:
-		return "", fmt.Sprintf("a merge is in progress in the parent pair of %q; way forward: finish or abort that merge in the parent pair, %s", branch, resume), nil
-	case fabricengine.FastForwardNotFastForward:
-		return "", fmt.Sprintf("the upstream of %q is no longer a fast-forward of the parent pair; way forward: reconcile %q with its upstream in its own pair, %s", branch, branch, resume), nil
-	default:
-		return "", "", fmt.Errorf("landingshed: %s: unknown fast-forward refusal %q for parent branch %q", mergeInName, result.Refusal, branch)
-	}
+	return tips.Local, "", nil
 }
 
 // readBefore reads what the merge record carries from before the merge:

@@ -31,7 +31,7 @@
 // Each constructor refuses a nil Deps.Lock.Store, a nil Deps.Lock.Owner and a nil Deps.ReadParentTips, and a row built without its guard, as a struct-literal test builds it, takes no lock and reads no tips.
 // Publish, for a parent in require_pr_to_base, takes the lock and tests the parent before its gates and the push; a parent outside the list stays a no-op that touches neither git nor GitHub.
 // PR-Gate does the same before it queries the pull request, so the orch never decides on a pull request whose base moved, and its matching-rejection Stuck releases the lock before returning:
-// the edge to PR-Rework (darn: Darn-Write) leaves the Merge-In-to-Finalize window, and the reworked run takes the lock again at Merge-In.
+// the edge to PR-Rework (darn: Darn-Write) ends the hold, and the reworked run takes the lock again at the next lock-taking row.
 // Finalize takes the lock and tests the parent after parsing the change description and committing the status file, before its catch-up merge-in.
 // Under that lock it runs the same run-scope origin reconcile and maps its ended and stopped verdicts as Merge-In does, then the owner checks.
 // A run whose Finalize merged into the local parent here is never read as ended, so a Finalize re-entered after its done mark proceeds;
@@ -65,16 +65,16 @@
 // The seams are nil-is-absent: a nil Deps.MergeState skips the step.
 //
 // Merge-In is built here and listed by a recipe's producer list like the others.
-// It commits the status file, runs the run-scope origin reconcile through the told Deps.Reconcile, takes the parent lock through the shared guard, and only then brings the local parent branch level with its upstream.
+// It commits the status file and runs the run-scope origin reconcile through the told Deps.Reconcile, then picks the parent tip to merge.
+// Merge-In takes no parent lock across the merge and writes nothing in the parent pair: the fast-forward of the local parent branch and the parent-pair refusals belong to Finalize, under its lock.
 // The reconcile judges and never moves the parent.
 // A run origin ended is a Stuck with Halt naming the landing or the board removal, with `lyx cleanup --apply` from the prime as the way forward;
 // a run its branches stop is a Stuck naming the branch, its state and its way forward, then `lyx loom resume` in the task worktree;
 // an unreachable origin logs a Warn and proceeds, so the row fails on its own remote steps, and a reconcile error is an error.
-// Under the told push skip it neither fetches nor fast-forwards, and merges the local tip.
-// A parent branch behind its upstream is fast-forwarded in its own pair under the lock, which moves it to the upstream tip and touches no local commit;
-// one that is ahead of or diverged from its upstream, and a parent pair that is missing, dirty, mid-merge or no longer a fast-forward of its upstream, are Stuck with a way forward, since Merge-In never pushes or rewrites the parent.
+// With an upstream and no push skip it fetches and merges the parent's upstream tip, read from the fetching tips read and never the local tip, so a landing another run made locally and has not pushed is never merged in.
+// Under the told push skip, or with no upstream, it takes the parent lock through the shared guard only for the read of the local tip and releases it before the merge, which then runs unlocked.
 // A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
-// It then clears a parked merge-in, merges the parent tip into the task worktree through internal/mergeresolve, and runs the `landing` gate over the merged tree.
+// It then clears a parked merge-in, merges that tip into the task worktree through internal/mergeresolve, and runs the `landing` gate over the merged tree.
 // The task worktree must be clean at three points: before the merge-in (after the status commit), after the merge-in, and after the verify.
 // A dirty tree at any of them is Stuck naming the paths, so nothing uncommitted is merged over or reviewed;
 // a verify that dirties the tree is a non-hermetic test and halts rather than ships.
@@ -91,7 +91,7 @@
 // The aligned tip is the parent tip up to which the merge fixer has read what the parent brought in; it is empty before the first alignment, and the overlap then starts at the task's fork point from the parent.
 // The record carries the earlier record's aligned tip forward unchanged, and a record an older build wrote with a reviewed tip reads with an empty aligned tip.
 // An up-to-date merge records an empty overlap, and a failed record write is an error, never Stuck.
-// The lock is kept on every way out of the row: a later landing row or the loop's exit frees it.
+// Merge-In holds no lock on any way out of the row, so no later row inherits one.
 //
 // Publish runs the `landing` call, then the `publish` call, in the task worktree through the same verify function, at site `Publish`, before it pushes, and the tree must be clean after them.
 // A dirty tree is Stuck naming the paths, before anything is pushed.
