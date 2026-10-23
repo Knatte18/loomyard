@@ -101,6 +101,14 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if command, err := c.env.VerifyCommand(); err != nil || command != wantDarnLandingCall {
 			t.Errorf("c.env.VerifyCommand() = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
 		}
+		// gateConfigWithTwoTiers lists tiers 0 and 1 for `landing` and tier 0 for `round`, so the landing call tells the told list apart.
+		round, err := c.env.Round()
+		if err != nil {
+			t.Fatalf("c.env.Round() error = %v; want nil", err)
+		}
+		if call := round.Render("--all"); call != wantDarnLandingCall {
+			t.Errorf("c.env.Round().Render(--all) = %q; want the landing call %q", call, wantDarnLandingCall)
+		}
 	})
 
 	t.Run("with tree scope on the verify gate's told command stays the hub's whole verify", func(t *testing.T) {

@@ -1,4 +1,4 @@
-// verifygate.go implements NewVerifyGate, the must-pass gate that holds a handoff until the headroom lint, the comment lint and the told verify command pass on the committed tree, narrowed to the hub's `round` gate over the diff, or in the darn form to the diff's tree-scoped command or the `round` gate from a told merge base.
+// verifygate.go implements NewVerifyGate, the must-pass gate that holds a handoff until the headroom lint, the comment lint and the told verify command pass on the committed tree, narrowed to the told gate list over the diff, or in the darn form to the diff's tree-scoped command or the told list from a told merge base.
 
 package loomshed
 
@@ -22,11 +22,12 @@ import (
 // verifyLogTailBytes bounds how much of the verify log a failing verdict quotes.
 const verifyLogTailBytes = 4096
 
-// RoundGate is the hub's `round` gate as the verify gate reads it at each arrival.
+// RoundGate is the told gate list as the verify gate reads it at each arrival.
+// The fix rows of loom and darn tell it the hub's `landing` list.
 type RoundGate struct {
-	// Tiers are the tier numbers the `round` gate lists, in order.
+	// Tiers are the tier numbers the told list holds, in order.
 	Tiers []int
-	// Render spells the one `lyx gate test --wait --tier <round list>` call over the given scope words.
+	// Render spells the one `lyx gate test --wait --tier <told list>` call over the given scope words.
 	Render func(scope ...string) string
 	// GateTiers returns the tier numbers a named gate lists, or the config refusal with its way forward.
 	GateTiers func(gate string) ([]int, error)
@@ -35,13 +36,13 @@ type RoundGate struct {
 // NewVerifyGate returns a must-pass shuttleengine.Gate that, at each arrival, reads the told verify command, lints the comments the work added, and runs the gate's command through verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
 // siteLabel names the call site in the running marker, and the closure's own count of its calls is the attempt.
 // command is the told verify-command source, read at each arrival; it is the site's base command, so a pass keeps its record entry and Publish skips on the same tree and command.
-// round is the told `round` gate source, read at each arrival after the told command; its error is the gate's returned error, carrying the config refusal's own way forward.
+// round is the told gate list source, the `landing` list at the fix rows, read at each arrival after the told command; its error is the gate's returned error, carrying the config refusal's own way forward.
 // hold is the told pause hold of the worktree's scope: a non-nil hold holds the verify under a pause covering the worktree, and nil holds nothing.
 //
 // With treeScope nil the gate takes the round form.
 // The base of the round is the commit of the told command's latest recorded pass, when that commit is an ancestor of HEAD.
 // With a usable base the comment lint runs from it to HEAD before any test, and the command is the round call over `--base` that commit, whose scope narrows, falls back to whole and runs the guard step.
-// With no usable base the lint passes and the command is the told command itself.
+// With no usable base the lint passes and the command is the told list's own whole-tree call, `--all`, while the told command stays the site's base command and the record entry a pass keeps.
 // An empty told command passes with a logged warning.
 // When mergeBase is non-nil, the headroom lint also runs from the merge base it reads to HEAD, before the comment lint and any test; nil skips it.
 //
@@ -94,7 +95,8 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 				lintBase = pass.Commit
 				runCommand = roundGate.Render("--base", lintBase)
 			} else {
-				logger.Info("loomshed: verify gate runs the told verify command", "gate", siteLabel, "attempt", attempt, "reason", "no recorded pass of the told command to diff from")
+				runCommand = roundGate.Render("--all")
+				logger.Info("loomshed: verify gate runs the told list over the whole tree", "gate", siteLabel, "attempt", attempt, "reason", "no recorded pass of the told command to diff from")
 			}
 			if mergeBase != nil {
 				headroomBase, err = mergeBase()

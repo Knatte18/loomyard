@@ -532,6 +532,18 @@ func TestWire_DefaultConfig(t *testing.T) {
 			t.Errorf("SegmentBounces(%q) = (%d, %d, %v); want (%d, %d, true)", row, count, budget, inSegment, wantCount, wantBudget)
 		}
 	})
+
+	// The fix rows' verify gate runs the `landing` list over a diff, which gateConfigWithTwoTiers lists as tiers 0 and 1 against the `round` list's tier 0.
+	t.Run("the verify gate's told list is the landing list", func(t *testing.T) {
+		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
+		got, err := c.env.Round()
+		if err != nil {
+			t.Fatalf("c.env.Round() error = %v; want nil", err)
+		}
+		if call := got.Render("--all"); call != wantDarnLandingCall {
+			t.Errorf("c.env.Round().Render(--all) = %q; want the landing call %q", call, wantDarnLandingCall)
+		}
+	})
 }
 
 // TestWire_DiscussionTableEvaluatesToExpectedShape evaluates c.env.DiscussionTable() for both discussion_interactive values and asserts the table's settings, the lead's seat, and a lead prompt over the wired geometry that names the parent and carries no unrendered marker, then the table's seats and fork authorization under the discussion_advisors and discussion_lenses keys.

@@ -33,11 +33,11 @@ func verifyLogs(t *testing.T, verifyDir string) []string {
 	return logs
 }
 
-// trueRoundGate is a round seam whose rendered call is `true`, so a step that seeds a pass of the told command `true` meets the same command in the round form.
-func trueRoundGate() (RoundGate, error) {
+// toldRoundGate is a round seam whose rendered call is told, so a step that seeds a pass of the told command meets the same command in the round form, and the whole-tree call is the told command too.
+func toldRoundGate(told string) (RoundGate, error) {
 	return RoundGate{
 		Tiers:     []int{0},
-		Render:    func(...string) string { return "true" },
+		Render:    func(...string) string { return told },
 		GateTiers: testGateTiers,
 	}, nil
 }
@@ -65,7 +65,7 @@ func TestVerifyGate_Scenario(t *testing.T) {
 	}
 	runGate := func(t *testing.T) (passed bool, findings string) {
 		t.Helper()
-		got, err := runGateWith(t, trueRoundGate)
+		got, err := runGateWith(t, func() (RoundGate, error) { return toldRoundGate(told) })
 		if err != nil {
 			t.Fatalf("gate() error = %v; want nil", err)
 		}
@@ -172,7 +172,7 @@ gates:
   card: [0]
   batch: [0, 1]
   round: [0, 1]
-  final: [0, 1]
+  final: [0]
   landing: [0, 1]
   publish: [2]
 `
@@ -206,20 +206,20 @@ func (f roundGateFixture) commitFiles(t *testing.T, files map[string]string) str
 	return gitkit.Git(t, f.worktree, "rev-parse", "HEAD")
 }
 
-// round is the round seam over the worktree's own gate.yaml, read at each arrival.
+// round is the round seam over the worktree's own gate.yaml, told the `landing` list as the fix rows are, read at each arrival.
 func (f roundGateFixture) round() (RoundGate, error) {
 	cfg, err := gateslot.LoadConfig(configengine.Dirs{Anchor: f.worktree})
 	if err != nil {
 		return RoundGate{}, err
 	}
-	tiers, err := cfg.TierList("round")
+	tiers, err := cfg.TierList("landing")
 	if err != nil {
 		return RoundGate{}, err
 	}
 	return RoundGate{
 		Tiers: tiers,
 		Render: func(scope ...string) string {
-			call, _ := cfg.GateCall("round", scope...)
+			call, _ := cfg.GateCall("landing", scope...)
 			return call
 		},
 		GateTiers: cfg.TierList,
@@ -289,15 +289,21 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 	})
 	paths := verifytree.NewPaths(f.worktree, f.verifyDir)
 
-	if !t.Run("runs the plan's command and passes the lint with no recorded pass", func(t *testing.T) {
+	if !t.Run("runs the told list over the whole tree and not the plan's command with no recorded pass", func(t *testing.T) {
 		if passed, findings := f.runGate(t, nil); !passed {
 			t.Fatalf("gate() findings = %q; want a pass", findings)
 		}
-		if got := f.planRanCount(t); got != 1 {
-			t.Errorf("the plan's command ran %d times; want once", got)
+		if got := f.planRanCount(t); got != 0 {
+			t.Errorf("the plan's command ran %d times; want it left to the told list's whole-tree call", got)
 		}
-		if _, ok := verifytree.LatestPass(paths, f.planCommand); !ok {
-			t.Errorf("no recorded pass of the plan's command; want one")
+		if _, ok := verifytree.LatestPass(paths, roundCall("--all")); !ok {
+			t.Errorf("no recorded pass of %q; want one, the `landing` list and not the `final` list", roundCall("--all"))
+		}
+		if _, ok := verifytree.LatestPass(paths, f.planCommand); ok {
+			t.Errorf("a recorded pass of the plan's command; want none")
+		}
+		if res, err := verifytree.Verify(context.Background(), paths, verifytree.Site{Label: "seed"}, f.planCommand); err != nil || res.Status != verifytree.StatusPassed {
+			t.Fatalf("seed Verify = %+v, %v; want a pass", res, err)
 		}
 	}) {
 		return

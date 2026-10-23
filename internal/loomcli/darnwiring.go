@@ -255,7 +255,7 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	// The gate's told command is the hub's `landing` call, which stays its site's base command since darn has no webster gate;
 	// the tree-scoped command reaches the gate through VerifyTreeScope, never through this source.
 	c.env.VerifyCommand = darnVerifySource(location).baseCommand
-	c.env.Round = roundGateSource(dirs)
+	c.env.Round = gateListSource(dirs, "landing")
 	c.env.VerifyMergeBase = taskMergeBase(location)
 	c.env.VerifyTreeScope = darnTreeScope(location)
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts

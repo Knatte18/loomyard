@@ -31,7 +31,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
 // "rework-plan" requires the same two roots and index plus a non-nil env.Rework.ReadCommitted and returns loomshed.NewReworkPlanGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
-// "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand and env.Round, takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
+// "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand and env.Round, takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate", and env.Round as the told gate list, the `landing` list at the fix rows;
 // env.VerifyTreeScope alone selects the darn form, which requires env.VerifyMergeBase, the base of both lints in that form, and otherwise env.VerifyMergeBase is the base of the headroom lint;
 // "parent-review" requires the absolute Env.ParentReview.Store.Root, Store.LockDir, DecisionRecord and SupportLog, a non-empty Slug and both render seams, and returns parentreview.NewGate's closure pair, the second being the entry's Final closure;
 // it is must-pass and may hold the run, its "attempts" is the reject cap told to the gate, a "pass_on_cap" key on it is refused, and it carries an expiry probe the wait loop calls off the boundary;

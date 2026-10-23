@@ -40,13 +40,13 @@
 // Told a tree scope reader, it takes the darn form; otherwise it takes the round form the Webster-Burler-Fix row runs, which runs less than the full command.
 // Told a merge base, the round form first runs the headroom lint from it to HEAD, before the comment lint and any test; told none, it skips that lint.
 // The form is a told reader, never inferred from the merge base reader's presence.
-// It is also told the hub's `round` gate through a RoundGate source, read at each arrival, whose error is the gate's returned error.
-// It lints the comments added since the told command's last recorded pass, then runs the round call, `lyx gate test --wait --tier <round list> --base <that pass's commit>`, through verifytree.Verify, running the told command itself where there is no pass to diff from.
+// It is also told a gate list through a RoundGate source, read at each arrival, whose error is the gate's returned error; the fix rows of loom and darn tell it the hub's `landing` list.
+// It lints the comments added since the told command's last recorded pass, then runs the round call, `lyx gate test --wait --tier <told list> --base <that pass's commit>`, through verifytree.Verify, running the told list's own whole-tree call, `--all`, where there is no pass to diff from.
 // The narrowing, the fallback to whole and the guard step are the round call's own; Webster's gate, Publish and Finalize keep the full verify on the tree that lands.
 // A failed run's findings carry the exit code, the log path and the log's tail, and when the whole log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, a paragraph naming the window.
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then re-stepping the row.
 // The gate runs no flake rerun.
-// The round runs the tiers the `round` gate lists and nothing else, so `tmux` and `llm` tiers run only if the hub lists them there.
+// The round runs the tiers the told list holds and nothing else, so `tmux` and `llm` tiers run only if the hub lists them in the `landing` gate.
 // Publish reruns both verifies in full regardless, and stays the guard.
 // Told a tree scope reader, it takes the darn form the `Darn-Write` and `Darn-Burler-Fix` rows run, and requires the merge base reader:
 // the headroom lint and then the comment lint run from the task branch's merge base with the parent to HEAD, so every attempt diffs from the merge base and a PR-Gate rework is never narrowed to a stale pass.
