@@ -32,7 +32,41 @@ type FailedTest struct {
 	Test string `yaml:"test"`
 }
 
+// CommitRange is a range of commits named by full commit names; its zero value is the empty range.
+type CommitRange struct {
+	// From is the range's first commit.
+	From string `yaml:"from"`
+	// To is the range's last commit.
+	To string `yaml:"to"`
+}
+
+// TracedCard is one plan card a failing verify's locations were traced to.
+// The record stores no slug or intent text, since a reader takes them from the live plan.
+type TracedCard struct {
+	// Number is the card's number in the plan.
+	Number int `yaml:"number"`
+	// Glyphs are the card's glyph targets that hold a traced location.
+	Glyphs []string `yaml:"glyphs"`
+	// Locations are the failing `path:line` locations matched to the card.
+	Locations []string `yaml:"locations"`
+	// Batch is the Webster batch that ran the card, 0 when Webster holds no record of it.
+	Batch int `yaml:"batch"`
+	// Range is the commits of the card's batch, omitted when empty.
+	Range CommitRange `yaml:"range,omitempty"`
+}
+
+// FailureTrace is what tracing a failed verify log to the plan returns and the Publish failure record stores.
+type FailureTrace struct {
+	// Cards are the plan cards the failing locations were traced to.
+	Cards []TracedCard
+	// LaterRange is the commits made after the traced batches.
+	LaterRange CommitRange
+	// Untraced are the failing `path:line` locations no card holds.
+	Untraced []string
+}
+
 // PublishFailure is the Publish failure record.
+// Cards, LaterRange and Untraced are the optional trace of the failure: a record without them reads as it always did.
 type PublishFailure struct {
 	// Kind names the failing verify.
 	Kind FailureKind `yaml:"kind"`
@@ -52,6 +86,12 @@ type PublishFailure struct {
 	Target string `yaml:"target,omitempty"`
 	// WrittenAt is the record's write time in RFC 3339 whole-second UTC, empty for a record written before the field existed.
 	WrittenAt string `yaml:"written_at,omitempty"`
+	// Cards are the plan cards the failing locations were traced to.
+	Cards []TracedCard `yaml:"cards,omitempty"`
+	// LaterRange is the commits made after the traced batches.
+	LaterRange CommitRange `yaml:"later_range,omitempty"`
+	// Untraced are the failing locations no plan card holds.
+	Untraced []string `yaml:"untraced,omitempty"`
 }
 
 // WritePublishFailure writes f as given to p.PublishFailure.

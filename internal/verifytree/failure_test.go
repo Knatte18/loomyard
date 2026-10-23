@@ -64,6 +64,42 @@ func TestPublishFailureRecord(t *testing.T) {
 		})
 	}
 
+	t.Run("trace fields round-trip and an untraced record writes none of their keys", func(t *testing.T) {
+		t.Parallel()
+		p := newPaths(t)
+		base := PublishFailure{Kind: FailureKindPublish, LogPath: filepath.Join(p.Dir, "verify-1.log"), Head: "abc123"}
+		if err := WritePublishFailure(p, base); err != nil {
+			t.Fatal(err)
+		}
+		written, err := os.ReadFile(p.PublishFailure)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"cards", "later_range", "untraced"} {
+			if strings.Contains(string(written), key+":") {
+				t.Errorf("record without a trace = %q; want no %q key", written, key)
+			}
+		}
+
+		want := base
+		want.Cards = []TracedCard{
+			{Number: 3, Glyphs: []string{"internal/a#F"}, Locations: []string{"internal/a/a.go:12"}, Batch: 2, Range: CommitRange{From: "aaa", To: "bbb"}},
+			{Number: 5, Glyphs: []string{"internal/b#G"}, Locations: []string{"internal/b/b.go:7"}},
+		}
+		want.LaterRange = CommitRange{From: "ccc", To: "ddd"}
+		want.Untraced = []string{"internal/c/c.go:4"}
+		if err := WritePublishFailure(p, want); err != nil {
+			t.Fatal(err)
+		}
+		got, ok, err := ReadPublishFailure(p)
+		if !ok || err != nil {
+			t.Fatalf("ReadPublishFailure = (_, %v, %v); want (_, true, nil)", ok, err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("record = %+v; want %+v", got, want)
+		}
+	})
+
 	t.Run("a record written before the row and tier fields decodes with an empty row and tier 0", func(t *testing.T) {
 		t.Parallel()
 		p := newPaths(t)
@@ -76,6 +112,9 @@ func TestPublishFailureRecord(t *testing.T) {
 		}
 		if got.Row != "" || got.Tier != 0 || got.Kind != FailureKindPlanVerify {
 			t.Fatalf("record = %+v; want an empty Row, tier 0 and kind %q", got, FailureKindPlanVerify)
+		}
+		if got.Cards != nil || got.LaterRange != (CommitRange{}) || got.Untraced != nil {
+			t.Fatalf("record = %+v; want empty trace fields", got)
 		}
 	})
 
