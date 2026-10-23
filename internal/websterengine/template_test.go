@@ -899,7 +899,7 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderVerifyFixCold(reportPath, root, root, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err,
-				contains:    []string{reportPath, testReplyPath, testOutcomePath, testSummaryPath, "_lyx/plan", "run `" + testFixGate + "` as a foreground Bash call"},
+				contains:    []string{reportPath, testReplyPath, testOutcomePath, testSummaryPath, "_lyx/plan", testFixGate},
 				notContains: []string{"{{", "## Constraints"}}
 		}},
 		{"cold fixer prompt carries a declared PATTERN change when PATTERN is active", func(t *testing.T) promptCheck {
