@@ -272,7 +272,7 @@ func unmatchedRecords(row RunRow, records []shedrun.SettleRecord, taken []bool, 
 
 // settlerOf names who settled the stop, the first of these that holds:
 // a bounce was settled by the judge;
-// a batten automatic step accounting for it, or a go-rule restep or verify-retry record, make it the shed's;
+// a batten automatic step accounting for it, or a go-rule restep record or a past run's verify-retry record, make it the shed's;
 // a tackler restep record makes it the tackler's;
 // an applied arbiter attempt or a parent-review alignment verdict spawned after the stop makes it the arbiter's or alignment's;
 // else the by label of the first history entry that moved it on, unknown when that entry has none, and open when none follows in a run in flight.

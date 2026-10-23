@@ -5,6 +5,7 @@ package reportengine
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -26,29 +27,62 @@ type phaseTable struct {
 // retiredBatchifierRow is the loom row that batched the plan before the implementer took batching over; a past run's history still carries it.
 const retiredBatchifierRow = "Batchifier"
 
+// The loom rows the recipes no longer hold, written as literals so a past run's history and status still read.
+const (
+	retiredPublishRow             = "Publish"
+	retiredPRAlignRow             = "PR-Align"
+	retiredPRGateRow              = "PR-Gate"
+	retiredPRReworkRow            = "PR-Rework"
+	retiredMergeBouncerRow        = "Merge-Bouncer"
+	retiredMergeBurlerReviewRow   = "Merge-Burler-Review"
+	retiredMergeBurlerFixRow      = "Merge-Burler-Fix"
+	retiredWebsterBouncerRow      = "Webster-Bouncer"
+	retiredWebsterBurlerReviewRow = "Webster-Burler-Review"
+	retiredWebsterBurlerFixRow    = "Webster-Burler-Fix"
+)
+
+// retiredRowNames maps each retired loom row to the phase a past run's time on it counts under.
+var retiredRowNames = map[string]string{
+	retiredPublishRow:             PhasePublishFinalize,
+	retiredPRAlignRow:             PhasePublishFinalize,
+	retiredPRGateRow:              PhasePublishFinalize,
+	retiredPRReworkRow:            PhasePublishFinalize,
+	retiredMergeBouncerRow:        PhaseMerge,
+	retiredMergeBurlerReviewRow:   PhaseMerge,
+	retiredMergeBurlerFixRow:      PhaseMerge,
+	retiredWebsterBouncerRow:      PhaseWebster,
+	retiredWebsterBurlerReviewRow: PhaseWebster,
+	retiredWebsterBurlerFixRow:    PhaseWebster,
+}
+
 // recipePhaseTables holds the phase table of every recipe a report selects.
 var recipePhaseTables = map[string]phaseTable{
 	shedrun.RecipeLoom: {
-		exact: map[string]string{
-			loomshed.NamePreflight:       PhaseSetup,
-			loomshed.NameLoomPreflight:   PhaseSetup,
-			retiredBatchifierRow:         PhaseWebster,
-			loomshed.NameDescribe:        PhaseWebster,
-			loomshed.NamePublish:         PhasePublishFinalize,
-			loomshed.NamePRAlign:         PhasePublishFinalize,
-			loomshed.NamePRGate:          PhasePublishFinalize,
-			loomshed.NamePRRework:        PhasePublishFinalize,
-			loomshed.NameFinalize:        PhasePublishFinalize,
-			loomshed.NameFrictionReflect: PhasePublishFinalize,
-		},
+		exact: loomPhases(),
 		families: map[string]string{
 			rowFamily(loomshed.NameDiscussionWrite): PhaseDiscussion,
 			rowFamily(loomshed.NamePlanWrite):       PhasePlan,
 			rowFamily(loomshed.NameWebster):         PhaseWebster,
+			rowFamily(loomshed.NameCodeBouncer):     PhaseWebster,
 			rowFamily(loomshed.NameMergeIn):         PhaseMerge,
 		},
 	},
 	shedrun.RecipeDarn: {exact: darnPhases()},
+}
+
+// loomPhases maps every row of a loom run that a phase table names whole, the retired rows of past runs included, to its phase.
+func loomPhases() map[string]string {
+	phases := map[string]string{
+		loomshed.NamePreflight:       PhaseSetup,
+		loomshed.NameLoomPreflight:   PhaseSetup,
+		retiredBatchifierRow:         PhaseWebster,
+		loomshed.NameDescribe:        PhaseWebster,
+		loomshed.NamePRReview:        PhasePublishFinalize,
+		loomshed.NameFinalize:        PhasePublishFinalize,
+		loomshed.NameFrictionReflect: PhasePublishFinalize,
+	}
+	maps.Copy(phases, retiredRowNames)
+	return phases
 }
 
 // darnPhases maps every row of a darn run, and each retired row name a darn status may still carry, to its phase.
@@ -61,11 +95,12 @@ func darnPhases() map[string]string {
 		loomshed.NameDarnBurlerReview: PhaseReview,
 		loomshed.NameDarnBurlerFix:    PhaseReview,
 		loomshed.NameMergeIn:          PhaseMerge,
-		loomshed.NamePublish:          PhasePublishFinalize,
-		loomshed.NamePRAlign:          PhasePublishFinalize,
-		loomshed.NamePRGate:           PhasePublishFinalize,
+		loomshed.NamePRReview:         PhasePublishFinalize,
 		loomshed.NameFinalize:         PhasePublishFinalize,
 		loomshed.NameFrictionReflect:  PhasePublishFinalize,
+		retiredPublishRow:             PhasePublishFinalize,
+		retiredPRAlignRow:             PhasePublishFinalize,
+		retiredPRGateRow:              PhasePublishFinalize,
 	}
 	for retired, successor := range loomrecipe.DarnRetiredRows() {
 		phases[retired] = phases[successor]

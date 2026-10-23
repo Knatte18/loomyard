@@ -11,7 +11,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -20,7 +19,7 @@ import (
 const (
 	// WaitParentReview is a parent-review round, from its request to its verdict.
 	WaitParentReview = "parent_review"
-	// WaitPRGate is a child awaiting at the PR gate.
+	// WaitPRGate is a child awaiting at the PR gate, a row only a past run holds.
 	WaitPRGate = "pr_gate"
 	// WaitEscalation is a child or a batten row awaiting at any other row.
 	WaitEscalation = "escalation"
@@ -124,7 +123,7 @@ func runWaits(row RunRow, rows []timedRow, end time.Time) []waitInterval {
 		switch change.To {
 		case shedengine.StateAwaiting:
 			kind = WaitEscalation
-			if change.Producer == loomshed.NamePRGate {
+			if change.Producer == retiredPRGateRow {
 				kind = WaitPRGate
 			}
 		case shedengine.StateBlocked, shedengine.StateFailed:
