@@ -543,6 +543,7 @@
 // The gate, not the verb, judges the fix: a dead fixer leaves the failure for the next evaluation to count.
 // Bound: the verb spawns whenever a verify-gate report exists, a fork-routed failure's included, and counts no spawn;
 // the gate messages, which the attempt budget caps, and the Master template's rule to run it only when a message names it bound how many cold fixers a run gets.
+// The run-exit audit reads the forks of Master's session only, so a cold fixer's own writes are checked only through the contract-file evidence loadRunWrites collects, as a recovery strand's are.
 // Each fixer session joins the run's write evidence (loadRunWrites) beside the recovery sessions, run entry stops a fixer recorded not terminal, and `reset --to start` stops every recorded fixer strand.
 //
 // # The verify gate

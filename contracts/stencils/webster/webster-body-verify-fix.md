@@ -24,7 +24,7 @@ You never run a Bash call in the background, and you end your turn only after yo
 - Fix the cause in source.
 - Never delete, skip or weaken a test to make it pass: no `t.Skip`, no loosened assertion, no removed case.
   A test that is wrong is fixed to assert what the plan intends, never to assert less.
-- Never touch the plan directory `{{.plan_dir}}` or anything under `_lyx`: they sit outside every code commit, and the run-exit audit flags a fixer that writes there.
+- Never touch the plan directory `{{.plan_dir}}` or anything under `_lyx`: they sit outside every code commit, and a write there corrupts the run's own record.
 - Commit each fix to the repo with normal git from your working directory, with the subject `fix: <summary>`, where `<summary>` says what the fix repairs.
   Never commit a path under `_lyx`.
 - A fix that departs from a PATTERN entry because the entry forbids the way the findings call for records the departure as a `Pattern-Departure:` trailer in that `fix:` commit, in the shape `loom-plan-spec.md`'s `## Pattern-Departure trailer` section defines.
