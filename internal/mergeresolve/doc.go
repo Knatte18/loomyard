@@ -16,6 +16,9 @@
 // so every exit that has not yet concluded aborts before returning stuck, and a still-dirty scan after
 // the last retry aborts and reports stuck rather than concluding anyway.
 //
+// Resolve takes the source branch and a tip.
+// An empty tip merges the source branch by name; a set tip merges that commit as a merge-in of the source branch, so a caller that reviewed one tip merges exactly it whatever the branch has moved to since.
+//
 // Once the markers are gone, Resolve stages in a fixed order: the conflicted paths, then every tracked modification and deletion, then it concludes.
 // An edit the session made to a tracked file outside the conflicted paths, to keep the merged tree building, therefore lands in the merge commit.
 // A new file never does: if the session left any untracked file, Resolve aborts the merge before staging anything and reports stuck naming every one.

@@ -23,13 +23,14 @@ const maxConflictAttempts = 2
 
 // Resolve merges source into the current pair and, if the merge produces conflicts, drives at most
 // two conflict-resolution sessions to clear them.
+// A non-empty tip is the commit merged in place of source's own tip; an empty tip merges source by name.
 //
 // The mechanical marker re-scan (markers.go), not the session's own verdict, is what decides a
 // conflict is resolved, because the conclude step is irreversible at the Fabric layer and the abort
 // call is the only checkpoint covering the attempt window: once MergeContinue lands, there is no
 // undo, so Resolve never trusts a session's own claim of success and always re-verifies by content
 // before staging and concluding.
-func (r *Resolver) Resolve(ctx context.Context, source string) (Result, error) {
+func (r *Resolver) Resolve(ctx context.Context, source, tip string) (Result, error) {
 	if err := entryErr(ctx); err != nil {
 		return Result{}, err
 	}
@@ -52,7 +53,12 @@ func (r *Resolver) Resolve(ctx context.Context, source string) (Result, error) {
 		return Result{}, err
 	}
 
-	mergeRes, err := r.deps.Fabric.MergeIn(source)
+	var mergeRes fabricengine.MergeResult
+	if tip == "" {
+		mergeRes, err = r.deps.Fabric.MergeIn(source)
+	} else {
+		mergeRes, err = r.deps.Fabric.MergeInAt(source, tip)
+	}
 	if err != nil {
 		return r.mergeInErrorResult(ctx, err)
 	}

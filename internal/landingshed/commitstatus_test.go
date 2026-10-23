@@ -23,12 +23,16 @@ import (
 // orderRecordingResolver is a resolver fake that appends "merge" to a shared event slice, so a test
 // can assert the commit seam ran before the merge rather than merely that both ran.
 type orderRecordingResolver struct {
-	events *[]string
-	result mergeresolve.Result
-	err    error
+	events    *[]string
+	result    mergeresolve.Result
+	err       error
+	gotSource string
+	gotTip    string
 }
 
-func (r *orderRecordingResolver) Resolve(_ context.Context, _ string) (mergeresolve.Result, error) {
+func (r *orderRecordingResolver) Resolve(_ context.Context, source, tip string) (mergeresolve.Result, error) {
+	r.gotSource = source
+	r.gotTip = tip
 	*r.events = append(*r.events, "merge")
 	return r.result, r.err
 }

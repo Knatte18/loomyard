@@ -163,7 +163,7 @@ func (m *MergeIn) Call(ctx context.Context) (shedengine.Outcome, shedengine.Outp
 		return outcome, out, err
 	}
 
-	merge, err := m.resolver.Resolve(ctx, m.deps.ParentBranch)
+	merge, err := m.resolver.Resolve(ctx, m.deps.ParentBranch, "")
 	if err != nil {
 		if cerr := cancelErr(ctx, mergeInName); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr

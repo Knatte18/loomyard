@@ -37,7 +37,7 @@ type eventResolver struct {
 	err    error
 }
 
-func (r *eventResolver) Resolve(_ context.Context, source string) (mergeresolve.Result, error) {
+func (r *eventResolver) Resolve(_ context.Context, source, _ string) (mergeresolve.Result, error) {
 	*r.events = append(*r.events, "merge "+source)
 	return r.result, r.err
 }

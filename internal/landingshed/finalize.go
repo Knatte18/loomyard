@@ -493,7 +493,7 @@ func (fz *Finalize) mergeInStep(ctx context.Context) (shedengine.Outcome, sheden
 	if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
 		return outcome, out, err, true
 	}
-	result, err := fz.resolver.Resolve(ctx, fz.deps.ParentBranch)
+	result, err := fz.resolver.Resolve(ctx, fz.deps.ParentBranch, "")
 	if err != nil {
 		if cerr := cancelErr(ctx, finalizeName); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr, true

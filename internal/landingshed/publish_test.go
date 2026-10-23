@@ -40,13 +40,15 @@ import (
 type recordingResolver struct {
 	called    bool
 	gotSource string
+	gotTip    string
 	result    mergeresolve.Result
 	err       error
 }
 
-func (r *recordingResolver) Resolve(ctx context.Context, source string) (mergeresolve.Result, error) {
+func (r *recordingResolver) Resolve(ctx context.Context, source, tip string) (mergeresolve.Result, error) {
 	r.called = true
 	r.gotSource = source
+	r.gotTip = tip
 	return r.result, r.err
 }
 

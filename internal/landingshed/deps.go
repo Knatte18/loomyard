@@ -22,8 +22,9 @@ import (
 // path anyone outside could reach for by mistake.
 type resolver interface {
 	// Resolve merges source into the current pair and, if the merge produces conflicts, drives a
-	// conflict-resolution session to clear them. See mergeresolve.Resolver.Resolve.
-	Resolve(ctx context.Context, source string) (mergeresolve.Result, error)
+	// conflict-resolution session to clear them.
+	// A non-empty tip is the commit merged in place of source's own tip. See mergeresolve.Resolver.Resolve.
+	Resolve(ctx context.Context, source, tip string) (mergeresolve.Result, error)
 }
 
 // The compile-time assertion that *mergeresolve.Resolver satisfies resolver.

@@ -346,9 +346,9 @@ type orderedResolver struct {
 	order *[]string
 }
 
-func (r *orderedResolver) Resolve(ctx context.Context, source string) (mergeresolve.Result, error) {
+func (r *orderedResolver) Resolve(ctx context.Context, source, tip string) (mergeresolve.Result, error) {
 	*r.order = append(*r.order, "merge-in")
-	return r.recordingResolver.Resolve(ctx, source)
+	return r.recordingResolver.Resolve(ctx, source, tip)
 }
 
 // TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once with the same composed message, and that the board seam runs once, after the retry that lands, never after a failed attempt.

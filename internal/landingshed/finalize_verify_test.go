@@ -28,11 +28,15 @@ const (
 type scriptedResolver struct {
 	results []mergeresolve.Result
 	calls   int
+	sources []string
+	tips    []string
 }
 
-func (r *scriptedResolver) Resolve(ctx context.Context, source string) (mergeresolve.Result, error) {
+func (r *scriptedResolver) Resolve(ctx context.Context, source, tip string) (mergeresolve.Result, error) {
 	idx := r.calls
 	r.calls++
+	r.sources = append(r.sources, source)
+	r.tips = append(r.tips, tip)
 	if idx >= len(r.results) {
 		idx = len(r.results) - 1
 	}
