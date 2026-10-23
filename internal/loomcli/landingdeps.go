@@ -6,7 +6,6 @@
 package loomcli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -26,7 +25,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
@@ -198,25 +196,22 @@ func landingDeps(
 			_, err := orchcli.NotifyPrime(l, loomProgram, line)
 			return err
 		},
-		VerifyCommand:          verify.command,
-		PublishCommand:         verify.publishCommand,
-		BaseCommand:            verify.baseCommand,
-		GateTiers:              verify.gateTiers,
-		VerifyFailedWayForward: verify.failedWayForward,
-		VerifyFailureTarget:    verify.failureTarget,
-		ClassifyVerifyFailure:  verify.classify,
-		PublishSkip:            verify.publishSkip,
-		FailingTests:           failingTestsOf,
-		TraceFailure:           traceFailure,
-		VerifyDir:              verifytree.Dir(l.AnchorPath()),
-		VerifyWaitMark:         verifyWaitMark,
-		VerifyHold:             verifytree.NewPauseHold(runner.PauseGeometry(), holdsParentLock(lock.Store, l.WorktreeName)),
-		Shuttle:                runner,
-		EnginesRun:             runner.EnginesRun,
-		Registry:               registry,
-		Config:                 cfg,
-		Lock:                   lock,
-		RunStart:               runStart,
+		VerifyCommand:  verify.command,
+		PublishCommand: verify.publishCommand,
+		BaseCommand:    verify.baseCommand,
+		GateTiers:      verify.gateTiers,
+		PublishSkip:    verify.publishSkip,
+		FailingTests:   failingTestsOf,
+		TraceFailure:   traceFailure,
+		VerifyDir:      verifytree.Dir(l.AnchorPath()),
+		VerifyWaitMark: verifyWaitMark,
+		VerifyHold:     verifytree.NewPauseHold(runner.PauseGeometry(), holdsParentLock(lock.Store, l.WorktreeName)),
+		Shuttle:        runner,
+		EnginesRun:     runner.EnginesRun,
+		Registry:       registry,
+		Config:         cfg,
+		Lock:           lock,
+		RunStart:       runStart,
 		// The parent reads run over the task pair, opened at call time like the other fabric seams.
 		ReadParentTips: parentTipsReader(l, parentBranch),
 		HoldsWork: func(base, source string) (bool, error) {
@@ -468,7 +463,7 @@ func loopLockOwner(l *lyxcwd.Location, runID string) func() (parentlock.Owner, e
 	}
 }
 
-// verifySource pairs the readers of the gate calls and the failed-verify way-forward clause one recipe tells its verify gate and landing producers.
+// verifySource pairs the readers of the gate calls one recipe tells its verify gate and landing producers.
 type verifySource struct {
 	// command returns the call the landing sites run, read each time it is called.
 	command func() (string, error)
@@ -478,31 +473,22 @@ type verifySource struct {
 	baseCommand func() (string, error)
 	// gateTiers lists the tier numbers of a named gate, read from the hub's gate config at each call.
 	gateTiers func(gate string) ([]int, error)
-	// failedWayForward is the clause a recorded failed-verify Stuck reason ends with.
-	failedWayForward string
-	// failureTarget is the row the recipe routes a failed Publish verify back to.
-	failureTarget string
-	// classify chooses a failure record's target and the reason's way forward per failure, in place of failedWayForward and failureTarget.
-	// Nil for loom's source.
-	classify func(ctx context.Context, failure verifytree.PublishFailure) landingshed.FailureRoute
 	// publishSkip answers whether Publish skips the `publish` gate for this call, read at each Publish.
 	// Nil for loom's source, which never skips.
 	publishSkip func() (bool, error)
 }
 
-// planVerifySource returns loom's verify source: the hub's `landing`, `publish` and `final` gate calls, and the Webster-Burler-Review route back to a fix.
+// planVerifySource returns loom's verify source: the hub's `landing`, `publish` and `final` gate calls.
 // Each reader loads the hub's gate config over the pair's config dirs each time it is called, never at construction:
 // landingDeps runs at bootstrap, so a gate.yaml edit between two steps must take effect.
 // A config or gate-list refusal is returned with its own way forward, not mapped to an empty command.
 func planVerifySource(l *lyxcwd.Location) verifySource {
 	dirs := fabricengine.ConfigDirs(l)
 	return verifySource{
-		command:          gateCallSource(dirs, "landing"),
-		publishCommand:   gateCallSource(dirs, "publish"),
-		baseCommand:      gateCallSource(dirs, "final"),
-		gateTiers:        gateTiersLookup(dirs),
-		failedWayForward: `run "lyx loom goto --to Webster-Burler-Review", then "lyx loom resume", in the task worktree; the Webster-Review round reads the Publish failure record and its gate runs the failing tests`,
-		failureTarget:    loomshed.NameWebsterBurlerReview,
+		command:        gateCallSource(dirs, "landing"),
+		publishCommand: gateCallSource(dirs, "publish"),
+		baseCommand:    gateCallSource(dirs, "final"),
+		gateTiers:      gateTiersLookup(dirs),
 	}
 }
 

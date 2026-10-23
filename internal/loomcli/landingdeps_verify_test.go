@@ -57,14 +57,6 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 		"https://example.com/origin.git", "main", true, func() error { return nil },
 		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(loc), parentLockDeps(loc, shedrun.SelfRunID, "", ""), time.Time{})
 
-	if want := planVerifySource(loc).failedWayForward; deps.VerifyFailedWayForward != want || !strings.Contains(want, `"lyx loom goto --to Webster-Burler-Review"`) {
-		t.Errorf("VerifyFailedWayForward = %q, want the plan source's Webster-Burler-Review clause %q", deps.VerifyFailedWayForward, want)
-	}
-
-	if deps.VerifyFailureTarget != "Webster-Burler-Review" {
-		t.Errorf("VerifyFailureTarget = %q, want Webster-Burler-Review", deps.VerifyFailureTarget)
-	}
-
 	readers := map[string]func() (string, error){"VerifyCommand": deps.VerifyCommand, "PublishCommand": deps.PublishCommand, "BaseCommand": deps.BaseCommand}
 	for name, read := range readers {
 		if _, err := read(); !errors.Is(err, gateslot.ErrConfigAbsent) {

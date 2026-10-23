@@ -314,7 +314,6 @@ func writeVerifyLog(t *testing.T, gate *gateFixture, log string) {
 // A dirty tree or a timeout writes none, and a passing Publish removes a present one before the push.
 // It stays serial (no t.Parallel): failOnGitHubClient swaps the package-level NewGitHubClient, which is process-global state.
 func TestPublishVerify_FailureRecord(t *testing.T) {
-	const toldWayForward = `run "lyx darn goto", then "lyx darn resume", in the task worktree; the told route`
 	const plainLog = "verify output"
 	tierZeroLog := plainLog + "\n" + gateslot.TierSummaryLine(gateslot.RunRecord{Tier: 0, ExitCode: 1}, "/x/tier0.log") + "\n"
 	failed := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
@@ -331,8 +330,8 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 		wantMerge string
 		// blockRecord pre-creates the record path as a directory, so the write fails.
 		blockRecord bool
-		// wantGoto expects the Stuck reason to name the goto to Webster-Burler-Review as the way forward.
-		wantGoto bool
+		// wantFixForward expects the Stuck reason to end with the fix-forward clause.
+		wantFixForward bool
 	}{
 		{"the publish call fails with no tier line", map[string]verifytree.Result{gatePublishCall: failed}, plainLog, &MergeRecord{MergeCommit: "merged-head"}, verifytree.FailureKindPublish, 2, "merged-head", false, true},
 		{"the landing call fails with no tier line", map[string]verifytree.Result{gateLandingCall: failed}, plainLog, &MergeRecord{MergeCommit: "merged-head"}, verifytree.FailureKindLanding, 1, "merged-head", false, true},
@@ -341,7 +340,7 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 		{"no merge record names no merge commit", map[string]verifytree.Result{gatePublishCall: failed}, plainLog, nil, verifytree.FailureKindPublish, 2, "", false, true},
 		{"dirty tree writes none", map[string]verifytree.Result{gatePublishCall: {Status: verifytree.StatusDirty, Dirty: []string{"a.txt"}}}, plainLog, nil, "", 0, "", false, false},
 		{"timeout writes none", map[string]verifytree.Result{gatePublishCall: {Status: verifytree.StatusFailed, ExitCode: -1, TimedOut: true}}, plainLog, nil, "", 0, "", false, false},
-		{"a failed record write names no goto", map[string]verifytree.Result{gatePublishCall: failed}, plainLog, nil, "", 0, "", true, false},
+		{"a failed record write still ends with the fix-forward clause", map[string]verifytree.Result{gatePublishCall: failed}, plainLog, nil, "", 0, "", true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -352,8 +351,6 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			fx.p.gate.failedWayForward = toldWayForward
-			fx.p.gate.failureTarget = "Told-Row"
 			fx.p.gate.recorder = &failureRecorder{
 				failingTests: func(log string) []verifytree.FailedTest {
 					if log != tt.log {
@@ -377,12 +374,9 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 			if err != nil || outcome != shedengine.Stuck {
 				t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
 			}
-			if tt.wantGoto {
-				if !strings.HasSuffix(reason, "way forward: "+toldWayForward) {
-					t.Errorf("reason %q; want it to end with the told way-forward clause", reason)
-				}
-				if strings.Contains(reason, "fix forward on the task branch") {
-					t.Errorf("reason %q; want no hand-fix clause beside the goto", reason)
+			if tt.wantFixForward {
+				if !strings.HasSuffix(reason, "fix forward on the task branch, then resume") {
+					t.Errorf("reason %q; want it to end with the fix-forward clause", reason)
 				}
 			} else if strings.Contains(reason, "goto") {
 				t.Errorf("reason %q; want no goto", reason)
@@ -407,46 +401,13 @@ func TestPublishVerify_FailureRecord(t *testing.T) {
 			failingLog := filepath.Join(fx.gate.paths.Dir, fmt.Sprintf("verify-%d.log", fx.gate.fake.verifyCalls))
 			want := verifytree.PublishFailure{
 				Kind: tt.wantKind, Tier: tt.wantTier, Row: "Publish", Tests: wantTests, LogPath: failingLog, Head: "merged-head", MergeCommit: tt.wantMerge,
-				Target: "Told-Row", WrittenAt: gateMarkStart.UTC().Format(time.RFC3339),
+				WrittenAt: gateMarkStart.UTC().Format(time.RFC3339),
 			}
 			if !ok || !reflect.DeepEqual(got, want) {
 				t.Fatalf("record = %+v, %v; want %+v", got, ok, want)
 			}
 		})
 	}
-
-	t.Run("a told classifier chooses the record's target and the reason's lead and way forward", func(t *testing.T) {
-		fx := newPublishVerifyFixture(t, gateLandingCall, gatePublishCall)
-		fx.p.deps.TaskHead = func() (string, error) { return "merged-head", nil }
-		var seen verifytree.PublishFailure
-		fx.p.gate.classify = func(_ context.Context, failure verifytree.PublishFailure) FailureRoute {
-			seen = failure
-			return FailureRoute{Target: "Merge-In", WayForward: "the told not-owned route", Lead: " outside the task's impacted set, in example.com/m/a,"}
-		}
-		fx.p.gate.recorder = &failureRecorder{
-			failingTests: func(string) []verifytree.FailedTest { return wantTests },
-			head:         fx.p.deps.TaskHead,
-		}
-		fx.gate.fake.resultByCommand = map[string]verifytree.Result{gatePublishCall: failed}
-		writeVerifyLog(t, fx.gate, plainLog)
-		failOnGitHubClient(t)
-
-		outcome, reason, err := fx.call(t)
-
-		if err != nil || outcome != shedengine.Stuck {
-			t.Fatalf("Call() = %q, %v; want Stuck, nil", outcome, err)
-		}
-		if !strings.Contains(reason, "publish gate failed outside the task's impacted set, in example.com/m/a, after merging parent branch") || !strings.HasSuffix(reason, "way forward: the told not-owned route") {
-			t.Errorf("reason %q; want the classifier's lead and way forward", reason)
-		}
-		got, ok, err := verifytree.ReadPublishFailure(fx.gate.paths)
-		if err != nil || !ok || got.Target != "Merge-In" {
-			t.Fatalf("record = %+v, %v, %v; want target Merge-In", got, ok, err)
-		}
-		if seen.Kind != verifytree.FailureKindPublish || seen.Row != "Publish" || !reflect.DeepEqual(seen.Tests, wantTests) || seen.LogPath != got.LogPath || seen.Target != "" {
-			t.Errorf("classifier saw %+v; want the record as written with an empty target", seen)
-		}
-	})
 
 	t.Run("a told trace lands in the record through the recorder NewPublish builds", func(t *testing.T) {
 		fx := newPublishVerifyFixture(t, gateLandingCall, gatePublishCall)

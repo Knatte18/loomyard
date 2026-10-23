@@ -127,16 +127,13 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 
 	v := reflect.ValueOf(deps)
 	typ := v.Type()
-	// The loom source leaves the Publish skip and failure classifier seams nil, so the walk skips them.
+	// The loom source leaves the Publish skip seam nil, so the walk skips it.
 	if deps.PublishSkip != nil {
 		t.Error("landingDeps(...).PublishSkip is set for loom's verify source; want nil")
 	}
-	if deps.ClassifyVerifyFailure != nil {
-		t.Error("landingDeps(...).ClassifyVerifyFailure is set for loom's verify source; want nil")
-	}
 	// FixerSeats is the one field wireLanding fills, from the seat engine wire built.
 	unfilled := map[string]bool{
-		"PublishSkip": true, "ClassifyVerifyFailure": true, "FixerSeats": true,
+		"PublishSkip": true, "FixerSeats": true,
 	}
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)

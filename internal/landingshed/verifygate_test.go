@@ -238,7 +238,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			name: "failed after a watchdog quit names the window and busy_quit_sec", command: "false", site: "Publish",
 			result:        verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1},
 			logBody:       "ok  \texample.com/mod/b\t0.1s\n" + gateslot.WatchdogLine("/tmp/x/a.test", 42, 2*time.Minute) + "\nSIGQUIT: quit\n",
-			wantReasonHas: []string{"exit code 1", "2m0s", "busy_quit_sec", `"lyx config gate" from the prime`},
+			wantReasonHas: []string{"exit code 1", "2m0s", "busy_quit_sec", `"lyx config gate" from the prime`, "fix forward on the task branch, then resume"},
 		},
 		{
 			name: "could not start", command: "true", site: "Publish",

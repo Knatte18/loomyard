@@ -89,15 +89,6 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if command, err := c.env.VerifyCommand(); err != nil || command != wantDarnLandingCall {
 			t.Errorf("c.env.VerifyCommand() = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
 		}
-		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Darn-Write"`) {
-			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Darn-Write row", got)
-		}
-		if got := c.verifySource().failureTarget; got != "Darn-Write" {
-			t.Errorf("verifySource().failureTarget = %q; want Darn-Write", got)
-		}
-		if c.verifySource().classify == nil {
-			t.Error("verifySource().classify = nil; want the darn failure classifier")
-		}
 	})
 
 	t.Run("with tree scope on the verify gate's told command stays the hub's whole verify", func(t *testing.T) {
@@ -244,12 +235,6 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if c.env.DarnTable != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.VerifyTreeScope != nil || c.env.DarnVerifyAttempts != 0 {
 			t.Errorf("a loom seed filled a darn seam: DarnTable nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, VerifyTreeScope nil = %v, DarnVerifyAttempts = %d", c.env.DarnTable == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.VerifyTreeScope == nil, c.env.DarnVerifyAttempts)
-		}
-		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Webster-Burler-Review"`) {
-			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Webster-Burler-Review row", got)
-		}
-		if c.verifySource().classify != nil {
-			t.Error("a loom seed set verifySource().classify; want nil")
 		}
 	})
 

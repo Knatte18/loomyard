@@ -68,7 +68,6 @@ var nilLegal = map[string]bool{
 	"InnerRun.Restepped":                true,
 	"Landing.VerifyCommand":             true,
 	"Landing.PublishSkip":               true,
-	"Landing.ClassifyVerifyFailure":     true,
 	"Landing.VerifyWaitMark":            true,
 	"Landing.FailingTests":              true,
 	"Landing.TraceFailure":              true,

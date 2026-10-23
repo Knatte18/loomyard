@@ -4,7 +4,6 @@
 package loomcli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -15,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -31,7 +29,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 	"gopkg.in/yaml.v3"
 )
 
@@ -47,7 +44,7 @@ func reworkRowFor(recipe string) string {
 	return loomshed.NamePRRework
 }
 
-// darnVerifySource returns the darn recipe's verify source: the hub's `landing` and `publish` gate calls, and the Darn-Write route back to a fix.
+// darnVerifySource returns the darn recipe's verify source: the hub's `landing` and `publish` gate calls.
 // command resolves at each call, never at construction, so an edit between steps is seen:
 // the tree-scoped command when the task diff is wholly under the hub's configured trees, else the `landing` call;
 // a gate config refusal and a malformed tree key are errors naming the way forward.
@@ -74,11 +71,6 @@ func darnVerifySource(l *lyxcwd.Location) verifySource {
 		publishSkip: func() (bool, error) {
 			_, scoped, err := treeScope()
 			return scoped, err
-		},
-		failedWayForward: darnFailedWayForward,
-		failureTarget:    loomshed.NameDarnWrite,
-		classify: func(ctx context.Context, failure verifytree.PublishFailure) landingshed.FailureRoute {
-			return darnFailureRoute(ctx, failure, l.WorktreePath(), pairMergeBase(l), impactset.DeriveTargets)
 		},
 	}
 }
