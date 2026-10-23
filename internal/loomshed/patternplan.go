@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/patternlint"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 )
@@ -106,6 +107,24 @@ func patternPlanFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 		})
 	}
 	return findings, nil
+}
+
+// PatternBaseReader returns the PlanContext.PatternBase reader for worktreeRoot's repository.
+// On each call it reads PATTERN.md at the revision mergeBase answers, or at HEAD when mergeBase is nil, the standalone run with no parent recorded.
+// A mergeBase error is returned wrapped, and an empty answer is the error of reading no revision.
+// Nothing is read until the reader is called.
+func PatternBaseReader(worktreeRoot string, mergeBase func() (string, error)) func() ([]byte, error) {
+	return func() ([]byte, error) {
+		revision := "HEAD"
+		if mergeBase != nil {
+			var err error
+			revision, err = mergeBase()
+			if err != nil {
+				return nil, fmt.Errorf("loomshed: read the merge base for the PATTERN.md base: %w", err)
+			}
+		}
+		return patternlint.OverviewAt(worktreeRoot, revision)
+	}
 }
 
 // fencesEntry reports whether card fences a line for the entry id.
