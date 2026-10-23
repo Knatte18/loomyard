@@ -267,7 +267,9 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 	}
 
 	// A backfilled creation date reorders --sort age, oldest first, and leaves --sort revised in README order.
-	mustUpsert(t, `{"slug":"later","created":"2026-01-02T03:04:05Z"}`)
+	// Both entries get the same revised stamp, since the upserts above can fall in different whole seconds.
+	mustUpsert(t, `{"slug":"soon","revised":"2026-02-03T04:05:06Z"}`)
+	mustUpsert(t, `{"slug":"later","created":"2026-01-02T03:04:05Z","revised":"2026-02-03T04:05:06Z"}`)
 	if got := slugsOf(t, runJSON(t, 0, "list", "--sort", "age")); !slices.Equal(got, []string{"later", "soon"}) {
 		t.Fatalf("list --sort age: slugs = %v, want [later soon]", got)
 	}

@@ -287,7 +287,7 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		}
 	})
 
-	t.Run("a deleted path is committed but not recorded as written", func(t *testing.T) {
+	t.Run("a deleted path is committed but not recorded as written, and one HEAD never held is left out", func(t *testing.T) {
 		t.Parallel()
 		f := newBoltFixture(t)
 		gitkit.CommitFile(t, f.board, "notes/old.md", "old\n", "add old")
@@ -297,7 +297,7 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 				if err := os.Remove(filepath.Join(f.board, "notes", "old.md")); err != nil {
 					return nil, err
 				}
-				return []string{"notes/new.md", "notes/old.md"}, os.WriteFile(filepath.Join(f.board, "notes", "new.md"), []byte("new\n"), 0o644)
+				return []string{"notes/gone.md", "notes/new.md", "notes/old.md"}, os.WriteFile(filepath.Join(f.board, "notes", "new.md"), []byte("new\n"), 0o644)
 			},
 		}
 		rec := fabricengine.NewMutations(f.hub.Path)
@@ -320,6 +320,28 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		}
 		if want := []string{filepath.ToSlash(filepath.Join(boardRel, "notes", "new.md"))}; !slices.Equal(written, want) {
 			t.Errorf("file_written targets = %v, want %v", written, want)
+		}
+	})
+
+	t.Run("a write of only a path neither on disk nor in HEAD commits nothing", func(t *testing.T) {
+		t.Parallel()
+		f := newBoltFixture(t)
+		headBefore := f.head()
+		write := fabricengine.BoltWrite{
+			Message: "write ghost",
+			Write:   func() ([]string, error) { return []string{"notes/ghost.md"}, nil },
+		}
+		rec := fabricengine.NewMutations(f.hub.Path)
+
+		res, err := f.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{write}, rec)
+		if err != nil {
+			t.Fatalf("PullThenCommitWritten: %v", err)
+		}
+		if res.Committed || len(res.SHAs) != 0 || res.Skipped != "" {
+			t.Errorf("result = %+v; want no commit and no skip", res)
+		}
+		if got := f.head(); got != headBefore {
+			t.Errorf("HEAD = %q; want it unchanged at %q", got, headBefore)
 		}
 	})
 
