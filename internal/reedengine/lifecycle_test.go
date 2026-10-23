@@ -248,7 +248,7 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 	fake.answer("display-message", "$0|4321|1787000000", nil)
 	fake.answer("list-sessions", "worktree\n", nil)
 	fake.answer("list-panes", "%1 0 0 100 3 4322\n%2 0 3 100 20 4323\n", nil)
-	fake.answerWindowPanes("@0 0 - %1 0 4322 t\n@0 0 - %2 0 4323 t\n@3 1 - %5 0 4325 t\n@3 1 - %6 1 4326 t\n@4 1 - %7 0 4327 t\x1fbash\x1f/bin/bash\n@5 1 - %8 0 4328 t\x1fclaude\x1f/bin/bash\n", nil)
+	fake.answerWindowPanes("@0 0 - %1 0 4322 t\n@0 0 - %2 0 4323 t\n@3 1 - %5 0 4325 t\n@3 1 - %6 1 4326 t\n@4 1 - %7 0 4327 t\tbash\t/bin/bash\n@5 1 - %8 0 4328 t\tclaude\t/bin/bash\n", nil)
 	e.paneAge = func(pid int) (time.Duration, bool) { return 31 * time.Second, true }
 	st := &ReedState{
 		SelvagePaneID:  "%1",

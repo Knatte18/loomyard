@@ -36,21 +36,21 @@ func TestParsePaneList(t *testing.T) {
 		},
 		{
 			name: "tail with a spaced title, current command and spaced start command",
-			out:  "%1 0 0 220 15 1717 tst:slug:my worker\x1fnode\x1f/bin/bash -l\n",
+			out:  "%1 0 0 220 15 1717 tst:slug:my worker\tnode\t/bin/bash -l\n",
 			want: []LivePane{
 				{ID: "%1", Width: 220, Height: 15, PID: 1717, Title: "tst:slug:my worker", CurrentCommand: "node", StartCommand: "/bin/bash -l"},
 			},
 		},
 		{
 			name: "tail with an empty title and both commands",
-			out:  "%1 0 0 220 15 1717 \x1fbash\x1fbash\n",
+			out:  "%1 0 0 220 15 1717 \tbash\tbash\n",
 			want: []LivePane{
 				{ID: "%1", Width: 220, Height: 15, PID: 1717, CurrentCommand: "bash", StartCommand: "bash"},
 			},
 		},
 		{
 			name: "tail ending in an empty start command",
-			out:  "%1 0 0 220 15 1717 t\x1fbash\x1f\n",
+			out:  "%1 0 0 220 15 1717 t\tbash\t\n",
 			want: []LivePane{
 				{ID: "%1", Width: 220, Height: 15, PID: 1717, Title: "t", CurrentCommand: "bash"},
 			},
@@ -118,7 +118,7 @@ func TestParsePaneList(t *testing.T) {
 }
 
 func TestParseWindowPanes(t *testing.T) {
-	out := "@2 1 grp %5 0 4242 a title\x1fnode\x1f/bin/bash -l\n" +
+	out := "@2 1 grp %5 0 4242 a title\tnode\t/bin/bash -l\n" +
 		"@3 0 - %6 1 99 only a title\n" +
 		"@4 0 - %7\n"
 	want := []windowPane{

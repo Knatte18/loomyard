@@ -634,10 +634,10 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 	t.Run("ShellOnlyPaneIsRelaunched", func(t *testing.T) {
 		e := newTestEngine(t)
 		e.paneAge = func(pid int) (time.Duration, bool) { return 31 * time.Second, true }
-		fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321 t\x1fbash\x1f/bin/bash\n")
+		fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321 t\tbash\t/bin/bash\n")
 		// The new pane shows up in the listings once it is created, so the reconcile after the launch keeps its binding.
 		fake.answerFunc("new-window", func(args []string) (string, error) {
-			fake.answer("list-panes", "%9 0 0 100 20 4399 t\x1fclaude\x1f/bin/bash\n", nil)
+			fake.answer("list-panes", "%9 0 0 100 20 4399 t\tclaude\t/bin/bash\n", nil)
 			return "%9 @9\n", nil
 		})
 		persisted := Strand{GUID: "persisted-guid", Name: "tc:tslug:claude", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}
@@ -770,8 +770,8 @@ func TestAddStrand_ReclaimsADeadHoldersName(t *testing.T) {
 	const holderGUID = "holder-guid"
 	// A pid no process holds, since a removal reaps the pane's process tree.
 	const absentPID = 2147483646
-	shellOnlyListing := "@4 1 - %7 0 " + strconv.Itoa(absentPID) + " t\x1fbash\x1f/bin/bash\n"
-	engineListing := "@4 1 - %7 0 " + strconv.Itoa(absentPID) + " t\x1fclaude\x1f/bin/bash\n"
+	shellOnlyListing := "@4 1 - %7 0 " + strconv.Itoa(absentPID) + " t\tbash\t/bin/bash\n"
+	engineListing := "@4 1 - %7 0 " + strconv.Itoa(absentPID) + " t\tclaude\t/bin/bash\n"
 	ownWindow := render.Display{Anchor: render.AnchorOwnWindow}
 	holder := func(name, paneID string, display render.Display) Strand {
 		return Strand{GUID: holderGUID, Name: name, PaneID: paneID, Display: display}

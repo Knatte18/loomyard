@@ -335,7 +335,7 @@ func (p TmuxCmd) hasSession(name string) (bool, error) {
 
 // paneListFormat is the list-panes format parsePaneList reads.
 // The last field joins the title, the current command and the start command with paneTailSeparator.
-const paneListFormat = "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}\x1f#{pane_current_command}\x1f#{pane_start_command}"
+const paneListFormat = "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
 
 // listPanes returns all panes of the window windowTarget names.
 func (p TmuxCmd) listPanes(windowTarget string) ([]LivePane, error) {
