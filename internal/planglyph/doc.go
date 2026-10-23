@@ -54,7 +54,8 @@
 //     create-already-exists covers found, multipart and ambiguous alike: all three mean a
 //     declaration already occupies the name the card is creating.
 //     An ambiguous target is create-already-exists whether or not its candidates are partitioned by build constraints, and its detail names each candidate's file and build constraint.
-//   - delete-before-reference (blocking for a resolved reference, informational for a name-only method match) — a card that deletes a symbol whose reference a later card's Edit code still holds, so the delete must move after that card.
+//   - delete-before-reference (blocking for a resolved reference, informational for a name-only method match) — a card that deletes a symbol whose reference a later card's Edit or Extends code still holds, so the delete must move after that card.
+//     The delete-order edit regions cover Extends groups as they cover Edit groups.
 //     It is computed by callerCoverageFindings (callercoverage.go) through planGatePass at the plan gates, from the reference computation caller-uncovered shares, and by LaterDeleteReferences (deleteorder.go) scan-only at ValidateDispatch and for Webster.
 //     Only Go files outside the directories the go tool ignores are searched; a package self glyph Delete keeps its quoted import-path match, over Go regions only.
 //     A member reference that an Edit target of the deleting card or an earlier card also covers is not reported, since that card rewrites the code before the later card runs; the quoted import-path match keeps no such exemption.
