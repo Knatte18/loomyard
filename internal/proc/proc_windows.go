@@ -9,6 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
+	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 const createNoWindow uint32 = 0x08000000
@@ -50,6 +53,21 @@ func IsAlive(pid int) bool {
 // StartTime reports the start time as unreadable on Windows, which keeps the resume check failing closed there.
 func StartTime(pid int) (string, bool) {
 	return "", false
+}
+
+// CreationTime reads the creation time of the process identified by pid and reports false when the process cannot be opened or its times read.
+// It lets a caller tell a live process from a reused pid, since StartTime is unreadable on Windows.
+func CreationTime(pid int) (time.Time, bool) {
+	handle, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		return time.Time{}, false
+	}
+	defer windows.CloseHandle(handle)
+	var creation, exit, kernel, user windows.Filetime
+	if err := windows.GetProcessTimes(handle, &creation, &exit, &kernel, &user); err != nil {
+		return time.Time{}, false
+	}
+	return time.Unix(0, creation.Nanoseconds()), true
 }
 
 // ParentPID reports no parent on Windows, where creel resolves identity from process ancestry on Linux only.
