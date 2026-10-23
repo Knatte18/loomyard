@@ -10,9 +10,11 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -24,6 +26,8 @@ var (
 	failedTestPath = regexp.MustCompile(`^Test[\p{L}\p{N}_]*(/[\p{L}\p{N}_.=,:+@-]+)*$`)
 	// failedTestPackage is an import path that starts with a letter or digit: segments of letters, digits and `_.~-` joined by `/`.
 	failedTestPackage = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N}_.~-]*(/[\p{L}\p{N}_.~-]+)*$`)
+	// tracedLocation is a relative path of letters, digits and `_.~@+-` segments, none starting with `-`, joined by `/`, then a colon and a line number.
+	tracedLocation = regexp.MustCompile(`^[\p{L}\p{N}_.][\p{L}\p{N}_.~@+-]*(/[\p{L}\p{N}_.][\p{L}\p{N}_.~@+-]*)*:[0-9]+$`)
 )
 
 // failingGate resolves the gate and the failing tier a record names, reading the gate's tier list through tiers.
@@ -99,7 +103,70 @@ func checkedPublishFailure(paths verifytree.Paths, worktreeRoot string, tiers fu
 		logger.Warn("loomshed: publish failure record's log path dropped, it is not a verify log in the verify directory", "logPath", failure.LogPath)
 		failure.LogPath = ""
 	}
+
+	failure.Cards = checkedTracedCards(failure.Cards)
+	failure.LaterRange = checkedCommitRange(failure.LaterRange)
+	failure.Untraced = checkedLocations(failure.Untraced)
 	return failure, true
+}
+
+// checkedTracedCards returns cards with every element that fails its shape check dropped, each drop logged.
+// A card needs a positive number; a glyph must be non-empty and hold no whitespace, control character or backtick, a location must match tracedLocation, and a range keeps both ends only when each is a full hex object name.
+// The glyph check is a prompt-safety character check, not a glyph grammar.
+func checkedTracedCards(cards []verifytree.TracedCard) []verifytree.TracedCard {
+	kept := cards[:0:0]
+	for _, card := range cards {
+		if card.Number <= 0 {
+			logger.Warn("loomshed: publish failure record's traced card dropped, its number is not positive", "number", card.Number)
+			continue
+		}
+		glyphs := card.Glyphs[:0:0]
+		for _, glyph := range card.Glyphs {
+			if !promptSafeGlyph(glyph) {
+				logger.Warn("loomshed: publish failure record's traced glyph dropped", "card", card.Number, "glyph", glyph)
+				continue
+			}
+			glyphs = append(glyphs, glyph)
+		}
+		card.Glyphs = glyphs
+		card.Locations = checkedLocations(card.Locations)
+		card.Range = checkedCommitRange(card.Range)
+		kept = append(kept, card)
+	}
+	return kept
+}
+
+// promptSafeGlyph reports whether glyph is non-empty and holds no whitespace, control character or backtick, so it can sit in a code span of the prompt.
+func promptSafeGlyph(glyph string) bool {
+	if glyph == "" || strings.ContainsRune(glyph, '`') {
+		return false
+	}
+	return !strings.ContainsFunc(glyph, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) })
+}
+
+// checkedLocations returns the entries of locations that match tracedLocation, each drop logged.
+func checkedLocations(locations []string) []string {
+	kept := locations[:0:0]
+	for _, location := range locations {
+		if !tracedLocation.MatchString(location) {
+			logger.Warn("loomshed: publish failure record's traced location dropped", "location", location)
+			continue
+		}
+		kept = append(kept, location)
+	}
+	return kept
+}
+
+// checkedCommitRange returns commits unchanged when both ends are full hex object names, and the empty range otherwise.
+func checkedCommitRange(commits verifytree.CommitRange) verifytree.CommitRange {
+	if commits == (verifytree.CommitRange{}) {
+		return commits
+	}
+	if !fullObjectName.MatchString(commits.From) || !fullObjectName.MatchString(commits.To) {
+		logger.Warn("loomshed: publish failure record's commit range dropped", "from", commits.From, "to", commits.To)
+		return verifytree.CommitRange{}
+	}
+	return commits
 }
 
 // isMergeCommit reports whether sha is a full hex object name of a commit in worktreeRoot with two or more parents.
@@ -147,7 +214,11 @@ func publishFailureSteps(failure verifytree.PublishFailure, tiers func(gate stri
 // The note names the failing gate and tier, the failing tests, the log path, and the merge-in commit with the command that reads what it brought in.
 // A field that failed its shape check is absent, so no free text from the record reaches the prompt.
 // tiers reads a gate's tier list; a record it cannot place on a gate renders `none`.
-func PublishFailureNote(worktreeRoot, verifyDir string, tiers func(gate string) ([]int, error)) string {
+//
+// A record that carries a trace of the failure also renders each traced card with its number, its slug and first intent line read from the plan in planDir at render time, its matched members and locations, and the commit range to diff when starting the fix;
+// then the later commits, and the locations no card holds.
+// A card number the plan no longer holds renders its number alone, and a plan that does not parse renders the numbers alone and logs a warning, so the note never fails.
+func PublishFailureNote(worktreeRoot, verifyDir, planDir string, tiers func(gate string) ([]int, error)) string {
 	failure, ok := checkedPublishFailure(verifytree.NewPaths(worktreeRoot, verifyDir), worktreeRoot, tiers)
 	if !ok {
 		return "none"
@@ -166,7 +237,87 @@ func PublishFailureNote(worktreeRoot, verifyDir string, tiers func(gate string) 
 	if failure.MergeCommit != "" {
 		fmt.Fprintf(&b, "\nMerge-in commit Publish made: %s\nRead what it brought in with `git diff %s^1 %s`.\n", failure.MergeCommit, failure.MergeCommit, failure.MergeCommit)
 	}
+	writeFailureTrace(&b, failure, planDir)
 	return strings.TrimRight(b.String(), "\n")
+}
+
+// writeFailureTrace renders the trace fields of a checked record into b: the traced cards, the later range and the untraced locations.
+// It writes nothing for a record without them.
+func writeFailureTrace(b *strings.Builder, failure verifytree.PublishFailure, planDir string) {
+	if len(failure.Cards) > 0 {
+		b.WriteString("\nPlan cards the failing locations trace to:\n\n")
+		livePlan := parseTracePlan(planDir)
+		for _, traced := range failure.Cards {
+			fmt.Fprintf(b, "- card %d", traced.Number)
+			if live, found := liveCard(livePlan, traced.Number); found {
+				fmt.Fprintf(b, " `%s`", live.Slug)
+				if line := firstIntentLine(live.Intent); line != "" {
+					fmt.Fprintf(b, ": %s", line)
+				}
+			}
+			b.WriteString("\n")
+			if len(traced.Glyphs) > 0 {
+				fmt.Fprintf(b, "  - members: %s\n", codeSpans(traced.Glyphs))
+			}
+			if len(traced.Locations) > 0 {
+				fmt.Fprintf(b, "  - locations: %s\n", codeSpans(traced.Locations))
+			}
+			if traced.Range == (verifytree.CommitRange{}) {
+				b.WriteString("  - Webster holds no commit range for this card.\n")
+			} else {
+				fmt.Fprintf(b, "  - range to diff when starting the fix: `git diff %s %s`\n", traced.Range.From, traced.Range.To)
+			}
+		}
+	}
+	if failure.LaterRange != (verifytree.CommitRange{}) {
+		fmt.Fprintf(b, "\nLater commits touching the same members: `git diff %s %s`\n", failure.LaterRange.From, failure.LaterRange.To)
+	}
+	if len(failure.Untraced) > 0 {
+		fmt.Fprintf(b, "\nLocations no plan card holds: %s\n", codeSpans(failure.Untraced))
+	}
+}
+
+// parseTracePlan parses the plan in planDir for a note's card lines, and returns nil when it does not parse.
+// The failure is logged at Warn, since the note renders the card numbers alone.
+func parseTracePlan(planDir string) *planparser.Plan {
+	plan, err := planparser.ParsePlan(planDir)
+	if err != nil {
+		logger.Warn("loomshed: the plan could not be read for the publish failure note, so it names card numbers alone", "planDir", planDir, "cause", err)
+		return nil
+	}
+	return plan
+}
+
+// liveCard returns the card of plan numbered number, and false when plan is nil or holds none.
+func liveCard(plan *planparser.Plan, number int) (planparser.Card, bool) {
+	if plan == nil {
+		return planparser.Card{}, false
+	}
+	for _, card := range plan.Cards {
+		if card.Number == number {
+			return card, true
+		}
+	}
+	return planparser.Card{}, false
+}
+
+// firstIntentLine returns the first non-blank line of a card's intent, trimmed.
+func firstIntentLine(intent string) string {
+	for _, line := range strings.Split(intent, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+// codeSpans renders each of items as a markdown code span, joined by commas.
+func codeSpans(items []string) string {
+	spans := make([]string, len(items))
+	for i, item := range items {
+		spans[i] = "`" + item + "`"
+	}
+	return strings.Join(spans, ", ")
 }
 
 // anchoredRunPattern spells a test path as a `-run` pattern matching exactly its top-level test: the first `/`-separated segment is quoted for regexp and anchored, and the subtest path is dropped.

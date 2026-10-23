@@ -760,7 +760,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		VerifyMergeBase: verifyMergeBase,
 		VerifyHold:      verifytree.NewPauseHold(pauseGeom, nil),
 		PublishFailure: func() string {
-			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath), gateTiersLookup(fabricengine.ConfigDirs(location)))
+			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath), planparser.PlanDir(anchorPath), gateTiersLookup(fabricengine.ConfigDirs(location)))
 		},
 		WebsterRecord: func() string {
 			return loomshed.WebsterRecordNote(anchorPath)
