@@ -1980,6 +1980,26 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 	}
 }
 
+// TestRecoverSpawnOrAttach_UnresolvableRunStopsStrand proves a recovery strand whose run cannot be resolved after the spawn is stopped and left unrecorded.
+func TestRecoverSpawnOrAttach_UnresolvableRunStopsStrand(t *testing.T) {
+	t.Parallel()
+	fx := newRecoverFixture(t)
+	prior := &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1, RecoveryStartSHA: fx.Git.head}
+	fx.Deps.State.Batches[1] = prior
+	fx.Deps.ShuttleCfg.RunDir = t.TempDir()
+
+	bs, spawned, err := websterengine.RecoverSpawnOrAttach(fx.Deps, 1, &recoverFakeClock{now: time.Unix(0, 0)})
+	if err == nil || !strings.Contains(err.Error(), "resolve spawned recovery run") {
+		t.Fatalf("RecoverSpawnOrAttach() error = %v; want the resolve refusal", err)
+	}
+	if spawned || bs != nil || fx.Deps.State.Batches[1] != prior {
+		t.Errorf("spawned = %v, BatchState = %+v, record = %+v; want no spawn and the prior record kept", spawned, bs, fx.Deps.State.Batches[1])
+	}
+	if len(fx.Reed.AddedSpecs) != 1 || len(fx.Reed.RemovedGUIDs) != 1 {
+		t.Errorf("AddStrand calls = %d, RemoveStrand calls = %v; want the one spawned strand removed", len(fx.Reed.AddedSpecs), fx.Reed.RemovedGUIDs)
+	}
+}
+
 // TestRecoverSpawnOrAttach_ContractFileEvidence proves a failed batch whose only uncheckable entry is a contract file
 // is refused toward the delete route while a fork wrote the file last, and recovers once Master wrote it after the fork.
 func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
