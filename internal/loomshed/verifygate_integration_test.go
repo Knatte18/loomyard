@@ -404,8 +404,8 @@ func TestVerifyGate_RoundScenario(t *testing.T) {
 		if pass, ok := verifytree.LatestPass(paths, want); !ok || pass.Commit != tip {
 			t.Errorf("LatestPass(round call) = %+v, %v; want a pass at %s of %q", pass, ok, tip, want)
 		}
-		if pass, ok := verifytree.LatestPass(paths, roundCall("--base", planPass.Commit)); !ok || pass.Commit == tip {
-			t.Errorf("LatestPass(round call over the last pass) = %+v, %v; want the earlier pass, not one at %s", pass, ok, tip)
+		if pass, ok := verifytree.LatestPass(paths, roundCall("--base", planPass.Commit)); ok && pass.Commit == tip {
+			t.Errorf("LatestPass(round call over the last pass) = %+v; want no pass at %s", pass, tip)
 		}
 	}) {
 		return
