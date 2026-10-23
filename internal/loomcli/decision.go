@@ -381,7 +381,7 @@ func planApprovedReader(anchorPath string) func() (bool, error) {
 // It is refused on a darn run and for a plan that is not approved, and a failed append or commit puts both records back.
 // The optional PATTERN-change form appends one bullet of the record's PATTERN-change shape beside the entry, in the same write.
 // It passes through the verb's existing checks and its --by parent|operator|arbiter caller guards, so only the run's parent, the operator's own shell or the run's own arbiter declares a change after Discussion.
-// The form removes and rewrites nothing.
+// The form rewrites only the record's bullet for the same entry ID, which its new bullet replaces, and removes nothing.
 func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionInput) int {
 	refuse := func(format string, args ...any) int {
 		return output.Err(out, fmt.Sprintf("loom: %s add: ", decisionGroup)+fmt.Sprintf(format, args...))
@@ -752,11 +752,11 @@ approved plan; record the decision without the flag there. A failed append or
 commit puts both records back. Afterwards the parent runs
 "lyx loom goto --to Plan-Burler-Review" and "lyx loom resume".
 
-A decision that adds, changes or removes a PATTERN entry also passes
---pattern-entry <PATTERN-id>, --pattern-action adds|changes|removes and, for
-adds or changes, --pattern-text <new entry text>. The call then also appends
-one bullet to the record's "## PATTERN changes" section, creating it when
-absent.
+A decision on a PATTERN entry also passes --pattern-entry <PATTERN-id>,
+--pattern-action adds|changes|removes and, for adds or changes, --pattern-text
+<new entry text>. The call also writes its bullet to the record's
+"## PATTERN changes" section, replacing any old one and creating the section
+when absent.
 
 Example:
   lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."`,

@@ -211,6 +211,36 @@ func patternChangesInsertOffset(content string) (offset int, needHeading bool) {
 	return starts[end], false
 }
 
+// patternBulletRange returns the byte range in content of the first line of the `## PATTERN changes` section whose bullet head names id, without its newline.
+// The head alone decides, so a bullet for id of a malformed shape is found too.
+// found is false when the record has no such section or the section has no bullet for id.
+// Headings and bullets inside a fenced code block are not headings or bullets.
+func patternBulletRange(content, id string) (start, end int, found bool) {
+	lines := strings.Split(content, "\n")
+	fenced := fencedLines(lines)
+	inSection := false
+	position := 0
+	for i, line := range lines {
+		lineStart := position
+		position += len(line) + 1
+		if fenced[i] {
+			continue
+		}
+		trimmed := strings.TrimRight(line, " \t\r")
+		if !inSection {
+			inSection = trimmed == patternChangesHeading
+			continue
+		}
+		if strings.HasPrefix(trimmed, "## ") {
+			return 0, 0, false
+		}
+		if head := patternBulletHead.FindStringSubmatch(trimmed); head != nil && head[1] == id {
+			return lineStart, lineStart + len(line), true
+		}
+	}
+	return 0, 0, false
+}
+
 // patternChangesInsertion returns the text AppendDecision inserts into content at offset, where patternChangesInsertOffset reported offset and needHeading: the bullet alone, or a new section holding it.
 func patternChangesInsertion(content string, offset int, needHeading bool, bullet string) string {
 	prefix := ""
