@@ -28,9 +28,9 @@ var _ parentPuller = (*fabricengine.Fabric)(nil)
 
 // mergeBefore is what Merge-In reads before the merge, which the merge record carries.
 type mergeBefore struct {
-	taskBase    string
-	taskHead    string
-	reviewedTip string
+	taskBase   string
+	taskHead   string
+	alignedTip string
 }
 
 // MergeIn is the ShedProducer that merges the parent branch into the task worktree under the parent lock and records the merge.
@@ -261,9 +261,9 @@ func (m *MergeIn) syncParent(ctx context.Context) (string, string, error) {
 }
 
 // readBefore reads what the merge record carries from before the merge:
-// the task head, the parent tip last merged into the task, and the parent tip the last finished merge review reached.
-// That last tip is the reviewed-tip file's, else the earlier merge record's reviewed tip, else the merge base, the fork point.
-// An unreadable reviewed-tip file or earlier record is logged and skipped, so a damaged record cannot block every later merge.
+// the task head, the parent tip last merged into the task, and the aligned tip of the earlier merge record.
+// An absent aligned tip stays empty, which reads as the task's fork point from the parent.
+// An unreadable earlier record is logged and read as an empty aligned tip, so a damaged record cannot block every later merge.
 func (m *MergeIn) readBefore() error {
 	head, err := m.deps.TaskHead()
 	if err != nil {
@@ -274,36 +274,37 @@ func (m *MergeIn) readBefore() error {
 		return fmt.Errorf("landingshed: %s: find the parent tip last merged into the task: %w", mergeInName, err)
 	}
 
-	reviewed := base
-	if tip, found, err := ReadReviewedTip(m.deps.MergeReviewedPath); err != nil {
-		logger.Warn("landingshed: reviewed tip unreadable, falling back", "producer", mergeInName, "cause", err)
-	} else if found && tip != "" {
-		reviewed = tip
-	} else if earlier, found, err := ReadMergeRecord(m.deps.MergeRecordPath); err != nil {
+	aligned := ""
+	if earlier, found, err := ReadMergeRecord(m.deps.MergeRecordPath); err != nil {
 		logger.Warn("landingshed: earlier merge record unreadable, falling back", "producer", mergeInName, "cause", err)
-	} else if found && earlier.ReviewedTip != "" {
-		reviewed = earlier.ReviewedTip
+	} else if found {
+		aligned = earlier.AlignedTip
 	}
 
-	m.before = mergeBefore{taskBase: base, taskHead: head, reviewedTip: reviewed}
+	m.before = mergeBefore{taskBase: base, taskHead: head, alignedTip: aligned}
 	return nil
 }
 
 // writeRecord writes the merge record: tip is the parent tip merged, mergeCommit the merge commit (empty for an up-to-date merge) and merge the resolver's answer.
-// The overlap is the paths the parent gained since the last reviewed tip against the paths the task changed since its last merge base;
+// The aligned tip is carried forward from the earlier record unchanged.
+// The overlap is the paths the parent gained since the aligned tip, or since the task's fork point when it is empty, against the paths the task changed since its last merge base;
 // an up-to-date merge records an empty overlap.
 func (m *MergeIn) writeRecord(tip, mergeCommit string, merge mergeresolve.Result) error {
 	record := MergeRecord{
 		ParentBranch: m.deps.ParentBranch,
 		MergedTip:    tip,
-		ReviewedTip:  m.before.reviewedTip,
+		AlignedTip:   m.before.alignedTip,
 		TaskBase:     m.before.taskBase,
 		TaskHead:     m.before.taskHead,
 		MergeCommit:  mergeCommit,
 		UpToDate:     merge.AlreadyUpToDate,
 	}
 	if !merge.AlreadyUpToDate {
-		parentPaths, err := m.deps.ChangedPaths(m.before.reviewedTip, tip)
+		parentFrom := m.before.alignedTip
+		if parentFrom == "" {
+			parentFrom = m.before.taskBase
+		}
+		parentPaths, err := m.deps.ChangedPaths(parentFrom, tip)
 		if err != nil {
 			return fmt.Errorf("landingshed: %s: list the paths the parent changed: %w", mergeInName, err)
 		}

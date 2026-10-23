@@ -304,9 +304,8 @@ type Deps struct {
 	ChangedPaths func(from, to string) ([]string, error)
 	// MergeBase returns the best common ancestor of the task pair's HEAD and ref.
 	MergeBase func(ref string) (string, error)
-	// MergeRecordPath and MergeReviewedPath are the told merge record and reviewed-tip files, both in the run's scratch directory.
-	MergeRecordPath   string
-	MergeReviewedPath string
+	// MergeRecordPath is the told merge record file, in the run's scratch directory.
+	MergeRecordPath string
 
 	// FixerSeats is the seat runner the merge fixer session runs on, which `*seatengine.Engine` satisfies.
 	// Merge-In and Finalize run the fixer through it, and the fixer loop refuses to run without it.

@@ -87,7 +87,9 @@
 // The record is keyed on the tree, so the verify runs after a resolved conflict, after new parent commits and after a crash between a merge and its verify, and a no-op merge onto a verified tree skips it.
 // A failure is Stuck with the merge commit kept for the operator to fix forward, and a missing command logs a warning and proceeds.
 // A failed verify writes the Publish failure record with row `Merge-In`, and a passing one removes it.
-// Last it writes the merge record: the tip merged, the task head before the merge, the parent tip last merged into the task, the parent tip the last finished merge review reached, the merge commit and where the parent's changes since that reviewed tip meet the task's changes since its last merge base.
+// Last it writes the merge record: the tip merged, the task head before the merge, the parent tip last merged into the task, the aligned tip, the merge commit and where the parent's changes since the aligned tip meet the task's changes since its last merge base.
+// The aligned tip is the parent tip up to which the merge fixer has read what the parent brought in; it is empty before the first alignment, and the overlap then starts at the task's fork point from the parent.
+// The record carries the earlier record's aligned tip forward unchanged, and a record an older build wrote with a reviewed tip reads with an empty aligned tip.
 // An up-to-date merge records an empty overlap, and a failed record write is an error, never Stuck.
 // The lock is kept on every way out of the row: a later landing row or the loop's exit frees it.
 //

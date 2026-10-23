@@ -92,10 +92,9 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 
 	headCalls := 0
 	deps := Deps{
-		ParentBranch:      "main",
-		MergeRecordPath:   MergeRecordPath(dir),
-		MergeReviewedPath: MergeReviewedPath(dir),
-		CommitStatus:      func() error { fx.events = append(fx.events, "commit-status"); return nil },
+		ParentBranch:    "main",
+		MergeRecordPath: MergeRecordPath(dir),
+		CommitStatus:    func() error { fx.events = append(fx.events, "commit-status"); return nil },
 		Lock: ParentLockDeps{
 			Store:    fx.store,
 			Owner:    func() (parentlock.Owner, error) { return owner, nil },
@@ -380,7 +379,7 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 		fx.call(t)
 
 		want := MergeRecord{
-			ParentBranch: "main", MergedTip: "p1", ReviewedTip: "b0", TaskBase: "b0", TaskHead: "t1", MergeCommit: "m1",
+			ParentBranch: "main", MergedTip: "p1", TaskBase: "b0", TaskHead: "t1", MergeCommit: "m1",
 			Overlap: Overlap{Files: []string{"shared.txt"}, Packages: []string{"a"}, Pattern: []string{"PATTERN.md"}},
 		}
 		if got := fx.readRecord(t); !recordsEqual(got, want) {
@@ -397,13 +396,13 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 
 		fx.call(t)
 
-		want := MergeRecord{ParentBranch: "main", MergedTip: "p1", ReviewedTip: "b0", TaskBase: "b0", TaskHead: "t1", UpToDate: true}
+		want := MergeRecord{ParentBranch: "main", MergedTip: "p1", TaskBase: "b0", TaskHead: "t1", UpToDate: true}
 		if got := fx.readRecord(t); !recordsEqual(got, want) {
 			t.Errorf("record = %+v; want %+v", got, want)
 		}
 	})
 
-	t.Run("a second merge starts the task range at the first merge's tip and the parent range at the earlier reviewed tip", func(t *testing.T) {
+	t.Run("a second merge starts the task range at the first merge's tip and the parent range at the task's fork point", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
 		fx.taskHeads = []string{"t1", "m1", "m1", "m2"}
@@ -413,16 +412,16 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 
 		fx.mergeBase = "p1"
 		fx.tips = fabricengine.ParentTips{Local: "p2", Upstream: "p2", Relation: fabricengine.ParentEqual}
-		fx.changedPaths["b0..p2"] = []string{"old.txt", "new.txt"}
+		fx.changedPaths["p1..p2"] = []string{"new.txt"}
 		fx.changedPaths["p1..m1"] = []string{"later.txt"}
 		fx.changedCalls = nil
 		fx.call(t)
 
 		got := fx.readRecord(t)
-		if got.TaskBase != "p1" || got.TaskHead != "m1" || got.ReviewedTip != "b0" || got.MergedTip != "p2" {
-			t.Errorf("record = %+v; want task_base p1, task_head m1, reviewed_tip b0, merged_tip p2", got)
+		if got.TaskBase != "p1" || got.TaskHead != "m1" || got.AlignedTip != "" || got.MergedTip != "p2" {
+			t.Errorf("record = %+v; want task_base p1, task_head m1, an empty aligned_tip, merged_tip p2", got)
 		}
-		if want := "b0..p2,p1..m1"; strings.Join(fx.changedCalls, ",") != want {
+		if want := "p1..p2,p1..m1"; strings.Join(fx.changedCalls, ",") != want {
 			t.Errorf("ChangedPaths calls = %v; want %q, so the first merge's parent changes are not the task's", fx.changedCalls, want)
 		}
 		if len(got.Overlap.Files) != 0 {
@@ -430,20 +429,43 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 		}
 	})
 
-	t.Run("the reviewed-tip file outranks the earlier record", func(t *testing.T) {
+	t.Run("an earlier aligned tip is carried forward and starts the parent range", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		if err := WriteMergeRecord(fx.m.deps.MergeRecordPath, MergeRecord{ReviewedTip: "from-record"}); err != nil {
+		if err := WriteMergeRecord(fx.m.deps.MergeRecordPath, MergeRecord{AlignedTip: "a0"}); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(fx.m.deps.MergeReviewedPath, []byte("from-file\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		fx.changedPaths["a0..p1"] = []string{"shared.txt"}
+		fx.changedPaths["b0..t1"] = []string{"shared.txt"}
 
 		fx.call(t)
 
-		if got := fx.readRecord(t).ReviewedTip; got != "from-file" {
-			t.Errorf("reviewed_tip = %q; want from-file", got)
+		got := fx.readRecord(t)
+		if got.AlignedTip != "a0" {
+			t.Errorf("aligned_tip = %q; want the earlier a0 carried forward", got.AlignedTip)
+		}
+		if want := []string{"shared.txt"}; strings.Join(got.Overlap.Files, ",") != strings.Join(want, ",") {
+			t.Errorf("overlap files = %v; want %v, read from the aligned tip", got.Overlap.Files, want)
+		}
+	})
+
+	t.Run("an undecodable earlier record falls back to an empty aligned tip", func(t *testing.T) {
+		t.Parallel()
+		fx := newMergeInFixture(t)
+		if err := os.WriteFile(fx.m.deps.MergeRecordPath, []byte("parent_branch: [unclosed"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fx.changedPaths["b0..p1"] = []string{"shared.txt"}
+		fx.changedPaths["b0..t1"] = []string{"shared.txt"}
+
+		fx.call(t)
+
+		got := fx.readRecord(t)
+		if got.AlignedTip != "" {
+			t.Errorf("aligned_tip = %q; want empty after an undecodable earlier record", got.AlignedTip)
+		}
+		if want := "shared.txt"; strings.Join(got.Overlap.Files, ",") != want {
+			t.Errorf("overlap files = %v; want [%s], read from the fork point", got.Overlap.Files, want)
 		}
 	})
 }
@@ -451,7 +473,7 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 // recordsEqual compares two merge records field by field, treating nil and empty overlap lists alike.
 func recordsEqual(a, b MergeRecord) bool {
 	same := func(x, y []string) bool { return strings.Join(x, "\x00") == strings.Join(y, "\x00") }
-	return a.ParentBranch == b.ParentBranch && a.MergedTip == b.MergedTip && a.ReviewedTip == b.ReviewedTip &&
+	return a.ParentBranch == b.ParentBranch && a.MergedTip == b.MergedTip && a.AlignedTip == b.AlignedTip &&
 		a.TaskBase == b.TaskBase && a.TaskHead == b.TaskHead && a.MergeCommit == b.MergeCommit && a.UpToDate == b.UpToDate &&
 		same(a.Overlap.Files, b.Overlap.Files) && same(a.Overlap.Packages, b.Overlap.Packages) && same(a.Overlap.Pattern, b.Overlap.Pattern)
 }

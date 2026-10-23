@@ -127,7 +127,6 @@ func newMergeInDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 		WaitPath: parentlock.WaitRecordPath(scratch),
 	}
 	deps.MergeRecordPath = landingshed.MergeRecordPath(scratch)
-	deps.MergeReviewedPath = landingshed.MergeReviewedPath(scratch)
 	return deps
 }
 

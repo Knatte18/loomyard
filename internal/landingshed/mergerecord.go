@@ -1,7 +1,7 @@
-// mergerecord.go — the merge record Merge-In writes and the reviewed-tip file.
+// mergerecord.go — the merge record Merge-In writes.
 //
-// The record and the reviewed-tip file live in the run's told scratch directory, so they stay under `.lyx` and are never committed.
-// This package derives no path of its own beyond the two fixed file names joined onto that directory.
+// The record lives in the run's told scratch directory, so it stays under `.lyx` and is never committed.
+// This package derives no path of its own beyond the fixed file name joined onto that directory.
 
 package landingshed
 
@@ -18,10 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	mergeRecordFile   = "merge-record.yaml"
-	mergeReviewedFile = "merge-reviewed"
-)
+const mergeRecordFile = "merge-record.yaml"
 
 // Overlap is where the parent's changes and the task's changes meet.
 type Overlap struct {
@@ -39,8 +36,8 @@ type MergeRecord struct {
 	ParentBranch string `yaml:"parent_branch"`
 	// MergedTip is the parent tip the merge brought in.
 	MergedTip string `yaml:"merged_tip"`
-	// ReviewedTip is the parent tip the last finished merge review reached, the fork point before any.
-	ReviewedTip string `yaml:"reviewed_tip"`
+	// AlignedTip is the parent tip up to which the merge fixer has read what the parent brought in, empty before the first alignment.
+	AlignedTip string `yaml:"aligned_tip"`
 	// TaskBase is the parent tip last merged into the task before this merge, the fork point before any merge-in.
 	TaskBase string `yaml:"task_base"`
 	// TaskHead is the task head before this merge.
@@ -56,11 +53,6 @@ type MergeRecord struct {
 // MergeRecordPath is the merge record's path in scratchDir.
 func MergeRecordPath(scratchDir string) string {
 	return filepath.Join(scratchDir, mergeRecordFile)
-}
-
-// MergeReviewedPath is the reviewed-tip file's path in scratchDir.
-func MergeReviewedPath(scratchDir string) string {
-	return filepath.Join(scratchDir, mergeReviewedFile)
 }
 
 // ReadMergeRecord reads the record at path.
@@ -87,32 +79,6 @@ func WriteMergeRecord(path string, rec MergeRecord) error {
 		return fmt.Errorf("landingshed: encode merge record: %w", err)
 	}
 	return writeBytesAtomic(path, "merge-record", data)
-}
-
-// ReadReviewedTip reads the one-line reviewed tip at path.
-// An absent file returns found == false with a nil error.
-func ReadReviewedTip(path string) (string, bool, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", false, nil
-	}
-	if err != nil {
-		return "", false, fmt.Errorf("landingshed: read reviewed tip: %w", err)
-	}
-	return strings.TrimSpace(string(data)), true, nil
-}
-
-// RecordMergeReviewed copies the merge record's merged_tip into the reviewed-tip file atomically.
-// A missing merge record writes nothing and returns nil, so the next range still starts at the earlier reviewed tip.
-func RecordMergeReviewed(recordPath, reviewedPath string) error {
-	rec, found, err := ReadMergeRecord(recordPath)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return nil
-	}
-	return writeBytesAtomic(reviewedPath, "reviewed tip", []byte(rec.MergedTip+"\n"))
 }
 
 // computeOverlap returns where the parent's changed paths and the task's changed paths meet.

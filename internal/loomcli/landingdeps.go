@@ -236,7 +236,6 @@ func landingDeps(
 			return f.MergeBase(ref)
 		},
 		MergeRecordPath:    landingshed.MergeRecordPath(loomengine.LoomScratchDir(l)),
-		MergeReviewedPath:  landingshed.MergeReviewedPath(loomengine.LoomScratchDir(l)),
 		Alignment:          landingAlignmentDeps(l, recipe, geom.StencilsDir, registry, runner, runner.PauseGeometry()),
 		DecisionRecordPath: loomengine.DiscussionDecisionRecord(l),
 		PlanDir:            fixerPlanDir(l, recipe),

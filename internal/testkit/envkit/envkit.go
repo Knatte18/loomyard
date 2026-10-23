@@ -198,7 +198,6 @@ func LandingDeps(dir string) landingshed.Deps {
 		ChangedPaths:       func(string, string) ([]string, error) { return nil, nil },
 		MergeBase:          func(string) (string, error) { return "base", nil },
 		MergeRecordPath:    landingshed.MergeRecordPath(filepath.Join(dir, "landing-scratch")),
-		MergeReviewedPath:  landingshed.MergeReviewedPath(filepath.Join(dir, "landing-scratch")),
 		FixerSeats:         noopFixerSeats{},
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		PlanDir:            filepath.Join(dir, "plan"),
