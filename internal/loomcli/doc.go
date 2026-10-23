@@ -226,6 +226,24 @@
 // They resolve the location through `lyxcwd` in the group's own pre-run, as the `review` and `decision` groups do; every loom verb is hub-only, so `internal/cliwire` does not apply.
 // A bare `lyx loom peers` outside a lyx worktree lists the group's verbs instead of resolving.
 //
+// # Decision amends-plan
+//
+// `lyx loom decision add --amends-plan` records a decision that amends the approved plan:
+// besides the entry, the call appends the entry's title to the tracked plan amendment record, and one commit lands both.
+// The commit pathspec of the discussion artifacts names the record when it exists or git tracks it, and nothing otherwise, so git is never handed a pathspec matching nothing.
+// The flag is refused on a darn run, which has no plan to amend, and while the current generation has no approved plan;
+// a plan that does not parse is refused naming `lyx loom validate-plan`, and a plan or record read failure is refused with the verb's retry way forward.
+// Both refusals tell the caller to record the decision without the flag, since Plan-Write and Plan-Review read the decision record.
+// After a successful call the parent runs `lyx loom goto --to Plan-Burler-Review` and `lyx loom resume`.
+//
+// A failed append puts both records back to their bytes before the call, removing the amendment record when the call created it, and leaves a decision record that was absent absent.
+// When a status commit has already landed the call's amendment bytes, the verb commits the restored record alone, so HEAD never keeps a title whose entry did not land;
+// a failure of that commit is refused naming `lyx fabric commit`.
+// A failed commit of the entry reads HEAD:
+// both records at HEAD succeeds with `commit_error` on the envelope;
+// the amendment record without the entry, or a HEAD that cannot be read, keeps both files and names `lyx fabric commit`;
+// a HEAD that differs restores both files and names the re-run of the verb, never `lyx fabric commit`.
+//
 // # Parent-review alignment
 //
 // The wiring sets the parent-review gate's Aligner to an adapter over an `internal/alignment` session rooted at the run's `parent-review` alignment directory, one agent per round (key `round-<N>`).

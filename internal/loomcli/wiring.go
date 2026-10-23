@@ -371,7 +371,23 @@ func discussionCommitPathspec(location *lyxcwd.Location) []string {
 	if holdsFile(loomengine.LoomParentReviewDir(location)) {
 		paths = append(paths, loomengine.LoomParentReviewDirRel())
 	}
-	return paths
+	return append(paths, amendmentPathspec(location, func(rel string) (bool, error) {
+		return fabricengine.PathTracked(location.AnchorPath(), rel)
+	})...)
+}
+
+// amendmentPathspec is the plan amendment record's pathspec: the record when it exists or git tracks it, and nothing otherwise.
+// A tracked record that is absent is a deletion to stage.
+// A failed tracked check adds nothing, so git is never handed a pathspec matching nothing.
+func amendmentPathspec(location *lyxcwd.Location, tracked func(rel string) (bool, error)) []string {
+	rel := loomengine.LoomAmendmentRecordRel()
+	if _, err := os.Stat(loomengine.LoomAmendmentRecord(location)); err == nil {
+		return []string{rel}
+	}
+	if isTracked, err := tracked(rel); err == nil && isTracked {
+		return []string{rel}
+	}
+	return nil
 }
 
 // commitDiscussion commits the discussion artifacts of location's worktree through the fabric.

@@ -48,6 +48,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -72,7 +73,16 @@ const (
 	decisionWayFindings   = `way forward: the record is restored; fix the named section and re-run the verb`
 	decisionWayArbiter    = `way forward: the "arbiter" label is the run's own arbiter's; pass --by parent from the run's parent, or --by operator from the operator's own shell`
 	decisionWayPattern    = `way forward: pass --pattern-entry and --pattern-action together, and --pattern-text for adds or changes`
+
+	decisionWayFabricCommit    = `way forward: run "lyx fabric commit" to commit the record; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
+	decisionWayAmendsPlanRetry = `way forward: the entry and the amendment record are restored and nothing landed; re-run "lyx loom decision add ... --amends-plan"`
+	decisionWayPlanUnparsed    = `way forward: run "lyx loom validate-plan" to show the plan's defect, and record the decision without --amends-plan until the plan parses`
+	decisionWayAmendsNoPlan    = `way forward: record the decision without --amends-plan; Plan-Write and Plan-Review read the decision record`
+	decisionWayAmendsDarn      = `way forward: record the decision without --amends-plan`
 )
+
+// errPlanUnparsed marks an approval read that failed because the plan does not parse, as opposed to one that failed reading a file.
+var errPlanUnparsed = errors.New("the plan does not parse")
 
 // decisionWayNoRecord is the way forward of the refusal for a run with no decision record.
 // Its last clause names the title form a board note must carry to count as a decision.
@@ -80,9 +90,11 @@ var decisionWayNoRecord = `way forward: the record exists once Discussion-Write 
 
 // decisionInput is the flag values of one `decision add` call.
 // The three pattern fields are the optional PATTERN-change form and are all empty without it.
+// amendsPlan marks a decision that amends the approved plan, so the call also writes the plan amendment record.
 type decisionInput struct {
 	by, title, decision, rationale           string
 	patternEntry, patternAction, patternText string
+	amendsPlan                               bool
 }
 
 // decisionDeps is every side effect decisionVerb performs, injected so tests supply fakes.
@@ -115,6 +127,16 @@ type decisionDeps struct {
 	liveStrands func() ([]string, error)
 	// notify posts line to the strand named receiver through creel.
 	notify func(receiver, line string) error
+	// amendmentPath is the plan amendment record a call with --amends-plan writes.
+	amendmentPath string
+	// approvedPlan reports whether the current generation holds an approved plan.
+	approvedPlan func() (bool, error)
+	// appendAmendment adds title to the amendment record, creating it when absent.
+	appendAmendment func(title string, at time.Time) error
+	// committedAmendment reads the amendment record as committed at HEAD; found is false when HEAD holds none.
+	committedAmendment func() ([]byte, bool, error)
+	// commitAmendment commits the amendment record alone.
+	commitAmendment func() error
 }
 
 // decisionNoticeError is one notice the verb could not send, reported on its success envelope.
@@ -212,8 +234,151 @@ func committedHoldsEntry(deps decisionDeps, added discussionparser.AddedDecision
 	return false, nil
 }
 
+// amendmentCall holds what a `--amends-plan` call must put back when its append or commit fails:
+// both records' bytes before the call, whether each existed, and the amendment record's bytes the call wrote.
+type amendmentCall struct {
+	priorDecision    []byte
+	decisionExisted  bool
+	priorAmendment   []byte
+	amendmentExisted bool
+	written          []byte
+}
+
+// decisionWayRestoreRecords is the way forward when a record could not be put back to its prior bytes.
+const decisionWayRestoreRecords = `way forward: rewrite the file named above to its content before this call, or remove it when it did not exist, then re-run the verb`
+
+// readPriorRecord reads path and reports whether it existed; an absent file is no error.
+func readPriorRecord(path string) ([]byte, bool, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
+	}
+	return data, err == nil, err
+}
+
+// restoreRecord writes prior back to path, or removes the file when it did not exist before.
+func restoreRecord(path string, prior []byte, existed bool) error {
+	if existed {
+		return os.WriteFile(path, prior, 0o644)
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// beginAmendment snapshots both records and appends title to the amendment record.
+// A failure leaves the amendment record as it was.
+func beginAmendment(deps decisionDeps, title string) (*amendmentCall, error) {
+	a := &amendmentCall{}
+	var err error
+	if a.priorDecision, a.decisionExisted, err = readPriorRecord(deps.recordPath); err != nil {
+		return nil, fmt.Errorf("read the decision record: %w", err)
+	}
+	if a.priorAmendment, a.amendmentExisted, err = readPriorRecord(deps.amendmentPath); err != nil {
+		return nil, fmt.Errorf("read the amendment record: %w", err)
+	}
+	if err := deps.appendAmendment(title, deps.now()); err != nil {
+		return nil, errors.Join(fmt.Errorf("write the amendment record: %w", err), a.restoreAmendment(deps))
+	}
+	if a.written, err = os.ReadFile(deps.amendmentPath); err != nil {
+		return nil, errors.Join(fmt.Errorf("read the amendment record back: %w", err), a.restoreAmendment(deps))
+	}
+	return a, nil
+}
+
+// restoreAmendment puts the amendment record back to its bytes before the call.
+func (a *amendmentCall) restoreAmendment(deps decisionDeps) error {
+	return restoreRecord(deps.amendmentPath, a.priorAmendment, a.amendmentExisted)
+}
+
+// restoreDecision puts the decision record back to its bytes before the call; a record absent before stays absent.
+func (a *amendmentCall) restoreDecision(deps decisionDeps) error {
+	if !a.decisionExisted {
+		return nil
+	}
+	return restoreRecord(deps.recordPath, a.priorDecision, true)
+}
+
+// rollBackAppend undoes the amendment of a call whose append returned an error or findings, which cause describes.
+// A decision record is restored only after an error, since the append restores it itself on findings.
+// When a status commit already landed this call's amendment bytes, the restored record is committed, so HEAD never keeps a title whose entry did not land.
+// It returns the refusal text when that cleanup fails, and empty when it succeeded.
+func (a *amendmentCall) rollBackAppend(deps decisionDeps, appendErrored bool, cause string) string {
+	if appendErrored {
+		if err := a.restoreDecision(deps); err != nil {
+			return fmt.Sprintf("%s; the decision record at %s could not be restored: %s; %s", cause, deps.recordPath, err, decisionWayRestoreRecords)
+		}
+	}
+	if err := a.restoreAmendment(deps); err != nil {
+		return fmt.Sprintf("%s; the amendment record at %s could not be restored: %s; %s", cause, deps.amendmentPath, err, decisionWayRestoreRecords)
+	}
+	committed, found, err := deps.committedAmendment()
+	if err != nil {
+		return fmt.Sprintf("%s; the amendment record at HEAD could not be read: %s; %s", cause, err, decisionWayFabricCommit)
+	}
+	if found && bytes.Equal(committed, a.written) {
+		if err := deps.commitAmendment(); err != nil {
+			return fmt.Sprintf("%s; a status commit landed the amendment title and committing the restored record failed: %s; %s", cause, err, decisionWayFabricCommit)
+		}
+	}
+	return ""
+}
+
+// afterFailedCommit decides what a failed commit left at HEAD, which commitErr describes.
+// It reports landed when HEAD holds both this call's amendment record and the entry, so the commit went through despite its error.
+// Otherwise it returns the refusal text: both files are kept when HEAD holds the amendment record alone or cannot be read, and restored when HEAD differs.
+func (a *amendmentCall) afterFailedCommit(deps decisionDeps, added discussionparser.AddedDecision, commitErr error) (landed bool, refusal string) {
+	failed := fmt.Sprintf("the entry is appended but the commit failed: %s", commitErr)
+	committed, found, err := deps.committedAmendment()
+	if err != nil {
+		return false, fmt.Sprintf("%s; the amendment record at HEAD could not be read: %s; %s", failed, err, decisionWayFabricCommit)
+	}
+	if found && bytes.Equal(committed, a.written) {
+		held, err := committedHoldsEntry(deps, added)
+		switch {
+		case err != nil:
+			return false, fmt.Sprintf("%s; the decision record at HEAD could not be read: %s; %s", failed, err, decisionWayFabricCommit)
+		case held:
+			return true, ""
+		}
+		return false, fmt.Sprintf("%s; a status commit landed the amendment record without the entry; %s", failed, decisionWayFabricCommit)
+	}
+	if err := a.restoreDecision(deps); err != nil {
+		return false, fmt.Sprintf("%s; the decision record at %s could not be restored: %s; %s", failed, deps.recordPath, err, decisionWayRestoreRecords)
+	}
+	if err := a.restoreAmendment(deps); err != nil {
+		return false, fmt.Sprintf("%s; the amendment record at %s could not be restored: %s; %s", failed, deps.amendmentPath, err, decisionWayRestoreRecords)
+	}
+	return false, fmt.Sprintf("%s; %s", failed, decisionWayAmendsPlanRetry)
+}
+
+// planApprovedReader returns the seam that reports whether the plan of the worktree anchored at anchorPath is approved.
+// An absent overview answers false.
+// A read failure is returned as is, and a plan that does not parse is returned wrapping errPlanUnparsed.
+func planApprovedReader(anchorPath string) func() (bool, error) {
+	return func() (bool, error) {
+		if _, err := os.Stat(planparser.PlanOverview(anchorPath)); errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		} else if err != nil {
+			return false, err
+		}
+		plan, err := planparser.ParsePlan(planparser.PlanDir(anchorPath))
+		var pathErr *fs.PathError
+		if errors.As(err, &pathErr) {
+			return false, err
+		}
+		if err != nil {
+			return false, fmt.Errorf("%w: %s", errPlanUnparsed, err)
+		}
+		return plan.Approved, nil
+	}
+}
+
 // decisionVerb appends the decision in input to the record and commits it, or refuses with a way forward.
 //
+// With amendsPlan the verb also appends the entry's title to the plan amendment record, committed with the entry.
+// It is refused on a darn run and for a plan that is not approved, and a failed append or commit puts both records back.
 // The optional PATTERN-change form appends one bullet of the record's PATTERN-change shape beside the entry, in the same write.
 // It passes through the verb's existing checks and its --by parent|operator|arbiter caller guards, so only the run's parent, the operator's own shell or the run's own arbiter declares a change after Discussion.
 // The form removes and rewrites nothing.
@@ -265,6 +430,9 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	if err != nil {
 		return refuse("read the run's recipe: %s; %s", err, decisionWayRetry)
 	}
+	if input.amendsPlan && darn {
+		return refuse("--amends-plan has no plan to amend on a darn run; %s", decisionWayAmendsDarn)
+	}
 	if darn {
 		refusal, err := checkDarnRecord(deps)
 		if err != nil {
@@ -272,6 +440,17 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		}
 		if refusal != "" {
 			return refuse("%s", refusal)
+		}
+	}
+	if input.amendsPlan {
+		approved, err := deps.approvedPlan()
+		switch {
+		case errors.Is(err, errPlanUnparsed):
+			return refuse("%s; %s", err, decisionWayPlanUnparsed)
+		case err != nil:
+			return refuse("read the plan: %s; %s", err, decisionWayRetry)
+		case !approved:
+			return refuse("the current generation has no approved plan to amend; %s", decisionWayAmendsNoPlan)
 		}
 	}
 
@@ -292,7 +471,23 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		added.PatternChange = &change
 		patternBullet = change.Bullet()
 	}
+	var amendment *amendmentCall
+	if input.amendsPlan {
+		amendment, err = beginAmendment(deps, strings.TrimSpace(input.title))
+		if err != nil {
+			return refuse("%s; %s", err, decisionWayRetry)
+		}
+	}
 	findings, err := deps.append(added)
+	if amendment != nil && (err != nil || len(findings) > 0) {
+		cause := "the discussion check flags the record after the append: " + strings.Join(renderFindings(findings), "; ")
+		if err != nil {
+			cause = err.Error()
+		}
+		if refusal := amendment.rollBackAppend(deps, err != nil, cause); refusal != "" {
+			return refuse("%s", refusal)
+		}
+	}
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return refuse("the run has no decision record at %s; %s", deps.recordPath, decisionWayNoRecord)
@@ -303,8 +498,15 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	case len(findings) > 0:
 		return refuse("the discussion check flags the record after the append: %s; %s", strings.Join(renderFindings(findings), "; "), decisionWayFindings)
 	}
-	if err := deps.commit(); err != nil {
-		return refuse("the entry is appended but the commit failed: %s; way forward: run \"lyx fabric commit\" to commit the record; a session lyx refuses the verb from reports status: FAILED and the orch runs it", err)
+	commitErr := deps.commit()
+	if commitErr != nil && amendment == nil {
+		return refuse("the entry is appended but the commit failed: %s; %s", commitErr, decisionWayFabricCommit)
+	}
+	if commitErr != nil {
+		landed, refusal := amendment.afterFailedCommit(deps, added, commitErr)
+		if !landed {
+			return refuse("%s", refusal)
+		}
 	}
 	if darn {
 		held, err := committedHoldsEntry(deps, added)
@@ -326,6 +528,9 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	}
 	if patternForm {
 		result["pattern_change"] = patternBullet
+	}
+	if commitErr != nil {
+		result["commit_error"] = commitErr.Error()
 	}
 	return output.Ok(out, result)
 }
@@ -410,6 +615,18 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		},
 		notify: func(receiver, line string) error {
 			return postDecisionNotice(decisionNoticeClients(target), os.Getenv(agentname.StrandNameEnv), receiver, line)
+		},
+		amendmentPath: loomengine.LoomAmendmentRecord(target),
+		approvedPlan:  planApprovedReader(target.AnchorPath()),
+		appendAmendment: func(title string, at time.Time) error {
+			return loomshed.AppendAmendment(loomengine.LoomAmendmentRecord(target), title, at)
+		},
+		committedAmendment: func() ([]byte, bool, error) {
+			return fabricengine.CommittedAnchoredFile(target, loomengine.LoomAmendmentRecordRel())
+		},
+		commitAmendment: func() error {
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), target, []string{loomengine.LoomAmendmentRecordRel()}, fmt.Sprintf("loom: plan amendment record for %s", seedSlug(target.WorktreeName)), fabricengine.EnvSyncOptions())
+			return err
 		},
 	}
 	return nil
@@ -532,6 +749,14 @@ held, and a commit after which the committed record lacks the entry.
 That bounds the append to a record the writer validated and has not touched,
 and to an entry that reached the fabric.
 
+--amends-plan marks a decision that amends the approved plan: the call also
+appends the entry's title to the plan amendment record, and one commit lands
+the entry and the record. It is refused on a darn run and while the current
+generation has no approved plan, where the decision is recorded without the
+flag. When the append or the commit fails, both records are put back, and
+nothing is left half recorded. After a successful call the parent runs
+"lyx loom goto --to Plan-Burler-Review" and "lyx loom resume".
+
 A decision that adds, changes or removes a PATTERN entry also passes
 --pattern-entry <PATTERN-id>, --pattern-action adds|changes|removes and, for
 adds or changes, --pattern-text <new entry text>. One call then appends the
@@ -557,6 +782,7 @@ Example:
 	add.Flags().StringVar(&st.input.patternEntry, "pattern-entry", "", "the PATTERN entry the decision adds, changes or removes, as PATTERN-<id>")
 	add.Flags().StringVar(&st.input.patternAction, "pattern-action", "", "what the decision does to the entry: adds, changes or removes")
 	add.Flags().StringVar(&st.input.patternText, "pattern-text", "", "the entry's new text, for adds or changes")
+	add.Flags().BoolVar(&st.input.amendsPlan, "amends-plan", false, "the decision amends the approved plan: also record it in the plan amendment record")
 
 	group.AddCommand(add)
 	return group
