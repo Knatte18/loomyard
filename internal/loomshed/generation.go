@@ -85,7 +85,14 @@ func committedRounds(deps PRReworkDeps) ([]committedRound, error) {
 // so an agent-written record.json can reach HEAD.
 // Re-classifying the live cards bounds that: a stale or forged record can at most skip review of a generation whose live cards are themselves exempt.
 // A plan rewritten by an operator goto Plan-Write has a first_card that matches no round, and never skips.
+// While the plan amendment record exists it never skips, so the amended plan is judged and its settle records a round start.
 func PlanReviewSkippable(deps PRReworkDeps) (bool, error) {
+	switch _, err := os.Stat(deps.AmendmentPath); {
+	case err == nil:
+		return false, nil
+	case !errors.Is(err, fs.ErrNotExist):
+		return false, fmt.Errorf("loomshed: plan-review skip: stat amendment record: %w", err)
+	}
 	plan, err := ParseCommittedPlan(deps.PlanDir, deps.ReadCommitted)
 	if err != nil {
 		return false, fmt.Errorf("loomshed: plan-review skip: parse committed plan: %w", err)

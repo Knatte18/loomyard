@@ -88,6 +88,8 @@
 //
 // The PR-Rework producer (NewPRRework) archives the plan and review run directories into the round, then recreates the review run directories and hands each archived one to the required KeepReviewRecords seam.
 // The settle record, its patch and the generation record therefore stay where the next review re-entry compares against them, on every Call that reaches the recreation, so a re-step after a failed carry carries again.
+// The archive also removes the plan amendment record, since the new generation's plan replaces the amended one.
+// PlanReviewSkippable answers false while that record exists, so the amended plan is judged and its settle records a round start.
 // LatestRejectReview returns the newest round's findings file and rejection time, the reject file a review amendment is told.
 //
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than

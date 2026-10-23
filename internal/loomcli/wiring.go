@@ -136,6 +136,7 @@ func rejectionPending(location *lyxcwd.Location) bool {
 // The reviews root and webster's directory are left out when they match nothing in the index or the working tree, since git refuses such a pathspec (see statusCommitPathspec):
 // that is when neither holds a file now and the round archived no file out of it, so nothing under it was ever tracked for this round to delete.
 // The plan and rework directories always hold files by the time the round commits.
+// The plan amendment record joins when it exists or is tracked, so the archive's removal of it is staged in the round's commit.
 func reworkCommitPathspec(location *lyxcwd.Location) []string {
 	reworkDir := loomengine.LoomReworkDir(location)
 	paths := []string{planparser.PlanDirRel(), loomengine.LoomReworkDirRel()}
@@ -145,7 +146,9 @@ func reworkCommitPathspec(location *lyxcwd.Location) []string {
 	if holdsFile(websterengine.Dir(location.AnchorPath())) || holdsFileAt(loomshed.LatestArchivedWebsterDir(reworkDir)) {
 		paths = append(paths, websterengine.DirRel())
 	}
-	return paths
+	return append(paths, amendmentPathspec(location, func(rel string) (bool, error) {
+		return fabricengine.PathTracked(location.AnchorPath(), rel)
+	})...)
 }
 
 // planCommitPathspec returns the pathspec the plan commit stages: the plan directory, and webster's durable directory too when it holds a file or git still tracks a path under it.
@@ -700,10 +703,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// reworkDeps opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
 	// PR-Rework and the Plan-Review skip seam share it.
 	reworkDeps := loomshed.PRReworkDeps{
-		PlanDir:      planparser.PlanDir(anchorPath),
-		ReworkDir:    loomengine.LoomReworkDir(location),
-		ReworkDirRel: loomengine.LoomReworkDirRel(),
-		ReviewsDir:   loomengine.LoomReviewsDir(location),
+		PlanDir:       planparser.PlanDir(anchorPath),
+		ReworkDir:     loomengine.LoomReworkDir(location),
+		ReworkDirRel:  loomengine.LoomReworkDirRel(),
+		ReviewsDir:    loomengine.LoomReviewsDir(location),
+		AmendmentPath: loomengine.LoomAmendmentRecord(location),
 		// The run subdirectories are the recipe's own run_subdir values for the Plan-Review and Webster-Review segments, the two reviews a generation owns.
 		ReviewRunSubdirs: []string{"plan", "webster"},
 		ReadCommitted:    committedAnchoredReader(location),
