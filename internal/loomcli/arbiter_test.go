@@ -135,7 +135,7 @@ func newArbiterFixture(t *testing.T, producer string, state shedengine.State) *a
 		settings:         loomengine.ArbiterSettings{ModelChoice: shuttleengine.ModelChoice{Model: "claude-resolved", Effort: "high", Version: "v1"}, Timeout: 30 * time.Minute, MaxSpawns: 3},
 		fake:             &arbiterFake{runGUID: "guid-1"},
 		interruptPolicy:  map[string]string{},
-		producerRowNames: []string{"Plan-Write", "Plan-Bouncer", loomshed.NamePublish, "PR-Gate"},
+		producerRowNames: []string{"Plan-Write", "Plan-Bouncer", loomshed.NameMergeIn, loomshed.NameFinalize},
 	}
 	f.envelopePath = filepath.Join(root, "stop-envelope.json")
 	f.reportPath = filepath.Join(root, "report.md")
@@ -299,10 +299,6 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 			},
 		},
 		{
-			name: "Publish halt", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NamePublish, "") },
-		},
-		{
 			name: "Merge-In halt", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
 			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NameMergeIn, "") },
 		},
@@ -352,7 +348,7 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 			setup:       func(f *arbiterFixture) { f.interruptPolicy["Plan-Write"] = shedverbs.InterruptPolicyHandback },
 			wantRefusal: "whose policy hands back", wantNoSpawn: true,
 		},
-		{name: "awaiting with a parent notice but no escalation refused", producer: "PR-Gate", state: shedengine.StateAwaiting, wantRefusal: "no pending review escalation", wantNoSpawn: true},
+		{name: "awaiting with a parent notice but no escalation refused", producer: loomshed.NameFinalize, state: shedengine.StateAwaiting, wantRefusal: "no pending review escalation", wantNoSpawn: true},
 		{name: "paused refused", producer: "Plan-Write", state: shedengine.StatePaused, wantRefusal: "a paused run is not a halted stop", wantNoSpawn: true},
 		{name: "done refused", producer: "Plan-Write", state: shedengine.StateDone, wantRefusal: "a done run is not a halted stop", wantNoSpawn: true},
 		{name: "running refused", producer: "Plan-Write", state: shedengine.StateRunning, wantRefusal: "a running run is not a halted stop", wantNoSpawn: true},
@@ -729,7 +725,7 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 			wantRelaunch: "lyx shed step " + arbiterTestRun + " --until-stop --arbiter-attempt 1",
 		},
 		{
-			name: "a resume at a blocked stop with a goto target", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
+			name: "a resume at a blocked stop with a goto target", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
 			verdict:     "verdict: resume\nreason: go back\ngoto: Plan-Write\n",
 			wantVerdict: loomengine.ArbiterVerdictResume, wantGoto: "Plan-Write",
 			wantRelaunch: "lyx shed step " + arbiterTestRun + " --until-stop --arbiter-attempt 1",
@@ -767,11 +763,11 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 		},
 		{
 			name: "a resume naming a goto target past the current row", producer: "Plan-Write", state: shedengine.StateBlocked,
-			verdict:     "verdict: resume\nreason: skip ahead\ngoto: PR-Gate\n",
+			verdict:     "verdict: resume\nreason: skip ahead\ngoto: Finalize\n",
 			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
 		},
 		{
-			name: "a resume naming a goto target the guard refuses", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
+			name: "a resume naming a goto target the guard refuses", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
 			verdict: "verdict: resume\nreason: go back\ngoto: Plan-Write\n",
 			setup: func(f *arbiterFixture) {
 				f.gotoGuard = func(string) (string, error) { return "the Plan-Review verdict is settled", nil }

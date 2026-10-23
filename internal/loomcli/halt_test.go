@@ -350,7 +350,7 @@ func TestLoomPostRun_HaltNotes(t *testing.T) {
 		t.Parallel()
 
 		f := newHaltFixture(t)
-		res := shedengine.Result{Outcome: shedengine.RunAwaiting, HaltedProducer: loomshed.NamePRGate, Reason: "approve"}
+		res := shedengine.Result{Outcome: shedengine.RunAwaiting, HaltedProducer: loomshed.NameCodeBouncer, Reason: "circling"}
 
 		if got := f.c.loomPostRun(context.Background(), res, nil)["friction"]; got != frictionengine.StatusSkipped {
 			t.Errorf("friction = %v; want %q", got, frictionengine.StatusSkipped)

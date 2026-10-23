@@ -406,7 +406,7 @@ func TestLatestDarnOutcome(t *testing.T) {
 		{name: "no Darn-Write entry", status: &shedengine.Status{History: []shedengine.HistoryEntry{{Producer: loomshed.NamePreflight, Outcome: shedengine.Done}}}},
 		{
 			name:      "latest Darn-Write entry of a run that moved on carries no reason",
-			status:    &shedengine.Status{CurrentProducer: loomshed.NamePublish, State: shedengine.StateRunning, Error: "stale", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarnWrite, Outcome: shedengine.Done}}},
+			status:    &shedengine.Status{CurrentProducer: loomshed.NameFinalize, State: shedengine.StateRunning, Error: "stale", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarnWrite, Outcome: shedengine.Done}}},
 			wantFound: true,
 			want:      loomshed.DarnOutcome{Outcome: shedengine.Done},
 		},

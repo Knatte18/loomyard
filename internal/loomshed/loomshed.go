@@ -6,7 +6,7 @@ package loomshed
 // the durable on-disk identity in current_producer; a later rename breaks resume for any in-flight
 // task, so every row below is built from these constants, never a repeated string literal.
 //
-// NamePublish and NameFinalize are not loom's own producers -- both are generic ShedProducers
+// NameMergeIn and NameFinalize are not loom's own producers -- both are generic ShedProducers
 // shared by reference with Hardener's own list (see internal/landingshed's own package
 // documentation) -- but the name constants live here regardless, same as every other row, because
 // loom's own producer table names them, and the table is now the recipe's:
@@ -25,14 +25,8 @@ const (
 	NamePlanWrite         = "Plan-Write"
 	NamePlanBouncer       = "Plan-Bouncer"
 	NameWebster           = "Webster"
-	NameWebsterBouncer    = "Webster-Bouncer"
 	NameDescribe          = "Describe"
 	NameMergeIn           = "Merge-In"
-	NameMergeBouncer      = "Merge-Bouncer"
-	NamePublish           = "Publish"
-	NamePRAlign           = "PR-Align"
-	NamePRGate            = "PR-Gate"
-	NamePRRework          = "PR-Rework"
 	NameDarnWrite         = "Darn-Write"
 	NameDarnBouncer       = "Darn-Bouncer"
 	NameFinalize          = "Finalize"
@@ -42,10 +36,6 @@ const (
 	NameDiscussionBurlerFix    = "Discussion-Burler-Fix"
 	NamePlanBurlerReview       = "Plan-Burler-Review"
 	NamePlanBurlerFix          = "Plan-Burler-Fix"
-	NameWebsterBurlerReview    = "Webster-Burler-Review"
-	NameWebsterBurlerFix       = "Webster-Burler-Fix"
-	NameMergeBurlerReview      = "Merge-Burler-Review"
-	NameMergeBurlerFix         = "Merge-Burler-Fix"
 	NameDarnBurlerReview       = "Darn-Burler-Review"
 	NameDarnBurlerFix          = "Darn-Burler-Fix"
 

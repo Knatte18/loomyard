@@ -67,7 +67,6 @@ func TestLoopLockExit(t *testing.T) {
 		{"stop condition", loopOwner, shedverbs.LoopStopCondition, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Publish"}, parentlock.Owner{}, false},
 		{"done", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateDone, CurrentProducer: "Finalize"}, parentlock.Owner{}, false},
 		{"awaiting at Describe", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "Describe"}, parentlock.Owner{}, false},
-		{"awaiting at PR-Gate releases with a batten watching", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "PR-Gate"}, parentlock.Owner{}, false},
 		{"another process of the run keeps its record", otherProcess, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateDone, CurrentProducer: "Finalize"}, otherProcess, true},
 	}
 	for _, tt := range tests {
