@@ -68,6 +68,15 @@ type fakeSubstrates struct {
 	// owned and ownedErr are the slug's live owned processes a busy refusal names.
 	owned    []runproc.Record
 	ownedErr error
+
+	// gone is what the gone substrate answers.
+	gone bool
+	// strands is what the strand stop answers as the stopped names.
+	strands []string
+	// writeLockBusy makes the records write lock hold refuse.
+	writeLockBusy bool
+	// driverLockHeldByProbe answers each driver-lock probe in turn, ahead of the driverLockHeld flag.
+	driverLockHeldByProbe []bool
 }
 
 // awaitCall is one call of the pre-end run-lock wait.
@@ -87,7 +96,26 @@ func (f *fakeSubstrates) teardown() *Teardown {
 		},
 		driverLockHeld: func(string) (bool, error) {
 			f.calls = append(f.calls, "driverLock")
+			if len(f.driverLockHeldByProbe) > 0 {
+				held := f.driverLockHeldByProbe[0]
+				f.driverLockHeldByProbe = f.driverLockHeldByProbe[1:]
+				return held, nil
+			}
 			return f.driverLockHeld, nil
+		},
+		holdWriteLocks: func(slug string) (func() error, error) {
+			f.calls = append(f.calls, "holdWriteLocks")
+			if f.writeLockBusy {
+				return nil, writeLockBusyError(slug, "/hub/records/lock")
+			}
+			return func() error {
+				f.calls = append(f.calls, "release")
+				return nil
+			}, nil
+		},
+		stopStrands: func(string) ([]string, error) {
+			f.calls = append(f.calls, "stopStrands")
+			return f.strands, nil
 		},
 		battenAlive: func(string) (bool, error) { return f.battenAlive, nil },
 		driverPID:   func(string) (int, bool) { return f.driverPID, f.driverFound },
@@ -98,7 +126,7 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			return f.awaitOrPassErr
 		},
 		ownedProcesses: func(string) ([]runproc.Record, error) { return f.owned, f.ownedErr },
-		gone:           func(string) (bool, error) { return false, nil },
+		gone:           func(string) (bool, error) { return f.gone, nil },
 		quiet: func(string) (quietState, error) {
 			f.calls = append(f.calls, "quiet")
 			st := f.quiets[0]

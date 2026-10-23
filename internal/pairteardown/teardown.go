@@ -142,6 +142,13 @@ type Teardown struct {
 	seizeLoop func(ctx context.Context, slug string, kill func() (bool, error)) (release func(sessionEnded bool) error, err error)
 	// awaitRunLock waits for the pair's run lock to be released and names its holder when the bound passes.
 	awaitRunLock func(ctx context.Context, slug string) error
+
+	// holdWriteLocks takes the prime's and the pair's records write locks, each bounded by writeLockWait; its release drops them.
+	holdWriteLocks func(slug string) (release func() error, err error)
+	// stopStrands stops the present task worktree's live strands through shuttle and returns their names.
+	stopStrands func(slug string) ([]string, error)
+	// writeLockWait bounds each records write lock hold of the cancel phase.
+	writeLockWait time.Duration
 }
 
 // New wires the production substrates from the hub's prime location.
@@ -149,7 +156,9 @@ func New(prime *lyxcwd.Location) (*Teardown, error) {
 	if prime == nil {
 		return nil, errors.New("pairteardown: New needs the hub's prime location")
 	}
-	t := &Teardown{prime: prime, interval: quietPollInterval, goos: runtime.GOOS, sleep: sleepCtx}
+	t := &Teardown{prime: prime, interval: quietPollInterval, goos: runtime.GOOS, sleep: sleepCtx, writeLockWait: runLockWait}
+	t.holdWriteLocks = t.holdRecordsWriteLocks
+	t.stopStrands = t.stopPairStrands
 	t.gone = t.taskWorktreeGone
 	t.quiet = t.probeQuiet
 	t.endOwned = t.endOwnedProcesses
@@ -293,7 +302,7 @@ func (t *Teardown) endOwnedBeforeSession(res *SessionResult, req Request, gone b
 		return nil
 	}
 	if req.RefuseWhenBusy {
-		return t.driverLockBusyError(req.Slug)
+		return t.driverLockBusyError(req.Slug, "the removal")
 	}
 	logger.Warn("pairteardown: ending a pair whose driver lock is still held", "slug", req.Slug)
 	res.DriverWasLive = true
@@ -315,17 +324,18 @@ func survivorsBusyError(slug string, survivors []runproc.Ended) error {
 }
 
 // driverLockBusyError builds the ErrDriverBusy refusal for a driver lock held after the owned processes were ended.
-func (t *Teardown) driverLockBusyError(slug string) error {
+// retry names the step the operator retries once the holder is gone.
+func (t *Teardown) driverLockBusyError(slug, retry string) error {
 	lockPath := shedrun.DriverLock(&lyxcwd.Location{HubPath: t.prime.HubPath, WorktreeName: slug, AnchorRel: t.prime.AnchorRel}, shedrun.SelfRunID)
 	var wayForward string
 	switch {
 	case t.goos != "windows":
-		wayForward = "find the holder in the replaced-binary part of `lyx tender status` or with `ps`, end it, then retry the removal"
+		wayForward = "find the holder in the replaced-binary part of `lyx tender status` or with `ps`, end it, then retry " + retry
 	default:
 		if pid, found := t.driverPID(slug); found {
-			wayForward = fmt.Sprintf("end the driver with `taskkill /PID %d /T /F`, then retry the removal", pid)
+			wayForward = fmt.Sprintf("end the driver with `taskkill /PID %d /T /F`, then retry %s", pid, retry)
 		} else {
-			wayForward = fmt.Sprintf("end the `lyx loom drive` process of the pair in Task Manager, the one holding %s, then retry the removal", lockPath)
+			wayForward = fmt.Sprintf("end the `lyx loom drive` process of the pair in Task Manager, the one holding %s, then retry %s", lockPath, retry)
 		}
 	}
 	return fmt.Errorf("%w: the driver lock %s of pair %q is held by a process the owner record does not reach; %s", ErrDriverBusy, lockPath, slug, wayForward)
