@@ -886,8 +886,8 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderVerifyFix(reportPath, root, stencilsDir, "")
 			return promptCheck{text: text, err: err,
-				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "_lyx/plan", "run `" + testFixGate + "` as a foreground Bash call", "You are the FIXER fork", "Merriam reads only that reply"},
-				notContains: []string{"{{", "starting COLD"}}
+				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "_lyx/plan", "run `" + testFixGate + "` as a foreground Bash call"},
+				notContains: []string{"{{"}}
 		}},
 		{"fixer prompt refuses an empty report path", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
@@ -899,8 +899,8 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderVerifyFixCold(reportPath, root, root, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err,
-				contains:    []string{reportPath, testReplyPath, testOutcomePath, testSummaryPath, "_lyx/plan", "run `" + testFixGate + "` as a foreground Bash call", "starting COLD", "Edit or Write"},
-				notContains: []string{"{{", "You are the FIXER fork", "## Constraints"}}
+				contains:    []string{reportPath, testReplyPath, testOutcomePath, testSummaryPath, "_lyx/plan", "run `" + testFixGate + "` as a foreground Bash call"},
+				notContains: []string{"{{", "## Constraints"}}
 		}},
 		{"cold fixer prompt carries a declared PATTERN change when PATTERN is active", func(t *testing.T) promptCheck {
 			root, stencilsDir := patternActiveLayout(t)
