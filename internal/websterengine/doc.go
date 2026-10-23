@@ -319,8 +319,8 @@
 // and end in one ordered list: the restores, then `lyx webster accept-audit`, then exactly one re-entry step, RunDeps.ReentryStep (`lyx webster run` when empty);
 // the reset route ends in that same re-entry step, since the reset archives the run record and a plain run starts over.
 // A suspect path that is one of the run's two contract files, outcome.yaml or summary.md, is the exception, since it lies outside the tracked tree and has no blob to compare:
-// contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write and every recovery write to it;
-// an uncleared path is one a fork or a recovery session wrote last, and the refusal names which.
+// contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write and every recovery or verify-fixer write to it;
+// an uncleared path is one a fork, recovery or verify-fixer session wrote last, and the refusal names which.
 // A Master write whose result failed is not evidence, and an acknowledgement never clears it.
 // Every other path under `_lyx`, `.lyx` or the scratch directory stays uncheckable.
 // Four sites consult it before checkSuspectPaths: AcceptPendingAudit, RecoverSpawnOrAttach, the way forward of a pending finding (pendingPathsWayForward) and `run --fresh`.
@@ -389,7 +389,7 @@
 // The master and recovery prompts also render the task's declared PATTERN changes, read from Geometry.DecisionRecordPath; standalone mode leaves it empty and renders none.
 // Forks get no skills and no directive: they inherit the master's context.
 // The recovery prompt also carries a block of the worktree's uncommitted paths (the optional uncommitted_paths marker, `none` on a clean tree), taken from UncommittedPaths when the strand is spawned.
-// Each path is grouped by the run's write evidence (loadRunWrites), which covers Master, every fork and every recovery session: "Written by this run" is the earlier attempt's unfinished work, which the strand keeps as its starting point after checking it against the card, and "Not written by this run", which includes every path the evidence cannot attribute, the strand leaves untouched and never stages or commits.
+// Each path is grouped by the run's write evidence (loadRunWrites), which covers Master, every fork, every recovery session and every cold verify-gate fixer session: "Written by this run" is the earlier attempt's unfinished work, which the strand keeps as its starting point after checking it against the card, and "Not written by this run", which includes every path the evidence cannot attribute, the strand leaves untouched and never stages or commits.
 // The call that spawns the recovery strand first waits for its provider to come up (normally seconds, bounded by startup_timeout_s),
 // and every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus one poll tick) and returns a terminal digest:
 // the budget outlasts the timeout measured from spawn, so a strand that never reports classifies dead on its timeout and the call returns.
@@ -544,7 +544,7 @@
 // Bound: the verb spawns whenever a verify-gate report exists, a fork-routed failure's included, and counts no spawn;
 // the gate messages, which the attempt budget caps, and the Master template's rule to run it only when a message names it bound how many cold fixers a run gets.
 // The run-exit audit reads the forks of Master's session only, so a cold fixer's own writes are checked only through the contract-file evidence loadRunWrites collects, as a recovery strand's are.
-// Each fixer session joins the run's write evidence (loadRunWrites) beside the recovery sessions, run entry stops a fixer recorded not terminal, and `reset --to start` stops every recorded fixer strand.
+// Each fixer session joins the run's write evidence (loadRunWrites) beside the recovery sessions, run entry stops a fixer recorded not terminal and saves its record dead/died, so the next fix-verify spawns a fresh fixer instead of attaching to the stopped strand, and `reset --to start` stops every recorded fixer strand.
 //
 // # The verify gate
 //
@@ -625,7 +625,7 @@
 // `--batch` is required for `report-head` and `batch-start` and refused for the other three, before any git read.
 // The refusals run in order: the `--batch` pairing, run lock held (transient, except for `report-head`), no state, a merge in progress, a checked-out branch that is not the task branch,
 // no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
-// The own paths are the tracked paths that loadRunWrites records a successful write to, Master's, every fork's and every recovery session's; a failed write is not evidence.
+// The own paths are the tracked paths that loadRunWrites records a successful write to, Master's, every fork's, every recovery session's and every cold verify-gate fixer session's; a failed write is not evidence.
 // Each refusal ends in wayForwardSteps' numbered list.
 // The plan carries the SHA and the own paths, and reads no force flag.
 // `start` is the one start-over verb, so it does not refuse where the start cannot be moved to:

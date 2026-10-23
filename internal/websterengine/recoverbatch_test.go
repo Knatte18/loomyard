@@ -2029,14 +2029,14 @@ func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
 		{
 			name:      "fork wrote last",
 			master:    []shuttleengine.WriteEvent{{At: at, Succeeded: true}},
-			wantInErr: []string{"batch 01", "rm ", "lyx webster recover-batch 1", "a fork or a recovery session wrote last", "a fork wrote /", "after Master's last write"},
+			wantInErr: []string{"batch 01", "rm ", "lyx webster recover-batch 1", "a fork, recovery or verify-fixer session wrote last", "a fork wrote /", "after Master's last write"},
 			notInErr:  []string{"--fresh", "a recovery or verify-fixer session wrote /"},
 		},
 		{
 			name:      "recovery wrote last",
 			master:    []shuttleengine.WriteEvent{{At: at, Succeeded: true}},
 			recovery:  []shuttleengine.WriteEvent{{At: at.Add(2 * time.Minute), Succeeded: true}},
-			wantInErr: []string{"batch 01", "rm ", "lyx webster recover-batch 1", "a fork or a recovery session wrote last", "a recovery or verify-fixer session wrote /", "after Master's last write"},
+			wantInErr: []string{"batch 01", "rm ", "lyx webster recover-batch 1", "a fork, recovery or verify-fixer session wrote last", "a recovery or verify-fixer session wrote /", "after Master's last write"},
 			notInErr:  []string{"--fresh", "a fork wrote /"},
 		},
 		{
