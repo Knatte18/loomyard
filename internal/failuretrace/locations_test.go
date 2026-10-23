@@ -1,6 +1,6 @@
 // locations_test.go covers Locations, the extraction and placement of the `path:line` locations a verify log names.
 
-package failuretrace_test
+package failuretrace
 
 import (
 	"fmt"
@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/failuretrace"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -18,8 +17,8 @@ const (
 )
 
 // testPlacement places locations in a worktree at testRootPath whose only files at head are those named.
-func testPlacement(existing ...string) failuretrace.Placement {
-	return failuretrace.Placement{
+func testPlacement(existing ...string) Placement {
+	return Placement{
 		WorktreeRoot: testRootPath,
 		ModulePath:   testModule,
 		ExistsAtHead: func(rel string) bool {
@@ -89,7 +88,7 @@ func TestLocations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			placed, untraced := failuretrace.Locations([]websterengine.VerifyFailure{tt.failure}, testPlacement("internal/x/y.go"))
+			placed, untraced := Locations([]websterengine.VerifyFailure{tt.failure}, testPlacement("internal/x/y.go"))
 			if !reflect.DeepEqual(placed, tt.wantPlaced) {
 				t.Errorf("Locations(%q) placed = %q; want %q", tt.failure.Tail, placed, tt.wantPlaced)
 			}

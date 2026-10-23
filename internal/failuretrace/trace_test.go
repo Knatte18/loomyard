@@ -1,13 +1,12 @@
 // trace_test.go covers Trace over fakes of its three quarry seams, with a fixed plan and Webster state.
 
-package failuretrace_test
+package failuretrace
 
 import (
 	"errors"
 	"reflect"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/failuretrace"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -180,7 +179,7 @@ func TestTrace(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			in := failuretrace.Input{
+			in := Input{
 				Log:       tt.log,
 				Head:      traceHead,
 				Placement: testPlacement(allFiles...),
@@ -230,7 +229,7 @@ func TestTrace(t *testing.T) {
 				in.State = nil
 			}
 
-			got, err := failuretrace.Trace(in)
+			got, err := Trace(in)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Trace() error = %v; want error %v", err, tt.wantErr)
 			}
