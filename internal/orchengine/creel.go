@@ -12,6 +12,8 @@ import "time"
 type Creel interface {
 	// Post leaves body as mail for receiver and returns the message's id.
 	Post(receiver, body string) (int64, error)
+	// MailReadAt returns when the receiver holding mail id read it, zero while it is unread.
+	MailReadAt(id int64) (time.Time, error)
 	// ReadMailbox hands every unread message of the watcher's mailbox to handle without waiting; they are marked read only once handle returns nil.
 	// With nothing unread handle is not called.
 	ReadMailbox(handle func([]CreelMessage) error) error
