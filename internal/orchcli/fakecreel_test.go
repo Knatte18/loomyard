@@ -25,6 +25,10 @@ func (f *fakeCreel) Post(receiver, body string) (int64, error) {
 	return int64(len(f.posts)), nil
 }
 
+func (f *fakeCreel) MailReadAt(int64) (time.Time, error) {
+	return time.Time{}, nil
+}
+
 func (f *fakeCreel) ReadMailbox(func([]orchengine.CreelMessage) error) error {
 	f.calls = append(f.calls, "read-mailbox")
 	return nil
