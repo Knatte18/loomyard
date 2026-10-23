@@ -14,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentlock"
-	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -48,43 +47,35 @@ func lockOwnerOf(t *testing.T, store *parentlock.Store) (parentlock.Owner, bool)
 	return record.Owner, found
 }
 
-// TestLoopLockExit asserts the exit hook releases the loop's record at every stop, hands it to a live batten at an awaiting PR-Gate, and leaves a record of another process alone.
+// TestLoopLockExit asserts the exit hook releases the loop's record at every stop, an awaiting one included, and leaves a record of another process alone.
 func TestLoopLockExit(t *testing.T) {
 	t.Parallel()
-	battenPID := os.Getpid()
-	battenStart, _ := proc.StartTime(battenPID)
-	handedOff := loopOwner
-	handedOff.PID, handedOff.StartTime = battenPID, battenStart
 	otherProcess := loopOwner
 	otherProcess.PID, otherProcess.StartTime = 200, "200-start"
-	watched := func() (int, bool) { return battenPID, true }
-	unwatched := func() (int, bool) { return 0, false }
 
 	tests := []struct {
 		name      string
 		recordOf  parentlock.Owner
 		stop      shedverbs.LoopStop
 		status    shedengine.Status
-		batten    func() (int, bool)
 		wantOwner parentlock.Owner
 		wantFound bool
 	}{
-		{"blocked", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Webster"}, watched, parentlock.Owner{}, false},
-		{"failed", loopOwner, shedverbs.LoopStopError, shedengine.Status{State: shedengine.StateFailed, CurrentProducer: "Publish"}, watched, parentlock.Owner{}, false},
-		{"paused", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StatePaused, CurrentProducer: "Publish"}, watched, parentlock.Owner{}, false},
-		{"stop condition", loopOwner, shedverbs.LoopStopCondition, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Publish"}, watched, parentlock.Owner{}, false},
-		{"done", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateDone, CurrentProducer: "Finalize"}, watched, parentlock.Owner{}, false},
-		{"awaiting at Describe", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "Describe"}, watched, parentlock.Owner{}, false},
-		{"awaiting at PR-Gate hands off to a live batten", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: loomshed.NamePRGate}, watched, handedOff, true},
-		{"awaiting at PR-Gate releases when no batten watches", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: loomshed.NamePRGate}, unwatched, parentlock.Owner{}, false},
-		{"another process of the run keeps its record", otherProcess, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateDone, CurrentProducer: "Finalize"}, watched, otherProcess, true},
+		{"blocked", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Webster"}, parentlock.Owner{}, false},
+		{"failed", loopOwner, shedverbs.LoopStopError, shedengine.Status{State: shedengine.StateFailed, CurrentProducer: "Publish"}, parentlock.Owner{}, false},
+		{"paused", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StatePaused, CurrentProducer: "Publish"}, parentlock.Owner{}, false},
+		{"stop condition", loopOwner, shedverbs.LoopStopCondition, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Publish"}, parentlock.Owner{}, false},
+		{"done", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateDone, CurrentProducer: "Finalize"}, parentlock.Owner{}, false},
+		{"awaiting at Describe", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "Describe"}, parentlock.Owner{}, false},
+		{"awaiting at PR-Gate releases with a batten watching", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "PR-Gate"}, parentlock.Owner{}, false},
+		{"another process of the run keeps its record", otherProcess, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateDone, CurrentProducer: "Finalize"}, otherProcess, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			store := lockedStore(t, tt.recordOf)
 
-			loopLockExit(store, func() parentlock.Owner { return loopOwner }, tt.batten)(tt.stop, tt.status)
+			loopLockExit(store, func() parentlock.Owner { return loopOwner })(tt.stop, tt.status)
 
 			gotOwner, gotFound := lockOwnerOf(t, store)
 			if gotFound != tt.wantFound || gotOwner != tt.wantOwner {

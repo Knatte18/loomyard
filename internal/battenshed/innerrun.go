@@ -188,8 +188,6 @@ const (
 	failLockRecordUnreadable  = "battenshed: parent lock record unreadable; leaving it alone"
 	failAgentStatesUnreadable = "battenshed: the child's agent states are unreadable; keeping its parent lock"
 	failLockRelease           = "battenshed: could not release the child's parent lock"
-	failStaleBaseDecision     = "battenshed: decision unreadable for the stale-base check; not resuming"
-	failParentMoved           = "battenshed: could not tell whether the parent moved; not resuming"
 	failReviewWaitNote        = "battenshed: reviewer wait note unavailable"
 	failDriverStrandRead      = "battenshed: could not read the child's driver strand; skipping the revive"
 	failDriverLiveness        = "battenshed: driver liveness read failed; treating the driver as live"
@@ -231,7 +229,7 @@ func logAttempt(first bool, msg string, args ...any) {
 // A nil deps.ChildBuildChanged or deps.ChildDirtyPaths switches the binary re-step off.
 // A nil deps.PauseRequested resolves to never paused, and a nil deps.Pause to never covered by a pause record.
 // A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, a nil deps.ArbiterInFlight to reporting no arbiter and a nil deps.ArbiterStop to a reading that is not eligible.
-// A nil deps.ParentLock switches the parent lock step and the stale-base resume off.
+// A nil deps.ParentLock switches the parent lock step off.
 // A nil deps.OwnerCheck switches the owner check off, a nil deps.PauseOwned resolves to a no-op, and a nil deps.ParentHoldsTaskWork or deps.Restepped to reporting false.
 // A nil deps.HandBack resolves to marking no status.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
@@ -345,7 +343,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 // Once the child's state is settled, the wait runs the notice step (noticeStep) on entry and at every check: informational only, one notice per condition per episode, never changing the outcome below.
 // Then by state, each arm does its actions and enters the one wait loop (wait):
 //   - running reports its wait reason, naming the reviewer the child waits on when there is one;
-//   - awaiting first revives a dead driver strand once per episode and resumes the child when its parent moved under the gate row (staleBaseResume); with no decision record it reports the hand-off;
+//   - awaiting first revives a dead driver strand once per episode; with no decision record it reports the hand-off;
 //   - awaiting with a decision not yet acted on spawns the child's driver again (the child's own bootstrap resumes an approved or rejected run), records the decision in the decision-acted marker only once the spawn succeeded, and goes on waiting until the child leaves awaiting;
 //     a spawn refused with ErrChildNotParked records nothing and is retried at most once per noticeProbe until the driver parks or the state changes;
 //     one refused with ErrChildDriverBusy is retried the same way and posts one orch notice per stall;
@@ -600,11 +598,6 @@ type childWait struct {
 
 	// lock is the parent lock step's state across the Call's checks.
 	lock lockWatch
-	// baseMoved is the newest reading of whether the parent moved under a child awaiting at the gate row, and baseStale is true on a probe check until it is read.
-	// staleResumed is true once the stale-base resume landed, which keeps the reading true and stops a second resume.
-	baseMoved    bool
-	baseStale    bool
-	staleResumed bool
 }
 
 // waitEnd is how a wait ended: the verdict, pointer and error Call returns.
@@ -678,7 +671,6 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 	w.probeDue = true
 	w.aliveStale = true
 	w.activityStale = true
-	w.baseStale = true
 	p.coverage(w)
 	p.noticeStep(ctx, w)
 	if end := p.runArm(ctx, w, step); end != nil {
@@ -695,7 +687,6 @@ func (p *innerRunProducer) wait(ctx context.Context, w *childWait, step armStep)
 			w.lastProbe = now
 			w.aliveStale = true
 			w.activityStale = true
-			w.baseStale = true
 		}
 		if end := p.check(ctx, w, step, now); end != nil {
 			return end.results()
@@ -910,9 +901,6 @@ func (p *innerRunProducer) reviveDeadDriver(ctx context.Context) driverRevival {
 func (p *innerRunProducer) awaitingStep(ctx context.Context, w *childWait) *waitEnd {
 	if w.probeDue {
 		p.reviveDeadDriver(ctx)
-	}
-	if end := p.staleBaseResume(ctx, w); end != nil {
-		return end
 	}
 	decision, found, err := p.deps.ReadDecision()
 	if err != nil {

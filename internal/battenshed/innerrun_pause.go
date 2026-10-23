@@ -34,7 +34,7 @@ func pauseHoldReason(entry pauserecord.Entry) string {
 }
 
 // runArm runs the arm's step, or reports the pause hold and runs nothing while w.pause is covered.
-// So no resume spawn, stale-base resume or driver revive happens under a pause.
+// So no resume spawn or driver revive happens under a pause.
 func (p *innerRunProducer) runArm(ctx context.Context, w *childWait, step armStep) *waitEnd {
 	if w.pause.Covered {
 		p.reportState(w, pauseHoldReason(w.pause.Entry))

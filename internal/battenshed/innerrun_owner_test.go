@@ -246,7 +246,7 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			h := newLockHarness(t, awaitingAt(lockGateRow))
+			h := newLockHarness(t, awaitingAt("Plan-Bouncer"))
 			h.decision = &ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
 			h.spawnErr = &ChildOwnedElsewhereError{Owner: "m2"}
 			h.verdict = elsewhereVerdict

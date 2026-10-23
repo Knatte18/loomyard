@@ -330,7 +330,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.Loop.OnWatchdogKill = watchdogKillNote(c.stopStepRuns, spec.StepsDir)
 		locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(c.location.HubPath))}
 		self := selfLockOwner(c.location, c.runID)
-		spec.Loop.OnExit = loopLockExit(locks, self, battenWatcher(c.location, c.runID))
+		spec.Loop.OnExit = loopLockExit(locks, self)
 		covered := pauseCovered(c.location)
 		keep := finalizeKeepsLock(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, verifytree.Dir(c.location.AnchorPath()))
 		spec.Loop.OnWake = builtOnFirstCall(func() func() {

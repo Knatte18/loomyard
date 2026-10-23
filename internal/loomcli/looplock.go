@@ -1,4 +1,4 @@
-// looplock.go builds the loop's parent lock hooks: the exit hook that releases or hands off the lock a loop owns, and the wake hook that releases it when the run's agents have all waited past the idle bound.
+// looplock.go builds the loop's parent lock hooks: the exit hook that releases the lock a loop owns, and the wake hook that releases it when the run's agents have all waited past the idle bound.
 
 package loomcli
 
@@ -43,13 +43,6 @@ func selfLockOwner(loc *lyxcwd.Location, runID string) func() parentlock.Owner {
 		owner.PID = process.PID
 		owner.StartTime = process.StartTime
 		return owner
-	}
-}
-
-// battenWatcher returns the reading of the run's batten-watched marker: the pid of the live batten watching the run, and false when none does.
-func battenWatcher(loc *lyxcwd.Location, runID string) func() (int, bool) {
-	return func() (int, bool) {
-		return liveBattenPID(shedrun.BattenWatchedMarker(loc, runID), proc.IsAlive)
 	}
 }
 
@@ -100,10 +93,9 @@ func ownedLockBranches(locks *parentlock.Store, self parentlock.Owner) ([]string
 }
 
 // loopLockExit returns the loop's exit hook: it settles every parent lock record this loop owns, by run and by process, once the stop is final.
-// An awaiting stop at PR-Gate with a live batten watching the run hands each record to that batten's process, so the lock is kept while the orch reviews.
-// Every other stop releases the records.
-// Both are compare-and-swap on the loop's own process, so a record batten or a newer loop owns is left alone, and a store error is logged and changes no stop.
-func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner, batten func() (int, bool)) func(stop shedverbs.LoopStop, st shedengine.Status) {
+// Every stop releases the records.
+// The release is a compare-and-swap on the loop's own process, so a record batten or a newer loop owns is left alone, and a store error is logged and changes no stop.
+func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner) func(stop shedverbs.LoopStop, st shedengine.Status) {
 	return func(stop shedverbs.LoopStop, st shedengine.Status) {
 		owner := self()
 		branches, err := ownedLockBranches(locks, owner)
@@ -114,24 +106,9 @@ func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner, batten 
 		if len(branches) == 0 {
 			return
 		}
-		successor, handOff := parentlock.Owner{}, false
-		if st.State == shedengine.StateAwaiting && st.CurrentProducer == loomshed.NamePRGate {
-			if pid, watched := batten(); watched {
-				successor = owner
-				successor.PID = pid
-				successor.StartTime, _ = proc.StartTime(pid)
-				handOff = true
-			}
-		}
 		for _, branch := range branches {
-			var err error
-			if handOff {
-				_, err = locks.HandOff(branch, owner, successor)
-			} else {
-				_, err = locks.Release(branch, owner)
-			}
-			if err != nil {
-				logger.Warn("loomcli: could not settle the parent lock at the loop's exit", "branch", branch, "stop", string(stop), "handOff", handOff, "cause", err)
+			if _, err := locks.Release(branch, owner); err != nil {
+				logger.Warn("loomcli: could not release the parent lock at the loop's exit", "branch", branch, "stop", string(stop), "cause", err)
 			}
 		}
 	}

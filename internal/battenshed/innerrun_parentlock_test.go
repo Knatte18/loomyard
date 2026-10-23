@@ -1,5 +1,5 @@
 // innerrun_parentlock_test.go covers the inner-run watch's parent lock duties over a fake clock and fake seams:
-// keeping or releasing the lock of the child's run on every probe check, and resuming a child awaiting at the gate row whose parent moved.
+// keeping or releasing the lock of the child's run on every probe check.
 
 package battenshed
 
@@ -16,8 +16,6 @@ import (
 )
 
 const (
-	lockGateRow  = "PR-Gate"
-	lockSelfPID  = 4242
 	lockLoopPID  = 100
 	lockBound    = 10 * time.Minute
 	lockCheckGap = time.Minute
@@ -39,9 +37,6 @@ type lockHarness struct {
 	// keeps is the fake KeepsLock's answer to its nth call, counted from one; nil never keeps the lock.
 	keeps      func(n int) (bool, error)
 	keepsCalls int
-	moved      bool
-	movedErr   error
-	movedCalls int
 	spawns     *int
 	notices    []string
 	// coveredThrough makes the fake pause record cover the slug until that many Sleep calls have been made; zero never covers it.
@@ -76,10 +71,6 @@ type lockHarness struct {
 func (h *lockHarness) sleep(d time.Duration) {
 	h.clock.advance(d)
 	h.asleep += d
-}
-
-func handedRecord() *parentlock.Record {
-	return &parentlock.Record{Branch: "main", Owner: parentlock.Owner{Slug: "myslug", Pair: "/pair", RunID: "run-1", PID: lockSelfPID, StartTime: "self-start"}}
 }
 
 func loopRecord() *parentlock.Record {
@@ -155,13 +146,7 @@ func newLockHarness(t *testing.T, status shedengine.Status) *lockHarness {
 			return true, nil
 		},
 		Agents:    func() ([]parentlock.AgentState, error) { return h.agents, h.agentsErr },
-		SelfPID:   lockSelfPID,
 		IdleBound: lockBound,
-		ParentMoved: func() (bool, error) {
-			h.movedCalls++
-			return h.moved, h.movedErr
-		},
-		GateRow: lockGateRow,
 		KeepsLock: func() (bool, error) {
 			h.keepsCalls++
 			if h.keeps == nil {
@@ -184,41 +169,6 @@ func (h *lockHarness) runChecks(n int) {
 
 func awaitingAt(row string) shedengine.Status {
 	return shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: row, Error: "waiting on review"}
-}
-
-// TestInnerRun_ParentLockKeepsOrReleasesAHandedRecord asserts a record handed to batten is kept while the child awaits at the gate row within the idle bound, awaits a decision to resume on, or runs.
-// It asserts the record is released once the awaiting outlasts the bound with no decision, or when the child is in any other state or awaits at another row.
-func TestInnerRun_ParentLockKeepsOrReleasesAHandedRecord(t *testing.T) {
-	t.Parallel()
-	decided := &ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
-	tests := []struct {
-		name         string
-		status       shedengine.Status
-		decision     *ChildDecision
-		checks       int
-		wantReleased bool
-	}{
-		{"kept within the bound while awaiting", awaitingAt(lockGateRow), nil, 10, false},
-		{"released once the awaiting outlasts the bound", awaitingAt(lockGateRow), nil, 11, true},
-		{"kept past the bound while a decision is resumed on", awaitingAt(lockGateRow), decided, 30, false},
-		{"kept while the resumed child runs", shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Finalize"}, nil, 30, false},
-		{"released when the resumed child halted", shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize"}, nil, 1, true},
-		{"released when the child awaits at another row", awaitingAt("Plan-Bouncer"), nil, 1, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			h := newLockHarness(t, tt.status)
-			h.decision = tt.decision
-			h.record = handedRecord()
-
-			h.runChecks(tt.checks)
-
-			if got := len(h.released) == 1; got != tt.wantReleased || (h.record == nil) != tt.wantReleased {
-				t.Errorf("released = %v (record left: %v); want released %v", h.released, h.record != nil, tt.wantReleased)
-			}
-		})
-	}
 }
 
 // TestInnerRun_ParentLockReleasesAStalledLoopsRecord asserts a record owned by the child's loop is released once every agent has waited for the idle bound with none busy.
@@ -277,49 +227,6 @@ func TestInnerRun_ParentLockReleasesAStalledLoopsRecord(t *testing.T) {
 
 			if got := len(h.released) == 1; got != tt.wantReleased {
 				t.Errorf("released = %v; want released %v", h.released, tt.wantReleased)
-			}
-		})
-	}
-}
-
-// TestInnerRun_StaleBaseResumesAnAwaitingChildOnce asserts a child awaiting at the gate row with no decision is resumed once when its parent moved, with no awaiting notice,
-// and that it is left alone when the parent did not move, when the move cannot be read, when a decision is pending and when it awaits at another row, where the parent is not even read.
-func TestInnerRun_StaleBaseResumesAnAwaitingChildOnce(t *testing.T) {
-	t.Parallel()
-	decided := &ChildDecision{Kind: DecisionReject, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
-	tests := []struct {
-		name       string
-		status     shedengine.Status
-		decision   *ChildDecision
-		moved      bool
-		movedErr   error
-		wantSpawns int
-		wantRead   bool
-		wantNotice bool
-	}{
-		{name: "moved parent resumes the child once", status: awaitingAt(lockGateRow), moved: true, wantSpawns: 1, wantRead: true},
-		{name: "unmoved parent leaves the child awaiting and notices it", status: awaitingAt(lockGateRow), wantRead: true, wantNotice: true},
-		{name: "unreadable move resumes nothing", status: awaitingAt(lockGateRow), moved: true, movedErr: errors.New("fetch failed"), wantRead: true, wantNotice: true},
-		{name: "pending decision is resumed on, not as stale", status: awaitingAt(lockGateRow), decision: decided, moved: true, wantSpawns: 1, wantRead: false, wantNotice: true},
-		{name: "another awaiting row is never read", status: awaitingAt("Plan-Bouncer"), moved: true, wantNotice: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			h := newLockHarness(t, tt.status)
-			h.decision = tt.decision
-			h.moved, h.movedErr = tt.moved, tt.movedErr
-
-			h.runChecks(4)
-
-			if *h.spawns != tt.wantSpawns {
-				t.Errorf("Spawn calls = %d; want %d", *h.spawns, tt.wantSpawns)
-			}
-			if (h.movedCalls > 0) != tt.wantRead {
-				t.Errorf("ParentMoved calls = %d; want read %v", h.movedCalls, tt.wantRead)
-			}
-			if (len(h.notices) > 0) != tt.wantNotice {
-				t.Errorf("notices = %q; want a notice: %v", h.notices, tt.wantNotice)
 			}
 		})
 	}

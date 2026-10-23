@@ -323,10 +323,6 @@ func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait) (n
 		return noticeFinding{}, activityStamp{}
 	}
 	if w.status.State != shedengine.StateRunning {
-		// An awaiting child whose parent moved is resumed by this run, which is no event for the orch either.
-		if p.parentMovedUnderGate(w) {
-			return noticeFinding{}, activityStamp{}
-		}
 		return noticeFinding{condition: noticeStateChanged, stamp: p.episode.since.UnixNano()}, activityStamp{}
 	}
 	// A running child under a pause has no agents at work and no driver to wait for, so none of its conditions is an event.

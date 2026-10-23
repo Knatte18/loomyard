@@ -63,16 +63,13 @@ func assertRepeatedFailureEpisode(t *testing.T, log, failure string) {
 	}
 }
 
-// failureLockSeams is a parent lock whose seams find no record and move nothing.
+// failureLockSeams is a parent lock whose seams find no record and release nothing.
 func failureLockSeams() *ChildParentLock {
 	return &ChildParentLock{
-		Read:        func() (parentlock.Record, bool, error) { return parentlock.Record{}, false, nil },
-		Release:     func(parentlock.Record) (bool, error) { return false, nil },
-		Agents:      func() ([]parentlock.AgentState, error) { return nil, nil },
-		SelfPID:     lockSelfPID,
-		IdleBound:   lockBound,
-		ParentMoved: func() (bool, error) { return false, nil },
-		GateRow:     lockGateRow,
+		Read:      func() (parentlock.Record, bool, error) { return parentlock.Record{}, false, nil },
+		Release:   func(parentlock.Record) (bool, error) { return false, nil },
+		Agents:    func() ([]parentlock.AgentState, error) { return nil, nil },
+		IdleBound: lockBound,
 	}
 }
 
@@ -130,11 +127,15 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 		},
 		{
 			name: "the parent lock release", message: "could not release the child's parent lock",
-			status: blocked,
+			status: shedengine.Status{State: shedengine.StateRunning},
 			wire: func(deps *InnerRunDeps, fail func() error) {
 				released := false
 				lock := failureLockSeams()
-				lock.Read = func() (parentlock.Record, bool, error) { return *handedRecord(), !released, nil }
+				lock.IdleBound = 0
+				lock.Read = func() (parentlock.Record, bool, error) { return *loopRecord(), !released, nil }
+				lock.Agents = func() ([]parentlock.AgentState, error) {
+					return []parentlock.AgentState{{Name: "writer", Waiting: true}}, nil
+				}
 				lock.Release = func(parentlock.Record) (bool, error) {
 					if err := fail(); err != nil {
 						return false, err
@@ -142,23 +143,6 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 					released = true
 					return true, nil
 				}
-				deps.ParentLock = lock
-			},
-		},
-		{
-			name: "the stale-base decision read", message: "decision unreadable for the stale-base check",
-			status: awaitingAt(lockGateRow), covered: true,
-			wire: func(deps *InnerRunDeps, fail func() error) {
-				deps.ReadDecision = func() (ChildDecision, bool, error) { return ChildDecision{}, false, fail() }
-				deps.ParentLock = failureLockSeams()
-			},
-		},
-		{
-			name: "the parent-moved read", message: "could not tell whether the parent moved",
-			status: awaitingAt(lockGateRow),
-			wire: func(deps *InnerRunDeps, fail func() error) {
-				lock := failureLockSeams()
-				lock.ParentMoved = func() (bool, error) { return false, fail() }
 				deps.ParentLock = lock
 			},
 		},
@@ -298,10 +282,11 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 
 	t.Run("a parent lock release logs one Info and no Warn", func(t *testing.T) {
 		buf := logcapture.CaptureVerbose(t)
-		h := newLockHarness(t, shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Finalize"})
-		h.record = handedRecord()
+		h := newLockHarness(t, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Webster"})
+		h.record = loopRecord()
+		h.agents = []parentlock.AgentState{{Name: "writer", Waiting: true}}
 
-		h.runChecks(2)
+		h.runChecks(11)
 
 		const released = "released the child's parent lock"
 		if info, warn := countLogLines(buf.String(), "INFO", released), countLogLines(buf.String(), "WARN", released); info != 1 || warn != 0 {
