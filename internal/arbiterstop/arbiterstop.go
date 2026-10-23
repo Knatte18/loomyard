@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -36,13 +37,15 @@ type Stop struct {
 	EscalationCause shedadapters.EscalationCause
 	// EscalationErr is the error reading the escalation record returned.
 	EscalationErr error
+	// LandingHalt reports whether the stop is a blocked landing halt that only the run's parent lifts.
+	LandingHalt bool
 }
 
 // Eligibility returns nil when the arbiter may settle stop and a refusal otherwise.
 // Eligible are an error stop of kind producer or bootstrap, of kind interrupted under the reinvoke policy or with a non-empty transient class.
-// Eligible too is a halted blocked stop.
+// Eligible too is a halted blocked stop, bar a landing halt.
 // Eligible too is a halted awaiting stop with a pending escalation of cause `hard-cap` or `circling`.
-// Every other stop is refused, and the refusal ends with HandBackWayForward.
+// Every other stop is refused, a landing halt included, since only the run's parent lifts it, and the refusal ends with HandBackWayForward.
 func Eligibility(stop Stop) error {
 	refuse := func(reason string) error {
 		return fmt.Errorf("arbiter: stop not eligible: %s; %s", reason, HandBackWayForward)
@@ -61,6 +64,9 @@ func Eligibility(stop Stop) error {
 	}
 	switch stop.State {
 	case shedengine.StateBlocked:
+		if stop.LandingHalt {
+			return refuse(fmt.Sprintf("the halt at %q is a landing halt, which only the run's parent lifts", stop.Producer))
+		}
 		return nil
 	case shedengine.StateAwaiting:
 		switch {
@@ -98,6 +104,7 @@ func Check(status shedengine.Status, kind, transient string, readers Readers) (b
 		Kind:            kind,
 		Transient:       transient,
 		InterruptPolicy: readers.InterruptPolicy(status.CurrentProducer),
+		LandingHalt:     status.State == shedengine.StateBlocked && landingshed.HandsBack(status.CurrentProducer, status.Error),
 	}
 	var escalationBrief string
 	if status.State == shedengine.StateAwaiting {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -141,8 +142,9 @@ func newArbiterFixture(t *testing.T, producer string, state shedengine.State) *a
 	return f
 }
 
-// haltAtVerifyRow stops the run at row with a Stuck entry at 11:30 after an entry at 11:00, and leaves no failure record.
-func (f *arbiterFixture) haltAtVerifyRow(row string) {
+// haltAtVerifyRow stops the run at row with a Stuck entry at 11:30 after an entry at 11:00, and the status error reason.
+func (f *arbiterFixture) haltAtVerifyRow(row, reason string) {
+	f.status.Error = reason
 	f.status.History = []shedengine.HistoryEntry{
 		{Producer: "Plan-Bouncer", Outcome: shedengine.Done, At: "2026-10-12T11:00:00Z"},
 		{Producer: row, Outcome: shedengine.Stuck, At: "2026-10-12T11:30:00Z"},
@@ -298,11 +300,18 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		},
 		{
 			name: "Publish halt", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NamePublish) },
+			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NamePublish, "") },
 		},
 		{
 			name: "Merge-In halt", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NameMergeIn) },
+			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NameMergeIn, "") },
+		},
+		{
+			name: "landing halt at Finalize refused", producer: loomshed.NameFinalize, state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) {
+				f.haltAtVerifyRow(loomshed.NameFinalize, landingshed.LandingStopPrefix+"the fixer escalated; way forward: resolve it, then `lyx loom resume`")
+			},
+			wantRefusal: "a landing halt", wantNoSpawn: true,
 		},
 		{
 			name: "awaiting at a Bouncer row with a pending escalation", producer: "Plan-Bouncer", state: shedengine.StateAwaiting, wantBrief: true,
