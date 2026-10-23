@@ -16,6 +16,7 @@ const orchWatchProgram = "ORCHWATCH"
 // The journal events the folds read.
 const (
 	eventPosted      = "posted"
+	eventRead        = "read"
 	eventSending     = "sending"
 	eventInjected    = "injected"
 	eventUnconfirmed = "unconfirmed"
@@ -48,6 +49,15 @@ var _ orchengine.Creel = creelSeam{}
 // Post leaves body as mail for receiver.
 func (s creelSeam) Post(receiver, body string) (int64, error) {
 	return s.client.Post(receiver, body)
+}
+
+// MailReadAt folds the journal entries of mail id into the time it was read.
+func (s creelSeam) MailReadAt(id int64) (time.Time, error) {
+	entries, err := s.client.Log(creelengine.LogFilter{ID: id})
+	if err != nil {
+		return time.Time{}, err
+	}
+	return readAtOf(id, entries), nil
 }
 
 // ReadMailbox hands the watcher's unread messages to handle.
@@ -143,6 +153,17 @@ func injectOutcomeOf(id int64, entries []creelengine.LogEntry) orchengine.CreelO
 		}
 	}
 	return outcome
+}
+
+// readAtOf returns the time of the first read entry entries holds for mail id, zero when it holds none.
+// A reminder that lists the id as unread carries the id in its unread list only, so its entry is no read.
+func readAtOf(id int64, entries []creelengine.LogEntry) time.Time {
+	for _, entry := range entries {
+		if entry.ID == id && entry.Event == eventRead {
+			return entry.At
+		}
+	}
+	return time.Time{}
 }
 
 // sentOf folds the journal entries entries holds into the posts and injects they record, oldest first.

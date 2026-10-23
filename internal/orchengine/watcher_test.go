@@ -525,14 +525,56 @@ func TestWatcher_HandoffTurnEndWithoutFileNoClear(t *testing.T) {
 	}
 }
 
-func TestWatcher_HandoffTimeoutAborts(t *testing.T) {
-	e := newWatchEnv(t)
-	e.injectHandoff()
-	e.clock.advance(101 * time.Second)
-	e.tick()
-	st := e.state()
-	if st.Phase != PhaseIdle || st.LastAbortReason == "" || e.s.count("clear") != 0 {
-		t.Fatalf("state = %+v calls = %v", st, e.s.calls)
+// TestWatcher_HandoffTimeoutCountsFromTheRequestRead drives a note phase whose request the orch reads at a scripted delay after its post, or never.
+func TestWatcher_HandoffTimeoutCountsFromTheRequestRead(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		// readAfter is how long after the post the orch reads the request; negative leaves it unread.
+		readAfter time.Duration
+	}{
+		{name: "ReadAtThePost", readAfter: 0},
+		{name: "ReadQueuedBehindALongTurn", readAfter: 10 * time.Minute},
+		{name: "NeverRead", readAfter: -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			e.c.unreadPosts = true
+			e.injectHandoff()
+			id, postedAt := e.state().RequestID, e.clock.now
+			if tt.readAfter > 0 {
+				e.clock.advance(tt.readAfter)
+				e.tick()
+				if st := e.state(); st.Phase != PhaseHandoffRequested {
+					t.Fatalf("phase = %s before the read, want handoff-requested", st.Phase)
+				}
+			}
+			if tt.readAfter >= 0 {
+				e.c.markRead(id, postedAt.Add(tt.readAfter))
+			}
+			e.clock.advance(99 * time.Second)
+			e.tick()
+			if st := e.state(); st.Phase != PhaseHandoffRequested {
+				t.Fatalf("phase = %s 99s after the read, want handoff-requested", st.Phase)
+			}
+			if st := e.state(); tt.readAfter >= 0 && !st.RequestReadAt.Equal(postedAt.Add(tt.readAfter)) {
+				t.Errorf("RequestReadAt = %v; want %v", st.RequestReadAt, postedAt.Add(tt.readAfter))
+			}
+			e.clock.advance(time.Second)
+			e.tick()
+			st := e.state()
+			if tt.readAfter < 0 {
+				if st.Phase != PhaseHandoffRequested || !st.RequestReadAt.IsZero() {
+					t.Errorf("state = %+v, want an unread request still waiting", st)
+				}
+				return
+			}
+			if st.Phase != PhaseIdle || st.LastAbortReason != "handoff timed out" || e.s.count("clear") != 0 || !st.RequestReadAt.IsZero() {
+				t.Errorf("state = %+v calls = %v, want idle once the timeout from the read passed", st, e.s.calls)
+			}
+		})
 	}
 }
 

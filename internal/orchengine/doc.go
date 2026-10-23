@@ -185,7 +185,10 @@
 //     A `defer` body declines a soft cycle whose note is still unwritten: the watcher records the read time in State.LastDeferral and returns to idle with the abort reason `deferred`.
 //     In a hard or requested cycle, or once the note is written, `defer` is logged and ignored, so a `defer` read in the tick of a passing gate is ignored.
 //     A restarted watcher whose post was persisted with no id looks it up in creel's journal, and posts the stencil matching State.CycleTrigger again only when creel journaled none.
-//     A requested cycle's phase times out at the earlier of the phase entry and the request time plus the handoff timeout, not counting the time a hub pause held the watcher (bounded by `pauserecord.Retention`), and a session that asks a question during the note aborts it.
+//     The phase times out at the handoff timeout counted from the orch's read of the note request, the creel `read` journal entry of State.RequestID, not counting the time a hub pause held the watcher (bounded by `pauserecord.Retention`), and a session that asks a question during the note aborts it.
+//     Each tick asks creel for the read until it answers one, and records it in State.RequestReadAt, so a restarted watcher keeps counting from it.
+//     A request still unread never times out, so a request creel holds behind a long turn gets the full time once it is delivered.
+//     Bound: the phase, and the watcher's creel hold, last as long as the orch never reaches an idle creel delivers at; the hold delays nothing while the orch is busy, and a removed strand ends the watcher.
 //   - clearing: the resume prompt is rendered first, so a stencil failure aborts before anything is cleared.
 //     Then `/clear` is injected as a command, and the phase waits for creel to type it, however long the orch stays busy, with the stall creel reports shown in State.Stuck.
 //     An injected or unconfirmed `/clear` moves on to resuming, a withdrawn one returns to idle.
@@ -199,7 +202,7 @@
 // A step with an id has its outcome read from creel, and a restarted watcher posts or injects nothing again.
 // A step with no id is looked up in creel's journal and adopted when found, and sent once more only when creel journaled none.
 // A phase belonging to another strand is reset to idle (see "Delivery through creel").
-// A handoff-requested or resuming phase that exceeds the handoff timeout aborts back to idle with LastAbortReason set.
+// A handoff-requested phase past the handoff timeout from its request's read, or a resuming phase past the handoff timeout, aborts back to idle with LastAbortReason set.
 //
 // # The compact cycle (compact mode)
 //
