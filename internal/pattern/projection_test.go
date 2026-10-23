@@ -1,12 +1,8 @@
 // projection_test.go covers ProjectOverview and EntryBullet, one row per replace, append and delete outcome.
 
-package pattern_test
+package pattern
 
-import (
-	"testing"
-
-	"github.com/Knatte18/loomyard/internal/pattern"
-)
+import "testing"
 
 func TestProjectOverview(t *testing.T) {
 	t.Parallel()
@@ -90,7 +86,7 @@ func TestProjectOverview(t *testing.T) {
 			if tt.overview == "" {
 				overview = nil
 			}
-			if got := string(pattern.ProjectOverview(overview, tt.prescribed, tt.removes)); got != tt.want {
+			if got := string(ProjectOverview(overview, tt.prescribed, tt.removes)); got != tt.want {
 				t.Errorf("ProjectOverview() = %q; want %q", got, tt.want)
 			}
 			if string(overview) != tt.overview && tt.overview != "" {
@@ -116,7 +112,7 @@ func TestEntryBullet(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, ok := pattern.EntryBullet(overview, tt.id)
+			got, ok := EntryBullet(overview, tt.id)
 			if got != tt.want || ok != tt.wantOK {
 				t.Errorf("EntryBullet(%q) = %q, %v; want %q, %v", tt.id, got, ok, tt.want, tt.wantOK)
 			}
