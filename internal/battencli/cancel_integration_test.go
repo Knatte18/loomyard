@@ -1,6 +1,6 @@
 //go:build integration
 
-// cancel_integration_test.go drives "lyx batten cancel" through RunCLIIn over hubforge hubs: a blocked run with no pair, and a kept pair whose reconcile only judges.
+// cancel_integration_test.go drives "lyx batten cancel" through RunCLIIn over hubforge hubs: a blocked run with no pair, a kept pair whose reconcile only judges, and a pair removed with its task branch.
 // It stays a white-box "package battencli" test, like the other integration files here.
 
 package battencli
@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -165,6 +169,66 @@ func TestCancelIntegration_KeptPairJudgeOnly(t *testing.T) {
 	}
 	if !pathExists(h.PairCodeWorktree(slug)) {
 		t.Error("the task worktree is gone after a cancel without --remove")
+	}
+	if status, _ := boardStatusOf(t, h, slug); status != nil {
+		t.Errorf("board entry status = %q; want it cleared", *status)
+	}
+}
+
+// TestCancelIntegration_RemoveTearsDownPairAndBranch cancels with --remove a paused run whose pair holds an unpushed commit and an uncommitted file, and whose slug holds a live pause entry:
+// the pair is removed with its uncommitted file snapshotted, the task branch is archived and deleted locally and on origin, the pause entry is lifted and the claim is cleared.
+func TestCancelIntegration_RemoveTearsDownPairAndBranch(t *testing.T) {
+	t.Parallel()
+
+	slug := hubforge.TemplatePairSlug
+	boardkit.InstallReplay(t)
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{slug}})
+	seedCancelRun(t, h, slug, battenrecipe.NameRunShed, shedengine.StatePaused, "running · Run-Shed")
+
+	worktree := h.PairCodeWorktree(slug)
+	tip := gitkit.CommitFile(t, worktree, "unlanded.txt", "unlanded\n", "test: unlanded task work")
+	if err := os.WriteFile(filepath.Join(worktree, "uncommitted.txt"), []byte("uncommitted\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pauseGeometry, err := hubgeom.PauseGeometry(h.Location)
+	if err != nil {
+		t.Fatalf("resolve the pause geometry: %v", err)
+	}
+	now := time.Now()
+	if _, err := pauserecord.Update(pauseGeometry.RecordPath, now, func(record *pauserecord.Record) error {
+		record.Live = append(record.Live, pauserecord.Entry{Scope: slug, Caller: "orch", PausedAt: now, GraceEnd: now.Add(time.Hour)})
+		return nil
+	}); err != nil {
+		t.Fatalf("write the slug's pause entry: %v", err)
+	}
+
+	got := envelope.RequireOK(t, runCancel(t, h.PrimeWorktree(), slug, "--remove"))
+
+	if got.Raw["pair_removed"] != true || got.Raw["claim_cleared"] != true || got.Raw["records_removed"] != true {
+		t.Errorf("envelope = %v; want the pair removed, the claim cleared and the records removed", got.Raw)
+	}
+	if got.Raw["snapshot_tag"] == "" {
+		t.Errorf("envelope = %v; want the snapshot tag of the uncommitted file", got.Raw)
+	}
+	if lifted, _ := got.Raw["lifted"].([]any); len(lifted) != 1 || lifted[0] != slug {
+		t.Errorf("lifted = %v; want [%s]", got.Raw["lifted"], slug)
+	}
+	record, err := pauserecord.Read(pauseGeometry.RecordPath)
+	if err != nil {
+		t.Fatalf("read the pause record: %v", err)
+	}
+	if len(record.Live) != 0 {
+		t.Errorf("live pause entries = %v; want the slug's entry lifted", record.Live)
+	}
+	if pathExists(worktree) {
+		t.Error("the task worktree survived the cancel with --remove")
+	}
+	if gitkit.BranchExists(t, h.PrimeWorktree(), slug) || gitkit.BranchExists(t, h.CodeBare, slug) {
+		t.Errorf("task branch %q survived locally or on origin", slug)
+	}
+	wantTag := fabricengine.ArchiveTagPrefix + slug + "/" + tip[:12]
+	if tags := strings.Fields(gitkit.Git(t, h.CodeBare, "tag", "--list", fabricengine.ArchiveTagPrefix+slug+"/*")); !slices.Contains(tags, wantTag) {
+		t.Errorf("archive tags on origin = %v; want %s", tags, wantTag)
 	}
 	if status, _ := boardStatusOf(t, h, slug); status != nil {
 		t.Errorf("board entry status = %q; want it cleared", *status)
