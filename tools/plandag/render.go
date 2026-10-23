@@ -36,6 +36,13 @@ func renderMarkdown(g cardGraph, guessed *cardGraph, planDir string) string {
 			plainPath, bestSpeedup(g, plainPath), guessedPath, bestSpeedup(*guessed, guessedPath))
 	}
 
+	hasExtends := false
+	for _, cells := range g.cells {
+		for _, m := range cells {
+			hasExtends = hasExtends || m == markExtends
+		}
+	}
+
 	b.WriteString("## Levels\n\n")
 	b.WriteString("A card's level is the number of cards on the longest chain ending at it; cards of one level have no path between them.\n\n")
 	b.WriteString("| Level | Cards |\n|---|---|\n")
@@ -44,7 +51,11 @@ func renderMarkdown(g cardGraph, guessed *cardGraph, planDir string) string {
 	}
 
 	b.WriteString("\n## Dependencies\n\n")
-	b.WriteString("Each card's direct dependencies, `C` where both cards change an overlapping ref, `U` where one only uses it.\n\n")
+	b.WriteString("Each card's direct dependencies, `C` where both cards change an overlapping ref, `U` where one only uses it.\n")
+	if hasExtends {
+		b.WriteString("An `E` cell is a card that only adds to the ref: two of them on one ref make no dependency unless both cards fence a line for one PATTERN entry ID, and an `E` against a `C` counts as `C`.\n")
+	}
+	b.WriteString("\n")
 	b.WriteString("| Card | After |\n|---|---|\n")
 	for j, card := range g.cards {
 		var after []string
@@ -57,7 +68,11 @@ func renderMarkdown(g cardGraph, guessed *cardGraph, planDir string) string {
 	}
 
 	b.WriteString("\n## Matrix\n\n")
-	b.WriteString("`C` the card changes the ref, `U` it only uses it.\n\n")
+	b.WriteString("`C` the card changes the ref, ")
+	if hasExtends {
+		b.WriteString("`E` it only adds to the ref, ")
+	}
+	b.WriteString("`U` it only uses it.\n\n")
 	b.WriteString("| Card |")
 	for _, column := range g.columns {
 		fmt.Fprintf(&b, " `%s` |", column)

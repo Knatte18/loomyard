@@ -9,10 +9,10 @@
 // The plan is read through internal/planparser.
 // The tool builds a matrix with one row per card and one column per ref any card names, a glyph, `plan:` handle, file or directory.
 // A member ref, a glyph or `plan:` handle, is keyed by its canonical glyph, so a handle a card creates and the glyph a later card names share a column.
-// A cell is C when the card changes the ref, naming it under a type label, and U when it names the ref only under Uses.
+// A cell is C when the card changes the ref, naming it under a type label other than Extends, E when it names the ref only under Extends, and U when it names the ref only under Uses.
 //
-// A later card depends on an earlier one when a column of each overlaps and at least one of the two cells is C;
-// two uses never conflict.
+// A later card depends on an earlier one when a column of each overlaps and planparser.DependencyEdge holds for the two cells:
+// two uses never conflict, and two E cells conflict only when both cards fence a verbatim PATTERN.md line for one entry ID.
 // Two columns overlap when equal, or when both are member glyphs of one unit and one names a member of the other, as `pkg#T` and `pkg#T.M` do.
 // Edges run in plan order, earlier card to later, so the graph is acyclic.
 // Cards with no path between them are independent: the report's levels table groups cards by the longest chain ending at each, and one level's cards could run in parallel.
@@ -23,11 +23,12 @@
 // and plandag.svg, rendered with `dot -Tsvg` when dot is on PATH.
 // Without dot on PATH the tool says so and names the command that renders the DOT file.
 //
-// -additive-guess also builds the graph a second time, skipping a change-against-change pair of overlapping columns when either column is guessed additive.
+// -additive-guess also builds the graph a second time, skipping a pair of overlapping columns with no use on either side when either column is guessed additive and no card labels that column Extends.
 // It adds one report line giving the critical path and best speedup, cards divided by critical path, without the guess and with it.
 // A column is guessed additive when it is a path or self glyph whose file is a doc.go, anything under docs/, PATTERN.md or anything under contracts/specs/;
 // a member glyph whose last dotted name segment starts with wire or is addWeftVerbs is guessed additive too.
 // A change-against-use pair still makes an edge, and the guess never changes the DOT file or the rest of the report.
+// The report's legends name E only when some card has an E cell.
 package main
 
 import (

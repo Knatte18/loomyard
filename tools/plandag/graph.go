@@ -18,7 +18,48 @@ const (
 	markNone   mark = 0
 	markUse    mark = 'U'
 	markChange mark = 'C'
+	// markExtends is a ref the card only adds to, named under an Extends label.
+	markExtends mark = 'E'
 )
+
+// refKind returns the planparser.RefKind m stands for, which is 0 for markNone.
+func (m mark) refKind() planparser.RefKind {
+	switch m {
+	case markUse:
+		return planparser.RefUse
+	case markChange:
+		return planparser.RefChange
+	case markExtends:
+		return planparser.RefExtends
+	}
+	return 0
+}
+
+// markOf returns the mark a planparser.RefKind is drawn as.
+func markOf(kind planparser.RefKind) mark {
+	switch kind {
+	case planparser.RefUse:
+		return markUse
+	case planparser.RefChange:
+		return markChange
+	case planparser.RefExtends:
+		return markExtends
+	}
+	return markNone
+}
+
+// strength orders marks where two refs of one card fall in one column: a change outranks an Extends, which outranks a use.
+func (m mark) strength() int {
+	switch m {
+	case markChange:
+		return 3
+	case markExtends:
+		return 2
+	case markUse:
+		return 1
+	}
+	return 0
+}
 
 // edgeKind is how strongly a later card depends on an earlier one.
 type edgeKind int
@@ -47,21 +88,25 @@ type cardGraph struct {
 }
 
 // buildCardGraph derives the matrix and dependency graph of plan.
-// A card changes every ref under its type labels and uses every ref under its Uses label alone,
-// and a later card depends on an earlier one when an overlapping pair of their refs has a change on at least one side.
-// With additiveGuess set, a change-against-change pair makes no edge when either column is guessed additive.
+// Each cell is the planparser.CardRefKind of the card's ref: a change under a type label, an Extends under that label alone, or a use under Uses alone.
+// A later card depends on an earlier one when planparser.DependencyEdge holds for an overlapping pair of their refs.
+// With additiveGuess set, a pair with no use on either side makes no edge when either column is guessed additive, unless some card labels that column Extends.
 func buildCardGraph(plan *planparser.Plan, additiveGuess bool) cardGraph {
 	g := cardGraph{cards: plan.Cards}
 	seen := map[string]bool{}
+	labelled := map[string]bool{}
 	for _, card := range plan.Cards {
 		cells := map[string]mark{}
-		for _, ref := range card.Uses {
-			cells[columnKey(plan, ref)] = markUse
+		for _, ref := range slices.Concat(card.Uses, card.Targets) {
+			column := columnKey(plan, ref)
+			if m := markOf(planparser.CardRefKind(card, ref)); m.strength() > cells[column].strength() {
+				cells[column] = m
+			}
 		}
-		for _, ref := range card.Targets {
-			cells[columnKey(plan, ref)] = markChange
-		}
-		for column := range cells {
+		for column, m := range cells {
+			if m == markExtends {
+				labelled[column] = true
+			}
 			if !seen[column] {
 				seen[column] = true
 				g.columns = append(g.columns, column)
@@ -76,7 +121,7 @@ func buildCardGraph(plan *planparser.Plan, additiveGuess bool) cardGraph {
 	for i := range n {
 		g.direct[i] = make([]edgeKind, n)
 		for j := i + 1; j < n; j++ {
-			g.direct[i][j] = dependencyKind(g.cells[i], g.cells[j], plan, additiveGuess)
+			g.direct[i][j] = dependencyKind(plan.Cards[i], plan.Cards[j], g.cells[i], g.cells[j], labelled, plan, additiveGuess)
 		}
 	}
 	g.reduced = transitiveReduction(g.direct)
@@ -94,26 +139,31 @@ func columnKey(plan *planparser.Plan, ref string) string {
 	return ref
 }
 
-// dependencyKind returns the strongest dependency between two cards' cells:
-// edgeChange when both change an overlapping pair of refs, edgeUse when one changes and the other only uses it, and edgeNone otherwise.
-// With guessAdditive set, a pair where both change and either column is guessed additive is skipped.
-func dependencyKind(earlier, later map[string]mark, plan *planparser.Plan, guessAdditive bool) edgeKind {
+// dependencyKind returns the strongest dependency between two cards' cells.
+// Each overlapping pair of columns makes an edge when planparser.DependencyEdge holds for its marks:
+// edgeChange when neither side is a use, edgeUse otherwise, and the pairs that make none leave edgeNone.
+// With guessAdditive set, a pair with no use on either side is skipped when either column is guessed additive, a column in labelled excepted so a labelled ref keeps its label.
+func dependencyKind(earlier, later planparser.Card, earlierCells, laterCells map[string]mark, labelled map[string]bool, plan *planparser.Plan, guessAdditive bool) edgeKind {
+	guessed := func(column string) bool {
+		return guessAdditive && !labelled[column] && additiveGuess(column)
+	}
 	kind := edgeNone
-	for earlierColumn, earlierMark := range earlier {
-		for laterColumn, laterMark := range later {
-			if earlierMark != markChange && laterMark != markChange {
-				continue
-			}
+	for earlierColumn, earlierMark := range earlierCells {
+		for laterColumn, laterMark := range laterCells {
 			if !columnsOverlap(earlierColumn, laterColumn, plan) {
 				continue
 			}
-			if earlierMark == markChange && laterMark == markChange {
-				if guessAdditive && (additiveGuess(earlierColumn) || additiveGuess(laterColumn)) {
-					continue
-				}
-				return edgeChange
+			if !planparser.DependencyEdge(earlier, earlierMark.refKind(), later, laterMark.refKind()) {
+				continue
 			}
-			kind = edgeUse
+			if earlierMark == markUse || laterMark == markUse {
+				kind = edgeUse
+				continue
+			}
+			if guessed(earlierColumn) || guessed(laterColumn) {
+				continue
+			}
+			return edgeChange
 		}
 	}
 	return kind
