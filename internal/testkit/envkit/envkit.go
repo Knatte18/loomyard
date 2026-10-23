@@ -98,7 +98,6 @@ var nilLegal = map[string]bool{
 	"InnerRun.ChildDriverLockHeld":      true,
 	"InnerRun.TacklerInFlight":          true,
 	"InnerRun.ArbiterStop":              true,
-	"InnerRun.GoVerifyRetrySpent":       true,
 	"InnerRun.ChildBuildChanged":        true,
 	"InnerRun.ChildDirtyPaths":          true,
 	"Land.Sleep":                        true,
@@ -434,14 +433,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			PauseRequested:     func() (bool, error) { return false, nil },
 			MarkWatched:        func(context.Context) (bool, error) { return false, nil },
 			OrchStrandRecorded: func() (bool, error) { return true, nil },
-			VerifyRows:         []string{"Merge-In", "Publish"},
 			ParentLock:         &battenshed.ChildParentLock{},
-			PublishFailure: func() (battenshed.ChildPublishFailure, bool, error) {
-				return battenshed.ChildPublishFailure{}, false, nil
-			},
-			ChildHead:  func() (string, error) { return "0000000000000000000000000000000000000000", nil },
-			Goto:       func(context.Context, string) error { return nil },
-			StopReport: func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+			StopReport:         func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
 			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
 				return nil, false, nil
 			},

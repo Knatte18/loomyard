@@ -38,7 +38,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -669,7 +668,7 @@ func readSessionStatesByStrand(cfg shuttleengine.Config, anchor string, engines 
 }
 
 // markBattenWatched writes the batten-watched marker of the task worktree's run while noticesReachDriversParent holds, and removes it otherwise.
-// The marker holds this process's pid and names the batten scratch directory and the Run-Shed row's name, so a Go driver can read batten's publish-retry marker after this batten has died.
+// The marker holds this process's pid and names the batten scratch directory and the Run-Shed row's name, so a Go driver can tell whether this batten has died.
 // It reports whether the marker is held.
 func markBattenWatched(prime, taskLocation *lyxcwd.Location, scratchDir, producer string) (bool, error) {
 	watched, err := noticesReachDriversParent(prime, taskLocation)
@@ -927,29 +926,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return arbiterstop.HoldReading(taskLocation, status)
 			},
 			MarkWatched: markWatched,
-			VerifyRows:  []string{loomshed.NameMergeIn, loomshed.NamePublish},
 			ParentLock:  childParentLock(slug, locateTask, fabricengine.BoardDir(location.HubPath), lockIdleBound(location)),
-			PublishFailure: func() (battenshed.ChildPublishFailure, bool, error) {
-				taskLocation, err := locateTask()
-				if err != nil {
-					return battenshed.ChildPublishFailure{}, false, err
-				}
-				return readChildPublishFailure(taskLocation)
-			},
-			ChildHead: func() (string, error) {
-				taskLocation, err := locateTask()
-				if err != nil {
-					return "", err
-				}
-				return childHead(taskLocation)
-			},
-			Goto: func(ctx context.Context, target string) error {
-				taskLocation, err := locateTask()
-				if err != nil {
-					return err
-				}
-				return childGoto(ctx, taskLocation, slug, target)
-			},
 			// OwnerCheck judges, without moving a ref, the slug's run-scope reconcile from the prime and reads its owner verdict.
 			OwnerCheck: func(ctx context.Context) (battenshed.OwnerVerdict, error) {
 				teardown, err := pairteardown.New(location)
@@ -1178,14 +1155,6 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 					return false, err
 				}
 				return runLockHeld(shedrun.DriverLock(taskLocation, shedrun.SelfRunID))
-			},
-			// GoVerifyRetrySpent reads whether the child's settle records show its Go driver already spent a verify retry.
-			GoVerifyRetrySpent: func() (bool, error) {
-				taskLocation, err := locateTask()
-				if err != nil {
-					return false, err
-				}
-				return childGoVerifyRetrySpent(taskLocation)
 			},
 			// ChildBuildChanged reads the lyx on disk, which a deploy replaces under this running batten, and compares it with the build the child's last step recorded.
 			ChildBuildChanged: func() (string, bool, error) {

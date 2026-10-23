@@ -70,13 +70,3 @@ func RestepRecorded(records []shedrun.SettleRecord, status shedengine.Status) bo
 	}
 	return false
 }
-
-// GoVerifyRetrySpent reports whether any record is a verify retry, the one read the Go driver and a publish retry share.
-func GoVerifyRetrySpent(records []SettleRecord) bool {
-	for _, record := range records {
-		if record.Action == shedrun.SettleVerifyRetry {
-			return true
-		}
-	}
-	return false
-}

@@ -108,10 +108,6 @@ func TestBattenDriverDeps(t *testing.T) {
 		t.Errorf("Notify(paused stop) left row notice markers %v (glob error %v); want none", markers, err)
 	}
 
-	if got, want := childGotoArgv("Merge-In"), []string{"loom", "goto", "--to", "Merge-In", "--by", "shed"}; !slices.Equal(got, want) {
-		t.Errorf("childGotoArgv(Merge-In) = %v; want %v", got, want)
-	}
-
 	// The goto and step seams label the run shed: the goto on the entry it appends, the step as the label pending before the loop is spawned.
 	if err := c.loadRouting(); err != nil {
 		t.Fatalf("loadRouting: %v", err)

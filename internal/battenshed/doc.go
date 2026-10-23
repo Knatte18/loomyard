@@ -116,9 +116,9 @@
 // The driver lock is a liveness signal of its own: a Go driver holds it for life while the run lock is free between steps, so a running go child whose driver lock is held has a driver at work and sends no driver-dead notice, and one with neither lock and no strand is noticed as driver-dead.
 //
 // A child that halts (blocked, paused or failed) is a budget-exempt wait, not a failure of the Run-Shed row:
-// batten never spawns or resumes a halted child, bar one exception below, logs one Info line per halt episode, and keeps waiting with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
+// batten never spawns or resumes a halted child, bar the binary re-step below, logs one Info line per halt episode, and keeps waiting with the child's state, error, current producer and the resume command ("lyx loom resume" in the task worktree) as its reason.
 // A stuck verdict takes its log level from its cause: a failed producer step logs `producer stuck` at Warn, and an ordinary wait or move logs it at Info.
-// A wait on the child logs at Info once per state of the child, so a reason that only counts up, such as the driver-exit grace or a retry's refusal tail, logs once while the reason file always holds the newest text.
+// A wait on the child logs at Info once per state of the child, so a reason that only counts up, such as the driver-exit grace, logs once while the reason file always holds the newest text.
 // A halted or awaiting child whose reed state holds a dead driver strand has its pair's strands revived through reed resume, once per halt episode per batten process;
 // the run stays halted and nothing is resumed,
 // so the operator's "lyx loom resume" wakes the revived driver.
@@ -126,20 +126,10 @@
 // a revive that fails, and a child with no driver strand, make the reason also name "lyx loom start" in the task worktree.
 // The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it within one check, and the row reads the child as running again once the operator resumes it.
 //
-// The one exception is the first verify failure of a batten run, at Merge-In or Publish (publishretry.go).
-// A child blocked at one of those rows whose failure record names that row and a target, carries the child's HEAD and was written during the halting attempt is sent to that target through the child's goto verb and then resumed through its bootstrap, with no notice for the halt or the paused state in between.
-// The `<row>-publish-retry` marker holds the retry's state and start time: `started` before the goto, `goto-done` after it, `resumed` after a resume that landed and `capped` when the retry gave up.
-// `resumed` and `capped` each spend the run's one retry, and the marker is cleared only where batten seeds a fresh status, so a restart neither repeats a finished retry nor resets the cap.
-// A goto refused as busy and a resume refused as not parked or as a busy pane are retried once per notice probe until the cap of thirty minutes after the start; any other goto refusal gives up at once.
-// The target is the record's: a darn failure outside the task's impacted set names Merge-In, so the retry re-enters Merge-In, which merges a moved parent and re-runs the failed gate.
-// A retry that gave up, or a second halt at Merge-In or Publish after the retry ran, sends the usual blocked notice with words saying so, which tells the orch the failure needs judgement.
-// The notice carries the record's reason, which for such a failure says it lies outside the task's impacted set.
-// Any record that does not match, and any read error on the way to the decision, leaves the halt to the handling above.
-// The retry is split between two records: a Go driver's verify retry is counted in the child's settle records, and batten's in its marker.
-// With no marker, a blocked child at a verify row whose settle records show a Go verify retry counts as spent, so a run is never retried by both.
+// A run halted at Merge-In or Finalize gets one state-changed notice like every other halt, and no goto: the recipe's own rows fix or hand back those failures.
 //
 // A halted go child is also re-stepped once per halt and per lyx build (innerrun_binaryrestep.go), so a fix deployed after a Go driver handed back lands without a parent turn.
-// The child is re-stepped, through the same Spawn seam as every bootstrap, only when it is blocked or failed, its reed state holds no driver strand, neither its run lock nor its driver lock is held, and the Call's publish retry takes no action;
+// The child is re-stepped, through the same Spawn seam as every bootstrap, only when it is blocked or failed, its reed state holds no driver strand, neither its run lock nor its driver lock is held;
 // the lyx on disk must differ from the build the child's last step recorded, and the task pair must have no uncommitted or untracked path outside the run's records.
 // The `<row>-binary-restep` marker holds the halt's stop key and the build label, and is written only after the spawn returns success, so the re-step happens once per halt and build and survives a batten restart.
 // A spawn refused as not parked or as a busy pane, and a dirty tree, write no marker and are tried again at the next due check; the spawns are capped at five per halt and build.
@@ -167,7 +157,7 @@
 // batten survives its own probe's end: the end spares the calling process and its ancestors, so batten keeps its owner hold and probe, and the pair's removal ends it.
 // A running child whose driver the end took, with neither lock held and no strand, is noticed as driver-dead once the owner pause lifts and an owned-here verdict follows, and not while the pause covers it.
 // A pause held for an owner releases the record the same way on a probe check, with no check of its own.
-// Every spawn on an existing run reads a ChildOwnedElsewhereError as that verdict: the respawn of an unconfirmed running child returns a budget-exempt Stuck naming the owner, and the awaiting resume, the binary re-step and the Publish retry resume pause, write no marker and keep waiting.
+// Every spawn on an existing run reads a ChildOwnedElsewhereError as that verdict: the respawn of an unconfirmed running child returns a budget-exempt Stuck naming the owner, and the awaiting resume, and the binary re-step pause, write no marker and keep waiting.
 // While an owner stands every spawn waits, and the spawn hold re-runs the owner check once per probe until it reads the run as owned here, so a failed owner pause never makes the wait spawn and re-reconcile in a loop.
 // Bound: the child can act for up to one check interval after a wake before the check runs, and for as long as origin stays unreachable.
 // A Finalize past its parent-side merge finishes its landing here, and once it is done its batten waits under the owner pause until "lyx resume <slug>" lifts it, then goes on to Land.

@@ -128,16 +128,6 @@ func TestStuckReport_LevelFollowsCause(t *testing.T) {
 				return f.scratchDir, "Land"
 			},
 		},
-		{
-			name: "an InnerRun whose Publish verify retry is refused busy before a pause", level: "INFO", reason: "waits to send the child to " + retryTarget, fileReason: "pause requested at ",
-			run: func(t *testing.T) (string, string) {
-				h := newRetryHarness(t)
-				h.gotoErrs = []error{ErrChildRunBusy}
-				h.clock.pauseAtSleep = 3
-				h.call()
-				return h.scratchDir, "innerrun"
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

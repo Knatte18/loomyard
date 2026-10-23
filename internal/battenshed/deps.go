@@ -55,8 +55,7 @@ var ErrChildNotParked = errors.New("battenshed: the task worktree's driver has n
 // InnerRun treats it as ErrChildNotParked is treated: a retryable wait on the approval-resume path that records nothing and spawns again, at most once per notice probe, and it posts one orch notice per stall.
 var ErrChildDriverBusy = errors.New("battenshed: the task worktree's driver pane is busy")
 
-// ErrChildRunBusy is the sentinel an InnerRunDeps.Goto closure wraps when the child's goto verb refused because its run lock is held.
-// InnerRun treats it as a retryable wait on the automatic Publish retry path: it tries the goto again, at most once per notice probe, until it lands or the retry cap is reached.
+// ErrChildRunBusy is the sentinel a refusal of the child's run wraps when it was refused because the child's run lock is held.
 var ErrChildRunBusy = errors.New("battenshed: the child's run lock is held")
 
 // PrimeLock carries the told absolute path to a hub-scoped advisory lock plus the injected
@@ -255,11 +254,6 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil TacklerInFlight resolves to reporting none in NewInnerRun.
 	TacklerInFlight func(ctx context.Context) (tackler ChildArbiter, found bool, err error)
-	// GoVerifyRetrySpent reports whether the child's settle records show its Go driver already spent a verify retry.
-	// The automatic Publish retry reads it so a run is never retried by both the Go driver and batten.
-	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
-	// A nil GoVerifyRetrySpent resolves to a function reporting false in NewInnerRun.
-	GoVerifyRetrySpent func() (bool, error)
 	// ChildBuildChanged reads the label of the lyx on disk and whether it differs from the build the child's last step recorded.
 	// The halted arm calls it at most once per due interval, since it reads a binary; an error is warned about and skips that check.
 	// A nil ChildBuildChanged or ChildDirtyPaths switches the binary re-step off.
@@ -281,17 +275,6 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil MarkWatched resolves to a function reporting not held in NewInnerRun.
 	MarkWatched func(ctx context.Context) (held bool, err error)
-	// VerifyRows names the child recipe's rows that run a verify and write the failure record; empty, like a nil PublishFailure, ChildHead or Goto, switches the automatic verify retry off.
-	VerifyRows []string
-	// PublishFailure reads the task worktree's Publish failure record and reports found == false when there is none.
-	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
-	PublishFailure func() (record ChildPublishFailure, found bool, err error)
-	// ChildHead returns the task worktree's HEAD commit.
-	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
-	ChildHead func() (string, error)
-	// Goto runs the child's goto verb onto target.
-	// A goto refused because the child's run lock is held returns an error wrapping ErrChildRunBusy.
-	Goto func(ctx context.Context, target string) error
 	// ParentLock carries the seams of the parent lock backstop and of the stale-base resume; nil switches both off.
 	ParentLock *ChildParentLock
 	// OwnerCheck judges, without moving any branch, whether another machine owns this run now.
@@ -327,18 +310,6 @@ type ChildParentLock struct {
 	ParentMoved func() (bool, error)
 	// GateRow is the row a child awaits the orch's decision at.
 	GateRow string
-}
-
-// ChildPublishFailure is the part of the child's verify failure record the automatic retry reads.
-type ChildPublishFailure struct {
-	// Row is the producer row whose verify failed; empty for a record written before the field existed.
-	Row string
-	// Head is the commit the failing verify ran at.
-	Head string
-	// Target is the producer row a fix is routed back to; empty when the writer told none.
-	Target string
-	// WrittenAt is the record's write time, RFC 3339 whole-second UTC; empty for a record written before the field existed.
-	WrittenAt string
 }
 
 // AgentActivity is the reading of one live agent run of the child's task worktree.

@@ -152,8 +152,6 @@ type innerRunProducer struct {
 	notices bool
 	// noticeQuiet is deps.NoticeQuiet, read once at construction.
 	noticeQuiet time.Duration
-	// retryOn is true when the automatic Publish verify retry is wired: a Publish row name and all three of its seams.
-	retryOn bool
 	// failures guards each polled seam's failure by its message, across Calls: Warn at the first, Debug while it repeats, Info at recovery.
 	failures logger.EpisodeSet
 	// restepOn is true when the binary re-step is wired: both its build and dirty-path seams.
@@ -208,7 +206,6 @@ const (
 	failRestepBuild           = "battenshed: binary re-step check skipped; could not read the on-disk build"
 	failRestepDirtyPaths      = "battenshed: binary re-step check skipped; could not read the task pair's uncommitted paths"
 	failRestepMarker          = "battenshed: binary re-step marker unreadable; reading it as absent"
-	failGoVerifyRetryRecords  = "battenshed: Go verify-retry records unreadable; leaving the halt to the usual handling"
 )
 
 // logAttempt logs msg at Info for a first attempt and at Debug for each retry after a refusal.
@@ -230,10 +227,9 @@ func logAttempt(first bool, msg string, args ...any) {
 // A nil deps.Notify resolves to a no-op and switches the notice step off.
 // A nil deps.OrchStrandRecorded resolves to reporting a strand recorded, and a nil deps.StopReport to reporting no stop report.
 // A nil deps.DriverStrand resolves to reporting no driver strand, a nil deps.ChildRunLockHeld or deps.ChildDriverLockHeld to reporting no held lock and a nil deps.ReviveStrands to a revive that fails as not wired.
-// A nil deps.TacklerInFlight resolves to reporting no tackler, and a nil deps.GoVerifyRetrySpent to reporting no Go verify retry spent.
+// A nil deps.TacklerInFlight resolves to reporting no tackler.
 // A nil deps.ChildBuildChanged or deps.ChildDirtyPaths switches the binary re-step off.
 // A nil deps.PauseRequested resolves to never paused, and a nil deps.Pause to never covered by a pause record.
-// An empty deps.VerifyRows, or a nil deps.PublishFailure, deps.ChildHead or deps.Goto, switches the automatic verify retry off.
 // A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, a nil deps.ArbiterInFlight to reporting no arbiter and a nil deps.ArbiterStop to a reading that is not eligible.
 // A nil deps.ParentLock switches the parent lock step and the stale-base resume off.
 // A nil deps.OwnerCheck switches the owner check off, a nil deps.PauseOwned resolves to a no-op, and a nil deps.ParentHoldsTaskWork or deps.Restepped to reporting false.
@@ -292,9 +288,6 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	if deps.TacklerInFlight == nil {
 		deps.TacklerInFlight = func(context.Context) (ChildArbiter, bool, error) { return ChildArbiter{}, false, nil }
 	}
-	if deps.GoVerifyRetrySpent == nil {
-		deps.GoVerifyRetrySpent = func() (bool, error) { return false, nil }
-	}
 	if deps.ReviveStrands == nil {
 		deps.ReviveStrands = func(context.Context) error { return errors.New("no strand revive wired") }
 	}
@@ -318,7 +311,6 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 		driverExitGrace: driverExitGrace,
 		notices:         notices,
 		noticeQuiet:     deps.NoticeQuiet,
-		retryOn:         len(deps.VerifyRows) > 0 && deps.PublishFailure != nil && deps.ChildHead != nil && deps.Goto != nil,
 		restepOn:        deps.ChildBuildChanged != nil && deps.ChildDirtyPaths != nil,
 	}
 }
@@ -356,7 +348,7 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 //   - awaiting with a decision already acted on and the child's history length unchanged since that resume does not spawn, and reports that the resume was delivered and the child's driver has not re-stepped yet;
 //   - awaiting with a decision already acted on and the child's history longer (or an old-layout marker) does not spawn, and reports the recovery of deciding again;
 //   - done records the first-sight time in the done-seen marker and returns Done once the driver strand is gone or driverExitGrace has elapsed since first sight, and otherwise reports the wait for the driver to finish its stop report;
-//   - blocked, paused or failed never spawns or resumes the child, except for the one automatic Publish verify retry (publishretry.go), logs one Info line per halt episode, revives a dead driver strand once per episode (reviveDeadDriver), and reports the child's State, Error and CurrentProducer and the resume command;
+//   - blocked, paused or failed never spawns or resumes the child, except for the binary re-step (binaryRestep), logs one Info line per halt episode, revives a dead driver strand once per episode (reviveDeadDriver), and reports the child's State, Error and CurrentProducer and the resume command;
 //     a resumed child is then read as running again;
 //   - any other value is a hard error naming the unrecognised state.
 //
@@ -495,7 +487,6 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 	case shedengine.StateAwaiting:
 		return p.wait(ctx, w, p.awaitingStep)
 	case shedengine.StateBlocked, shedengine.StatePaused, shedengine.StateFailed:
-		w.retry = p.publishRetryDecision(ctx, status)
 		return p.wait(ctx, w, p.haltedStep)
 	default:
 		return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: unrecognized status state %q", p.name, status.State)
@@ -603,16 +594,6 @@ type childWait struct {
 	busyReason string
 	busyKey    string
 
-	// retry is the halted arm's decision about the automatic Publish verify retry, made once per Call.
-	retry publishRetry
-	// publishRetryAt is when the retry may try its goto or resume again after a refusal, and publishRetryReason the report of that refusal.
-	// publishRetryKey is publishRetryReason without its refusal tail.
-	publishRetryAt     time.Time
-	publishRetryReason string
-	publishRetryKey    string
-	// publishRefusal is the last refusal the retry saw, cut to one line.
-	publishRefusal string
-
 	// lock is the parent lock step's state across the Call's checks.
 	lock lockWatch
 	// baseMoved is the newest reading of whether the parent moved under a child awaiting at the gate row, and baseStale is true on a probe check until it is read.
@@ -639,7 +620,7 @@ func hardEnd(err error) *waitEnd {
 }
 
 // exemptEnd ends the wait with a budget-exempt Stuck whose Path and Reason both carry text, so each cause is its own history entry and equal entries never fold across causes.
-// It logs at Info, since its callers end the wait on a state change, a requested pause or a Publish-retry action.
+// It logs at Info, since its callers end the wait on a state change or a requested pause.
 func (p *innerRunProducer) exemptEnd(text string) *waitEnd {
 	reportWait(p.name, text, p.scratchDir, "slug", p.slug)
 	return stuckWaitEnd(text)
@@ -658,7 +639,7 @@ func stuckWaitEnd(text string) *waitEnd {
 
 // report writes reason to the reason file when it differs from the last one written, so `lyx batten status` shows what the child is waited on for.
 // It logs the reason at Info only the first time key is seen in the Call, so a reason whose text only counts up logs once per state of the child.
-// A Call ends when the child's state changes, and the halted arm alternates its Publish-retry reason with its own, so a set of keys, not the last key, keeps both from logging on every check.
+// A Call ends when the child's state changes, and an arm can alternate between reasons, so a set of keys, not the last key, keeps each from logging on every check.
 // key is the reason with its counters, countdowns and error tails left out.
 func (p *innerRunProducer) report(w *childWait, reason, key string) {
 	if reason == w.reason {
@@ -814,14 +795,11 @@ func (p *innerRunProducer) runningStep(ctx context.Context, w *childWait) *waitE
 }
 
 // haltedStep is the halted arm for a blocked, paused or failed child: it logs one Info line per halt episode, revives a dead driver strand once per episode, and reports the resume command the operator runs.
-// It never spawns or resumes the child, except for the one automatic retry of a first Publish verify failure (publishRetryStep) and the one re-step of a driverless go child on a new lyx build (binaryRestep).
+// It never spawns or resumes the child, except for the one re-step of a driverless go child on a new lyx build (binaryRestep).
 // The child is waited on until its state changes.
 func (p *innerRunProducer) haltedStep(ctx context.Context, w *childWait) *waitEnd {
 	if err := p.warnHaltEpisode(w.status); err != nil {
 		return hardEnd(err)
-	}
-	if end := p.publishRetryStep(ctx, w); end != nil {
-		return end
 	}
 	if w.probeDue {
 		w.revival = p.reviveDeadDriver(ctx)
