@@ -998,13 +998,14 @@ func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hu
 	if getErr != nil || !found || task.Status == nil || *task.Status != "running · Worktree-Create" {
 		t.Errorf("board entry after the refused row = %+v, found %v, err %v; want status %q", task, found, getErr, "running · Worktree-Create")
 	}
-	// The reworded text names "lyx fabric checkout" only inside its own "never do this" warning, not
-	// as a suggested remedy -- the same distinction TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout
-	// (wire_test.go) draws for createRefusal in isolation.
-	if strings.Contains(err.Error(), "lyx fabric checkout") && !strings.Contains(err.Error(), `never "lyx fabric checkout"`) {
-		t.Errorf("CreateWorktree() error = %q; want it to never suggest \"lyx fabric checkout\" from prime", err.Error())
+	var precondition *battenshed.PreconditionError
+	if !errors.As(err, &precondition) {
+		t.Errorf("CreateWorktree() error = %v; want a *battenshed.PreconditionError", err)
 	}
-	for _, want := range []string{slug, "git branch -D " + slug, "resume this run"} {
+	if strings.Contains(err.Error(), "lyx fabric checkout") {
+		t.Errorf("CreateWorktree() error = %q; want it to never name \"lyx fabric checkout\" from prime", err.Error())
+	}
+	for _, want := range []string{slug, "lyx batten cancel " + slug + " --remove"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("CreateWorktree() error = %q; want it to contain %q", err.Error(), want)
 		}
