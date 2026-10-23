@@ -10,7 +10,7 @@ The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and
 |---|---|---|---|
 | `tier0` | none | nothing: offline, no spawn | seconds, runs on every card gate |
 | `tier1` | `integration` | git, a built `lyx`, subprocesses; no tmux server and no LLM, which `tmuxkit.Main` checks at the end of the package | tens of seconds, runs once per batch and in the final gate |
-| `tier2` | `tmux` | a real tmux server, no LLM | slower, runs in the `publish` gate, at the round gate while a Publish failure record is present, and by hand |
+| `tier2` | `tmux` | a real tmux server, no LLM | slower, runs in the `final` and `landing` gates and by hand |
 | `tier3` | `llm` | a real LLM session | billed, compiled by every gate and run by hand only |
 
 - Tags do not nest: `-tags integration` runs no `tmux` or `llm` file, so a tier's command names every tag it wants.
@@ -28,9 +28,7 @@ A gate is a named list of tiers in `gate.yaml`, and a site runs its gate's list 
 | `card` | the tiers the `card` list names over the card's own packages through `lyx gate test --card`, then the comment lint and the headroom lint |
 | `batch` | the `batch` list once per batch over the batch's packages, each failing on a tmux server socket its end-of-package check finds |
 | `round` | the Webster-Burler-Fix round gate: the headroom lint when told a merge base, then the comment lint, then the `round` list over the impacted set, which runs whole wherever the impacted set cannot narrow |
-| `round`, while a Publish failure record is present | the failing tests the record names before the round list, and for a `publish` failure an impacted-set `tmux` pass after it, to confirm the fix |
 | `final`, `landing` | webster's gate, Merge-In and Finalize: the `final` and `landing` lists over the whole tree |
-| `publish` | Publish after the `landing` gate, where the repo's list is not empty: the `tmux` tier |
 | By hand | the `llm` tier |
 
 ### No gate runs `llm`

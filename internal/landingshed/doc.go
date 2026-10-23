@@ -16,7 +16,7 @@
 // A run whose Finalize merged into the local parent here is never read as ended, so a Finalize re-entered after its done mark proceeds;
 // a Finalize entering with no such merge, its entry done on origin, stops with Halt, since another machine landed the run.
 //
-// The owner checks let a run land only on the machine that owns it and its parent, so a loom run, a darn run and an alignment approve that lands with no orch turn all pass them.
+// The owner checks let a run land only on the machine that owns it and its parent, so a loom run and a darn run, landing with no orch turn, both pass them.
 // Finalize reads Deps.ParentHoldsTaskWork first: a parent already holding the task's work marks a Finalize past its parent-side merge, which skips both owner checks and the unreachable halt.
 // Otherwise an unreachable origin halts, the run's owner is the owner of its owned_elsewhere entry, and the parent's owner comes from Deps.ParentOwner, read from the local board the reconcile left.
 // A run whose pair has no batten run record reads as owned here, since the reconcile judges only recorded pairs, but its parent's owner is still read.
@@ -35,7 +35,7 @@
 // Finalize then writes the merge record with the new merged tip and the aligned tip as it was.
 // Next it runs the `landing` gate over the merged tree through verifytree, which skips a tree it already verified, so a run that went right holds the lock for one merge, a skipped gate and the landing.
 // A darn Finalize over a diff wholly under `tree_scope` runs the tree-scoped command, since darn's verify source answers it.
-// A passing gate removes the landing failure record, and a failing one writes it with row `Finalize`.
+// A passing gate removes the landing failure record, and a failing one writes it.
 // A failing gate spawns the merge fixer in finalize mode, which fixes failing tests only, on the attempts `finalize_fix_attempts` leaves the entry, read from the attempt record under the row's entry.
 // The fixer gets no parent tip to read from and the merged tip the merge record carries.
 // The first spawn writes the HEAD before the fixer's first turn into the record's Baseline, every resume of the entry keeps it but the one after an over-cap halt, and the fixer's whole change is judged by `LineChange(Baseline, HEAD)` against `finalize_fix_max_lines` and the run's test-file matcher, so turns that each stay under the cap but sum past it are over it.
@@ -100,6 +100,9 @@
 //
 // HandsBack is the one predicate that names the halts the orch takes over: a blocked stop at Merge-In or Finalize whose reason opens with LandingStopPrefix, and a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
 // Merge-In has no reroute edge, and a reroute-cap halt at another row, such as Webster's, stays routed as before.
+// A merge or test failure at Merge-In or Finalize is the recipe's own to settle:
+// the row's fixer fixes it, a loom conflict, a large merge or a spent or over-cap fix at Finalize routes back through the recipe's reroute edge, or halts where that edge reaches no review, and the halt goes to the orch.
+// No driver, batten, arbiter or record target routes a Merge-In or Finalize failure to another row.
 // The recipe's owner tells it to shedverbs as Spec.HandBack, which marks the loop's stop envelope and the status as hand_back; the drivers read the predicate or that mark.
 //
 // A darn run whose diff lies wholly under its configured non-production trees runs only the tree-scoped command at Merge-In and Finalize, the hub's whole statement of what such a diff needs.

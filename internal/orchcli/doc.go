@@ -45,10 +45,9 @@
 // # The orchestrator acts and fixes
 //
 // The orchestrator talks to the operator about what to build, priorities and design choices.
-// Everything else is its own: start runs, review PRs, un-wedge stuck runs, approve, land, deploy, clean up, record findings and start the next task.
+// Everything else is its own: start runs, un-wedge stuck runs, answer the landing halts, land, deploy, clean up, record findings and start the next task.
 // Un-wedging includes small code fixes committed and pushed to `main` from the prime, followed by the production deploy.
 // Runs that can run in parallel do, and only a task whose packages overlap a running task is held back, through its board `depends_on`.
-// A ready PR is "awaiting", never "blocked".
 // Findings go on the board, never into GitHub issues.
 // Every status report on a running run carries its `lyx reed attach` command.
 //
@@ -57,16 +56,15 @@
 //  1. Create the task worktree with `lyx fabric add <slug>`, then start its run from inside it with `lyx loom start`.
 //     The run's status file is `_lyx/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
 //  2. Keep no watch loop of your own: a batten notice posted as batten's program arrives in full as its own `[creel] #<id> from <shortname>:BATTEN: …` line, one posted under a strand claim as mail announced by creel's reminder that you read, and on either you check the run with `lyx batten status <slug>`.
-//  3. At an awaiting Publish, review the PR: a small diff yourself, with build, vet and test over the touched packages; a large one through a read-only background subagent.
-//     Then `lyx loom approve` in the worktree; batten resumes the child itself, so no `lyx loom start` follows.
-//     Finalize squash-merges, closes the PR and marks the board task done.
+//  3. The run's own tail merges, reviews and lands without an approval step: Merge-In and its fixer, the Code-Review ring, Describe and a Finalize that takes the parent lock first and lands on the parent.
+//     No approval step follows; a landing halt at Merge-In or Finalize is the orchestrator's to read.
 //  4. On blocked or failed, read `error` in the status file and rerun the failing tests to tell a flaky failure from a real one.
-//     A Publish blocked on a failed verify reaches the orchestrator only on its second failure in the batten run, since batten sends the first back to the record's target and resumes it itself.
+//     A landing halt at Merge-In or Finalize reaches the orchestrator as it stands, since no driver, batten or arbiter routes it to another row, and the status marks it handed back.
 //     A real regression in the task is fixed in the task worktree by a background subagent, with code commits only, no `lyx fabric`, no `_lyx` or `.lyx` edits and no push, and the run is started again.
 //     A lyx bug is fixed on `main`, deployed, and the run is started again.
 //     Never merge the parent into a task while webster is mid-batch, because record-batch then refuses the batch; a merge-in is safe only once every batch is recorded, for example at a blocked integration verify.
 //  5. Batten's Land row lands the run: it pulls the prime, runs the hub's landing `deploy` command and prunes the board, and Worktree-Teardown then removes the pair.
-//     The orchestrator acts on a Land or teardown failure notice and on a ready-task notice, starting the tasks it names, and deploys by hand with `update-plugins.sh` on a ready notice or at its next wake after an approval while the hub's landing `deploy` key is empty.
+//     The orchestrator acts on a Land or teardown failure notice and on a ready-task notice, starting the tasks it names, and deploys by hand with `update-plugins.sh` on a ready notice or at its next wake after a landing while the hub's landing `deploy` key is empty.
 //     It reads the drive report only when the run had trouble (friction findings are filed as LoomYard issues, which reach the board through intake when the operator asks for it) and records findings.
 //
 // # Priorities
