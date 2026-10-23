@@ -1467,9 +1467,9 @@ func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 // withdrawQueuedCompact withdraws the `/compact` inject still queued when the session compacted on its own, so it never compacts the session a second time.
 // The inject counts as still queued when its step is pending, not yet typed, and either creel never answered its send or creel reads it queued or sending.
 // The withdraw is receiver-wide: it also removes any other queued watcher item to the orch.
-// Creel's withdraw leaves an inject a delivery attempt holds, and a busy attempt puts it back in the queue, so the outcome is read again after the withdraw:
-// one still queued or sending keeps the step pending and answers errCompactInFlight, so the next call withdraws again,
-// until the handoff timeout from the phase entry, past which the step is dropped with a warning.
+// Creel's withdraw leaves an inject a delivery attempt holds, and a busy attempt puts it back in the queue, so the outcome is read again after the withdraw.
+// One still queued or sending keeps the step pending and answers errCompactInFlight, so the next call withdraws again.
+// Past the handoff timeout from the phase entry, such a step is dropped with a warning.
 // A resume line the withdraw removed has its pause-record mark cleared; a failed clear drops a withdrawn step, keeps the line in State.ResumeLineWithdrawn and fails the call,
 // and a later call clears the mark although no withdraw runs.
 // A creel failure is recorded through creelFailed and answered with errCompactWithdrawHeld, which leaves the phase as it was for the next call to retry.
