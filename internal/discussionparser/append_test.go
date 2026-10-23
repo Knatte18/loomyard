@@ -38,6 +38,7 @@ func readFile(t *testing.T, path string) string {
 }
 
 // TestAppendDecision_AppendsAtEndOfDecisionsSection asserts the entry lands after the Decisions section's last non-blank line, ignoring a heading inside a fence, and that the support log and the rest of the record stay byte-identical.
+// A PATTERN change replaces the section's bullet for its ID in place and is appended when the section holds none.
 func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 	t.Parallel()
 
@@ -86,8 +87,20 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 			want:          withEntry(allSectionsContent()) + "## PATTERN changes\n\n" + wantBullet + "\n",
 		},
 		{
-			name:          "PATTERN change with the section goes after its last bullet",
+			name:          "PATTERN change with the section and no bullet for its ID goes after its last bullet",
 			prior:         withSection,
+			patternChange: pattern,
+			want:          withEntry(strings.Replace(withSection, "removes\n", "removes\n"+wantBullet+"\n", 1)),
+		},
+		{
+			name:          "PATTERN change replaces the Discussion's bullet for its ID in place",
+			prior:         strings.Replace(withSection, "- `PATTERN-old`", "- `PATTERN-new` — adds: Too long a rule.\n- `PATTERN-old`", 1),
+			patternChange: pattern,
+			want:          withEntry(strings.Replace(withSection, "- `PATTERN-old`", wantBullet+"\n- `PATTERN-old`", 1)),
+		},
+		{
+			name:          "PATTERN change replaces an earlier appended bullet for its ID",
+			prior:         strings.Replace(withSection, "removes\n", "removes\n- `PATTERN-new` — changes: Old. — added after Discussion (operator, 2026-03-01)\n", 1),
 			patternChange: pattern,
 			want:          withEntry(strings.Replace(withSection, "removes\n", "removes\n"+wantBullet+"\n", 1)),
 		},
@@ -140,9 +153,14 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 			}
 			if tt.patternChange != nil {
 				changes, problems := ParsePatternChanges([]byte(readFile(t, decisionPath)))
-				last := changes[len(changes)-1]
-				if len(problems) != 0 || last.ID != "PATTERN-new" || last.By != "parent" || !last.Date.Equal(time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)) {
-					t.Errorf("ParsePatternChanges() = %+v, %v; want the appended bullet last with its author and date", changes, problems)
+				var written []PatternChange
+				for _, c := range changes {
+					if c.ID == "PATTERN-new" {
+						written = append(written, c)
+					}
+				}
+				if len(problems) != 0 || len(written) != 1 || written[0].By != "parent" || !written[0].Date.Equal(time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)) {
+					t.Errorf("ParsePatternChanges() = %+v, %v; want one `PATTERN-new` bullet with the call's author and date", changes, problems)
 				}
 			}
 		})
@@ -288,6 +306,7 @@ func TestParseAddedDecisions(t *testing.T) {
 }
 
 // TestCheckAddedDecisionsKept asserts a record is held to every added entry its history held: each dropped entry is one finding naming its heading, an entry with the same title on another date is distinct, an unparseable heading in the record is a finding, and one in a history version contributes nothing.
+// An appended PATTERN bullet counts as kept while the record holds an appended bullet for its ID.
 func TestCheckAddedDecisionsKept(t *testing.T) {
 	t.Parallel()
 
@@ -324,6 +343,17 @@ func TestCheckAddedDecisionsKept(t *testing.T) {
 			name:     "a record keeping the appended bullet",
 			record:   withSection(appended),
 			versions: [][]byte{withSection(appended)},
+		},
+		{
+			name:     "an appended bullet a later call replaced for the same ID",
+			record:   withSection("- `PATTERN-a` — adds: Shorter. — added after Discussion (bob, 2026-03-05)"),
+			versions: [][]byte{withSection(appended)},
+		},
+		{
+			name:        "a record holding the ID only as a bullet without the suffix",
+			record:      withSection("- `PATTERN-a` — removes"),
+			versions:    [][]byte{withSection(appended)},
+			wantBullets: []string{"PATTERN-a"},
 		},
 		{
 			name:     "a bullet without the suffix is the writer's to drop",
