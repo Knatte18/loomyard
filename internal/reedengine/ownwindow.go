@@ -47,7 +47,7 @@ func (w windowPane) livePane() LivePane {
 }
 
 // windowPaneFormat is the session-wide listing format of windowPane: window id, own flag, group (or "-"), pane id, dead flag, pid, then the tail joining the pane title, current command and start command with paneTailSeparator.
-const windowPaneFormat = "#{window_id} #{?#{@lyx_own},1,0} #{?#{@lyx_group},#{@lyx_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\x1f#{pane_current_command}\x1f#{pane_start_command}"
+const windowPaneFormat = "#{window_id} #{?#{@lyx_own},1,0} #{?#{@lyx_group},#{@lyx_group},-} #{pane_id} #{pane_dead} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"
 
 // parseWindowPanes parses a windowPaneFormat listing, skipping a line it cannot parse.
 func parseWindowPanes(out string) []windowPane {

@@ -228,6 +228,10 @@
 //
 // A boundary found while the `/compact` inject is still queued, or while creel never answered its send, means the session compacted on its own;
 // before the phase completes the watcher withdraws its queued creel items to the orch strand, so a second compaction never follows.
+// Creel's withdraw leaves an inject a delivery attempt holds, and an attempt the session refuses as busy puts it back in the queue,
+// so the watcher reads the `/compact`'s outcome again after the withdraw, and one still queued or sending leaves the phase compacting with the step pending and the boundary unconsumed, for the next tick to withdraw again.
+// Past the handoff timeout from the phase entry the step is dropped with a warning and the phase completes.
+// Bound: a `/compact` that attempt types still compacts the session a second time.
 // A typed `/compact` is never withdrawn, and a creel failure leaves the phase compacting with the boundary unconsumed, for the next tick to retry.
 // The withdraw clears the resume-noticed mark of a hub-pause resume line it removed, as the reset for another strand does, and a failed clear is retried at the next tick's boundary before the phase completes.
 // Bound: the withdraw is receiver-wide, so it also removes any other queued watcher item to the orch, which the reload that follows queues again as it needs.
@@ -384,6 +388,9 @@
 //     and `ClearResumeNoticed` clears, under the pause record's lock, the resume-noticed mark of each pause entry owning the strand whose resume line the withdraw removed, so a continued session gets the line posted again.
 //     A failed withdraw or release saves no reset and leaves the watcher unbound, so the next tick runs the reset again.
 //     A `ClearResumeNoticed` failure after the withdraw removed the resume line keeps the line in State.ResumeLineWithdrawn, so the next tick's reset still clears the mark.
+//   - A compaction boundary found while the `/compact` inject is still queued withdraws it through `withdrawQueuedCompact`, so it never compacts the session a second time.
+//     A resume line the withdraw removed has its pause-record mark cleared;
+//     a failed clear, or a failed read of the inject's outcome after the withdraw, keeps the line in State.ResumeLineWithdrawn, so a later call clears the mark although its own withdraw finds nothing.
 //   - `lyx orch start` withdraws around a fresh launch, as the orchcli package documentation describes, and records a failed release or second round in State.FreshLaunchFailure.
 //     While it is set, `retryFreshLaunch` runs first on every tick, after the events read and before the hold, the mailbox and the bind color:
 //     it withdraws and releases on the orch strand, signing as the watcher's own program, and posts and queues nothing, starts no cycle and renews no hold until both succeed.
