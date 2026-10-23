@@ -79,7 +79,7 @@ func resumeRefusal(slug string, report fabricengine.OriginReport) error {
 		case fabricengine.EntryOwnedElsewhere:
 			return ownedElsewhereRefusal(slug, entry.Owner)
 		case fabricengine.EntryStopped:
-			return stoppedRefusal(slug, entry, report.Branches)
+			return stoppedRefusal(slug, "resume", fmt.Sprintf("then re-run lyx batten run %s", slug), entry, report.Branches)
 		}
 	}
 	return nil
@@ -93,11 +93,11 @@ func endedReason(how string) string {
 	return "its board entry was removed from the board"
 }
 
-// stoppedRefusal names the branch that stopped entry, its state and the way forward for it, then the resume's own re-entry.
+// stoppedRefusal names the branch that stopped entry, its state and the way forward for it, then reentry, the step that retries the act.
+// act is the verb the refusal says it cannot do, "resume" or "cancel".
 // A branch the entry's own run holds busy stops nothing, as the reconcile itself judges it.
 // An entry stopped by a branch every pair shares is named by that branch; one with no branch to name falls back to the entry's own way forward.
-func stoppedRefusal(slug string, entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome) error {
-	reentry := fmt.Sprintf("then re-run lyx batten run %s", slug)
+func stoppedRefusal(slug, act, reentry string, entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome) error {
 	for _, branch := range branches {
 		own := branch.Slug == slug && !(branch.Repo == sideRecords && branch.State == fabricengine.BranchBusy)
 		shared := branch.Repo == sideBolt || (branch.Repo == sideRecords && branch.Prime)
@@ -108,7 +108,7 @@ func stoppedRefusal(slug string, entry fabricengine.EntryOutcome, branches []fab
 		if branch.WayForward == "" {
 			continue
 		}
-		return fmt.Errorf("battencli: cannot resume %q: branch %s is %s against origin; %s; %s", slug, branch.Branch, branch.State, branch.WayForward, reentry)
+		return fmt.Errorf("battencli: cannot %s %q: branch %s is %s against origin; %s; %s", act, slug, branch.Branch, branch.State, branch.WayForward, reentry)
 	}
-	return fmt.Errorf("battencli: cannot resume %q: origin reconcile stopped it; %s; %s", slug, entry.WayForward, reentry)
+	return fmt.Errorf("battencli: cannot %s %q: origin reconcile stopped it; %s; %s", act, slug, entry.WayForward, reentry)
 }
