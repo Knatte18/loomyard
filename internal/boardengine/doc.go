@@ -145,7 +145,7 @@
 // set-status is itself unguarded, so a live run's status can be cleared by hand.
 // Prune passes, since a held entry's dependency on a done entry that the same write removes is not a change; every other depends_on change is refused.
 // The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
-// Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run's entry is unlocked by clearing its status once `lyx batten status` shows no run holds it.
+// Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run is ended with `lyx batten cancel <slug>` from the prime, which clears the status.
 //
 // # Rename
 //
