@@ -516,7 +516,7 @@
 // A failed removal or write is logged at Warn and changes no refusal, class or outcome.
 // Under loom, the Webster producer claims the record when Master ends stuck (ClaimConflictRoute) and decides three ways:
 // findings that differ, as a set, from the routed file's are new, so the claim rewrites the routed file and the stuck outcome reroutes to plan review;
-// findings equal to the routed file's are a recurrence, and the stuck outcome halts for a hand edit of the named pending cards;
+// findings equal to the routed file's are a recurrence, and the stuck outcome halts for the plan amendment route, a parent's `--amends-plan` decision on the named pending cards and a goto to Plan-Burler-Review, rather than a hand edit of them;
 // no record, or one naming no finding line, claims nothing.
 // A read or write error is returned, and the producer then halts rather than reroutes.
 //

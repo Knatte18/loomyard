@@ -34,8 +34,8 @@ const (
 	websterOutcomeStuck = "stuck"
 )
 
-// planConflictWayForward is the clause a halted Webster plan conflict ends with: the pending cards are edited by hand and the row resumed.
-const planConflictWayForward = "edit the named pending cards by hand so they match the tree, then run \"lyx loom resume\" in the task worktree"
+// planConflictWayForward is the clause a halted Webster plan conflict ends with: the run's parent records the fix as a plan amendment, sends the run to Plan-Burler-Review and resumes it.
+const planConflictWayForward = "the run's parent records the fix as a decision naming the conflicting pending cards by slug and number with \"lyx loom decision add <slug> --by parent … --amends-plan\", then runs \"lyx loom goto --to Plan-Burler-Review\" and \"lyx loom resume\" in the task worktree"
 
 // WebsterProducer is the shedadapters adapter over websterengine's Run seam: it invokes run once per
 // Call with Fresh always false and AutoRebaseline always true, and maps the resulting RunResult/error onto shedengine's contract.
