@@ -254,6 +254,7 @@ func landingDeps(
 			}
 			return rowEntry(status.History, row), nil
 		},
+		CodeReviewOff: codeReviewOff(l, recipe),
 		// The task branch's remote-tracking ref is read without a fetch, so an absent one is no tip.
 		TaskRemoteTip: func() (string, error) {
 			tip, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/remotes/origin/" + taskBranch)
@@ -262,6 +263,21 @@ func landingDeps(
 			}
 			return tip, err
 		},
+	}
+}
+
+// codeReviewOff returns the seam that reports whether the Code-Perch's effective review budget is 0, read from loom.yaml at call time.
+// A darn run has no Merge-In and so no Code-Perch, and its seam reads false.
+func codeReviewOff(l *lyxcwd.Location, recipe string) func() (bool, error) {
+	if recipe == shedrun.RecipeDarn {
+		return func() (bool, error) { return false, nil }
+	}
+	return func() (bool, error) {
+		cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
+		if err != nil {
+			return false, err
+		}
+		return cfg.Caps(loomengine.PerchCode).Soft == 0, nil
 	}
 }
 

@@ -127,6 +127,10 @@ func newMergeInDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 		WaitPath: parentlock.WaitRecordPath(scratch),
 	}
 	deps.MergeRecordPath = landingshed.MergeRecordPath(scratch)
+	// The parent is told to add nothing over the fork point, so Merge-In aligns with no fixer session.
+	deps.HoldsWork = func(string, string) (bool, error) { return true, nil }
+	deps.RowEntry = func(string) (int, error) { return 1, nil }
+	deps.Config.MergeFixAttempts = 1
 	return deps
 }
 

@@ -190,6 +190,7 @@ func callProducer(t *testing.T, producer string, pm preMerge, res *recordingReso
 		deps.MergeRecordPath = MergeRecordPath(t.TempDir())
 		deps.TaskHead = func() (string, error) { return "head", nil }
 		deps.MergeBase = func(string) (string, error) { return "base", nil }
+		deps.RowEntry = func(string) (int, error) { return 1, nil }
 		deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
 			return fabricengine.ParentTips{Local: "tip", Relation: fabricengine.ParentNoUpstream}, nil
 		}

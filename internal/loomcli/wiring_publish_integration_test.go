@@ -101,6 +101,10 @@ func TestWire_Real_PublishRejectedPushNamesRemoteTip(t *testing.T) {
 	// The parent moved locally and was never pushed, so Merge-In runs with the push told skipped and reads the local tip alone.
 	mergeInDeps := c.env.Landing
 	mergeInDeps.PushSkipped = true
+	// The fixer is outside this scenario: the pair has no run status to read an entry from, and the parent is told to add nothing over the fork point, so Merge-In spawns no session.
+	mergeInDeps.RowEntry = func(string) (int, error) { return 1, nil }
+	mergeInDeps.HoldsWork = func(string, string) (bool, error) { return true, nil }
+	mergeInDeps.Config.MergeFixAttempts = 1
 	mergeIn, err := landingshed.NewMergeIn(mergeInDeps)
 	if err != nil {
 		t.Fatalf("NewMergeIn error = %v; want nil", err)

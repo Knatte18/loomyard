@@ -323,6 +323,9 @@ type Deps struct {
 	// TaskRemoteTip reads the task branch's remote-tracking tip, `origin/<task branch>`, without a fetch, and answers "" when there is none.
 	// A push the fixer session makes from the task pair updates that ref, so a changed tip shows the push.
 	TaskRemoteTip func() (string, error)
+	// CodeReviewOff reports whether the Code-Perch's effective review budget is 0, so no review follows Merge-In and its fixer's change is judged against the caps instead.
+	// A nil CodeReviewOff reads as the budget being 0, and a returned error is an error stop of the row.
+	CodeReviewOff func() (bool, error)
 
 	// Alignment is the PR-Align producer's told seams: the alignment agent's session, its config and snapshot reads, its static prompt fields and the note record it leaves for PR-Gate.
 	// PR-Gate reads only Alignment.NotePath, and an empty one reads no note.

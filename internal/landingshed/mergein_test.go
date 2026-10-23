@@ -15,8 +15,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -39,6 +41,8 @@ type eventResolver struct {
 	tip         string
 	lockHeld    func() bool
 	heldAtMerge bool
+	// onResolve, when set, runs at each call, standing in for the merge commit the resolver makes.
+	onResolve func()
 }
 
 func (r *eventResolver) Resolve(_ context.Context, source, tip string) (mergeresolve.Result, error) {
@@ -46,6 +50,9 @@ func (r *eventResolver) Resolve(_ context.Context, source, tip string) (mergeres
 	r.tip = tip
 	if r.lockHeld != nil {
 		r.heldAtMerge = r.lockHeld()
+	}
+	if r.onResolve != nil {
+		r.onResolve()
 	}
 	return r.result, r.err
 }
@@ -57,14 +64,28 @@ type mergeInFixture struct {
 	gate   *gateFixture
 	events []string
 
-	tips         fabricengine.ParentTips
-	tipsErr      error
-	tipsReads    []tipsRead
-	taskHeads    []string
-	mergeBase    string
+	tips      fabricengine.ParentTips
+	tipsErr   error
+	tipsReads []tipsRead
+	// head is the task head, which the merge moves to mergeHead and each fixer turn that commits moves on.
+	head      string
+	mergeHead string
+	mergeBase string
+	// holds answers HoldsWork by "base..source"; a pair it does not name holds the work, so the parent brought nothing.
+	holds        map[string]bool
+	holdsCalls   []string
 	changedPaths map[string][]string
 	changedCalls []string
 	resolver     *eventResolver
+	seats        *fakeFixerSeats
+	// entry is the row entry RowEntry answers.
+	entry int
+	// reviewOff is what CodeReviewOff answers.
+	reviewOff bool
+	// lineChange is what LineChange answers, and lineChangeCalls records each "from..to".
+	lineChange      fabricengine.LineChange
+	lineChangeErr   error
+	lineChangeCalls []string
 }
 
 // tipsRead is one ReadParentTips call: whether it fetched and whether the run held the parent lock during it.
@@ -80,11 +101,20 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 		store:        &parentlock.Store{Dir: filepath.Join(dir, "locks"), Alive: func(int, string) bool { return true }},
 		gate:         newGateFixture(t, "go test ./...", nil),
 		tips:         fabricengine.ParentTips{Local: "p1", Upstream: "p1", Relation: fabricengine.ParentEqual},
-		taskHeads:    []string{"t1", "t2"},
+		head:         "t1",
+		mergeHead:    "t2",
 		mergeBase:    "b0",
+		holds:        map[string]bool{},
 		changedPaths: map[string][]string{},
+		seats:        &fakeFixerSeats{},
+		entry:        1,
 	}
 	fx.resolver = &eventResolver{events: &fx.events, result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+	fx.resolver.onResolve = func() {
+		if !fx.resolver.result.AlreadyUpToDate {
+			fx.head = fx.mergeHead
+		}
+	}
 	owner := parentlock.Owner{Slug: "me", Pair: "/p/me", RunID: "r1", PID: 222, StartTime: "t2"}
 	lockHeld := func() bool {
 		rec, found, _ := fx.store.Read("main")
@@ -92,11 +122,34 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 	}
 	fx.resolver.lockHeld = lockHeld
 
-	headCalls := 0
+	stencilsDir := t.TempDir()
+	stencilkit.SeedInto(t, stencilsDir)
 	deps := Deps{
-		ParentBranch:    "main",
-		MergeRecordPath: MergeRecordPath(dir),
-		CommitStatus:    func() error { fx.events = append(fx.events, "commit-status"); return nil },
+		ParentBranch:       "main",
+		TaskBranch:         "task-branch",
+		Slug:               "my-slug",
+		ScratchDir:         dir,
+		StencilsDir:        stencilsDir,
+		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
+		MergeRecordPath:    MergeRecordPath(dir),
+		Config:             Config{Fixer: "claude:opus", FixerTimeoutMin: 5, MergeFixAttempts: 2, FinalizeFixMaxLines: 100},
+		Registry:           modelspec.Registry{},
+		FixerSeats:         fx.seats,
+		TaskRemoteTip:      func() (string, error) { return "remote-1", nil },
+		IsTestFile:         func(path string) bool { return strings.HasSuffix(path, "_test.go") },
+		RowEntry:           func(string) (int, error) { return fx.entry, nil },
+		CodeReviewOff:      func() (bool, error) { return fx.reviewOff, nil },
+		HoldsWork: func(base, source string) (bool, error) {
+			key := base + ".." + source
+			fx.holdsCalls = append(fx.holdsCalls, key)
+			holds, set := fx.holds[key]
+			return holds || !set, nil
+		},
+		LineChange: func(from, to string) (fabricengine.LineChange, error) {
+			fx.lineChangeCalls = append(fx.lineChangeCalls, from+".."+to)
+			return fx.lineChange, fx.lineChangeErr
+		},
+		CommitStatus: func() error { fx.events = append(fx.events, "commit-status"); return nil },
 		Lock: ParentLockDeps{
 			Store:    fx.store,
 			Owner:    func() (parentlock.Owner, error) { return owner, nil },
@@ -107,11 +160,7 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 			fx.tipsReads = append(fx.tipsReads, tipsRead{fetch: fetch, lockHeld: lockHeld()})
 			return fx.tips, fx.tipsErr
 		},
-		TaskHead: func() (string, error) {
-			head := fx.taskHeads[min(headCalls, len(fx.taskHeads)-1)]
-			headCalls++
-			return head, nil
-		},
+		TaskHead:  func() (string, error) { return fx.head, nil },
 		MergeBase: func(string) (string, error) { return fx.mergeBase, nil },
 		ChangedPaths: func(from, to string) ([]string, error) {
 			fx.changedCalls = append(fx.changedCalls, from+".."+to)
@@ -361,14 +410,14 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 	t.Run("a fresh merge records the ranges and where they overlap", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		fx.taskHeads = []string{"t1", "m1"}
+		fx.mergeHead = "m1"
 		fx.changedPaths["b0..p1"] = []string{"PATTERN.md", "a/x.go", "shared.txt"}
 		fx.changedPaths["b0..t1"] = []string{"a/y.go", "shared.txt"}
 
 		fx.call(t)
 
 		want := MergeRecord{
-			ParentBranch: "main", MergedTip: "p1", TaskBase: "b0", TaskHead: "t1", MergeCommit: "m1",
+			ParentBranch: "main", MergedTip: "p1", AlignedTip: "p1", TaskBase: "b0", TaskHead: "t1", MergeCommit: "m1",
 			Overlap: Overlap{Files: []string{"shared.txt"}, Packages: []string{"a"}, Pattern: []string{"PATTERN.md"}},
 		}
 		if got := fx.readRecord(t); !recordsEqual(got, want) {
@@ -385,21 +434,22 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 
 		fx.call(t)
 
-		want := MergeRecord{ParentBranch: "main", MergedTip: "p1", TaskBase: "b0", TaskHead: "t1", UpToDate: true}
+		want := MergeRecord{ParentBranch: "main", MergedTip: "p1", AlignedTip: "p1", TaskBase: "b0", TaskHead: "t1", UpToDate: true}
 		if got := fx.readRecord(t); !recordsEqual(got, want) {
 			t.Errorf("record = %+v; want %+v", got, want)
 		}
 	})
 
-	t.Run("a second merge starts the task range at the first merge's tip and the parent range at the task's fork point", func(t *testing.T) {
+	t.Run("a second merge starts the task range at the first merge's tip and the parent range at the earlier aligned tip", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		fx.taskHeads = []string{"t1", "m1", "m1", "m2"}
+		fx.mergeHead = "m1"
 		fx.changedPaths["b0..p1"] = []string{"old.txt"}
 		fx.changedPaths["b0..t1"] = []string{"task.txt"}
 		fx.call(t)
 
 		fx.mergeBase = "p1"
+		fx.mergeHead = "m2"
 		fx.tips = fabricengine.ParentTips{Local: "p2", Upstream: "p2", Relation: fabricengine.ParentEqual}
 		fx.changedPaths["p1..p2"] = []string{"new.txt"}
 		fx.changedPaths["p1..m1"] = []string{"later.txt"}
@@ -407,8 +457,8 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 		fx.call(t)
 
 		got := fx.readRecord(t)
-		if got.TaskBase != "p1" || got.TaskHead != "m1" || got.AlignedTip != "" || got.MergedTip != "p2" {
-			t.Errorf("record = %+v; want task_base p1, task_head m1, an empty aligned_tip, merged_tip p2", got)
+		if got.TaskBase != "p1" || got.TaskHead != "m1" || got.AlignedTip != "p2" || got.MergedTip != "p2" {
+			t.Errorf("record = %+v; want task_base p1, task_head m1, aligned_tip p2, merged_tip p2", got)
 		}
 		if want := "p1..p2,p1..m1"; strings.Join(fx.changedCalls, ",") != want {
 			t.Errorf("ChangedPaths calls = %v; want %q, so the first merge's parent changes are not the task's", fx.changedCalls, want)
@@ -418,7 +468,7 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 		}
 	})
 
-	t.Run("an earlier aligned tip is carried forward and starts the parent range", func(t *testing.T) {
+	t.Run("an earlier aligned tip starts the parent range, and the record advances it to the merged tip", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
 		if err := WriteMergeRecord(fx.m.deps.MergeRecordPath, MergeRecord{AlignedTip: "a0"}); err != nil {
@@ -430,15 +480,15 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 		fx.call(t)
 
 		got := fx.readRecord(t)
-		if got.AlignedTip != "a0" {
-			t.Errorf("aligned_tip = %q; want the earlier a0 carried forward", got.AlignedTip)
+		if got.AlignedTip != "p1" {
+			t.Errorf("aligned_tip = %q; want the merged tip p1", got.AlignedTip)
 		}
-		if want := []string{"shared.txt"}; strings.Join(got.Overlap.Files, ",") != strings.Join(want, ",") {
-			t.Errorf("overlap files = %v; want %v, read from the aligned tip", got.Overlap.Files, want)
+		if want := "shared.txt"; strings.Join(got.Overlap.Files, ",") != want {
+			t.Errorf("overlap files = %v; want [%s], read from the earlier aligned tip", got.Overlap.Files, want)
 		}
 	})
 
-	t.Run("an undecodable earlier record falls back to an empty aligned tip", func(t *testing.T) {
+	t.Run("an undecodable earlier record falls back to the fork point", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
 		if err := os.WriteFile(fx.m.deps.MergeRecordPath, []byte("parent_branch: [unclosed"), 0o644); err != nil {
@@ -450,11 +500,11 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 		fx.call(t)
 
 		got := fx.readRecord(t)
-		if got.AlignedTip != "" {
-			t.Errorf("aligned_tip = %q; want empty after an undecodable earlier record", got.AlignedTip)
-		}
 		if want := "shared.txt"; strings.Join(got.Overlap.Files, ",") != want {
 			t.Errorf("overlap files = %v; want [%s], read from the fork point", got.Overlap.Files, want)
+		}
+		if want := "b0..p1"; len(fx.holdsCalls) != 1 || fx.holdsCalls[0] != want {
+			t.Errorf("HoldsWork calls = %v; want one over the fork point, %q", fx.holdsCalls, want)
 		}
 	})
 }
@@ -473,13 +523,13 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 	t.Run("a failed verify writes the failure record with row Merge-In and no merge record", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		fx.taskHeads = []string{"t1", "m1"}
+		fx.mergeHead = "m1"
 		fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, Log: "/verify/verify-1.log"}
 
 		outcome, ptr := fx.call(t)
 
-		if outcome != shedengine.Stuck || !strings.Contains(ptr.Reason, "landing gate failed after merging parent branch") || !strings.HasSuffix(ptr.Reason, "fix forward on the task branch, then resume") {
-			t.Fatalf("Call() = %q, %+v; want Stuck for the failed landing gate, ending with the fix-forward clause", outcome, ptr)
+		if outcome != shedengine.Stuck || !ptr.Halt || !strings.HasPrefix(ptr.Reason, LandingStopPrefix) || len(fx.seats.tables) != 1 {
+			t.Fatalf("Call() = %q, %+v with %d fixer session(s); want the fixer spawned and a halting Stuck opening with %q", outcome, ptr, len(fx.seats.tables), LandingStopPrefix)
 		}
 		failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
 		if err != nil || !found {
@@ -518,7 +568,7 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				fx := newMergeInFixture(t)
-				fx.taskHeads = []string{"t1", "m1"}
+				fx.mergeHead = "m1"
 				fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
 				writeVerifyLog(t, fx.gate, verifyLog)
 				calls := 0
@@ -537,8 +587,8 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 
 				outcome, ptr := fx.call(t)
 
-				if outcome != shedengine.Stuck || !strings.Contains(ptr.Reason, "landing gate failed after merging parent branch") {
-					t.Fatalf("Call() = %q, %+v; want Stuck for the failed landing gate", outcome, ptr)
+				if outcome != shedengine.Stuck || !strings.HasPrefix(ptr.Reason, LandingStopPrefix) || len(fx.seats.tables) != 1 {
+					t.Fatalf("Call() = %q, %+v with %d fixer session(s); want the fixer spawned and a halting Stuck", outcome, ptr, len(fx.seats.tables))
 				}
 				failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
 				if err != nil || !found {
@@ -599,16 +649,15 @@ func TestMergeIn_VerifyGate(t *testing.T) {
 		}
 	})
 
-	t.Run("a failed, dirty or unstartable verify is Stuck naming its cause", func(t *testing.T) {
+	t.Run("a failed, dirty or unstartable verify spawns the fixer and halts without a record when it ends", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
-			name         string
-			result       verifytree.Result
-			wantInReason []string
+			name   string
+			result verifytree.Result
 		}{
-			{"failed", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3, Log: "/verify/verify-1.log"}, []string{`"main"`, "exit code 3", "/verify/verify-1.log"}},
-			{"dirty result", verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"late.txt"}}, []string{"late.txt"}},
-			{"could not start", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "no shell"}, []string{"no shell"}},
+			{"failed", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3, Log: "/verify/verify-1.log"}},
+			{"dirty result", verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"late.txt"}}},
+			{"could not start", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "no shell"}},
 		}
 		for _, tt := range tests {
 			fx := newMergeInFixture(t)
@@ -616,16 +665,11 @@ func TestMergeIn_VerifyGate(t *testing.T) {
 
 			outcome, ptr := fx.call(t)
 
-			if outcome != shedengine.Stuck || ptr.Halt {
-				t.Fatalf("%s: Call() = %q, %+v; want a non-halting Stuck", tt.name, outcome, ptr)
+			if outcome != shedengine.Stuck || !ptr.Halt || !strings.HasPrefix(ptr.Reason, LandingStopPrefix) {
+				t.Fatalf("%s: Call() = %q, %+v; want a halting Stuck opening with %q", tt.name, outcome, ptr, LandingStopPrefix)
 			}
-			for _, want := range tt.wantInReason {
-				if !strings.Contains(ptr.Reason, want) {
-					t.Errorf("%s: reason %q lacks %q", tt.name, ptr.Reason, want)
-				}
-			}
-			if fx.gate.fake.dirtyCalls != 2 {
-				t.Errorf("%s: clean-tree checks = %d; want 2, the check after the verify never running", tt.name, fx.gate.fake.dirtyCalls)
+			if len(fx.seats.tables) != 1 || fx.seats.tables[0].Values["mode"] != string(FixerModeMergeIn) {
+				t.Errorf("%s: fixer sessions = %d; want one in merge-in mode", tt.name, len(fx.seats.tables))
 			}
 			if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
 				t.Errorf("%s: a merge record was written after a halted verify", tt.name)

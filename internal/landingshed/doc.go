@@ -85,8 +85,15 @@
 // While the verify runs, the told Deps.VerifyWaitMark callback marks the run's driver strand on screen as `verify <producer>`, and clears the mark on every way out of the verify.
 // The mark is display only: a failing or absent callback changes no Stuck reason, error or verify outcome.
 // The record is keyed on the tree, so the verify runs after a resolved conflict, after new parent commits and after a crash between a merge and its verify, and a no-op merge onto a verified tree skips it.
-// A failure is Stuck with the merge commit kept for the operator to fix forward, and a missing command logs a warning and proceeds.
+// A missing command logs a warning and proceeds.
 // A failed verify writes the Publish failure record with row `Merge-In`, and a passing one removes it.
+// After the gate Merge-In aligns: the parent brought in commits when its merged tip adds something over the aligned tip, or over the task's fork point from the parent when the merge record holds none.
+// A merge that brought none over a passing gate is aligned with no fixer and advances the aligned tip to the merged tip.
+// Parent commits brought in, or a failing gate, run the merge fixer in merge-in mode on the attempts `merge_fix_attempts` leaves the entry; a `fixed` report over a passing gate advances the aligned tip and is Done.
+// The entry's fork point is kept in its attempt record before the merge, so a resumed entry whose merge is already up to date still reads what the first merge brought in.
+// With the Code-Review perch's budget 0, or told nothing, a fixer change over `finalize_fix_max_lines` or touching a test, testdata or gate configuration file, or adding a test skip or a build constraint, halts over-cap; with a budget above 0 the change goes to the Code-Perch unjudged.
+// An escalate report, a spent cap, a turn that ended without a usable result and an over-cap change each halt with a reason opening with LandingStopPrefix and a way forward; the resume after an over-cap halt reads the operator's review as the alignment.
+// Every Done clears the entry's attempt record, and an entry reached again from another row starts at zero attempts.
 // Last it writes the merge record: the tip merged, the task head before the merge, the parent tip last merged into the task, the aligned tip, the merge commit and where the parent's changes since the aligned tip meet the task's changes since its last merge base.
 // The aligned tip is the parent tip up to which the merge fixer has read what the parent brought in; it is empty before the first alignment, and the overlap then starts at the task's fork point from the parent.
 // The record carries the earlier record's aligned tip forward unchanged, and a record an older build wrote with a reviewed tip reads with an empty aligned tip.
