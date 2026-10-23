@@ -1,6 +1,4 @@
-// doc.go documents internal/planglyph, the sole owner of every quarry.Repo call (Open, Resolve,
-// DeltaGit) and of the package-level quarry.Name, and of the resolve-backed validation pass layered
-// on top of internal/planparser's pure checks.
+// doc.go documents internal/planglyph, the sole owner of every quarry.Repo call (Open, Resolve, EncloseAt, DeltaGit) and of the package-level quarry.Name, and of the resolve-backed validation pass layered on top of internal/planparser's pure checks.
 //
 // planglyph derives no path of its own and never imports internal/lyxcwd: its two entry points,
 // ValidateFormat and Validate, take worktreeRoot exactly as planparser.Validate(plan, worktreeRoot)
