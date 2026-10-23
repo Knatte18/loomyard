@@ -67,6 +67,7 @@ var nilLegal = map[string]bool{
 	"InnerRun.PauseOwned":               true,
 	"InnerRun.ParentHoldsTaskWork":      true,
 	"InnerRun.Restepped":                true,
+	"InnerRun.HandBack":                 true,
 	"Landing.VerifyCommand":             true,
 	"Landing.PublishSkip":               true,
 	"Landing.VerifyWaitMark":            true,
@@ -431,6 +432,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			OrchStrandRecorded: func() (bool, error) { return true, nil },
 			ParentLock:         &battenshed.ChildParentLock{},
 			StopReport:         func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+			HandBack:           func(shedengine.Status) bool { return false },
 			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
 				return nil, false, nil
 			},

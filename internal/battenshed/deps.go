@@ -290,6 +290,9 @@ type InnerRunDeps struct {
 	// Restepped reports whether the child's settle records hold a re-step of the stop status names.
 	// A nil Restepped resolves to reporting false in NewInnerRun.
 	Restepped func(status shedengine.Status) (bool, error)
+	// HandBack reports whether the child's blocked status is a landing halt only the orch's resume lifts, which the binary re-step then leaves alone.
+	// A nil HandBack resolves to marking nothing in NewInnerRun.
+	HandBack func(status shedengine.Status) bool
 }
 
 // ChildParentLock carries the seams InnerRun reads the parent lock of the child's run through.

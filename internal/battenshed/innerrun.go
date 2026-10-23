@@ -233,6 +233,7 @@ func logAttempt(first bool, msg string, args ...any) {
 // A nil deps.MarkWatched resolves to reporting not held, a nil deps.Activity to reporting no live run and no live wait, a nil deps.ArbiterInFlight to reporting no arbiter and a nil deps.ArbiterStop to a reading that is not eligible.
 // A nil deps.ParentLock switches the parent lock step and the stale-base resume off.
 // A nil deps.OwnerCheck switches the owner check off, a nil deps.PauseOwned resolves to a no-op, and a nil deps.ParentHoldsTaskWork or deps.Restepped to reporting false.
+// A nil deps.HandBack resolves to marking no status.
 func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duration, scratchDir string, driverExitGrace time.Duration) shedengine.ShedProducer {
 	if pollInterval < pollFloor {
 		logger.Warn("battenshed: poll_interval_s is below the floor and is raised to it", "key", "poll_interval_s", "value", pollInterval, "floor_s", int(pollFloor.Seconds()))
@@ -299,6 +300,9 @@ func NewInnerRun(name, slug string, deps InnerRunDeps, pollInterval time.Duratio
 	}
 	if deps.Restepped == nil {
 		deps.Restepped = func(shedengine.Status) (bool, error) { return false, nil }
+	}
+	if deps.HandBack == nil {
+		deps.HandBack = func(shedengine.Status) bool { return false }
 	}
 	return &innerRunProducer{
 		name:         name,

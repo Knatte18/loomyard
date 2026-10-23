@@ -962,6 +962,10 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				}
 				return sheddriver.RestepRecorded(records, status), nil
 			},
+			// HandBack marks a blocked landing halt over the child status's current producer and error, so the binary re-step leaves it to the orch.
+			HandBack: func(status shedengine.Status) bool {
+				return status.State == shedengine.StateBlocked && landingshed.HandsBack(status.CurrentProducer, status.Error)
+			},
 			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: pauseRequested(location, slug),
 			// Pause reads the hub's pause record at the prime's geometry, for the slug this run drives.

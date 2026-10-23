@@ -391,6 +391,8 @@ type restepHarness struct {
 	build      string
 	changed    bool
 	dirty      []string
+	// handBack, when set, is the check the binary re-step asks about the halted status.
+	handBack func(status shedengine.Status) bool
 	// spawnErrs is consumed one per spawn; a spawn past the end succeeds.
 	spawnErrs []error
 	spawns    int
@@ -441,6 +443,7 @@ func (h *restepHarness) producer() shedengine.ShedProducer {
 		return h.build, h.changed, nil
 	}
 	deps.ChildDirtyPaths = func() ([]string, error) { return h.dirty, nil }
+	deps.HandBack = h.handBack
 	return NewInnerRun("innerrun", "myslug", deps, h.poll, h.scratchDir, testGrace)
 }
 
@@ -562,4 +565,40 @@ func TestInnerRun_BinaryChangeRestepsADriverlessGoChild(t *testing.T) {
 			t.Errorf("build reads at %v; want %v: the probe, then twice it, up to the ceiling", h.buildReads, want)
 		}
 	})
+}
+
+// TestInnerRun_BinaryChangeSkipsALandingHalt pins that a halt the hand-back check marks is never re-stepped on a changed build and writes no marker, while an unmarked blocked halt still is.
+// One landing-halt row covers every kind, since the re-step reads only the check's answer.
+func TestInnerRun_BinaryChangeSkipsALandingHalt(t *testing.T) {
+	t.Parallel()
+
+	handBack := func(status shedengine.Status) bool {
+		return status.State == shedengine.StateBlocked && status.CurrentProducer == "Finalize" && strings.HasPrefix(status.Error, shedengine.ReasonRerouteCapReached)
+	}
+	tests := []struct {
+		name       string
+		producer   string
+		wantSpawns int
+	}{
+		{name: "FinalizeRerouteCapHaltIsLeftToTheOrch", producer: "Finalize"},
+		{name: "WebsterHaltIsReSteppedAsToday", producer: "Webster", wantSpawns: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newRestepHarness(t)
+			h.handBack = handBack
+			h.status.CurrentProducer = tt.producer
+			h.status.Error = shedengine.ReasonRerouteCapReached + ": " + tt.producer + " rerouted 3 times since its last done; way forward: x"
+
+			h.call(h.producer(), 6)
+
+			if h.spawns != tt.wantSpawns {
+				t.Errorf("spawns = %d; want %d", h.spawns, tt.wantSpawns)
+			}
+			if (h.marker() != "") != (tt.wantSpawns > 0) {
+				t.Errorf("marker = %q; want one only when the child was re-stepped", h.marker())
+			}
+		})
+	}
 }
