@@ -77,7 +77,7 @@ Card Index ↔ card files are cross-checked mechanically (the `index-file-mismat
 Each card lives in its own file, and the file's content is:
 
 1. **Title heading** — `# Card N — <name>`, where `N` is the card's own flat number (see [Numbering and commit subject](#numbering-and-commit-subject) below).
-2. **One or more bold type labels** from the set `**Create:**`, `**Edit:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**` — the type name is the key, and there is no separate `Type:` field.
+2. **One or more bold type labels** from the set `**Create:**`, `**Edit:**`, `**Extends:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**` — the type name is the key, and there is no separate `Type:` field.
    Each label's own indented, backtick-wrapped sub-bullets are that label's own targets:
 
    ```markdown
@@ -105,16 +105,18 @@ Each card lives in its own file, and the file's content is:
    and a later card names the re-signed member by its old glyph, the glyph left of the arrow, until the batch that re-signs it is recorded, after which webster rewrites that old glyph to the new one plan-wide.
    A later card that names the member by its old glyph therefore runs in a later batch, and a re-sign whose edit the tree does not hold fails its batch as `resign-not-done`.
 
-   A card carrying a `**Custom:**` group may carry no group of a different type — `Custom` groups may repeat, but never combine with any of the other six.
+   A card carrying a `**Custom:**` group may carry no group of a different type — `Custom` groups may repeat, but never combine with any of the other seven.
+   An `Extends` group holds existing refs the card only adds to, changing nothing already there, and its refs read as `Edit` targets everywhere else: `ImpactSummary` is required, `path-missing` and `edit-test-file` check them, and the glyph resolve pass sees them unchanged.
+   The same ref under `Extends` and any other type label of one card is `extends-overlap`, and an arrow bullet under `Extends` is `extends-resign`, since a re-sign changes what is already there.
    A `Rename` label's sub-bullets instead carry `` `old` -> `new` `` pairs — see [Rename and Move](#rename-and-move) below.
 3. Optionally, **`**Uses:**`** — what the card reads or depends on but does not change, in the same backtick-wrapped-bullet shape as a target list.
 4. A required, multi-line **`**Intent:**`** — what, and why (prose, may span multiple lines until the next field label).
-5. **`**ImpactSummary:**`**, required for `Edit` and `Delete` cards only, taking its value inline on the label line — a hard-capped one-line blast-radius conclusion, never the card's main content.
+5. **`**ImpactSummary:**`**, required for `Edit`, `Extends` and `Delete` cards only, taking its value inline on the label line — a hard-capped one-line blast-radius conclusion, never the card's main content.
 6. Optionally, **`**Commit:**`** and **`**Verify:**`** — see [Numbering and commit subject](#numbering-and-commit-subject) and [verify model](#verify-model) below.
 
 **A field with no content is omitted entirely** — this format admits no `none` sentinel on any field.
 An optional field a card has nothing to say under simply does not appear in that card's file;
-a required field a card omits — every type label (a card must carry at least one), `Intent:`, or `ImpactSummary:` when any of the card's own groups is `Edit` or `Delete` — is a `card-missing-field` finding, and a label that is present but carries no bullets/prose under it is the distinct `card-field-empty` finding.
+a required field a card omits — every type label (a card must carry at least one), `Intent:`, or `ImpactSummary:` when any of the card's own groups is `Edit`, `Extends` or `Delete` — is a `card-missing-field` finding, and a label that is present but carries no bullets/prose under it is the distinct `card-field-empty` finding.
 
 **Uses:** names what the card reads but does not change — never a target.
 An entry appearing in both a card's own target list and its own `Uses:` is a contradiction: is it being changed, or only read? — flagged by the `card-field-overlap` check.
@@ -130,6 +132,7 @@ A symbol no card in the plan touches needs no edge — its state never changes d
 |---|---|---|---|
 | Create | new symbol(s)/file(s) | none — check nothing equivalent exists first | not required |
 | Edit | existing symbol(s) | impact/blast-radius on the symbol being changed; `caller-uncovered` for a re-signed member, resolved by type where a type load answers and by import path elsewhere | required |
+| Extends | existing symbol(s) or file(s) the card only adds to | `extends-overlap` and `extends-resign`: the card changes nothing already there | required |
 | Delete | existing symbol(s) OR whole file(s) | assert-no-callers (necessary, not sufficient), mechanically `caller-uncovered` for a member, resolved by type where a type load answers and by import path elsewhere | required |
 | Rename | existing symbol(s), `old -> new` pairs | the hub's structure-aware rename tool (`language.yaml` `rename_tools`) + grep verify, never text or regex replace | not required |
 | Move | existing symbol relocated to a file, OR a whole file relocated | `git mv` + import fixup; destination stated in `Intent`, not the target list | not required |
@@ -465,7 +468,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
 27. `card-numbering` — a card file's heading number must equal the Card Index number assigned to it.
     Card-generic.
 28. `path-missing` — a path- or self-glyph-shaped entry that does not exist on disk (mapped via `Glyph.UnitPath` for a self glyph) and is not satisfied by any card's `Create`-group target or `Rename`-group destination (mapped the same way) in the same plan. A member glyph is skipped, not resolved — member existence is `internal/planglyph`'s resolve-backed business.
-    A card's `Uses:` entries are checked card-generically, and within a card, its own groups are then walked one at a time, and a group's own path-/self-glyph-shaped targets are checked only when that group's own `Type` is `Edit`, `Delete`, `Move`, or `Prosa`.
+    A card's `Uses:` entries are checked card-generically, and within a card, its own groups are then walked one at a time, and a group's own path-/self-glyph-shaped targets are checked only when that group's own `Type` is `Edit`, `Extends`, `Delete`, `Move`, or `Prosa`.
     A `Rename` group's own `Pairs.Old` entries are checked instead of its `Refs`, and its `Pairs.New` side is never checked.
     `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
 29. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
@@ -562,8 +565,8 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Its way forward is to correct the Verify line.
     It runs right after `verify-module-wide` in `Validate` and `ValidateFormat`, under any `language:`, and both plan gates, `lyx loom validate-plan` and dispatch report it; dispatch drops a finding against a completed card.
     It only refuses: it misses an argument behind a variable or inside `bash -c`, an argument after an unplaceable `cd` or `-C` or after a `cd` in a pipeline stage or after `||`, an import path, a module-wide pattern whose stem exists and a `.go` file argument, and a directory an earlier card deletes is left to that card's own verify run.
-43. `edit-test-file` — a file self glyph in a card's `**Edit:**` group whose path ends in `_test.go`.
-    Only `Edit` groups are read, so a `Create`, `Delete`, `Rename`, `Move`, `Prosa` or `Custom` group and `Uses` never trip it, and neither does a member glyph, a `plan:` handle or a path with no extension, since a card file's plain `x_test.go` path is canonicalized into its file self glyph at parse time.
+43. `edit-test-file` — a file self glyph in a card's `**Edit:**` or `**Extends:**` group whose path ends in `_test.go`.
+    Only `Edit` and `Extends` groups are read, so a `Create`, `Delete`, `Rename`, `Move`, `Prosa` or `Custom` group and `Uses` never trip it, and neither does a member glyph, a `plan:` handle or a path with no extension, since a card file's plain `x_test.go` path is canonicalized into its file self glyph at parse time.
     A path with a segment the go tool ignores (`testdata`, `vendor`, and names starting with `.` or `_`), the file name included, is exempt, since no test there is compiled.
     One blocking finding per entry, attributed to the card, with `Ref` the entry.
     Its way forward is to name each existing test function, fake or helper the card changes as a member glyph under `**Edit:**`, to declare each new one as a `**Create:**` `plan:` handle on the package directory (or on `<dir>_test` for an external test package), to keep a new test file a `**Create:**` path, and, for a change confined to the file's header such as its build constraint, to name every member of that file.
@@ -599,7 +602,14 @@ The rows below stay in one fixed order regardless of which entry point runs them
     One blocking finding attributed to the card; its way forward is to make the edit match the arrow's head, or to correct the head to the signature the card wrote and run `lyx webster rebaseline --card <N>` naming that card.
     It is raised only at webster's record-batch and recover-batch, never at a plan gate, and when every arrow of the batch is done webster rewrites each old glyph to its new one plan-wide.
 
+51. `extends-overlap` — a ref that a card names under an `Extends` group and also under any other type label of the same card.
+    One blocking finding per ref, naming the card, the ref and the other label; its way forward is to keep the ref under one label, `**Edit:**` when the card changes what is there.
+    An `Extends` ref that is also under `Uses:` is `card-field-overlap`, since the card's flat targets hold it.
+52. `extends-resign` — an arrow sub-bullet in an `Extends` group.
+    One blocking finding per arrow, naming the card and the member; its way forward is to move that ref under `**Edit:**`, since a re-sign changes what is already there.
+
 `plan-language-mismatch` and `rename-namespace-pair` run in the position of their own place in the order, not of their numbers: the first right after `plan-language-unrecognized`, the second right after `path-missing`.
+`extends-overlap` and `extends-resign` run right after `card-field-overlap`, in that order.
 
 A plan under `language: csharp` skips the checks that read Go source or Go toolchain semantics: `verify-nested-module`, `verify-module-wide`, `verify-package-missing`, the `.go` file-unit half of `handle-malformed`, `delete-before-reference`, `caller-uncovered`, and the Go package-directory mapping of a unit.
 The remaining checks run under it as they do under `go`.
@@ -610,7 +620,7 @@ Only the rework gate runs it: `planglyph.ValidateRework` runs it after the forma
 ## Worked example
 
 A complete plan for a fictional task ("add a `--json` flag to `lyx board list`"), byte-consistent with the golden fixture `internal/planparser`'s own tests parse.
-Across its seven card files this example demonstrates every plan-format feature: all seven type labels are exercised across the suite of cards below (`Create`, `Edit`, `Custom`, `Delete`, `Rename`, `Move`, `Prosa`), flat `N` card headings, a `## Shared Decisions` overview entry, a plan-level `root:` with `//`-escaped entries, a pinned `Commit:`/`Verify:` pair, and a `Rename` card with its plan-level `## Rename mechanic` section.
+Across its seven card files this example demonstrates every plan-format feature: seven of the eight type labels are exercised across the suite of cards below (`Create`, `Edit`, `Custom`, `Delete`, `Rename`, `Move`, `Prosa`), flat `N` card headings, a `## Shared Decisions` overview entry, a plan-level `root:` with `//`-escaped entries, a pinned `Commit:`/`Verify:` pair, and a `Rename` card with its plan-level `## Rename mechanic` section.
 Card 2 is additionally the multi-label example: it carries an `**Edit:**` group followed by a `**Create:**` group.
 
 `_lyx/plan/00-overview.md`:
