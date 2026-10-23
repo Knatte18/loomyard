@@ -640,7 +640,7 @@ func pathlessEntryClass(entry string) (AuditViolationClass, bool) {
 // A session whose transcripts are not on this machine has nothing to audit and is not an error.
 // It audits nothing while another fork batch of the session is begun and not terminal or the verify-gate report exists:
 // every fork of a Master session shares its session id, so an unseen transcript may then be that fork's.
-// That batch's own record-batch, or the run-exit audit for the verify-gate fixer fork, audits it instead.
+// That batch's own record-batch, or the run-exit audit for the verify-gate fixers, audits it instead.
 func auditTerminalFork(deps RecordDeps, bs *BatchState, batchNumber int) (*RecordResult, error) {
 	for n, other := range deps.State.Batches {
 		if n != batchNumber && other != nil && other.Kind == "fork" && !other.Terminal && other.SessionID == bs.SessionID {
