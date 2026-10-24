@@ -407,7 +407,8 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 }
 
 // RecoveryRetry reports whether batch n's dead recovery earns one more recovery, and how many counted recoveries the batch has.
-// It is true for a terminal dead recovery record below the cap whose recovery committed work of its own:
+// It is true for a terminal dead recovery record with no counted recovery, the state a batch-start reset leaves, since the batch's first counted recovery is still owed.
+// Below the cap it is otherwise true only when the recovery committed work of its own:
 // HEAD descends from the record's non-empty RecoveryStartSHA and the first-parent range from it to HEAD holds a commit that is not a merge.
 // An empty start, a HEAD a reset moved off it and a range of merge-ins only give false.
 // A git read that fails, a start the store does not hold included, gives false and is logged at Warn.
@@ -421,7 +422,13 @@ func RecoveryRetry(geom Geometry, st *State, n int) (retry bool, recoveries int)
 		return false, 0
 	}
 	recoveries = bs.Recoveries
-	if bs.Kind != "recovery" || !bs.Terminal || bs.Status != DigestStatusDead || recoveries >= maxRecoveries || bs.RecoveryStartSHA == "" {
+	if bs.Kind != "recovery" || !bs.Terminal || bs.Status != DigestStatusDead || recoveries >= maxRecoveries {
+		return false, recoveries
+	}
+	if recoveries == 0 {
+		return true, recoveries
+	}
+	if bs.RecoveryStartSHA == "" {
 		return false, recoveries
 	}
 	committed, err := committedSince(geom, bs.RecoveryStartSHA)

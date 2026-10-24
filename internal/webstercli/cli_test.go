@@ -838,6 +838,16 @@ func TestStatusCmd(t *testing.T) {
 			},
 			wantIn: []string{`"recoveries":1`, `"recovery_retry":false`},
 		},
+		{
+			name: "a dead recovery a batch-start reset cleared gives recovery_retry true",
+			state: &websterengine.State{
+				RunGUID: "guid-3",
+				Batches: map[int]*websterengine.BatchState{
+					1: {Slug: "only", Kind: "recovery", Status: websterengine.DigestStatusDead, Terminal: true},
+				},
+			},
+			wantIn: []string{`"recoveries":0`, `"recovery_retry":true`},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

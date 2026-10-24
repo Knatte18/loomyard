@@ -429,13 +429,14 @@
 // A re-begin and a rebaseline keep the count.
 // A spawn whose prompt renders an amendment no earlier spawn rendered does not count, so an amendment forces at most one uncounted re-run.
 // A counted spawn is refused with ErrRecoveryExhausted once the batch has two recoveries, whoever asks, with a way forward through `reset --to batch-start` or `reset --to start`.
-// A terminal dead recovery below the cap earns one more when it committed work of its own (RecoveryRetry):
+// A terminal dead recovery at no counted recovery earns one more, since the batch's first counted recovery is still owed; a batch-start reset leaves that state (RecoveryRetry).
+// Below the cap it otherwise earns one more only when it committed work of its own:
 // HEAD descends from its start through a first-parent range holding a non-merge commit.
 // An empty start, a HEAD a reset moved off the start, a range of merge-ins only and a failed git read, which is logged at Warn, all give no retry.
 // begin-batch reads the same function, so its report-present remedy names recover-batch once more for such a batch, and its refusal over a batch at the cap wraps ErrRecoveryExhausted and carries recovery_exhausted.
 // recover-batch's terminal envelope and status's batch entries carry the count as recoveries and the verdict as recovery_retry, and the refusal wrapping ErrRecoveryExhausted carries recovery_exhausted.
-// reset --to batch-start clears the batch's count and start; reset --to start archives the whole record.
-// Merriam runs the second recovery on recovery_retry: true and stops stuck on false or on recovery_exhausted.
+// reset --to batch-start clears the batch's count and start, so the reset batch reads recovery_retry: true; reset --to start archives the whole record.
+// Merriam runs another recovery on recovery_retry: true and stops stuck on false or on recovery_exhausted.
 //
 // # digest persistence carries batch context forward
 //

@@ -327,7 +327,7 @@ type BatchState struct {
 	// An id with no entry belongs to a record written before the field existed.
 	RecoveryEngines map[string]string `json:"recoveryEngines,omitempty"`
 	// RecoveryStartSHA is the repo HEAD when the record's recovery was spawned, empty for a fork record and for a record written before the field existed.
-	// RecoveryRetry reads it to tell whether a dead recovery committed work of its own.
+	// RecoveryRetry reads it to tell whether a dead recovery at a counted recovery committed work of its own.
 	RecoveryStartSHA string `json:"recoveryStartSha,omitempty"`
 }
 
