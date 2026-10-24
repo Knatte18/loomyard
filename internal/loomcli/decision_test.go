@@ -43,8 +43,10 @@ type decisionFake struct {
 	arbiterName string
 	appends     int
 	commits     int
-	lastAdded   discussionparser.AddedDecision
-	clock       time.Time
+	// lastBatch is every entry of the last append, and lastAdded its last entry.
+	lastBatch []discussionparser.AddedDecision
+	lastAdded discussionparser.AddedDecision
+	clock     time.Time
 
 	// darn and darnErr are the answer of the run-is-darn seam.
 	darn    bool
@@ -81,6 +83,8 @@ type decisionFake struct {
 	planErr      error
 	// amendErr makes the amendment append fail before it writes.
 	amendErr error
+	// amendErrTitle, when set, makes the amendment append fail before it writes for that title alone.
+	amendErrTitle string
 	// appendClobbers makes a failing record append leave the decision record overwritten, as an append that dies midway would.
 	appendClobbers bool
 	// amendWrote is the amendment record's bytes the last append wrote.
@@ -132,9 +136,10 @@ func (f *decisionFake) deps() decisionDeps {
 		arbiterStrand: func(name string) bool { return name == f.arbiterName },
 		readStatus:    func() (shedengine.Status, bool, error) { return f.status, f.found, f.statusErr },
 		recordPath:    f.path,
-		append: func(d discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
+		append: func(ds []discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
 			f.appends++
-			f.lastAdded = d
+			f.lastBatch = ds
+			f.lastAdded = ds[len(ds)-1]
 			if f.appendErr != nil {
 				if f.appendClobbers {
 					if err := os.WriteFile(f.path, []byte("clobbered"), 0o644); err != nil {
@@ -146,12 +151,14 @@ func (f *decisionFake) deps() decisionDeps {
 			if f.findings != nil {
 				return f.findings, nil
 			}
-			prior, err := os.ReadFile(f.path)
+			record, err := os.ReadFile(f.path)
 			if err != nil {
 				return nil, err
 			}
-			entry := fmt.Sprintf("\n### %s\n\nDecision: %s\n", addedDecisionHeading(d), d.Decision)
-			return nil, os.WriteFile(f.path, append(prior, entry...), 0o644)
+			for _, d := range ds {
+				record = fmt.Appendf(record, "\n### %s\n\nDecision: %s\n", addedDecisionHeading(d), d.Decision)
+			}
+			return nil, os.WriteFile(f.path, record, 0o644)
 		},
 		commit: func() error {
 			f.commits++
@@ -209,6 +216,9 @@ func (f *decisionFake) deps() decisionDeps {
 			if f.amendErr != nil {
 				return f.amendErr
 			}
+			if f.amendErrTitle != "" && title == f.amendErrTitle {
+				return errors.New("disk boom")
+			}
 			if err := loomshed.AppendAmendment(f.amendmentPath, title, at); err != nil {
 				return err
 			}
@@ -227,6 +237,22 @@ func (f *decisionFake) deps() decisionDeps {
 			return f.amendCommitErr
 		},
 	}
+}
+
+// decisionBatchJSON is a --from file of two entries, the second with a PATTERN change.
+const decisionBatchJSON = `[
+	{"title": "Keep the cache", "decision": "Keep it per run.", "rationale": "A shared cache races."},
+	{"title": "Drop the flag", "decision": "Drop --fast.", "rationale": "Nobody passes it.", "pattern_entry": "PATTERN-x", "pattern_action": "adds", "pattern_text": "New rule."}
+]`
+
+// writeDecisionBatch writes content as a --from file in a temp dir and returns its path.
+func writeDecisionBatch(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "decisions.json")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func goodDecisionInput() decisionInput {
@@ -327,7 +353,9 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 
 func TestDecisionVerb_Refusals(t *testing.T) {
 	tests := []struct {
-		name  string
+		name string
+		// from, when set, is the content of a --from file the call passes in place of the per-entry flags; setup runs after.
+		from  string
 		setup func(f *decisionFake, in *decisionInput)
 		want  []string
 		// notWant lists text the message must not contain.
@@ -602,12 +630,108 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 			setup: func(f *decisionFake, _ *decisionInput) { f.appendErr = errors.New("disk full") },
 			want:  []string{"disk full", "way forward:", "re-run"},
 		},
+		{
+			name:         "from beside a per-entry flag",
+			from:         decisionBatchJSON,
+			setup:        func(_ *decisionFake, in *decisionInput) { in.title = "Keep the cache" },
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"--from carries every entry", "way forward:", "drop --title"},
+		},
+		{
+			name:         "from file unreadable",
+			setup:        func(f *decisionFake, in *decisionInput) { *in = decisionInput{by: "parent", from: f.path + ".absent"} },
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"read the --from file", "way forward:", "JSON array"},
+		},
+		{
+			name:         "from file not an array",
+			from:         `{"title": "a", "decision": "d", "rationale": "r"}`,
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"is not one JSON array of entries", "way forward:", "JSON array"},
+		},
+		{
+			name:         "from file with data after the array",
+			from:         `[{"title": "a", "decision": "d", "rationale": "r"}] []`,
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"data follows the array", "way forward:"},
+		},
+		{
+			name:         "from file with a stray closing bracket after the array",
+			from:         `[{"title": "a", "decision": "d", "rationale": "r"}] ]`,
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"data follows the array", "way forward:"},
+		},
+		{
+			name:         "from entry with an unknown key",
+			from:         `[{"title": "a", "decision": "d", "rationale": "r", "pattern_enty": "PATTERN-x"}]`,
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"unknown field", "pattern_enty", "way forward:"},
+		},
+		{
+			name:         "from file with no entry",
+			from:         `[]`,
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"holds no entry", "way forward:"},
+		},
+		{
+			name:         "from entry with an empty field",
+			from:         `[{"title": "a", "decision": "d", "rationale": "r"}, {"title": "b", "decision": " ", "rationale": "r"}]`,
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"entry 2 of the --from file has an empty decision", "way forward:"},
+		},
+		{
+			name:         "from entry with a partial PATTERN-change form",
+			from:         `[{"title": "a", "decision": "d", "rationale": "r", "pattern_text": "x"}]`,
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"entry 1 of the --from file", "one form", "way forward:", "set pattern_entry and pattern_action together"},
+		},
+		{
+			name:         "from entries sharing a title",
+			from:         `[{"title": "a", "decision": "d", "rationale": "r"}, {"title": " a ", "decision": "e", "rationale": "r"}]`,
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{`entries 1 and 2 of the --from file share the title "a"`, "way forward:"},
+		},
+		{
+			name: "from entries sharing a PATTERN entry",
+			from: `[{"title": "a", "decision": "d", "rationale": "r", "pattern_entry": "PATTERN-x", "pattern_action": "removes"},
+				{"title": "b", "decision": "e", "rationale": "r", "pattern_entry": "PATTERN-x", "pattern_action": "adds", "pattern_text": "t"}]`,
+			inputRefusal: true,
+			noDarnReads:  true,
+			want:         []string{"entries 1 and 2 of the --from file both change PATTERN-x", "way forward:"},
+		},
+		{
+			name: "darn batch entry missing from the committed record after the commit",
+			from: decisionBatchJSON,
+			setup: func(f *decisionFake, _ *decisionInput) {
+				f.darn = true
+				f.committedFound = true
+				f.committedCopy = []byte(decisionPriorRecord)
+				f.commitLeaves = []byte(decisionPriorRecord + "\n### Added after Discussion (parent, 2026-03-04): Keep the cache\n\nDecision: d.\n")
+			},
+			afterCommit: true,
+			want:        []string{"no entry under \"Added after Discussion (parent, 2026-03-04): Drop the flag\"", "way forward:", "a Darn-Write write landed during the append"},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newDecisionFake(t)
 			input := goodDecisionInput()
-			tc.setup(f, &input)
+			if tc.from != "" {
+				input = decisionInput{by: "parent", from: writeDecisionBatch(t, tc.from)}
+			}
+			if tc.setup != nil {
+				tc.setup(f, &input)
+			}
 
 			var out bytes.Buffer
 			if code := decisionVerb(&out, "task-a", f.deps(), input); code == 0 {
@@ -756,6 +880,69 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 	}
 }
 
+// TestDecisionVerb_FromFileRecordsBatch asserts a --from batch is appended in one write, in file order, with its PATTERN change.
+// The batch is committed once with every title in the amendment record.
+// Each live agent gets one notice: a short one naming every heading, and Merriam's carrying every entry's text.
+func TestDecisionVerb_FromFileRecordsBatch(t *testing.T) {
+	t.Parallel()
+	f := newDecisionFake(t)
+	f.planApproved = true
+	f.liveStrands = []string{"hub:task-a:plan", "hub:task-a:webster"}
+	input := decisionInput{by: "parent", from: writeDecisionBatch(t, decisionBatchJSON), amendsPlan: true}
+
+	var out bytes.Buffer
+	if code := decisionVerb(&out, "task-a", f.deps(), input); code != 0 {
+		t.Fatalf("exit = %d, out %s; want 0", code, out.String())
+	}
+	if f.appends != 1 || f.commits != 1 {
+		t.Errorf("appends, commits = %d, %d; want 1, 1", f.appends, f.commits)
+	}
+	wantPattern := discussionparser.PatternChange{ID: "PATTERN-x", Action: "adds", Text: "New rule."}
+	if len(f.lastBatch) != 2 || f.lastBatch[0].Title != "Keep the cache" || f.lastBatch[0].PatternChange != nil ||
+		f.lastBatch[1].Title != "Drop the flag" || f.lastBatch[1].PatternChange == nil || *f.lastBatch[1].PatternChange != wantPattern {
+		t.Errorf("appended batch = %+v; want both entries in file order, the second with %+v", f.lastBatch, wantPattern)
+	}
+	headings := []string{"Added after Discussion (parent, 2026-03-04): Keep the cache", "Added after Discussion (parent, 2026-03-04): Drop the flag"}
+
+	data := envelope.RequireOK(t, out.String()).Raw
+	if got, want := fmt.Sprint(data["headings"]), fmt.Sprint(headings); got != want {
+		t.Errorf("envelope headings = %s; want %s", got, want)
+	}
+	if got := fmt.Sprint(data["pattern_changes"]); got != "[- `PATTERN-x` — adds: New rule.]" {
+		t.Errorf("envelope pattern_changes = %s; want the second entry's bullet", got)
+	}
+	for _, key := range []string{"heading", "pattern_change"} {
+		if _, ok := data[key]; ok {
+			t.Errorf("envelope = %v; want no %s for a batch", data, key)
+		}
+	}
+	amendment, _, err := loomshed.ReadAmendment(f.amendmentPath)
+	if err != nil || !reflect.DeepEqual(amendment.Titles, []string{"Keep the cache", "Drop the flag"}) {
+		t.Errorf("amendment titles = %v, %v; want both titles in order", amendment.Titles, err)
+	}
+
+	if len(f.posts) != 2 {
+		t.Fatalf("posts = %v; want one to each live agent", f.posts)
+	}
+	texts := []string{"Keep it per run.", "A shared cache races.", "Drop --fast.", "Nobody passes it."}
+	for _, post := range f.posts {
+		if !strings.HasPrefix(post.line, decisionNoticeOpening) || !strings.Contains(post.line, f.path) {
+			t.Errorf("post line = %q; want the opening and the record path", post.line)
+		}
+		for _, heading := range headings {
+			if !strings.Contains(post.line, heading) {
+				t.Errorf("post line to %s = %q; want heading %q", post.receiver, post.line, heading)
+			}
+		}
+		inline := post.receiver == "hub:task-a:webster"
+		for _, text := range texts {
+			if strings.Contains(post.line, text) != inline {
+				t.Errorf("post line to %s = %q; carrying %q is %v, want %v", post.receiver, post.line, text, !inline, inline)
+			}
+		}
+	}
+}
+
 // TestDecisionNoticeOpening_NamedByParentDirective asserts the rendered parent directive quotes the opening every decision notice starts with.
 // That quote is what makes a spawned role admit the notice as its parent's.
 func TestDecisionNoticeOpening_NamedByParentDirective(t *testing.T) {
@@ -880,7 +1067,9 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 	t.Parallel()
 	const title = "Keep the cache"
 	tests := []struct {
-		name  string
+		name string
+		// from, when set, is the content of a --from file the call passes in place of the per-entry flags.
+		from  string
 		setup func(t *testing.T, f *decisionFake)
 		// want lists the fragments of a refusal; empty means the call succeeds.
 		want    []string
@@ -940,6 +1129,16 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 			setup: func(t *testing.T, f *decisionFake) {
 				seedAmendment(t, f, "First")
 				f.amendErr = errors.New("disk boom")
+			},
+			want:       []string{"write the amendment record: disk boom", "way forward:", "nothing is appended"},
+			wantTitles: []string{"First"},
+		},
+		{
+			name: "BatchSecondTitleFails_RestoresTheAmendmentRecord",
+			from: decisionBatchJSON,
+			setup: func(t *testing.T, f *decisionFake) {
+				seedAmendment(t, f, "First")
+				f.amendErrTitle = "Drop the flag"
 			},
 			want:       []string{"write the amendment record: disk boom", "way forward:", "nothing is appended"},
 			wantTitles: []string{"First"},
@@ -1030,6 +1229,9 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 				tt.setup(t, f)
 			}
 			input := goodDecisionInput()
+			if tt.from != "" {
+				input = decisionInput{by: "parent", from: writeDecisionBatch(t, tt.from)}
+			}
 			input.amendsPlan = true
 
 			var out bytes.Buffer

@@ -234,7 +234,7 @@
 // # Decision amends-plan
 //
 // `lyx loom decision add --amends-plan` records a decision that amends the approved plan:
-// besides the entry, the call appends the entry's title to the tracked plan amendment record, and one commit lands both.
+// besides the entry, the call appends the title of each entry to the tracked plan amendment record, a `--from` batch appending every title in input order, and one commit lands the entries and the amendment record.
 // The commit pathspec of the discussion artifacts names the record when it exists or git tracks it, and nothing otherwise, so git is never handed a pathspec matching nothing.
 // The flag is refused on a darn run, which has no plan to amend, and while the current generation has no approved plan;
 // a plan that does not parse is refused naming `lyx loom validate-plan`, and a plan or record read failure is refused with the verb's retry way forward.

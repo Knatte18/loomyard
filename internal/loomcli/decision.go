@@ -1,6 +1,6 @@
 // decision.go implements the `decision` loom subtree: the one verb, `add`, through which a design call made after the Discussion ended is recorded in the decision record.
 // The run's parent, or an operator, uses it to answer a question the record does not settle, so Plan-Write and a later reader see the call beside the decisions the Discussion made.
-// The verb appends one entry through `discussionparser.AppendDecision`, which re-runs the discussion check and restores the record on a finding, and then commits the record.
+// The verb appends one entry, or the batch a `--from` JSON file holds, through `discussionparser.AppendDecisions`, which writes once, re-runs the discussion check and restores the record on a finding, and then commits the record once.
 //
 // The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
 // It resolves the target worktree through the same resolver the review group uses.
@@ -8,19 +8,20 @@
 // The verb refuses a task session's label: a caller whose exported strand name differs from the run's recorded parent is refused, and the operator's own unnamed shell always passes.
 // The one other caller is the run's own arbiter strand, which alone may pass `--by arbiter`; any other caller of that label is refused.
 // The check reads only the exported strand name and the recorded parent name, so it guards a mistaken call, not a session that clears or forges the variable, and `--by` stays an unverified label.
-// That is bounded by the entry being append-only, one entry per call, under an `Added after Discussion` heading with the claimed label and the date, in a committed diff.
+// That is bounded by each entry being append-only, under an `Added after Discussion` heading with the claimed label and the date, in the call's one committed diff.
 //
 // On a darn run the verb works once Darn-Write has validated and committed its record, and also while Darn-Write runs.
 // The caller rule and the append-only, labelled, committed entry are unchanged.
 // The one new edge is appending while the writer runs, bounded to a record the writer validated and has not touched.
 // The working copy must equal the committed copy and hold every added entry its history held.
-// After the commit the committed record must hold the appended entry, so an entry a writer write displaced is refused rather than reported.
+// After the commit the committed record must hold every appended entry, so an entry a writer write displaced is refused rather than reported.
 //
 // The verb never routes the run, never touches the support log or the plan, and an approved plan is not re-planned by it.
 //
-// Once the entry is committed, the verb sends one creel notice to each live shuttle run of the target worktree but the tackler's, the arbiter's and the caller's own, so the LLM agent working for the run acts on the call.
-// The line opens with a fixed phrase the parent directive names, so every spawned role takes it as its parent's, and names the record and the entry's heading.
-// It inlines the entry's decision and rationale, so a role that may not read the record, such as webster's Master, still has the call.
+// Once the entries are committed, the verb sends one creel notice to each live shuttle run of the target worktree but the tackler's, the arbiter's and the caller's own, so the LLM agent working for the run acts on the call.
+// The line opens with a fixed phrase the parent directive names, so every spawned role takes it as its parent's, and names the record and each entry's heading.
+// A one-entry notice inlines the entry's decision and rationale, so a role that may not read the record, such as webster's Master, still has the call.
+// A batch's notice names only the headings, bar Master's, which inlines every entry's text.
 // With no live run nothing is sent: a later producer reads the record when it starts.
 // A failed listing or post is reported on the success envelope and never fails the verb, since the entry is already committed.
 
@@ -28,11 +29,13 @@ package loomcli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -55,6 +58,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
 )
 
@@ -75,6 +79,11 @@ const (
 	decisionWayArbiter    = `way forward: the "arbiter" label is the run's own arbiter's; pass --by parent from the run's parent, or --by operator from the operator's own shell`
 	decisionWayPattern    = `way forward: pass --pattern-entry and --pattern-action together, and --pattern-text for adds or changes`
 
+	decisionWayFromAlone = `way forward: put every entry's fields in the --from file and drop --title, --decision, --rationale and the --pattern-* flags`
+	decisionWayFromFile  = `way forward: write the --from file as a non-empty JSON array of objects with the keys title, decision, rationale and, for a PATTERN change, pattern_entry, pattern_action and pattern_text, then re-run the verb`
+	decisionWayFromKeys  = `way forward: set pattern_entry and pattern_action together, and pattern_text for adds or changes, then re-run the verb`
+	decisionWayFromTwice = `way forward: give each entry of the --from file its own title and its own PATTERN entry, or record the second in a later call`
+
 	decisionWayFabricCommit    = `way forward: run "lyx fabric commit" to commit the record; a session lyx refuses the verb from reports status: FAILED and the orch runs it`
 	decisionWayAmendsPlanRetry = `way forward: the entry and the amendment record are restored and nothing landed; re-run "lyx loom decision add ... --amends-plan"`
 	decisionWayPlanUnparsed    = `way forward: run "lyx loom validate-plan" to show the plan's defect, and record the decision without --amends-plan until the plan parses`
@@ -91,11 +100,121 @@ var decisionWayNoRecord = `way forward: the record exists once Discussion-Write 
 
 // decisionInput is the flag values of one `decision add` call.
 // The three pattern fields are the optional PATTERN-change form and are all empty without it.
+// from names the batch file whose entries replace the per-entry fields, and is empty for a one-entry call.
 // amendsPlan marks a decision that amends the approved plan, so the call also writes the plan amendment record.
 type decisionInput struct {
 	by, title, decision, rationale           string
 	patternEntry, patternAction, patternText string
+	from                                     string
 	amendsPlan                               bool
+}
+
+// decisionEntry is one decision of a call: the per-entry flags of a one-entry call, or one object of the --from file.
+type decisionEntry struct {
+	Title         string `json:"title"`
+	Decision      string `json:"decision"`
+	Rationale     string `json:"rationale"`
+	PatternEntry  string `json:"pattern_entry"`
+	PatternAction string `json:"pattern_action"`
+	PatternText   string `json:"pattern_text"`
+}
+
+// decisionEntries returns the entries input carries, or the refusal text when they are not a well-formed set.
+// A one-entry call refuses an empty field or a partial PATTERN-change form.
+// A --from call refuses any per-entry flag beside it and a file that is unreadable, not one JSON array of objects, followed by more data, empty, or carrying a key no entry has.
+// It also refuses an entry with an empty field or a partial PATTERN-change form, and two entries sharing a title or a PATTERN entry ID.
+func decisionEntries(input decisionInput) ([]decisionEntry, string) {
+	if input.from == "" {
+		for _, flag := range []struct{ name, value string }{{"title", input.title}, {"decision", input.decision}, {"rationale", input.rationale}} {
+			if strings.TrimSpace(flag.value) == "" {
+				return nil, fmt.Sprintf("--%s is empty; way forward: pass --%s with the text to record", flag.name, flag.name)
+			}
+		}
+		if (input.patternEntry != "") != (input.patternAction != "") || (input.patternEntry == "" && input.patternText != "") {
+			return nil, "--pattern-entry, --pattern-action and --pattern-text are one form; " + decisionWayPattern
+		}
+		return []decisionEntry{{
+			Title: input.title, Decision: input.decision, Rationale: input.rationale,
+			PatternEntry: input.patternEntry, PatternAction: input.patternAction, PatternText: input.patternText,
+		}}, ""
+	}
+
+	if input.title != "" || input.decision != "" || input.rationale != "" || input.patternEntry != "" || input.patternAction != "" || input.patternText != "" {
+		return nil, "--from carries every entry, and a per-entry flag was passed beside it; " + decisionWayFromAlone
+	}
+	data, err := os.ReadFile(input.from)
+	if err != nil {
+		return nil, fmt.Sprintf("read the --from file: %s; %s", err, decisionWayFromFile)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	var entries []decisionEntry
+	err = decoder.Decode(&entries)
+	if err == nil {
+		// Anything after the array, a stray closing bracket included, must be the end of the file.
+		if err = decoder.Decode(&json.RawMessage{}); err == io.EOF {
+			err = nil
+		} else {
+			err = errors.New("data follows the array")
+		}
+	}
+	if err != nil {
+		return nil, fmt.Sprintf("the --from file %s is not one JSON array of entries: %s; %s", input.from, err, decisionWayFromFile)
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Sprintf("the --from file %s holds no entry; %s", input.from, decisionWayFromFile)
+	}
+	if n, key := unknownEntryKey(data); key != "" {
+		return nil, fmt.Sprintf("entry %d of the --from file has an unknown field %q; %s", n, key, decisionWayFromFile)
+	}
+	titles := map[string]int{}
+	patternIDs := map[string]int{}
+	for i, entry := range entries {
+		n := i + 1
+		for _, field := range []struct{ name, value string }{{"title", entry.Title}, {"decision", entry.Decision}, {"rationale", entry.Rationale}} {
+			if strings.TrimSpace(field.value) == "" {
+				return nil, fmt.Sprintf("entry %d of the --from file has an empty %s; %s", n, field.name, decisionWayFromFile)
+			}
+		}
+		if (entry.PatternEntry != "") != (entry.PatternAction != "") || (entry.PatternEntry == "" && entry.PatternText != "") {
+			return nil, fmt.Sprintf("entry %d of the --from file: pattern_entry, pattern_action and pattern_text are one form; %s", n, decisionWayFromKeys)
+		}
+		title := strings.TrimSpace(entry.Title)
+		if first, ok := titles[title]; ok {
+			return nil, fmt.Sprintf("entries %d and %d of the --from file share the title %q; %s", first, n, title, decisionWayFromTwice)
+		}
+		titles[title] = n
+		if id := strings.TrimSpace(entry.PatternEntry); id != "" {
+			if first, ok := patternIDs[id]; ok {
+				return nil, fmt.Sprintf("entries %d and %d of the --from file both change %s; %s", first, n, id, decisionWayFromTwice)
+			}
+			patternIDs[id] = n
+		}
+	}
+	return entries, ""
+}
+
+// unknownEntryKey returns the 1-based number of the first entry of the --from array data that carries a key no decisionEntry has, with that key.
+// The key is empty when every key is known.
+// The key check is its own pass because the entries decode must stay tolerant of unknown keys.
+func unknownEntryKey(data []byte) (int, string) {
+	var objects []map[string]json.RawMessage
+	if err := json.Unmarshal(data, &objects); err != nil {
+		return 0, ""
+	}
+	known := map[string]bool{"title": true, "decision": true, "rationale": true, "pattern_entry": true, "pattern_action": true, "pattern_text": true}
+	for i, object := range objects {
+		keys := make([]string, 0, len(object))
+		for key := range object {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if !known[key] {
+				return i + 1, key
+			}
+		}
+	}
+	return 0, ""
 }
 
 // decisionDeps is every side effect decisionVerb performs, injected so tests supply fakes.
@@ -110,8 +229,8 @@ type decisionDeps struct {
 	readStatus reviewStatusReader
 	// recordPath is the decision record the entry lands in, reported on the success envelope.
 	recordPath string
-	// append adds d to the decision record and re-runs the discussion check, restoring the record on a finding or an error.
-	append func(d discussionparser.AddedDecision) ([]discussionparser.Finding, error)
+	// append adds every entry of ds to the decision record in one write and re-runs the discussion check, restoring the record on a finding or an error.
+	append func(ds []discussionparser.AddedDecision) ([]discussionparser.Finding, error)
 	// commit commits the discussion artifacts, the record included.
 	commit func() error
 	// now is the clock the entry's date comes from.
@@ -151,12 +270,35 @@ type decisionNoticeError struct {
 // The parent directive stencil names it, so a spawned role tells the notice from any other message signed as the LOOM program.
 const decisionNoticeOpening = "Parent decision recorded with lyx loom decision add"
 
-// decisionNoticeLine is the notice a live agent of the run gets for the entry added in the record at recordPath.
-// It inlines the entry's decision and rationale, since a role such as Merriam may not read the record;
+// decisionNoticeLine is the notice a live agent of the run gets for the entries added in the record at recordPath.
+// A one-entry notice, and every notice with inline set, carries each entry's decision and rationale, since a role such as Merriam may not read the record;
 // an agent that may read the record re-reads its Added after Discussion entries, the committed record being the authority.
-func decisionNoticeLine(recordPath string, added discussionparser.AddedDecision) string {
-	return fmt.Sprintf("%s, under %q in the decision record %s. Decision: %s Rationale: %s Act on it as your parent's instruction; when you may read the record, re-read its Added after Discussion entries and follow them.",
-		decisionNoticeOpening, addedDecisionHeading(added), recordPath, strings.TrimSpace(added.Decision), strings.TrimSpace(added.Rationale))
+// Any other notice of several entries names only their headings, so a batch reaches the agent as one short line.
+func decisionNoticeLine(recordPath string, added []discussionparser.AddedDecision, inline bool) string {
+	if len(added) == 1 {
+		return fmt.Sprintf("%s, under %q in the decision record %s. Decision: %s Rationale: %s Act on it as your parent's instruction; when you may read the record, re-read its Added after Discussion entries and follow them.",
+			decisionNoticeOpening, addedDecisionHeading(added[0]), recordPath, strings.TrimSpace(added[0].Decision), strings.TrimSpace(added[0].Rationale))
+	}
+	parts := make([]string, 0, len(added))
+	for _, d := range added {
+		if inline {
+			parts = append(parts, fmt.Sprintf("under %q, Decision: %s Rationale: %s", addedDecisionHeading(d), strings.TrimSpace(d.Decision), strings.TrimSpace(d.Rationale)))
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%q", addedDecisionHeading(d)))
+	}
+	if inline {
+		return fmt.Sprintf("%s, %d entries in the decision record %s: %s. Act on them as your parent's instruction; when you may read the record, re-read its Added after Discussion entries and follow them.",
+			decisionNoticeOpening, len(added), recordPath, strings.Join(parts, "; "))
+	}
+	return fmt.Sprintf("%s, %d entries in the decision record %s, under %s. Act on them as your parent's instruction: re-read the record's Added after Discussion entries and follow them.",
+		decisionNoticeOpening, len(added), recordPath, strings.Join(parts, ", "))
+}
+
+// decisionNoticeInline reports whether the live run's strand named strand reads no decision record, so its notice carries every entry's text.
+func decisionNoticeInline(strand string) bool {
+	name, err := agentname.Parse(strand)
+	return err == nil && agentname.MatchesRole(name.Role, websterengine.MerriamStrandRole)
 }
 
 // decisionNoticeReceiver reports whether the live run's strand named strand gets the notice of a call by caller.
@@ -167,9 +309,9 @@ func decisionNoticeReceiver(strand, caller string) bool {
 		!agentname.MatchesRole(name.Role, sheddriver.TacklerRole) && !agentname.MatchesRole(name.Role, loomengine.ArbiterRole)
 }
 
-// notifyLiveRuns posts the notice of the entry added to every live run of the target worktree the notice is for.
+// notifyLiveRuns posts one notice of the entries added to every live run of the target worktree the notice is for.
 // It returns the strands posted to and the failures, each logged at Warn; a failure never stops the next post.
-func notifyLiveRuns(deps decisionDeps, added discussionparser.AddedDecision) ([]string, []decisionNoticeError) {
+func notifyLiveRuns(deps decisionDeps, added []discussionparser.AddedDecision) ([]string, []decisionNoticeError) {
 	notified := []string{}
 	failures := []decisionNoticeError{}
 	strands, err := deps.liveStrands()
@@ -177,12 +319,11 @@ func notifyLiveRuns(deps decisionDeps, added discussionparser.AddedDecision) ([]
 		logger.Warn("loom: decision add could not list the run's live agents; no notice sent", "error", err)
 		return notified, append(failures, decisionNoticeError{Error: "list the run's live agents: " + err.Error()})
 	}
-	line := decisionNoticeLine(deps.recordPath, added)
 	for _, strand := range strands {
 		if !decisionNoticeReceiver(strand, deps.strandName) {
 			continue
 		}
-		if err := deps.notify(strand, line); err != nil {
+		if err := deps.notify(strand, decisionNoticeLine(deps.recordPath, added, decisionNoticeInline(strand))); err != nil {
 			logger.Warn("loom: decision add could not notify a live agent", "strand", strand, "error", err)
 			failures = append(failures, decisionNoticeError{Strand: strand, Error: err.Error()})
 			continue
@@ -223,22 +364,30 @@ func checkDarnRecord(deps decisionDeps) (string, error) {
 	return "", nil
 }
 
-// committedHoldsEntry reports whether the record as committed at HEAD holds an `Added after Discussion` entry with the heading of added.
-func committedHoldsEntry(deps decisionDeps, added discussionparser.AddedDecision) (bool, error) {
+// committedLacksEntry returns the heading of the first entry of added that the record as committed at HEAD holds no `Added after Discussion` entry for, or empty when it holds them all.
+// A record HEAD does not hold lacks the first entry.
+func committedLacksEntry(deps decisionDeps, added []discussionparser.AddedDecision) (string, error) {
 	committed, found, err := deps.committed()
-	if err != nil || !found {
-		return false, err
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return addedDecisionHeading(added[0]), nil
 	}
 	entries, err := discussionparser.ParseAddedDecisions(committed)
 	if err != nil {
-		return false, err
+		return "", err
 	}
+	held := make(map[string]bool, len(entries))
 	for _, entry := range entries {
-		if addedDecisionHeading(entry) == addedDecisionHeading(added) {
-			return true, nil
+		held[addedDecisionHeading(entry)] = true
+	}
+	for _, d := range added {
+		if !held[addedDecisionHeading(d)] {
+			return addedDecisionHeading(d), nil
 		}
 	}
-	return false, nil
+	return "", nil
 }
 
 // amendmentCall holds what a `--amends-plan` call must put back when its append or commit fails:
@@ -274,9 +423,9 @@ func restoreRecord(path string, prior []byte, existed bool) error {
 	return nil
 }
 
-// beginAmendment snapshots both records and appends title to the amendment record.
+// beginAmendment snapshots both records and appends every title, in order, to the amendment record.
 // A failure leaves the amendment record as it was.
-func beginAmendment(deps decisionDeps, title string) (*amendmentCall, error) {
+func beginAmendment(deps decisionDeps, titles []string) (*amendmentCall, error) {
 	a := &amendmentCall{}
 	var err error
 	if a.priorDecision, a.decisionExisted, err = readPriorRecord(deps.recordPath); err != nil {
@@ -285,8 +434,10 @@ func beginAmendment(deps decisionDeps, title string) (*amendmentCall, error) {
 	if a.priorAmendment, a.amendmentExisted, err = readPriorRecord(deps.amendmentPath); err != nil {
 		return nil, fmt.Errorf("read the amendment record: %w", err)
 	}
-	if err := deps.appendAmendment(title, deps.now()); err != nil {
-		return nil, errors.Join(fmt.Errorf("write the amendment record: %w", err), a.restoreAmendment(deps))
+	for _, title := range titles {
+		if err := deps.appendAmendment(title, deps.now()); err != nil {
+			return nil, errors.Join(fmt.Errorf("write the amendment record: %w", err), a.restoreAmendment(deps))
+		}
 	}
 	if a.written, err = os.ReadFile(deps.amendmentPath); err != nil {
 		return nil, errors.Join(fmt.Errorf("read the amendment record back: %w", err), a.restoreAmendment(deps))
@@ -333,20 +484,20 @@ func (a *amendmentCall) rollBackAppend(deps decisionDeps, appendErrored bool, ca
 }
 
 // afterFailedCommit decides what a failed commit left at HEAD, which commitErr describes.
-// It reports landed when HEAD holds both this call's amendment record and the entry, so the commit went through despite its error.
+// It reports landed when HEAD holds both this call's amendment record and every entry, so the commit went through despite its error.
 // Otherwise it returns the refusal text: both files are kept when HEAD holds the amendment record alone or cannot be read, and restored when HEAD differs.
-func (a *amendmentCall) afterFailedCommit(deps decisionDeps, added discussionparser.AddedDecision, commitErr error) (landed bool, refusal string) {
+func (a *amendmentCall) afterFailedCommit(deps decisionDeps, added []discussionparser.AddedDecision, commitErr error) (landed bool, refusal string) {
 	failed := fmt.Sprintf("the entry is appended but the commit failed: %s", commitErr)
 	committed, found, err := deps.committedAmendment()
 	if err != nil {
 		return false, fmt.Sprintf("%s; the amendment record at HEAD could not be read: %s; %s", failed, err, decisionWayFabricCommit)
 	}
 	if found && bytes.Equal(committed, a.written) {
-		held, err := committedHoldsEntry(deps, added)
+		lacking, err := committedLacksEntry(deps, added)
 		switch {
 		case err != nil:
 			return false, fmt.Sprintf("%s; the decision record at HEAD could not be read: %s; %s", failed, err, decisionWayFabricCommit)
-		case held:
+		case lacking == "":
 			return true, ""
 		}
 		return false, fmt.Sprintf("%s; a status commit landed the amendment record without the entry; %s", failed, decisionWayFabricCommit)
@@ -382,11 +533,11 @@ func planApprovedReader(anchorPath string) func() (bool, error) {
 	}
 }
 
-// decisionVerb appends the decision in input to the record and commits it, or refuses with a way forward.
+// decisionVerb appends the decisions in input to the record and commits them in one commit, or refuses with a way forward.
 //
-// With amendsPlan the verb also appends the entry's title to the plan amendment record, committed with the entry.
+// With amendsPlan the verb also appends each entry's title to the plan amendment record, committed with the entries.
 // It is refused on a darn run and for a plan that is not approved, and a failed append or commit puts both records back.
-// The optional PATTERN-change form appends one bullet of the record's PATTERN-change shape beside the entry, in the same write.
+// The optional PATTERN-change form appends one bullet of the record's PATTERN-change shape beside its entry, in the same write.
 // It passes through the verb's existing checks and its --by parent|operator|arbiter caller guards, so only the run's parent, the operator's own shell or the run's own arbiter declares a change after Discussion.
 // The form rewrites only the record's bullet for the same entry ID, which its new bullet replaces, and removes nothing.
 func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionInput) int {
@@ -397,10 +548,9 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	if input.by != decisionByParent && input.by != decisionByOperator && input.by != decisionByArbiter {
 		return refuse("--by is %q; way forward: pass --by %s or --by %s", input.by, decisionByParent, decisionByOperator)
 	}
-	for _, flag := range []struct{ name, value string }{{"title", input.title}, {"decision", input.decision}, {"rationale", input.rationale}} {
-		if strings.TrimSpace(flag.value) == "" {
-			return refuse("--%s is empty; way forward: pass --%s with the text to record", flag.name, flag.name)
-		}
+	entries, refusal := decisionEntries(input)
+	if refusal != "" {
+		return refuse("%s", refusal)
 	}
 
 	if input.by == decisionByArbiter {
@@ -418,11 +568,6 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 			}
 			return refuse("the caller %q is a task session; way forward: a design call after the Discussion is the parent's to record; ask %s to run the verb; the operator's own unnamed shell may always run it", deps.strandName, parent.Name)
 		}
-	}
-
-	patternForm := input.patternEntry != ""
-	if patternForm != (input.patternAction != "") || (!patternForm && input.patternText != "") {
-		return refuse("--pattern-entry, --pattern-action and --pattern-text are one form; %s", decisionWayPattern)
 	}
 
 	st, found, err := deps.readStatus()
@@ -461,26 +606,35 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		}
 	}
 
-	added := discussionparser.AddedDecision{
-		By:        input.by,
-		Title:     input.title,
-		Decision:  input.decision,
-		Rationale: input.rationale,
-		Date:      deps.now().UTC(),
-	}
-	var patternBullet string
-	if patternForm {
-		change := discussionparser.PatternChange{
-			ID:     strings.TrimSpace(input.patternEntry),
-			Action: strings.TrimSpace(input.patternAction),
-			Text:   strings.TrimSpace(input.patternText),
+	date := deps.now().UTC()
+	added := make([]discussionparser.AddedDecision, 0, len(entries))
+	titles := make([]string, 0, len(entries))
+	headings := make([]string, 0, len(entries))
+	patternBullets := []string{}
+	for _, entry := range entries {
+		d := discussionparser.AddedDecision{
+			By:        input.by,
+			Title:     entry.Title,
+			Decision:  entry.Decision,
+			Rationale: entry.Rationale,
+			Date:      date,
 		}
-		added.PatternChange = &change
-		patternBullet = change.Bullet()
+		if entry.PatternEntry != "" {
+			change := discussionparser.PatternChange{
+				ID:     strings.TrimSpace(entry.PatternEntry),
+				Action: strings.TrimSpace(entry.PatternAction),
+				Text:   strings.TrimSpace(entry.PatternText),
+			}
+			d.PatternChange = &change
+			patternBullets = append(patternBullets, change.Bullet())
+		}
+		added = append(added, d)
+		titles = append(titles, strings.TrimSpace(entry.Title))
+		headings = append(headings, addedDecisionHeading(d))
 	}
 	var amendment *amendmentCall
 	if input.amendsPlan {
-		amendment, err = beginAmendment(deps, strings.TrimSpace(input.title))
+		amendment, err = beginAmendment(deps, titles)
 		if err != nil {
 			return refuse("%s; %s", err, decisionWayRetry)
 		}
@@ -516,25 +670,30 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		}
 	}
 	if darn {
-		held, err := committedHoldsEntry(deps, added)
-		if err != nil || !held {
-			cause := "the committed record holds no entry"
-			if err != nil {
-				cause = "the committed record could not be read: " + err.Error()
-			}
-			return refuse("%s under %q; %s", cause, addedDecisionHeading(added), decisionWayEntryLost)
+		lacking, err := committedLacksEntry(deps, added)
+		if err != nil {
+			return refuse("the committed record could not be read: %s; %s", err, decisionWayEntryLost)
+		}
+		if lacking != "" {
+			return refuse("the committed record holds no entry under %q; %s", lacking, decisionWayEntryLost)
 		}
 	}
 	notified, noticeErrors := notifyLiveRuns(deps, added)
 	result := map[string]any{
 		"slug":          slug,
 		"record":        deps.recordPath,
-		"heading":       addedDecisionHeading(added),
+		"headings":      headings,
 		"notified":      notified,
 		"notice_errors": noticeErrors,
 	}
-	if patternForm {
-		result["pattern_change"] = patternBullet
+	if len(patternBullets) > 0 {
+		result["pattern_changes"] = patternBullets
+	}
+	if len(added) == 1 {
+		result["heading"] = headings[0]
+		if len(patternBullets) == 1 {
+			result["pattern_change"] = patternBullets[0]
+		}
 	}
 	if commitErr != nil {
 		result["commit_error"] = commitErr.Error()
@@ -600,8 +759,8 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		},
 		readStatus: circlingStatusReader(shedrun.StatusFile(target, shedrun.SelfRunID), shedrun.StatusLock(target, shedrun.SelfRunID)),
 		recordPath: recordPath,
-		append: func(d discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
-			return discussionparser.AppendDecision(recordPath, supportLogPath, d)
+		append: func(ds []discussionparser.AddedDecision) ([]discussionparser.Finding, error) {
+			return discussionparser.AppendDecisions(recordPath, supportLogPath, ds)
 		},
 		commit: func() error { return commitDiscussion(target) },
 		now:    time.Now,
@@ -724,49 +883,47 @@ The one other caller is the run's own arbiter strand, which passes --by arbiter.
 --by is a label that is not verified.
 
 Example:
-  lyx loom decision add <slug> --by parent --title "..." --decision "..." --rationale "..."`,
+  lyx loom decision add <slug> --by parent --title "..." --decision "..." --rationale "..."
+  lyx loom decision add <slug> --by parent --from decisions.json`,
 		RunE:              clihelp.GroupRunE,
 		PersistentPreRunE: st.preRun,
 	}
 
 	add := &cobra.Command{
 		Use:         "add [<slug>]",
-		Short:       "append one decision to the decision record and commit it",
+		Short:       "append decisions to the decision record and commit them",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `add appends one entry under an "Added after Discussion" heading, carrying the
---by label and today's date, to the end of the decision record's Decisions
-section. It re-runs the discussion check over the record, restores the record
-when the check flags it, and commits the record. It resumes nothing and
-changes neither the support log nor the plan.
+		Long: `add appends an entry under an "Added after Discussion" heading, carrying the
+--by label and today's date, to the decision record's Decisions section,
+re-runs the discussion check (restoring the record on a finding) and commits.
+It resumes nothing and changes neither the support log nor the plan. It then
+notifies the run's other live agents ("notified", "notice_errors").
 
-It then notifies the run's other live agents ("notified", "notice_errors").
-
---by is parent, operator or arbiter; arbiter is refused from any caller but the
-run's own arbiter strand. --title, --decision and --rationale are all required.
-A named session other than the run's recorded parent or, for --by arbiter, its
-arbiter is refused: ask the parent, or run it from the operator's own shell.
-It is refused while Discussion-Write runs; message that session instead.
-
-On a darn run it works once Darn-Write has validated and committed its record,
-also while Darn-Write runs. It refuses a record that is missing, uncommitted,
-differing from its committed copy or missing an entry its history held, and a
-commit after which the committed record lacks the entry.
+--by is parent, operator or arbiter, the last only from the run's own arbiter
+strand. --title, --decision and --rationale are required unless --from is
+passed. A named session other than the run's recorded parent or arbiter is
+refused. It is refused while Discussion-Write runs, and on a darn run until
+Darn-Write has validated and committed its record.
 
 --amends-plan marks a decision that amends the approved plan: the call also
-appends the entry's title to the plan amendment record, and one commit lands
-both. It is refused on a darn run and while the current generation has no
-approved plan; record the decision without the flag there. A failed append or
-commit puts both records back. Afterwards the parent runs
+appends the title to the plan amendment record in the same commit. It is
+refused on a darn run and with no approved plan. Afterwards the parent runs
 "lyx loom goto --to Plan-Burler-Review" and "lyx loom resume".
 
 A decision on a PATTERN entry also passes --pattern-entry <PATTERN-id>,
 --pattern-action adds|changes|removes and, for adds or changes, --pattern-text
-<new entry text>. The call also writes its bullet to the record's
-"## PATTERN changes" section, replacing any old one and creating the section
-when absent.
+<new entry text>, which writes its bullet to the "## PATTERN changes" section.
+
+--from <file> records several decisions in place of the per-entry flags: a
+JSON array of objects with the keys title, decision, rationale and optionally
+pattern_entry, pattern_action and pattern_text. --by and --amends-plan apply
+to every entry. All land in one write and one commit, or none does, and each
+live agent gets one notice naming the headings ("headings"). Two entries may
+not share a title or a PATTERN entry.
 
 Example:
-  lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."`,
+  lyx loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."
+  lyx loom decision add <slug> --by parent --from decisions.json`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -783,6 +940,7 @@ Example:
 	add.Flags().StringVar(&st.input.patternEntry, "pattern-entry", "", "the PATTERN entry the decision adds, changes or removes, as PATTERN-<id>")
 	add.Flags().StringVar(&st.input.patternAction, "pattern-action", "", "what the decision does to the entry: adds, changes or removes")
 	add.Flags().StringVar(&st.input.patternText, "pattern-text", "", "the entry's new text, for adds or changes")
+	add.Flags().StringVar(&st.input.from, "from", "", "a JSON file of several decisions to record in one call, in place of the per-entry flags")
 	add.Flags().BoolVar(&st.input.amendsPlan, "amends-plan", false, "the decision amends the approved plan: also record it in the plan amendment record")
 
 	group.AddCommand(add)
