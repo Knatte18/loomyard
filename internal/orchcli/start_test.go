@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -923,6 +924,23 @@ func TestStart_Refusals(t *testing.T) {
 				h.creel.withdrawErrs = []error{errors.New("creel: a program claim comes from a pane that is not the orch's")}
 			},
 			wantIn: []string{"a program claim comes from a pane that is not the orch's", "the orch's pane", "a terminal outside every strand pane"},
+		},
+		{
+			name: "a beam another machine owns names the owner and the takeover",
+			args: func(string) []string { return nil },
+			seed: func(t *testing.T, h *startHarness) {
+				h.cli.beamStart = func() error { return refuseBeamStart("b", "desktop", "laptop", nil) }
+			},
+			wantIn: []string{`"laptop"`, "lyx adopt b"},
+		},
+		{
+			name: "a beam held by its landing names the landing",
+			args: func(string) []string { return nil },
+			seed: func(t *testing.T, h *startHarness) {
+				landing := boardengine.RunStatus("running", "Land")
+				h.cli.beamStart = func() error { return refuseBeamStart("b", "desktop", "", &landing) }
+			},
+			wantIn: []string{"landing", "lyx batten status b"},
 		},
 		{
 			name: "a hub with no shortname record fails before any round",

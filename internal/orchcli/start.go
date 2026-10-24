@@ -248,13 +248,17 @@ func startFields(action, strand, promptSource, hint, warning string) map[string]
 	return fields
 }
 
-// reconcileHub runs the hub-scope origin reconcile from the prime, with the teardown, live-pair and parent-lock seams pairteardown builds and zero options.
+// reconcileHub runs the hub-scope origin reconcile from the prime of the hub that location belongs to, whichever orch starts it, with the teardown, live-pair and parent-lock seams pairteardown builds and zero options.
 func reconcileHub(location *lyxcwd.Location) (fabricengine.OriginReport, error) {
-	teardown, err := pairteardown.New(location)
+	prime, err := resolvePrime(location)
 	if err != nil {
 		return fabricengine.OriginReport{}, err
 	}
-	return fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
+	teardown, err := pairteardown.New(prime)
+	if err != nil {
+		return fabricengine.OriginReport{}, err
+	}
+	return fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 }
 
 // claimPrimeNotes claims the hub's prime for this machine and returns the warning lines that report a claim, a claim another machine won or a failure.
@@ -388,6 +392,12 @@ session.`,
 					return fail(fmt.Errorf("orch: resolve --handoff: %w", err))
 				}
 				handoffFlag = abs
+			}
+
+			if c.beamStart != nil {
+				if err := c.beamStart(); err != nil {
+					return fail(err)
+				}
 			}
 
 			if err := os.MkdirAll(c.paths.Dir, 0o755); err != nil {

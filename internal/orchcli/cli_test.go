@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -148,17 +149,59 @@ func runVerb(t *testing.T, cmd *cobra.Command) (int, map[string]any) {
 func TestRefuseNonPrime(t *testing.T) {
 	t.Parallel()
 
-	if err := refuseNonPrime("main", "main", nil); err != nil {
+	if err := refuseNonPrime("main", "main", nil, false); err != nil {
 		t.Errorf("prime worktree refused: %v", err)
 	}
-	err := refuseNonPrime("task", "main", nil)
-	if err == nil || !strings.Contains(err.Error(), "prime worktree only") ||
-		!strings.Contains(err.Error(), `"task"`) || !strings.Contains(err.Error(), `"main"`) {
-		t.Errorf("non-prime refusal = %v; want prime-only wording naming both worktrees", err)
+	if err := refuseNonPrime("b", "main", nil, true); err != nil {
+		t.Errorf("beam refused: %v", err)
 	}
-	err = refuseNonPrime("main", "", errors.New("boom"))
+	err := refuseNonPrime("task", "main", nil, false)
+	if err == nil || !strings.Contains(err.Error(), "runs from the hub's prime worktree or a beam") ||
+		!strings.Contains(err.Error(), `"task"`) || !strings.Contains(err.Error(), `"main"`) ||
+		!strings.Contains(err.Error(), "lyx beam create") || !strings.Contains(err.Error(), "lyx beam promote") {
+		t.Errorf("non-prime refusal = %v; want the prime-or-beam wording naming both worktrees and both beam verbs", err)
+	}
+	err = refuseNonPrime("main", "", errors.New("boom"), false)
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("unresolvable prime refusal = %v; want it to wrap the cause", err)
+	}
+}
+
+func TestRefuseBeamStart(t *testing.T) {
+	t.Parallel()
+
+	landing := boardengine.RunStatus("running", "Land")
+	done := "done"
+	tests := []struct {
+		name   string
+		owner  string
+		status *string
+		want   []string
+	}{
+		{"No owner and no status passes", "", nil, nil},
+		{"This machine's own beam passes", "desktop", &done, nil},
+		{"Another machine's beam names the owner and the takeover", "laptop", nil, []string{`"laptop"`, "lyx adopt b"}},
+		{"A beam its landing holds names the landing", "", &landing, []string{"landing", "lyx batten status b"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := refuseBeamStart("b", "desktop", tt.owner, tt.status)
+			if tt.want == nil {
+				if err != nil {
+					t.Errorf("refuseBeamStart(b) = %v; want nil", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("refuseBeamStart(b) = nil; want a refusal naming %q", tt.want)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("refuseBeamStart(b) = %q; missing %q", err, want)
+				}
+			}
+		})
 	}
 }
 
