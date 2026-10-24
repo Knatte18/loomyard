@@ -31,7 +31,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
-	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -222,9 +221,9 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		NewReportPath: func() string { return driverReportPath(location, c.runID, time.Now, reportRand) },
 		HandBack: sheddriver.HandBackDeps{
 			Notify: func(_ sheddriver.Stop, line string) (bool, error) {
-				return orchcli.NotifyPrime(location, loomProgram, line)
+				return orchcli.NotifyParent(location, loomProgram, line)
 			},
-			OrchRecorded: func() (bool, error) { return primeOrchRecorded(location) },
+			OrchRecorded: func() (bool, error) { return orchcli.ParentOrchRecorded(location) },
 			Park:         loomPark(loomCommitStatusDeps(location, c.runID), shedrun.ParkMarker(location, runID)),
 			Now:          time.Now,
 		},
@@ -349,23 +348,6 @@ func loomPark(commit commitStatusDeps, markerPath string) func(reportPath string
 		}
 		return nil
 	}
-}
-
-// primeOrchRecorded reports whether the hub's prime has an orch strand recorded to receive notices.
-func primeOrchRecorded(location *lyxcwd.Location) (bool, error) {
-	primeName, err := fabricengine.PrimeName(location)
-	if err != nil {
-		return false, err
-	}
-	prime, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName))
-	if err != nil {
-		return false, err
-	}
-	orch, err := orchengine.LoadState(orchcli.PrimePaths(prime))
-	if err != nil {
-		return false, err
-	}
-	return orch.Strand != "", nil
 }
 
 // writeDrivePausedNote writes the `go-driver-paused` friction note for a paused stop that carries no reason, naming the stop, its producer and its envelope.

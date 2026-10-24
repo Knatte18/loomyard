@@ -569,7 +569,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	}
 	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error {
-		_, err := orchcli.NotifyPrime(location, loomProgram, line)
+		_, err := orchcli.NotifyParent(location, loomProgram, line)
 		return err
 	})
 
@@ -701,7 +701,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		ParentName:         c.parentName,
 		// NotifyParent names the run first, since the orch reads the notices of every run of the hub.
 		NotifyParent: func(line string) error {
-			_, err := orchcli.NotifyPrime(location, loomProgram, fmt.Sprintf("loom %s: %s", seedSlug(location.WorktreeName), line))
+			_, err := orchcli.NotifyParent(location, loomProgram, fmt.Sprintf("loom %s: %s", seedSlug(location.WorktreeName), line))
 			return err
 		},
 		WebsterDeps: runDeps,

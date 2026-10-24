@@ -133,6 +133,11 @@
 // `NotifyPrime` is the way a task-worktree module does that: it takes the task worktree's location, the module's program name and a line, resolves the prime itself, and posts the line to the prime's orch strand through creel.
 // It reports whether the line was posted, and a prime with no orch strand recorded posts nothing and is no error.
 // `PrimeOrchStrand` answers the name of that strand: the name reed's state holds for the recorded GUID, or the fixed `<shortname>:orch` name for a GUID reed no longer holds, which creel then accepts or refuses.
+// `OrchStrandOf` answers the same for any worktree's orch, the fixed name being `<shortname>:<slug>:orch` in a beam.
+// A notice of a run goes to the nearest live orch up its pair's beam chain, the prime's when none is live:
+// `NotifyParent` resolves it from the pair's recorded parent worktree at each call, `NotifyFrom` starts the walk at the given worktree itself, for a run whose pair is absent,
+// and `ParentOrchRecorded` answers whether that destination records a strand, the watched-or-silent decision a driver reads.
+// Callers that act on no run's pair, hibernate's notice and fabric's push notifier, keep `NotifyPrime`.
 // `InstallPushNotifier` routes fabric's failed-push notice to the prime orch as mail signed `FABRIC`, for every lyx process from the root pre-run.
 // It resolves the hub from the working directory as the network gate does, so a detached push child starting in the board worktree is covered, and installs nothing outside a hub.
 package orchcli

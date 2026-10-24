@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -128,4 +129,42 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 			t.Errorf("parent commit subject = %q; want %q, naming the landing slug", got, want)
 		}
 	})
+}
+
+// TestParentRecordsCommitter_CommitsTheRecordedParent shows the notice walk does not reach Finalize's parent-records commit:
+// with member m forked from beam b, whose orch is stopped, the committer commits a run-records file left in b's records and leaves the prime's records untouched.
+func TestParentRecordsCommitter_CommitsTheRecordedParent(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
+	hubforge.AddPairWith(t, h, "m", fabricengine.AddOptions{SkipPush: true, Parent: "b"})
+	member, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("m"))
+	if err != nil {
+		t.Fatalf("lyxcwd.ResolveWorktree(m) error = %v; want nil", err)
+	}
+	beamRecords, primeRecords := h.PairRecordsSibling("b"), h.PrimeRecords()
+	record := filepath.Join(beamRecords, shedrun.RunsRootRel(), "sibling", "status.json")
+	if err := os.MkdirAll(filepath.Dir(record), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(record, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	primeHead := gitkit.Git(t, primeRecords, "rev-parse", "HEAD")
+
+	if err := parentRecordsCommitter(member, "m")(); err != nil {
+		t.Fatalf("parentRecordsCommitter(m)() error = %v; want nil", err)
+	}
+
+	if got := gitkit.Git(t, beamRecords, "status", "--porcelain"); got != "" {
+		t.Errorf("beam records status = %q; want the run record committed", got)
+	}
+	want := "loom: run records checkpoint for landing m"
+	if got := gitkit.Git(t, beamRecords, "log", "-1", "--format=%s"); got != want {
+		t.Errorf("beam records commit subject = %q; want %q", got, want)
+	}
+	if got := gitkit.Git(t, primeRecords, "rev-parse", "HEAD"); got != primeHead {
+		t.Errorf("prime records HEAD = %s, was %s; want no commit", got, primeHead)
+	}
 }
