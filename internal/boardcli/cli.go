@@ -76,11 +76,15 @@ func Command() *cobra.Command {
 		},
 		Long: `board manages the task-tracker board for the current lyx worktree.
 
-The board is one store: every entry is a task or a note (its kind) and carries labels. Only a task
-can be claimed and depend on other tasks; a note is an idea or observation. A task carries at least
+The board is one store: every entry is a task, a note or a project (its kind) and carries labels. Only
+a task can be claimed and depend on other tasks; a note is an idea or observation. A project groups
+entries: a task or note joins it through its "project" field, the project lists its members' plan
+order in "order", and its "beam" flag, set only by "lyx beam create" and "lyx beam promote", makes it
+a long-lived pair that runs its members. "get" and "list" carry an entry's "parent_beam", the slug of
+the beam above it, empty when the prime is its parent. A task carries at least
 one type label, a note exactly one, and every label must be configured in board.yaml. Every entry
-carries a handle the board assigns, T and a number for a task, a note's type letter and a number for
-a note, such as T4 or B2. The README renders tasks split into dependency layers and notes grouped by
+carries a handle the board assigns, T and a number for a task, P and a number for a project, a
+note's type letter and a number for a note, such as T4 or B2. The README renders tasks split into dependency layers and notes grouped by
 type, each table sorted by handle. Agents read and write the
 board through "lyx board", never through the JSON files under _board.
 
@@ -140,6 +144,17 @@ available subcommands without requiring a git repo.
 			}
 			cfg.Path = boardDir
 			cfg.ParentOf = func(slug string) (string, error) { return hubgeom.ParentOf(layout, slug) }
+			cfg.PairExists = func(slug string) bool {
+				info, err := os.Stat(fabricengine.WorktreePath(layout, slug))
+				return err == nil && info.IsDir()
+			}
+			cfg.ValidateSlug = func(slug string) error {
+				fabricConfig, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(layout))
+				if err != nil {
+					return fmt.Errorf("load the fabric config to judge slug %q: %w", slug, err)
+				}
+				return fabricengine.ValidatePairSlug(slug, fabricConfig.Dirs())
+			}
 		}
 
 		cfg = boardengine.ApplySkipEnv(cfg)
@@ -721,14 +736,18 @@ Examples:
 					return 0
 				}
 				if found {
-					if task.OwnerMachine == "" && task.Kind == boardengine.KindTask {
+					if task.OwnerMachine == "" && (task.Kind == boardengine.KindTask || task.Kind == boardengine.KindProject) {
 						if task.OwnerMachine, err = board().EffectiveOwner(task.Slug); err != nil {
 							return outputError(out, err.Error())
 						}
 					}
-					return outputGetTask(out, &task)
+					parentBeam, err := board().ParentBeamOf(task.Slug)
+					if err != nil {
+						return outputError(out, err.Error())
+					}
+					return outputGetTask(out, &task, parentBeam)
 				}
-				return outputGetTask(out, nil) // task: null in JSON output
+				return outputGetTask(out, nil, "") // task: null in JSON output
 			})(cmd, args)
 		},
 	}
@@ -1177,9 +1196,14 @@ func outputSuccessWithTask(out io.Writer, task boardengine.Task, notice string) 
 	return output.Ok(out, envelope)
 }
 
-// outputGetTask writes {"ok":true,"task":{...}} with task as pointer (nil → null).
-func outputGetTask(out io.Writer, task *boardengine.Task) int {
-	return output.Ok(out, map[string]any{"task": task})
+// outputGetTask writes {"ok":true,"task":{...},"parent_beam":"..."} with task as pointer (nil → null, and no parent_beam).
+// parentBeam is the slug of the beam the entry belongs to, empty when the prime is its parent.
+func outputGetTask(out io.Writer, task *boardengine.Task, parentBeam string) int {
+	envelope := map[string]any{"task": task}
+	if task != nil {
+		envelope["parent_beam"] = parentBeam
+	}
+	return output.Ok(out, envelope)
 }
 
 // outputListBrief writes {"ok":true,"tasks":[...]} with BriefTask objects with exit code 0.

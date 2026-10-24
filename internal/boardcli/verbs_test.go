@@ -379,6 +379,70 @@ func stepOwners(t *testing.T, f *cliFixture) {
 	}
 }
 
+// stepProjects drives the project kind through a seeded hub:
+// list and get carry parent_beam, empty under a grouping project and the beam once the project is hand-marked a beam.
+// A task slug ending in the records suffix and one equal to a configured junction name are refused with fabric's reason.
+// A member's project change is refused naming `lyx batten cancel <slug> --remove` while a directory stands at its pair worktree path.
+func stepProjects(t *testing.T, f *cliFixture) {
+	mustUpsert(t, `{"slug":"proj","title":"Proj","kind":"project","labels":["bug"]}`)
+	mustUpsert(t, `{"slug":"member","title":"Member","kind":"task","labels":["bug"],"project":"proj"}`)
+
+	parentBeamOfListed := func(slug string) any {
+		for _, entry := range runJSON(t, 0, "list")["tasks"].([]any) {
+			if task := entry.(map[string]any); task["slug"] == slug {
+				return task["parent_beam"]
+			}
+		}
+		t.Fatalf("list: no entry %q", slug)
+		return nil
+	}
+	if got := runJSON(t, 0, "get", `{"slug":"member"}`)["parent_beam"]; got != "" {
+		t.Errorf("get member under a grouping project: parent_beam = %v, want empty", got)
+	}
+	if got := parentBeamOfListed("member"); got != nil {
+		t.Errorf("list member under a grouping project: parent_beam = %v, want none", got)
+	}
+
+	seedBoardFile(t, f.cwd, `{"version":1,"entries":[`+
+		`{"id":0,"slug":"proj","title":"Proj","kind":"project","labels":["bug"],"beam":true},`+
+		`{"id":1,"slug":"other","title":"Other","kind":"project","labels":["bug"]},`+
+		`{"id":2,"slug":"member","title":"Member","kind":"task","labels":["bug"],"project":"proj"}]}`)
+	if got := runJSON(t, 0, "get", `{"slug":"member"}`)["parent_beam"]; got != "proj" {
+		t.Errorf("get member of a beam: parent_beam = %v, want proj", got)
+	}
+	if got := parentBeamOfListed("member"); got != "proj" {
+		t.Errorf("list member of a beam: parent_beam = %v, want proj", got)
+	}
+	if got := runJSON(t, 0, "get", `{"slug":"proj"}`)["parent_beam"]; got != "" {
+		t.Errorf("get the beam itself: parent_beam = %v, want empty", got)
+	}
+
+	if err := os.WriteFile(configengine.ConfigFile(fabricengine.BoardDir(filepath.Dir(f.cwd)), "fabric"), []byte("branch_prefix: \"\"\npathspec: docs\n"), 0o644); err != nil {
+		t.Fatalf("write fabric.yaml: %v", err)
+	}
+	refusals := []struct {
+		slug string
+		want string
+	}{
+		{fabricengine.RecordsBranchName("made"), "must not end in"},
+		{"docs", "reserved for lyx hub geometry"},
+	}
+	for _, tt := range refusals {
+		result := runJSON(t, 1, "upsert", `{"slug":"`+tt.slug+`","title":"T","kind":"task","labels":["bug"]}`)
+		if msg, _ := result["error"].(string); !strings.Contains(msg, tt.want) {
+			t.Errorf("upsert slug %q: error = %q, want it to carry %q", tt.slug, msg, tt.want)
+		}
+	}
+
+	if err := os.Mkdir(filepath.Join(filepath.Dir(f.cwd), "member"), 0o755); err != nil {
+		t.Fatalf("create the pair worktree directory: %v", err)
+	}
+	result := runJSON(t, 1, "upsert", `{"slug":"member","project":"other"}`)
+	if msg, _ := result["error"].(string); !strings.Contains(msg, "lyx batten cancel member --remove") {
+		t.Errorf("upsert a project change on an entry with a pair: error = %q, want it to name `lyx batten cancel member --remove`", msg)
+	}
+}
+
 // formatNumber renders a decoded JSON integer without a fractional part.
 func formatNumber(f float64) string {
 	b, _ := json.Marshal(int(f))
