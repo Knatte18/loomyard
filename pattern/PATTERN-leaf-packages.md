@@ -71,6 +71,10 @@ Imports only the standard library, `internal/logger`, `internal/stencil` and `in
 
 Imports only the standard library.
 
+## `internal/lensreport`
+
+Imports only the standard library, so every lens review host and `planparser` can share the lens report naming.
+
 ## `internal/machinename`
 
 Imports only the standard library.

@@ -41,6 +41,8 @@ func filledValues() Values {
 		SelfCheckCommand:      "lyx check --now",
 		FinalSelfCheckCommand: "lyx check --final",
 		DispositionPlace:      "the PLACE section",
+		LensReportPath:        "/abs/one.lens-<lens>.md",
+		LensReportSpecPath:    "/abs/report-spec.md",
 		RelaunchFiles:         "RELAUNCH-FILES",
 	}
 }
@@ -109,6 +111,8 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"- alpha: Look at A. Then at B.\n- beta: Look at C.",
 				"lyx check --final",
 				"the PLACE section",
+				"save each fork's final message verbatim to `/abs/one.lens-<lens>.md`",
+				"in the format `/abs/report-spec.md` defines",
 			}, tt.wants...)
 			for _, want := range wants {
 				if !strings.Contains(got, want) {
@@ -160,6 +164,8 @@ func TestDirective_MissingValueNamesTheMarker(t *testing.T) {
 		{"RejectionRule without a critical judge", func(v *Values) { v.RejectionRule = "" }, "rejection_rule"},
 		{"SeverityRule", func(v *Values) { v.SeverityRule = "" }, "severity_rule"},
 		{"FinalSelfCheckCommand", func(v *Values) { v.FinalSelfCheckCommand = "" }, "final_self_check_command"},
+		{"LensReportPath", func(v *Values) { v.LensReportPath = "" }, "lens_report_path"},
+		{"LensReportSpecPath", func(v *Values) { v.LensReportSpecPath = "" }, "lens_report_spec_path"},
 		{"Lenses", func(v *Values) { v.Lenses = nil }, "lens_list"},
 		{"ExploreStep", func(v *Values) { v.WriterFork = filledWriterFork(); v.WriterFork.ExploreStep = "" }, "explore_step"},
 		{"InputRecord", func(v *Values) { v.WriterFork = filledWriterFork(); v.WriterFork.InputRecord = "" }, "input_record"},

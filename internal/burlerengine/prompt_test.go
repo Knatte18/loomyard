@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/lenses"
+	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -33,6 +34,9 @@ var (
 	testReviewFiles = reviewFilesIn("/tmp/review-half")
 	testFixFiles    = fixFilesIn("/tmp/fix-half")
 )
+
+// testSpecsDir is the placeholder deployed-specs directory every compose call in this file passes; the compose functions only render paths under it.
+const testSpecsDir = "/tmp/specs"
 
 // The positions of the rendered instruction files in a halfPrompt's Files.
 const (
@@ -81,7 +85,7 @@ func newComposableProfile(t *testing.T) Profile {
 // composeReview composes p's review half prompt over the placeholder paths, failing the test on error.
 func composeReview(t *testing.T, stencilsDir string, p *Profile, patternDirective string) halfPrompt {
 	t.Helper()
-	prompt, err := composeReviewPrompt(stencilsDir, p, patternDirective, testReviewFiles)
+	prompt, err := composeReviewPrompt(stencilsDir, testSpecsDir, p, patternDirective, testReviewFiles)
 	if err != nil {
 		t.Fatalf("composeReviewPrompt() = %v; want nil error", err)
 	}
@@ -91,7 +95,7 @@ func composeReview(t *testing.T, stencilsDir string, p *Profile, patternDirectiv
 // composeFix composes p's fix half prompt over the placeholder paths and a review's findings as the work, failing the test on error.
 func composeFix(t *testing.T, stencilsDir string, p *Profile, frictionDirective string) halfPrompt {
 	t.Helper()
-	prompt, err := composeFixPrompt(stencilsDir, p, frictionDirective, fixWork(p.ReviewPath, "", false), testFixFiles)
+	prompt, err := composeFixPrompt(stencilsDir, testSpecsDir, p, frictionDirective, fixWork(p.ReviewPath, "", false), testFixFiles)
 	if err != nil {
 		t.Fatalf("composeFixPrompt() = %v; want nil error", err)
 	}
@@ -444,7 +448,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			t.Fatalf("Remove(burler-cluster-fan) = %v; want nil", err)
 		}
 
-		if _, err := composeReviewPrompt(stencilsDir, &p, "", testReviewFiles); err == nil || !strings.Contains(err.Error(), "burler-cluster-fan") {
+		if _, err := composeReviewPrompt(stencilsDir, testSpecsDir, &p, "", testReviewFiles); err == nil || !strings.Contains(err.Error(), "burler-cluster-fan") {
 			t.Errorf("composeReviewPrompt() error = %v; want the read error naming burler-cluster-fan", err)
 		}
 	})
@@ -478,6 +482,10 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 		if styleIdx == -1 || securityIdx == -1 || styleIdx >= securityIdx {
 			t.Errorf("review step lens bullets at idx style=%d security=%d; want both present, style first", styleIdx, securityIdx)
 		}
+
+		// The handler saves each fork's report beside the round's review, in the deployed spec's format.
+		requireContains(t, reviewStep, "verbatim to `"+lensreport.PathPattern(p.ReviewPath)+"`")
+		requireContains(t, reviewStep, "`"+stencilstore.Path(testSpecsDir, lensreport.SpecName)+"` defines")
 
 		// Each block helper's rendered content lands in its intended instruction file and nowhere else: fix_scope_rules is the fix step's alone, cluster_rules (the lens names) is the review step's alone, and pattern_directive/target is the explore step's alone.
 		requireContains(t, fixStep, "Write surface")

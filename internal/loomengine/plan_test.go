@@ -15,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lenses"
+	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/planparser"
@@ -311,8 +312,9 @@ func TestPlanTable(t *testing.T) {
 					writeLensesYAML(t, layout, tt.lensesYAML)
 				}
 				stencilsDir := newTestStencilsDir(t)
+				specsDir := newTestSpecsDir(t)
 
-				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(templatePlanFan), reg, "none")
+				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, specsDir, planTableConfig(templatePlanFan), reg, "none")
 				if err != nil {
 					t.Fatalf("PlanTable(twill) = _, %v; want nil error", err)
 				}
@@ -352,6 +354,8 @@ func TestPlanTable(t *testing.T) {
 					"Report defects only, never a passed check.",
 					"opened in this session, a `path:line` or glyph, a `PATTERN` entry, a test or caller the change would break, or the `lyx loom validate-plan` output, and what it shows",
 					planTwillSeverityRule,
+					"verbatim to `" + lensreport.PathPattern(filepath.Join(planparser.PlanDir(layout.AnchorPath()), planparser.LensReviewFileName)) + "`",
+					"`" + stencilstore.Path(specsDir, lensreport.SpecName) + "` defines",
 				} {
 					if !strings.Contains(prompt, want) {
 						t.Errorf("twill lead prompt lacks %q", want)

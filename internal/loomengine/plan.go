@@ -92,7 +92,7 @@ func PlanTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 	forks := cfg.PlanLenses != ""
 	var leadValues map[string]string
 	if forks {
-		lensDirective, err := planLensDirective(layout, dirs, stencilsDir, cfg.PlanLenses)
+		lensDirective, err := planLensDirective(layout, dirs, stencilsDir, specsDir, cfg.PlanLenses)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w", err)
 		}

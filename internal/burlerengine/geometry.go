@@ -33,4 +33,6 @@ type Geometry struct {
 	// PatternRecordPath is the decision record whose declared PATTERN changes the review round's directive renders.
 	// An empty path renders none.
 	PatternRecordPath string
+	// SpecsDir is the deployed-specs directory a fanned half's prompt points at for the lens report format.
+	SpecsDir string
 }

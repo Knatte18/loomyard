@@ -79,7 +79,7 @@
 // Profile.FixFan names a fan from the lenses.yaml lens/fan library, and validateFix resolves it into the fixer's lenses before any spawn, so an unknown fixer fan fails the half.
 // A profile with no FixFan is the single fixer, whose files render the same bytes as before the fan existed.
 // With a fan, the fixer is spawned with fork subagents authorized and its fix step renders the burler-fix-self-check part before the fixer-report rule:
-// before it writes the fixer-report, the fixer reads the deployed burler-fix-check-rubric stencil and spawns one read-only fork per lens over the change set it just made, then, editing nothing until the last fork has returned, judges all fork findings together by the fix step's own three dispositions and records them in a `## Self-check` section of the fixer-report.
+// before it writes the fixer-report, the fixer reads the deployed burler-fix-check-rubric stencil and spawns one read-only fork per lens over the change set it just made, then, editing nothing until the last fork has returned, saves each fork's final message verbatim in a lens report beside the fixer-report, judges all fork findings together by the fix step's own three dispositions and records them in a `## Self-check` section of the fixer-report.
 // One fork pass per fixer session: a fixer re-prompted by its gate, or resumed after its forks were lost, spawns no further forks and names each lost fork as "no report".
 // A forking fixer still carries its row's gates, because a turn end with a fork outstanding is a wait, so no gate runs while a fork is live.
 //
@@ -271,7 +271,8 @@
 // A cluster round still runs its review as ONE shuttle session, the handler, in three phases.
 // (1) the handler explores the target in full;
 // (2) the handler spawns all N lens forks in a SINGLE message via Claude Code's built-in fork subagents (Agent tool, subagent_type "fork", always unnamed), and, while they run, performs its own HOLISTIC review — architecture, cross-file invariants, PATTERN-fit — the level no narrow lens covers;
-// (3) once the last fork has returned, and never before, the handler consolidates every fork's returned findings together with its own holistic findings into the ONE review file:
+// (3) once the last fork has returned, and never before, the handler saves each fork's final message verbatim in a lens report beside the review file, named by internal/lensreport and written in the format of the twill-lens-report-spec spec under Geometry.SpecsDir;
+// it then consolidates every fork's returned findings together with its own holistic findings into the ONE review file:
 // dedup across lenses, an origin: frontmatter key on every kept finding (lens:<name> or handler), a ## Rejected prose section for false positives (judged with equal skepticism, never appearing in the parsed findings), and severity ordering.
 // All three phases are part of the review, so review-before-fix is intact exactly as in a solo round:
 // the consolidated review is fully written to disk, and accepted, before the fix half spawns.

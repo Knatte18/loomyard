@@ -26,5 +26,6 @@ func BurlerGeometry(target, stateDir, hash8 string) burlerengine.Geometry {
 		AnchorPath:   stateDir,
 		RepoRoot:     target,
 		Shortname:    agentname.StandaloneShortname(hash8),
+		SpecsDir:     SpecsDir(stateDir),
 	}
 }

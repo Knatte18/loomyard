@@ -14,8 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // doneReview scripts a review half whose reviewer writes review and is done.
@@ -98,7 +100,8 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			p.LanguageSkills = tt.codeRound
 			p.RolePrefix = tt.rolePrefix
 			shuttle := doneReview(approvedReview)
-			geom := Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}
+			specsDir := filepath.Join(root, "specs")
+			geom := Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", SpecsDir: specsDir}
 			if tt.declaredBullet != "" {
 				geom.RepoRoot = root
 				geom.PatternRecordPath = writeDeclaredPatternRecord(t, root, tt.declaredBullet)
@@ -108,7 +111,7 @@ func TestEngine_Review_TableShape(t *testing.T) {
 			// A cluster reviewer with no fork audit is refused after the spawn; the spec is what this test reads.
 			_, _ = e.Review(p, opts)
 
-			if tt.declaredBullet != "" {
+			if tt.declaredBullet != "" || tt.clusterFan != "" {
 				instructions, err := filepath.Glob(filepath.Join(root, ".lyx", "burler", "review-*", "*"))
 				if err != nil || len(instructions) == 0 {
 					t.Fatalf("Glob(review instruction files) = %v, %v; want the composed files", instructions, err)
@@ -121,8 +124,12 @@ func TestEngine_Review_TableShape(t *testing.T) {
 					}
 					all.Write(data)
 				}
-				if !strings.Contains(all.String(), tt.declaredBullet) {
+				if tt.declaredBullet != "" && !strings.Contains(all.String(), tt.declaredBullet) {
 					t.Errorf("review instruction files lack the declared bullet %q", tt.declaredBullet)
+				}
+				// A fanned review names the deployed lens-report spec under the geometry's SpecsDir.
+				if wantSpec := stencilstore.Path(specsDir, lensreport.SpecName); tt.clusterFan != "" && !strings.Contains(all.String(), wantSpec) {
+					t.Errorf("review instruction files lack the lens-report spec path %q", wantSpec)
 				}
 			}
 

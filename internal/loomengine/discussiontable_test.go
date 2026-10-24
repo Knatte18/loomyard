@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lenses"
+	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -468,6 +469,8 @@ func TestDiscussionTable(t *testing.T) {
 					"finishes writing `" + DiscussionDecisionRecord(layout) + "`, `" + DiscussionSupportLog(layout) + "` and `" + DiscussionRelevant(layout) + "` per",
 					"Fix the record, or reject the finding with a one-line reason.",
 					"a severity (`BLOCKING`, `MEDIUM` or `LOW`)",
+					"verbatim to `" + lensreport.PathPattern(DiscussionSupportLog(layout)) + "`",
+					"`" + stencilstore.Path(discussionTableSpecsDir, lensreport.SpecName) + "` defines",
 				} {
 					if !strings.Contains(prompt, want) {
 						t.Errorf("twill lead prompt lacks %q", want)

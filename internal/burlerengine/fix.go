@@ -154,7 +154,7 @@ func (e *Engine) Fix(p Profile, opts RunOpts, digest string) (FixResult, error) 
 			return FixResult{}, fmt.Errorf("burler: materialize instruction files: %w", err)
 		}
 	}
-	prompt, err := composeFixPrompt(e.stencilsDir, &p, frictionDirective, fixWork(p.ReviewPath, gateFindingsPath, routed > 0), paths)
+	prompt, err := composeFixPrompt(e.stencilsDir, e.geom.SpecsDir, &p, frictionDirective, fixWork(p.ReviewPath, gateFindingsPath, routed > 0), paths)
 	if err != nil {
 		return FixResult{}, err
 	}

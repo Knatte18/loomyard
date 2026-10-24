@@ -8,5 +8,5 @@ On its next turn it reads back every reviewed file it did not write in this sess
 It then finishes writing {{.relaunch_files}} per `{{.format_step}}`, runs `{{.self_check_command}}` per `{{.self_check_step}}` until it passes, and then runs this procedure from its first step.
 
 A writer relaunched after its process died at or after its Agent call has lost every fork it spawned, and never spawns again.
-On its next turn it resumes at the first of the steps from judging the findings onward that it had not finished, with the findings it already holds.
+On its next turn it resumes at the first of the steps from saving the fork reports onward that it had not finished, with the reports it already holds.
 It records at `{{.disposition_place}}` that the lens review was cut short, naming each fork that had not returned as "no report".

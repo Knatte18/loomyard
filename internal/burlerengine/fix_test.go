@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -119,7 +120,8 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 	}
 	shuttle := &fakeShuttle{fix: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, writes: "nothing fixed"}}
 	stencilsDir := newTestStencilsDir(t)
-	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug"}, cfg, stencilsDir, "", []string{"scribe:golang-testing"})
+	specsDir := filepath.Join(root, "specs")
+	e := New(shuttle, Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", SpecsDir: specsDir}, cfg, stencilsDir, "", []string{"scribe:golang-testing"})
 
 	var gateCalls int
 	opts := RunOpts{
@@ -207,6 +209,9 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 			t.Errorf("twill fix step equals the single render; want the self-check part in it")
 		}
 		requireContains(t, fixStep, stencilstore.Path(stencilsDir, "burler-fix-check-rubric"))
+		requireContains(t, fixStep, "verbatim to `"+lensreport.PathPattern(filepath.Join(root, "fixer-report.md"))+"`")
+		requireContains(t, fixStep, "`"+stencilstore.Path(specsDir, lensreport.SpecName)+"` defines")
+		requireContains(t, findLineContaining(fixStep, "Write surface"), "and the self-check's lens reports")
 		styleIdx, securityIdx := strings.Index(fixStep, "- style: style prose"), strings.Index(fixStep, "- security: security prose")
 		if styleIdx == -1 || securityIdx == -1 || styleIdx >= securityIdx {
 			t.Errorf("fix step lens bullets at idx style=%d security=%d; want both present, style first", styleIdx, securityIdx)
