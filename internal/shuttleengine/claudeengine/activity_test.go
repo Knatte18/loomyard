@@ -151,3 +151,81 @@ func TestTurnEndActivity(t *testing.T) {
 		}
 	})
 }
+
+func TestTurnEndUsageLimited(t *testing.T) {
+	t.Parallel()
+
+	const (
+		earlierTurnEnd = `{"type":"assistant","timestamp":"2026-10-07T09:00:00.000Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"first turn done"}]}}`
+		agentTurnEnd   = `{"type":"assistant","timestamp":"2026-10-07T09:20:00.000Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"stopping here"}]}}`
+		limitTurnEnd   = `{"type":"assistant","timestamp":"2026-10-07T09:20:00.000Z","isApiErrorMessage":true,"error":"rate_limit","message":{"stop_reason":"stop_sequence","content":[{"type":"text","text":"You've hit your limit"}]}}`
+		serverTurnEnd  = `{"type":"assistant","timestamp":"2026-10-07T09:20:00.000Z","isApiErrorMessage":true,"error":"server_error","message":{"stop_reason":"stop_sequence","content":[{"type":"text","text":"API Error: 500"}]}}`
+		forkLimit      = `{"type":"assistant","isSidechain":true,"isApiErrorMessage":true,"error":"rate_limit","message":{"stop_reason":"stop_sequence","content":[{"type":"text","text":"You've hit your limit"}]}}`
+		forkServer     = `{"type":"assistant","isSidechain":true,"isApiErrorMessage":true,"error":"server_error","message":{"stop_reason":"stop_sequence","content":[{"type":"text","text":"API Error: 500"}]}}`
+		sidechainLimit = `{"type":"assistant","isSidechain":true,"timestamp":"2026-10-07T09:25:00.000Z","isApiErrorMessage":true,"error":"rate_limit","message":{"stop_reason":"stop_sequence","content":[{"type":"text","text":"You've hit your limit"}]}}`
+		forkAnswer     = `{"type":"assistant","isSidechain":true,"message":{"stop_reason":"end_turn","content":[{"type":"text","text":"found it"}]}}`
+	)
+	previousTurnEnd := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name       string
+		transcript []string
+		// fork is the one fork transcript's lines, none when empty, and forkWrote its write time.
+		fork      []string
+		forkWrote time.Time
+		want      bool
+	}{
+		{"a main-chain usage-limit turn end is limited", []string{earlierTurnEnd, limitTurnEnd}, nil, time.Time{}, true},
+		{"a main-chain server-error turn end is not limited", []string{earlierTurnEnd, serverTurnEnd}, nil, time.Time{}, false},
+		{"a limit an earlier turn end reported does not limit a later plain turn end", []string{earlierTurnEnd, limitTurnEnd, agentTurnEnd}, nil, time.Time{}, false},
+		{"a sidechain limit entry in the main transcript is ignored", []string{earlierTurnEnd, agentTurnEnd, sidechainLimit}, nil, time.Time{}, false},
+		{"a plain turn end with no fork is not limited", []string{earlierTurnEnd, agentTurnEnd}, nil, time.Time{}, false},
+		{"a fork stopped on the limit during the turn makes the agent's own turn end limited", []string{earlierTurnEnd, agentTurnEnd}, []string{forkLimit}, previousTurnEnd.Add(10 * time.Minute), true},
+		{"a fork stopped on the limit before the previous turn end does not count", []string{earlierTurnEnd, agentTurnEnd}, []string{forkLimit}, previousTurnEnd.Add(-time.Minute), false},
+		{"a fork that answered after a limit entry does not count", []string{earlierTurnEnd, agentTurnEnd}, []string{forkLimit, forkAnswer}, previousTurnEnd.Add(10 * time.Minute), false},
+		{"a fork stopped on a server error does not count", []string{earlierTurnEnd, agentTurnEnd}, []string{forkServer}, previousTurnEnd.Add(10 * time.Minute), false},
+		{"a first turn counts every fork", []string{agentTurnEnd}, []string{forkLimit}, previousTurnEnd.Add(-time.Hour), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			path := filepath.Join(dir, "session.jsonl")
+			if err := os.WriteFile(path, []byte(strings.Join(tt.transcript, "\n")+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if len(tt.fork) > 0 {
+				forkPath := filepath.Join(dir, "session", "subagents", "agent-1.jsonl")
+				if err := os.MkdirAll(filepath.Dir(forkPath), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(forkPath, []byte(strings.Join(tt.fork, "\n")+"\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chtimes(forkPath, tt.forkWrote, tt.forkWrote); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if got := (&Claude{}).TurnEndUsageLimited(stopEventFor(t, path)); got != tt.want {
+				t.Errorf("TurnEndUsageLimited() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("a missing transcript path or file is not limited", func(t *testing.T) {
+		t.Parallel()
+		noPath, err := json.Marshal(map[string]any{"hook_event_name": "Stop"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, event := range map[string]shuttleengine.Event{
+			"no transcript_path": {Kind: shuttleengine.EventStop, Raw: noPath},
+			"missing file":       stopEventFor(t, filepath.Join(t.TempDir(), "absent.jsonl")),
+		} {
+			if (&Claude{}).TurnEndUsageLimited(event) {
+				t.Errorf("%s: TurnEndUsageLimited() = true; want false", name)
+			}
+		}
+	})
+}

@@ -141,6 +141,12 @@
 // a sidechain entry never counts, and a later normal turn end clears the error.
 // Every failure degrades to the zero reading.
 //
+// The usage-limit reading (UsageLimitReader) reads Claude Code's own classification, the `error` field `rate_limit` on a synthetic `isApiErrorMessage` entry, never the entry's text or the agent's words.
+// A turn end is usage-limited when the main transcript's newest main-chain turn end is such an entry.
+// It is also usage-limited when a fork transcript under `subagents/` last written after the main chain's previous turn end has such an entry as its newest assistant entry.
+// The fork half catches an agent whose forks hit the limit and that then ends its turn itself; the time bound keeps a limit an earlier turn already met from counting again.
+// A session with no previous turn end counts every fork, and every failure reads as no limit.
+//
 // The resume check refuses a session whose registry entry names a live pid, unless the live process's start time differs from the entry's `procStart`, which proves the pid was reused.
 // An unreadable start time, or an entry without `procStart`, still refuses and says the pid could not be proven reused.
 //

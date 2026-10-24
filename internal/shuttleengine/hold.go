@@ -1,4 +1,5 @@
 // hold.go builds the notice an autonomous run's held turn end sends its parent, and sends it once per held turn end through the runner's notifier.
+// It also declares the optional capability that tells a held turn end the provider's usage limit caused, which sends no notice.
 
 package shuttleengine
 
@@ -72,6 +73,33 @@ func (run *Run) settleDeferredHold() {
 	}
 	run.pendingHold = nil
 	run.notifyHeld(held)
+}
+
+// UsageLimitReader is an optional capability beside Engine: the provider's reading of whether its usage limit stopped the session a turn end names.
+// An Engine without it reports no usage limit, so its held turn ends are notified as any other.
+type UsageLimitReader interface {
+	// TurnEndUsageLimited reports whether the provider's usage limit stopped the session turnEnd names at that turn end, or stopped one of its forks during the turn turnEnd ends.
+	// It reports false on every failure and never errors.
+	TurnEndUsageLimited(turnEnd Event) bool
+}
+
+// holdNoticePending reports whether a held turn end would be notified or queued for notice now.
+// It is false for a run notifyHeld never notifies, and for a deferred-hold run whose next turn already started.
+// A pause covering the run discards the notice only when no hold is deferred; a deferred hold is sent after the pause lifts.
+func (run *Run) holdNoticePending() bool {
+	if run.runner.notifier == nil || run.spec.Interactive || run.spec.QuietHold {
+		return false
+	}
+	if run.spec.HoldDeferral == nil {
+		return !run.covered
+	}
+	return !run.turnStartRead
+}
+
+// usageLimited reports whether the run's engine reads held as a turn end the provider's usage limit caused.
+func (run *Run) usageLimited(held *heldTurnEnd) bool {
+	reader, ok := run.engine.(UsageLimitReader)
+	return ok && reader.TurnEndUsageLimited(Event{Raw: held.raw})
 }
 
 // apiErrorContinueLine is the one line an agent whose turn ended on an API error across a machine sleep is given to carry on.

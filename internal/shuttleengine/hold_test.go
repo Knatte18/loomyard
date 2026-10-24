@@ -79,6 +79,8 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		// apiError makes the engine read the "STOP:overloaded" turn end as an API error and the pane take the lines sent to it, and sendFails makes that send fail.
 		apiError  bool
 		sendFails bool
+		// usageLimit makes the engine read the "STOP:limit" turn end as one the provider's usage limit caused.
+		usageLimit bool
 		// sleepJump is the clock jump per Sleep, nonzero to reach a wait bound in a few ticks, and timeout is the run's deadline, heldTestTimeout when zero.
 		sleepJump time.Duration
 		timeout   time.Duration
@@ -185,6 +187,35 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			check: func(t *testing.T, got heldRun) {
 				if len(got.sent) != 0 || len(got.notices) != 1 {
 					t.Errorf("sent = %q, notices = %q; want nothing typed and one notice", got.sent, got.notices)
+				}
+			},
+		},
+		{
+			name: "a usage-limited stop sends no notice, leaves the offset and holds to the deadline", events: "STOP:limit\n", usageLimit: true, strand: strandName,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 0 || got.notifiedOffset != 0 || got.result.Outcome != OutcomeTimeout {
+					t.Errorf("notices = %q, NotifiedOffset = %d, outcome = %q; want none, 0 and a hold to the deadline", got.notices, got.notifiedOffset, got.result.Outcome)
+				}
+			},
+		},
+		{
+			name: "a stop after a usage-limited one is notified", events: "STOP:limit\n", usageLimit: true, strand: strandName,
+			script: func(appendLine func(string), _ func(time.Duration)) []func() {
+				return []func(){func() { appendLine("START") }, func() { appendLine("STOP:back") }}
+			},
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 1 || !strings.HasSuffix(got.notices[0], "«back»") {
+					t.Errorf("notices = %q, want one for the stop after the limit", got.notices)
+				}
+			},
+		},
+		{
+			name: "a deferred run sends no notice for a usage-limited stop after the deferral", events: "STOP:limit\n", usageLimit: true,
+			sleepJump: time.Minute, timeout: 30 * time.Minute,
+			deferral: func(*testing.T, func() time.Duration) func() bool { return func() bool { return false } },
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 0 || got.result.Outcome != OutcomeTimeout {
+					t.Errorf("notices = %q, outcome = %q, want none and a wait to the deadline", got.notices, got.result.Outcome)
 				}
 			},
 		},
@@ -337,6 +368,9 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			var engine Engine = &waitingEngine{outstanding: tt.outstand}
 			if tt.session {
 				engine = &sessionFakeEngine{waitingEngine: waitingEngine{outstanding: tt.outstand}}
+			}
+			if tt.usageLimit {
+				engine = &sessionFakeEngine{waitingEngine: waitingEngine{outstanding: tt.outstand}, usageLimitLine: "STOP:limit"}
 			}
 			var reed ReedOps = &fakeReed{StatusQueue: liveStrandStatus(true)}
 			var paneReed *echoReed

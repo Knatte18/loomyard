@@ -324,6 +324,9 @@ func (run *Run) Wait() (Result, error) {
 				}
 				switch {
 				case continued:
+				case run.holdNoticePending() && run.usageLimited(held):
+					// The parent cannot act while the account is limited, and a notice sent now lands in its context as stale clutter after the reset.
+					logger.Info("shuttle: held turn end stopped on the usage limit; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
 				case run.spec.HoldDeferral == nil:
 					run.notifyHeld(held)
 				case !run.turnStartRead:
@@ -845,7 +848,7 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	last := events[len(events)-1]
 	if last.Kind == EventWaiting {
 		run.recordWaiting(last)
-		run.waitingTurnEnd = &heldTurnEnd{message: last.Message, offset: offsetPastEvent(data, startOffset, newOffset, last)}
+		run.waitingTurnEnd = &heldTurnEnd{message: last.Message, offset: offsetPastEvent(data, startOffset, newOffset, last), raw: last.Raw}
 		if len(run.waitingTasks) == 0 && len(run.gate) == 0 && allOutputFilesExist(run.spec.OutputFiles) {
 			return OutcomeDone, nil, nil
 		}
@@ -866,7 +869,7 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	if allOutputFilesExist(run.spec.OutputFiles) {
 		return OutcomeDone, nil, nil
 	}
-	held := &heldTurnEnd{message: last.Message, offset: offsetPastEvent(data, startOffset, newOffset, last)}
+	held := &heldTurnEnd{message: last.Message, offset: offsetPastEvent(data, startOffset, newOffset, last), raw: last.Raw}
 	if guardArmed && !slices.ContainsFunc(turnStarts, func(start int64) bool { return start < held.offset }) {
 		logger.Warn("shuttle: turn end before the prompt's turn start; not held", "strandGUID", run.state.StrandGUID, "offset", held.offset, "lastAssistantMessage", held.message)
 		return "", nil, nil
@@ -938,6 +941,8 @@ type heldTurnEnd struct {
 	message string
 	// offset is the events-file byte offset just past the turn end's line.
 	offset int64
+	// raw is the turn end's events-file line.
+	raw []byte
 }
 
 // offsetPastEvent returns the events-file offset just past the line ev was parsed from.

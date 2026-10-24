@@ -791,18 +791,20 @@ var _ ReedOps = (*skillReed)(nil)
 // Every signal names session-1, and the read consumes through the last complete line.
 // ProcessLiveness answers liveness for any session id, and TurnStartInterrupt answers interrupted and interruptAt for any turn start.
 // TurnEndActivity marks a turn end as an API error when its line is apiErrorLine.
+// TurnEndUsageLimited reads a turn end as usage-limited when its line is usageLimitLine.
 // TurnStartProgress answers progress for any turn start.
 // With markEvents set, ParseSessionSignals also reads "@<RFC 3339 time>" as the stamp of the next line and sets Event, with that time, on the lines the engine's ParseEvents yields an event from ("STOP:", "WAIT:" and "ASK:<message>", the last read as an ask) and on "MARK", a turn end no ParseEvents yields an event from;
 // a read then stops before a trailing run of stamp lines with no payload after them.
 type sessionFakeEngine struct {
 	waitingEngine
 
-	liveness     Liveness
-	interrupted  bool
-	interruptAt  time.Time
-	apiErrorLine string
-	progress     TurnProgress
-	markEvents   bool
+	liveness       Liveness
+	interrupted    bool
+	interruptAt    time.Time
+	apiErrorLine   string
+	usageLimitLine string
+	progress       TurnProgress
+	markEvents     bool
 }
 
 func (e *sessionFakeEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int) {
@@ -883,11 +885,16 @@ func (e *sessionFakeEngine) TurnEndActivity(turnEnd Event) TurnEndActivity {
 	return TurnEndActivity{APIError: true, APIErrorText: "overloaded"}
 }
 
+func (e *sessionFakeEngine) TurnEndUsageLimited(turnEnd Event) bool {
+	return e.usageLimitLine != "" && strings.TrimSpace(string(turnEnd.Raw)) == e.usageLimitLine
+}
+
 var (
 	_ SessionSignalParser = (*sessionFakeEngine)(nil)
 	_ SessionProber       = (*sessionFakeEngine)(nil)
 	_ ActivityReader      = (*sessionFakeEngine)(nil)
 	_ TurnProgressReader  = (*sessionFakeEngine)(nil)
+	_ UsageLimitReader    = (*sessionFakeEngine)(nil)
 )
 
 // openerFakeEngine is fakeEngine plus the SessionOpener capability: OpenLaunch records the spec it was given and returns the scripted launch, or the scripted error.
