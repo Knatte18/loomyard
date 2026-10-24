@@ -222,7 +222,7 @@ func TemplateSetting(module, key string) (any, error) {
 }
 
 // fixedGateLists are the gate lists the kit's seams answer from, so a resolved gate builds without a hub's gate.yaml.
-var fixedGateLists = map[string][]int{"round": {0, 1}, "landing": {0, 1}, "publish": {2}}
+var fixedGateLists = map[string][]int{"round": {0, 1}, "landing": {0, 1}}
 
 // fixedGateTiers answers a named gate's tier list from fixedGateLists, and errors naming a gate the kit holds no list for.
 func fixedGateTiers(gate string) ([]int, error) {
@@ -281,7 +281,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			"Discussion-Review": fullEnvSegment(3, "loom.yaml"),
 			"Plan-Review":       fullEnvSegment(3, "loom.yaml"),
 			"Code-Review":       fullEnvSegment(3, "loom.yaml"),
-			"Merge-Review":      fullEnvSegment(3, "loom.yaml"),
 			"Darn-Review":       fullEnvSegment(1, "darn.yaml"),
 		},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
