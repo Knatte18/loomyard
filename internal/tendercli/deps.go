@@ -154,7 +154,7 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 				return nil, err
 			}
 			return pairOwners(owners, slugs, here, func(slug string) (string, error) {
-				return fabricengine.ParentSlug(location, slug)
+				return hubgeom.ParentOf(location, slug)
 			})
 		},
 		PushPair: func(slug string) error {

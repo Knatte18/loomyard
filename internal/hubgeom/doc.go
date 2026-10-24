@@ -33,6 +33,13 @@
 // A missing or unreadable .git entry is the one error of ReedGeometry and of BurlerGeometry, and an unresolvable parent leaves ParentName empty with a warning in all three.
 // hubgeom is still the only reader — no engine resolves a parent, per the Told-Geometry Invariant.
 //
+// ParentOf is the one parent resolver every owner reader is handed: it returns the slug of the pair an entry was forked from, "" for the prime.
+// It reads the slug's origin record over the prime's location, and only when no record is found reads the nearest open beam above the entry on the local board.
+// A found record with no parent worktree reads as the prime and never falls through to the board.
+// A found record's parent is its ParentWorktree, read as the prime when the record names the prime's checked-out branch or the prime's worktree, and never derived by matching the recorded branch against the pairs present here.
+// So a member whose beam pair is absent on this machine still reads the beam as its parent, and the beam's owner as its own.
+// ResolveParent keeps answering the parent pair's orch name for a reader that needs the pair itself.
+//
 // Standalone CLIs do not call hubgeom — they have no Location to convert, resolving their own
 // geometry from CLI flags and local paths instead.
 package hubgeom

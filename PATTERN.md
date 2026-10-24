@@ -22,6 +22,7 @@
 - `PATTERN-push-both-sides` — Pushing run records from Go: code branch goes along; a push refused after retry leaves a failed-push record and creel notice. (test) — [background](pattern/PATTERN-push-both-sides.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only via `internal/pairteardown`; a producer creating or destroying a task worktree never runs inside it. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-owner-machine` — Starting, resuming or landing a run or acting on wake: `fabricengine`'s origin reconcile first, then only where no other machine owns it. — [background](pattern/PATTERN-owner-machine.md)
+- `PATTERN-pair-parent` — Picking a new pair's parent for a board entry or reading an entry's owner through its parent: only `ParentBeam` and hubgeom's one `ParentOf`, never the acting worktree.
 - `PATTERN-github-auth` — Calling GitHub: auth only via `internal/githubclient`, no other production package runs `gh`, and only `lyx selfreport create` files an issue. (test)
 
 ## Shed and loom

@@ -184,7 +184,7 @@ func hubCancelDeps(location *lyxcwd.Location, slug string) (cancelDeps, error) {
 			if err != nil {
 				return "", "", err
 			}
-			owner, err := owners.Effective(slug, func(slug string) (string, error) { return fabricengine.ParentSlug(location, slug) })
+			owner, err := owners.Effective(slug, func(slug string) (string, error) { return hubgeom.ParentOf(location, slug) })
 			return machine, owner, err
 		},
 		ReadStatus: func() (shedengine.Status, bool, error) { return readBattenStatus(location, slug) },

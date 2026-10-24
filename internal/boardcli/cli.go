@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubissues"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -138,7 +139,7 @@ available subcommands without requiring a git repo.
 				return nil
 			}
 			cfg.Path = boardDir
-			cfg.ParentOf = func(slug string) (string, error) { return fabricengine.ParentSlug(layout, slug) }
+			cfg.ParentOf = func(slug string) (string, error) { return hubgeom.ParentOf(layout, slug) }
 		}
 
 		cfg = boardengine.ApplySkipEnv(cfg)
@@ -457,7 +458,7 @@ func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Pro
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, owner_machine?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, owner_machine?, project?, order?, beam?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -473,7 +474,7 @@ Optional fields:
   "depends_on" array  — list of slug strings this task depends on
   "isolated"   bool   — true if the task has no dependencies by design
   "status"     string — lifecycle status (e.g. "active", "done")
-  "kind"       string — "task" or "note", default "note"; only a task can be claimed or depend on tasks
+  "kind"       string — "task", "note" or "project", default "note"; only a task can be claimed or depend on tasks, and nothing depends on a project
   "labels"     array  — configured labels replacing the whole list; a task needs a type label, a note exactly one
   "recipe"    string — recipe the task's child worktree runs, "loom" or "darn"; empty means "loom"
   "priority"   string — a note's "high", "normal" or "low"; absent means normal, "normal" clears it, and a task carries none
@@ -484,6 +485,9 @@ Optional fields:
   "run_settings" object — module name to config keys for the pair's local config at Seed-Child; {} clears it
   "profile"    string — a "lyx board profiles" name, laid under run_settings at Seed-Child; "" clears it
   "owner_machine" string — the effective owner only; "lyx adopt" moves it
+  "project"    string — the slug of the open project the entry belongs to; "" leaves it in none
+  "order"      array  — a project's member slugs in plan order; only a project carries it
+  "beam"       bool   — a project's beam flag; only "lyx beam create" and "lyx beam promote" set it, so a board write carries only the stored value
 
 Flag:
   --body-file <path>  read "body" from the file, or from stdin when the path is "-".

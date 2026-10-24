@@ -513,7 +513,7 @@ func parentOwner(l *lyxcwd.Location, slug string) func() (landingshed.ParentOwne
 			return landingshed.ParentOwnership{}, err
 		}
 		parentOf := func(slug string) (string, error) {
-			return fabricengine.ParentSlug(prime, slug)
+			return hubgeom.ParentOf(prime, slug)
 		}
 		parentSlug, err := parentOf(slug)
 		if err != nil {

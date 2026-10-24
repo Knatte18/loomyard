@@ -6,6 +6,8 @@ Starting, resuming or landing a run, bar the rest of a Finalize already past its
 - The rest of a Finalize already past its parent-side merge finishes on either machine, so a landing in flight is never stranded.
 - An entry's owner is recorded per task as `owner_machine` and for the prime as `prime_owner`; both are written only by `boardengine`'s owner setter, which takes an entry another machine owns only when `lyx adopt` asks for it.
 - An entry with no owner recorded reads by its state: a run-held entry, and every entry of a hub with no prime owner recorded, as owned by no other machine, and any other as owned by its parent's owner.
+  The parent comes through `hubgeom.ParentOf` alone, the one resolver every owner reader is handed, which reads the entry's origin record and, with none, the local board's beam chain.
+- Adopting a beam moves the beam only: a member with no owner recorded reads its beam's owner through that one resolver.
 - The verdict that gates a resume, a wake or a landing is judged against origin inside `ReconcileOrigin`.
   A start reads it from the Bolt it just pulled, the re-read after an owner write's push reads the Bolt it just pushed, and the landing's parent-owner read uses the Bolt its reconcile left.
   A resume with origin unreachable reads the local Bolt.
