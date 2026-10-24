@@ -118,6 +118,9 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	if err := checkRunLocks(loaded, store.Tasks()); err != nil {
 		return nil, err
 	}
+	if err := checkProjectRules(loaded, store.Tasks(), nil); err != nil {
+		return nil, err
+	}
 
 	// Save before the derived .md view (JSON is authoritative).
 	if err := store.Save(); err != nil {

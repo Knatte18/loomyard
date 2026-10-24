@@ -80,6 +80,14 @@ func TestHandles_AssignedLowestFreeAndStable(t *testing.T) {
 			map[string]string{"t-three": "T1", "n-bug": "T3", "t-two": "T2", "n-idea": "E1", "n-bug2": "B2", "n-bug3": "B1"}},
 		{"a type change takes the new letter", upsert(map[string]any{"slug": "n-idea", "labels": bugLabels}),
 			map[string]string{"t-three": "T1", "n-bug": "T3", "t-two": "T2", "n-idea": "B3", "n-bug2": "B2", "n-bug3": "B1"}},
+		{"projects take the lowest free P number", func() error {
+			for _, slug := range []string{"p-one", "p-two"} {
+				if err := upsert(map[string]any{"slug": slug, "kind": "project", "labels": bugLabels})(); err != nil {
+					return err
+				}
+			}
+			return nil
+		}, map[string]string{"t-three": "T1", "n-bug": "T3", "t-two": "T2", "n-idea": "B3", "n-bug2": "B2", "n-bug3": "B1", "p-one": "P1", "p-two": "P2"}},
 		{"set-status, set-deps and rename by handle keep every handle", func() error {
 			if err := b.SetStatus(boardengine.Handle("T2"), strPtr("active")); err != nil {
 				return err
@@ -89,7 +97,7 @@ func TestHandles_AssignedLowestFreeAndStable(t *testing.T) {
 			}
 			_, err := b.Rename(boardengine.Handle("B2"), "n-renamed")
 			return err
-		}, map[string]string{"t-three": "T1", "n-bug": "T3", "t-two": "T2", "n-idea": "B3", "n-renamed": "B2", "n-bug3": "B1"}},
+		}, map[string]string{"t-three": "T1", "n-bug": "T3", "t-two": "T2", "n-idea": "B3", "n-renamed": "B2", "n-bug3": "B1", "p-one": "P1", "p-two": "P2"}},
 	}
 	for _, step := range steps {
 		if err := step.write(); err != nil {

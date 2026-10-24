@@ -161,7 +161,7 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 	}
 	for _, slug := range req.Slugs {
 		index := slices.IndexFunc(store.tasks, func(task Task) bool { return task.Slug == slug })
-		if index < 0 || isDone(store.tasks[index]) || store.tasks[index].Kind != KindTask {
+		if index < 0 || isDone(store.tasks[index]) || (store.tasks[index].Kind != KindTask && store.tasks[index].Kind != KindProject) {
 			continue
 		}
 		effective, err := store.effectiveOwner(slug)
@@ -173,7 +173,8 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 			continue
 		}
 		store.tasks[index].OwnerMachine = req.Machine
-		if req.Claim != "" {
+		// Only a task, or a project that is a beam, is claimable; any other project keeps its status.
+		if req.Claim != "" && (store.tasks[index].Kind == KindTask || store.tasks[index].Beam) {
 			claim := req.Claim
 			store.tasks[index].Status = &claim
 		}

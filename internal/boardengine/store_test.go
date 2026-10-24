@@ -163,6 +163,36 @@ func TestKindDependencyRules(t *testing.T) {
 		}
 	})
 
+	t.Run("a project carrying a task-only field refused naming the field", func(t *testing.T) {
+		for field, value := range map[string]any{
+			"depends_on":   []string{"dep"},
+			"recipe":       "darn",
+			"profile":      "light",
+			"run_settings": map[string]any{"loom": map[string]any{"code_max_bounces": 1}},
+			"priority":     "high",
+		} {
+			s := seed(t)
+			_, err := s.UpsertTask(map[string]any{"slug": "p", "kind": "project", field: value})
+			if err == nil || !stringContains(err.Error(), `"p"`) || !stringContains(err.Error(), field) {
+				t.Errorf("project with %s: expected refusal naming p and the field, got %v", field, err)
+			}
+		}
+		if _, err := seed(t).UpsertTask(map[string]any{"slug": "p", "kind": "project", "title": "P"}); err != nil {
+			t.Errorf("a bare project refused: %v", err)
+		}
+	})
+
+	t.Run("a task or a note carrying order or beam is refused naming the field", func(t *testing.T) {
+		for _, kind := range []string{"task", "note"} {
+			for field, value := range map[string]any{"order": []string{"dep"}, "beam": true} {
+				fields := map[string]any{"slug": "x", "kind": kind, field: value}
+				if _, err := boardengine.NewTask(fields, 1); err == nil || !stringContains(err.Error(), field) {
+					t.Errorf("%s with %s: expected refusal naming the field, got %v", kind, field, err)
+				}
+			}
+		}
+	})
+
 	t.Run("set-deps on a note refused", func(t *testing.T) {
 		s := seed(t)
 		if err := s.SetDeps("idea", []string{"dep"}); err == nil {
@@ -793,6 +823,21 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	// Both should have a layer assigned (even if empty or a letter)
 	if task1.Layer == "" || task2.Layer == "" {
 		t.Logf("task1 layer: %s, task2 layer: %s", task1.Layer, task2.Layer)
+	}
+
+	// A project lists the Project layer, and an open task beside it keeps its own.
+	withProject := boardengine.NewStore("")
+	for _, fields := range []map[string]any{{"slug": "proj", "kind": "project"}, {"slug": "work", "kind": "task"}} {
+		if _, err := withProject.UpsertTask(fields); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	layers := map[string]string{}
+	for _, b := range withProject.ListTasksBrief(nil) {
+		layers[b.Slug] = b.Layer
+	}
+	if want := map[string]string{"proj": "Project", "work": "Ready"}; !maps.Equal(layers, want) {
+		t.Errorf("listed layers = %v; want %v", layers, want)
 	}
 
 	// The owner a task lists is its recorded one, else the prime's; a note lists none, and a parent resolver that fails empties the cell without failing the list.
@@ -1617,6 +1662,20 @@ func TestPromote(t *testing.T) {
 		got, changed, err := s.Promote("c")
 		if err != nil || changed || got.Slug != "c" || got.Kind != boardengine.KindTask {
 			t.Fatalf("got %+v changed %v, err %v; want c unchanged", got, changed, err)
+		}
+	})
+
+	t.Run("a project refused naming lyx beam create", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "proj", "kind": "project"}); err != nil {
+			t.Fatal(err)
+		}
+		_, changed, err := s.Promote("proj")
+		if err == nil || changed || !stringContains(err.Error(), `"proj"`) || !stringContains(err.Error(), "lyx beam create proj") {
+			t.Fatalf("changed %v, err %v; want a refusal naming proj and lyx beam create", changed, err)
+		}
+		if stored, _ := s.GetTask("proj"); stored.Kind != boardengine.KindProject {
+			t.Errorf("a refused promote changed the project: kind %q", stored.Kind)
 		}
 	})
 

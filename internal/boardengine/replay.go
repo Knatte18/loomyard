@@ -51,6 +51,9 @@ var replayFields = []replayField{
 	{"run_settings", func(t Task) any { return orNilSettings(t.RunSettings) }, func(dst *Task, src Task) { dst.RunSettings = cloneSettings(src.RunSettings) }},
 	{"profile", func(t Task) any { return t.Profile }, func(dst *Task, src Task) { dst.Profile = src.Profile }},
 	{"owner_machine", func(t Task) any { return t.OwnerMachine }, func(dst *Task, src Task) { dst.OwnerMachine = src.OwnerMachine }},
+	{"project", func(t Task) any { return t.Project }, func(dst *Task, src Task) { dst.Project = src.Project }},
+	{"order", func(t Task) any { return orEmpty(t.Order) }, func(dst *Task, src Task) { dst.Order = slices.Clone(src.Order) }},
+	{"beam", func(t Task) any { return t.Beam }, func(dst *Task, src Task) { dst.Beam = src.Beam }},
 }
 
 // orEmpty returns values, or an empty slice for nil, so a nil and an empty slice compare equal.

@@ -163,8 +163,11 @@ func countedHeading(level, name string, count int) string {
 
 // kindName is the capitalised display name of an entry kind.
 func kindName(kind string) string {
-	if kind == KindTask {
+	switch kind {
+	case KindTask:
 		return "Task"
+	case KindProject:
+		return "Project"
 	}
 	return "Note"
 }

@@ -662,7 +662,7 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 			continue
 		}
 		owner := t.OwnerMachine
-		if owner == "" && t.Kind == KindTask {
+		if owner == "" && (t.Kind == KindTask || t.Kind == KindProject) {
 			// A resolver error leaves the cell empty: a list never fails on a parent it cannot read.
 			owner, _ = owners.Effective(t.Slug, parentOf)
 		}
@@ -691,11 +691,15 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 
 // Promote makes the entry identified by idOrSlug a task and clears its priority, which only a note carries.
 // A task is returned unchanged with changed false, so the caller knows nothing was written.
+// A project is refused, since only a task is claimable bar a beam's landing.
 // The promoted entry passes validateWrite, so a missing type label refuses it.
 func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
 	current, ok := s.GetTask(idOrSlug)
 	if !ok {
 		return Task{}, false, fmt.Errorf("task not found: %v", idOrSlug)
+	}
+	if current.Kind == KindProject {
+		return Task{}, false, fmt.Errorf("entry %q is a project, and a project is never made a task: make it a beam with `lyx beam create %s`", current.Slug, current.Slug)
 	}
 	if current.Kind == KindTask {
 		return current, false, nil

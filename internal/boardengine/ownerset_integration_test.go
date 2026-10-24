@@ -49,6 +49,8 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 		{"slug": "beta", "title": "Beta", "kind": "task", "labels": []string{"bug"}},
 		{"slug": "away", "title": "Away", "kind": "task", "labels": []string{"bug"}},
 		{"slug": "held", "title": "Held", "kind": "task", "labels": []string{"bug"}, "status": RunStatus("running", "Webster")},
+		{"slug": "grouping", "title": "Grouping", "kind": "project", "labels": []string{"bug"}},
+		{"slug": "beamer", "title": "Beamer", "kind": "project", "labels": []string{"bug"}},
 	} {
 		if _, err := store.UpsertTask(fields); err != nil {
 			t.Fatalf("seed %v: %v", fields["slug"], err)
@@ -57,6 +59,10 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 	for i := range store.tasks {
 		if store.tasks[i].Slug == "away" || store.tasks[i].Slug == "held" {
 			store.tasks[i].OwnerMachine = "box"
+		}
+		// The beam flag is written by no upsert key, so the seed sets it on the entry directly.
+		if store.tasks[i].Slug == "beamer" {
+			store.tasks[i].Beam = true
 		}
 	}
 	store.primeOwner = primeOwner
@@ -147,7 +153,8 @@ func TestSetOwners(t *testing.T) {
 		wantOwners map[string]string
 		// wantPrime is the prime owner origin records afterwards.
 		wantPrime string
-		wantClaim string
+		// wantStatus maps a slug to the status origin records for it afterwards, "" meaning none.
+		wantStatus map[string]string
 		// wantSubject is the subject of origin's newest commit; empty requires origin's head to stay at the seed.
 		wantSubject string
 	}{
@@ -188,8 +195,20 @@ func TestSetOwners(t *testing.T) {
 		{
 			name: "ClaimStatusLandsInTheSameCommit", primeOwner: "neve",
 			req:          OwnerRequest{Machine: "neve", Slugs: []string{"alpha"}, Claim: RunStatus("running", "Worktree-Create")},
-			wantRecorded: []string{"alpha"}, wantOwners: map[string]string{"alpha": "neve"}, wantPrime: "neve", wantClaim: RunStatus("running", "Worktree-Create"),
+			wantRecorded: []string{"alpha"}, wantOwners: map[string]string{"alpha": "neve"}, wantPrime: "neve", wantStatus: map[string]string{"alpha": RunStatus("running", "Worktree-Create")},
 			wantSubject: "board: owner neve for alpha",
+		},
+		{
+			name: "ClaimOnAProjectThatIsNotABeamRecordsTheOwnerAndNoStatus", primeOwner: "neve",
+			req:          OwnerRequest{Machine: "neve", Slugs: []string{"grouping"}, Claim: RunStatus("running", "Worktree-Create")},
+			wantRecorded: []string{"grouping"}, wantOwners: map[string]string{"grouping": "neve"}, wantPrime: "neve", wantStatus: map[string]string{"grouping": ""},
+			wantSubject: "board: owner neve for grouping",
+		},
+		{
+			name: "ClaimOnABeamProjectLands", primeOwner: "neve",
+			req:          OwnerRequest{Machine: "neve", Slugs: []string{"beamer"}, Claim: RunStatus("running", "Worktree-Create")},
+			wantRecorded: []string{"beamer"}, wantOwners: map[string]string{"beamer": "neve"}, wantPrime: "neve", wantStatus: map[string]string{"beamer": RunStatus("running", "Worktree-Create")},
+			wantSubject: "board: owner neve for beamer",
 		},
 	}
 	for _, tt := range outcomes {
@@ -227,17 +246,19 @@ func TestSetOwners(t *testing.T) {
 					t.Errorf("README.md = %q; want it to contain %q", readme, want)
 				}
 			}
-			if tt.wantClaim != "" {
+			if len(tt.wantStatus) > 0 {
 				tasks, err := ParseBoardTasks([]byte(gitkit.Git(t, f.bare, "show", "main:board.json")))
 				if err != nil {
 					t.Fatalf("parse origin tasks: %v", err)
 				}
-				i := slices.IndexFunc(tasks, func(task Task) bool { return task.Slug == "alpha" })
-				if i < 0 {
-					t.Fatalf("origin board.json holds no entry alpha")
-				}
-				if tasks[i].Status == nil || *tasks[i].Status != tt.wantClaim {
-					t.Errorf("origin status of alpha = %v; want %q", tasks[i].Status, tt.wantClaim)
+				for slug, want := range tt.wantStatus {
+					i := slices.IndexFunc(tasks, func(task Task) bool { return task.Slug == slug })
+					if i < 0 {
+						t.Fatalf("origin board.json holds no entry %s", slug)
+					}
+					if got := statusText(tasks[i].Status); got != want {
+						t.Errorf("origin status of %s = %q; want %q", slug, got, want)
+					}
 				}
 			}
 			head := gitkit.RevParse(t, f.bare, "main")

@@ -4,10 +4,16 @@
 //
 // # Entries
 //
-// Board holds one store, board.json, and every entry in it is a task or a note, named by its kind.
-// Only a task is claimable, and only a task carries depends_on.
+// Board holds one store, board.json, and every entry in it is a task, a note or a project, named by its kind.
+// Only a task is claimable, bar a project that is a beam, and only a task carries depends_on.
 // A note is an idea or observation that is not yet work to run: one note per entry, and a relation between notes is a sentence in a body.
-// Promote turns a note into a task once the operator decides to build it.
+// Promote turns a note into a task once the operator decides to build it, and refuses a project, which is made a beam with `lyx beam create`.
+//
+// A project groups entries.
+// It carries a type label as a task does, and carries no depends_on, recipe, profile, run_settings or priority: a write giving it one is refused naming the entry and the field to drop.
+// Its project, order and beam keys are the membership and the beam flag: a project carries order and beam, no task or note does, and an older binary keeps all three as unknown keys.
+// No task depends on a project: a write that sets or changes an entry's depends_on to name one is refused, naming the project's task members as what to depend on, or `lyx board set-deps` to drop the dependency.
+// A dependency on a project that a write leaves unchanged is never judged, so a done task naming a promoted project takes a later write.
 //
 // # Labels
 //
@@ -28,8 +34,8 @@
 // # Handles
 //
 // Every entry carries a handle, a letter and a number such as T4, B2 or E7, stored in board.json as the handle key, so the operator can name an entry without its slug.
-// The letter is T for a task, and for a note the upper-cased first letter of its type label, so the hub's board.yaml types decide the note letters;
-// LoadConfig refuses type labels that do not begin with a letter, that share a first letter, or whose letter is T.
+// The letter is T for a task, P for a project, and for a note the upper-cased first letter of its type label, so the hub's board.yaml types decide the note letters;
+// LoadConfig refuses type labels that do not begin with a letter, that share a first letter, or whose letter is T or P.
 // The board alone assigns handles, and an upsert payload carrying one is refused.
 // One assigner runs over the whole entry list on load, in the write critical section after the mutation and in the replay before its save:
 // an entry keeps a stored handle of its own letter that no entry of lower id holds, and every other entry, in id order, takes the lowest number of its letter not in use.
@@ -61,7 +67,7 @@
 //
 // # Owners
 //
-// A task may carry an owner_machine: the name of the machine that may start, resume and land its run; a note never carries one, and board.json omits the key while none is recorded.
+// A task or a project may carry an owner_machine: the name of the machine that may start, resume and land its run; a note never carries one, and board.json omits the key while none is recorded.
 // The hub's prime has its own record, the top-level prime_owner key of board.json, which the board replay merges with the same origin-wins rule as an entry's owner.
 // The README states it under its render time, and Board.PrimeOwner reads it for the list view.
 // The effective owner of an entry is what Owners.Effective resolves: the recorded owner, else for a run-held entry none, else its parent's owner, the parent pair resolved through Config.ParentOf and the prime's owner when it has none;
@@ -70,7 +76,8 @@
 // An owner change is never a scope change, so the run lock lets a run-held entry take it.
 //
 // SetOwners is the only writer of an owner or the prime owner.
-// It pulls the board level with its upstream, writes one commit "board: owner <machine> for <slugs>" that sets each named task's owner, the prime owner when asked and an optional claim status on its slug, and pushes it.
+// It pulls the board level with its upstream, writes one commit "board: owner <machine> for <slugs>" that sets each named task's or project's owner, the prime owner when asked and an optional claim status on its slug, and pushes it.
+// A claim status lands only on a task or on a project whose beam flag is set; any other project records the owner and keeps its status.
 // Without Takeover it leaves an entry whose effective owner is another machine untouched and reports it in OwnerWrite.Lost; `lyx adopt` alone passes Takeover.
 // A competing write origin already holds wins the replay of a rejected push, and the owners re-read from the local board.json after the push decide Recorded and Lost.
 // An origin that does not answer is ErrOwnerOriginUnreachable, and a push a held lock keeps deferring is refused naming `lyx board sync`.
@@ -113,6 +120,7 @@
 // # README
 //
 // Every write renders README.md, opening with the UTC date and time it was rendered, so its ages read as of that moment, then a Tasks section, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
+// An open project is in none of the Tasks layers: ComputeLayers puts it in its own Project layer, a run-held one in Running and a done one in the done layer, and RenderOrder places open projects by handle between open tasks and open notes, and a done project between done tasks and done notes.
 // Every section heading ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)`, never the highest handle number, since handles have gaps.
 // Tasks splits into Running, Ready, the dependency layers A, B and on, and Independent for an isolated task.
 // A task a run holds, by IsRunStatus as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.

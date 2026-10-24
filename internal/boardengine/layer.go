@@ -11,16 +11,18 @@ import (
 	"sort"
 )
 
-// The non-letter layers: a running task, an open task waiting on nothing open, an isolated task and a done entry.
+// The non-letter layers: a running task, an open task waiting on nothing open, an isolated task, an open project and a done entry.
 const (
 	runningLayer  = "Running"
 	readyLayer    = "Ready"
 	isolatedLayer = "Z"
+	projectLayer  = "Project"
 	doneLayer     = "__done__"
 )
 
 // ComputeLayers assigns each task a bucket based on topological depth.
 // A task a run holds is runningLayer, by IsRunStatus as the run lock decides it.
+// An open project a run does not hold is projectLayer, never Ready or a letter, and counts as no entry's dependency depth.
 // An open task with no open dependency is readyLayer, and every other task is the letter of its depth:
 // A waits only on running or ready tasks, B on something in A, and so on.
 // A dependency on a done task adds no depth, while one on a running task counts as one on a ready task, and cycle detection still follows running tasks.
@@ -32,6 +34,8 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 			layerMap[t.Slug] = doneLayer
 		} else if IsRunStatus(t.Status) {
 			layerMap[t.Slug] = runningLayer
+		} else if t.Kind == KindProject {
+			layerMap[t.Slug] = projectLayer
 		} else if t.Isolated {
 			layerMap[t.Slug] = isolatedLayer
 		}
@@ -107,8 +111,8 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 			if !ok {
 				continue
 			}
-			// A done dependency adds no depth; a running one weighs as a ready one, at depth 0.
-			if isDone(*depTask) {
+			// A done dependency adds no depth; a running one weighs as a ready one, at depth 0; a project adds none.
+			if isDone(*depTask) || depTask.Kind == KindProject {
 				continue
 			}
 			d, err := getDepth(dep)
@@ -156,11 +160,22 @@ type TaskWithLayer struct {
 	Layer string
 }
 
+// kindRank orders the kinds in README order: tasks, then projects, then notes.
+func kindRank(kind string) int {
+	switch kind {
+	case KindProject:
+		return 1
+	case KindNote:
+		return 2
+	}
+	return 0
+}
+
 // RenderOrder returns tasks in README order.
-// Open tasks come first, then open notes, then done entries.
+// Open tasks come first, then open projects, then open notes, then done entries.
 // Open tasks order by dependency layer, then by handle;
-// open notes order by handle, so each type's notes run by number;
-// done entries put tasks before notes, each by handle.
+// open projects and open notes order by handle, so each type's notes run by number;
+// done entries put tasks before projects before notes, each by handle.
 // A handle orders by letter, then by number, and entries with equal handles by ID.
 func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 	layerMap, err := ComputeLayers(tasks)
@@ -190,10 +205,10 @@ func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 			return doneJ
 		}
 		if result[i].Kind != result[j].Kind {
-			return result[i].Kind == KindTask
+			return kindRank(result[i].Kind) < kindRank(result[j].Kind)
 		}
-		// An open note's README group is its type label, which its handle letter already groups, so a note's layer plays no part.
-		if result[i].Kind != KindNote {
+		// An open note's README group is its type label, which its handle letter already groups, and a project has no layer to order by, so only a task's layer plays a part.
+		if result[i].Kind != KindNote && result[i].Kind != KindProject {
 			bucketI := bucketOrder[result[i].Layer]
 			bucketJ := bucketOrder[result[j].Layer]
 			if bucketI != bucketJ {

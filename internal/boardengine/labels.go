@@ -36,6 +36,8 @@ func validateLabels(t Task, v Vocabulary) error {
 		return fmt.Errorf("note %q must carry exactly one type label from the types list of board.yaml, and carries: %s", t.Slug, carried)
 	case t.Kind == KindTask && len(typeLabels) == 0:
 		return fmt.Errorf("task %q must carry a type label from the types list of board.yaml: add one to its labels", t.Slug)
+	case t.Kind == KindProject && len(typeLabels) == 0:
+		return fmt.Errorf("project %q must carry a type label from the types list of board.yaml: add one to its labels", t.Slug)
 	}
 	return nil
 }
