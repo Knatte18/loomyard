@@ -197,6 +197,38 @@ func TestRefMember(t *testing.T) {
 	}
 }
 
+func TestGoPackageCounterpart(t *testing.T) {
+	t.Parallel()
+
+	goPlan := &planparser.Plan{Language: "go"}
+	tests := []struct {
+		name   string
+		plan   *planparser.Plan
+		ref    string
+		want   string
+		wantOK bool
+	}{
+		{name: "package member maps to the external test package", plan: goPlan, ref: "internal/a#TestRun", want: "internal/a_test#TestRun", wantOK: true},
+		{name: "external test member maps to its package", plan: goPlan, ref: "internal/a_test#TestRun", want: "internal/a#TestRun", wantOK: true},
+		{name: "method member keeps its owner", plan: goPlan, ref: "internal/a#fake.Run", want: "internal/a_test#fake.Run", wantOK: true},
+		{name: "absent language reads as go", plan: &planparser.Plan{}, ref: "internal/a#TestRun", want: "internal/a_test#TestRun", wantOK: true},
+		{name: "package self glyph", plan: goPlan, ref: "internal/a#"},
+		{name: "file-unit member glyph", plan: goPlan, ref: "internal/a/a_test.go#TestRun"},
+		{name: "directory path", plan: goPlan, ref: "internal/a"},
+		{name: "csharp plan", plan: &planparser.Plan{Language: "csharp"}, ref: "Sharp.Tests#Suite.Run"},
+		{name: "plan with no glyph alphabet", plan: &planparser.Plan{Language: "none"}, ref: "internal/a#TestRun"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := planparser.GoPackageCounterpart(tt.plan, tt.ref)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("GoPackageCounterpart(%q) = %q, %v; want %q, %v", tt.ref, got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestRefFile(t *testing.T) {
 	t.Parallel()
 

@@ -15,6 +15,7 @@ import (
 // TestDoneChecks_Verdicts covers the done-checks of Create, Delete and Rename groups against the tree the fork left behind: a landed Create, Delete or Rename passes, and a Create that never landed, a Delete that survived or a Rename never performed reports its blocking finding.
 // A Rename's new side carries the canonical plan: handle spelling a validated plan's symbol rename always has, proving resolveKeyFor strips it.
 // A fork that never performed its declared Rename leaves the old side still resolving and the new side still unresolvable, and BOTH halves must report rename-not-done — a check inspecting only Create and Delete groups recorded that card clean.
+// A Create test written into its directory's other Go package, the external test package or the package itself, is done.
 // A target no glyph spells, a bare root filename or a path whose directory holds a space, is judged by whether its path exists, and a missing Create names the unit's files and where else its name is declared.
 func TestDoneChecks_Verdicts(t *testing.T) {
 	t.Parallel()
@@ -58,6 +59,34 @@ func TestDoneChecks_Verdicts(t *testing.T) {
 				"sub/a_test.go": "package sub_test\n\nimport \"testing\"\n\nfunc TestFoo(t *testing.T) {}\n",
 			},
 			group: planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:sub_test#TestFoo"}},
+		},
+		{
+			name: "Create package test landed in its external test package",
+			files: map[string]string{
+				"sub/a.go":      "package sub\n",
+				"sub/a_test.go": "package sub_test\n\nimport \"testing\"\n\nfunc TestFoo(t *testing.T) {}\n",
+			},
+			group: planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:sub#TestFoo"}},
+		},
+		{
+			name: "Create external test landed in its package",
+			files: map[string]string{
+				"sub/a.go":      "package sub\n",
+				"sub/a_test.go": "package sub\n\nimport \"testing\"\n\nfunc TestFoo(t *testing.T) {}\n",
+			},
+			group: planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"plan:sub_test#TestFoo"}},
+		},
+		{
+			name: "Rename new side landed in the external test package",
+			files: map[string]string{
+				"sub/a.go":      "package sub\n",
+				"sub/a_test.go": "package sub_test\n\nimport \"testing\"\n\nfunc TestFoo(t *testing.T) {}\n",
+			},
+			group: planparser.TargetGroup{
+				Type:  planparser.CardTypeRename,
+				Refs:  []string{"sub#TestOld", "plan:sub#TestFoo"},
+				Pairs: []planparser.MovePair{{Old: "sub#TestOld", New: "plan:sub#TestFoo"}},
+			},
 		},
 		{
 			name:  "Create root filename self glyph landed",

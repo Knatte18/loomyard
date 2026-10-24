@@ -605,6 +605,112 @@ func TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard(t *testing
 	}
 }
 
+// TestBindHandles_HandleBindsToTheOtherPackageOfItsDirectory covers a handle whose test the card wrote into its directory's other Go package:
+// it binds to the glyph the delta created there, in either direction, and the plan is rewritten to that glyph.
+func TestBindHandles_HandleBindsToTheOtherPackageOfItsDirectory(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		handle string
+		// delta holds the symbols the delta created.
+		delta []string
+		// created is the glyph the handle is expected to bind to.
+		created string
+	}{
+		{name: "package handle created in the external test package", handle: "plan:sub#TestNew", delta: []string{"sub_test#TestNew"}, created: "sub_test#TestNew"},
+		{name: "external test handle created in the package", handle: "plan:sub_test#TestNew", delta: []string{"sub#TestNew"}, created: "sub#TestNew"},
+		{name: "exact match wins over the other package", handle: "plan:sub#TestNew", delta: []string{"sub_test#TestNew", "sub#TestNew"}, created: "sub#TestNew"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir, plan := writePlanFixture(t, map[int]string{
+				1: "**Create:**\n- `" + tt.handle + "` -> `func TestNew(t *testing.T) {}`\n\n**Intent:** one\n",
+			})
+			var created []quarry.Symbol
+			for _, id := range tt.delta {
+				created = append(created, quarry.Symbol{ID: id})
+			}
+			delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Created: created}}
+
+			findings, outcomes, err := BindHandles(plan, dir, delta, plan.Cards)
+			if err != nil {
+				t.Fatalf("BindHandles(...) returned error: %v", err)
+			}
+			if len(findings) != 0 {
+				t.Fatalf("findings = %+v; want none", findings)
+			}
+			if want := []planindex.BindOutcome{{Card: 1, Handle: tt.handle, Glyph: tt.created}}; !reflect.DeepEqual(outcomes, want) {
+				t.Errorf("outcomes = %+v; want %+v", outcomes, want)
+			}
+			if got := readCardFile(t, dir, 1, "card1"); !strings.Contains(got, "- `"+tt.created+"`\n") {
+				t.Errorf("card 1 was not rewritten to %s: %s", tt.created, got)
+			}
+		})
+	}
+}
+
+// TestBindHandles_OtherPackageMatchStillCountsTowardMismatch covers a card whose handle only the other package of its directory matches:
+// the match counts as a match, so any handle left unmatched, or reaching an already bound glyph, makes bind-count-mismatch and rewrites nothing.
+func TestBindHandles_OtherPackageMatchStillCountsTowardMismatch(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		handles      []string
+		created      string
+		wantOutcomes []planindex.BindOutcome
+	}{
+		{
+			name:    "one handle matched through the other package and one unmatched",
+			handles: []string{"plan:sub#TestOne", "plan:sub#TestTwo"},
+			created: "sub_test#TestOne",
+			wantOutcomes: []planindex.BindOutcome{
+				{Card: 1, Handle: "plan:sub#TestOne", Reason: planindex.BindSiblingUnmatched},
+				{Card: 1, Handle: "plan:sub#TestTwo", Reason: planindex.BindNoDeltaMatch},
+			},
+		},
+		{
+			name:    "both spellings of one member reaching a single created symbol",
+			handles: []string{"plan:sub#TestX", "plan:sub_test#TestX"},
+			created: "sub_test#TestX",
+			wantOutcomes: []planindex.BindOutcome{
+				{Card: 1, Handle: "plan:sub#TestX", Reason: planindex.BindSiblingUnmatched},
+				{Card: 1, Handle: "plan:sub_test#TestX", Reason: planindex.BindNoDeltaMatch},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var body strings.Builder
+			body.WriteString("**Create:**\n")
+			for _, h := range tt.handles {
+				body.WriteString("- `" + h + "` -> `func Stub() {}`\n")
+			}
+			body.WriteString("\n**Intent:** one\n")
+			dir, plan := writePlanFixture(t, map[int]string{1: body.String()})
+			delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Created: []quarry.Symbol{{ID: tt.created}}}}
+
+			findings, outcomes, err := BindHandles(plan, dir, delta, plan.Cards)
+			if err != nil {
+				t.Fatalf("BindHandles(...) returned error: %v", err)
+			}
+			if len(findings) != 1 || findings[0].Check != "bind-count-mismatch" {
+				t.Fatalf("findings = %+v; want exactly one bind-count-mismatch", findings)
+			}
+			if !reflect.DeepEqual(outcomes, tt.wantOutcomes) {
+				t.Errorf("outcomes = %+v; want %+v", outcomes, tt.wantOutcomes)
+			}
+			got := readCardFile(t, dir, 1, "card1")
+			for _, h := range tt.handles {
+				if !strings.Contains(got, h) {
+					t.Errorf("card was rewritten despite the count mismatch, %s is gone: %s", h, got)
+				}
+			}
+		})
+	}
+}
+
 // TestBindHandles_PartialMatchOnOneCardMismatchesAndRewritesNeither covers two handles on one card
 // with only one delta match, producing bind-count-mismatch and rewriting neither.
 func TestBindHandles_PartialMatchOnOneCardMismatchesAndRewritesNeither(t *testing.T) {

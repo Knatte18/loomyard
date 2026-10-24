@@ -1,12 +1,13 @@
 # PATTERN-glyph-conversion-chokepoint
 
-loomyard performs no glyph-to-path or path-to-glyph conversion of its own, bar the one external-test unit mapping below.
+loomyard performs no glyph-to-path or path-to-glyph conversion of its own, bar the external-test unit mappings below.
 
 - `glyph.Self` is the only path-to-glyph call.
 - `Glyph.UnitPath` is the only glyph-to-path call.
 - `glyph.Parse` plus `Glyph.String` are the only glyph grammar.
-- `planparser`'s `goPackageDir` is the single sanctioned adjustment of a Go unit string, for the external-test pseudo-unit only.
+- `planparser`'s `goPackageDir` and `GoPackageCounterpart` are the only sanctioned adjustments of a Go unit string, for the external-test pseudo-unit only.
   Quarry names an external test package's unit `<dir>_test`, a pseudo-path with no directory (the corner case in quarry's `docs/glyph.md`), and `Glyph.UnitPath` returns it unchanged, so some caller must map it to `<dir>`.
+  `GoPackageCounterpart` maps a member glyph between `<dir>` and `<dir>_test`, so a done-check or handle binding finds a test written into the package its plan did not name.
 - `planparser.ParseRef` alone picks a plan ref's or handle's alphabet, from the plan's `language:`.
   Nothing outside `internal/planparser` passes a `glyph.Language` to a parse, and `Plan.GlyphLanguage` answers only whether the plan is glyph-enabled.
   An id quarry minted for a C# member is no plan ref, and `planparser.ParseMintedCSharpID` is the one parse of it.
