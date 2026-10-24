@@ -331,7 +331,7 @@ func TestVerify_Scenario(t *testing.T) {
 			t.Fatal(err)
 		}
 		named := logs[len(logs)-1].path
-		if err := WritePublishFailure(p, PublishFailure{Kind: FailureKindPlanVerify, LogPath: named, Head: "abc"}); err != nil {
+		if err := WriteLandingFailure(p, LandingFailure{Kind: FailureKindPlanVerify, LogPath: named, Head: "abc"}); err != nil {
 			t.Fatal(err)
 		}
 		mustVerify(t, p, "exit 1")
@@ -345,8 +345,21 @@ func TestVerify_Scenario(t *testing.T) {
 		if len(after) != verifyLogKeep+1 {
 			t.Errorf("%d logs after pruning; want %d, the newest plus the named one", len(after), verifyLogKeep+1)
 		}
-		if err := RemovePublishFailure(p); err != nil {
+		if err := RemoveLandingFailure(p); err != nil {
 			t.Fatal(err)
+		}
+
+		// A record an older build left under its old file name names a log that pruning does not keep.
+		oldRecord := filepath.Join(p.Dir, "publish-failure.yaml")
+		if err := os.WriteFile(oldRecord, []byte("kind: plan_verify\nlog_path: "+named+"\nhead: abc\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, found, err := ReadLandingFailure(p); found || err != nil {
+			t.Errorf("ReadLandingFailure over a record under the old name = (_, %v, %v); want (_, false, nil)", found, err)
+		}
+		mustVerify(t, p, "exit 1")
+		if fileExists(named) {
+			t.Errorf("log %s a record under the old name names was kept by pruning", named)
 		}
 	}) {
 		return

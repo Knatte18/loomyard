@@ -1,4 +1,4 @@
-// mergein_test.go drives Merge-In's Call against a real parentlock.Store in a temporary directory and fake tip reads, parent puller, resolver and verify seams.
+// mergein_test.go drives Merge-In's Call against a real parentlock.Store in a temporary directory and fake tip reads, resolver and verify seams.
 
 package landingshed
 
@@ -15,8 +15,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -30,30 +32,29 @@ var tracedFailure = verifytree.FailureTrace{
 	Untraced:   []string{"internal/z/z.go:1"},
 }
 
-// eventResolver is a resolver that records its call in the shared event log.
+// eventResolver is a resolver that records its call in the shared event log and the tip it was told to merge.
+// lockHeld reads, when set, reports whether the parent lock was held at the call.
 type eventResolver struct {
-	events *[]string
-	result mergeresolve.Result
-	err    error
+	events      *[]string
+	result      mergeresolve.Result
+	err         error
+	tip         string
+	lockHeld    func() bool
+	heldAtMerge bool
+	// onResolve, when set, runs at each call, standing in for the merge commit the resolver makes.
+	onResolve func()
 }
 
-func (r *eventResolver) Resolve(_ context.Context, source string) (mergeresolve.Result, error) {
+func (r *eventResolver) Resolve(_ context.Context, source, tip string) (mergeresolve.Result, error) {
 	*r.events = append(*r.events, "merge "+source)
+	r.tip = tip
+	if r.lockHeld != nil {
+		r.heldAtMerge = r.lockHeld()
+	}
+	if r.onResolve != nil {
+		r.onResolve()
+	}
 	return r.result, r.err
-}
-
-// fakeParentPuller is a parentPuller that records its call in the shared event log.
-type fakeParentPuller struct {
-	events *[]string
-	opts   fabricengine.SyncOptions
-	result fabricengine.FastForwardResult
-	err    error
-}
-
-func (p *fakeParentPuller) FastForwardPair(opts fabricengine.SyncOptions) (fabricengine.FastForwardResult, error) {
-	*p.events = append(*p.events, "fast-forward")
-	p.opts = opts
-	return p.result, p.err
 }
 
 // mergeInFixture is a MergeIn over a real lock store, with every seam but the lock a fake that logs into events.
@@ -63,16 +64,34 @@ type mergeInFixture struct {
 	gate   *gateFixture
 	events []string
 
-	tips         fabricengine.ParentTips
-	tipsFetch    *bool
-	lockHeld     bool
-	taskHeads    []string
-	mergeBase    string
+	tips      fabricengine.ParentTips
+	tipsErr   error
+	tipsReads []tipsRead
+	// head is the task head, which the merge moves to mergeHead and each fixer turn that commits moves on.
+	head      string
+	mergeHead string
+	mergeBase string
+	// holds answers HoldsWork by "base..source"; a pair it does not name holds the work, so the parent brought nothing.
+	holds        map[string]bool
+	holdsCalls   []string
 	changedPaths map[string][]string
 	changedCalls []string
-	puller       *fakeParentPuller
-	pullerOpen   error
 	resolver     *eventResolver
+	seats        *fakeFixerSeats
+	// entry is the row entry RowEntry answers.
+	entry int
+	// reviewOff is what CodeReviewOff answers.
+	reviewOff bool
+	// lineChange is what LineChange answers, and lineChangeCalls records each "from..to".
+	lineChange      fabricengine.LineChange
+	lineChangeErr   error
+	lineChangeCalls []string
+}
+
+// tipsRead is one ReadParentTips call: whether it fetched and whether the run held the parent lock during it.
+type tipsRead struct {
+	fetch    bool
+	lockHeld bool
 }
 
 func newMergeInFixture(t *testing.T) *mergeInFixture {
@@ -82,20 +101,55 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 		store:        &parentlock.Store{Dir: filepath.Join(dir, "locks"), Alive: func(int, string) bool { return true }},
 		gate:         newGateFixture(t, "go test ./...", nil),
 		tips:         fabricengine.ParentTips{Local: "p1", Upstream: "p1", Relation: fabricengine.ParentEqual},
-		taskHeads:    []string{"t1", "t2"},
+		head:         "t1",
+		mergeHead:    "t2",
 		mergeBase:    "b0",
+		holds:        map[string]bool{},
 		changedPaths: map[string][]string{},
+		seats:        &fakeFixerSeats{},
+		entry:        1,
 	}
 	fx.resolver = &eventResolver{events: &fx.events, result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-	fx.puller = &fakeParentPuller{events: &fx.events}
+	fx.resolver.onResolve = func() {
+		if !fx.resolver.result.AlreadyUpToDate {
+			fx.head = fx.mergeHead
+		}
+	}
 	owner := parentlock.Owner{Slug: "me", Pair: "/p/me", RunID: "r1", PID: 222, StartTime: "t2"}
+	lockHeld := func() bool {
+		rec, found, _ := fx.store.Read("main")
+		return found && rec.Owner.SameProcess(owner)
+	}
+	fx.resolver.lockHeld = lockHeld
 
-	headCalls := 0
+	stencilsDir := t.TempDir()
+	stencilkit.SeedInto(t, stencilsDir)
 	deps := Deps{
-		ParentBranch:      "main",
-		MergeRecordPath:   MergeRecordPath(dir),
-		MergeReviewedPath: MergeReviewedPath(dir),
-		CommitStatus:      func() error { fx.events = append(fx.events, "commit-status"); return nil },
+		ParentBranch:       "main",
+		TaskBranch:         "task-branch",
+		Slug:               "my-slug",
+		ScratchDir:         dir,
+		StencilsDir:        stencilsDir,
+		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
+		MergeRecordPath:    MergeRecordPath(dir),
+		Config:             Config{Fixer: "claude:opus", FixerTimeoutMin: 5, MergeFixAttempts: 2, FinalizeFixMaxLines: 100},
+		Registry:           modelspec.Registry{},
+		FixerSeats:         fx.seats,
+		TaskRemoteTip:      func() (string, error) { return "remote-1", nil },
+		IsTestFile:         func(path string) bool { return strings.HasSuffix(path, "_test.go") },
+		RowEntry:           func(string) (int, error) { return fx.entry, nil },
+		CodeReviewOff:      func() (bool, error) { return fx.reviewOff, nil },
+		HoldsWork: func(base, source string) (bool, error) {
+			key := base + ".." + source
+			fx.holdsCalls = append(fx.holdsCalls, key)
+			holds, set := fx.holds[key]
+			return holds || !set, nil
+		},
+		LineChange: func(from, to string) (fabricengine.LineChange, error) {
+			fx.lineChangeCalls = append(fx.lineChangeCalls, from+".."+to)
+			return fx.lineChange, fx.lineChangeErr
+		},
+		CommitStatus: func() error { fx.events = append(fx.events, "commit-status"); return nil },
 		Lock: ParentLockDeps{
 			Store:    fx.store,
 			Owner:    func() (parentlock.Owner, error) { return owner, nil },
@@ -103,16 +157,10 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 		},
 		ReadParentTips: func(fetch bool) (fabricengine.ParentTips, error) {
 			fx.events = append(fx.events, "tips")
-			fx.tipsFetch = &fetch
-			rec, found, _ := fx.store.Read("main")
-			fx.lockHeld = found && rec.Owner.SameProcess(owner)
-			return fx.tips, nil
+			fx.tipsReads = append(fx.tipsReads, tipsRead{fetch: fetch, lockHeld: lockHeld()})
+			return fx.tips, fx.tipsErr
 		},
-		TaskHead: func() (string, error) {
-			head := fx.taskHeads[min(headCalls, len(fx.taskHeads)-1)]
-			headCalls++
-			return head, nil
-		},
+		TaskHead:  func() (string, error) { return fx.head, nil },
 		MergeBase: func(string) (string, error) { return fx.mergeBase, nil },
 		ChangedPaths: func(from, to string) ([]string, error) {
 			fx.changedCalls = append(fx.changedCalls, from+".."+to)
@@ -123,15 +171,13 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 		t.Fatal(err)
 	}
 	fx.gate.fake.onVerify = func() { fx.events = append(fx.events, "verify") }
-	fx.gate.gate.failureTarget = "Told-Row"
 	fx.gate.gate.baseCommand = func() (string, error) { return gateBaseCall, nil }
 	fx.gate.gate.recorder = &failureRecorder{head: deps.TaskHead}
 	fx.m = &MergeIn{
-		deps:         deps,
-		resolver:     fx.resolver,
-		gate:         fx.gate.gate,
-		guard:        newParentGuard(deps),
-		parentOpener: func() (parentPuller, error) { return fx.puller, fx.pullerOpen },
+		deps:     deps,
+		resolver: fx.resolver,
+		gate:     fx.gate.gate,
+		guard:    newParentGuard(deps),
 	}
 	return fx
 }
@@ -169,22 +215,21 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 		wantHalt     bool
 		wantInReason []string
 		wantNotIn    []string
-		wantLock     bool
 	}{
 		{
-			name:        "an active run proceeds to the lock and the merge",
+			name:        "an active run proceeds to the merge",
 			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryActive}}},
-			wantOutcome: shedengine.Done, wantEvents: proceeds, wantLock: true,
+			wantOutcome: shedengine.Done, wantEvents: proceeds,
 		},
 		{
-			name:        "an unreachable origin proceeds to the lock and the merge",
+			name:        "an unreachable origin proceeds to the merge",
 			report:      fabricengine.OriginReport{Unreachable: true},
-			wantOutcome: shedengine.Done, wantEvents: proceeds, wantLock: true,
+			wantOutcome: shedengine.Done, wantEvents: proceeds,
 		},
 		{
-			name:        "a run owned elsewhere proceeds to the lock and the merge",
+			name:        "a run owned elsewhere proceeds to the merge",
 			report:      fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryOwnedElsewhere, Owner: "desk"}}},
-			wantOutcome: shedengine.Done, wantEvents: proceeds, wantLock: true,
+			wantOutcome: shedengine.Done, wantEvents: proceeds,
 		},
 		{
 			name:        "an ended run that landed halts naming the landing",
@@ -248,84 +293,51 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 					t.Errorf("reason = %q; want it free of %q", ptr.Reason, unwanted)
 				}
 			}
-			rec, found, _ := fx.store.Read("main")
-			if found != tt.wantLock {
-				t.Fatalf("parent lock held = %v; want %v", found, tt.wantLock)
-			}
-			if tt.wantLock {
-				if !fx.lockHeld {
-					t.Error("the parent lock was not held when the tips were read")
-				}
-				if rec.Owner.Slug != "me" {
-					t.Errorf("lock record after Done = %+v; want it kept by the run", rec)
-				}
+			if rec, found, _ := fx.store.Read("main"); found {
+				t.Errorf("lock record = %+v; want Merge-In to take no parent lock", rec)
 			}
 		})
 	}
 }
 
-func TestMergeIn_SyncParent(t *testing.T) {
+func TestMergeIn_MergeTip(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name        string
 		tips        fabricengine.ParentTips
 		pushSkipped bool
-		openErr     error
-		fastForward fabricengine.FastForwardResult
-		wantFetch   bool
-		wantPulled  bool
-		wantStuck   string
+		otherHolds  bool
 		wantTip     string
+		wantReads   []tipsRead
+		wantHeld    bool
 	}{
-		{name: "equal", tips: fabricengine.ParentTips{Local: "p1", Upstream: "p1", Relation: fabricengine.ParentEqual}, wantFetch: true, wantTip: "p1"},
-		{name: "no upstream", tips: fabricengine.ParentTips{Local: "p1", Relation: fabricengine.ParentNoUpstream}, wantFetch: true, wantTip: "p1"},
-		{name: "the push skip ignores a moved upstream", tips: fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind}, pushSkipped: true, wantTip: "p1"},
 		{
-			name:        "behind fast-forwards to the tip the pair moved to",
+			name:       "an upstream tip is merged while another run holds the lock, and no lock is taken",
+			tips:       fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
+			otherHolds: true,
+			wantTip:    "u2", wantReads: []tipsRead{{fetch: true}}, wantHeld: true,
+		},
+		{
+			name:    "a local parent ahead of its upstream merges the upstream tip, never the local-only commit",
+			tips:    fabricengine.ParentTips{Local: "p2", Upstream: "p1", Relation: fabricengine.ParentAhead},
+			wantTip: "p1", wantReads: []tipsRead{{fetch: true}},
+		},
+		{
+			name:    "a diverged local parent merges the upstream tip",
+			tips:    fabricengine.ParentTips{Local: "p2", Upstream: "u2", Relation: fabricengine.ParentDiverged},
+			wantTip: "u2", wantReads: []tipsRead{{fetch: true}},
+		},
+		{
+			name:        "the push skip holds the lock for the local-tip read only",
 			tips:        fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
-			fastForward: fabricengine.FastForwardResult{NewHead: "u3"},
-			wantFetch:   true, wantPulled: true, wantTip: "u3",
+			pushSkipped: true,
+			wantTip:     "p1", wantReads: []tipsRead{{fetch: false, lockHeld: true}},
 		},
 		{
-			name:      "ahead",
-			tips:      fabricengine.ParentTips{Local: "p2", Upstream: "p1", Relation: fabricengine.ParentAhead},
-			wantFetch: true,
-			wantStuck: `the local parent branch "main" is ahead of its upstream; way forward: push or reconcile "main" in its own pair, then run "lyx loom resume"`,
-		},
-		{
-			name:      "diverged",
-			tips:      fabricengine.ParentTips{Local: "p2", Upstream: "u2", Relation: fabricengine.ParentDiverged},
-			wantFetch: true,
-			wantStuck: `the local parent branch "main" has diverged from its upstream; way forward: push or reconcile "main" in its own pair, then run "lyx loom resume"`,
-		},
-		{
-			name:      "no parent pair",
-			tips:      fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
-			openErr:   errors.New("not wired"),
-			wantFetch: true,
-			wantStuck: `no live pair for parent branch "main": not wired; way forward: re-create the parent pair, then run "lyx loom resume"`,
-		},
-		{
-			name:        "dirty parent pair",
-			tips:        fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
-			fastForward: fabricengine.FastForwardResult{Refusal: fabricengine.FastForwardDirty},
-			wantFetch:   true, wantPulled: true,
-			wantStuck: `the parent pair of "main" has uncommitted changes; way forward: commit or stash them in the parent pair, then run "lyx loom resume"`,
-		},
-		{
-			name:        "merge in progress in the parent pair",
-			tips:        fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
-			fastForward: fabricengine.FastForwardResult{Refusal: fabricengine.FastForwardMergeInProgress},
-			wantFetch:   true, wantPulled: true,
-			wantStuck: `a merge is in progress in the parent pair of "main"; way forward: finish or abort that merge in the parent pair, then run "lyx loom resume"`,
-		},
-		{
-			name:        "upstream no longer a fast-forward",
-			tips:        fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: fabricengine.ParentBehind},
-			fastForward: fabricengine.FastForwardResult{Refusal: fabricengine.FastForwardNotFastForward},
-			wantFetch:   true, wantPulled: true,
-			wantStuck: `the upstream of "main" is no longer a fast-forward of the parent pair; way forward: reconcile "main" with its upstream in its own pair, then run "lyx loom resume"`,
+			name:    "no upstream holds the lock for the local-tip read only",
+			tips:    fabricengine.ParentTips{Local: "p1", Relation: fabricengine.ParentNoUpstream},
+			wantTip: "p1", wantReads: []tipsRead{{fetch: true}, {fetch: false, lockHeld: true}},
 		},
 	}
 	for _, tt := range tests {
@@ -334,38 +346,62 @@ func TestMergeIn_SyncParent(t *testing.T) {
 			fx := newMergeInFixture(t)
 			fx.tips = tt.tips
 			fx.m.deps.PushSkipped = tt.pushSkipped
-			fx.pullerOpen = tt.openErr
-			fx.puller.result = tt.fastForward
+			if tt.otherHolds {
+				if _, err := fx.store.TryAcquire("main", parentlock.Owner{Slug: "other", Pair: "/p/other", RunID: "r9", PID: 111, StartTime: "t1"}); err != nil {
+					t.Fatal(err)
+				}
+			}
 
 			outcome, ptr := fx.call(t)
 
-			if fx.tipsFetch == nil || *fx.tipsFetch != tt.wantFetch {
-				t.Errorf("ReadParentTips fetch = %v; want %v", fx.tipsFetch, tt.wantFetch)
-			}
-			pulled := strings.Contains(strings.Join(fx.events, ","), "fast-forward")
-			if pulled != tt.wantPulled {
-				t.Errorf("fast-forward ran = %v; want %v (events %v)", pulled, tt.wantPulled, fx.events)
-			}
-			if tt.wantStuck != "" {
-				if outcome != shedengine.Stuck || ptr.Reason != tt.wantStuck || ptr.Halt {
-					t.Errorf("Call() = %q, %+v; want a non-halting Stuck %q", outcome, ptr, tt.wantStuck)
-				}
-				if strings.Contains(strings.Join(fx.events, ","), "merge") {
-					t.Errorf("a merge ran after a Stuck sync: %v", fx.events)
-				}
-				return
-			}
 			if outcome != shedengine.Done {
 				t.Fatalf("Call() = %q, %+v; want Done", outcome, ptr)
+			}
+			if fx.resolver.tip != tt.wantTip {
+				t.Errorf("resolver tip = %q; want %q", fx.resolver.tip, tt.wantTip)
 			}
 			if got := fx.readRecord(t).MergedTip; got != tt.wantTip {
 				t.Errorf("merged_tip = %q; want %q", got, tt.wantTip)
 			}
-			if tt.wantPulled && (fx.puller.opts.SkipGit || fx.puller.opts.SkipPush) {
-				t.Errorf("FastForwardPair options = %+v; want the told push skip, false", fx.puller.opts)
+			if !slices.Equal(fx.tipsReads, tt.wantReads) {
+				t.Errorf("ReadParentTips calls = %+v; want %+v", fx.tipsReads, tt.wantReads)
+			}
+			if fx.resolver.heldAtMerge {
+				t.Error("the parent lock was held while the resolver ran")
+			}
+			if rec, found, _ := fx.store.Read("main"); found != tt.wantHeld {
+				t.Errorf("lock record after Done = %+v, %v; want found = %v", rec, found, tt.wantHeld)
 			}
 		})
 	}
+
+	t.Run("a resolver answer that the upstream ref is missing is Stuck with its way forward", func(t *testing.T) {
+		t.Parallel()
+		fx := newMergeInFixture(t)
+		const reason = `the upstream ref of "main" is missing; way forward: fetch it, then run "lyx loom resume"`
+		fx.resolver.result = mergeresolve.Result{Outcome: mergeresolve.OutcomeStuck, Reason: reason}
+
+		outcome, ptr := fx.call(t)
+
+		if outcome != shedengine.Stuck || ptr.Reason != reason || ptr.Halt {
+			t.Errorf("Call() = %q, %+v; want a non-halting Stuck %q", outcome, ptr, reason)
+		}
+	})
+
+	t.Run("a failed tips read is the returned error", func(t *testing.T) {
+		t.Parallel()
+		fx := newMergeInFixture(t)
+		fx.tipsErr = errors.New("fetch failed")
+
+		_, _, err := fx.m.Call(context.Background())
+
+		if err == nil || !strings.Contains(err.Error(), "fetch failed") {
+			t.Errorf("Call() error = %v; want the tips read's cause", err)
+		}
+		if strings.Contains(strings.Join(fx.events, ","), "merge") {
+			t.Errorf("a merge ran after a failed tips read: %v", fx.events)
+		}
+	})
 }
 
 func TestMergeIn_MergeRecord(t *testing.T) {
@@ -374,14 +410,14 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 	t.Run("a fresh merge records the ranges and where they overlap", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		fx.taskHeads = []string{"t1", "m1"}
+		fx.mergeHead = "m1"
 		fx.changedPaths["b0..p1"] = []string{"PATTERN.md", "a/x.go", "shared.txt"}
 		fx.changedPaths["b0..t1"] = []string{"a/y.go", "shared.txt"}
 
 		fx.call(t)
 
 		want := MergeRecord{
-			ParentBranch: "main", MergedTip: "p1", ReviewedTip: "b0", TaskBase: "b0", TaskHead: "t1", MergeCommit: "m1",
+			ParentBranch: "main", MergedTip: "p1", AlignedTip: "p1", TaskBase: "b0", TaskHead: "t1", MergeCommit: "m1",
 			Overlap: Overlap{Files: []string{"shared.txt"}, Packages: []string{"a"}, Pattern: []string{"PATTERN.md"}},
 		}
 		if got := fx.readRecord(t); !recordsEqual(got, want) {
@@ -398,32 +434,33 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 
 		fx.call(t)
 
-		want := MergeRecord{ParentBranch: "main", MergedTip: "p1", ReviewedTip: "b0", TaskBase: "b0", TaskHead: "t1", UpToDate: true}
+		want := MergeRecord{ParentBranch: "main", MergedTip: "p1", AlignedTip: "p1", TaskBase: "b0", TaskHead: "t1", UpToDate: true}
 		if got := fx.readRecord(t); !recordsEqual(got, want) {
 			t.Errorf("record = %+v; want %+v", got, want)
 		}
 	})
 
-	t.Run("a second merge starts the task range at the first merge's tip and the parent range at the earlier reviewed tip", func(t *testing.T) {
+	t.Run("a second merge starts the task range at the first merge's tip and the parent range at the earlier aligned tip", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		fx.taskHeads = []string{"t1", "m1", "m1", "m2"}
+		fx.mergeHead = "m1"
 		fx.changedPaths["b0..p1"] = []string{"old.txt"}
 		fx.changedPaths["b0..t1"] = []string{"task.txt"}
 		fx.call(t)
 
 		fx.mergeBase = "p1"
+		fx.mergeHead = "m2"
 		fx.tips = fabricengine.ParentTips{Local: "p2", Upstream: "p2", Relation: fabricengine.ParentEqual}
-		fx.changedPaths["b0..p2"] = []string{"old.txt", "new.txt"}
+		fx.changedPaths["p1..p2"] = []string{"new.txt"}
 		fx.changedPaths["p1..m1"] = []string{"later.txt"}
 		fx.changedCalls = nil
 		fx.call(t)
 
 		got := fx.readRecord(t)
-		if got.TaskBase != "p1" || got.TaskHead != "m1" || got.ReviewedTip != "b0" || got.MergedTip != "p2" {
-			t.Errorf("record = %+v; want task_base p1, task_head m1, reviewed_tip b0, merged_tip p2", got)
+		if got.TaskBase != "p1" || got.TaskHead != "m1" || got.AlignedTip != "p2" || got.MergedTip != "p2" {
+			t.Errorf("record = %+v; want task_base p1, task_head m1, aligned_tip p2, merged_tip p2", got)
 		}
-		if want := "b0..p2,p1..m1"; strings.Join(fx.changedCalls, ",") != want {
+		if want := "p1..p2,p1..m1"; strings.Join(fx.changedCalls, ",") != want {
 			t.Errorf("ChangedPaths calls = %v; want %q, so the first merge's parent changes are not the task's", fx.changedCalls, want)
 		}
 		if len(got.Overlap.Files) != 0 {
@@ -431,20 +468,43 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 		}
 	})
 
-	t.Run("the reviewed-tip file outranks the earlier record", func(t *testing.T) {
+	t.Run("an earlier aligned tip starts the parent range, and the record advances it to the merged tip", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		if err := WriteMergeRecord(fx.m.deps.MergeRecordPath, MergeRecord{ReviewedTip: "from-record"}); err != nil {
+		if err := WriteMergeRecord(fx.m.deps.MergeRecordPath, MergeRecord{AlignedTip: "a0"}); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(fx.m.deps.MergeReviewedPath, []byte("from-file\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		fx.changedPaths["a0..p1"] = []string{"shared.txt"}
+		fx.changedPaths["b0..t1"] = []string{"shared.txt"}
 
 		fx.call(t)
 
-		if got := fx.readRecord(t).ReviewedTip; got != "from-file" {
-			t.Errorf("reviewed_tip = %q; want from-file", got)
+		got := fx.readRecord(t)
+		if got.AlignedTip != "p1" {
+			t.Errorf("aligned_tip = %q; want the merged tip p1", got.AlignedTip)
+		}
+		if want := "shared.txt"; strings.Join(got.Overlap.Files, ",") != want {
+			t.Errorf("overlap files = %v; want [%s], read from the earlier aligned tip", got.Overlap.Files, want)
+		}
+	})
+
+	t.Run("an undecodable earlier record falls back to the fork point", func(t *testing.T) {
+		t.Parallel()
+		fx := newMergeInFixture(t)
+		if err := os.WriteFile(fx.m.deps.MergeRecordPath, []byte("parent_branch: [unclosed"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fx.changedPaths["b0..p1"] = []string{"shared.txt"}
+		fx.changedPaths["b0..t1"] = []string{"shared.txt"}
+
+		fx.call(t)
+
+		got := fx.readRecord(t)
+		if want := "shared.txt"; strings.Join(got.Overlap.Files, ",") != want {
+			t.Errorf("overlap files = %v; want [%s], read from the fork point", got.Overlap.Files, want)
+		}
+		if want := "b0..p1"; len(fx.holdsCalls) != 1 || fx.holdsCalls[0] != want {
+			t.Errorf("HoldsWork calls = %v; want one over the fork point, %q", fx.holdsCalls, want)
 		}
 	})
 }
@@ -452,7 +512,7 @@ func TestMergeIn_MergeRecord(t *testing.T) {
 // recordsEqual compares two merge records field by field, treating nil and empty overlap lists alike.
 func recordsEqual(a, b MergeRecord) bool {
 	same := func(x, y []string) bool { return strings.Join(x, "\x00") == strings.Join(y, "\x00") }
-	return a.ParentBranch == b.ParentBranch && a.MergedTip == b.MergedTip && a.ReviewedTip == b.ReviewedTip &&
+	return a.ParentBranch == b.ParentBranch && a.MergedTip == b.MergedTip && a.AlignedTip == b.AlignedTip &&
 		a.TaskBase == b.TaskBase && a.TaskHead == b.TaskHead && a.MergeCommit == b.MergeCommit && a.UpToDate == b.UpToDate &&
 		same(a.Overlap.Files, b.Overlap.Files) && same(a.Overlap.Packages, b.Overlap.Packages) && same(a.Overlap.Pattern, b.Overlap.Pattern)
 }
@@ -463,46 +523,25 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 	t.Run("a failed verify writes the failure record with row Merge-In and no merge record", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		fx.taskHeads = []string{"t1", "m1"}
+		fx.mergeHead = "m1"
 		fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, Log: "/verify/verify-1.log"}
 
 		outcome, ptr := fx.call(t)
 
-		if outcome != shedengine.Stuck || !strings.Contains(ptr.Reason, "landing gate failed after merging parent branch") {
-			t.Fatalf("Call() = %q, %+v; want Stuck for the failed landing gate", outcome, ptr)
+		if outcome != shedengine.Stuck || !ptr.Halt || !strings.HasPrefix(ptr.Reason, LandingStopPrefix) || len(fx.seats.tables) != 1 {
+			t.Fatalf("Call() = %q, %+v with %d fixer session(s); want the fixer spawned and a halting Stuck opening with %q", outcome, ptr, len(fx.seats.tables), LandingStopPrefix)
 		}
-		failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
+		failure, found, err := verifytree.ReadLandingFailure(fx.gate.paths)
 		if err != nil || !found {
-			t.Fatalf("ReadPublishFailure() = %v, %v; want a record", found, err)
+			t.Fatalf("ReadLandingFailure() = %v, %v; want a record", found, err)
 		}
 		// The log names no failing tier, so the record takes the highest tier of the landing list.
 		wantTier := slices.Max(fixedGateTierLists["landing"])
-		if failure.Row != "Merge-In" || failure.Target != "Told-Row" || failure.MergeCommit != "m1" || failure.Kind != verifytree.FailureKindLanding || failure.Tier != wantTier {
-			t.Errorf("failure record = %+v; want row Merge-In, target Told-Row, merge commit m1, kind landing, tier %d", failure, wantTier)
+		if failure.MergeCommit != "m1" || failure.Kind != verifytree.FailureKindLanding || failure.Tier != wantTier {
+			t.Errorf("failure record = %+v; want merge commit m1, kind landing, tier %d", failure, wantTier)
 		}
 		if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
 			t.Error("a merge record was written after a failed verify")
-		}
-	})
-
-	t.Run("a told classifier chooses the record's target and the reason's way forward", func(t *testing.T) {
-		t.Parallel()
-		fx := newMergeInFixture(t)
-		fx.taskHeads = []string{"t1", "m1"}
-		fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, Log: "/verify/verify-1.log"}
-		// The classifier is set on the producer's own gate: newMergeInFixture copied the fixture's value into it.
-		fx.m.gate.classify = func(context.Context, verifytree.PublishFailure) FailureRoute {
-			return FailureRoute{Target: "Merge-In", WayForward: "the told not-owned route"}
-		}
-
-		outcome, ptr := fx.call(t)
-
-		if outcome != shedengine.Stuck || !strings.HasSuffix(ptr.Reason, "way forward: the told not-owned route") {
-			t.Fatalf("Call() = %q, %+v; want Stuck ending with the classifier's way forward", outcome, ptr)
-		}
-		failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
-		if err != nil || !found || failure.Target != "Merge-In" {
-			t.Errorf("ReadPublishFailure() = %+v, %v, %v; want a record with target Merge-In", failure, found, err)
 		}
 	})
 
@@ -529,7 +568,7 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				fx := newMergeInFixture(t)
-				fx.taskHeads = []string{"t1", "m1"}
+				fx.mergeHead = "m1"
 				fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
 				writeVerifyLog(t, fx.gate, verifyLog)
 				calls := 0
@@ -548,15 +587,12 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 
 				outcome, ptr := fx.call(t)
 
-				if outcome != shedengine.Stuck || !strings.Contains(ptr.Reason, "landing gate failed after merging parent branch") {
-					t.Fatalf("Call() = %q, %+v; want Stuck for the failed landing gate", outcome, ptr)
+				if outcome != shedengine.Stuck || !strings.HasPrefix(ptr.Reason, LandingStopPrefix) || len(fx.seats.tables) != 1 {
+					t.Fatalf("Call() = %q, %+v with %d fixer session(s); want the fixer spawned and a halting Stuck", outcome, ptr, len(fx.seats.tables))
 				}
-				failure, found, err := verifytree.ReadPublishFailure(fx.gate.paths)
+				failure, found, err := verifytree.ReadLandingFailure(fx.gate.paths)
 				if err != nil || !found {
-					t.Fatalf("ReadPublishFailure() = %v, %v; want a record", found, err)
-				}
-				if failure.Target != "Told-Row" || failure.Row != "Merge-In" {
-					t.Errorf("failure record = %+v; want row Merge-In and target Told-Row", failure)
+					t.Fatalf("ReadLandingFailure() = %v, %v; want a record", found, err)
 				}
 				got := verifytree.FailureTrace{Cards: failure.Cards, LaterRange: failure.LaterRange, Untraced: failure.Untraced}
 				if !reflect.DeepEqual(got, tt.wantTrace) {
@@ -572,13 +608,13 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 	t.Run("a passing verify clears an earlier failure record", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
-		if err := verifytree.WritePublishFailure(fx.gate.paths, verifytree.PublishFailure{Row: "Merge-In"}); err != nil {
+		if err := verifytree.WriteLandingFailure(fx.gate.paths, verifytree.LandingFailure{Kind: verifytree.FailureKindLanding}); err != nil {
 			t.Fatal(err)
 		}
 
 		fx.call(t)
 
-		if _, found, _ := verifytree.ReadPublishFailure(fx.gate.paths); found {
+		if _, found, _ := verifytree.ReadLandingFailure(fx.gate.paths); found {
 			t.Error("the earlier failure record is still present after a passing verify")
 		}
 	})
@@ -610,16 +646,15 @@ func TestMergeIn_VerifyGate(t *testing.T) {
 		}
 	})
 
-	t.Run("a failed, dirty or unstartable verify is Stuck naming its cause", func(t *testing.T) {
+	t.Run("a failed, dirty or unstartable verify spawns the fixer and halts without a record when it ends", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
-			name         string
-			result       verifytree.Result
-			wantInReason []string
+			name   string
+			result verifytree.Result
 		}{
-			{"failed", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3, Log: "/verify/verify-1.log"}, []string{`"main"`, "exit code 3", "/verify/verify-1.log"}},
-			{"dirty result", verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"late.txt"}}, []string{"late.txt"}},
-			{"could not start", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "no shell"}, []string{"no shell"}},
+			{"failed", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3, Log: "/verify/verify-1.log"}},
+			{"dirty result", verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"late.txt"}}},
+			{"could not start", verifytree.Result{Status: verifytree.StatusFailed, ExitCode: -1, Detail: "no shell"}},
 		}
 		for _, tt := range tests {
 			fx := newMergeInFixture(t)
@@ -627,16 +662,11 @@ func TestMergeIn_VerifyGate(t *testing.T) {
 
 			outcome, ptr := fx.call(t)
 
-			if outcome != shedengine.Stuck || ptr.Halt {
-				t.Fatalf("%s: Call() = %q, %+v; want a non-halting Stuck", tt.name, outcome, ptr)
+			if outcome != shedengine.Stuck || !ptr.Halt || !strings.HasPrefix(ptr.Reason, LandingStopPrefix) {
+				t.Fatalf("%s: Call() = %q, %+v; want a halting Stuck opening with %q", tt.name, outcome, ptr, LandingStopPrefix)
 			}
-			for _, want := range tt.wantInReason {
-				if !strings.Contains(ptr.Reason, want) {
-					t.Errorf("%s: reason %q lacks %q", tt.name, ptr.Reason, want)
-				}
-			}
-			if fx.gate.fake.dirtyCalls != 2 {
-				t.Errorf("%s: clean-tree checks = %d; want 2, the check after the verify never running", tt.name, fx.gate.fake.dirtyCalls)
+			if len(fx.seats.tables) != 1 || fx.seats.tables[0].Values["mode"] != string(FixerModeMergeIn) {
+				t.Errorf("%s: fixer sessions = %d; want one in merge-in mode", tt.name, len(fx.seats.tables))
 			}
 			if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
 				t.Errorf("%s: a merge record was written after a halted verify", tt.name)
@@ -737,6 +767,7 @@ func TestMergeIn_UnreadableLockRecordHaltsNamingTheReleaseVerb(t *testing.T) {
 	t.Parallel()
 
 	fx := newMergeInFixture(t)
+	fx.m.deps.PushSkipped = true
 	if err := os.MkdirAll(fx.store.Dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -751,7 +782,7 @@ func TestMergeIn_UnreadableLockRecordHaltsNamingTheReleaseVerb(t *testing.T) {
 		t.Errorf("Call() = %q, %+v; want a halting Stuck naming lyx batten lock release", outcome, ptr)
 	}
 	if got := strings.Join(fx.events, ","); got != "commit-status" {
-		t.Errorf("events = %q; want only the status commit before the lock", got)
+		t.Errorf("events = %q; want only the status commit before the local-tip read's lock", got)
 	}
 }
 

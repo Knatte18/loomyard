@@ -316,56 +316,6 @@ func TestCommitStatusSeam_Real(t *testing.T) {
 		}
 	})
 
-	// Relies on the steps above for the committed review round: it archives plan/round-2-review.md, written and committed here, into a round directory.
-	t.Run("pending rejection holds the round", func(t *testing.T) {
-		reviewRel := "plan/round-2-review.md"
-		writeReviewsDirFile(t, location, reviewRel, "record\n")
-		// A file in another run directory keeps the reviews root non-empty after the move, so the released commit still names it.
-		writeReviewsDirFile(t, location, "webster/round-1-review.md", "record\n")
-		changeStatus()
-		if err := seam("Plan-Review", "running"); err != nil {
-			t.Fatalf("first seam error = %v; want nil", err)
-		}
-
-		reviewRunDir := filepath.Join(loomengine.LoomReviewsDir(location), "plan")
-		roundDir := filepath.Join(loomengine.LoomReworkDir(location), "round-1")
-		archived := filepath.Join(roundDir, "prior-generation", "reviews", "plan")
-		if err := os.MkdirAll(filepath.Dir(archived), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.Rename(reviewRunDir, archived); err != nil {
-			t.Fatal(err)
-		}
-		writeRecordFile(t, filepath.Join(roundDir, "record.json"), `{"first_card":3,"class":"exempt"}`+"\n")
-		writeRecordFile(t, loomengine.LoomRejectionPath(location), "{}\n")
-
-		changeStatus()
-		if err := seam("Plan-Review", "paused"); err != nil {
-			t.Fatalf("held seam error = %v; want nil", err)
-		}
-		reviewPath := filepath.ToSlash(filepath.Join(loomengine.LoomReviewsDirRel(), reviewRel))
-		if got := gitkit.Git(t, recordsSibling, "ls-tree", "-r", "--name-only", "HEAD"); !strings.Contains(got, reviewPath) {
-			t.Errorf("HEAD tree lacks %q; want the review run directory still held while the rejection is pending", reviewPath)
-		} else if strings.Contains(got, filepath.ToSlash(loomengine.LoomReworkDirRel())+"/round-1/") {
-			t.Errorf("HEAD tree holds a round-1 file while the rejection is pending:\n%s", got)
-		}
-
-		if err := os.Remove(loomengine.LoomRejectionPath(location)); err != nil {
-			t.Fatal(err)
-		}
-		changeStatus()
-		if err := seam("Plan-Review", "done"); err != nil {
-			t.Fatalf("released seam error = %v; want nil", err)
-		}
-		got := gitkit.Git(t, recordsSibling, "show", "--no-renames", "--name-status", "--format=", "HEAD")
-		if !strings.Contains(got, "D\t"+reviewPath) {
-			t.Errorf("records HEAD = %q; want the review run directory's deletion recorded once the rejection cleared", got)
-		}
-		if !strings.Contains(got, "A\t"+filepath.ToSlash(loomengine.LoomReworkDirRel())+"/round-1/record.json") {
-			t.Errorf("records HEAD = %q; want round-1/record.json recorded once the rejection cleared", got)
-		}
-	})
-
 	// The skip disposition against a real foreign merge: nothing is committed, nothing is staged into the operator's index, and their MERGE_HEAD survives untouched.
 	// The merge stays live for the next step.
 	t.Run("mid-merge skips without touching the merge", func(t *testing.T) {

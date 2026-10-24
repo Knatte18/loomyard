@@ -27,14 +27,16 @@
 // The hold reads an unreadable record as uncovered, so a corrupt file never stops a verify, and while the site's slug-entry exemption reports true, as it does for a run holding its parent lock, only a hub entry holds it.
 //
 // Each run that spawns its command writes its own log, `verify-<n>.log` in the verify directory with n one above the highest existing number, and names it on Result.Log, so a later verify never overwrites an earlier run's evidence.
-// After each such run the directory keeps the newest verifyLogKeep logs plus the one the Publish failure record names, and removes the rest.
+// After each such run the directory keeps the newest verifyLogKeep logs plus the one the landing failure record names, and removes the rest.
 //
-// The Publish failure record is the one never-tracked file Publish leaves when a verify of its `landing` or `publish` gate fails.
-// It names the failing gate as a FailureKind (`landing` or `publish`) and the failing tier of that gate, the failing tests, the failing run's own log, HEAD and the merge-in commit Publish made.
+// The landing failure record is the one never-tracked file, `landing-failure.yaml`, that Merge-In and Finalize leave when a verify of their `landing` gate fails.
+// A file an older build left under `publish-failure.yaml` is neither read nor kept from pruning.
+// It names the failing gate as a FailureKind and the failing tier of that gate, the failing tests, the failing run's own log, HEAD and the merge-in commit the row made.
 // A record written before the gates carries the retired kinds `plan_verify` and `publish_verify` and no tier, and a reader maps them onto the two gates.
 // It may also carry a trace of the failure to the plan: `cards`, each TracedCard holding the card's number, the glyphs and `path:line` locations matched to it, its Webster batch (0 when Webster holds no record of the card) and that batch's commit range; `later_range`, the commits made after the traced batches; and `untraced`, the locations no card holds.
 // The trace fields are optional and omitted when empty, so a record written without them reads as before, and the record stores no slug or intent text, since a reader takes them from the live plan.
-// Publish writes it through WritePublishFailure, the round gate reads it through ReadPublishFailure and checks its log path with IsLogPath, and a later passing Publish removes it through RemovePublishFailure, which leaves the log to pruning.
+// Merge-In and Finalize write it through WriteLandingFailure and the fixer's prompt names it, and a later passing gate at either row removes it through RemoveLandingFailure, which leaves the log to pruning.
+// ReadLandingFailure reads it, and IsLogPath checks a log path against the verify directory.
 // The record sits in the verify directory beside the logs.
 //
 // Every site of one worktree shares one directory, Dir(anchorRoot), so a pass at one site lets the next site skip.

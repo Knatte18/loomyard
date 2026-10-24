@@ -91,7 +91,7 @@ func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 			}},
 			{"a fix row with another value", func(recipe shedbuild.Recipe) {
 				for _, row := range recipe.Producers {
-					if row.Name == loomshed.NameWebsterBurlerFix {
+					if row.Name == loomshed.NameCodeBurlerFix {
 						row.Config["role_prefix"] = "other"
 					}
 				}
@@ -143,7 +143,7 @@ func TestIsFinalizeRow(t *testing.T) {
 	}{
 		{loomshed.NameFinalize, true},
 		{loomshed.NameMergeIn, false},
-		{loomshed.NamePRGate, false},
+		{loomshed.NamePRReview, false},
 		{"No-Such-Row", false},
 	}
 	for _, tt := range tests {
@@ -158,7 +158,7 @@ func TestBouncerRunSubdir(t *testing.T) {
 	bouncers := map[string]string{
 		loomshed.NameDiscussionBouncer: "discussion",
 		loomshed.NamePlanBouncer:       "plan",
-		loomshed.NameWebsterBouncer:    "webster",
+		loomshed.NameCodeBouncer:       "code",
 		loomshed.NameDarnBouncer:       "darn",
 	}
 	for row, want := range bouncers {
@@ -168,7 +168,7 @@ func TestBouncerRunSubdir(t *testing.T) {
 		}
 	}
 
-	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix, loomshed.NamePRGate, "No-Such-Row"} {
+	for _, row := range []string{loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix, loomshed.NamePRReview, "No-Such-Row"} {
 		got, ok, err := BouncerRunSubdir(row)
 		if err != nil || ok || got != "" {
 			t.Errorf("BouncerRunSubdir(%q) = %q, %v, %v; want empty, false, nil", row, got, ok, err)

@@ -345,7 +345,9 @@ func TestEntryNumbers(t *testing.T) {
 			"Discussion-Bouncer": 4, "Discussion-Burler-Review": 4, "Discussion-Burler-Fix": 4,
 			"Plan-Write":   5,
 			"Plan-Bouncer": 6, "Plan-Burler-Review": 6, "Plan-Burler-Fix": 6,
-			"PR-Gate": 14, "PR-Rework": 15,
+			"Webster": 7, "Merge-In": 8,
+			"Code-Bouncer": 9, "Code-Burler-Review": 9, "Code-Burler-Fix": 9,
+			"Describe": 10, "PR-Review": 11, "Finalize": 12, "Friction-Reflect": 13,
 		}},
 		{"batten", shedrun.RecipeBatten, map[string]int{"Run-Shed": 6, "Land": 7}},
 		{"darn", shedrun.RecipeDarn, map[string]int{"Darn-Bouncer": 3, "Darn-Burler-Review": 3, "Darn-Burler-Fix": 3}},
@@ -409,48 +411,4 @@ func TestRecipe_WebsterReroutesToPlanReview(t *testing.T) {
 		return
 	}
 	t.Fatalf("recipe has no %q row", loomshed.NamePlanBurlerReview)
-}
-
-// TestRecipe_PublishRoutesThroughPRGate pins the review fix-back routing: Publish hands to PR-Align, which hands to the gate with no on_stuck and no segment, the gate lands on Finalize or bounces to the rework row, the rework row re-enters Webster, both rows share segment PR-Review, and the main line still ends at Friction-Reflect.
-func TestRecipe_PublishRoutesThroughPRGate(t *testing.T) {
-	env, paths := testEnv(t)
-	shed, err := New(env, paths)
-	if err != nil {
-		t.Fatalf("New() error = %v; want nil", err)
-	}
-	rows := make(map[string]int, len(shed.Producers))
-	for i, p := range shed.Producers {
-		rows[p.Name] = i
-	}
-	get := func(name string) int {
-		i, ok := rows[name]
-		if !ok {
-			t.Fatalf("New() has no row %q", name)
-		}
-		return i
-	}
-	publish := shed.Producers[get(loomshed.NamePublish)]
-	align := shed.Producers[get(loomshed.NamePRAlign)]
-	gate := shed.Producers[get(loomshed.NamePRGate)]
-	rework := shed.Producers[get(loomshed.NamePRRework)]
-
-	if publish.OnDone != loomshed.NamePRAlign {
-		t.Errorf("Publish.OnDone = %q; want %q", publish.OnDone, loomshed.NamePRAlign)
-	}
-	if align.OnDone != loomshed.NamePRGate || align.OnStuck != "" || align.Segment != "" {
-		t.Errorf("PR-Align OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", align.OnDone, align.OnStuck, align.Segment, loomshed.NamePRGate)
-	}
-	if gate.OnDone != loomshed.NameFinalize || gate.OnStuck != loomshed.NamePRRework {
-		t.Errorf("PR-Gate OnDone/OnStuck = %q/%q; want %q/%q", gate.OnDone, gate.OnStuck, loomshed.NameFinalize, loomshed.NamePRRework)
-	}
-	if rework.OnDone != loomshed.NamePlanBouncer || rework.OnStuck != "" {
-		t.Errorf("PR-Rework OnDone/OnStuck = %q/%q; want %q/empty", rework.OnDone, rework.OnStuck, loomshed.NamePlanBouncer)
-	}
-	if gate.Segment != "PR-Review" || rework.Segment != "PR-Review" {
-		t.Errorf("segments = %q/%q; want both PR-Review", gate.Segment, rework.Segment)
-	}
-	last := shed.Producers[len(shed.Producers)-1]
-	if last.Name != loomshed.NameFrictionReflect || last.OnDone != "" {
-		t.Errorf("main line ends at %q (OnDone %q); want %q with empty OnDone", last.Name, last.OnDone, loomshed.NameFrictionReflect)
-	}
 }

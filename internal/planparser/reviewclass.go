@@ -3,7 +3,10 @@
 
 package planparser
 
-import "path"
+import (
+	"path"
+	"strings"
+)
 
 // sourceExtensions is the per-language set of file extensions that mark a source file, keyed by the plan's language: value.
 // A language absent from the map, including "none", declares none.
@@ -61,4 +64,51 @@ func effectiveLanguage(plan *Plan) string {
 		return "go"
 	}
 	return plan.Language
+}
+
+// PlanLanguage returns plan's language: value, with an absent key read as "go".
+func PlanLanguage(plan *Plan) string {
+	return effectiveLanguage(plan)
+}
+
+// testFileMatchers is the per-language predicate over a slash-separated, repository-relative path that marks a test file, keyed by the plan's language: value.
+// A language absent from the map, including "none", has no matcher, and IsTestFile reads every path of it as a test file.
+var testFileMatchers = map[string]func(path string) bool{
+	"go": func(p string) bool {
+		return strings.HasSuffix(p, "_test.go")
+	},
+	"csharp": func(p string) bool {
+		if path.Ext(p) != ".cs" {
+			return false
+		}
+		if strings.HasSuffix(p, "Tests.cs") || strings.HasSuffix(p, "Test.cs") {
+			return true
+		}
+		for _, dir := range strings.Split(path.Dir(p), "/") {
+			if strings.HasSuffix(dir, "Tests") {
+				return true
+			}
+		}
+		return false
+	},
+}
+
+// IsTestFile reports whether p, a slash-separated repository-relative path, is a test file of language.
+// A language with no declared matcher, "none" included, answers true for every path, so a cap built on it over-covers rather than lets a test edit through.
+func IsTestFile(language, p string) bool {
+	match, ok := testFileMatchers[language]
+	if !ok {
+		return true
+	}
+	return match(p)
+}
+
+// IsAnyLanguageTestFile reports whether p is a test file of any language with a declared matcher.
+func IsAnyLanguageTestFile(p string) bool {
+	for _, match := range testFileMatchers {
+		if match(p) {
+			return true
+		}
+	}
+	return false
 }

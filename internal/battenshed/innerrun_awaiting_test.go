@@ -30,7 +30,7 @@ func doneStatus() []statusResult {
 	return []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}}
 }
 
-// TestInnerRun_AwaitingWithoutApprovalWaitsExempt asserts an awaiting child with no decision on disk is an exempt wait that names the review and the approve command, checks once before the test's pause ends it and spawns nothing.
+// TestInnerRun_AwaitingWithoutApprovalWaitsExempt asserts an awaiting child with no decision on disk is an exempt wait that names the review and the circling way forward, checks once before the test's pause ends it and spawns nothing.
 //
 //testtiming:keep pins the no-decision wait -- its reason, one check and no spawn -- which the decision-bearing awaiting tests never reach
 func TestInnerRun_AwaitingWithoutApprovalWaitsExempt(t *testing.T) {
@@ -44,7 +44,7 @@ func TestInnerRun_AwaitingWithoutApprovalWaitsExempt(t *testing.T) {
 	if outcome != shedengine.Stuck || !ptr.BudgetExempt {
 		t.Errorf("Call() = %v exempt=%v; want an exempt Stuck", outcome, ptr.BudgetExempt)
 	}
-	for _, want := range []string{"waiting on review", "lyx loom approve", "lyx loom resume"} {
+	for _, want := range []string{"waiting on review", "lyx loom circling accept", "lyx loom resume"} {
 		if !strings.Contains(clock.lastReason(), want) {
 			t.Errorf("wait reason = %q; want substring %q", clock.lastReason(), want)
 		}
@@ -83,8 +83,8 @@ func TestInnerRun_AwaitingRevivesADeadDriverAndKeepsItsHints(t *testing.T) {
 	if *spawnCalls != 0 {
 		t.Errorf("Spawn calls = %d; want 0 without a decision", *spawnCalls)
 	}
-	if reason := clock.lastReason(); !strings.Contains(reason, "lyx loom approve") || !strings.Contains(reason, "lyx loom resume") {
-		t.Errorf("wait reason = %q; want the approve and the circling-then-resume hand-offs", reason)
+	if reason := clock.lastReason(); !strings.Contains(reason, "lyx loom circling accept") || !strings.Contains(reason, "lyx loom resume") {
+		t.Errorf("wait reason = %q; want the circling-then-resume hand-off", reason)
 	}
 }
 
@@ -165,7 +165,7 @@ func TestInnerRun_AwaitingResumesOncePerApproval(t *testing.T) {
 			t.Errorf("wait reason = %q; want substring %q", reason, want)
 		}
 	}
-	if strings.Contains(reason, "lyx loom approve") {
+	if strings.Contains(reason, "lyx loom circling") {
 		t.Errorf("wait reason = %q; want no re-approve hint while the resume is pending", reason)
 	}
 
@@ -203,7 +203,7 @@ func TestInnerRun_AwaitingAgainAfterResumeGetsReapproveHint(t *testing.T) {
 	if *spawnCalls != 1 {
 		t.Errorf("Spawn calls = %d; want still 1", *spawnCalls)
 	}
-	for _, want := range []string{"already acted on", approval.At, "lyx loom approve", "lyx loom resume"} {
+	for _, want := range []string{"already acted on", approval.At, "lyx loom circling accept", "lyx loom resume"} {
 		if !strings.Contains(clock.reasons[0], want) {
 			t.Errorf("wait reason at the check that saw the longer history = %q; want substring %q", clock.reasons[0], want)
 		}
@@ -228,8 +228,8 @@ func TestInnerRun_AwaitingOldLayoutMarkerGetsReapproveHint(t *testing.T) {
 	if *spawnCalls != 0 {
 		t.Errorf("Spawn calls = %d; want 0", *spawnCalls)
 	}
-	if reason := clock.lastReason(); !strings.Contains(reason, "lyx loom approve") || !strings.Contains(reason, "lyx loom resume") {
-		t.Errorf("wait reason = %q; want the decide-again hint naming both hand-offs", reason)
+	if reason := clock.lastReason(); !strings.Contains(reason, "lyx loom circling accept") || !strings.Contains(reason, "lyx loom resume") {
+		t.Errorf("wait reason = %q; want the decide-again hint naming the circling hand-off", reason)
 	}
 }
 

@@ -171,8 +171,8 @@ func TestSubject_Unchanged(t *testing.T) {
 	}{
 		{"DocumentEqualHash", Subject{Kind: SubjectDocument, Hash: "a"}, Subject{Kind: SubjectDocument, Hash: "a"}, nil, true, nil},
 		{"DocumentChangedHash", Subject{Kind: SubjectDocument, Hash: "b"}, Subject{Kind: SubjectDocument, Hash: "a"}, nil, false, nil},
-		{"MergeEqualHash", Subject{Kind: SubjectMerge, Hash: "a"}, Subject{Kind: SubjectMerge, Hash: "a"}, nil, true, nil},
-		{"KindChanged", Subject{Kind: SubjectMerge, Hash: "a"}, Subject{Kind: SubjectDocument, Hash: "a"}, nil, false, nil},
+		{"DocumentEqualHash", Subject{Kind: SubjectDocument, Hash: "a"}, Subject{Kind: SubjectDocument, Hash: "a"}, nil, true, nil},
+		{"KindChanged", Subject{Kind: SubjectCode, Hash: "a"}, Subject{Kind: SubjectDocument, Hash: "a"}, nil, false, nil},
 		{"CodeSameBaseEqualFullHash", Subject{Kind: SubjectCode, MergeBase: "base-1", FullHash: "full-1"}, codeSettled, nil, true, nil},
 		{"CodeSameBaseUnequalFullHash", Subject{Kind: SubjectCode, MergeBase: "base-1", FullHash: "full-2"}, codeSettled, nil, false, nil},
 		{"CodeMovedBaseMergeInOnlyEqualPatchID", Subject{Kind: SubjectCode, MergeBase: "base-2", PatchID: "patch-1"}, codeSettled, mergeInOnly(true), true, nil},

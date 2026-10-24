@@ -125,6 +125,13 @@
 // IdentityText returns the overview's bytes without the frontmatter's `approved:` line, the one line SetApproved writes.
 // A caller that decides whether a plan overview changed since it was reviewed hashes that form, so an approval alone never counts as a change.
 //
+// # Test-file patterns
+//
+// IsTestFile reports whether a slash-separated, repository-relative path is a test file of a language, from a per-language table declared beside the source-extension table.
+// A language the table lacks, `none` included, reads every path as a test file, so a cap built on it over-covers rather than lets a test edit through.
+// IsAnyLanguageTestFile is the union over every declared language, for a caller with no plan.
+// PlanLanguage returns a plan's `language:` value with an absent key read as `go`, which a caller tells the language its caps match against.
+//
 // # Checks outside both entry points
 //
 // CheckFirstCard, CheckCardFabricReference, CheckFabricVocabularyName and CheckEditTestFile sit outside ValidateFormat and Validate.

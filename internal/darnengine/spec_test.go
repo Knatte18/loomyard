@@ -60,7 +60,7 @@ func leadPrompt(t *testing.T, in DarnInputs, parentName string, table seatengine
 	return prompts[""]
 }
 
-// TestDarnSpec covers the table's lead and settings, and the rendered tokens for a first spawn, where both optional tokens render (none), and for a spawn that carries rejection findings, prior work, a parent and a friction directory.
+// TestDarnSpec covers the table's lead and settings, and the rendered tokens for a first spawn, where the optional prior-work token renders (none), and for a spawn that carries prior work, a parent and a friction directory.
 func TestDarnSpec(t *testing.T) {
 	t.Parallel()
 
@@ -75,25 +75,24 @@ func TestDarnSpec(t *testing.T) {
 		wantSkills   []string
 	}{
 		{
-			name:       "first spawn renders both optional tokens as none",
+			name:       "first spawn renders the prior-work token as none",
 			configure:  func(in *DarnInputs) {},
 			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
 			wantInPrompt: func(in DarnInputs) []string {
 				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.SupportLogPath}
 			},
-			wantNone:     2,
+			wantNone:     1,
 			wantNoParent: true,
 		},
 		{
-			name: "rework spawn renders the findings, the prior work, the parent and the friction note path",
+			name: "resumed spawn renders the prior work, the parent and the friction note path",
 			configure: func(in *DarnInputs) {
-				in.RejectionFindings = "the cache is never invalidated"
 				in.PriorWork = "the verify gate failed on TestCache"
 				in.FrictionDir = t.TempDir()
 			},
 			parentName: "the-parent",
 			wantInPrompt: func(in DarnInputs) []string {
-				return []string{"the cache is never invalidated", "the verify gate failed on TestCache", "the-parent", filepath.Join(in.FrictionDir, "Darn-Write.md")}
+				return []string{"the verify gate failed on TestCache", "the-parent", filepath.Join(in.FrictionDir, "Darn-Write.md")}
 			},
 			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
 		},
@@ -103,7 +102,7 @@ func TestDarnSpec(t *testing.T) {
 				in.LanguageSkills = []string{"scribe:golang-testing", "scribe:testing", "scribe:golang-testing"}
 			},
 			wantInPrompt: func(in DarnInputs) []string { return nil },
-			wantNone:     2,
+			wantNone:     1,
 			wantNoParent: true,
 			wantSkills:   []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"},
 		},

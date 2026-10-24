@@ -90,7 +90,8 @@ func TestBuildProfileReport(t *testing.T) {
 		Partition: []websterengine.PartitionBatch{{Cards: []string{"01-x", "02-y"}, Profile: "cautious"}},
 		Batches:   map[int]*websterengine.BatchState{1: {Kind: "fork", Terminal: true, Status: "done", ForkTranscripts: transcripts("agent-1.jsonl")}},
 	})
-	review("solorec", "round-1-review.md", 1)
+	// A run of the Code-Review recipe writes its rounds to the code directory.
+	history.files["solorec:"+path.Join(loomengine.LoomReviewsDirRel(), "code", "round-1-review.md")] = reviewFile(1)
 
 	// No partition: counted as identity from the plan commit, and no review files.
 	record("plain", "plainrec")

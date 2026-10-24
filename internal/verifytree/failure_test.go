@@ -1,4 +1,4 @@
-// failure_test.go covers the Publish failure record codec without spawning anything.
+// failure_test.go covers the landing failure record codec without spawning anything.
 
 package verifytree
 
@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestPublishFailureRecord(t *testing.T) {
+func TestLandingFailureRecord(t *testing.T) {
 	t.Parallel()
 
 	newPaths := func(t *testing.T) Paths {
@@ -22,9 +22,9 @@ func TestPublishFailureRecord(t *testing.T) {
 
 	t.Run("absent reads as none", func(t *testing.T) {
 		t.Parallel()
-		_, ok, err := ReadPublishFailure(newPaths(t))
+		_, ok, err := ReadLandingFailure(newPaths(t))
 		if ok || err != nil {
-			t.Fatalf("ReadPublishFailure = (_, %v, %v); want (_, false, nil)", ok, err)
+			t.Fatalf("ReadLandingFailure = (_, %v, %v); want (_, false, nil)", ok, err)
 		}
 	})
 
@@ -32,21 +32,19 @@ func TestPublishFailureRecord(t *testing.T) {
 		t.Run(fmt.Sprintf("round trip keeps the caller's log path and tier%d", tier), func(t *testing.T) {
 			t.Parallel()
 			p := newPaths(t)
-			want := PublishFailure{
+			want := LandingFailure{
 				Kind:        FailureKindPublish,
 				Tier:        tier,
-				Row:         "Merge-In",
 				Tests:       []FailedTest{{Package: "example.com/m/a", Test: "TestA/sub"}},
 				LogPath:     filepath.Join(p.Dir, "verify-3.log"),
 				Head:        "abc123",
 				MergeCommit: "def456",
-				Target:      "Webster-Burler",
 				WrittenAt:   "2026-01-02T03:04:05Z",
 			}
-			if err := WritePublishFailure(p, want); err != nil {
-				t.Fatalf("WritePublishFailure: %v", err)
+			if err := WriteLandingFailure(p, want); err != nil {
+				t.Fatalf("WriteLandingFailure: %v", err)
 			}
-			written, err := os.ReadFile(p.PublishFailure)
+			written, err := os.ReadFile(p.LandingFailure)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -54,9 +52,9 @@ func TestPublishFailureRecord(t *testing.T) {
 				t.Fatalf("record file = %q; want a tier: %d line even for tier 0", written, tier)
 			}
 
-			got, ok, err := ReadPublishFailure(p)
+			got, ok, err := ReadLandingFailure(p)
 			if !ok || err != nil {
-				t.Fatalf("ReadPublishFailure = (_, %v, %v); want (_, true, nil)", ok, err)
+				t.Fatalf("ReadLandingFailure = (_, %v, %v); want (_, true, nil)", ok, err)
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("record = %+v; want %+v", got, want)
@@ -67,11 +65,11 @@ func TestPublishFailureRecord(t *testing.T) {
 	t.Run("trace fields round-trip and an untraced record writes none of their keys", func(t *testing.T) {
 		t.Parallel()
 		p := newPaths(t)
-		base := PublishFailure{Kind: FailureKindPublish, LogPath: filepath.Join(p.Dir, "verify-1.log"), Head: "abc123"}
-		if err := WritePublishFailure(p, base); err != nil {
+		base := LandingFailure{Kind: FailureKindPublish, LogPath: filepath.Join(p.Dir, "verify-1.log"), Head: "abc123"}
+		if err := WriteLandingFailure(p, base); err != nil {
 			t.Fatal(err)
 		}
-		written, err := os.ReadFile(p.PublishFailure)
+		written, err := os.ReadFile(p.LandingFailure)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,30 +86,30 @@ func TestPublishFailureRecord(t *testing.T) {
 		}
 		want.LaterRange = CommitRange{From: "ccc", To: "ddd"}
 		want.Untraced = []string{"internal/c/c.go:4"}
-		if err := WritePublishFailure(p, want); err != nil {
+		if err := WriteLandingFailure(p, want); err != nil {
 			t.Fatal(err)
 		}
-		got, ok, err := ReadPublishFailure(p)
+		got, ok, err := ReadLandingFailure(p)
 		if !ok || err != nil {
-			t.Fatalf("ReadPublishFailure = (_, %v, %v); want (_, true, nil)", ok, err)
+			t.Fatalf("ReadLandingFailure = (_, %v, %v); want (_, true, nil)", ok, err)
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("record = %+v; want %+v", got, want)
 		}
 	})
 
-	t.Run("a record written before the row and tier fields decodes with an empty row and tier 0", func(t *testing.T) {
+	t.Run("a record written before the tier field decodes with tier 0, and its row and target keys are ignored", func(t *testing.T) {
 		t.Parallel()
 		p := newPaths(t)
-		if err := os.WriteFile(p.PublishFailure, []byte("kind: plan_verify\nlog_path: verify-1.log\nhead: abc123\n"), 0o644); err != nil {
+		if err := os.WriteFile(p.LandingFailure, []byte("kind: plan_verify\nrow: Merge-In\ntarget: Webster-Burler\nlog_path: verify-1.log\nhead: abc123\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		got, ok, err := ReadPublishFailure(p)
+		got, ok, err := ReadLandingFailure(p)
 		if !ok || err != nil {
-			t.Fatalf("ReadPublishFailure = (_, %v, %v); want (_, true, nil)", ok, err)
+			t.Fatalf("ReadLandingFailure = (_, %v, %v); want (_, true, nil)", ok, err)
 		}
-		if got.Row != "" || got.Tier != 0 || got.Kind != FailureKindPlanVerify {
-			t.Fatalf("record = %+v; want an empty Row, tier 0 and kind %q", got, FailureKindPlanVerify)
+		if got.Tier != 0 || got.Kind != FailureKindPlanVerify {
+			t.Fatalf("record = %+v; want tier 0 and kind %q", got, FailureKindPlanVerify)
 		}
 		if got.Cards != nil || got.LaterRange != (CommitRange{}) || got.Untraced != nil {
 			t.Fatalf("record = %+v; want empty trace fields", got)
@@ -121,11 +119,11 @@ func TestPublishFailureRecord(t *testing.T) {
 	t.Run("malformed record is an error", func(t *testing.T) {
 		t.Parallel()
 		p := newPaths(t)
-		if err := os.WriteFile(p.PublishFailure, []byte("kind: [unclosed"), 0o644); err != nil {
+		if err := os.WriteFile(p.LandingFailure, []byte("kind: [unclosed"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if _, ok, err := ReadPublishFailure(p); ok || err == nil {
-			t.Fatalf("ReadPublishFailure = (_, %v, %v); want (_, false, error)", ok, err)
+		if _, ok, err := ReadLandingFailure(p); ok || err == nil {
+			t.Fatalf("ReadLandingFailure = (_, %v, %v); want (_, false, error)", ok, err)
 		}
 	})
 
@@ -136,16 +134,16 @@ func TestPublishFailureRecord(t *testing.T) {
 		if err := os.WriteFile(log, []byte("output"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := WritePublishFailure(p, PublishFailure{Kind: FailureKindPlanVerify, LogPath: log, Head: "abc123"}); err != nil {
+		if err := WriteLandingFailure(p, LandingFailure{Kind: FailureKindPlanVerify, LogPath: log, Head: "abc123"}); err != nil {
 			t.Fatal(err)
 		}
 		for range 2 {
-			if err := RemovePublishFailure(p); err != nil {
-				t.Fatalf("RemovePublishFailure: %v", err)
+			if err := RemoveLandingFailure(p); err != nil {
+				t.Fatalf("RemoveLandingFailure: %v", err)
 			}
 		}
-		if _, err := os.Stat(p.PublishFailure); !os.IsNotExist(err) {
-			t.Fatalf("%s still present after removal: %v", p.PublishFailure, err)
+		if _, err := os.Stat(p.LandingFailure); !os.IsNotExist(err) {
+			t.Fatalf("%s still present after removal: %v", p.LandingFailure, err)
 		}
 		if _, err := os.Stat(log); err != nil {
 			t.Fatalf("the record's log was removed with it: %v", err)

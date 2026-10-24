@@ -15,15 +15,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// resolver is the single-method seam both Publish and Finalize hold their constructed
+// resolver is the single-method seam both Merge-In and Finalize hold their constructed
 // *mergeresolve.Resolver behind. It is unexported deliberately: production has exactly one way to
 // obtain a resolver -- the constructors build it from Deps' told values -- and the seam exists so
 // this package's own in-package tests can substitute a fake without a second public construction
 // path anyone outside could reach for by mistake.
 type resolver interface {
 	// Resolve merges source into the current pair and, if the merge produces conflicts, drives a
-	// conflict-resolution session to clear them. See mergeresolve.Resolver.Resolve.
-	Resolve(ctx context.Context, source string) (mergeresolve.Result, error)
+	// conflict-resolution session to clear them.
+	// A non-empty tip is the commit merged in place of source's own tip. See mergeresolve.Resolver.Resolve.
+	Resolve(ctx context.Context, source, tip string) (mergeresolve.Result, error)
 }
 
 // The compile-time assertion that *mergeresolve.Resolver satisfies resolver.
@@ -65,30 +66,11 @@ type Deps struct {
 	// not compute.
 	ScratchDir string
 
-	// RunStart is the run's start, the `started_at` stamp of the pair's seed.
-	// Told by the caller and derived by nothing here.
-	// Every pull-request lookup in this package is bounded by it: a pull request created before it belongs to an earlier run and reads as none.
-	// Zero means unbounded.
-	RunStart time.Time
-
-	// OriginURL is the told remote URL string Publish parses into an owner/repo pair via
-	// githubclient.ParseOwnerRepo. Read by the caller, never resolved here.
-	OriginURL string
-	// PushSkipped is the told skip decision, so Publish can refuse rather than silently produce a
-	// pull request for an unpushed branch.
+	// PushSkipped is the told skip decision, which Finalize's parent push honours by skipping its push.
 	PushSkipped bool
-	// PushBranch is the injected push closure. The push verb's own name carries a token this
-	// package may not write in any identifier, so the verb is named inside internal/fabricengine's
-	// Fabric.PushBranch, never by this package or its caller -- this package only calls the closure.
-	PushBranch func() error
-	// RemoteOnlyCommits is the injected remote read Publish calls after a rejected push:
-	// it returns the remote task branch's tip and the commits on it that the local branch lacks.
-	// The read is git, so it lives in internal/fabricengine and this package only calls the closure.
-	// An empty tip means the remote has no such branch.
-	RemoteOnlyCommits func() (tip string, commits []string, err error)
 
-	// OpenFabric and OpenParentFabric are the two lazy opener closures Publish and Finalize hold,
-	// respectively -- Publish's over the task worktree's own pair, Finalize's over the parent
+	// OpenFabric and OpenParentFabric are the two lazy opener closures Merge-In and Finalize hold,
+	// respectively -- Merge-In's over the task worktree's own pair, Finalize's over the parent
 	// branch's pair. Laziness is required, not stylistic: the constructor each closure wraps
 	// stat-checks the paired layout, so opening eagerly would fail before the run's own preflight
 	// has confirmed anything is wired -- a constraint that holds regardless of which layer fills
@@ -155,7 +137,12 @@ type Deps struct {
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	ParentCommitsOriginLacks func() ([]string, error)
 
-	// CommitParentRecords commits the parent pair's own run records, which Finalize calls after its catch-up merge-in and before the parent-side merge.
+	// ConflictReroutes reports whether a conflict in Finalize's merge of the parent branch into the task aborts the merge and reroutes, which leaves the merge and its conflict session to Merge-In outside the parent lock.
+	// Told by the caller: true for loom.
+	// False, darn's value, resolves the conflict with the conflict session under the lock, since darn has no other merging row.
+	ConflictReroutes bool
+
+	// CommitParentRecords commits the parent pair's own run records, which Finalize calls after its merge of the parent branch and before the parent-side merge.
 	// Sibling runs leave their status records uncommitted in the parent pair, and the merge guard refuses any tracked modification there.
 	// A clean subtree is a no-op, and a returned error is Stuck.
 	//
@@ -175,15 +162,10 @@ type Deps struct {
 	AbortMerge          func() error
 	StopConflictSession func() (guid string, err error)
 
-	// ApprovalPath and RejectionPath are the operator's two decision records' paths,
-	// and TaskHead returns the task branch's local HEAD SHA.
-	// The PR gate, not Publish, reads both records and TaskHead, and lands or bounces the pull request only if the pull request, a record and TaskHead all agree.
-	//
-	// The gate's constructor refuses empty paths and a nil TaskHead.
-	// internal/loomcli's landingDeps fills all three, and its drift guard keeps them filled.
-	ApprovalPath  string
-	RejectionPath string
-	TaskHead      func() (string, error)
+	// TaskHead returns the task branch's local HEAD SHA.
+	// Merge-In's constructor refuses a nil TaskHead.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	TaskHead func() (string, error)
 
 	// MarkTaskDone marks the task's board entry done. Finalize calls it once the parent-side merge
 	// has landed, before the parent push, and only logs a failure: the change is on the parent
@@ -214,7 +196,7 @@ type Deps struct {
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	Notify func(line string) error
 
-	// VerifyCommand returns the call of the hub's `landing` gate, which Merge-In, Finalize and Publish run in the task worktree after a merge-in.
+	// VerifyCommand returns the call of the hub's `landing` gate, which Merge-In and Finalize run in the task worktree after a merge-in.
 	// A darn run with a tree-scoped diff returns the tree-scoped command in its place.
 	// The clean-tree checks around the merge-in run whether or not a command is wired.
 	// It is read each time the gate runs rather than once at construction,
@@ -225,11 +207,7 @@ type Deps struct {
 	// the gate never runs and nothing is logged.
 	// An empty returned string means the source carries no landing command, which skips the gate with a warning.
 	VerifyCommand func() (string, error)
-	// PublishCommand returns the call of the hub's `publish` gate, which Publish runs after the landing call; an empty `publish` list returns "" and runs nothing.
-	// It is read at each Publish.
-	// Nil means "no publish gate", following CommitStatus's nil-is-absent convention.
-	PublishCommand func() (string, error)
-	// BaseCommand returns the command whose verified-tree entry every landing and publish pass keeps, so a pass never prunes the entry the next review round diffs from.
+	// BaseCommand returns the command whose verified-tree entry every landing pass keeps, so a pass never prunes the entry the next review round diffs from.
 	// It is read at each gate call.
 	// Nil, or an empty answer, names none.
 	BaseCommand func() (string, error)
@@ -237,25 +215,6 @@ type Deps struct {
 	// A failing call whose log names no failing tier records the highest tier of its gate, read through it.
 	// Told, and required wherever a failure record is written: a nil lookup would panic on a failing log with no tier summary line.
 	GateTiers func(gate string) ([]int, error)
-	// VerifyFailedWayForward is the whole way-forward clause a failed-verify Stuck reason ends with when the failure record was written and ClassifyVerifyFailure is nil.
-	// The recipe that drives the run tells it, since the route back to a fix depends on the recipe's graph.
-	// Empty asks to fix forward on the task branch instead.
-	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
-	VerifyFailedWayForward string
-	// VerifyFailureTarget is the row the recipe routes a failed Publish verify back to, written into the failure record's target when ClassifyVerifyFailure is nil.
-	// Empty writes no target.
-	VerifyFailureTarget string
-	// ClassifyVerifyFailure chooses a failure record's target and the Stuck reason's way forward per failure.
-	// Merge-In and Publish call it when they write a failure record, with the record as written except its target, its log path naming the failing run's log.
-	// Nil keeps VerifyFailureTarget and VerifyFailedWayForward, loom's value.
-	ClassifyVerifyFailure func(ctx context.Context, failure verifytree.PublishFailure) FailureRoute
-	// PublishSkip reports whether Publish skips the `publish` gate for this call, so a diff the recipe verifies by its own narrower command lands without the extra tier.
-	// Publish calls it after taking the parent lock: true takes the path of an empty `publish` list, which removes the Publish failure record before the push;
-	// an error is Publish's returned error, with nothing verified or pushed; false runs the `publish` gate.
-	// It is read at each Publish, so a diff that gains a path between two Publish calls is classified anew.
-	//
-	// Nil means "never skip", loom's value: the `publish` gate runs whenever its list is not empty.
-	PublishSkip func() (bool, error)
 	// VerifyWaitMark sets or clears the pane mark of the run's driver strand around the post-merge verify,
 	// so the wait shows on screen.
 	// The gate clears the mark before each verify, sets it with the label `verify <producer>` and the verify's start time immediately before the verify runs,
@@ -268,7 +227,7 @@ type Deps struct {
 	// internal/loomcli's landingDeps fills it,
 	// and its drift guard keeps it filled.
 	VerifyWaitMark func(label string, start time.Time) error
-	// FailingTests parses a failed verify's log into the failing tests Publish's failure record names.
+	// FailingTests parses a failed verify's log into the failing tests the failure record names.
 	// It is told so this package stays free of the module that owns the log format.
 	// Nil records no tests.
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
@@ -315,14 +274,33 @@ type Deps struct {
 	ChangedPaths func(from, to string) ([]string, error)
 	// MergeBase returns the best common ancestor of the task pair's HEAD and ref.
 	MergeBase func(ref string) (string, error)
-	// MergeRecordPath and MergeReviewedPath are the told merge record and reviewed-tip files, both in the run's scratch directory.
-	MergeRecordPath   string
-	MergeReviewedPath string
+	// MergeRecordPath is the told merge record file, in the run's scratch directory.
+	MergeRecordPath string
 
-	// Alignment is the PR-Align producer's told seams: the alignment agent's session, its config and snapshot reads, its static prompt fields and the note record it leaves for PR-Gate.
-	// PR-Gate reads only Alignment.NotePath, and an empty one reads no note.
-	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
-	Alignment AlignmentDeps
+	// FixerSeats is the seat runner the merge fixer session runs on, which `*seatengine.Engine` satisfies.
+	// Merge-In and Finalize run the fixer through it, and the fixer loop refuses to run without it.
+	FixerSeats fixerSeats
+	// DecisionRecordPath is the run's decision record, which the fixer session reads.
+	DecisionRecordPath string
+	// PlanDir is the run's plan directory, which the fixer session reads; empty for a darn run, which has none.
+	PlanDir string
+	// LineChange reads the paths, line count and added lines of the change between two commits of the task pair, which the fixer's caps judge.
+	LineChange func(from, to string) (fabricengine.LineChange, error)
+	// IsTestFile reports whether a slash-separated repository-relative path is a test file of the run's language, which the fixer's kind cap judges.
+	IsTestFile func(path string) bool
+	// RowEntry answers the current entry of the named row from the run's status history, so a row's attempt record keeps one identity across its resumes.
+	RowEntry func(row string) (int, error)
+	// TaskRemoteTip reads the task branch's remote-tracking tip, `origin/<task branch>`, without a fetch, and answers "" when there is none.
+	// A push the fixer session makes from the task pair updates that ref, so a changed tip shows the push.
+	TaskRemoteTip func() (string, error)
+	// CodeReviewOff reports whether the Code-Perch's effective review budget is 0, so no review follows Merge-In and its fixer's change is judged against the caps instead.
+	// A nil CodeReviewOff reads as the budget being 0, and a returned error is an error stop of the row.
+	CodeReviewOff func() (bool, error)
+	// RerouteReviewed reports whether a review follows Finalize's reroute, so a fixer change it keeps is seen before the run lands.
+	// For loom that is the Code-Review perch's effective budget being above 0, and for darn Finalize's reroute edge reaching a Darn-Bouncer whose budget is above 0 rather than PR-Review.
+	// It is read each time Finalize ends on a spent cap or an over-cap change.
+	// A nil RerouteReviewed reads as no review, so Finalize halts instead of rerouting, and a returned error is an error stop of the row.
+	RerouteReviewed func() (bool, error)
 }
 
 // ParentOwnership is who owns the parent a run lands on.

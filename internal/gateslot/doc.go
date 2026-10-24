@@ -66,9 +66,10 @@
 // A `tier_parallel` entry for a tier the config does not declare is dropped with a logged warning, so a tier the hub removes leaves no entry that fails the load.
 // Cross-references are checked at use, never at load, so the template and a hub whose gate lists name an undeclared tier both load.
 //
-// At use, Config.TierList refuses a hub with no `tier0`, a gate name the config holds no list for, an empty list for any gate but `publish`, and a listed tier the hub does not declare; Config.Tier refuses an undeclared number.
+// At use, Config.TierList refuses a hub with no `tier0`, a gate name the config holds no list for, an empty list for any gate, and a listed tier the hub does not declare; Config.Tier refuses an undeclared number.
 // Each refusal names `lyx config gate` and closes with the clause that a session that is not the prime reports status: FAILED and the orch takes the steps.
-// Config.GateCall renders the one `lyx gate test --wait --tier <n>...` call a site runs, in the list's order and followed by the scope words, and "" for an empty `publish` list.
+// Config.GateCall renders the one `lyx gate test --wait --tier <n>...` call a site runs, in the list's order and followed by the scope words.
+// MigrateConfig prunes the retired `gates.publish` list from a gate.yaml document, so reconcile removes it from the hub file.
 // Config.TiersValue renders the tier lines and the Go-read gate lists a prompt takes, or `none` when no tier is declared.
 //
 // # Watchdog and timeout lines

@@ -64,7 +64,7 @@ func (s *Shed) rerouteStuck(st Status, def ProducerDef, output OutputPointer) (S
 	}
 
 	nextHistory := appendOrFold(st.History, HistoryEntry{Producer: def.Name, Outcome: Stuck, Output: output.Path, At: at, GateAttempts: output.GateAttempts, GateSpans: output.GateSpans, BudgetExempt: true, RerouteCapped: true})
-	reason := fmt.Sprintf("reroute cap reached: %s rerouted to %s %d times since its last done; %s; way forward: %s", def.Name, def.OnReroute, count, stuckReason(output.Reason), s.rerouteCapWayForward())
+	reason := fmt.Sprintf("%s: %s rerouted to %s %d times since its last done; %s; way forward: %s", ReasonRerouteCapReached, def.Name, def.OnReroute, count, stuckReason(output.Reason), s.rerouteCapWayForward())
 	if err := s.persist(st.CurrentProducer, StateBlocked, reason, nextHistory, false, ""); err != nil {
 		return StepResult{}, err
 	}

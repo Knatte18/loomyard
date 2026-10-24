@@ -1,21 +1,18 @@
 // darnwiring.go holds the wiring only a darn run needs: the tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the writer's and Describe's Spec sources, and the rename of retired darn rows in a run's status file.
-// A loom run leaves all of it unwired, but shares the merge base reader `pairMergeBase` builds.
+// A loom run leaves all of it unwired, but shares the merge base readers `pairMergeBase` and `taskMergeBase` build.
 
 package loomcli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -31,28 +28,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 	"gopkg.in/yaml.v3"
 )
 
 // darnReviewSegment is the darn recipe's review segment, the key of its entry in shedrecipe.Env.Segments.
 const darnReviewSegment = "Darn-Review"
 
-// reworkRowFor returns the name of the row that answers an operator rejection in recipe: the Darn-Write row for the darn recipe, PR-Rework otherwise.
-func reworkRowFor(recipe string) string {
-	if recipe == shedrun.RecipeDarn {
-		return loomshed.NameDarnWrite
-	}
-
-	return loomshed.NamePRRework
-}
-
-// darnVerifySource returns the darn recipe's verify source: the hub's `landing` and `publish` gate calls, and the Darn-Write route back to a fix.
+// darnVerifySource returns the darn recipe's verify source: the hub's `landing` gate call.
 // command resolves at each call, never at construction, so an edit between steps is seen:
 // the tree-scoped command when the task diff is wholly under the hub's configured trees, else the `landing` call;
 // a gate config refusal and a malformed tree key are errors naming the way forward.
 // baseCommand is the `landing` call, since darn has no webster gate, and stays the base command of a tree-scoped site.
-// publishSkip answers at each call whether the diff is tree-scoped, so Publish skips the `publish` gate for it.
 func darnVerifySource(l *lyxcwd.Location) verifySource {
 	dirs := fabricengine.ConfigDirs(l)
 	treeScope := darnTreeScope(l)
@@ -68,18 +54,8 @@ func darnVerifySource(l *lyxcwd.Location) verifySource {
 			}
 			return landing()
 		},
-		publishCommand: gateCallSource(dirs, "publish"),
-		baseCommand:    landing,
-		gateTiers:      gateTiersLookup(dirs),
-		publishSkip: func() (bool, error) {
-			_, scoped, err := treeScope()
-			return scoped, err
-		},
-		failedWayForward: darnFailedWayForward,
-		failureTarget:    loomshed.NameDarnWrite,
-		classify: func(ctx context.Context, failure verifytree.PublishFailure) landingshed.FailureRoute {
-			return darnFailureRoute(ctx, failure, l.WorktreePath(), pairMergeBase(l), impactset.DeriveTargets)
-		},
+		baseCommand: landing,
+		gateTiers:   gateTiersLookup(dirs),
 	}
 }
 
@@ -104,7 +80,7 @@ func pairMergeBase(l *lyxcwd.Location) func() (string, error) {
 // A load error is returned with its way forward: the editor one for a malformed tree key, the hub reconcile one otherwise.
 // A scoped diff whose trees contribute no target answers an empty command.
 func darnTreeScope(l *lyxcwd.Location) func() (string, bool, error) {
-	mergeBase := pairMergeBase(l)
+	mergeBase := taskMergeBase(l)
 	return func() (string, bool, error) {
 		dirs := fabricengine.ConfigDirs(l)
 		cfg, err := darnengine.LoadConfig(dirs, "darn")
@@ -163,13 +139,8 @@ func latestDarnOutcome(statusPath, statusLockPath string) (loomshed.DarnOutcome,
 
 // darnDeps assembles the Darn-Write row's seams for location and the run addressed by runID.
 // Every closure reads or writes on demand and opens nothing at build time.
-func darnDeps(l *lyxcwd.Location, runID, verifyDir string) loomshed.DarnDeps {
-	paths := verifytree.NewPaths(l.WorktreePath(), verifyDir)
+func darnDeps(l *lyxcwd.Location, runID string) loomshed.DarnDeps {
 	return loomshed.DarnDeps{
-		ReadRejection:  pendingRejectionReader(l),
-		ClearRejection: rejectionClearer(l),
-		// RecordRejection keeps the reject's findings in the landing directory before the pending record is cleared, so the amendment reads them and Commit commits them.
-		RecordRejection: func(rejection loomshed.PendingRejection) error { return recordDarnRejection(l, rejection) },
 		// Commit mirrors CommitDescription, including its discard of (sha, committed), which makes a repeat commit over an unchanged directory a no-op.
 		Commit: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{loomengine.LandingDirRel()}, fmt.Sprintf("loom: change description for %s", seedSlug(l.WorktreeName)), fabricengine.EnvSyncOptions())
@@ -177,40 +148,6 @@ func darnDeps(l *lyxcwd.Location, runID, verifyDir string) loomshed.DarnDeps {
 		},
 		LatestOutcome: func() (loomshed.DarnOutcome, bool, error) {
 			return latestDarnOutcome(shedrun.StatusFile(l, runID), shedrun.StatusLock(l, runID))
-		},
-		PublishFailure: func() (string, verifytree.PublishFailure, bool, error) {
-			record, found, err := verifytree.ReadPublishFailure(paths)
-			if err != nil || !found {
-				return "", verifytree.PublishFailure{}, false, err
-			}
-			return paths.PublishFailure, record, true, nil
-		},
-		RunStart: func() (time.Time, error) { return seedRunStart(l) },
-		TaskHead: func() (string, error) {
-			handle, err := fabricengine.Open(l)
-			if err != nil {
-				return "", err
-			}
-			return handle.HeadSHA()
-		},
-		Dirty: func() ([]string, error) { return verifytree.DirtyPaths(l.WorktreePath()) },
-		ParentTips: func() ([]string, error) {
-			parent, err := readRecordedParentBranch(l)
-			if err != nil {
-				return nil, err
-			}
-			tips, err := parentTipsReader(l, parent)(false)
-			if err != nil {
-				return nil, err
-			}
-			return mergeableTips(tips, fabricengine.EnvSyncOptions().SkipPush), nil
-		},
-		IsAncestor: func(sha string) (bool, error) {
-			handle, err := fabricengine.Open(l)
-			if err != nil {
-				return false, err
-			}
-			return handle.IsAncestor(sha, "HEAD")
 		},
 	}
 }
@@ -303,8 +240,8 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	// The gate's told command is the hub's `landing` call, which stays its site's base command since darn has no webster gate;
 	// the tree-scoped command reaches the gate through VerifyTreeScope, never through this source.
 	c.env.VerifyCommand = darnVerifySource(location).baseCommand
-	c.env.Round = roundGateSource(dirs)
-	c.env.VerifyMergeBase = pairMergeBase(location)
+	c.env.Round = gateListSource(dirs, "landing")
+	c.env.VerifyMergeBase = taskMergeBase(location)
 	c.env.VerifyTreeScope = darnTreeScope(location)
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
 	if err := wireDarnReview(&c.env, cfg, shared, bouncer, registry); err != nil {
@@ -315,9 +252,9 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {
 		return loomrecipe.DarnRouting(map[string]int{darnReviewSegment: cfg.ReviewMaxBounces})
 	})
-	c.env.Darn = darnDeps(location, c.runID, c.env.VerifyDir)
-	// The darn amendment reads the reject file darnDeps' RecordRejection wrote, not a rework round's findings.
-	c.env.RejectReview = func() (string, time.Time, bool, error) { return darnRejectReview(location) }
+	c.env.Darn = darnDeps(location, c.runID)
+	// The overlap note Finalize writes on a large-merge reroute is the Darn-Bouncer's review input.
+	c.env.ReviewInput = overlapNoteInput(loomengine.LoomScratchDir(location))
 	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate.
 	c.env.DiscussionHistory = discussionHistory(location)
 	c.env.DarnTable = func(told loomshed.DarnTold) (seatengine.Table, error) {
@@ -330,7 +267,6 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 			DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
 			DecisionRecordPath: loomengine.DiscussionDecisionRecord(location),
 			SupportLogPath:     loomengine.DiscussionSupportLog(location),
-			RejectionFindings:  told.RejectionFindings,
 			PriorWork:          told.PriorWork,
 			LanguageSkills:     c.languageSkills,
 		}, cfg, registry)
@@ -352,6 +288,10 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		if err != nil {
 			return seatengine.Table{}, err
 		}
+		mergeBase, err := taskMergeBase(location)()
+		if err != nil {
+			return seatengine.Table{}, err
+		}
 		return landingshed.DarnDescribeTable(landingshed.DarnDescribeInputs{
 			StencilsDir:        stencilsDir,
 			ReviewDir:          filepath.Join(loomengine.LoomReviewsDir(location), reviewSubdir),
@@ -359,6 +299,7 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 			DescriptionPath:    summaryparser.Path(loomengine.LandingDir(location)),
 			TaskBranch:         taskBranch,
 			ParentBranch:       parentBranch,
+			MergeBase:          mergeBase,
 			Slug:               seedSlug(location.WorktreeName),
 		}, landingCfg, registry)
 	}

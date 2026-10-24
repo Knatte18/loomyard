@@ -169,10 +169,10 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name:     "extra file key survives beside a filled one and empty values are kept",
-			template: "name: tpl\nlabel: tpl\nrequire_pr_to_base:\n  - main\nadded: yes\n",
-			content:  "extra_key: extra\nname: \"\"\nlabel: x\nrequire_pr_to_base: []\n",
+			template: "name: tpl\nlabel: tpl\ndeploy_branches:\n  - main\nadded: yes\n",
+			content:  "extra_key: extra\nname: \"\"\nlabel: x\ndeploy_branches: []\n",
 			wantFill: "added",
-			contains: []string{"extra_key: extra", `name: ""`, "label: x", "require_pr_to_base: []", "added: yes"},
+			contains: []string{"extra_key: extra", `name: ""`, "label: x", "deploy_branches: []", "added: yes"},
 		},
 		{
 			name:     "extra key is tolerated",

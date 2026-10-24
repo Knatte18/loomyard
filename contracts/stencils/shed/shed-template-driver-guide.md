@@ -64,7 +64,8 @@ The `reinvoke` sub-case counts toward the cap.
 
 The watch is a background shell loop that resolves the `lyx` executable once, checks its modification time about once a minute, and exits when it changes.
 It never runs a long-lived `lyx` process, which would block a deploy's overwrite on Windows.
-When it exits, read `lyx shed status <run-id>` once, and re-step only if `binary_changed` is true and the clean-tree guard passes; otherwise re-arm the watch.
+When it exits, read `lyx shed status <run-id>` once, and re-step only if `binary_changed` is true, the clean-tree guard passes and `hand_back` is false; otherwise re-arm the watch.
+A stop marked `hand_back` starts no watch and is handed back to the parent.
 A watch job that ends by the harness timeout is re-armed, never read as a resume.
 
 ## Interrupted invocations

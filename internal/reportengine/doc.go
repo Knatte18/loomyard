@@ -65,6 +65,7 @@
 //
 // RunRow.Segments maps each review segment, and the parent review, to its round count and the outcome of its last round.
 // A Bouncer re-seed's archived generation adds its rounds to its segment and is no segment of its own.
+// A run's `code` review directory is the Code-Review segment, an older run's `webster` directory is read as the same segment, and its `merge` directory is not read.
 // A segment some selected run holds and another lacks is nil in the run lacking it.
 // RunRow.Decisions counts the entries added after the discussion per author, and RunRow.DriveReports the driver attempts reported.
 //
@@ -125,8 +126,9 @@
 // Each interval counts under one phase, and the child's rows map to phases through a closed table per recipe.
 // Every run's setup holds every batten row before batten's first Run-Shed entry; land every batten row other than Run-Shed after batten's first Run-Shed entry;
 // paused every Run-Shed entry whose change is from paused, so the time the child stood paused at a producer boundary counts apart from the row it paused at.
-// A loom run's setup also holds Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row; webster every Webster row, Describe and the retired Batchifier row, whose batching the implementer now does; merge every Merge row; publish-finalize Publish, PR-Align, PR-Gate, PR-Rework, Finalize and Friction-Reflect.
-// A darn run's setup also holds Preflight; write Darn-Write, its retired name Darn, and Describe; review every Darn-Review row (Darn-Bouncer, Darn-Burler-Review, Darn-Burler-Fix); merge Merge-In; publish-finalize Publish, PR-Align, PR-Gate, Finalize and Friction-Reflect.
+// A loom run's setup also holds Preflight and Loom-Preflight; discussion every Discussion row; plan every Plan row; webster every Webster row, every Code row (Code-Bouncer, Code-Burler-Review, Code-Burler-Fix), Describe and the retired Batchifier row, whose batching the implementer now does; merge every Merge row; publish-finalize PR-Review, Finalize and Friction-Reflect.
+// The table also keeps the rows a past run's history holds and the recipes no longer do, by the literals the report declares: Publish, PR-Align, PR-Gate and PR-Rework count under publish-finalize, the Merge-Bouncer and Merge-Burler rows under merge, and the Webster-Bouncer and Webster-Burler rows under webster.
+// A darn run's setup also holds Preflight; write Darn-Write, its retired name Darn, and Describe; review every Darn-Review row (Darn-Bouncer, Darn-Burler-Review, Darn-Burler-Fix); merge Merge-In; publish-finalize PR-Review, Finalize and Friction-Reflect, and a past run's Publish, PR-Align and PR-Gate.
 // Any other Run-Shed entry records a change of the child's state and counts under the phase the run's recipe table gives the producer its change names, else the latest child row before it, else under setup.
 // Any other row counts under other and adds a finding, so a row a recipe gains before its table does shows up rather than vanishing.
 // Without the batten source land is nil and setup holds the loom rows alone.
@@ -135,7 +137,7 @@
 //
 // A wait is time the run spent on someone else, an interval of one kind, listed here in the order an overlap is credited to them:
 // parent_review, a parent-review round from its request's opened_at to its verdict's recorded_at;
-// pr_gate, a batten change of the child into awaiting at PR-Gate;
+// pr_gate, a batten change of the child into awaiting at PR-Gate, a row only a past run holds;
 // escalation, a change into awaiting at any other row;
 // halt, a change into blocked or failed.
 // A change's wait runs from batten's entry for it to the next row of either history stamped after it.
@@ -146,7 +148,7 @@
 // Waits stay inside their phase's time; a run's active seconds are its span less sleep less the union of every net wait and the paused phase's time.
 // Active, the waits, the paused phase and sleep so sum to the span when no wait overlaps a pause.
 //
-// An attempt is one spawn: every arbiter attempt, every PR-Gate alignment attempt and every parent-review round's alignment record.
+// An attempt is one spawn: every arbiter attempt and every parent-review round's alignment record.
 // Its time runs, net of sleep, from its spawned_at to the first row of either history stamped after it, or to the span's close in a run in flight.
 // In a landed run an attempt spawned outside the span, or with no row after it, has its time absent and adds a finding naming its file; its spawn still counts.
 // A figure's seconds are the summed time of the attempts whose time is known, nil when none is, and an attempt's time lies inside the wait it serves and is reported beside the waits, never added to them.
@@ -163,7 +165,7 @@
 // A loom-file record names a child stop with a change when its producer and state equal the stop's and its history length is the greatest among such records whose last counted loom entry is stamped at or before the change, so a halt the Go driver restepped into a second halt before batten observed it reads the second record, and the earlier record folds into the stop with no finding.
 // A note-only stop takes the earliest record of its producer and state no other stop took, and a change whose producer is empty matches no record.
 // Any other record matching no stop is a finding naming the file and the key, except in the loom file of a run without the halt-note source, which lists no stop to match.
-// The settler is the first of these that holds: judge for a bounce; shed when a batten automatic step accounts for the stop or its record is a go-rule restep or verify-retry; tackler for a tackler restep record; arbiter when an applied arbiter attempt for the stop's producer and state was spawned after it; alignment when an applied PR-Gate alignment attempt was spawned after a stop at PR-Gate, or an applied parent-review alignment record after any stop; else the by of the first entry after the stop in the history that moved it on, the loom's for a child stop and batten's for a batten-row halt, with the caller label shed read as shed.
+// The settler is the first of these that holds: judge for a bounce; shed when a batten automatic step accounts for the stop or its record is a go-rule restep or a past run's verify-retry; tackler for a tackler restep record; arbiter when an applied arbiter attempt for the stop's producer and state was spawned after it; alignment when an applied parent-review alignment record was spawned after the stop; else the by of the first entry after the stop in the history that moved it on, the loom's for a child stop and batten's for a batten-row halt, with the caller label shed read as shed.
 // A stop whose moving entry carries no by reads unknown, as every entry written before the label existed does, and one with no entry after it in a run in flight reads open.
 // A go-rule record of action moved, busy-exit, running-exit or hand-over, a spawn record, a parent hand-back record and every arbiter record settle nothing by themselves.
 //

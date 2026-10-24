@@ -415,7 +415,8 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 //
 // Merge-In, Publish and Finalize are the real producers, and this fixture deliberately never drives any of them to a genuine merge.
 // The fixture's fake tip reads report the local parent ahead of its upstream, so Merge-In reports Stuck -- with OnStuck: "", which blocks the whole run right there -- before it merges anything and long before Publish's or Finalize's Call is ever invoked.
-// Driving their merge logic for real needs a genuine two-worktree pair and therefore git, which this package's untagged tier stays out of.
+// Driving their merge logic for real needs a genuine two-worktree pair, which this package's untagged tier stays out of;
+// the fixture's origin reconcile reports a stopped entry, which stops Merge-In before it reads a tip or touches the worktree.
 // The real thing is covered by an integration tier instead.
 //
 // The Discussion-Write, Plan-Write and Describe rows run a real shedadapters.MultiLLMProducer over env.Seats, each behind its own decorator.
@@ -458,10 +459,12 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	}
 
 	landing := envkit.LandingDeps(dir)
-	landing.Config.RequirePRToBase = []string{landing.ParentBranch}
-	// The local parent reads as ahead of its upstream, so Merge-In halts before it merges anything.
-	landing.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
-		return fabricengine.ParentTips{Local: "local-tip", Upstream: "upstream-tip", Relation: fabricengine.ParentAhead}, nil
+	landing.Config.DeployBranches = []string{landing.ParentBranch}
+	// The origin reconcile reports the run's entry stopped, so Merge-In halts before it merges anything.
+	landing.Reconcile = func() (fabricengine.OriginReport, error) {
+		return fabricengine.OriginReport{
+			Entries: []fabricengine.EntryOutcome{{State: fabricengine.EntryStopped, WayForward: "resolve the fixture's stop"}},
+		}, nil
 	}
 
 	cwd := filepath.Join(dir, "cwd")

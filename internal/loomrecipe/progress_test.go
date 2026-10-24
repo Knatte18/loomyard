@@ -4,12 +4,16 @@
 
 package loomrecipe
 
-import "testing"
+import (
+	"testing"
 
-// TestRouting_ProgressAt asserts, over loom's real recipe, that every row maps to a step, the three rows of each review segment map to the same step and a Burler row reports its segment's step name, and Friction-Reflect is the last main-line step.
+	"github.com/Knatte18/loomyard/internal/loomshed"
+)
+
+// TestRouting_ProgressAt asserts, over loom's real recipe, that every row maps to a step, the three rows of each review segment map to the same step and a Burler row reports its segment's step name, Friction-Reflect is the last main-line step, and the rows after Webster follow the recipe's tail order and reroute edges.
 func TestRouting_ProgressAt(t *testing.T) {
 	t.Parallel()
-	routing, err := Routing(map[string]int{"Discussion-Review": 5, "Plan-Review": 5, "Webster-Review": 5, "Merge-Review": 5})
+	routing, err := Routing(map[string]int{"Discussion-Review": 5, "Plan-Review": 5, "Code-Review": 5})
 	if err != nil {
 		t.Fatalf("Routing() = _, %v; want nil", err)
 	}
@@ -31,7 +35,7 @@ func TestRouting_ProgressAt(t *testing.T) {
 		for _, seg := range []struct{ bouncer, review, fix, name string }{
 			{"Discussion-Bouncer", "Discussion-Burler-Review", "Discussion-Burler-Fix", "Discussion-Review"},
 			{"Plan-Bouncer", "Plan-Burler-Review", "Plan-Burler-Fix", "Plan-Review"},
-			{"Webster-Bouncer", "Webster-Burler-Review", "Webster-Burler-Fix", "Webster-Review"},
+			{"Code-Bouncer", "Code-Burler-Review", "Code-Burler-Fix", "Code-Review"},
 		} {
 			a := routing.ProgressAt(seg.bouncer)
 			for _, row := range []string{seg.review, seg.fix} {
@@ -42,6 +46,31 @@ func TestRouting_ProgressAt(t *testing.T) {
 				if b.Name != seg.name {
 					t.Errorf("ProgressAt(%q).Name = %q; want %q", row, b.Name, seg.name)
 				}
+			}
+		}
+	})
+
+	t.Run("the tail after Webster runs Merge-In, the Code-Review perch, Describe, PR-Review and Finalize", func(t *testing.T) {
+		t.Parallel()
+		rows := map[string]struct{ done, stuck, reroute string }{}
+		for _, def := range routing.Producers {
+			rows[def.Name] = struct{ done, stuck, reroute string }{def.OnDone, def.OnStuck, def.OnReroute}
+		}
+		for _, want := range []struct{ row, done, stuck, reroute string }{
+			{loomshed.NameWebster, loomshed.NameMergeIn, "", loomshed.NamePlanBurlerReview},
+			{loomshed.NameMergeIn, loomshed.NameCodeBouncer, "", ""},
+			{loomshed.NameCodeBouncer, loomshed.NameDescribe, loomshed.NameCodeBurlerReview, ""},
+			{loomshed.NameDescribe, loomshed.NamePRReview, "", ""},
+			{loomshed.NamePRReview, loomshed.NameFinalize, "", ""},
+			{loomshed.NameFinalize, loomshed.NameFrictionReflect, "", loomshed.NameMergeIn},
+		} {
+			got, ok := rows[want.row]
+			if !ok {
+				t.Errorf("Routing() has no row %q", want.row)
+				continue
+			}
+			if got.done != want.done || got.stuck != want.stuck || got.reroute != want.reroute {
+				t.Errorf("%s OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/%q/%q", want.row, got.done, got.stuck, got.reroute, want.done, want.stuck, want.reroute)
 			}
 		}
 	})

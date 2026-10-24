@@ -1,7 +1,7 @@
-// mergerecord.go — the merge record Merge-In writes and the merge review reads.
+// mergerecord.go — the merge record Merge-In writes.
 //
-// The record and the reviewed-tip file live in the run's told scratch directory, so they stay under `.lyx` and are never committed.
-// This package derives no path of its own beyond the two fixed file names joined onto that directory.
+// The record lives in the run's told scratch directory, so it stays under `.lyx` and is never committed.
+// This package derives no path of its own beyond the fixed file name joined onto that directory.
 
 package landingshed
 
@@ -18,10 +18,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	mergeRecordFile   = "merge-record.yaml"
-	mergeReviewedFile = "merge-reviewed"
-)
+const mergeRecordFile = "merge-record.yaml"
 
 // Overlap is where the parent's changes and the task's changes meet.
 type Overlap struct {
@@ -39,8 +36,8 @@ type MergeRecord struct {
 	ParentBranch string `yaml:"parent_branch"`
 	// MergedTip is the parent tip the merge brought in.
 	MergedTip string `yaml:"merged_tip"`
-	// ReviewedTip is the parent tip the last finished merge review reached, the fork point before any.
-	ReviewedTip string `yaml:"reviewed_tip"`
+	// AlignedTip is the parent tip up to which the merge fixer has read what the parent brought in, empty before the first alignment.
+	AlignedTip string `yaml:"aligned_tip"`
 	// TaskBase is the parent tip last merged into the task before this merge, the fork point before any merge-in.
 	TaskBase string `yaml:"task_base"`
 	// TaskHead is the task head before this merge.
@@ -56,11 +53,6 @@ type MergeRecord struct {
 // MergeRecordPath is the merge record's path in scratchDir.
 func MergeRecordPath(scratchDir string) string {
 	return filepath.Join(scratchDir, mergeRecordFile)
-}
-
-// MergeReviewedPath is the reviewed-tip file's path in scratchDir.
-func MergeReviewedPath(scratchDir string) string {
-	return filepath.Join(scratchDir, mergeReviewedFile)
 }
 
 // ReadMergeRecord reads the record at path.
@@ -89,30 +81,32 @@ func WriteMergeRecord(path string, rec MergeRecord) error {
 	return writeBytesAtomic(path, "merge-record", data)
 }
 
-// ReadReviewedTip reads the one-line reviewed tip at path.
-// An absent file returns found == false with a nil error.
-func ReadReviewedTip(path string) (string, bool, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", false, nil
+// writeBytesAtomic writes data to path through a temp file in the same directory and a rename, creating the parent directory;
+// kind names the record in error messages.
+func writeBytesAtomic(path, kind string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("landingshed: create %s directory: %w", kind, err)
 	}
+	tmp, err := os.CreateTemp(dir, "."+kind+"-*.tmp")
 	if err != nil {
-		return "", false, fmt.Errorf("landingshed: read reviewed tip: %w", err)
+		return fmt.Errorf("landingshed: create %s temp file: %w", kind, err)
 	}
-	return strings.TrimSpace(string(data)), true, nil
-}
-
-// RecordMergeReviewed copies the merge record's merged_tip into the reviewed-tip file atomically.
-// A missing merge record writes nothing and returns nil, so the next range still starts at the earlier reviewed tip.
-func RecordMergeReviewed(recordPath, reviewedPath string) error {
-	rec, found, err := ReadMergeRecord(recordPath)
-	if err != nil {
-		return err
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("landingshed: write %s: %w", kind, err)
 	}
-	if !found {
-		return nil
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("landingshed: close %s temp file: %w", kind, err)
 	}
-	return writeBytesAtomic(reviewedPath, "reviewed tip", []byte(rec.MergedTip+"\n"))
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("landingshed: replace %s: %w", kind, err)
+	}
+	return nil
 }
 
 // computeOverlap returns where the parent's changed paths and the task's changed paths meet.
@@ -150,46 +144,4 @@ func sortedUnique(list []string) []string {
 	}
 	slices.Sort(list)
 	return slices.Compact(list)
-}
-
-// SkipsReview reports whether the merge needs no review: an up-to-date merge, or one whose overlap lists are all empty.
-// Bound: it skips only when the git-computed sides share no file, no Go package and no PATTERN change.
-func (r MergeRecord) SkipsReview() bool {
-	return r.UpToDate || (len(r.Overlap.Files) == 0 && len(r.Overlap.Packages) == 0 && len(r.Overlap.Pattern) == 0)
-}
-
-// MergeReviewNote renders the merge review's subject as the markdown note the rubric's merge_review marker carries.
-// A missing or unreadable record at recordPath renders a note telling the reviewer to review the whole merge-in diff of the latest merge of the parent into the task.
-func MergeReviewNote(recordPath string) string {
-	rec, found, err := ReadMergeRecord(recordPath)
-	if err != nil || !found {
-		return "No merge record is available.\n" +
-			"Review the whole merge-in diff of the latest merge of the parent into the task.\n"
-	}
-
-	mergeCommit := rec.MergeCommit
-	if mergeCommit == "" {
-		mergeCommit = "none (the merge was up to date)"
-	}
-	var note strings.Builder
-	fmt.Fprintf(&note, "Review how the task's code interacts with what `%s` gained in this merge.\n\n", rec.ParentBranch)
-	fmt.Fprintf(&note, "- Parent range: `%s..%s`\n", rec.ReviewedTip, rec.MergedTip)
-	fmt.Fprintf(&note, "- Task range: `%s..%s`\n", rec.TaskBase, rec.TaskHead)
-	fmt.Fprintf(&note, "- Merge commit: %s\n", mergeCommit)
-	fmt.Fprintf(&note, "- Overlapping files: %s\n", noteList(rec.Overlap.Files))
-	fmt.Fprintf(&note, "- Overlapping packages: %s\n", noteList(rec.Overlap.Packages))
-	fmt.Fprintf(&note, "- Changed pattern files: %s\n", noteList(rec.Overlap.Pattern))
-	return note.String()
-}
-
-// noteList renders list as comma-separated code spans, or "none" when it is empty.
-func noteList(list []string) string {
-	if len(list) == 0 {
-		return "none"
-	}
-	quoted := make([]string, len(list))
-	for i, item := range list {
-		quoted[i] = "`" + item + "`"
-	}
-	return strings.Join(quoted, ", ")
 }

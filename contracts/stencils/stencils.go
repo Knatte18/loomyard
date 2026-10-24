@@ -28,6 +28,11 @@ var LandingTemplateDescribe []byte
 //go:embed landing/landing-template-describe-darn.md
 var LandingTemplateDescribeDarn []byte
 
+// LandingTemplateFixer is the landing merge fixer's shipped-default prompt.
+//
+//go:embed landing/landing-template-fixer.md
+var LandingTemplateFixer []byte
+
 // DarnTemplateWrite is the darn writer's shipped-default prompt: the whole instruction set of the one session that makes a board entry's change.
 //
 //go:embed darn/darn-template-write.md
@@ -53,30 +58,20 @@ var LoomTemplateDiscussionAdvisor []byte
 //go:embed loom/loom-template-plan.md
 var LoomTemplatePlan []byte
 
-// LoomTemplateRework is the loom PR-Rework producer's shipped-default autonomous prompt.
-//
-//go:embed loom/loom-template-rework.md
-var LoomTemplateRework []byte
-
 // LoomTemplateArbiter is the loom arbiter's shipped-default opening prompt: the cold session that settles one stop its run's driver could not.
 //
 //go:embed loom/loom-template-arbiter.md
 var LoomTemplateArbiter []byte
 
-// LoomTemplateAlignment is the alignment agent's shipped-default opening prompt: the cold session that settles one parent review or PR-Gate, or escalates it to the run's parent.
+// LoomTemplateAlignment is the alignment agent's shipped-default opening prompt: the cold session that settles one parent review, or escalates it to the run's parent.
 //
 //go:embed loom/loom-template-alignment.md
 var LoomTemplateAlignment []byte
 
-// LoomFragmentPRGateLoom is loom's pr-gate measure, filled into the alignment stencil's pr_gate_measure marker.
+// LoomFragmentPRGateLoom is loom's measure, filled into the alignment stencil's pr_gate_measure marker.
 //
 //go:embed loom/loom-fragment-pr-gate-loom.md
 var LoomFragmentPRGateLoom []byte
-
-// LoomFragmentPRGateDarn is darn's pr-gate measure, filled into the alignment stencil's pr_gate_measure marker.
-//
-//go:embed loom/loom-fragment-pr-gate-darn.md
-var LoomFragmentPRGateDarn []byte
 
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by both rows of the
 // Discussion-Review perch.
@@ -89,21 +84,15 @@ var LoomRubricDiscussionReview []byte
 //go:embed loom/loom-rubric-plan-review.md
 var LoomRubricPlanReview []byte
 
-// LoomRubricWebsterReview is the Webster-Review rubric, read by both rows of the Webster-Review
-// perch.
+// LoomRubricCodeReview is the Code-Review rubric, read by both rows of the Code-Review perch.
 //
-//go:embed loom/loom-rubric-webster-review.md
-var LoomRubricWebsterReview []byte
+//go:embed loom/loom-rubric-code-review.md
+var LoomRubricCodeReview []byte
 
 // LoomRubricDarnReview is the Darn-Review rubric, read by both rows of the darn recipe's Darn-Review perch.
 //
 //go:embed loom/loom-rubric-darn-review.md
 var LoomRubricDarnReview []byte
-
-// LoomRubricMergeReview is the Merge-Review rubric, read by both rows of the Merge-Review perch.
-//
-//go:embed loom/loom-rubric-merge-review.md
-var LoomRubricMergeReview []byte
 
 // LoomTemplatePriorPlan is the prior-plan block appended to the end of the Plan prompt on a respawn.
 //
@@ -464,21 +453,19 @@ var entries = []registryEntry{
 	{"landing-template-conflict", &LandingTemplateConflict},
 	{"landing-template-describe", &LandingTemplateDescribe},
 	{"landing-template-describe-darn", &LandingTemplateDescribeDarn},
+	{"landing-template-fixer", &LandingTemplateFixer},
 	{"darn-template-write", &DarnTemplateWrite},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
 	{"loom-template-discussion-chair", &LoomTemplateDiscussionChair},
 	{"loom-template-discussion-advisor", &LoomTemplateDiscussionAdvisor},
 	{"loom-template-plan", &LoomTemplatePlan},
-	{"loom-template-rework", &LoomTemplateRework},
 	{"loom-template-arbiter", &LoomTemplateArbiter},
 	{"loom-template-alignment", &LoomTemplateAlignment},
 	{"loom-fragment-pr-gate-loom", &LoomFragmentPRGateLoom},
-	{"loom-fragment-pr-gate-darn", &LoomFragmentPRGateDarn},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
-	{"loom-rubric-webster-review", &LoomRubricWebsterReview},
+	{"loom-rubric-code-review", &LoomRubricCodeReview},
 	{"loom-rubric-darn-review", &LoomRubricDarnReview},
-	{"loom-rubric-merge-review", &LoomRubricMergeReview},
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"loom-template-parent-review-delivery", &LoomTemplateParentReviewDelivery},
 	{"loom-template-parent-review-brief", &LoomTemplateParentReviewBrief},
@@ -560,13 +547,13 @@ var roleOpeningStencils = map[string][]string{
 	"discussion":         {"loom-template-discussion-chair"},
 	"discussion-advisor": {"loom-template-discussion-advisor"},
 	"plan":               {"loom-template-plan"},
-	"rework":             {"loom-template-rework"},
 	"webster-master":     {"webster-template-master"},
 	"webster-recovery":   {"webster-prefix-recovery"},
 	"verify-fixer":       {"webster-prefix-verify-fix-cold"},
 	"burler-review":      {"burler-template-reviewer"},
 	"burler-fix":         {"burler-template-fixer"},
 	"conflict":           {"landing-template-conflict"},
+	"fixer":              {"landing-template-fixer"},
 	"bouncer-judge":      {"bouncer-template-judge"},
 	"bouncer-seed":       {"bouncer-template-seed"},
 	"treadle-targeting":  {"treadle-template-targeting"},

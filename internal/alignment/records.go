@@ -31,8 +31,6 @@ type Point string
 const (
 	// PointParentReview is the parent review of the writer's discussion.
 	PointParentReview Point = "parent-review"
-	// PointPRGate is the approval of the run's pull request.
-	PointPRGate Point = "pr-gate"
 )
 
 // The three verdict words the agent writes.
@@ -50,7 +48,6 @@ const (
 
 // Attempt is attempt.json: the record written before the agent spawns, so a restarted driver finds the attempt.
 // Key is the idempotence key the session reuses an attempt under, and Token is random per spawn and names the agent's output files.
-// PRNumber and HeadSHA are set at PointPRGate only.
 // Applied is the verdict Go applied, empty until then.
 type Attempt struct {
 	Number       int       `json:"number"`
@@ -61,8 +58,6 @@ type Attempt struct {
 	Deadline     time.Time `json:"deadline"`
 	StrandGUID   string    `json:"strand_guid"`
 	Snapshot     string    `json:"snapshot"`
-	PRNumber     int       `json:"pr_number"`
-	HeadSHA      string    `json:"head_sha"`
 	Closed       bool      `json:"closed"`
 	ClosedReason string    `json:"closed_reason"`
 	Applied      string    `json:"applied"`
@@ -246,7 +241,6 @@ func ParseAttemptDir(files map[string][]byte) (Attempt, *Verdict, error) {
 }
 
 // DecisionRecordedReason is the reason an approve becomes an escalation when the decision snapshot moved while the agent ran.
-// The PR-Gate point and the parent-review point both give it.
 const DecisionRecordedReason = "a decision was recorded for this task while the alignment agent ran"
 
 // DecisionNoteTitle returns the title prefix a decision note for the held task slug starts with: "Decision for <slug>:".

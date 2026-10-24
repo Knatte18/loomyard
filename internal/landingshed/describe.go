@@ -71,6 +71,8 @@ type DescribeInputs struct {
 	TaskBranch string
 	// ParentBranch is the branch the task lands on.
 	ParentBranch string
+	// MergeBase is the commit the task's diff is taken from: the merge base of the task branch with the parent tip the task last merged.
+	MergeBase string
 	// Slug is the task's slug, the key for `lyx board get`.
 	Slug string
 }
@@ -102,6 +104,8 @@ type DarnDescribeInputs struct {
 	TaskBranch string
 	// ParentBranch is the branch the task lands on.
 	ParentBranch string
+	// MergeBase is the commit the task's diff is taken from: the merge base of the task branch with the parent tip the task last merged.
+	MergeBase string
 	// Slug is the task's slug, the key for `lyx board get`.
 	Slug string
 }
@@ -119,6 +123,7 @@ func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seate
 		{"DescriptionPath", in.DescriptionPath},
 		{"TaskBranch", in.TaskBranch},
 		{"ParentBranch", in.ParentBranch},
+		{"MergeBase", in.MergeBase},
 		{"Slug", in.Slug},
 	}
 	for _, r := range required {
@@ -137,6 +142,7 @@ func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seate
 		"description_path":     in.DescriptionPath,
 		"task_branch":          in.TaskBranch,
 		"parent_branch":        in.ParentBranch,
+		"merge_base":           in.MergeBase,
 	}, cfg, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
@@ -155,6 +161,7 @@ func DarnDescribeTable(in DarnDescribeInputs, cfg Config, reg modelspec.Registry
 		{"DescriptionPath", in.DescriptionPath},
 		{"TaskBranch", in.TaskBranch},
 		{"ParentBranch", in.ParentBranch},
+		{"MergeBase", in.MergeBase},
 		{"Slug", in.Slug},
 	}
 	for _, r := range required {
@@ -173,6 +180,7 @@ func DarnDescribeTable(in DarnDescribeInputs, cfg Config, reg modelspec.Registry
 		"description_path":     in.DescriptionPath,
 		"task_branch":          in.TaskBranch,
 		"parent_branch":        in.ParentBranch,
+		"merge_base":           in.MergeBase,
 	}, cfg, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("landingshed: DarnDescribeTable: %w", err)

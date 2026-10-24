@@ -46,8 +46,8 @@ func TestShippedRecipe_SeamsWiredOnPlanBouncerOnly(t *testing.T) {
 		// want maps each row that carries the key to its shipped value.
 		want map[string]string
 	}{
-		{"approve_seam", map[string]string{loomshed.NamePlanBouncer: "plan", loomshed.NameMergeBouncer: "merge"}},
-		{"skip_seam", map[string]string{loomshed.NamePlanBouncer: "rework-exempt", loomshed.NameMergeBouncer: "merge-overlap"}},
+		{"approve_seam", map[string]string{loomshed.NamePlanBouncer: "plan"}},
+		{"skip_seam", map[string]string{loomshed.NamePlanBouncer: "rework-exempt"}},
 	}
 	for _, seam := range seams {
 		t.Run(seam.key, func(t *testing.T) {

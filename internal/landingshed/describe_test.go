@@ -19,7 +19,7 @@ import (
 )
 
 const describeStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\ndecision={{.decision_record_path}}\nrun={{.run_record_paths}}\n" +
-	"out={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\n"
+	"out={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\nbase={{.merge_base}}\n"
 
 func newDescribeInputs(t *testing.T) DescribeInputs {
 	t.Helper()
@@ -36,6 +36,7 @@ func newDescribeInputs(t *testing.T) DescribeInputs {
 		DescriptionPath:    "/x/landing/summary.md",
 		TaskBranch:         "task-branch",
 		ParentBranch:       "parent-branch",
+		MergeBase:          "merge-base-sha",
 		Slug:               "my-slug",
 	}
 }
@@ -104,7 +105,7 @@ func TestDescribeSpec_ComposesSpec(t *testing.T) {
 	}
 
 	prompt := describeLeadPrompt(t, in.StencilsDir, parentName, table)
-	for _, v := range []string{in.DecisionRecordPath, in.RunRecordPath, in.DescriptionPath, in.TaskBranch, in.ParentBranch, in.Slug} {
+	for _, v := range []string{in.DecisionRecordPath, in.RunRecordPath, in.DescriptionPath, in.TaskBranch, in.ParentBranch, in.MergeBase, in.Slug} {
 		if !strings.Contains(prompt, v) {
 			t.Errorf("prompt %q does not contain input value %q", prompt, v)
 		}
@@ -184,6 +185,7 @@ func TestDescribeSpec_EmptyFieldIsError(t *testing.T) {
 		"DescriptionPath":    func(in *DescribeInputs) { in.DescriptionPath = "" },
 		"TaskBranch":         func(in *DescribeInputs) { in.TaskBranch = "" },
 		"ParentBranch":       func(in *DescribeInputs) { in.ParentBranch = "" },
+		"MergeBase":          func(in *DescribeInputs) { in.MergeBase = "" },
 		"Slug":               func(in *DescribeInputs) { in.Slug = "" },
 	}
 	for name, blank := range fields {
@@ -210,7 +212,7 @@ func TestDescribeSpec_EmptyFieldIsError(t *testing.T) {
 // TestDarnDescribeSpec pins the darn Describe table: it fills the darn stencil with every told value under the describe keys, and refuses an empty required field by name.
 func TestDarnDescribeSpec(t *testing.T) {
 	t.Parallel()
-	const darnStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\nreviews={{.review_dir}}\nrecord={{.decision_record_path}}\nout={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\n"
+	const darnStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\nreviews={{.review_dir}}\nrecord={{.decision_record_path}}\nout={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\nbase={{.merge_base}}\n"
 	newInputs := func(t *testing.T) DarnDescribeInputs {
 		t.Helper()
 		stencilsDir := t.TempDir()
@@ -225,6 +227,7 @@ func TestDarnDescribeSpec(t *testing.T) {
 			DescriptionPath:    "/x/landing/summary.md",
 			TaskBranch:         "task-branch",
 			ParentBranch:       "parent-branch",
+			MergeBase:          "merge-base-sha",
 			Slug:               "my-slug",
 		}
 	}
@@ -248,7 +251,7 @@ func TestDarnDescribeSpec(t *testing.T) {
 		requireDescribeLead(t, table, in.DescriptionPath)
 
 		prompt := describeLeadPrompt(t, in.StencilsDir, parentName, table)
-		for _, v := range []string{"reviews=" + in.ReviewDir, "record=" + in.DecisionRecordPath, "out=" + in.DescriptionPath, "task=" + in.TaskBranch, "parent=" + in.ParentBranch, "slug=" + in.Slug, "Edit or Write"} {
+		for _, v := range []string{"reviews=" + in.ReviewDir, "record=" + in.DecisionRecordPath, "out=" + in.DescriptionPath, "task=" + in.TaskBranch, "parent=" + in.ParentBranch, "base=" + in.MergeBase, "slug=" + in.Slug, "Edit or Write"} {
 			if !strings.Contains(prompt, v) {
 				t.Errorf("prompt %q does not contain %q", prompt, v)
 			}
@@ -262,6 +265,7 @@ func TestDarnDescribeSpec(t *testing.T) {
 		"DescriptionPath":    func(in *DarnDescribeInputs) { in.DescriptionPath = "" },
 		"TaskBranch":         func(in *DarnDescribeInputs) { in.TaskBranch = "" },
 		"ParentBranch":       func(in *DarnDescribeInputs) { in.ParentBranch = "" },
+		"MergeBase":          func(in *DarnDescribeInputs) { in.MergeBase = "" },
 		"Slug":               func(in *DarnDescribeInputs) { in.Slug = "" },
 	}
 	for name, blank := range fields {

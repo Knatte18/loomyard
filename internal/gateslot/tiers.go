@@ -60,7 +60,7 @@ type tierFile struct {
 }
 
 // goReadGates are the gate names the Go verify sites read, in the order TiersValue lists them.
-var goReadGates = []string{"card", "batch", "round", "final", "landing", "publish"}
+var goReadGates = []string{"card", "batch", "round", "final", "landing"}
 
 var (
 	tierKeyPattern   = regexp.MustCompile(`^tier(0|[1-9][0-9]*)$`)
@@ -229,7 +229,7 @@ func (c Config) Tier(number int) (Tier, error) {
 }
 
 // TierList returns the tier numbers the named gate runs, in order.
-// It refuses, naming lyx config gate, a hub with no tier0, a gate the config holds no list for, an empty list for any gate but publish, and a listed tier the hub does not declare.
+// It refuses, naming lyx config gate, a hub with no tier0, a gate the config holds no list for, an empty list for any gate, and a listed tier the hub does not declare.
 func (c Config) TierList(gate string) ([]int, error) {
 	if _, declared := c.Tiers[tierKey(0)]; !declared {
 		return nil, useRefusal("the hub declares no tier0, so no gate has a tier to run")
@@ -238,8 +238,8 @@ func (c Config) TierList(gate string) ([]int, error) {
 	if !ok {
 		return nil, useRefusal("gates holds no list for %q", gate)
 	}
-	if len(list) == 0 && gate != "publish" {
-		return nil, useRefusal("gates.%s is empty, and only publish may verify nothing", gate)
+	if len(list) == 0 {
+		return nil, useRefusal("gates.%s is empty, and every gate verifies at least one tier", gate)
 	}
 	for _, number := range list {
 		if _, declared := c.Tiers[tierKey(number)]; !declared {
@@ -250,14 +250,10 @@ func (c Config) TierList(gate string) ([]int, error) {
 }
 
 // GateCall renders the one call a site runs for the named gate: `lyx gate test --wait` with one `--tier <n>` per listed tier, in the list's order, then the scope words.
-// An empty publish list renders "".
 func (c Config) GateCall(gate string, scope ...string) (string, error) {
 	list, err := c.TierList(gate)
 	if err != nil {
 		return "", err
-	}
-	if len(list) == 0 {
-		return "", nil
 	}
 	words := []string{"lyx", "gate", "test", "--wait"}
 	for _, number := range list {

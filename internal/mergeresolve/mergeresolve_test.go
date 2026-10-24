@@ -34,6 +34,7 @@ type fakeMergeSurface struct {
 
 	calls       []string
 	stagedPaths []string
+	mergedAt    string
 }
 
 func (f *fakeMergeSurface) MergeStageTracked() (fabricengine.StageResult, error) {
@@ -48,6 +49,12 @@ func (f *fakeMergeSurface) MergeUntrackedFiles() ([]string, error) {
 
 func (f *fakeMergeSurface) MergeIn(source string) (fabricengine.MergeResult, error) {
 	f.calls = append(f.calls, "MergeIn")
+	return f.mergeInResult, f.mergeInErr
+}
+
+func (f *fakeMergeSurface) MergeInAt(source, tip string) (fabricengine.MergeResult, error) {
+	f.calls = append(f.calls, "MergeInAt")
+	f.mergedAt = source + "@" + tip
 	return f.mergeInResult, f.mergeInErr
 }
 
@@ -141,6 +148,30 @@ func writeConflictedFixture(t *testing.T, deps Deps, relPath, content string) {
 const conflictedContent = "<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> feature\n"
 const resolvedContent = "resolved content, no markers\n"
 
+func TestResolve_MergesTheToldTip(t *testing.T) {
+	t.Parallel()
+
+	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: nil}}
+	r, err := New(newTestDeps(t, fake, &shedfake.MergeShuttle{}))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	res, err := r.Resolve(context.Background(), "source", "abc123")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v; want nil", err)
+	}
+	if res.Outcome != OutcomeResolved {
+		t.Errorf("Resolve() outcome = %q; want %q", res.Outcome, OutcomeResolved)
+	}
+	if fake.mergedAt != "source@abc123" {
+		t.Errorf("MergeInAt saw %q; want %q", fake.mergedAt, "source@abc123")
+	}
+	if fake.calledAny("MergeIn") {
+		t.Error("MergeIn was called; want only MergeInAt for a told tip")
+	}
+}
+
 func TestResolve_CleanMergeNoSession(t *testing.T) {
 	t.Parallel()
 
@@ -151,7 +182,7 @@ func TestResolve_CleanMergeNoSession(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	res, err := r.Resolve(context.Background(), "source")
+	res, err := r.Resolve(context.Background(), "source", "")
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -160,6 +191,9 @@ func TestResolve_CleanMergeNoSession(t *testing.T) {
 	}
 	if len(shuttle.Specs) != 0 {
 		t.Errorf("shuttle was called %d time(s); want 0 for a clean merge", len(shuttle.Specs))
+	}
+	if !fake.calledAny("MergeIn") || fake.calledAny("MergeInAt") {
+		t.Errorf("calls = %v; want MergeIn and no MergeInAt for an empty tip", fake.calls)
 	}
 }
 
@@ -183,7 +217,7 @@ func TestResolve_ConflictThenCleanScan_StagesThenConcludes(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	res, err := r.Resolve(context.Background(), "source")
+	res, err := r.Resolve(context.Background(), "source", "")
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -226,7 +260,7 @@ func TestResolve_ConflictStillUnresolvedAfterSession_RetriesThenAborts(t *testin
 		t.Fatalf("New() error = %v", err)
 	}
 
-	res, err := r.Resolve(context.Background(), "source")
+	res, err := r.Resolve(context.Background(), "source", "")
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -257,7 +291,7 @@ func TestResolve_MergeInProgressAtEntry_AbortsBeforeNewAttempt(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	if _, err := r.Resolve(context.Background(), "source"); err != nil {
+	if _, err := r.Resolve(context.Background(), "source", ""); err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
 
@@ -295,7 +329,7 @@ func TestResolve_MergeInError_StuckWithReasonNoAbort(t *testing.T) {
 				t.Fatalf("New() error = %v", err)
 			}
 
-			res, err := r.Resolve(context.Background(), "source")
+			res, err := r.Resolve(context.Background(), "source", "")
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -336,7 +370,7 @@ func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
 			}
 			buf := logcapture.Capture(t)
 
-			res, err := r.Resolve(context.Background(), "source")
+			res, err := r.Resolve(context.Background(), "source", "")
 			if err != nil {
 				t.Fatalf("Resolve() error = %v; want nil", err)
 			}
@@ -376,7 +410,7 @@ func TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure(t *testing.T) {
 	}
 	buf := logcapture.Capture(t)
 
-	_, err = r.Resolve(context.Background(), "source")
+	_, err = r.Resolve(context.Background(), "source", "")
 	if err == nil {
 		t.Fatal("Resolve() error = nil; want non-nil (MergeAbort failed)")
 	}
@@ -402,7 +436,7 @@ func TestResolve_ContextCancellation_SurfacedAsError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	res, err := r.Resolve(ctx, "source")
+	res, err := r.Resolve(ctx, "source", "")
 	if err == nil {
 		t.Fatal("Resolve() error = nil; want non-nil")
 	}
@@ -424,7 +458,7 @@ func TestResolve_AlreadyUpToDate_ResolvedNoSessionNoConclude(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	res, err := r.Resolve(context.Background(), "source")
+	res, err := r.Resolve(context.Background(), "source", "")
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -459,7 +493,7 @@ func TestResolve_RetryUsesDistinctReportPath(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	if _, err := r.Resolve(context.Background(), "source"); err != nil {
+	if _, err := r.Resolve(context.Background(), "source", ""); err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
 
@@ -497,7 +531,7 @@ func TestResolve_ScratchDirAbsent_FirstSpecBuildCreatesIt(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	if _, err := r.Resolve(context.Background(), "source"); err != nil {
+	if _, err := r.Resolve(context.Background(), "source", ""); err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
 	if info, err := os.Stat(deps.ScratchDir); err != nil || !info.IsDir() {
@@ -527,7 +561,7 @@ func TestResolve_SessionEditsTrackedFile_StagesTrackedBeforeConclude(t *testing.
 		t.Fatalf("New() error = %v", err)
 	}
 
-	res, err := r.Resolve(context.Background(), "source")
+	res, err := r.Resolve(context.Background(), "source", "")
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -566,7 +600,7 @@ func TestResolve_SessionLeavesUntrackedFile_AbortsStuckNamingItWithoutStaging(t 
 		t.Fatalf("New() error = %v", err)
 	}
 
-	res, err := r.Resolve(context.Background(), "source")
+	res, err := r.Resolve(context.Background(), "source", "")
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}
@@ -619,7 +653,7 @@ func TestResolve_StaleReportFromEarlierCall_IsClearedAtEntry(t *testing.T) {
 		t.Fatalf("New() error = %v", err)
 	}
 
-	res, err := r.Resolve(context.Background(), "source")
+	res, err := r.Resolve(context.Background(), "source", "")
 	if err != nil {
 		t.Fatalf("Resolve() error = %v; want nil", err)
 	}

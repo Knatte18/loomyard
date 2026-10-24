@@ -1,11 +1,11 @@
-<!-- This is the alignment agent's launch prompt: the whole procedure of the cold session that settles one parent review or one PR-Gate of a run in the parent's place, or escalates to the run's parent.
+<!-- This is the alignment agent's launch prompt: the whole procedure of the cold session that settles one parent review of a run in the parent's place, or escalates to the run's parent.
      It is filled via internal/stencil.Fill (internal/alignment's Prompt) and typed into the session as its entire instruction set.
      Every marker below is a top-level {{.X}} substitution and every one is required non-empty:
-     {{.point}} is `parent-review` or `pr-gate`, which selects the read and judge lists below,
+     {{.point}} is `parent-review`,
      {{.slug}} the task whose run is judged, {{.worktree}} the directory every command runs in,
-     {{.decision_record_path}}, {{.support_log_path}} and {{.plan_dir}} the task's discussion and plan ({{.plan_dir}} reads `none` for a run with no plan),
-     {{.pr_gate_measure}} the pr-gate measure, a registered fragment the run's wiring tells,
-     {{.brief_path}} the parent-review brief, {{.pr_number}} the pull request and {{.head_sha}} its head (each the literal `none` when the point has none),
+     {{.decision_record_path}} and {{.support_log_path}} the task's discussion,
+     {{.pr_gate_measure}} the measure, a registered fragment the run's wiring tells,
+     {{.brief_path}} the parent-review brief,
      {{.parent_branch}} the branch the run lands on,
      {{.verdict_path}} and {{.report_path}} the only two files the agent writes, {{.review_format_path}} the format of the report,
      {{.parent_directive}} the no-parent variant of the shared parent directive rendered by internal/parentdirective,
@@ -28,31 +28,21 @@ A path reading `none` is absent.
 
 ## Read first
 
-At `parent-review`:
-
 - The brief `{{.brief_path}}`.
 - The decision record `{{.decision_record_path}}` and the support log `{{.support_log_path}}`.
 - The board: `lyx board list`, then `lyx board get '{"slug":"{{.slug}}"}'` for this task and the same payload with each slug for every entry that touches it.
-- The other runs in flight and the parent's landed commits: `lyx loom peers`, and `lyx loom peers show <slug> --record decision` or `--record plan` for a peer that looks close.
-
-At `pr-gate`:
-
-- The decision record `{{.decision_record_path}}`, the plan in `{{.plan_dir}}` and the diff of pull request {{.pr_number}} at `{{.head_sha}}` against `{{.parent_branch}}`.
-- The board: `lyx board list`, then `lyx board get '{"slug":"{{.slug}}"}'` for this task and the same payload with each slug for every entry that touches it.
-- The other runs in flight and the parent's landed commits: `lyx loom peers`, and `lyx loom peers show <slug> --record decision` or `--record plan` for a peer that looks close.
+- The other runs in flight and the landed commits of the parent branch `{{.parent_branch}}`: `lyx loom peers`, and `lyx loom peers show <slug> --record decision` or `--record plan` for a peer that looks close.
 
 Read-only git in `{{.worktree}}` is allowed.
 
 ## Judge
 
-At `parent-review`, judge the design against the board entry's goal and Done-when, no more and no less, with no duplication or contradiction of another entry.
+Judge the design against the board entry's goal and Done-when, no more and no less, with no duplication or contradiction of another entry.
 A scope deviation is a goal or Done-when point left out, work that belongs to another entry, or a direction the entry rules out.
 Design details are not yours to judge; the review segment right after you reviews those.
-
-At `pr-gate`, read the open risks the review segments carried over into the decision record as part of the run.
 {{.pr_gate_measure}}
 
-At both points, also check overlap with every other run `lyx loom peers` lists and with the parent's commits it lists.
+Also check overlap with every other run `lyx loom peers` lists and with the parent's commits it lists.
 
 ## When to escalate
 
@@ -86,7 +76,6 @@ The verdict is unchanged by the order.
 
 Approve, or reject on a scope deviation.
 The report records each overlapping peer or parent commit, what overlaps, and the landing order the rule gives, or the tie or unknown order.
-An approve at `pr-gate` lists under `superseded` the slugs of the board entries this run makes obsolete.
 
 ## What you write
 

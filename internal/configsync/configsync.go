@@ -60,20 +60,19 @@ var formerTemplateValues = map[string]map[string]string{
 // formerLoomValues returns loom's former template values.
 func formerLoomValues() map[string]string {
 	former := map[string]string{
-		"webster_reviewer_model": "sonnet[high]",
-		"merge_reviewer_model":   "sonnet[high]",
+		"code_reviewer_model":    "sonnet[high]",
 		"driver":                 "sonnet[medium]",
 		"discussion_max_bounces": "~",
-		"webster_max_bounces":    "~",
-		"webster_auto_accept":    "false",
+		"code_max_bounces":       "~",
+		"code_auto_accept":       "false",
 	}
 	for _, unit := range []string{
 		"discussion_lenses", "plan_lenses",
-		"discussion_reviewer_model", "plan_reviewer_model", "webster_fixer_model", "merge_fixer_model",
+		"discussion_reviewer_model", "plan_reviewer_model", "code_fixer_model",
 	} {
 		former[unit] = `""`
 	}
-	for _, segment := range []string{"discussion", "plan", "webster", "merge"} {
+	for _, segment := range []string{"discussion", "plan", "code"} {
 		former[segment+"_reviewer_fan"] = `""`
 		former[segment+"_fixer_fan"] = `""`
 	}

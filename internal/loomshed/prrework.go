@@ -1,59 +1,33 @@
-// prrework.go implements the PR-Rework row's producer: it wraps the gated rework session and does everything Go owns around it.
-// That is the archive of the live plan generation into the round's own directory before the session runs, the round record that classifies the new generation as exempt from or subject to Plan-Review, the round commit, and the removal of the pending rejection.
+// prrework.go declares the rework round layout a run's earlier PR-Rework rounds left on disk, and the committed-plan reads the Plan-Review skip seam and the plan gates share.
 //
 // The round layout is declared once here, by the constants below:
-// round-<N>/ holds findings.md, record.json, coverage.md and prior-generation/,
+// round-<N>/ holds record.json and prior-generation/,
 // and prior-generation/ holds plan/, webster/ and reviews/<run_subdir>/.
 
 package loomshed
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path"
-	"path/filepath"
-	"slices"
-	"strconv"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/state"
 )
 
 const (
-	reworkRoundPrefix   = "round-"
-	reworkFindingsFile  = "findings.md"
-	reworkRecordFile    = "record.json"
-	reworkCoverageFile  = "coverage.md"
-	reworkRejectCommand = "lyx loom reject <review-file>"
+	reworkRoundPrefix = "round-"
+	reworkRecordFile  = "record.json"
 
-	// reworkPriorDir holds a round's archived generation; its three children below are that generation's plan, webster run record and review run directories.
+	// reworkPriorDir holds a round's archived generation; reworkPriorWebster below is that generation's webster run record directory.
 	reworkPriorDir     = "prior-generation"
-	reworkPriorPlan    = "plan"
 	reworkPriorWebster = "webster"
-	reworkPriorReviews = "reviews"
 
 	// ReworkClassExempt and ReworkClassRequired are the two values of a round record's class field.
 	ReworkClassExempt   = "exempt"
 	ReworkClassRequired = "required"
 )
 
-// PendingRejection is this package's own view of the operator's pending rejection record.
-// The caller fills it from landingshed.ReadRejection, the way battenshed.ChildDecision is filled,
-// so internal/landingshed stays off this package's import allowlist.
-type PendingRejection struct {
-	PRNumber   int
-	HeadSHA    string
-	RejectedAt string
-	Findings   string
-}
-
-// PRReworkDeps carries the told values and seams NewPRRework needs.
+// PRReworkDeps carries the told values and seams the Plan-Review skip seam, the plan gates and Plan-Write's rotation read.
 type PRReworkDeps struct {
 	// PlanDir is the absolute plan directory.
 	PlanDir string
@@ -65,205 +39,20 @@ type PRReworkDeps struct {
 	ReviewsDir string
 	// AmendmentPath is the absolute plan amendment record; empty means the run has none to read.
 	AmendmentPath string
-	// ReviewRunSubdirs names the run directories under ReviewsDir that belong to one generation, each archived with the round.
-	ReviewRunSubdirs []string
 	// ReadCommitted returns an anchor-relative file as committed at HEAD; found is false when HEAD has no such file.
 	ReadCommitted func(anchorRel string) ([]byte, bool, error)
-	// ReadRejection returns the pending rejection; found is false when none is recorded.
-	ReadRejection func() (PendingRejection, bool, error)
-	// ClearRejection removes the pending rejection record.
-	ClearRejection func() error
 	// ArchiveWebster moves webster's durable run record into dest, so the next webster run starts fresh.
 	ArchiveWebster func(dest string) error
-	// KeepReviewRecords carries the review records of the archived run directory into the recreated one, so a review segment re-entered after the round compares against what it settled.
-	KeepReviewRecords func(archived, recreated string) error
-	// Commit commits the round: the plan directory, the rework directory, the reviews root and webster's directory.
-	Commit func() error
 }
 
 // roundRecord is the on-disk form of a round's record.json.
-// A record without Class is the archive's completion marker; the class is added once the session's plan is in.
+// A record without Class is an archive's completion marker, which a round never committed.
 type roundRecord struct {
 	PRNumber   int    `json:"pr_number"`
 	HeadSHA    string `json:"head_sha"`
 	RejectedAt string `json:"rejected_at"`
 	FirstCard  int    `json:"first_card"`
 	Class      string `json:"class,omitempty"`
-}
-
-// rejectionIdentity names one rejection by the head it rejected and the time it was recorded.
-// The head alone is not enough: a round that lands no code leaves the head unchanged,
-// so the operator's next rejection shares it and must still reach a session of its own.
-func rejectionIdentity(headSHA, rejectedAt string) string {
-	return headSHA + "@" + rejectedAt
-}
-
-// ReworkTold carries the values PR-Rework tells its session, decided by the producer rather than by the wiring.
-type ReworkTold struct {
-	// FirstCard is the number the session's first new card takes: one past the highest card of the retired generation.
-	FirstCard int
-	// PriorPlanDir is the archived plan directory the session reads for context.
-	PriorPlanDir string
-}
-
-// prRework decorates the gated rework session, built per Call by session, with the Go-owned steps around it.
-// It is a distinct type so the recipe shape test can tell the row apart.
-type prRework struct {
-	name    string
-	session func(ReworkTold) shedengine.ShedProducer
-	deps    PRReworkDeps
-}
-
-var _ shedengine.ShedProducer = (*prRework)(nil)
-
-// NewPRRework returns the PR-Rework producer identified as name.
-// Each Call builds its session from session, handing it the values the producer decides to tell it.
-func NewPRRework(name string, session func(ReworkTold) shedengine.ShedProducer, deps PRReworkDeps) shedengine.ShedProducer {
-	return &prRework{name: name, session: session, deps: deps}
-}
-
-// Call implements shedengine.ShedProducer.
-// An archive, Commit or ClearRejection failure is a returned error, never Stuck, for the reason planWrite.Call gives: re-running the session cannot fix a git or filesystem fault.
-func (p *prRework) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if err := entryErr(ctx, p.name); err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if err := p.checkSeams(); err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-
-	pending, found, err := p.deps.ReadRejection()
-	if err != nil {
-		return stuck(fmt.Sprintf("read the pending rejection: %v; fix it or run %s again", err, reworkRejectCommand))
-	}
-
-	committed, err := p.committedRejections()
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-
-	if !found {
-		if len(committed) == 0 {
-			return stuck("no pending rejection and no committed rework round; run " + reworkRejectCommand)
-		}
-		// A crash after the record's removal but before Shed persisted Done.
-		return p.finish(false, shedengine.OutputPointer{})
-	}
-
-	identity := rejectionIdentity(pending.HeadSHA, pending.RejectedAt)
-	if committed[identity] {
-		return p.finish(true, shedengine.OutputPointer{})
-	}
-
-	round, inFlight, err := p.roundFor(committed)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	roundDir := filepath.Join(p.deps.ReworkDir, reworkRoundPrefix+strconv.Itoa(round))
-
-	var rec roundRecord
-	switch {
-	case inFlight == nil:
-		rec, err = p.archive(pending, roundDir)
-	case rejectionIdentity(inFlight.HeadSHA, inFlight.RejectedAt) != identity:
-		rec, err = p.rekeyRound(pending, roundDir, inFlight.FirstCard)
-	default:
-		rec = *inFlight
-	}
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if err := p.recreateReviewRunDirs(); err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if rec.Class != "" {
-		// The session finished and the round was classified before the round commit was interrupted, so only the commit remains.
-		return p.commitRound(shedengine.OutputPointer{})
-	}
-
-	told := ReworkTold{FirstCard: rec.FirstCard, PriorPlanDir: filepath.Join(roundDir, reworkPriorDir, reworkPriorPlan)}
-	outcome, pointer, err := p.session(told).Call(ctx)
-	if err != nil || outcome != shedengine.Done {
-		return outcome, pointer, err
-	}
-
-	plan, err := planparser.ParsePlan(p.deps.PlanDir)
-	if err != nil {
-		return shedengine.Stuck, shedengine.OutputPointer{
-			Reason:       "rework plan does not parse: " + err.Error(),
-			GateAttempts: pointer.GateAttempts,
-			GateSpans:    pointer.GateSpans,
-		}, nil
-	}
-	rec.Class = ReworkClassRequired
-	if planparser.ReviewExempt(plan) {
-		rec.Class = ReworkClassExempt
-	}
-	if err := p.finishRound(roundDir, rec, pointer.Path); err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	return p.commitRound(pointer)
-}
-
-// commitRound commits the classified round, then removes the pending rejection and returns Done carrying gated's gate fields.
-func (p *prRework) commitRound(gated shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if err := p.deps.Commit(); err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: commit rework round: %w", p.name, err)
-	}
-	return p.finish(true, gated)
-}
-
-// checkSeams names the first unwired seam; the constructor returns the bare seam interface and so has no error to refuse a nil through.
-func (p *prRework) checkSeams() error {
-	seams := []struct {
-		name    string
-		missing bool
-	}{
-		{"session factory", p.session == nil},
-		{"ReadCommitted", p.deps.ReadCommitted == nil},
-		{"ReadRejection", p.deps.ReadRejection == nil},
-		{"ClearRejection", p.deps.ClearRejection == nil},
-		{"ArchiveWebster", p.deps.ArchiveWebster == nil},
-		{"KeepReviewRecords", p.deps.KeepReviewRecords == nil},
-		{"Commit", p.deps.Commit == nil},
-		{"ReviewsDir", p.deps.ReviewsDir == ""},
-	}
-	for _, s := range seams {
-		if s.missing {
-			return fmt.Errorf("loomshed: %s: no %s seam wired", p.name, s.name)
-		}
-	}
-	return nil
-}
-
-// finish runs the last step: when clear, remove the pending record, then Done.
-// The absent-record crash path calls it with clear false, since that record is already gone.
-// The Done pointer carries only gated's GateAttempts and GateSpans, so its Path stays empty.
-func (p *prRework) finish(clear bool, gated shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if clear {
-		if err := p.deps.ClearRejection(); err != nil {
-			return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: clear rejection: %w", p.name, err)
-		}
-	}
-	return shedengine.Done, shedengine.OutputPointer{GateAttempts: gated.GateAttempts, GateSpans: gated.GateSpans}, nil
-}
-
-// stuck returns a Stuck verdict carrying reason.
-func stuck(reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
-}
-
-// committedRejections returns the identities of the rejections recorded by rounds committed at HEAD.
-func (p *prRework) committedRejections() (map[string]bool, error) {
-	rounds, err := committedRounds(p.deps)
-	if err != nil {
-		return nil, fmt.Errorf("loomshed: %s: %w", p.name, err)
-	}
-	identities := make(map[string]bool)
-	for _, r := range rounds {
-		identities[rejectionIdentity(r.record.HeadSHA, r.record.RejectedAt)] = true
-	}
-	return identities, nil
 }
 
 // ParseCommittedPlan parses the plan at planDir as committed at HEAD, reading every plan file through readCommitted, which takes an anchor-relative path.
@@ -295,257 +84,4 @@ func NextReworkCardNumber(planDir string, readCommitted func(anchorRel string) (
 		highest = max(highest, c.Number)
 	}
 	return highest + 1, nil
-}
-
-// roundFor picks the round for the pending rejection, deciding on the highest round alone, since only the newest round can be uncommitted.
-// A highest round with no record.json is an interrupted archive: inFlight is nil, and the archive resumes into it.
-// A highest round whose record is not among the committed rejections is in flight: its archive is done and the session may have begun, so nothing is moved again, and inFlight is that record.
-// Its identity is the pending rejection's after a crash, or a superseded one's when the operator rejected again while PR-Rework was blocked.
-// Otherwise it is a new round, the highest plus one, with inFlight nil.
-// A record that exists but cannot be read or decoded is an error, since guessing whose round it is could split the round.
-func (p *prRework) roundFor(committed map[string]bool) (round int, inFlight *roundRecord, err error) {
-	nums, err := roundNumbers(p.deps.ReworkDir)
-	if err != nil {
-		return 0, nil, fmt.Errorf("loomshed: %s: %w", p.name, err)
-	}
-	highest := 0
-	for _, n := range nums {
-		highest = max(highest, n)
-	}
-	if highest == 0 {
-		return 1, nil, nil
-	}
-	rec, err := readRoundRecord(filepath.Join(p.deps.ReworkDir, reworkRoundPrefix+strconv.Itoa(highest), reworkRecordFile))
-	if errors.Is(err, fs.ErrNotExist) {
-		return highest, nil, nil
-	}
-	if err != nil {
-		return 0, nil, fmt.Errorf("loomshed: %s: %w; way forward: rewrite the record, or remove it to resume the round's archive, then re-step", p.name, err)
-	}
-	if committed[rejectionIdentity(rec.HeadSHA, rec.RejectedAt)] {
-		return highest + 1, nil, nil
-	}
-	return highest, &rec, nil
-}
-
-// rekeyRound hands an in-flight round to the pending rejection that superseded the one it was opened for.
-// Its archive is done and HEAD still holds the retired generation, so the round keeps its first_card.
-// Its findings and identity become the pending rejection's, and the class is dropped so the session runs for the new findings.
-// findings.md is written first and record.json last, so a crash between them re-keys again on the next Call.
-func (p *prRework) rekeyRound(pending PendingRejection, roundDir string, firstCard int) (roundRecord, error) {
-	if err := os.WriteFile(filepath.Join(roundDir, reworkFindingsFile), []byte(pending.Findings), 0o644); err != nil {
-		return roundRecord{}, fmt.Errorf("loomshed: %s: write round %s: %w", p.name, reworkFindingsFile, err)
-	}
-	rec := roundRecord{PRNumber: pending.PRNumber, HeadSHA: pending.HeadSHA, RejectedAt: pending.RejectedAt, FirstCard: firstCard}
-	if err := writeRoundRecord(filepath.Join(roundDir, reworkRecordFile), rec); err != nil {
-		return roundRecord{}, fmt.Errorf("loomshed: %s: %w", p.name, err)
-	}
-	return rec, nil
-}
-
-// LatestArchivedReviewsDir returns the reviews directory of the highest round's prior-generation under reworkDir, or "" when no round exists.
-// The round commit uses it to tell whether the round moved tracked review files out of the reviews root.
-func LatestArchivedReviewsDir(reworkDir string) string {
-	return latestPriorChild(reworkDir, reworkPriorReviews)
-}
-
-// LatestArchivedWebsterDir returns the webster directory of the highest round's prior-generation under reworkDir, or "" when no round exists.
-func LatestArchivedWebsterDir(reworkDir string) string {
-	return latestPriorChild(reworkDir, reworkPriorWebster)
-}
-
-// LatestRejectReview returns the findings file of the newest round under reworkDir whose record carries a rejection time, with that time.
-// A round whose record or findings file is absent, or whose record has no rejection time, is skipped; no such round reads as not found.
-// A rejection time that does not parse is an error.
-func LatestRejectReview(reworkDir string) (findingsPath string, rejectedAt time.Time, found bool, err error) {
-	nums, err := roundNumbers(reworkDir)
-	if err != nil {
-		return "", time.Time{}, false, fmt.Errorf("loomshed: %w", err)
-	}
-	slices.SortFunc(nums, func(a, b int) int { return b - a })
-	for _, n := range nums {
-		roundDir := filepath.Join(reworkDir, reworkRoundPrefix+strconv.Itoa(n))
-		findings := filepath.Join(roundDir, reworkFindingsFile)
-		if _, err := os.Stat(findings); errors.Is(err, fs.ErrNotExist) {
-			continue
-		} else if err != nil {
-			return "", time.Time{}, false, fmt.Errorf("loomshed: stat %s: %w", findings, err)
-		}
-		rec, err := readRoundRecord(filepath.Join(roundDir, reworkRecordFile))
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return "", time.Time{}, false, fmt.Errorf("loomshed: %w", err)
-		}
-		if rec.RejectedAt == "" {
-			continue
-		}
-		at, err := time.Parse(time.RFC3339, rec.RejectedAt)
-		if err != nil {
-			return "", time.Time{}, false, fmt.Errorf("loomshed: round %d rejected_at %q: %w", n, rec.RejectedAt, err)
-		}
-		return findings, at, true, nil
-	}
-	return "", time.Time{}, false, nil
-}
-
-// latestPriorChild joins child onto the highest round's prior-generation directory under reworkDir.
-func latestPriorChild(reworkDir, child string) string {
-	nums, err := roundNumbers(reworkDir)
-	if err != nil || len(nums) == 0 {
-		return ""
-	}
-	highest := 0
-	for _, n := range nums {
-		highest = max(highest, n)
-	}
-	return filepath.Join(reworkDir, reworkRoundPrefix+strconv.Itoa(highest), reworkPriorDir, child)
-}
-
-// readRoundRecord decodes the record.json at recordPath.
-func readRoundRecord(recordPath string) (roundRecord, error) {
-	data, err := os.ReadFile(recordPath)
-	if err != nil {
-		return roundRecord{}, fmt.Errorf("read round record %s: %w", recordPath, err)
-	}
-	var rec roundRecord
-	if err := json.Unmarshal(data, &rec); err != nil {
-		return roundRecord{}, fmt.Errorf("decode round record %s: %w", recordPath, err)
-	}
-	return rec, nil
-}
-
-// archive moves the live generation into roundDir's prior-generation directory and writes the round's findings and record.
-// The first card is read from the plan committed at HEAD, which is still the retired generation.
-// record.json is written last, as the archive's completion marker, so a crash leaves a round without one and the next Call resumes it.
-func (p *prRework) archive(pending PendingRejection, roundDir string) (roundRecord, error) {
-	firstCard, err := NextReworkCardNumber(p.deps.PlanDir, p.deps.ReadCommitted)
-	if err != nil {
-		return roundRecord{}, fmt.Errorf("loomshed: %s: number the first new card: %w", p.name, err)
-	}
-	priorDir := filepath.Join(roundDir, reworkPriorDir)
-
-	moves, err := p.planMoves(priorDir)
-	if err != nil {
-		return roundRecord{}, err
-	}
-	if err := os.MkdirAll(roundDir, 0o755); err != nil {
-		return roundRecord{}, fmt.Errorf("loomshed: %s: create round directory: %w", p.name, err)
-	}
-	if err := os.WriteFile(filepath.Join(roundDir, reworkFindingsFile), []byte(pending.Findings), 0o644); err != nil {
-		return roundRecord{}, fmt.Errorf("loomshed: %s: write round %s: %w", p.name, reworkFindingsFile, err)
-	}
-	for _, m := range moves {
-		if err := os.MkdirAll(filepath.Dir(m.to), 0o755); err != nil {
-			return roundRecord{}, fmt.Errorf("loomshed: %s: create archive directory: %w", p.name, err)
-		}
-		if err := os.Rename(m.from, m.to); err != nil {
-			return roundRecord{}, fmt.Errorf("loomshed: %s: archive %s into %s: %w", p.name, m.from, m.to, err)
-		}
-	}
-	if err := os.MkdirAll(p.deps.PlanDir, 0o755); err != nil {
-		return roundRecord{}, fmt.Errorf("loomshed: %s: recreate plan directory: %w", p.name, err)
-	}
-	if err := p.deps.ArchiveWebster(filepath.Join(priorDir, reworkPriorWebster)); err != nil {
-		return roundRecord{}, fmt.Errorf("loomshed: %s: archive webster run record: %w", p.name, err)
-	}
-	// The new generation's plan replaces the amended one, so the amendment is spent.
-	if err := RemoveAmendment(p.deps.AmendmentPath); err != nil {
-		return roundRecord{}, fmt.Errorf("loomshed: %s: %w", p.name, err)
-	}
-
-	rec := roundRecord{PRNumber: pending.PRNumber, HeadSHA: pending.HeadSHA, RejectedAt: pending.RejectedAt, FirstCard: firstCard}
-	if err := writeRoundRecord(filepath.Join(roundDir, reworkRecordFile), rec); err != nil {
-		return roundRecord{}, fmt.Errorf("loomshed: %s: %w", p.name, err)
-	}
-	return rec, nil
-}
-
-// move is one rename of the archive.
-type move struct{ from, to string }
-
-// planMoves lists the renames that archive every plan entry and every review run directory into priorDir, skipping what is already moved.
-// An entry present at both origin and destination is a returned error naming both and the way forward, and nothing is moved.
-// An empty review run directory at the origin holds nothing to move: the recipe build recreates it, so it never collides with an archived copy.
-func (p *prRework) planMoves(priorDir string) ([]move, error) {
-	var moves []move
-	entries, err := os.ReadDir(p.deps.PlanDir)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("loomshed: %s: read plan directory: %w", p.name, err)
-	}
-	for _, e := range entries {
-		moves = append(moves, move{filepath.Join(p.deps.PlanDir, e.Name()), filepath.Join(priorDir, reworkPriorPlan, e.Name())})
-	}
-	for _, sub := range p.deps.ReviewRunSubdirs {
-		from := filepath.Join(p.deps.ReviewsDir, sub)
-		if !holdsEntry(from) {
-			continue
-		}
-		moves = append(moves, move{from, filepath.Join(priorDir, reworkPriorReviews, sub)})
-	}
-	for _, m := range moves {
-		if _, err := os.Lstat(m.to); err == nil {
-			return nil, fmt.Errorf("loomshed: %s: archive collision: %s exists at both %s and %s; way forward: remove whichever copy is stale, then re-step", p.name, filepath.Base(m.from), m.from, m.to)
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("loomshed: %s: stat archive target %s: %w", p.name, m.to, err)
-		}
-	}
-	return moves, nil
-}
-
-// holdsEntry reports whether dir exists and has at least one entry.
-func holdsEntry(dir string) bool {
-	entries, err := os.ReadDir(dir)
-	return err == nil && len(entries) > 0
-}
-
-// recreateReviewRunDirs recreates the archived review run directories, so a segment's first write finds its directory.
-// It then hands each one the latest archive holds to KeepReviewRecords, so the records the next re-entry compares against survive the archive.
-// It runs on every Call that reaches it, so a re-step after a failed carry carries again.
-func (p *prRework) recreateReviewRunDirs() error {
-	archivedRoot := LatestArchivedReviewsDir(p.deps.ReworkDir)
-	for _, sub := range p.deps.ReviewRunSubdirs {
-		recreated := filepath.Join(p.deps.ReviewsDir, sub)
-		if err := os.MkdirAll(recreated, 0o755); err != nil {
-			return fmt.Errorf("loomshed: %s: recreate review run directory %s: %w", p.name, sub, err)
-		}
-		if archivedRoot == "" {
-			continue
-		}
-		archived := filepath.Join(archivedRoot, sub)
-		if _, err := os.Stat(archived); errors.Is(err, fs.ErrNotExist) {
-			continue
-		} else if err != nil {
-			return fmt.Errorf("loomshed: %s: stat archived review run directory %s: %w", p.name, sub, err)
-		}
-		if err := p.deps.KeepReviewRecords(archived, recreated); err != nil {
-			return fmt.Errorf("loomshed: %s: keep review records of %s: %w", p.name, sub, err)
-		}
-	}
-	return nil
-}
-
-// finishRound copies the session's coverage file into roundDir and rewrites record.json carrying the class.
-func (p *prRework) finishRound(roundDir string, rec roundRecord, coveragePath string) error {
-	coverage, err := os.ReadFile(coveragePath)
-	if err != nil {
-		return fmt.Errorf("loomshed: %s: read coverage file: %w", p.name, err)
-	}
-	if err := os.WriteFile(filepath.Join(roundDir, reworkCoverageFile), coverage, 0o644); err != nil {
-		return fmt.Errorf("loomshed: %s: write round %s: %w", p.name, reworkCoverageFile, err)
-	}
-	if err := writeRoundRecord(filepath.Join(roundDir, reworkRecordFile), rec); err != nil {
-		return fmt.Errorf("loomshed: %s: %w", p.name, err)
-	}
-	return nil
-}
-
-// writeRoundRecord encodes rec into the file at recordPath.
-// The write replaces the file atomically, so a crash never leaves a torn record for roundFor to misread, and keeps every key of a record a newer binary wrote that roundRecord does not declare.
-func writeRoundRecord(recordPath string, rec roundRecord) error {
-	if err := state.WriteJSON(recordPath, recordPath+".lock", rec); err != nil {
-		return fmt.Errorf("write round %s: %w", reworkRecordFile, err)
-	}
-	return nil
 }

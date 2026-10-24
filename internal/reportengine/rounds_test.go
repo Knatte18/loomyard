@@ -195,6 +195,35 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 	}
 }
 
+func TestReadSegments_CodeAndRetiredSubdirs(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	w.fullRun("new", "tn", 100, nil, nil, reviewFiles("code", "round-1-review.md", "round-2-review.md"))
+	w.fullRun("old", "to", 101, nil, nil, mergeFiles(
+		reviewFiles("webster", "round-1-review.md"),
+		reviewFiles("webster-20261012T101500Z", "round-1-review.md", "round-2-review.md"),
+		reviewFiles("merge", "round-1-review.md"),
+		reviewFiles("merge-20261012T101500Z", "round-1-review.md")))
+
+	report, err := Compute(w.sources(), Options{})
+	if err != nil {
+		t.Fatalf("Compute error = %v", err)
+	}
+
+	want := map[string]map[string]*SegmentRounds{
+		"new": {"code": {Rounds: 2, Outcome: "accepted"}},
+		"old": {"code": {Rounds: 3, Outcome: "accepted"}},
+	}
+	if len(report.Runs) != len(want) {
+		t.Fatalf("runs = %d; want %d (findings %+v)", len(report.Runs), len(want), report.Findings)
+	}
+	for _, run := range report.Runs {
+		if !reflect.DeepEqual(run.Segments, want[run.Slug]) {
+			t.Errorf("run %s segments = %+v\nwant %+v", run.Slug, run.Segments, want[run.Slug])
+		}
+	}
+}
+
 func TestCompute_FullRunCounts(t *testing.T) {
 	t.Parallel()
 	running, awaiting, failed := shedengine.StateRunning, shedengine.StateAwaiting, shedengine.StateFailed

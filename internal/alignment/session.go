@@ -144,8 +144,6 @@ type SpawnInput struct {
 	Prompt   PromptInput
 	Settings Settings
 	Snapshot string
-	PRNumber int
-	HeadSHA  string
 }
 
 // Outcome is what Poll found.
@@ -185,8 +183,6 @@ func (s *Session) Begin(in SpawnInput) (Attempt, error) {
 		SpawnedAt: now,
 		Deadline:  now.Add(in.Settings.Timeout),
 		Snapshot:  in.Snapshot,
-		PRNumber:  in.PRNumber,
-		HeadSHA:   in.HeadSHA,
 		Dir:       filepath.Join(s.cfg.Root, "attempt-"+strconv.Itoa(number)),
 	}
 	if err := WriteAttempt(attempt); err != nil {

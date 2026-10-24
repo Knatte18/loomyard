@@ -6,7 +6,6 @@ package alignment
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -24,11 +23,8 @@ const stencilName = "loom-template-alignment"
 // reviewFormatStencilName is the registered name of the review format the agent's report follows.
 const reviewFormatStencilName = "burler-review-format"
 
-// MeasureLoom and MeasureDarn are the registered names of the two pr-gate measure fragments.
-const (
-	MeasureLoom = "loom-fragment-pr-gate-loom"
-	MeasureDarn = "loom-fragment-pr-gate-darn"
-)
+// MeasureLoom is the registered name of the measure fragment loom tells the agent.
+const MeasureLoom = "loom-fragment-pr-gate-loom"
 
 // absentValue fills a marker whose input the point does not have.
 const absentValue = "none"
@@ -40,8 +36,8 @@ type Settings struct {
 }
 
 // PromptInput carries what the stencil's markers are filled from.
-// BriefPath, PlanDir, PRNumber and HeadSHA may be empty or zero; every other field is required.
-// MeasureStencil is the registered name of the fragment that states what a pr-gate run is measured against, MeasureLoom or MeasureDarn.
+// BriefPath and PlanDir may be empty; every other field is required.
+// MeasureStencil is the registered name of the fragment that states what a run is measured against, MeasureLoom.
 type PromptInput struct {
 	Point              Point
 	Slug               string
@@ -51,8 +47,6 @@ type PromptInput struct {
 	PlanDir            string
 	BriefPath          string
 	ParentBranch       string
-	PRNumber           int
-	HeadSHA            string
 	VerdictPath        string
 	ReportPath         string
 	MeasureStencil     string
@@ -61,8 +55,8 @@ type PromptInput struct {
 // Prompt composes the agent's launch prompt.
 // The stencil is read from stencilsDir at call time and filled with in, the review-format path, the no-parent parent directive and the edit directive.
 // The no-parent directive is rendered because the verdict file is the agent's only channel.
-// The pr-gate measure fragment named by in.MeasureStencil fills the stencil's pr_gate_measure marker.
-// An empty brief path, plan directory, head SHA and a zero PR number fill as the literal "none".
+// The measure fragment named by in.MeasureStencil fills the stencil's pr_gate_measure marker.
+// An empty brief path and plan directory fill as the literal "none".
 // It refuses an empty MeasureStencil, and returns the read or fill error wrapped with the name of the stencil or fragment.
 func Prompt(stencilsDir string, in PromptInput) (string, error) {
 	if in.MeasureStencil == "" {
@@ -84,10 +78,6 @@ func Prompt(stencilsDir string, in PromptInput) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("alignment: prompt: read measure %q: %w", in.MeasureStencil, err)
 	}
-	prNumber := absentValue
-	if in.PRNumber != 0 {
-		prNumber = strconv.Itoa(in.PRNumber)
-	}
 	filled, err := stencil.Fill(template, map[string]string{
 		"point":                    string(in.Point),
 		"slug":                     in.Slug,
@@ -98,8 +88,6 @@ func Prompt(stencilsDir string, in PromptInput) (string, error) {
 		"pr_gate_measure":          measure,
 		"brief_path":               valueOrNone(in.BriefPath),
 		"parent_branch":            in.ParentBranch,
-		"pr_number":                prNumber,
-		"head_sha":                 valueOrNone(in.HeadSHA),
 		"verdict_path":             in.VerdictPath,
 		"report_path":              in.ReportPath,
 		"review_format_path":       stencilstore.Path(stencilsDir, reviewFormatStencilName),
@@ -112,7 +100,7 @@ func Prompt(stencilsDir string, in PromptInput) (string, error) {
 	return string(filled), nil
 }
 
-// readMeasure reads the named pr-gate measure fragment from stencilsDir, without its leading comment and trailing newlines.
+// readMeasure reads the named measure fragment from stencilsDir, without its leading comment and trailing newlines.
 func readMeasure(stencilsDir, name string) (string, error) {
 	raw, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {

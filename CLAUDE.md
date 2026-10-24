@@ -17,8 +17,7 @@ A new cross-cutting invariant goes into PATTERN in the same commit as the code.
 
 `update-plugins.sh` (`.cmd` on Windows) is the only route to production: from a clean, pushed `main`, it deploys the plugins and builds `lyx` into the Go bin dir.
 Never run it unasked, never install `lyx` elsewhere.
-Batten's Land row runs the hub's `deploy` command after every landing, including one the alignment agent's approve at PR-Gate makes with no orch turn.
-`alignment_pr_approve: false` in the hub's `loom.yaml` withdraws that approve's landing.
+Batten's Land row runs the hub's `deploy` command after every landing into a `deploy_branches` branch, one made with no orch turn included.
 For internal tests, `./deploy-dev` builds into `.dev-bin` instead.
 There is no versioning: plugins stay at `1.0.0`.
 

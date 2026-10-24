@@ -48,7 +48,7 @@ func reportStuck(producer, reason, scratchDir string, fields ...any) {
 }
 
 // reportWait is reportStuck at Info, the route of an ordinary wait or move that is no failed step.
-// Such a wait ends on a state change, a requested pause or a Publish-retry action.
+// Such a wait ends on a state change, or a requested pause.
 func reportWait(producer, reason, scratchDir string, fields ...any) {
 	logFields := append([]any{"producer", producer, "reason", reason}, fields...)
 	logger.Info(stuckMessage, logFields...)

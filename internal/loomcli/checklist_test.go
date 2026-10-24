@@ -456,7 +456,7 @@ func TestRenderChecklist(t *testing.T) {
 				"[x] 2. Darn-Write 5m00s", "  10:05 5m00s done",
 				"[>] 3. Darn-Review 2m rounds 0",
 				"  10:10 2m Darn-Bouncer running",
-				"[ ] 4. Describe", "[ ] 5. Merge-In", "[ ] 6. Publish", "[ ] 7. PR-Align", "[ ] 8. PR-Gate", "[ ] 9. Finalize", "[ ] 10. Friction-Reflect",
+				"[ ] 4. Describe", "[ ] 5. PR-Review", "[ ] 6. Finalize", "[ ] 7. Friction-Reflect",
 				"loom running | now working", "waiting on nothing",
 			},
 		},

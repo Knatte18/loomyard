@@ -634,6 +634,10 @@
 // It is read-only and writes nothing;
 // the caller supplies the anchor-relative file set, because the config registry imports this package.
 //
+// **Line change.** `LineChange(from, to)` (linechange.go) reads the tree difference between two commits of the pair's code repository as a `LineChange`, beside `ChangedPaths`.
+// It holds the sorted changed paths with a rename at both its paths, the added plus deleted lines from `git diff --numstat -M` (a pure rename counts none, a binary file counts one), and the text of every added line.
+// It is read-only, and a read failure is an error naming both commits.
+//
 // **Code identity reads.** Three read-only methods (taskpatch.go) give a code segment's identity what `Diff`'s changed paths cannot, and mutate nothing.
 // `ReadTaskPatch(base, skip)` returns a `TaskPatch`: the warp working tree's change against the told merge base, tracked files and uncommitted edits included, plus every untracked non-ignored file as a new-file diff, minus the untracked paths `skip` names and those under a `skip` entry ending in `/`.
 // It carries the HEAD it read, the full diff bytes, their SHA-256 and git's stable patch-id of the zero-context form, which a rebase that only moves context leaves unchanged.
@@ -1226,6 +1230,11 @@
 // of the same repo. The two are not one verb with a flag, because their guards, failure modes, and
 // worktrees genuinely differ (see `_mill/discussion-meta.md`'s `two-verbs-mergein-then-merge`
 // rejection).
+//
+// **`MergeInAt(source, warpSHA)` merges a told commit instead of the freshness rule's pick.** It runs `MergeIn`'s whole body, and only the code side's merged commit differs: `warpSHA` replaces the commit the freshness rule picks for `source`, once it resolves to a commit in the pair's code repository.
+// A `warpSHA` that does not is the `source branch not found` guard reason, with nothing merged.
+// The records side and every other guard still resolve from `source`, and the merge record names `source` as the merged branch and `warpSHA` as its code-side source, so `MergeContinue` and `MergeAbort` treat the call as a merge-in of `source`.
+// A caller that reviewed a given upstream tip uses it to merge exactly that tip, whatever the local branch has moved to since.
 //
 // **The weft is never a merge participant, in either verb or either direction.** Everything routed
 // to the weft belongs to exactly one worktree and one branch, so there is nothing there for a merge

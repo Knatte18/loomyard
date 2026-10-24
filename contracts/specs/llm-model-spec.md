@@ -120,8 +120,9 @@ its in-session forks always inherit Master's current model, so there are no per-
 Stack-wide roles elsewhere (burler reviewers, Bouncer judges, loom producers) use the same notation in their own config sections;
 loom's config section overrides per role when loom drives the module.
 
-loom.yaml gives the Bouncer judge and seed passes and PR-Rework keys of their own, each a model-spec validated only when non-empty:
+loom.yaml gives the Bouncer judge and seed passes keys of their own, each a model-spec validated only when non-empty:
 
-- A per-segment judge key (`discussion_judge`, `plan_judge`, `webster_judge`) left empty takes `judge`.
-- A per-segment seed key (`discussion_seed`, `plan_seed`, `webster_seed`) left empty takes `seed`, and `seed` left empty takes that segment's resolved judge.
-- `rework` left empty takes `plan`.
+- A per-segment judge key (`discussion_judge`, `plan_judge`, `code_judge`) left empty takes `judge`.
+- A per-segment seed key (`discussion_seed`, `plan_seed`, `code_seed`) left empty takes `seed`, and `seed` left empty takes that segment's resolved judge.
+
+landing.yaml's `fixer` is the model-spec of the merge fixer session that Merge-In and Finalize run, `opus[high]` by default, and `fixer_timeout_min` bounds one of its turns.

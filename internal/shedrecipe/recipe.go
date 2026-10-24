@@ -85,7 +85,7 @@ type Env struct {
 	ConfigDirs configengine.Dirs
 	// WorktreeRoot is the told worktree root, read by the gate resolver's "plan" and "verify" gates.
 	WorktreeRoot string
-	// RunScratchDir is the told ephemeral shed scratch directory of the run, read by the gate resolver's "plan" and "rework-plan" gates, which record their informational findings in a file under it.
+	// RunScratchDir is the told ephemeral shed scratch directory of the run, read by the gate resolver's "plan" gate, which records its informational findings in a file under it.
 	// Empty keeps those findings inline in the log.
 	RunScratchDir string
 	// GateFindingsFile is the told per-row file an exhausted gate's findings are kept in, read by every entry that builds a gated producer.
@@ -95,7 +95,8 @@ type Env struct {
 	VerifyDir string
 	// VerifyCommand is the told verify-command source, read at each arrival by the gate resolver's "verify" gate, which requires it.
 	VerifyCommand func() (string, error)
-	// Round is the told source of the hub's `round` gate, read at each arrival by the gate resolver's "verify" gate, which requires it.
+	// Round is the told source of the hub's gate list the "verify" gate narrows to a diff, read at each arrival by the gate resolver's "verify" gate, which requires it.
+	// It tells the `landing` list at the fix rows of loom and darn.
 	// Its error is the gate's returned error.
 	Round func() (loomshed.RoundGate, error)
 	// VerifyMergeBase is the told reader of the task branch's merge base with the parent branch, read by the gate resolver's "verify" gate.
@@ -108,9 +109,6 @@ type Env struct {
 	// VerifyHold is the told pause hold of the worktree's verify sites, read by the gate resolver's "verify" gate.
 	// Nil holds nothing.
 	VerifyHold *verifytree.PauseHold
-	// PublishFailure returns the Publish failure note the Webster-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
-	// Nil renders `none`.
-	PublishFailure func() string
 	// WebsterRecord returns the webster run-record note the Plan-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	WebsterRecord func() string
@@ -231,15 +229,6 @@ type Env struct {
 	// SkipPlanReview is the injected closure answering whether the live plan generation skips its Plan-Review judge, read by the Bouncer entry's skip_seam key.
 	// An error makes the Bouncer review for real.
 	SkipPlanReview func() (bool, error)
-	// SkipMergeReview is the injected closure answering whether the merge-in needs no review, read by the Bouncer entry's skip_seam key.
-	// An error makes the Bouncer review for real.
-	SkipMergeReview func() (bool, error)
-	// ApproveMergeReview is the injected closure recording the merge review as finished, read by the Bouncer entry's approve_seam key.
-	// It runs on every approved settle of that Bouncer, a skip included.
-	ApproveMergeReview func() error
-	// MergeReview returns the merge record note the Merge-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
-	// Nil renders `none`.
-	MergeReview func() string
 	// CarryOver is the injected closure that writes and commits one review segment's carry-over entry into the decision record, read by the Bouncer entry's carry_over key.
 	// It is run-wide, and the entry the Bouncer passes names its own segment.
 	CarryOver func(discussionparser.CarryOver) error
@@ -249,40 +238,37 @@ type Env struct {
 	// CodeSubject is the injected closure reading a code segment's subject, read by the Bouncer entry's subject key when it is "code".
 	// Nil is legal for a caller whose Bouncer rows name no code subject.
 	CodeSubject func() (shedadapters.Subject, bool, error)
-	// MergeSubject is the injected closure reading a merge-in's subject, read by the Bouncer entry's subject key when it is "merge".
-	// Nil is legal for a caller whose Bouncer rows name no merge subject.
-	MergeSubject func() (shedadapters.Subject, bool, error)
 	// MergeInOnly reports whether the history since the commit since holds only merge-ins, told to a Bouncer whose subject is "code".
 	// Nil is legal for a caller whose Bouncer rows name no code subject.
 	MergeInOnly func(since string) (bool, error)
 	// RecordHead reads the record head a document segment's settled artifacts stand at, told to a Bouncer whose subject is "document" as its settled base.
 	// Nil is legal for a caller whose Bouncer rows name no document subject.
 	RecordHead func() (string, error)
-	// RejectReview reports the review file of the PR-Gate reject a re-entry is told, and when the reject happened, told to every Bouncer whose subject key is set.
-	// Nil is legal and means a reject with no review file.
-	RejectReview func() (path string, rejectedAt time.Time, found bool, err error)
+	// ReviewInput reports the file a re-entered review is told to review besides the subject's change, and when the file was written, told to every Bouncer whose subject key is set.
+	// Nil is legal and means a review with no input file.
+	ReviewInput func() (path string, writtenAt time.Time, found bool, err error)
+	// ReviewBase reads the commit a code review's range starts from, filled into a rubric's review_base marker by every Bouncer and BurlerReview row.
+	// Nil is legal and renders the marker as `none`, which the Code-Review rubric reads as a range that could not be determined.
+	ReviewBase func() (string, error)
 	// ReflectFriction is the injected closure the FrictionReflect entry's producer calls once per
 	// Call, returning the reflection's status string. It arrives as a closure, following
 	// CommitWebster/CommitDiscussion/ApprovePlan, because the reflection's dependencies are already
 	// resolved on internal/loomcli's receiver, and building them here would pull friction, lock and
 	// loom-config imports into this Told-Geometry-bound package.
 	ReflectFriction func() string
-	// ReworkTable is the injected table factory the PRRework entry evaluates once per Call, with the values the producer tells that session.
-	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
-	// internal/loomcli's wire() is what supplies it.
-	ReworkTable func(loomshed.ReworkTold) (seatengine.Table, error)
-	// Rework is a whole-struct passthrough to loomshed.NewPRRework, following Env.Landing's own precedent:
-	// the producer has behaviour of its own -- the generation archive, the round record and the rejection removal -- that per-seam fakes must be able to substitute individually.
+	// Rework carries the told values and seams of the earlier rework rounds a run recorded: the Plan-Review skip seam, the plan archive and the committed-plan reads all take it, and Plan-Write's rotation takes its ArchiveWebster.
 	Rework loomshed.PRReworkDeps
 	// DarnTable is the injected table factory the DarnWrite entry evaluates once per Call, with the token texts the producer tells that session.
-	// It arrives as a closure for the reason ReworkTable does.
+	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly;
+	// internal/loomcli's wire() is what supplies it.
 	DarnTable func(loomshed.DarnTold) (seatengine.Table, error)
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
 	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler-Fix rows at every build.
 	DarnVerifyAttempts int
-	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, for the reason Rework is.
+	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, following Env.Landing's own precedent:
+	// the producer has behaviour of its own that per-seam fakes must be able to substitute individually.
 	Darn loomshed.DarnDeps
-	// PlanIndex is the code index the "plan" and "rework-plan" gates resolve plan refs against.
+	// PlanIndex is the code index the "plan" gate resolves plan refs against.
 	// It arrives as an interface so this package, and the recipe packages built on it, link no tree-sitter grammar.
 	PlanIndex planindex.Index
 

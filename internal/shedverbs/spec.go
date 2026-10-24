@@ -219,4 +219,12 @@ type Spec struct {
 	// GotoGuard is the recipe's told check of a goto target, passed to every goto the verbs run.
 	// Nil admits every target, as a recipe that tells none always did.
 	GotoGuard shedengine.GotoGuard
+	// HandBack is the recipe's told check of a stop that goes to the orch whatever driver reads it, answering for a producer and the error its blocked stop persists.
+	// The loop's stop envelope and status report it as hand_back for a blocked status; nil marks nothing.
+	HandBack func(producer, reason string) bool
+}
+
+// handsBack reports whether st is a blocked stop the told HandBack check answers true for, by the status's current producer and error.
+func (s *Spec) handsBack(st shedengine.Status) bool {
+	return s.HandBack != nil && st.State == shedengine.StateBlocked && s.HandBack(st.CurrentProducer, st.Error)
 }

@@ -22,8 +22,7 @@
 //
 // arm also resolves the run-id every one of loom's four generic verbs addresses -- args[0] when
 // present, shedrun.SelfRunID otherwise -- and, for those four verbs alone, refuses when no seed
-// exists at that run-id. Loom's hand-written verbs -- start, validate-discussion, validate-plan,
-// validate-description and approve -- are not generic verbs and never reach this check; "lyx loom
+// exists at that run-id. Loom's hand-written verbs -- start, validate-discussion, validate-plan and validate-description -- are not generic verbs and never reach this check; "lyx loom
 // start" is the one site that writes a seed, per the batch's loom's-run-and-step-do-not-auto-seed
 // decision.
 // See genericShedVerb's own doc comment for the exact four-verb set.
@@ -43,6 +42,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -55,12 +55,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 	"gopkg.in/yaml.v3"
 )
 
 // genericShedVerb reports whether verb is one of the four verbs shedverbs.Verbs drives -- run,
 // step, status, pause -- as opposed to loom's own hand-written verbs (start,
-// validate-discussion, validate-plan, validate-description, approve), which never reach arm's
+// validate-discussion, validate-plan, validate-description), which never reach arm's
 // seed-presence check below.
 func genericShedVerb(verb string) bool {
 	switch verb {
@@ -88,8 +89,8 @@ func genericShedVerb(verb string) bool {
 // Tier 1 despite arm itself needing lyxcwd.Resolve's real git spawn.
 func (c *loomCLI) resolveRunID(location *lyxcwd.Location, verb string, args []string) error {
 	runID := shedrun.SelfRunID
-	// reject's one positional argument is its review file, insert-card's and remove-card's first is a card position, and fmt's arguments are the Go files to format; none is a run-id.
-	if len(args) > 0 && verb != "reject" && verb != "insert-card" && verb != "remove-card" && verb != "fmt" {
+	// insert-card's and remove-card's first positional is a card position, and fmt's arguments are the Go files to format; none is a run-id.
+	if len(args) > 0 && verb != "insert-card" && verb != "remove-card" && verb != "fmt" {
 		runID = args[0]
 	}
 	c.runID = runID
@@ -301,6 +302,8 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 			RefuseMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; run \"lyx loom start\" first to bootstrap this task",
 		},
 		PauseAbsentMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; there is nothing running to pause -- run \"lyx loom start\" first to bootstrap this task",
+		// The landing halts go to the orch on loom and darn runs alike, so both tell the one predicate.
+		HandBack: landingshed.HandsBack,
 		Hooks: shedverbs.Hooks{
 			PreRun:             c.loomPreRun,
 			PostRun:            c.loomPostRun,
@@ -326,11 +329,12 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		spec.Loop.OnWatchdogKill = watchdogKillNote(c.stopStepRuns, spec.StepsDir)
 		locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(c.location.HubPath))}
 		self := selfLockOwner(c.location, c.runID)
-		spec.Loop.OnExit = loopLockExit(locks, self, battenWatcher(c.location, c.runID))
+		spec.Loop.OnExit = loopLockExit(locks, self)
 		covered := pauseCovered(c.location)
+		keep := finalizeKeepsLock(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, verifytree.Dir(c.location.AnchorPath()))
 		spec.Loop.OnWake = builtOnFirstCall(func() func() {
 			return loopIdleRelease(locks, self, readAgentStates(c.location, c.shuttleCfg), c.landingCfg.IdleRelease(),
-				func() bool { return covered(c.location.WorktreeName) })
+				func() bool { return covered(c.location.WorktreeName) }, keep)
 		})
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
@@ -358,8 +362,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 // receiver via newLoomCLI and returns c.arm(cwd, verb, args), resolving cwd itself. A package-level
 // Arm alone could not serve resolvePersistentPreRun, because that pre-run must wire its own c:
 // start.go reads thirteen receiver fields and validate.go reads four more, so arming a throwaway
-// receiver and assigning only *c.spec would break start, validate-discussion, validate-plan,
-// validate-description and approve, none of which is a shedverbs verb and none of which reads
+// receiver and assigning only *c.spec would break start, validate-discussion, validate-plan and validate-description, none of which is a shedverbs verb and none of which reads
 // c.spec.
 func Arm(cwd string, verb string, args []string) (shedverbs.Spec, error) {
 	c := newLoomCLI()

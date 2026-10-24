@@ -2,7 +2,7 @@
      default in the top-level stencils package (stencils/stencils.go), seeded to
      <hub>/_board/_lyx/stencils/landing/, and read from there at call time by internal/seatengine,
      which fills it from the lead's value map that landingshed's DarnDescribeTable builds, then hands it to shuttle as the describing agent's whole
-     prompt. The markers are slug, decision_record_path, task_branch, parent_branch, review_dir and description_path, plus the two directives. Every marker below is a top-level {{.X}} substitution; stencil.FillWith requires every
+     prompt. The markers are slug, decision_record_path, task_branch, parent_branch, merge_base, review_dir and description_path, plus the two directives. Every marker below is a top-level {{.X}} substitution; stencil.FillWith requires every
      marker non-empty, parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective) included, and there are no {{if}}/{{range}} conditionals anywhere in this file. -->
 
 # Change description — write the one description this task lands under
@@ -22,7 +22,7 @@ Read only these sources, and use read-only git for the diff:
 - The decision record `{{.decision_record_path}}`.
   Its `Added after Discussion` entries amend the board entry and win over its body where they differ.
   Its other sections are the writer's own account of scope and early calls, which you read as a claim to check against the diff.
-- The diff of the task branch `{{.task_branch}}` against its merge base with the parent branch `{{.parent_branch}}` — for example `git diff $(git merge-base {{.parent_branch}} {{.task_branch}}) {{.task_branch}}`.
+- The diff of the task branch `{{.task_branch}}` against its merge base with the parent branch `{{.parent_branch}}`, read as `git diff {{.merge_base}} {{.task_branch}}`.
 - The review directory `{{.review_dir}}`, only as a source of manual-check items.
   When a `round-<N>-circling-decision.md` file in it records `decision: accept`, the review passed that round without converging.
   Each finding the matching `round-<N>-review.md` lists becomes one item to check by hand in your description, worded as the finding and where it is, never as a review round.

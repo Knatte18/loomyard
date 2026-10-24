@@ -222,7 +222,21 @@ func TestVerbRefusals(t *testing.T) {
 		wantRemedy string
 		// wantAlso, when set, is a second remedy the output must hold.
 		wantAlso string
+		// treeArgs, when set, runs these arguments through the whole loom command tree, mounted under a parent as in lyx, instead of the one verb.
+		treeArgs []string
 	}{
+		{
+			name:       "Approve_UnknownCommand",
+			treeArgs:   []string{"approve"},
+			wantRemedy: "unknown subcommand",
+			wantAlso:   "approve",
+		},
+		{
+			name:       "Reject_UnknownCommand",
+			treeArgs:   []string{"reject"},
+			wantRemedy: "unknown subcommand",
+			wantAlso:   "reject",
+		},
 		{
 			name:       "Run_SeedMissing",
 			verb:       "run",
@@ -252,7 +266,14 @@ func TestVerbRefusals(t *testing.T) {
 			}
 
 			var out bytes.Buffer
-			exitCode := clihelp.Execute(loomVerbCommand(c, tt.verb), &out, nil)
+			var exitCode int
+			if tt.treeArgs != nil {
+				root := &cobra.Command{Use: "lyx"}
+				root.AddCommand(Command())
+				exitCode = clihelp.Execute(root, &out, append([]string{"loom"}, tt.treeArgs...))
+			} else {
+				exitCode = clihelp.Execute(loomVerbCommand(c, tt.verb), &out, nil)
+			}
 
 			if exitCode != 1 {
 				t.Errorf("%s: exit code = %d; want 1", tt.name, exitCode)

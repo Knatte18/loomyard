@@ -78,8 +78,8 @@ func deriveSequenceOrder() []wantSequenceEntry {
 }
 
 // TestSequence_FullRunBlocksAtMergeIn is the task's own verify requirement: the built row list
-// runs Preflight through Describe and blocks on Merge-In's Stuck verdict, never reaching Publish --
-// see wantSequenceOrder's own doc comment for why, including for all three review segments' entry
+// runs Preflight through Webster and blocks on Merge-In's Stuck verdict, never reaching the Code-Review perch --
+// see wantSequenceOrder's own doc comment for why, including for the review segments' entry
 // shapes. It also asserts the plan is left approved after the run: under the pre-fix code the fake
 // writer self-approved the plan it wrote, which masked Plan-Bouncer's approve_seam ever firing at
 // all -- a nil Env.ApprovePlan, a no-op closure, or a fake writer that started self-approving again
@@ -174,15 +174,15 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 		t.Errorf("CommitPlan calls = %d; want exactly 2 after a clean run (Plan-Write's commit plus Plan-Bouncer's approval commit)", commitPlanCalls)
 	}
 
-	// The scenario checks that all three review segments genuinely ran rather than being silently short-circuited:
+	// The scenario checks that both review segments before Merge-In genuinely ran rather than being silently short-circuited:
 	// the fake burler ran exactly one review and one fix per segment,
-	// and the fake shuttle recorded exactly three bouncer-judge spawns -- the judge calls whose fixture-scripted CONVERGED verdicts are what advanced the run past each segment.
+	// and the fake shuttle recorded exactly two bouncer-judge spawns -- the judge calls whose fixture-scripted CONVERGED verdicts are what advanced the run past each segment.
 	loomBurler := env.Burler.(*shedfake.BurlerHalfRunner)
-	if loomBurler.ReviewCalls != 3 || loomBurler.FixCalls != 3 {
-		t.Errorf("burler Review/Fix calls = %d/%d; want exactly 3/3 after a clean run", loomBurler.ReviewCalls, loomBurler.FixCalls)
+	if loomBurler.ReviewCalls != 2 || loomBurler.FixCalls != 2 {
+		t.Errorf("burler Review/Fix calls = %d/%d; want exactly 2/2 after a clean run", loomBurler.ReviewCalls, loomBurler.FixCalls)
 	}
-	if judgeCalls := countRole(env.Shuttle.(*shedfake.Shuttle), "bouncer-judge"); judgeCalls != 3 {
-		t.Errorf("bouncer-judge spawns = %d; want exactly 3 after a clean run", judgeCalls)
+	if judgeCalls := countRole(env.Shuttle.(*shedfake.Shuttle), "bouncer-judge"); judgeCalls != 2 {
+		t.Errorf("bouncer-judge spawns = %d; want exactly 2 after a clean run", judgeCalls)
 	}
 
 	// This is the regression proof for F7: parse the fixture's own plan and assert Approved is

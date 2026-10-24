@@ -91,17 +91,11 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 				return PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none")
 			}, parent)
 		},
-		"rework": func(parent string) ([]string, string, error) {
-			return leadOfTable(func(stencilsDir string) (seatengine.Table, error) {
-				return ReworkTable(layout, stencilsDir, newTestSpecsDir(t), cfg, reg, 4, "prior")
-			}, parent)
-		},
 	}
 	wantSkills := map[string][]string{
 		"discussion-interactive": {"scribe:prose", "scribe:conversation"},
 		"discussion-autonomous":  {"scribe:prose", "scribe:conversation"},
 		"plan":                   {"scribe:prose", "scribe:testing"},
-		"rework":                 {"scribe:prose", "scribe:testing"},
 	}
 
 	for name, mk := range build {

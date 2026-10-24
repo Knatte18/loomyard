@@ -230,7 +230,7 @@ func loopOf(t *testing.T, env map[string]any) map[string]any {
 // assertLoopKeys checks the loop object's closed key set.
 func assertLoopKeys(t *testing.T, loop map[string]any, withRestep bool) {
 	t.Helper()
-	want := []string{"steps", "first_producer", "stop", "detail", "status_moved", "current_producer", "history_length", "state", "interrupt_policy", "trace_copy", "stderr_path"}
+	want := []string{"steps", "first_producer", "stop", "detail", "status_moved", "hand_back", "current_producer", "history_length", "state", "interrupt_policy", "trace_copy", "stderr_path"}
 	if withRestep {
 		want = append(want, "restep")
 	}
@@ -259,8 +259,10 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 		wantExit int
 		// wantStep is the step part of the envelope when the child left no record to derive it from.
 		wantStep map[string]any
+		// wantHandBack is the loop's hand_back under a told check that answers true for the producer B, where every halting script leaves the run.
+		wantHandBack bool
 	}{
-		{name: "blocked", scripts: []childScript{continuing("B", 1), halting(shedengine.StateBlocked, shedengine.ReasonBounceBudgetExhausted, 2)}, wantStop: LoopStopHalted},
+		{name: "blocked", scripts: []childScript{continuing("B", 1), halting(shedengine.StateBlocked, shedengine.ReasonBounceBudgetExhausted, 2)}, wantStop: LoopStopHalted, wantHandBack: true},
 		{name: "awaiting", scripts: []childScript{halting(shedengine.StateAwaiting, "", 1)}, wantStop: LoopStopHalted},
 		{name: "done", scripts: []childScript{continuing("B", 1), halting(shedengine.StateDone, "", 2)}, wantStop: LoopStopHalted},
 		{name: "bare pause", scripts: []childScript{halting(shedengine.StatePaused, "", 1)}, wantStop: LoopStopHalted},
@@ -277,6 +279,7 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fx := newLoopFixture(t, tt.scripts...)
+			fx.spec.HandBack = func(producer, _ string) bool { return producer == "B" }
 			startCalls, childrenAtStart := 0, -1
 			fx.spec.Loop.OnStart = func() {
 				startCalls++
@@ -296,6 +299,9 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 			assertLoopKeys(t, loop, false)
 			if loop["stop"] != string(tt.wantStop) || loop["steps"] != float64(len(tt.scripts)) {
 				t.Errorf("loop stop/steps = %v/%v; want %s/%d", loop["stop"], loop["steps"], tt.wantStop, len(tt.scripts))
+			}
+			if loop["hand_back"] != tt.wantHandBack {
+				t.Errorf("loop hand_back = %v; want %v", loop["hand_back"], tt.wantHandBack)
 			}
 
 			ids := fx.childIDs()

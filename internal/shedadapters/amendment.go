@@ -15,18 +15,18 @@ import (
 )
 
 // startNextGeneration starts the generation after settled's over a changed subject.
-// It reads the reject's review file first, keeping its path when the reject is later than settled.SettledAt, and returns a read error before anything is archived.
+// It reads the review input first, keeping its path when the input was written after settled.SettledAt, and returns a read error before anything is archived.
 // It then archives the run directory, the records travelling along, and writes the generation record with the next number.
-// An amendment carries the Amendment mark, base and the kept reject path; a full generation, which cfg.FullGeneration selects, carries the number alone.
+// An amendment carries the Amendment mark, base and the kept review input path; a full generation, which cfg.FullGeneration selects, carries the number alone.
 // An amendment with an allowance of 0 settles through approveWithoutReview, and every other generation seeds.
 // A failed archive degrades, as the clear does.
 // A Call that fails after the archive leaves the generation record naming a generation no seed has run for, and the next Call's seed takes it from there.
 func (b *Bouncer) startNextGeneration(ctx context.Context, settled settleRecord, base string) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	amendment := !b.cfg.FullGeneration
-	rejectPath := ""
+	inputPath := ""
 	if amendment {
 		var err error
-		if rejectPath, err = b.keptRejectReview(settled.SettledAt); err != nil {
+		if inputPath, err = b.keptReviewInput(settled.SettledAt); err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
 	}
@@ -41,7 +41,7 @@ func (b *Bouncer) startNextGeneration(ctx context.Context, settled settleRecord,
 	if amendment {
 		record.Amendment = true
 		record.Base = base
-		record.RejectReview = rejectPath
+		record.ReviewInput = inputPath
 	}
 	if err := writeGenerationRecord(b.cfg.RunDir, record); err != nil {
 		return "", shedengine.OutputPointer{}, b.recordFailure("generation record", err)
@@ -53,18 +53,18 @@ func (b *Bouncer) startNextGeneration(ctx context.Context, settled settleRecord,
 	return b.seedCall(ctx)
 }
 
-// keptRejectReview returns the path of the PR-Gate reject's review file when the RejectReview seam reports a reject later than settledAt, and "" otherwise.
-// An unset or unparsable settledAt reads as the zero time, so any reject is later.
-func (b *Bouncer) keptRejectReview(settledAt string) (string, error) {
-	if b.cfg.RejectReview == nil {
+// keptReviewInput returns the path of the review input when the ReviewInput seam reports one written after settledAt, and "" otherwise.
+// An unset or unparsable settledAt reads as the zero time, so any input is later.
+func (b *Bouncer) keptReviewInput(settledAt string) (string, error) {
+	if b.cfg.ReviewInput == nil {
 		return "", nil
 	}
-	path, rejectedAt, found, err := b.cfg.RejectReview()
+	path, writtenAt, found, err := b.cfg.ReviewInput()
 	if err != nil {
-		return "", fmt.Errorf("shedadapters: %s (%s): read the reject's review: %w", b.cfg.Name, bouncerEngineLabel, err)
+		return "", fmt.Errorf("shedadapters: %s (%s): read the review input: %w", b.cfg.Name, bouncerEngineLabel, err)
 	}
 	settledTime, _ := time.Parse(time.RFC3339, settledAt)
-	if !found || !rejectedAt.After(settledTime) {
+	if !found || !writtenAt.After(settledTime) {
 		return "", nil
 	}
 	return path, nil
@@ -86,7 +86,7 @@ func (b *Bouncer) amendment() (generationRecord, bool) {
 // For a document the note limits the review to the artifacts' change since the commit the record's base names.
 // For a code segment the settled side is the stored settle-record.patch and the current side is the working-tree diff against the current merge base, untracked files outside the exclusion set included,
 // so a change already uncommitted at the settle is never shown as new and parent changes a Merge-In brought are left out.
-// The note also names the reject's review file when the record holds one.
+// The note also names the review input file when the record holds one, as an input the amendment reviews besides the change.
 func AmendmentNote(runDir string) string {
 	generation, found, err := readGenerationRecord(runDir)
 	if err != nil {
@@ -106,8 +106,8 @@ func AmendmentNote(runDir string) string {
 	} else {
 		fmt.Fprintf(&note, "This generation is an amendment: the artifacts were reviewed and settled before, so review only the artifacts' change since commit %s.", generation.Base)
 	}
-	if generation.RejectReview != "" {
-		fmt.Fprintf(&note, "\nThe PR-Gate reject's review file is %s; it holds the findings the reject raised.", generation.RejectReview)
+	if generation.ReviewInput != "" {
+		fmt.Fprintf(&note, "\nThe review input is %s; review it besides the change.", generation.ReviewInput)
 	}
 	return note.String()
 }

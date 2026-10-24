@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -25,12 +24,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// gateConfigWithTwoTiers returns the gate config template with tier0 and tier1 declared, the landing gate listing both and the publish gate listing tier1.
+// gateConfigWithTwoTiers returns the gate config template with tier0 and tier1 declared, and the landing gate listing both.
 func gateConfigWithTwoTiers() string {
 	const tiers = `tiers:
   tier0: {command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}
   tier1: {command: "go test -json -tags integration {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}`
-	return strings.NewReplacer("tiers: {}", tiers, "  landing: [0]", "  landing: [0, 1]", "  publish: []", "  publish: [1]").Replace(gateslot.ConfigTemplate())
+	return strings.NewReplacer("tiers: {}", tiers, "  landing: [0]", "  landing: [0, 1]").Replace(gateslot.ConfigTemplate())
 }
 
 // writeHubGateConfig writes contents as the hub-wide gate.yaml in hub's board directory.
@@ -54,18 +53,10 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	deps := landingDeps(loc, shedrun.RecipeLoom, websterengine.Geometry{StencilsDir: "/stencils"}, "task/foo",
-		"https://example.com/origin.git", "main", true, func() error { return nil },
-		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(loc), parentLockDeps(loc, shedrun.SelfRunID, "", ""), time.Time{})
+		"main", true,
+		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(loc), parentLockDeps(loc, shedrun.SelfRunID, "", ""))
 
-	if want := planVerifySource(loc).failedWayForward; deps.VerifyFailedWayForward != want || !strings.Contains(want, `"lyx loom goto --to Webster-Burler-Review"`) {
-		t.Errorf("VerifyFailedWayForward = %q, want the plan source's Webster-Burler-Review clause %q", deps.VerifyFailedWayForward, want)
-	}
-
-	if deps.VerifyFailureTarget != "Webster-Burler-Review" {
-		t.Errorf("VerifyFailureTarget = %q, want Webster-Burler-Review", deps.VerifyFailureTarget)
-	}
-
-	readers := map[string]func() (string, error){"VerifyCommand": deps.VerifyCommand, "PublishCommand": deps.PublishCommand, "BaseCommand": deps.BaseCommand}
+	readers := map[string]func() (string, error){"VerifyCommand": deps.VerifyCommand, "BaseCommand": deps.BaseCommand}
 	for name, read := range readers {
 		if _, err := read(); !errors.Is(err, gateslot.ErrConfigAbsent) {
 			t.Errorf("%s before any gate.yaml exists = %v; want an error wrapping gateslot.ErrConfigAbsent", name, err)
@@ -74,9 +65,8 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 
 	writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
 	for name, want := range map[string]string{
-		"VerifyCommand":  "lyx gate test --wait --tier 0 --tier 1 --all",
-		"PublishCommand": "lyx gate test --wait --tier 1 --all",
-		"BaseCommand":    "lyx gate test --wait --tier 0 --all",
+		"VerifyCommand": "lyx gate test --wait --tier 0 --tier 1 --all",
+		"BaseCommand":   "lyx gate test --wait --tier 0 --all",
 	} {
 		if got, err := readers[name](); err != nil || got != want {
 			t.Errorf("%s = (%q, %v), want (%q, nil)", name, got, err, want)
@@ -86,12 +76,9 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 		t.Errorf("GateTiers(landing) = (%v, %v), want ([0 1], nil)", got, err)
 	}
 
-	// An edit between two calls is seen: the publish list empties, and the landing list names a tier the hub does not declare.
-	edited := strings.NewReplacer("  publish: [1]", "  publish: []", "  landing: [0, 1]", "  landing: [0, 7]").Replace(gateConfigWithTwoTiers())
+	// An edit between two calls is seen: the landing list names a tier the hub does not declare.
+	edited := strings.NewReplacer("  landing: [0, 1]", "  landing: [0, 7]").Replace(gateConfigWithTwoTiers())
 	writeHubGateConfig(t, loc.HubPath, edited)
-	if got, err := deps.PublishCommand(); err != nil || got != "" {
-		t.Errorf("PublishCommand with an empty publish list = (%q, %v), want (\"\", nil)", got, err)
-	}
 	if got, err := deps.VerifyCommand(); err == nil || !strings.Contains(err.Error(), "lyx config gate") {
 		t.Errorf("VerifyCommand over a dangling landing list = (%q, %v), want an error naming lyx config gate", got, err)
 	}

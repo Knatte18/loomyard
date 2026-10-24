@@ -117,7 +117,6 @@ func newGateFixture(t *testing.T, command string, closureErr error) *gateFixture
 // The calls the fixtures render for the gates, standing in for what the hub's gate config renders.
 const (
 	gateLandingCall = "lyx gate test --wait --tier 0 --tier 1 --all"
-	gatePublishCall = "lyx gate test --wait --tier 2 --all"
 	gateBaseCall    = "lyx gate test --wait --tier 0 --all"
 )
 
@@ -222,10 +221,13 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 		wantReasonExact func(logPath string) string
 		wantReasonHas   []string
 		wantErrHas      string
+		// staleRecord, when set, leaves a landing failure record from an earlier failed call that the verdict must remove.
+		staleRecord bool
 	}{
 		{name: "pass", command: "go test ./...", site: "Publish", result: verifytree.Result{Status: verifytree.StatusPassed}},
 		{name: "site label follows the producer", command: "true", site: "Finalize", result: verifytree.Result{Status: verifytree.StatusPassed}},
 		{name: "skipped proceeds", command: "true", site: "Finalize", result: verifytree.Result{Status: verifytree.StatusSkipped, Tree: "abc"}},
+		{name: "skipped over a recorded pass removes a present failure record", command: "true", site: "Finalize", result: verifytree.Result{Status: verifytree.StatusSkipped, Tree: "abc"}, staleRecord: true},
 		{
 			name: "failed", command: "false", site: "Publish",
 			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 3, Log: failedLog},
@@ -238,7 +240,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			name: "failed after a watchdog quit names the window and busy_quit_sec", command: "false", site: "Publish",
 			result:        verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1},
 			logBody:       "ok  \texample.com/mod/b\t0.1s\n" + gateslot.WatchdogLine("/tmp/x/a.test", 42, 2*time.Minute) + "\nSIGQUIT: quit\n",
-			wantReasonHas: []string{"exit code 1", "2m0s", "busy_quit_sec", `"lyx config gate" from the prime`},
+			wantReasonHas: []string{"exit code 1", "2m0s", "busy_quit_sec", `"lyx config gate" from the prime`, "fix forward on the task branch, then resume"},
 		},
 		{
 			name: "could not start", command: "true", site: "Publish",
@@ -277,20 +279,26 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			f := newGateFixture(t, tc.command, nil)
 			f.gate.hold = hold
 			f.fake.result = result
+			if tc.staleRecord {
+				f.gate.recorder = &failureRecorder{}
+				if err := os.MkdirAll(f.paths.Dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := verifytree.WriteLandingFailure(f.paths, verifytree.LandingFailure{Kind: verifytree.FailureKindLanding}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			reason, err := f.gate.check(context.Background(), tc.site, "main")
+			if tc.staleRecord {
+				if _, found, readErr := verifytree.ReadLandingFailure(f.paths); readErr != nil || found {
+					t.Errorf("ReadLandingFailure() = (_, %v, %v); want the stale record removed", found, readErr)
+				}
+			}
 
 			if f.fake.verifyCalls != 1 || f.fake.command != tc.command || f.fake.paths != f.paths || f.fake.site != (verifytree.Site{Label: tc.site, Hold: hold}) {
 				t.Errorf("verify got calls=%d command=%q paths=%+v site=%+v", f.fake.verifyCalls, f.fake.command, f.fake.paths, f.fake.site)
 			}
 
-			publish := newGateFixture(t, tc.command, nil)
-			publish.gate.hold = hold
-			publish.gate.publishCommand = func() (string, error) { return tc.command, nil }
-			publish.fake.result = result
-			_, _ = publish.gate.checkPublishVerify(context.Background(), tc.site, "main")
-			if publish.fake.site != (verifytree.Site{Label: tc.site, Hold: hold}) {
-				t.Errorf("publish verify got site=%+v; want the gate's hold", publish.fake.site)
-			}
 			if tc.wantErrHas != "" {
 				if reason != "" || err == nil || !strings.Contains(err.Error(), tc.wantErrHas) {
 					t.Fatalf("got (%q, %v), want an error naming %q", reason, err, tc.wantErrHas)

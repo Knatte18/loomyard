@@ -41,7 +41,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"loom-template-parent-review-keepalive", LoomTemplateParentReviewKeepalive, []string{"ping"}},
 		{"loom-template-discussion-chair", LoomTemplateDiscussionChair, nil},
 		{"loom-template-discussion-advisor", LoomTemplateDiscussionAdvisor, []string{"decision_record_path", "edit_directive", "output_files", "parent_directive", "pattern_directive", "slug", "support_log_path"}},
-		{"landing-template-describe-darn", LandingTemplateDescribeDarn, []string{"decision_record_path", "description_path", "edit_directive", "parent_branch", "parent_directive", "review_dir", "slug", "task_branch"}},
+		{"landing-template-describe-darn", LandingTemplateDescribeDarn, []string{"decision_record_path", "description_path", "edit_directive", "merge_base", "parent_branch", "parent_directive", "review_dir", "slug", "task_branch"}},
 		{"webster-body-verify-fix", WebsterBodyVerifyFix, []string{"fix_gate", "outcome_path", "plan_dir", "report_path", "summary_path", "worktree_root"}},
 		{"webster-prefix-verify-fix-fork", WebsterPrefixVerifyFixFork, []string{"friction_directive"}},
 		{"webster-prefix-verify-fix-cold", WebsterPrefixVerifyFixCold, []string{"edit_directive", "friction_directive", "parent_directive", "pattern_directive", "reply_path"}},

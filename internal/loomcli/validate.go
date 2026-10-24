@@ -1,6 +1,6 @@
 // validate.go implements the `validate-discussion`, `validate-plan` and `validate-description` loom
 // verbs: standalone, zero-argument callers of the identical package functions the Discussion,
-// Plan, PR-Rework, Describe and Darn-Write rows' own gates call, per the shared-implementation-is-the-whole-point Shared
+// Plan, Describe and Darn-Write rows' own gates call, per the shared-implementation-is-the-whole-point Shared
 // Decision. No verb re-implements or re-derives any check; each maps its package's result onto the
 // envelope-and-exit-contract Shared Decision.
 
@@ -156,14 +156,14 @@ func planFindingsHaveBlocking(findings []planglyph.Finding) bool {
 }
 
 // validatePlanCmd builds the `validate-plan` subcommand: the standalone form of the checks
-// Plan-Write's, a twill Plan-Write run's, Plan-Burler-Fix's and PR-Rework's own gates run, plus the plan-unapproved approval
+// Plan-Write's, a twill Plan-Write run's and Plan-Burler-Fix's own gates run, plus the plan-unapproved approval
 // check no gate runs at all, callable by the writer agent before handoff.
 func (c *loomCLI) validatePlanCmd() *cobra.Command {
 	var requireApproved, rework, overlay, lensReview bool
 
 	cmd := &cobra.Command{
 		Use:         "validate-plan",
-		Short:       "run the checks Plan-Write's, a twill Plan-Write run's, Plan-Burler-Fix's or PR-Rework's own gate runs standalone against the current plan",
+		Short:       "run the checks Plan-Write's, a twill Plan-Write run's, or Plan-Burler-Fix's own gate runs standalone against the current plan",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `validate-plan parses the current worktree's plan and checks it in one of
 five modes, reporting one JSON envelope that carries informational findings
@@ -173,9 +173,9 @@ No flag: the index's ValidateFormat, the format-only check set Plan-Write's and
 Plan-Burler-Fix's own gate runs, which the plan writer calls before handoff.
 The cards of batches webster's run record holds done are history, and their
 tree-dependent checks are skipped. --require-approved: the index's Validate,
-the same set plus the plan-unapproved check no gate runs. --rework: the set
-PR-Rework's own gate runs, the format-only checks over the whole new plan plus
-a check that its first_card equals the card number the rework session was told. The default and --rework
+the same set plus the plan-unapproved check no gate runs. --rework: the
+format-only checks over the whole new plan plus a check that its first_card
+equals the number one past the highest card of the plan committed at HEAD. The default and --rework
 modes include the card-fabric-reference, fabric-vocabulary-name and
 edit-test-file checks; --require-approved leaves all three out.
 Every mode but --require-approved also runs rename-tool-missing and
@@ -325,7 +325,7 @@ Example:
 	}
 
 	cmd.Flags().BoolVar(&requireApproved, "require-approved", false, "also run the plan-unapproved approval check, the one check no gate runs -- this flag is the sole way to reach it standalone")
-	cmd.Flags().BoolVar(&rework, "rework", false, "check the whole new plan and its first_card against the told number, as PR-Rework's own gate does")
+	cmd.Flags().BoolVar(&rework, "rework", false, "check the whole new plan, and that its first_card is one past the highest card committed at HEAD")
 	cmd.Flags().BoolVar(&lensReview, "lens-review", false, "run the flag-less check set plus the check that the plan directory's lens-review.md holds a recorded lens review, as a twill Plan-Write run's own gate does")
 	cmd.Flags().BoolVar(&overlay, "overlay", false, "run the no-flag check set over the plan with the proposed plan file contents on stdin (one JSON object, file name to full content) laid over it, in memory, writing nothing")
 

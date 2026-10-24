@@ -30,3 +30,8 @@ It imports the standard library only.
 ## Recipe format (`internal/shedbuild`)
 
 `internal/shedbuild` is the sole parser of the recipe file format, and declares no on-disk location for recipe files.
+
+## Fixer report format (`internal/landingshed`)
+
+`internal/landingshed`'s `ParseFixerReport` is the sole parser of the merge fixer's report format, which `contracts/specs/landing-fixer-report-spec.md` defines.
+Merge-In and Finalize read only the `FixerReport` it returns.

@@ -80,14 +80,20 @@ func TestGateParity_VerifyGate(t *testing.T) {
 
 			burlerFx := prepare()
 			geom := burlerFx.CLI.geom
-			// The fixture records no pass, so the gate runs the told command, the `final` call over the same seeded config, and the round seam renders and looks up nothing.
-			round := func() (loomshed.RoundGate, error) { return loomshed.RoundGate{}, nil }
+			// The fixture records no pass, so the gate runs the told list's whole-tree call; the round seam tells the `final` list over the same seeded config, so that call is the one the Webster side runs.
 			finalCall := func() (string, error) {
 				cfg, err := geom.GateConfig()
 				if err != nil {
 					return "", err
 				}
 				return cfg.GateCall("final", "--all")
+			}
+			round := func() (loomshed.RoundGate, error) {
+				call, err := finalCall()
+				if err != nil {
+					return loomshed.RoundGate{}, err
+				}
+				return loomshed.RoundGate{Render: func(...string) string { return call }}, nil
 			}
 			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", finalCall, nil, nil, round, nil)())
 

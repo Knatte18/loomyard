@@ -86,7 +86,7 @@ func TestAttempts(t *testing.T) {
 		t.Parallel()
 		dir := filepath.Join(t.TempDir(), "attempt-1")
 		spawned := time.Date(2026, 3, 3, 12, 0, 0, 0, time.UTC)
-		written := Attempt{Number: 1, Key: "round-1", Point: PointParentReview, Token: "abc123", SpawnedAt: spawned, Deadline: spawned.Add(20 * time.Minute), StrandGUID: "guid", Snapshot: "snap", PRNumber: 7, HeadSHA: "deadbeef", Applied: VerdictApprove, Notified: true, Dir: dir}
+		written := Attempt{Number: 1, Key: "round-1", Point: PointParentReview, Token: "abc123", SpawnedAt: spawned, Deadline: spawned.Add(20 * time.Minute), StrandGUID: "guid", Snapshot: "snap", Applied: VerdictApprove, Notified: true, Dir: dir}
 		if err := WriteAttempt(written); err != nil {
 			t.Fatalf("WriteAttempt() error = %v; want nil", err)
 		}
@@ -150,6 +150,8 @@ func TestAttempts(t *testing.T) {
 
 	t.Run("ParseAttemptDir reads tolerantly and names the failing file", func(t *testing.T) {
 		t.Parallel()
+		// An old run's pr-gate attempt reads as a point the package no longer declares, with its pull-request keys ignored.
+		const retiredPoint Point = "pr-gate"
 		const attemptJSON = `{"number":2,"point":"pr-gate","token":"tok","applied":"approve","pr_number":9,"extra":1}`
 		tests := []struct {
 			name        string
@@ -165,13 +167,13 @@ func TestAttempts(t *testing.T) {
 					"verdict-tok.yaml": []byte("verdict: approve\nreason: ok\nsuperseded: [a, b]\nextra: x\n"),
 					"prompt.md":        []byte("ignored"),
 				},
-				want:        Attempt{Number: 2, Point: PointPRGate, Token: "tok", Applied: VerdictApprove, PRNumber: 9},
+				want:        Attempt{Number: 2, Point: retiredPoint, Token: "tok", Applied: VerdictApprove},
 				wantVerdict: &Verdict{Verdict: VerdictApprove, Reason: "ok", Superseded: []string{"a", "b"}},
 			},
 			{
 				name:  "no verdict file",
 				files: map[string][]byte{"attempt.json": []byte(attemptJSON)},
-				want:  Attempt{Number: 2, Point: PointPRGate, Token: "tok", Applied: VerdictApprove, PRNumber: 9},
+				want:  Attempt{Number: 2, Point: retiredPoint, Token: "tok", Applied: VerdictApprove},
 			},
 			{
 				name: "escalate verdict without a question",
@@ -179,7 +181,7 @@ func TestAttempts(t *testing.T) {
 					"attempt.json":     []byte(attemptJSON),
 					"verdict-tok.yaml": []byte("verdict: escalate\nreason: unsure\n"),
 				},
-				want:        Attempt{Number: 2, Point: PointPRGate, Token: "tok", Applied: VerdictApprove, PRNumber: 9},
+				want:        Attempt{Number: 2, Point: retiredPoint, Token: "tok", Applied: VerdictApprove},
 				wantVerdict: &Verdict{Verdict: VerdictEscalate, Reason: "unsure"},
 			},
 			{name: "undecodable attempt.json", files: map[string][]byte{"attempt.json": []byte("{")}, wantErr: "attempt.json"},

@@ -134,8 +134,7 @@ func Reconcile(template, existing []byte, perNameMaps []string, openMaps ...stri
 // wrong here: it made a config that shortened a list -- including to the empty list -- fail to load
 // with "missing keys: key[0]", and told the operator to run "lyx config reconcile", which re-adds
 // the template's own element and undoes the edit. An emptied list is the only general way to express
-// "none of these", and for landing.yaml's require_pr_to_base it is the whole no-pull-request mode
-// internal/landingshed's Publish documents; it was unreachable through this loader.
+// "none of these", and for landing.yaml's deploy_branches it is the whole no-deploy mode batten's Land row reads; it was unreachable through this loader.
 // A sequence-element path is therefore satisfied by the presence of its owning KEY in existing,
 // whatever that key's length. Every other leaf path keeps the exact-match rule.
 func MissingKeys(template, existing []byte, openMaps ...string) ([]string, error) {
@@ -347,7 +346,7 @@ func sameValue(a, b *yaml.Node) bool {
 
 // sequenceBasePath splits a sequence-element leaf path into its owning key path, reporting whether
 // path is a sequence element at all.
-// "require_pr_to_base[0]" yields ("require_pr_to_base", true); "squash" yields ("", false).
+// "deploy_branches[0]" yields ("deploy_branches", true); "squash" yields ("", false).
 // Only a trailing index is recognised, so a nested element's owning path is the whole prefix before
 // that index.
 func sequenceBasePath(path string) (base string, isElement bool) {
@@ -447,7 +446,7 @@ func collectSequencePaths(node *yaml.Node, prefix string, sequences map[string]*
 // applyExistingSequences replaces each template list's elements with the same-path existing list's,
 // whole. A template list is a default, not a minimum length (see MissingKeys): merging element by
 // element re-added the template's own entries to a shortened or emptied list, so any --set or
-// reconcile silently undid landing.yaml's `require_pr_to_base: []`.
+// reconcile silently undid landing.yaml's `deploy_branches: []`.
 func applyExistingSequences(templateSequences, existingSequences map[string]*yaml.Node) {
 	for path, existingSequence := range existingSequences {
 		if templateSequence, ok := templateSequences[path]; ok {

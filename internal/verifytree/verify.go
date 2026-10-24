@@ -32,13 +32,13 @@ const (
 	recordName = "verified-tree.yaml"
 	markerName = "running.yaml"
 
-	publishFailureName = "publish-failure.yaml"
+	landingFailureName = "landing-failure.yaml"
 
 	logPrefix = "verify-"
 	logSuffix = ".log"
 )
 
-// verifyLogKeep is how many of the newest verify logs a run's pruning keeps, beside the one the Publish failure record names.
+// verifyLogKeep is how many of the newest verify logs a run's pruning keeps, beside the one the landing failure record names.
 const verifyLogKeep = 20
 
 // Status is the outcome of one Verify call.
@@ -85,8 +85,8 @@ type Paths struct {
 	Dir    string
 	Record string
 	Marker string
-	// PublishFailure is the Publish failure record.
-	PublishFailure string
+	// LandingFailure is the landing failure record.
+	LandingFailure string
 }
 
 // Result is the outcome of one Verify call.
@@ -167,7 +167,7 @@ func NewPaths(worktree, dir string) Paths {
 		Dir:            dir,
 		Record:         filepath.Join(dir, recordName),
 		Marker:         filepath.Join(dir, markerName),
-		PublishFailure: filepath.Join(dir, publishFailureName),
+		LandingFailure: filepath.Join(dir, landingFailureName),
 	}
 }
 
@@ -233,7 +233,7 @@ func nextLogPath(dir string) (string, error) {
 	return filepath.Join(dir, logPrefix+strconv.Itoa(next)+logSuffix), nil
 }
 
-// pruneLogs removes every verify log in p.Dir beyond the newest verifyLogKeep, except the one the Publish failure record names.
+// pruneLogs removes every verify log in p.Dir beyond the newest verifyLogKeep, except the one the landing failure record names.
 func pruneLogs(p Paths) error {
 	logs, err := listLogs(p.Dir)
 	if err != nil {
@@ -242,7 +242,7 @@ func pruneLogs(p Paths) error {
 	if len(logs) <= verifyLogKeep {
 		return nil
 	}
-	failure, _, err := ReadPublishFailure(p)
+	failure, _, err := ReadLandingFailure(p)
 	if err != nil {
 		return err
 	}
@@ -289,7 +289,7 @@ func parsePorcelainZ(out string) []string {
 // A dirty tree returns StatusDirty and runs nothing.
 // A record entry of the same command naming HEAD's tree returns StatusSkipped.
 // Otherwise the marker is written, the command runs with its output in a fresh `verify-<n>.log` in p.Dir that the result names, the marker is removed whatever happened, and an exit 0 returns StatusPassed.
-// Once the log is written, whatever the exit, every log beyond the newest verifyLogKeep is pruned except the one the Publish failure record names;
+// Once the log is written, whatever the exit, every log beyond the newest verifyLogKeep is pruned except the one the landing failure record names;
 // a prune failure is logged and leaves the result unchanged.
 // The command is one `lyx gate test --wait` call, or such calls joined by `&&`, which take their own slots and bound themselves, so Verify takes no slot and applies no timeout.
 // The pass writes the record only when HEAD still names the tree and commit the run started on, so a commit that lands mid-run costs the next call a re-run rather than recording a tree the command did not run on.

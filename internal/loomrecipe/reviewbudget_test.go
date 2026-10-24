@@ -1,5 +1,5 @@
 // reviewbudget_test.go asserts the review bounce budget comes from the caller, not the recipe:
-// New and Routing set it on every row of a Bouncer-holding segment and leave PR-Gate alone.
+// New and Routing set it on every row of a Bouncer-holding segment.
 
 package loomrecipe
 
@@ -16,7 +16,7 @@ import (
 )
 
 // loomReviewSegments lists the loom recipe's review segments, the keys of the per-segment budget map.
-var loomReviewSegments = []string{"Discussion-Review", "Plan-Review", "Webster-Review", "Merge-Review"}
+var loomReviewSegments = []string{"Discussion-Review", "Plan-Review", "Code-Review"}
 
 // setBudgets sets every env.Segments entry's MaxBounces to runWide, then each segment of own to its own value.
 func setBudgets(env *shedrecipe.Env, runWide int, own map[string]int) {
@@ -39,24 +39,19 @@ func budgetsOf(env shedrecipe.Env) map[string]int {
 	return budgets
 }
 
-// assertReviewBudget fails unless every review-segment row carries its segment's entry in budgets, 0 included, and PR-Gate carries prGate.
-func assertReviewBudget(t *testing.T, producers []shedengine.ProducerDef, budgets map[string]int, prGate int) {
+// assertReviewBudget fails unless every review-segment row carries its segment's entry in budgets, 0 included.
+func assertReviewBudget(t *testing.T, producers []shedengine.ProducerDef, budgets map[string]int) {
 	t.Helper()
 
 	reviewRows := 0
 	for _, def := range producers {
-		isReview := slices.Contains(loomReviewSegments, def.Segment)
-		switch {
-		case isReview:
-			reviewRows++
-			want := budgets[def.Segment]
-			if def.MaxBounces != want {
-				t.Errorf("row %q (segment %q) MaxBounces = %d; want %d", def.Name, def.Segment, def.MaxBounces, want)
-			}
-		case def.Name == "PR-Gate":
-			if def.MaxBounces != prGate {
-				t.Errorf("PR-Gate MaxBounces = %d; want the recipe's %d", def.MaxBounces, prGate)
-			}
+		if !slices.Contains(loomReviewSegments, def.Segment) {
+			continue
+		}
+		reviewRows++
+		want := budgets[def.Segment]
+		if def.MaxBounces != want {
+			t.Errorf("row %q (segment %q) MaxBounces = %d; want %d", def.Name, def.Segment, def.MaxBounces, want)
 		}
 	}
 	if want := 3 * len(loomReviewSegments); reviewRows != want {
@@ -76,7 +71,7 @@ func TestReviewBudget_AppliedByNewAndRouting(t *testing.T) {
 		{"one budget on every segment", nil},
 		{"a segment's budget leaves the others", map[string]int{"Discussion-Review": 1}},
 		{"a zero entry is zero rounds", map[string]int{"Plan-Review": 0}},
-		{"every segment's own budget", map[string]int{"Discussion-Review": 1, "Plan-Review": 2, "Webster-Review": 9, "Merge-Review": 4}},
+		{"every segment's own budget", map[string]int{"Discussion-Review": 1, "Plan-Review": 2, "Code-Review": 9}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -88,29 +83,20 @@ func TestReviewBudget_AppliedByNewAndRouting(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Routing(%v) = _, %v; want nil", budgets, err)
 			}
-			var prGate int
-			for _, def := range routing.Producers {
-				if def.Name == "PR-Gate" {
-					prGate = def.MaxBounces
-				}
-			}
-			if prGate == 0 {
-				t.Fatal("PR-Gate MaxBounces = 0 in Routing; want the recipe's literal budget")
-			}
-			assertReviewBudget(t, routing.Producers, budgets, prGate)
+			assertReviewBudget(t, routing.Producers, budgets)
 
 			shed, err := New(env, paths)
 			if err != nil {
 				t.Fatalf("New() = _, %v; want nil", err)
 			}
-			assertReviewBudget(t, shed.Producers, budgets, prGate)
+			assertReviewBudget(t, shed.Producers, budgets)
 		})
 	}
 }
 
 // TestZeroBudget_BouncerSettlesAtOnce asserts a Bouncer whose segment budget is 0 settles Done with no shuttle start.
 // That proves loomrecipe stamped zero_rounds on its row; the settle's seam order is TestBouncerEntry_SkipSeam's to pin.
-// It also asserts New and Routing keep each perch's route: the writers and Merge-In still hand to their Bouncer and every Merge-Review row stays in the list.
+// It also asserts New and Routing keep each perch's route: the writers and Merge-In still hand to their Bouncer.
 func TestZeroBudget_BouncerSettlesAtOnce(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -120,9 +106,8 @@ func TestZeroBudget_BouncerSettlesAtOnce(t *testing.T) {
 	}{
 		{"Discussion-Review entry", 3, map[string]int{"Discussion-Review": 0}, []string{"Discussion-Bouncer"}},
 		{"Plan-Review entry", 3, map[string]int{"Plan-Review": 0}, []string{"Plan-Bouncer"}},
-		{"Webster-Review entry", 3, map[string]int{"Webster-Review": 0}, []string{"Webster-Bouncer"}},
-		{"Merge-Review entry", 3, map[string]int{"Merge-Review": 0}, []string{"Merge-Bouncer"}},
-		{"every segment at 0", 0, nil, []string{"Discussion-Bouncer", "Plan-Bouncer", "Webster-Bouncer", "Merge-Bouncer"}},
+		{"Code-Review entry", 3, map[string]int{"Code-Review": 0}, []string{"Code-Bouncer"}},
+		{"every segment at 0", 0, nil, []string{"Discussion-Bouncer", "Plan-Bouncer", "Code-Bouncer"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -145,16 +130,10 @@ func TestZeroBudget_BouncerSettlesAtOnce(t *testing.T) {
 				for write, bouncer := range map[string]string{
 					loomshed.NameDiscussionWrite: loomshed.NameDiscussionBouncer,
 					loomshed.NamePlanWrite:       loomshed.NamePlanBouncer,
-					loomshed.NameWebster:         loomshed.NameWebsterBouncer,
-					loomshed.NameMergeIn:         loomshed.NameMergeBouncer,
+					loomshed.NameMergeIn:         loomshed.NameCodeBouncer,
 				} {
 					if got := rows[write].OnDone; got != bouncer {
 						t.Errorf("%s: %s OnDone = %q; want %q", name, write, got, bouncer)
-					}
-				}
-				for _, row := range []string{loomshed.NameMergeBouncer, loomshed.NameMergeBurlerReview, loomshed.NameMergeBurlerFix} {
-					if _, present := rows[row]; !present {
-						t.Errorf("%s: no %s row; want the Merge-Review rows kept in the list", name, row)
 					}
 				}
 			}
@@ -188,7 +167,7 @@ func builtProducer(t *testing.T, shed *shedengine.Shed, name string) shedengine.
 
 // TestReviewBudget_NegativeRefused asserts New and Routing refuse a negative segment budget and a review segment with no budget, each naming the segment and its way forward, and accept a budget of 0.
 func TestReviewBudget_NegativeRefused(t *testing.T) {
-	zeroes := map[string]int{"Discussion-Review": 0, "Plan-Review": 0, "Webster-Review": 0, "Merge-Review": 0}
+	zeroes := map[string]int{"Discussion-Review": 0, "Plan-Review": 0, "Code-Review": 0}
 	if _, err := Routing(zeroes); err != nil {
 		t.Errorf("Routing(%v) error = %v; want nil", zeroes, err)
 	}
@@ -198,8 +177,8 @@ func TestReviewBudget_NegativeRefused(t *testing.T) {
 		budgets map[string]int
 		want    []string
 	}{
-		{"a negative entry", map[string]int{"Discussion-Review": 1, "Plan-Review": 1, "Webster-Review": -1, "Merge-Review": 1}, []string{"Webster-Review", "-1"}},
-		{"a segment with no entry", map[string]int{"Discussion-Review": 1, "Plan-Review": 1, "Webster-Review": 1}, []string{"Merge-Review", "segment-to-perch table"}},
+		{"a negative entry", map[string]int{"Discussion-Review": 1, "Plan-Review": 1, "Code-Review": -1}, []string{"Code-Review", "-1"}},
+		{"a segment with no entry", map[string]int{"Discussion-Review": 1, "Plan-Review": 1}, []string{"Code-Review", "segment-to-perch table"}},
 	}
 	for _, tt := range routingTests {
 		t.Run("Routing "+tt.name, func(t *testing.T) {
@@ -224,8 +203,8 @@ func TestReviewBudget_NegativeRefused(t *testing.T) {
 			env.Segments["Plan-Review"] = shedrecipe.SegmentSettings{MaxBounces: -1, MaxBouncesKey: "plan_max_bounces", ConfigFile: "loom.yaml"}
 		}, []string{"Plan-Review", "plan_max_bounces", "loom.yaml"}},
 		{"a segment with no Env.Segments entry", func(env *shedrecipe.Env) {
-			delete(env.Segments, "Webster-Review")
-		}, []string{"Webster-Review", "segment-to-perch table"}},
+			delete(env.Segments, "Code-Review")
+		}, []string{"Code-Review", "segment-to-perch table"}},
 	}
 	for _, tt := range newTests {
 		t.Run("New "+tt.name, func(t *testing.T) {

@@ -33,29 +33,60 @@ func haltedStatus(state shedengine.State, historyLen int) statusResult {
 	}
 }
 
+// TestInnerRun_HaltedStatesWaitExemptWithoutSpawning asserts a halted child is a budget-exempt wait that spawns nothing, and that a child blocked at Merge-In or Finalize gets one state-changed notice like every other halt.
 func TestInnerRun_HaltedStatesWaitExemptWithoutSpawning(t *testing.T) {
-	for _, state := range []shedengine.State{shedengine.StatePaused, shedengine.StateBlocked, shedengine.StateFailed} {
-		scratchDir := t.TempDir()
-		clock := &fakeClock{}
-		_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, []statusResult{haltedStatus(state, 2)}, clock)
-		clock.watchReason(scratchDir)
-
-		producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
-		outcome, ptr, err := producer.Call(context.Background())
-		if err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt {
-			t.Fatalf("state %q: Call() = %v %+v %v; want an exempt Stuck", state, outcome, ptr, err)
-		}
-		for _, want := range []string{string(state), "loom session halted", "loom-side-producer", "lyx loom resume", "lyx loom start"} {
-			if !strings.Contains(clock.lastReason(), want) {
-				t.Errorf("state %q: wait reason = %q; want substring %q", state, clock.lastReason(), want)
+	tests := []struct {
+		name        string
+		state       shedengine.State
+		producer    string
+		wantNotices int
+	}{
+		{name: "Paused", state: shedengine.StatePaused, producer: "loom-side-producer"},
+		{name: "Blocked", state: shedengine.StateBlocked, producer: "loom-side-producer"},
+		{name: "Failed", state: shedengine.StateFailed, producer: "loom-side-producer"},
+		{name: "BlockedAtMergeIn", state: shedengine.StateBlocked, producer: "Merge-In", wantNotices: 1},
+		{name: "BlockedAtFinalize", state: shedengine.StateBlocked, producer: "Finalize", wantNotices: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scratchDir := t.TempDir()
+			clock := &fakeClock{}
+			halted := haltedStatus(tt.state, 2)
+			halted.status.CurrentProducer = tt.producer
+			_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, []statusResult{halted}, clock)
+			clock.watchReason(scratchDir)
+			var notified []string
+			if tt.wantNotices > 0 {
+				deps.Notify = func(_ context.Context, line string) (bool, error) {
+					notified = append(notified, line)
+					return true, nil
+				}
+				deps.PairDir = func() (string, error) { return "/wt/task", nil }
+				deps.StopReport = func() (string, time.Time, bool, error) {
+					return "/wt/task/_lyx/stop-report.md", clock.Now(), true, nil
+				}
 			}
-		}
-		if clock.sleepCalls != 1 {
-			t.Errorf("state %q: Sleep calls = %d; want 1", state, clock.sleepCalls)
-		}
-		if *spawnCalls != 0 {
-			t.Errorf("state %q: Spawn calls = %d; want 0 against a halted child", state, *spawnCalls)
-		}
+
+			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
+			outcome, ptr, err := producer.Call(context.Background())
+			if err != nil || outcome != shedengine.Stuck || !ptr.BudgetExempt {
+				t.Fatalf("Call() = %v %+v %v; want an exempt Stuck", outcome, ptr, err)
+			}
+			for _, want := range []string{string(tt.state), "loom session halted", tt.producer, "lyx loom resume", "lyx loom start"} {
+				if !strings.Contains(clock.lastReason(), want) {
+					t.Errorf("wait reason = %q; want substring %q", clock.lastReason(), want)
+				}
+			}
+			if clock.sleepCalls != 1 {
+				t.Errorf("Sleep calls = %d; want 1", clock.sleepCalls)
+			}
+			if *spawnCalls != 0 {
+				t.Errorf("Spawn calls = %d; want 0 against a halted child", *spawnCalls)
+			}
+			if len(notified) != tt.wantNotices {
+				t.Errorf("notices = %v; want %d", notified, tt.wantNotices)
+			}
+		})
 	}
 }
 
@@ -354,13 +385,14 @@ type restepHarness struct {
 	clock      *fakeClock
 	status     shedengine.Status
 
-	strand      ChildDriverStrand
-	runLock     bool
-	driverLock  bool
-	build       string
-	changed     bool
-	dirty       []string
-	retryTaking bool
+	strand     ChildDriverStrand
+	runLock    bool
+	driverLock bool
+	build      string
+	changed    bool
+	dirty      []string
+	// handBack, when set, is the check the binary re-step asks about the halted status.
+	handBack func(status shedengine.Status) bool
 	// spawnErrs is consumed one per spawn; a spawn past the end succeeds.
 	spawnErrs []error
 	spawns    int
@@ -411,16 +443,7 @@ func (h *restepHarness) producer() shedengine.ShedProducer {
 		return h.build, h.changed, nil
 	}
 	deps.ChildDirtyPaths = func() ([]string, error) { return h.dirty, nil }
-	if h.retryTaking {
-		deps.VerifyRows = []string{h.status.CurrentProducer}
-		deps.PublishFailure = func() (ChildPublishFailure, bool, error) { return ChildPublishFailure{}, false, nil }
-		deps.ChildHead = func() (string, error) { return "head", nil }
-		deps.Goto = func(context.Context, string) error { return nil }
-		content := "started " + h.clock.Now().UTC().Format(time.RFC3339) + " target-row\n"
-		if err := os.WriteFile(publishRetryFile(h.scratchDir, "innerrun"), []byte(content), 0o644); err != nil {
-			h.t.Fatal(err)
-		}
-	}
+	deps.HandBack = h.handBack
 	return NewInnerRun("innerrun", "myslug", deps, h.poll, h.scratchDir, testGrace)
 }
 
@@ -508,7 +531,6 @@ func TestInnerRun_BinaryChangeRestepsADriverlessGoChild(t *testing.T) {
 		{name: "LiveDriverStrandDoesNot", configure: func(h *restepHarness) { h.strand = ChildDriverLive }},
 		{name: "HeldRunLockDoesNot", configure: func(h *restepHarness) { h.runLock = true }},
 		{name: "HeldDriverLockDoesNot", configure: func(h *restepHarness) { h.driverLock = true }},
-		{name: "PublishRetryTakingTheHaltDoesNot", configure: func(h *restepHarness) { h.retryTaking = true }},
 		{name: "DirtyTreeDoesNot", configure: func(h *restepHarness) { h.dirty = []string{"src/a.go"} }},
 		{name: "NewUntrackedFileDoesNot", configure: func(h *restepHarness) { h.dirty = []string{"notes.txt"} }},
 		{name: "UnchangedBuildDoesNot", configure: func(h *restepHarness) { h.changed = false }},
@@ -543,4 +565,40 @@ func TestInnerRun_BinaryChangeRestepsADriverlessGoChild(t *testing.T) {
 			t.Errorf("build reads at %v; want %v: the probe, then twice it, up to the ceiling", h.buildReads, want)
 		}
 	})
+}
+
+// TestInnerRun_BinaryChangeSkipsALandingHalt pins that a halt the hand-back check marks is never re-stepped on a changed build and writes no marker, while an unmarked blocked halt still is.
+// One landing-halt row covers every kind, since the re-step reads only the check's answer.
+func TestInnerRun_BinaryChangeSkipsALandingHalt(t *testing.T) {
+	t.Parallel()
+
+	handBack := func(status shedengine.Status) bool {
+		return status.State == shedengine.StateBlocked && status.CurrentProducer == "Finalize" && strings.HasPrefix(status.Error, shedengine.ReasonRerouteCapReached)
+	}
+	tests := []struct {
+		name       string
+		producer   string
+		wantSpawns int
+	}{
+		{name: "FinalizeRerouteCapHaltIsLeftToTheOrch", producer: "Finalize"},
+		{name: "WebsterHaltIsReSteppedAsToday", producer: "Webster", wantSpawns: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newRestepHarness(t)
+			h.handBack = handBack
+			h.status.CurrentProducer = tt.producer
+			h.status.Error = shedengine.ReasonRerouteCapReached + ": " + tt.producer + " rerouted 3 times since its last done; way forward: x"
+
+			h.call(h.producer(), 6)
+
+			if h.spawns != tt.wantSpawns {
+				t.Errorf("spawns = %d; want %d", h.spawns, tt.wantSpawns)
+			}
+			if (h.marker() != "") != (tt.wantSpawns > 0) {
+				t.Errorf("marker = %q; want one only when the child was re-stepped", h.marker())
+			}
+		})
+	}
 }

@@ -6,13 +6,11 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // darnTestEnv returns newTestEnv(t) with DarnTable and every Darn seam filled.
@@ -29,18 +27,8 @@ func darnTestEnv(t *testing.T) Env {
 		}, nil
 	}
 	env.Darn = loomshed.DarnDeps{
-		ReadRejection:  func() (loomshed.PendingRejection, bool, error) { return loomshed.PendingRejection{}, false, nil },
-		ClearRejection: func() error { return nil },
-		Commit:         func() error { return nil },
-		LatestOutcome:  func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
-		PublishFailure: func() (string, verifytree.PublishFailure, bool, error) {
-			return "", verifytree.PublishFailure{}, false, nil
-		},
-		RunStart:   func() (time.Time, error) { return time.Time{}, nil },
-		TaskHead:   func() (string, error) { return "", nil },
-		Dirty:      func() ([]string, error) { return nil, nil },
-		ParentTips: func() ([]string, error) { return nil, nil },
-		IsAncestor: func(string) (bool, error) { return true, nil },
+		Commit:        func() error { return nil },
+		LatestOutcome: func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
 	}
 	return env
 }
@@ -55,16 +43,8 @@ func TestDarnWriteEntry_ConstructionFailures(t *testing.T) {
 	}{
 		{"NilDarnTable", "DarnTable", gated, func(e *Env) { e.DarnTable = nil }},
 		{"NilSeats", "Seats", gated, func(e *Env) { e.Seats = nil }},
-		{"NilReadRejection", "Darn.ReadRejection", gated, func(e *Env) { e.Darn.ReadRejection = nil }},
-		{"NilClearRejection", "Darn.ClearRejection", gated, func(e *Env) { e.Darn.ClearRejection = nil }},
 		{"NilCommit", "Darn.Commit", gated, func(e *Env) { e.Darn.Commit = nil }},
 		{"NilLatestOutcome", "Darn.LatestOutcome", gated, func(e *Env) { e.Darn.LatestOutcome = nil }},
-		{"NilPublishFailure", "Darn.PublishFailure", gated, func(e *Env) { e.Darn.PublishFailure = nil }},
-		{"NilRunStart", "Darn.RunStart", gated, func(e *Env) { e.Darn.RunStart = nil }},
-		{"NilTaskHead", "Darn.TaskHead", gated, func(e *Env) { e.Darn.TaskHead = nil }},
-		{"NilDirty", "Darn.Dirty", gated, func(e *Env) { e.Darn.Dirty = nil }},
-		{"NilParentTips", "Darn.ParentTips", gated, func(e *Env) { e.Darn.ParentTips = nil }},
-		{"NilIsAncestor", "Darn.IsAncestor", gated, func(e *Env) { e.Darn.IsAncestor = nil }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

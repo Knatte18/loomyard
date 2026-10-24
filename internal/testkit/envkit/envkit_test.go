@@ -58,13 +58,13 @@ func TestNilSeams_ReportsExactPaths(t *testing.T) {
 	env := FullEnv(t)
 	env.Shuttle = nil
 	env.CommitPlan = nil
-	env.Landing.PushBranch = nil
+	env.Landing.OpenFabric = nil
 	env.Teardown.Remove = nil
 	env.SeedChild.WriteSeed = nil
 
 	got := NilSeams(env)
 	slices.Sort(got)
-	want := []string{"CommitPlan", "Landing.PushBranch", "SeedChild.WriteSeed", "Shuttle", "Teardown.Remove"}
+	want := []string{"CommitPlan", "Landing.OpenFabric", "SeedChild.WriteSeed", "Shuttle", "Teardown.Remove"}
 	if !slices.Equal(got, want) {
 		t.Errorf("NilSeams = %v; want %v", got, want)
 	}

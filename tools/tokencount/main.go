@@ -109,7 +109,7 @@
 // a batch is failed when its record's terminal status is failed, dead or stuck or its kind is recovery, and a record of kind recovery is one recovery.
 // A run whose records carry more than one run guid was restarted with --fresh, and a run whose state cannot be read or decoded has no partition to name a profile;
 // each keeps a row marked with its reason and enters no profile line.
-// Webster-Review findings are those of the round-<n>-review.md files directly in the webster review directory at the last record, counted through the review parser;
+// Code-Review findings are those of the round-<n>-review.md files directly in the code review directory at the last record, or in the webster one of an older run, counted through the review parser;
 // no such file, or one that does not parse, marks the run's findings not read.
 // Per-batch figures go to each batch's own profile, so a run whose batches name several profiles contributes to each.
 // A run contributes findings to a profile line only when its batches name one profile, it was not restarted with --fresh and its review files were read, and the line's findings per card is over the cards of those runs alone, with their number stated, or "n/a" when there are none.

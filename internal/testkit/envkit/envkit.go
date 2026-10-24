@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
@@ -46,9 +45,9 @@ import (
 var nilLegal = map[string]bool{
 	"Now":                               true,
 	"VerifyMergeBase":                   true,
+	"ReviewBase":                        true,
 	"VerifyTreeScope":                   true,
 	"DiscussionHistory":                 true,
-	"PublishFailure":                    true,
 	"WebsterRecord":                     true,
 	"Landing.CommitStatus":              true,
 	"Landing.CommitParentRecords":       true,
@@ -67,9 +66,8 @@ var nilLegal = map[string]bool{
 	"InnerRun.PauseOwned":               true,
 	"InnerRun.ParentHoldsTaskWork":      true,
 	"InnerRun.Restepped":                true,
+	"InnerRun.HandBack":                 true,
 	"Landing.VerifyCommand":             true,
-	"Landing.PublishSkip":               true,
-	"Landing.ClassifyVerifyFailure":     true,
 	"Landing.VerifyWaitMark":            true,
 	"Landing.FailingTests":              true,
 	"Landing.TraceFailure":              true,
@@ -99,7 +97,6 @@ var nilLegal = map[string]bool{
 	"InnerRun.ChildDriverLockHeld":      true,
 	"InnerRun.TacklerInFlight":          true,
 	"InnerRun.ArbiterStop":              true,
-	"InnerRun.GoVerifyRetrySpent":       true,
 	"InnerRun.ChildBuildChanged":        true,
 	"InnerRun.ChildDirtyPaths":          true,
 	"Land.Sleep":                        true,
@@ -117,11 +114,9 @@ var nilLegal = map[string]bool{
 	"Command.ExecutableSetting":         true,
 	"DocumentSubject":                   true,
 	"CodeSubject":                       true,
-	"MergeSubject":                      true,
 	"MergeInOnly":                       true,
 	"RecordHead":                        true,
-	"RejectReview":                      true,
-	"Darn.RecordRejection":              true,
+	"ReviewInput":                       true,
 }
 
 // noFindingsIndex is a planindex.Index that answers no findings, so the packages built on the kit do not link the resolve-backed index.
@@ -137,52 +132,37 @@ func (noFindingsIndex) ValidateRework(*planparser.Plan, string, int) ([]planinde
 }
 
 // nilFabricOpener is a typed-nil fabric handle with a nil error.
-// The Publish and Finalize constructors only nil-check the interface the handle is stored behind, and never dereference it.
+// The Merge-In and Finalize constructors only nil-check the interface the handle is stored behind, and never dereference it.
 func nilFabricOpener() (*fabricengine.Fabric, error) {
 	return nil, nil
 }
 
-// noopAlignmentSession is an alignment session that starts nothing and has no attempts.
-type noopAlignmentSession struct{}
+// noopFixerSeats is a fixer seat runner that starts nothing and ends at once.
+type noopFixerSeats struct{}
 
-func (noopAlignmentSession) Begin(alignment.SpawnInput) (alignment.Attempt, error) {
-	return alignment.Attempt{}, nil
+func (noopFixerSeats) Run(seatengine.Table) (seatengine.Result, error) {
+	return seatengine.Result{}, nil
 }
 
-func (noopAlignmentSession) Poll(alignment.Attempt) (alignment.Outcome, error) {
-	return alignment.Outcome{Done: true, Cause: alignment.CauseClosed}, nil
-}
-
-func (noopAlignmentSession) Close(alignment.Attempt, string) error { return nil }
-
-func (noopAlignmentSession) MarkApplied(alignment.Attempt, string, bool) error { return nil }
-
-func (noopAlignmentSession) Attempts() ([]alignment.Attempt, error) { return nil, nil }
-
-// LandingDeps returns a `landingshed.Deps` with every field the Publish and Finalize constructors require, filled with told values derived from dir.
+// LandingDeps returns a `landingshed.Deps` with every field the Merge-In and Finalize constructors require, filled with told values derived from dir.
 func LandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
-		WorktreeRoot:      dir,
-		TaskBranch:        "task-branch",
-		ParentBranch:      "fixture-parent",
-		DescriptionPath:   summaryparser.Path(dir),
-		StencilsDir:       dir,
-		ParentName:        "fixture-parent-session",
-		ScratchDir:        filepath.Join(dir, "landing-scratch"),
-		OriginURL:         "https://example.invalid/fixture/fixture.git",
-		PushBranch:        func() error { return nil },
-		RemoteOnlyCommits: func() (string, []string, error) { return "", nil, nil },
-		OpenFabric:        nilFabricOpener,
-		OpenParentFabric:  nilFabricOpener,
-		Shuttle:           &shedfake.MergeShuttle{},
-		EnginesRun:        func() ([]string, error) { return nil, nil },
-		ApprovalPath:      filepath.Join(dir, "approval.json"),
-		RejectionPath:     filepath.Join(dir, "rejection.json"),
-		TaskHead:          func() (string, error) { return "head", nil },
-		PublishCommand:    func() (string, error) { return "lyx gate test --wait --tier 2 --all", nil },
-		BaseCommand:       func() (string, error) { return "lyx gate test --wait --tier 0 --all", nil },
-		GateTiers:         fixedGateTiers,
-		VerifyHold:        verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
+		WorktreeRoot:     dir,
+		TaskBranch:       "task-branch",
+		ParentBranch:     "fixture-parent",
+		DescriptionPath:  summaryparser.Path(dir),
+		ConflictReroutes: true,
+		StencilsDir:      dir,
+		ParentName:       "fixture-parent-session",
+		ScratchDir:       filepath.Join(dir, "landing-scratch"),
+		OpenFabric:       nilFabricOpener,
+		OpenParentFabric: nilFabricOpener,
+		Shuttle:          &shedfake.MergeShuttle{},
+		EnginesRun:       func() ([]string, error) { return nil, nil },
+		TaskHead:         func() (string, error) { return "head", nil },
+		BaseCommand:      func() (string, error) { return "lyx gate test --wait --tier 0 --all", nil },
+		GateTiers:        fixedGateTiers,
+		VerifyHold:       verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
 		Lock: landingshed.ParentLockDeps{
 			Store:          &parentlock.Store{Dir: filepath.Join(dir, "parent-lock")},
 			Owner:          func() (parentlock.Owner, error) { return parentlock.Owner{Slug: "fixture", RunID: "fixture"}, nil },
@@ -192,17 +172,19 @@ func LandingDeps(dir string) landingshed.Deps {
 		ReadParentTips: func(bool) (fabricengine.ParentTips, error) {
 			return fabricengine.ParentTips{Local: "tip", Upstream: "tip", Relation: fabricengine.ParentEqual}, nil
 		},
-		HoldsWork:         func(string, string) (bool, error) { return false, nil },
-		ChangedPaths:      func(string, string) ([]string, error) { return nil, nil },
-		MergeBase:         func(string) (string, error) { return "base", nil },
-		MergeRecordPath:   landingshed.MergeRecordPath(filepath.Join(dir, "landing-scratch")),
-		MergeReviewedPath: landingshed.MergeReviewedPath(filepath.Join(dir, "landing-scratch")),
-		Alignment: landingshed.AlignmentDeps{
-			Config:   func() (landingshed.AlignmentConfig, error) { return landingshed.AlignmentConfig{Off: true}, nil },
-			Session:  noopAlignmentSession{},
-			Snapshot: func() (string, error) { return "snapshot", nil },
-			NotePath: filepath.Join(dir, "alignment-note.json"),
-		},
+		HoldsWork:          func(string, string) (bool, error) { return false, nil },
+		ChangedPaths:       func(string, string) ([]string, error) { return nil, nil },
+		MergeBase:          func(string) (string, error) { return "base", nil },
+		MergeRecordPath:    landingshed.MergeRecordPath(filepath.Join(dir, "landing-scratch")),
+		FixerSeats:         noopFixerSeats{},
+		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
+		PlanDir:            filepath.Join(dir, "plan"),
+		LineChange:         func(string, string) (fabricengine.LineChange, error) { return fabricengine.LineChange{}, nil },
+		IsTestFile:         func(string) bool { return false },
+		RowEntry:           func(string) (int, error) { return 1, nil },
+		TaskRemoteTip:      func() (string, error) { return "", nil },
+		CodeReviewOff:      func() (bool, error) { return false, nil },
+		RerouteReviewed:    func() (bool, error) { return true, nil },
 	}
 }
 
@@ -210,19 +192,13 @@ func LandingDeps(dir string) landingshed.Deps {
 func ReworkDeps(t testing.TB, dir string) loomshed.PRReworkDeps {
 	t.Helper()
 	return loomshed.PRReworkDeps{
-		PlanDir:       mustMkdir(t, filepath.Join(dir, "rework-plan")),
-		ReworkDir:     mustMkdir(t, filepath.Join(dir, "rework-rounds")),
-		ReworkDirRel:  "_lyx/loom/rework",
-		ReviewsDir:    mustMkdir(t, filepath.Join(dir, "rework-reviews")),
-		AmendmentPath: filepath.Join(dir, "rework-amendment.yaml"),
-		ReadCommitted: func(string) ([]byte, bool, error) { return nil, false, nil },
-		ReadRejection: func() (loomshed.PendingRejection, bool, error) {
-			return loomshed.PendingRejection{}, false, nil
-		},
-		ClearRejection:    func() error { return nil },
-		ArchiveWebster:    func(string) error { return nil },
-		KeepReviewRecords: func(string, string) error { return nil },
-		Commit:            func() error { return nil },
+		PlanDir:        mustMkdir(t, filepath.Join(dir, "rework-plan")),
+		ReworkDir:      mustMkdir(t, filepath.Join(dir, "rework-rounds")),
+		ReworkDirRel:   "_lyx/loom/rework",
+		ReviewsDir:     mustMkdir(t, filepath.Join(dir, "rework-reviews")),
+		AmendmentPath:  filepath.Join(dir, "rework-amendment.yaml"),
+		ReadCommitted:  func(string) ([]byte, bool, error) { return nil, false, nil },
+		ArchiveWebster: func(string) error { return nil },
 	}
 }
 
@@ -246,7 +222,7 @@ func TemplateSetting(module, key string) (any, error) {
 }
 
 // fixedGateLists are the gate lists the kit's seams answer from, so a resolved gate builds without a hub's gate.yaml.
-var fixedGateLists = map[string][]int{"round": {0, 1}, "landing": {0, 1}, "publish": {2}}
+var fixedGateLists = map[string][]int{"round": {0, 1}, "landing": {0, 1}}
 
 // fixedGateTiers answers a named gate's tier list from fixedGateLists, and errors naming a gate the kit holds no list for.
 func fixedGateTiers(gate string) ([]int, error) {
@@ -304,8 +280,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Segments: map[string]shedrecipe.SegmentSettings{
 			"Discussion-Review": fullEnvSegment(3, "loom.yaml"),
 			"Plan-Review":       fullEnvSegment(3, "loom.yaml"),
-			"Webster-Review":    fullEnvSegment(3, "loom.yaml"),
-			"Merge-Review":      fullEnvSegment(3, "loom.yaml"),
+			"Code-Review":       fullEnvSegment(3, "loom.yaml"),
 			"Darn-Review":       fullEnvSegment(1, "darn.yaml"),
 		},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
@@ -346,36 +321,21 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				}},
 			}, nil
 		},
-		CommitPlan:         func() error { return nil },
-		ApprovePlan:        func() error { return nil },
-		SkipPlanReview:     func() (bool, error) { return false, nil },
-		SkipMergeReview:    func() (bool, error) { return false, nil },
-		ApproveMergeReview: func() error { return nil },
-		MergeReview:        func() string { return "none" },
-		CarryOver:          func(discussionparser.CarryOver) error { return nil },
+		CommitPlan:     func() error { return nil },
+		ApprovePlan:    func() error { return nil },
+		SkipPlanReview: func() (bool, error) { return false, nil },
+		CarryOver:      func(discussionparser.CarryOver) error { return nil },
 		DocumentSubject: func([]string) (shedadapters.Subject, bool, error) {
 			return shedadapters.Subject{Kind: shedadapters.SubjectDocument, Hash: "document-hash"}, true, nil
 		},
 		CodeSubject: func() (shedadapters.Subject, bool, error) {
 			return shedadapters.Subject{Kind: shedadapters.SubjectCode, MergeBase: "merge-base", Head: "head", FullHash: "full-hash", PatchID: "patch-id"}, true, nil
 		},
-		MergeSubject: func() (shedadapters.Subject, bool, error) {
-			return shedadapters.Subject{Kind: shedadapters.SubjectMerge, Hash: "merge-hash"}, true, nil
-		},
-		MergeInOnly:     func(string) (bool, error) { return false, nil },
-		RecordHead:      func() (string, error) { return "record-head", nil },
-		RejectReview:    func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
-		ReflectFriction: func() string { return "skipped" },
-		ReworkTable: func(loomshed.ReworkTold) (seatengine.Table, error) {
-			return seatengine.Table{
-				RolePrefix: "rework",
-				Segment:    segmentcolor.Webster,
-				Seats: []seatengine.Seat{{
-					Stencil: "loom-template-rework",
-					Outputs: []string{filepath.Join(dir, "rework-coverage.md")},
-				}},
-			}, nil
-		},
+		MergeInOnly:        func(string) (bool, error) { return false, nil },
+		RecordHead:         func() (string, error) { return "record-head", nil },
+		ReviewInput:        func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+		ReviewBase:         func() (string, error) { return "review-base", nil },
+		ReflectFriction:    func() string { return "skipped" },
 		Rework:             ReworkDeps(t, dir),
 		DarnVerifyAttempts: 3,
 		DarnTable: func(loomshed.DarnTold) (seatengine.Table, error) {
@@ -389,20 +349,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			}, nil
 		},
 		Darn: loomshed.DarnDeps{
-			ReadRejection: func() (loomshed.PendingRejection, bool, error) {
-				return loomshed.PendingRejection{}, false, nil
-			},
-			ClearRejection: func() error { return nil },
-			Commit:         func() error { return nil },
-			LatestOutcome:  func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
-			PublishFailure: func() (string, verifytree.PublishFailure, bool, error) {
-				return "", verifytree.PublishFailure{}, false, nil
-			},
-			RunStart:   func() (time.Time, error) { return time.Time{}, nil },
-			TaskHead:   func() (string, error) { return "", nil },
-			Dirty:      func() ([]string, error) { return nil, nil },
-			ParentTips: func() ([]string, error) { return nil, nil },
-			IsAncestor: func(string) (bool, error) { return true, nil },
+			Commit:        func() error { return nil },
+			LatestOutcome: func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
 		},
 		PlanIndex: noFindingsIndex{},
 
@@ -434,14 +382,9 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			PauseRequested:     func() (bool, error) { return false, nil },
 			MarkWatched:        func(context.Context) (bool, error) { return false, nil },
 			OrchStrandRecorded: func() (bool, error) { return true, nil },
-			VerifyRows:         []string{"Merge-In", "Publish"},
 			ParentLock:         &battenshed.ChildParentLock{},
-			PublishFailure: func() (battenshed.ChildPublishFailure, bool, error) {
-				return battenshed.ChildPublishFailure{}, false, nil
-			},
-			ChildHead:  func() (string, error) { return "0000000000000000000000000000000000000000", nil },
-			Goto:       func(context.Context, string) error { return nil },
-			StopReport: func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+			StopReport:         func() (string, time.Time, bool, error) { return "", time.Time{}, false, nil },
+			HandBack:           func(shedengine.Status) bool { return false },
 			Activity: func(context.Context) ([]battenshed.AgentActivity, bool, error) {
 				return nil, false, nil
 			},

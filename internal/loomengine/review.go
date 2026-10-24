@@ -21,16 +21,14 @@ import (
 type ReviewSettings struct {
 	// Models holds the resolved shared reviewer and fixer model lists, the fallback of every segment whose own key is empty.
 	Models burlerengine.RoundModels
-	// Discussion, Plan, Webster and Merge hold each loom review segment's resolved models: its own list where loom.yaml sets one, else the shared list in Models.
+	// Discussion, Plan and Code hold each loom review segment's resolved models: its own list where loom.yaml sets one, else the shared list in Models.
 	Discussion burlerengine.RoundModels
 	Plan       burlerengine.RoundModels
-	Webster    burlerengine.RoundModels
-	Merge      burlerengine.RoundModels
-	// DiscussionKeys, PlanKeys, WebsterKeys and MergeKeys name the config keys each of those segments' models came from.
+	Code       burlerengine.RoundModels
+	// DiscussionKeys, PlanKeys and CodeKeys name the config keys each of those segments' models came from.
 	DiscussionKeys SegmentKeys
 	PlanKeys       SegmentKeys
-	WebsterKeys    SegmentKeys
-	MergeKeys      SegmentKeys
+	CodeKeys       SegmentKeys
 	// Timeout is one review round's shuttle-run deadline, derived from cfg.ReviewTimeoutMin.
 	Timeout time.Duration
 }
@@ -75,7 +73,7 @@ type BouncerModels struct {
 type JudgeSettings struct {
 	Discussion BouncerModels
 	Plan       BouncerModels
-	Webster    BouncerModels
+	Code       BouncerModels
 }
 
 // ResolveJudge resolves each review segment's judge and seed models from cfg, returning the JudgeSettings the caller threads onto shedrecipe.Env.
@@ -91,11 +89,11 @@ func ResolveJudge(cfg Config, reg modelspec.Registry) (JudgeSettings, error) {
 	if err != nil {
 		return JudgeSettings{}, err
 	}
-	webster, err := resolveSegmentBouncerModels("webster", cfg.WebsterJudge, cfg.WebsterSeed, cfg, reg)
+	code, err := resolveSegmentBouncerModels("code", cfg.CodeJudge, cfg.CodeSeed, cfg, reg)
 	if err != nil {
 		return JudgeSettings{}, err
 	}
-	return JudgeSettings{Discussion: discussion, Plan: plan, Webster: webster}, nil
+	return JudgeSettings{Discussion: discussion, Plan: plan, Code: code}, nil
 }
 
 // resolveSegmentBouncerModels resolves one segment's judge and seed pairs, applying the fallback order ResolveJudge documents.
@@ -161,8 +159,7 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 	}{
 		{loomSegmentModelSource("discussion", cfg.DiscussionReviewerModel, cfg.DiscussionFixerModel), &settings.Discussion, &settings.DiscussionKeys},
 		{loomSegmentModelSource("plan", cfg.PlanReviewerModel, cfg.PlanFixerModel), &settings.Plan, &settings.PlanKeys},
-		{loomSegmentModelSource("webster", cfg.WebsterReviewerModel, cfg.WebsterFixerModel), &settings.Webster, &settings.WebsterKeys},
-		{loomSegmentModelSource("merge", cfg.MergeReviewerModel, cfg.MergeFixerModel), &settings.Merge, &settings.MergeKeys},
+		{loomSegmentModelSource("code", cfg.CodeReviewerModel, cfg.CodeFixerModel), &settings.Code, &settings.CodeKeys},
 	} {
 		*segment.models, *segment.keys, err = resolveSegmentModels(segment.source, settings.Models, reg)
 		if err != nil {

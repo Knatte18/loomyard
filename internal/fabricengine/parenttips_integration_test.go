@@ -252,6 +252,44 @@ func TestChangedPathsBothSides_NamesRenamesAndRawPaths(t *testing.T) {
 	}
 }
 
+// TestLineChange_CountsLinesAndListsPaths asserts a change of three added and two deleted lines, a pure rename and a binary file read as six lines, every path with the rename at both, and the added lines' text, and that an unknown ref is an error naming it.
+func TestLineChange_CountsLinesAndListsPaths(t *testing.T) {
+	t.Parallel()
+
+	f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
+	gitkit.CommitFile(t, warpPath, "text.txt", "k1\nk2\nk3\nk4\n", "text")
+	from := gitkit.CommitFile(t, warpPath, "keep.txt", "unchanged\n", "keep")
+
+	if err := os.WriteFile(filepath.Join(warpPath, "text.txt"), []byte("k1\nk4\nn1\nn2\nn3\n"), 0o644); err != nil {
+		t.Fatalf("write text.txt: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(warpPath, "blob.bin"), []byte{0, 1, 2, 0, 3}, 0o644); err != nil {
+		t.Fatalf("write blob.bin: %v", err)
+	}
+	gitkit.Git(t, warpPath, "mv", "keep.txt", "moved.txt")
+	gitkit.Git(t, warpPath, "add", "-A")
+	gitkit.Git(t, warpPath, "commit", "-m", "change")
+	to := fabricengine.CurrentSHAForTest(t, warpPath)
+
+	got, err := f.LineChange(from, to)
+	if err != nil {
+		t.Fatalf("LineChange() error = %v", err)
+	}
+	if want := []string{"blob.bin", "keep.txt", "moved.txt", "text.txt"}; !slices.Equal(got.Paths, want) {
+		t.Errorf("LineChange().Paths = %q; want %q", got.Paths, want)
+	}
+	if got.Lines != 6 {
+		t.Errorf("LineChange().Lines = %d; want 6", got.Lines)
+	}
+	if want := []string{"n1", "n2", "n3"}; !slices.Equal(got.AddedLines, want) {
+		t.Errorf("LineChange().AddedLines = %q; want %q", got.AddedLines, want)
+	}
+
+	if _, err := f.LineChange("no-such-ref", to); err == nil || !strings.Contains(err.Error(), "no-such-ref") {
+		t.Errorf("LineChange(no-such-ref) error = %v; want one naming the ref", err)
+	}
+}
+
 // TestCommitLog_ListsTheRangeNewestFirst asserts the range's commits as a seven-character SHA prefix and subject, newest first, an empty result for an empty range and an error naming an unknown ref.
 func TestCommitLog_ListsTheRangeNewestFirst(t *testing.T) {
 	t.Parallel()

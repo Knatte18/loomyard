@@ -1,24 +1,16 @@
 // finalize_test.go covers Finalize against a faked resolver and a faked parent-pair opener closure returning a scripted merge outcome.
 // This tier lives in the package itself too, for the same reason as its sibling: the resolver seam and the parentMerger seam it substitutes are both unexported.
-// None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/google/go-github/v75/github"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -45,9 +37,19 @@ type recordingParentMerger struct {
 	// order, when non-nil, receives "merge" and "push" as those calls happen, so a test can
 	// assert their order against other seams that append to the same slice.
 	order *[]string
-	// midMerge and midMergeErr script MidMerge's return.
-	midMerge    fabricengine.MidMergeState
-	midMergeErr error
+	// midMerge and midMergeErr script MidMerge's return once a parent-side merge has been attempted, where the merge guard's refusal reads it;
+	// probeMidMerge scripts the return before any merge, which Finalize's pre-merge probe reads.
+	midMerge      fabricengine.MidMergeState
+	midMergeErr   error
+	probeMidMerge fabricengine.MidMergeState
+	// dirtyCheckout, dirtyPaths and dirtyErr script CodeDirtyPaths's return.
+	dirtyCheckout string
+	dirtyPaths    []string
+	dirtyErr      error
+	// ffCalls records every FastForwardPair call's options; ffResult and ffErr script its return.
+	ffCalls  []fabricengine.SyncOptions
+	ffResult fabricengine.FastForwardResult
+	ffErr    error
 }
 
 type mergeCall struct {
@@ -86,7 +88,22 @@ func (m *recordingParentMerger) PushBranch(opts fabricengine.SyncOptions) (fabri
 func (m *recordingParentMerger) HeadSHA() (string, error) { return m.headSHA, m.headErr }
 
 func (m *recordingParentMerger) MidMerge() (fabricengine.MidMergeState, error) {
+	if len(m.calls) == 0 {
+		return m.probeMidMerge, nil
+	}
 	return m.midMerge, m.midMergeErr
+}
+
+func (m *recordingParentMerger) CodeDirtyPaths() (string, []string, error) {
+	return m.dirtyCheckout, m.dirtyPaths, m.dirtyErr
+}
+
+func (m *recordingParentMerger) FastForwardPair(opts fabricengine.SyncOptions) (fabricengine.FastForwardResult, error) {
+	m.ffCalls = append(m.ffCalls, opts)
+	if m.order != nil {
+		*m.order = append(*m.order, "fast-forward")
+	}
+	return m.ffResult, m.ffErr
 }
 
 // requireFinalizeReason returns the stuck reason carried on ptr, failing the test when it is empty.
@@ -129,6 +146,7 @@ func TestNewFinalize_Refusals(t *testing.T) {
 
 // TestFinalize_MergeMarkPushOrderAndVerdict pins that a landed merge is marked done on the board and then pushed to the parent's upstream before Done, honouring Deps.PushSkipped, that a failed push is Stuck rather than Done, and that neither a failing push nor a failing board seam changes what the other is called for.
 // A failed push also carries the adopter-first repair note only when origin's parent holds the work and a parent commit is listed: a reset for the squash alone, a rebase dropping it when another commit is listed.
+// No case makes a GitHub call.
 func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 	failedPush := func(record fabricengine.FailedPush, cause error) *fabricengine.PushFailedError {
 		return &fabricengine.PushFailedError{Record: record, Err: cause}
@@ -254,6 +272,7 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
+			deps.Slug = "me"
 			deps.Config.Squash = tt.squash
 			enginesRun := []string{"claude"}
 			if tt.nilEnginesRun {
@@ -279,13 +298,16 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 				t.Errorf("parent-side merge source = %q; want %q", merger.calls[0].source, deps.TaskBranch)
 			}
 			got := merger.calls[0].opts
-			want := summary.LandingMessage(deps.Config.TrailerBlock(enginesRun))
+			want := summary.LandingMessage(taskTrailer(deps.Config.TrailerBlock(enginesRun), "me"))
 			if got.Message != want {
 				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, want)
 			}
 			trailer := deps.Config.EngineTrailers["claude"]
-			if hasLine := strings.HasSuffix(got.Message, "\n\n"+trailer); hasLine == tt.nilEnginesRun {
+			if hasLine := strings.HasSuffix(got.Message, "\n\n"+trailer+"\nLyx-Task: me"); hasLine == tt.nilEnginesRun {
 				t.Errorf("MergeOptions.Message = %q; engine line %q present = %v; want %v", got.Message, trailer, hasLine, !tt.nilEnginesRun)
+			}
+			if !strings.HasSuffix(got.Message, "\nLyx-Task: me") {
+				t.Errorf("MergeOptions.Message = %q; want it to end in the Lyx-Task trailer line", got.Message)
 			}
 			if got.Squash != tt.squash {
 				t.Errorf("MergeOptions.Squash = %v; want %v (threaded from configuration)", got.Squash, tt.squash)
@@ -346,41 +368,29 @@ type orderedResolver struct {
 	order *[]string
 }
 
-func (r *orderedResolver) Resolve(ctx context.Context, source string) (mergeresolve.Result, error) {
+func (r *orderedResolver) Resolve(ctx context.Context, source, tip string) (mergeresolve.Result, error) {
 	*r.order = append(*r.order, "merge-in")
-	return r.recordingResolver.Resolve(ctx, source)
+	return r.recordingResolver.Resolve(ctx, source, tip)
 }
 
 // TestFinalize_MergeInRequiredRetry pins that an ErrMergeInRequired merge is retried exactly once with the same composed message, and that the board seam runs once, after the retry that lands, never after a failed attempt.
 // It also pins that the parent run records are committed after each merge-in and before the parent-side merge, on the first pass and on the retry alike.
-// The retry runs only when the parent has not moved: a parent that moved again, which the second tip read finds, reroutes with no retry.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 	tests := []struct {
 		name        string
 		secondTry   mergeCallResult
 		wantOutcome shedengine.Outcome
 		wantOrder   string
-		// movedFromRead is the 1-based tip read from which the parent reads as moved; 0 means never.
-		movedFromRead int
-		wantCalls     int
-		wantReroute   bool
+		wantCalls   int
+		wantReroute bool
 	}{
-		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push", 0, 2, false},
-		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 0, 2, false},
-		{"a parent moved again reroutes with no retry", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Stuck, "merge-in,records,merge", 2, 1, true},
+		{"retry lands", mergeCallResult{result: fabricengine.MergeResult{Committed: true}}, shedengine.Done, "merge-in,records,merge,merge-in,records,merge,mark,push", 2, false},
+		{"retry also required stays Stuck", mergeCallResult{err: &fabricengine.ErrMergeInRequired{}}, shedengine.Stuck, "merge-in,records,merge,merge-in,records,merge", 2, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var order []string
 			deps := newTestDeps(t)
-			reads := 0
-			deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
-				reads++
-				if tt.movedFromRead != 0 && reads >= tt.movedFromRead {
-					return fabricengine.ParentTips{Local: "newer-tip", Upstream: "newer-tip", Relation: fabricengine.ParentEqual}, nil
-				}
-				return fabricengine.ParentTips{Local: testParentTip, Upstream: testParentTip, Relation: fabricengine.ParentEqual}, nil
-			}
 			deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
 			deps.CommitParentRecords = func() error { order = append(order, "records"); return nil }
 			summary, err := summaryparser.Parse(deps.DescriptionPath)
@@ -401,7 +411,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 			if ptr.Reroute != tt.wantReroute {
 				t.Errorf("OutputPointer.Reroute = %v; want %v", ptr.Reroute, tt.wantReroute)
 			}
-			want := summary.LandingMessage(deps.Config.TrailerBlock([]string{"claude"}))
+			want := summary.LandingMessage(taskTrailer(deps.Config.TrailerBlock([]string{"claude"}), deps.Slug))
 			for i, call := range merger.calls {
 				if call.opts.Message != want {
 					t.Errorf("attempt %d MergeOptions.Message = %q; want %q (the same composed message every attempt)", i+1, call.opts.Message, want)
@@ -783,119 +793,6 @@ func TestFinalize_CancellationAtEntry_SurfacesAsError(t *testing.T) {
 	}
 }
 
-// --- Closing the pull request after landing ---
-
-// closeServer records every request the GitHub fake receives as "METHOD path" plus decoded body.
-type closeServer struct {
-	requests []string
-	bodies   []map[string]any
-	listBody string
-	// failClose makes the PATCH (close) call answer 500.
-	failClose bool
-}
-
-func installCloseServer(t *testing.T, s *closeServer) {
-	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.requests = append(s.requests, r.Method+" "+r.URL.Path)
-		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		s.bodies = append(s.bodies, body)
-		switch r.Method {
-		case http.MethodGet:
-			_, _ = w.Write([]byte(s.listBody))
-		case http.MethodPost:
-			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"id":1}`))
-		case http.MethodPatch:
-			if s.failClose {
-				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte(`{"message":"boom"}`))
-				return
-			}
-			_, _ = w.Write([]byte(`{"number":7,"state":"closed"}`))
-		}
-	}))
-	t.Cleanup(srv.Close)
-	client := github.NewClient(nil).WithAuthToken("test-token")
-	parsed, err := url.Parse(srv.URL + "/")
-	if err != nil {
-		t.Fatalf("url.Parse: %v", err)
-	}
-	client.BaseURL = parsed
-	orig := NewGitHubClient
-	NewGitHubClient = func() (*github.Client, error) { return client, nil }
-	t.Cleanup(func() { NewGitHubClient = orig })
-}
-
-// TestFinalize_ClosingPullRequestAfterLanding pins what a landed task does to its pull request:
-// an open one gets a comment naming the landing head and the parent branch and is closed, a merge that reports AlreadyUpToDate counts as landed and names the head the parent reports, and a non-open pull request, a failed close, a parent needing no pull request and a skipped push each still end Done.
-// Every case marks the task done and calls the push once.
-func TestFinalize_ClosingPullRequestAfterLanding(t *testing.T) {
-	lookupOnly := []string{"GET /repos/acme/widgets/pulls"}
-	lookupCommentClose := []string{"GET /repos/acme/widgets/pulls", "POST /repos/acme/widgets/issues/7/comments", "PATCH /repos/acme/widgets/pulls/7"}
-	committed := fabricengine.MergeResult{Committed: true}
-	runStart := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	tests := []struct {
-		name         string
-		listBody     string
-		failClose    bool
-		mutate       func(*Deps)
-		merge        fabricengine.MergeResult
-		headSHA      string
-		wantRequests []string
-		// wantCommentHas names what the comment on the pull request carries; empty when no comment is expected.
-		wantCommentHas []string
-	}{
-		{"closes the open pull request", `[{"number":7,"state":"open"}]`, false, nil, committed, "abc123landed", lookupCommentClose, []string{"abc123landed", "main"}},
-		{"already up to date counts as landed", `[{"number":7,"state":"open"}]`, false, nil, fabricengine.MergeResult{AlreadyUpToDate: true}, "parentheadsha", lookupCommentClose, []string{"parentheadsha"}},
-		{"leaves a non-open pull request alone", `[{"number":7,"state":"closed"}]`, false, nil, committed, "abc123landed", lookupOnly, nil},
-		{"a failed close still ends Done", `[{"number":7,"state":"open"}]`, true, nil, committed, "abc123landed", lookupCommentClose, nil},
-		{"leaves an older open pull request alone", `[{"number":7,"state":"open","created_at":"2026-01-01T00:00:00Z"}]`, false, func(d *Deps) { d.RunStart = runStart }, committed, "abc123landed", lookupOnly, nil},
-		{"closes an open pull request created after the run started", `[{"number":7,"state":"open","created_at":"2026-07-01T00:00:00Z"}]`, false, func(d *Deps) { d.RunStart = runStart }, committed, "abc123landed", lookupCommentClose, []string{"abc123landed"}},
-		{"no GitHub call when the parent needs no pull request", `[{"number":7,"state":"open"}]`, false, func(d *Deps) { d.Config.RequirePRToBase = []string{"other"} }, committed, "abc123landed", nil, nil},
-		{"no GitHub call when the push is skipped", `[{"number":7,"state":"open"}]`, false, func(d *Deps) { d.PushSkipped = true }, committed, "abc123landed", nil, nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := &closeServer{listBody: tt.listBody, failClose: tt.failClose}
-			deps := newTestDeps(t)
-			installCloseServer(t, s)
-			deps.OriginURL = "https://github.com/acme/widgets.git"
-			markedDone := 0
-			deps.MarkTaskDone = func() error { markedDone++; return nil }
-			if tt.mutate != nil {
-				tt.mutate(&deps)
-			}
-			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: tt.merge}}, headSHA: tt.headSHA}
-			fz := &Finalize{deps: deps, resolver: res, parentOpener: func() (parentMerger, error) { return merger, nil }}
-
-			shedfake.RequireOutcome(t, fz, shedengine.Done)
-			if markedDone != 1 {
-				t.Errorf("MarkTaskDone called %d time(s); want 1", markedDone)
-			}
-			if len(merger.pushCalls) != 1 {
-				t.Errorf("PushBranch called %d time(s); want 1", len(merger.pushCalls))
-			}
-			if strings.Join(s.requests, "|") != strings.Join(tt.wantRequests, "|") {
-				t.Fatalf("requests = %v; want %v", s.requests, tt.wantRequests)
-			}
-			if len(tt.wantCommentHas) > 0 {
-				comment, _ := s.bodies[1]["body"].(string)
-				for _, want := range tt.wantCommentHas {
-					if !strings.Contains(comment, want) {
-						t.Errorf("comment = %q; want it to carry %q", comment, want)
-					}
-				}
-				if got := s.bodies[2]["state"]; got != "closed" {
-					t.Errorf("close state = %v; want closed", got)
-				}
-			}
-		})
-	}
-}
-
 // TestFinalize_TransportPushFailure_ReturnsClassifiedError pins that a parent push failing on transport is an error the Shed classifier marks, while a plain push error keeps its Stuck verdict.
 func TestFinalize_TransportPushFailure_ReturnsClassifiedError(t *testing.T) {
 	deps := newTestDeps(t)
@@ -912,5 +809,127 @@ func TestFinalize_TransportPushFailure_ReturnsClassifiedError(t *testing.T) {
 	}
 	if got := shedtransient.Class(err); got != shedengine.TransientGitTransport {
 		t.Errorf("Class(err) = %q; want %q", got, shedengine.TransientGitTransport)
+	}
+}
+
+// TestFinalize_LockFirstAndFastForward pins Finalize's entry.
+// The parent lock is held before the run-scope reconcile and every read of the parent, and a parent behind its upstream is fast-forwarded under the lock.
+// Each refusal of the parent pair is a Stuck with its way forward before any merge.
+func TestFinalize_LockFirstAndFastForward(t *testing.T) {
+	// lockHeld reports whether the run holds the parent lock in deps' store.
+	lockHeld := func(deps Deps) bool {
+		rec, found, _ := deps.Lock.Store.Read("main")
+		return found && rec.Owner.Slug == "me"
+	}
+	tipsOf := func(relation fabricengine.ParentRelation) fabricengine.ParentTips {
+		return fabricengine.ParentTips{Local: "p1", Upstream: "u2", Relation: relation}
+	}
+
+	t.Run("the lock is held at the reconcile and the tips read, and a parent behind its upstream is fast-forwarded", func(t *testing.T) {
+		deps := newTestDeps(t)
+		var held []string
+		deps.Reconcile = func() (fabricengine.OriginReport, error) {
+			held = append(held, fmt.Sprintf("reconcile:%v", lockHeld(deps)))
+			return fabricengine.OriginReport{}, nil
+		}
+		deps.ReadParentTips = func(fetch bool) (fabricengine.ParentTips, error) {
+			held = append(held, fmt.Sprintf("tips:%v:%v", fetch, lockHeld(deps)))
+			return tipsOf(fabricengine.ParentBehind), nil
+		}
+		var order []string
+		res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+		merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, order: &order}
+		fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+		shedfake.RequireOutcome(t, fz, shedengine.Done)
+
+		if got, want := strings.Join(held, ","), "reconcile:true,tips:true:true,tips:false:true"; got != want {
+			t.Errorf("lock holds at the seams = %q; want %q", got, want)
+		}
+		if got, want := strings.Join(order, ","), "fast-forward,merge,push"; got != want {
+			t.Errorf("call order = %q; want %q", got, want)
+		}
+		if len(merger.ffCalls) != 1 || merger.ffCalls[0].SkipPush {
+			t.Errorf("FastForwardPair calls = %+v; want one without the push skip", merger.ffCalls)
+		}
+	})
+
+	refusals := []struct {
+		name       string
+		openerErr  error
+		dirty      []string
+		midMerge   fabricengine.MidMergeState
+		wantReason string
+	}{
+		{"a missing pair", errors.New("no such worktree"), nil, fabricengine.MidMergeState{}, `no live pair for parent branch "main": no such worktree; way forward: re-create the parent pair, then run "lyx loom resume"`},
+		{"a dirty code checkout", nil, []string{"a.go"}, fabricengine.MidMergeState{}, DirtyParentRefusal("/hub/parent", []string{"a.go"})},
+		{"a pair mid-merge", nil, nil, fabricengine.MidMergeState{Kind: fabricengine.MidMergeParked}, `a merge is in progress in the parent pair of "main"; way forward: finish or abort that merge in the parent pair, then run "lyx loom resume"`},
+	}
+	states := []struct {
+		name        string
+		tips        fabricengine.ParentTips
+		pushSkipped bool
+	}{
+		{"equal to its upstream", tipsOf(fabricengine.ParentEqual), false},
+		{"without an upstream", fabricengine.ParentTips{Local: "p1", Relation: fabricengine.ParentNoUpstream}, false},
+		{"under the push skip", tipsOf(fabricengine.ParentBehind), true},
+	}
+	for _, refusal := range refusals {
+		for _, state := range states {
+			t.Run(refusal.name+" with the parent "+state.name+" is Stuck before any merge", func(t *testing.T) {
+				deps := newTestDeps(t)
+				deps.PushSkipped = state.pushSkipped
+				deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) { return state.tips, nil }
+				res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+				merger := &recordingParentMerger{dirtyCheckout: "/hub/parent", dirtyPaths: refusal.dirty, probeMidMerge: refusal.midMerge}
+				fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) {
+					if refusal.openerErr != nil {
+						return nil, refusal.openerErr
+					}
+					return merger, nil
+				}}
+
+				ptr := shedfake.RequireOutcome(t, fz, shedengine.Stuck)
+
+				if got := requireFinalizeReason(t, ptr); got != refusal.wantReason {
+					t.Errorf("reason = %q; want %q", got, refusal.wantReason)
+				}
+				if res.called || len(merger.calls) != 0 || len(merger.ffCalls) != 0 {
+					t.Errorf("a merge or fast-forward ran after the refusal: resolver %v, merges %d, fast-forwards %d", res.called, len(merger.calls), len(merger.ffCalls))
+				}
+			})
+		}
+	}
+
+	moves := []struct {
+		name       string
+		tips       fabricengine.ParentTips
+		ff         fabricengine.FastForwardResult
+		wantReason string
+	}{
+		{"a behind parent that is no longer a fast-forward", tipsOf(fabricengine.ParentBehind), fabricengine.FastForwardResult{Refusal: fabricengine.FastForwardNotFastForward}, `the upstream of "main" is no longer a fast-forward of the parent pair; way forward: reconcile "main" with its upstream in its own pair, then run "lyx loom resume"`},
+		{"a parent ahead of its upstream", tipsOf(fabricengine.ParentAhead), fabricengine.FastForwardResult{}, `the local parent branch "main" is ahead of its upstream; way forward: push or reconcile "main" in its own pair, then run "lyx loom resume"`},
+		{"a parent diverged from its upstream", tipsOf(fabricengine.ParentDiverged), fabricengine.FastForwardResult{}, `the local parent branch "main" has diverged from its upstream; way forward: push or reconcile "main" in its own pair, then run "lyx loom resume"`},
+	}
+	for _, move := range moves {
+		t.Run(move.name+" is Stuck before any merge", func(t *testing.T) {
+			deps := newTestDeps(t)
+			deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) { return move.tips, nil }
+			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
+			merger := &recordingParentMerger{ffResult: move.ff}
+			fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
+
+			ptr := shedfake.RequireOutcome(t, fz, shedengine.Stuck)
+
+			if got := requireFinalizeReason(t, ptr); got != move.wantReason {
+				t.Errorf("reason = %q; want %q", got, move.wantReason)
+			}
+			if res.called || len(merger.calls) != 0 {
+				t.Errorf("a merge ran after the refusal: resolver %v, merges %d", res.called, len(merger.calls))
+			}
+			if lockHeld(deps) {
+				t.Error("the parent lock is still held after the Stuck")
+			}
+		})
 	}
 }

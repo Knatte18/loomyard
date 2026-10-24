@@ -1,50 +1,46 @@
 # darn-recipe.yaml is the darn task recipe: one gated writer reads the board entry, edits, tests and
 # commits, the Darn-Review perch reviews the committed diff, Describe rewrites the change
-# description from the final diff, then Publish, PR-Align, PR-Gate and Finalize land it. It is
+# description from the final diff, then PR-Review and Finalize land it. It is
 # embedded into the binary by the sibling recipes.go rather than read from disk. The row names below are the
 # durable on-disk identities pinned against internal/loomshed's Name* constants -- a rename here
 # without a matching constant rename breaks resume for any in-flight task, unless internal/loomrecipe
 # maps the retired name onto its successor, as it maps the writer row's former name, Darn.
 #
 # The writer writes and validates the decision record before any code, and the perch's open findings
-# land in the record's `## Open risks`. PR-Align spawns the alignment agent with darn's geometry
-# before PR-Gate and reads loom.yaml's alignment keys. An in-flight run parked on a row whose edges
-# changed with PR-Align is restarted, not migrated.
+# land in the record's `## Open risks`.
+# Darn has no Merge-In row: Finalize merges the parent itself, under the parent lock it takes first.
 #
-# Preflight, Merge-In, Publish and Finalize carry no on_stuck: nothing in the list produces what each of them
-# gates, so a human is the only thing that can fix them. Darn-Write and Describe carry none either:
+# Preflight and Finalize carry no on_stuck: nothing in the list produces what each of them
+# gates, so a human is the only thing that can fix them.
+# Finalize fixes its own merge and test failures in its merge fixer, and a failure the fixer cannot
+# fix halts the run for the orch.
+# Darn-Write and Describe carry none either:
 # an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget.
-# Darn-Write's one reroute edge sends a moved parent to Merge-In, the row that merges it.
-# PR-Align, like Friction-Reflect, carries none either, because it never returns Stuck.
+# PR-Review, like Friction-Reflect, carries none either, because it never returns Stuck.
 #
 # Darn-Bouncer, Darn-Burler-Review and Darn-Burler-Fix are the Darn-Review perch, wired like loom's
-# Webster-Review ring under one shared segment label: the Bouncer's on_stuck names the review row,
+# Code-Review ring under one shared segment label: the Bouncer's on_stuck names the review row,
 # the review row's on_stuck names the fix row, the fix row's on_stuck names the Bouncer, and each
 # Burler row's on_done names the same row as its on_stuck, since neither ever returns Done. The
 # segment's rows declare no max_bounces: their budget is darn.yaml's review_max_bounces, applied by
 # internal/loomrecipe, and a budget of 0 turns the perch off by routing Darn-Write's Done straight
-# to Merge-In, past Describe, so the writer's own description stands.
-# The perch's judge and seed models are loom.yaml's Webster-Review keys, the other committed-diff review;
+# to PR-Review, past Describe, so the writer's own description stands.
+# The perch's judge and seed models are loom.yaml's Code-Review keys, the other committed-diff review;
 # its reviewer and fixer models are darn.yaml's darn_reviewer_model and darn_fixer_model, an empty one
 # taking loom.yaml's reviewer_model or fixer_model.
 # The perch's rows share one role_prefix, which leads their sessions' roles,
 # so ly:<slug>:darn-burler-review names its segment.
 #
-# Merge-In follows Describe and hands straight to Publish: darn has no Merge-Review perch.
-# Darn-Write, Publish, PR-Gate and Finalize each declare on_reroute: Merge-In, the row a moved parent sends
-# them back to. An in-flight run parked on a row whose name or edges changed with Merge-In is
-# restarted, not migrated.
+# Finalize declares on_reroute: Darn-Bouncer, the row a conflict or a merge too large to land sends
+# the run back to, so the perch reviews the code the writer changed in answer.
+# Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
+# A budget of 0 reroutes Finalize to PR-Review instead, since no perch is reached.
 #
-# An in-flight run parked on the retired Darn-Burler row is restarted, not migrated, as it is for
-# the other retired rows.
+# An in-flight run parked on a row this recipe removed -- Merge-In, Publish, PR-Align, PR-Gate -- or
+# on a row whose edges changed with them, or on the retired Darn-Burler row, is restarted, not
+# migrated.
 #
 # Describe follows the perch because Darn-Burler-Fix can change the code after the writer described it.
-#
-# PR-Gate bounces to Darn-Write, the row that produces the diff it guards, so a rework passes the
-# perch and Describe again before Publish refreshes the open pull request. The edge's max_bounces is
-# the value the status projection and the reject refusal report; a Darn-Write Done ends the gate's
-# episode and a Darn-Write Stuck halts the run, so consecutive rejections never accumulate and the
-# budget is never reached under this recipe.
 
 version: 1
 entry: Preflight
@@ -58,12 +54,8 @@ producers:
 
   - name: Darn-Write
     engine: DarnWrite
-    segment: PR-Review
-    # internal/loomrecipe rewrites this edge to Merge-In when darn.yaml's review_max_bounces is 0.
+    # internal/loomrecipe rewrites this edge to PR-Review when darn.yaml's review_max_bounces is 0.
     on_done: Darn-Bouncer
-    # A Darn-Write call that finds this run's failure record, an unmoved task branch, a clean worktree
-    # and a moved parent reroutes to Merge-In before spawning the writer.
-    on_reroute: Merge-In
     config:
       # gates holds this row's handoff until it is mechanically valid: each entry names a gate and
       # re-prompts the live session up to its attempts times. The verify gate's attempts here is a
@@ -157,8 +149,8 @@ producers:
       role_prefix: darn
       fixer_fan_setting: darn.darn_fixer_fan
       review_row: Darn-Burler-Review
-      # The verify gate runs the tree-scoped command, or the command impactset derives from the merge
-      # base, on the committed tree after each round, and darn.yaml's verify where impactset falls back,
+      # The verify gate runs the tree-scoped command, or the hub's `landing` call narrowed to the diff
+      # from the merge base, on the committed tree after each round,
       # and re-prompts the fix session with the findings until it passes. Its attempts here is a
       # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
       gates:
@@ -174,45 +166,26 @@ producers:
   # Describe writes the change description from the final diff, replacing the writer's own.
   - name: Describe
     engine: Describe
-    on_done: Merge-In
+    on_done: PR-Review
     config:
       gates:
         - name: description
           attempts: 3
 
-  # Merge-In takes the parent lock, merges the parent into the task worktree, verifies the merged
-  # tree and writes the merge record. It hands straight to Publish: darn has no Merge-Review perch.
-  - name: Merge-In
-    engine: MergeIn
-    on_done: Publish
-
-  - name: Publish
-    engine: Publish
-    on_reroute: Merge-In
-    on_done: PR-Align
-
-  # PR-Align spawns the alignment agent for the pull request Publish opened and applies its verdict
-  # through the records PR-Gate reads. It always ends Done and never Stuck, so it carries no on_stuck,
-  # and it sits outside the PR-Review segment: a Done by a row of that segment ends the gate's bounce
-  # episode.
-  - name: PR-Align
-    engine: PRAlign
-    on_done: PR-Gate
-
-  # PR-Gate owns every review decision on the pull request Publish opened: it returns Done on an
-  # approval or a merge, Awaiting while the operator has not decided, and Stuck only for a matching
-  # rejection, which bounces to the writer row that produces the diff it guards.
-  - name: PR-Gate
-    engine: PRGate
-    segment: PR-Review
-    max_bounces: 5
-    on_stuck: Darn-Write
-    on_reroute: Merge-In
+  # PR-Review is the stub seat the human pull-request review will take over. It always returns Done,
+  # so it carries no on_stuck, and darn.yaml's pr_review key only decides whether it logs.
+  - name: PR-Review
+    engine: PRReview
     on_done: Finalize
+    config:
+      pr_review_setting: darn.pr_review
 
+  # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
+  # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.
+  # A conflict or a merge too large to land reroutes to Darn-Bouncer.
   - name: Finalize
     engine: Finalize
-    on_reroute: Merge-In
+    on_reroute: Darn-Bouncer
     # Hands off to the reflection row rather than ending the run.
     on_done: Friction-Reflect
 

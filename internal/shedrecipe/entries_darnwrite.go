@@ -1,5 +1,5 @@
 // entries_darnwrite.go implements darnWriteEntry, the Constructor for the "DarnWrite" registry row:
-// it runs the told one-seat table of the darn writer on a gated shedadapters.MultiLLMProducer inside loomshed.NewDarnWrite's commit and rejection decorator, so it lives in its own file like prReworkEntry.
+// it runs the told one-seat table of the darn writer on a gated shedadapters.MultiLLMProducer inside loomshed.NewDarnWrite's commit decorator, so it lives in its own file like prReworkEntry.
 
 package shedrecipe
 
@@ -35,16 +35,8 @@ func darnWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 		field string
 		seam  any
 	}{
-		{"Darn.ReadRejection", dw.ReadRejection},
-		{"Darn.ClearRejection", dw.ClearRejection},
 		{"Darn.Commit", dw.Commit},
 		{"Darn.LatestOutcome", dw.LatestOutcome},
-		{"Darn.PublishFailure", dw.PublishFailure},
-		{"Darn.RunStart", dw.RunStart},
-		{"Darn.TaskHead", dw.TaskHead},
-		{"Darn.Dirty", dw.Dirty},
-		{"Darn.ParentTips", dw.ParentTips},
-		{"Darn.IsAncestor", dw.IsAncestor},
 	}
 	for _, s := range seams {
 		if err := requireSeam("DarnWrite", s.field, s.seam); err != nil {

@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -442,4 +443,89 @@ func TestMergeIn_NeverSquashes(t *testing.T) {
 	if len(parents) != 2 {
 		t.Errorf("warp HEAD %s has %d parents (%v); want exactly 2 (a real merge commit, never a squash)", warpHEAD, len(parents), parents)
 	}
+}
+
+// TestMergeInAt_MergesTheGivenTipNotTheLocalOne covers MergeInAt's told code-side SHA.
+// A tip behind the local branch merges only that tip, and a told tip that conflicts parks a merge-in of the named source recording the told SHA.
+// A SHA naming no commit is the source-not-found guard refusal with nothing merged.
+func TestMergeInAt_MergesTheGivenTipNotTheLocalOne(t *testing.T) {
+	t.Parallel()
+
+	t.Run("TipBehindLocalBranch", func(t *testing.T) {
+		t.Parallel()
+
+		h, f, commitOnWarpBranch, _, _, _ := newMergePairFixture(t, ".")
+		warpDir := h.PrimeWorktree()
+
+		commitOnWarpBranch("feature", "upstream.txt", "upstream\n", "warp: upstream commit")
+		gitkit.MustRun(t, warpDir, "git", "push", "-q", "origin", "feature")
+		upstreamTip := gitkit.RevParse(t, warpDir, "origin/feature")
+		commitOnWarpBranch("feature", "local-only.txt", "local only\n", "warp: local-only commit")
+
+		res, err := f.MergeInAt("feature", upstreamTip)
+		if err != nil {
+			t.Fatalf("MergeInAt(feature, %s) error = %v", upstreamTip, err)
+		}
+		if len(res.Conflicts) != 0 {
+			t.Errorf("MergeInAt(feature, %s).Conflicts = %v; want empty", upstreamTip, res.Conflicts)
+		}
+		if _, err := os.Stat(filepath.Join(warpDir, "upstream.txt")); err != nil {
+			t.Errorf("upstream.txt after MergeInAt: %v; want the told tip's file merged in", err)
+		}
+		if _, err := os.Stat(filepath.Join(warpDir, "local-only.txt")); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("local-only.txt after MergeInAt: err = %v; want it absent, the local-only commit is not the told tip", err)
+		}
+	})
+
+	t.Run("ConflictParksTheToldTip", func(t *testing.T) {
+		t.Parallel()
+
+		h, f, _, _, _, _ := newMergePairFixture(t, ".")
+		warpDir := h.PrimeWorktree()
+		setupConflictingDivergence(t, warpDir, "feature", "conflict.txt")
+		tip := gitkit.RevParse(t, warpDir, "feature")
+
+		res, err := f.MergeInAt("feature", tip)
+		if err != nil {
+			t.Fatalf("MergeInAt(feature, %s) error = %v", tip, err)
+		}
+		if len(res.Conflicts) == 0 {
+			t.Fatalf("MergeInAt(feature, %s).Conflicts is empty; want the conflicted path", tip)
+		}
+
+		state, err := f.MidMerge()
+		if err != nil {
+			t.Fatalf("MidMerge() error = %v", err)
+		}
+		if state.Kind != fabricengine.MidMergeParked || state.Verb != fabricengine.MergeVerbMergeIn {
+			t.Errorf("MidMerge() = kind %v verb %q; want a parked %q", state.Kind, state.Verb, fabricengine.MergeVerbMergeIn)
+		}
+		if state.Source != "feature" || state.SourceSHA != tip {
+			t.Errorf("MidMerge() source = %q at %q; want %q at %q", state.Source, state.SourceSHA, "feature", tip)
+		}
+	})
+
+	t.Run("UnknownTipIsSourceNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		h, f, commitOnWarpBranch, _, _, _ := newMergePairFixture(t, ".")
+		warpDir := h.PrimeWorktree()
+		commitOnWarpBranch("feature", "feature.txt", "feature\n", "warp: feature commit")
+		headBefore := gitkit.RevParse(t, warpDir, "HEAD")
+
+		_, err := f.MergeInAt("feature", "0123456789abcdef0123456789abcdef01234567")
+		var guardErr *fabricengine.MergeGuardError
+		if !errors.As(err, &guardErr) {
+			t.Fatalf("MergeInAt(feature, unknown SHA) error = %v (%T); want *fabricengine.MergeGuardError", err, err)
+		}
+		if !slices.Contains(guardErr.Reasons, "source branch not found") {
+			t.Errorf("MergeInAt(feature, unknown SHA) reasons = %v; want source branch not found", guardErr.Reasons)
+		}
+		if headAfter := gitkit.RevParse(t, warpDir, "HEAD"); headAfter != headBefore {
+			t.Errorf("HEAD after the refused MergeInAt = %s; want %s unchanged", headAfter, headBefore)
+		}
+		if inProgress, err := f.MergeInProgress(); err != nil || inProgress {
+			t.Errorf("MergeInProgress() after the refused MergeInAt = (%v, %v); want (false, nil)", inProgress, err)
+		}
+	})
 }

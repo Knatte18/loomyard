@@ -92,14 +92,15 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 		return nil, err
 	}
 	notes := shedadapters.RubricNotes{GateTiers: env.GateTiers, Amendment: shedadapters.AmendmentNote(runDir)}
-	if env.PublishFailure != nil {
-		notes.PublishFailure = env.PublishFailure()
-	}
 	if env.WebsterRecord != nil {
 		notes.WebsterRecord = env.WebsterRecord()
 	}
-	if env.MergeReview != nil {
-		notes.MergeReview = env.MergeReview()
+	if env.ReviewBase != nil {
+		base, err := env.ReviewBase()
+		if err != nil {
+			return nil, fmt.Errorf("shedrecipe: BurlerReview: row %q: read the review base: %w", row.Name, err)
+		}
+		notes.ReviewBase = base
 	}
 	profile, err := burlerRoundProfile(profileCfg, env.StencilsDir, env.SpecsDir, notes)
 	if err != nil {

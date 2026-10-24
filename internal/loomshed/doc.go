@@ -40,27 +40,21 @@
 // Told a tree scope reader, it takes the darn form; otherwise it takes the round form the Webster-Burler-Fix row runs, which runs less than the full command.
 // Told a merge base, the round form first runs the headroom lint from it to HEAD, before the comment lint and any test; told none, it skips that lint.
 // The form is a told reader, never inferred from the merge base reader's presence.
-// It is also told the hub's `round` gate through a RoundGate source, read at each arrival, whose error is the gate's returned error.
-// It lints the comments added since the told command's last recorded pass, then runs the round call, `lyx gate test --wait --tier <round list> --base <that pass's commit>`, through verifytree.Verify, running the told command itself where there is no pass to diff from.
+// It is also told a gate list through a RoundGate source, read at each arrival, whose error is the gate's returned error; the fix rows of loom and darn tell it the hub's `landing` list.
+// It lints the comments added since the told command's last recorded pass, then runs the round call, `lyx gate test --wait --tier <told list> --base <that pass's commit>`, through verifytree.Verify, running the told list's own whole-tree call, `--all`, where there is no pass to diff from.
 // The narrowing, the fallback to whole and the guard step are the round call's own; Webster's gate, Publish and Finalize keep the full verify on the tree that lands.
 // A failed run's findings carry the exit code, the log path and the log's tail, and when the whole log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, a paragraph naming the window.
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then re-stepping the row.
 // The gate runs no flake rerun.
-// The round runs the tiers the `round` gate lists and nothing else, so `tmux` and `llm` tiers run only if the hub lists them there.
-// While a checked Publish failure record is present, the round also confirms the fix under the record's failing tier.
-// The failing top-level tests the record names, one `lyx gate test --wait --tier <failing tier> <package> -- -run '^<Test>$'` step per package and test with the subtests collapsed into it, run before the round command, so a failure that still holds is known in seconds;
-// one package pass of that tier over the failing tests' packages runs after it.
-// A record of the retired kinds `plan_verify` and `publish_verify`, and a record whose tier its gate no longer lists, reads as the highest tier of its `landing` or `publish` gate.
-// A record the gate's tier list cannot place is ignored with a logged warning.
+// The round runs the tiers the told list holds and nothing else, so `tmux` and `llm` tiers run only if the hub lists them in the `landing` gate.
 // Publish reruns both verifies in full regardless, and stays the guard.
 // Told a tree scope reader, it takes the darn form the `Darn-Write` and `Darn-Burler-Fix` rows run, and requires the merge base reader:
-// the headroom lint and then the comment lint run from the task branch's merge base with the parent to HEAD, so every attempt diffs from the merge base and a PR-Gate rework is never narrowed to a stale pass.
+// the headroom lint and then the comment lint run from the task branch's merge base with the parent to HEAD, so every attempt diffs from the merge base and is never narrowed to a stale pass.
 // The tree scope reader is then read at each arrival.
 // A tree-scoped diff, wholly under the hub's configured non-production trees, runs only the tree-scoped command the reader answers; an empty command, as for a docs-only diff whose trees name no target, runs nothing, logs so and passes, so an empty tree scope never falls back to the computed scope.
 // Any other diff runs the round call over `--base` the merge base, with the same guard step the round form gets from it.
 // The told command is the site's base command in every case, so a pass keeps its record entry and Publish skips on the same tree and command.
 // That form has no skip path: an empty told command, a command read error, a round read error, a merge base read error and a tree scope read error are each the gate's returned error.
-// With a checked Publish failure record present it runs the failing tests before that command and the failing tier's package pass after it.
 // An impact-scoped pass lets through a break only the whole module shows;
 // Merge-In's whole run catches it for every diff touching production code.
 //
@@ -68,29 +62,15 @@
 // It first archives webster's run record into the archive's `webster` subdirectory through a told seam, so the next Webster run starts a new run over the new plan instead of refusing the old record's plan drift.
 // A run holding webster's run lock refuses the archive before any plan file moves, and ArchivedPlanWebsterDirs lists the subdirectories a rotation writes the record into.
 //
-// The Darn-Write row's producer (NewDarnWrite) wraps the gated darn writer session and tells it two texts, each empty when absent:
-// the pending rejection's findings, and a prior-work note, written in Go, that the change is already under way on the task branch, naming the latest Darn-Write history entry's halt reason and the Publish failure record's path.
-// On a non-empty output pointer, Done or a gate-failed Stuck, it commits the landing directory;
-// on Done of a spawn that was told a rejection it then records the rejection through the optional RecordRejection seam, so the darn amendment can name its findings, and removes the pending rejection.
+// The Darn-Write row's producer (NewDarnWrite) wraps the gated darn writer session and tells it a prior-work note, empty when absent.
+// The note, written in Go, says the change is already under way on the task branch and names the latest Darn-Write history entry's halt reason.
+// On a non-empty output pointer, Done or a gate-failed Stuck, it commits the landing directory.
 // A gate-failed Stuck keeps its record and gains the resume way forward.
-// A failed commit, record or removal is a returned error, since re-running the session cannot fix a git or filesystem fault.
-// Before any session is built, a Publish failure record this run wrote reroutes the row to Merge-In when four facts hold, checked in order:
-// the record's written_at is at or after the run's start, as whole-second UTC, with a zero start counting as not this run's;
-// the task branch is still at the record's head;
-// the task worktree has no uncommitted path;
-// and some parent tip the told ParentTips seam returns is not an ancestor of HEAD.
-// The reroute spawns no writer, commits nothing and spends no bounce budget.
-// Its reason says the parent moved since the recorded failure while the task branch and worktree did not, and that Merge-In merges the parent and re-runs the failing gate.
-// It adds that a Merge-In stuck on a parent pair that is dirty, mid-merge, ahead of or diverged from its upstream needs that pair repaired before any resume, since a resume over it reroutes back to the same stop.
-// The reroute cap halts a row rerouted back from such a stop, and the halt embeds this reason.
-// A RunStart, TaskHead, ParentTips or IsAncestor error runs the writer as today, and a Dirty error counts as a dirty tree.
-// The reroute skips the review perch and Describe only while the task branch carries no commit and the worktree no edit since the failed verify, which ran on reviewed code.
+// A failed commit is a returned error, since re-running the session cannot fix a git or filesystem fault.
 //
-// The PR-Rework producer (NewPRRework) archives the plan and review run directories into the round, then recreates the review run directories and hands each archived one to the required KeepReviewRecords seam.
-// The settle record, its patch and the generation record therefore stay where the next review re-entry compares against them, on every Call that reaches the recreation, so a re-step after a failed carry carries again.
-// The archive also removes the plan amendment record, since the new generation's plan replaces the amended one.
-// PlanReviewSkippable answers false while that record exists, so the amended plan is judged and its settle records a round start.
-// LatestRejectReview returns the newest round's findings file and rejection time, the reject file a review amendment is told.
+// A rework round a run recorded before PR-Rework went stays readable.
+// PlanReviewSkippable classifies the live plan generation from the committed round records, and answers false while the plan amendment record exists, so the amended plan is judged and its settle records a round start.
+// ArchivedWebsterDirs lists each round's archived webster run record.
 //
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than
 // reusing internal/shedadapters' identically-shaped, unexported ones: shedadapters' versions are

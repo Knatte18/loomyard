@@ -246,7 +246,7 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			h := newLockHarness(t, awaitingAt(lockGateRow))
+			h := newLockHarness(t, awaitingAt("Plan-Bouncer"))
 			h.decision = &ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
 			h.spawnErr = &ChildOwnedElsewhereError{Owner: "m2"}
 			h.verdict = elsewhereVerdict
@@ -319,22 +319,6 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 
 		if h.spawns != 1 || h.marker() != "" {
 			t.Errorf("spawns = %d, marker = %q; want 1 and none", h.spawns, h.marker())
-		}
-	})
-
-	t.Run("a Publish retry resume refused as owned elsewhere pauses, writes no marker change and does not spawn again", func(t *testing.T) {
-		t.Parallel()
-		h := newRestepHarness(t)
-		h.status.State = shedengine.StatePaused
-		h.status.CurrentProducer = "target-row"
-		h.retryTaking = true
-		h.spawnErrs = []error{&ChildOwnedElsewhereError{Owner: "m2"}}
-
-		h.call(h.producer(), 6)
-
-		raw, err := os.ReadFile(publishRetryFile(h.scratchDir, "innerrun"))
-		if h.spawns != 1 || err != nil || !strings.HasPrefix(string(raw), publishRetryStarted+" ") {
-			t.Errorf("spawns = %d, publish-retry marker = %q (%v); want 1 and the marker still started", h.spawns, raw, err)
 		}
 	})
 }

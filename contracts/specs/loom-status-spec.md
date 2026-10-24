@@ -40,7 +40,7 @@ A fresh seed carries `current_producer: "Preflight"`, `state: "running"`, empty 
 {
   "current_producer": "Preflight",             // Shed-owned: which producer this run is at
   "state": "running",                          // Shed-owned: running | paused | done | blocked | awaiting | failed
-  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked/awaiting halt (awaiting is the planned PR-review hand-off at PR-Gate, or a review segment's escalation to the parent at its Bouncer row); a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or, for an exhausted bounce budget, a reason that starts with "bounce budget exhausted" and carries the told resume clause after it, which names the parent's resume, never a goto; a producer sets a reason that starts with "precondition unmet" when a precondition the run cannot settle on its own is unmet, and the reason continues with what is unmet and a trailing way forward clause, and the driver hands such a halt back and never resumes it
+  "error": "",                                 // Shed-owned: human-readable detail for a failed/blocked/awaiting halt (awaiting is a review segment's escalation to the parent at its Bouncer row); a blocked halt carries the producer's own stuck reason (the generic "stuck with no OnStuck target" when it supplied none) or, for an exhausted bounce budget, a reason that starts with "bounce budget exhausted" and carries the told resume clause after it, which names the parent's resume, never a goto; a producer sets a reason that starts with "precondition unmet" when a precondition the run cannot settle on its own is unmet, and the reason continues with what is unmet and a trailing way forward clause, and the driver hands such a halt back and never resumes it
   "parent_notice": "",                         // optional, Shed-owned: the one-line notice an awaiting escalation hands the run's parent; set only on an awaiting halt and absent on every other write
   "pause_reason": "",                          // optional, Shed-owned: why the run is paused; set by every write that records paused and cleared by every other write
   "pause_requested": false,                    // shared write-to-clear: set true by an outside actor, cleared by Shed
@@ -88,6 +88,13 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
   This file has a single writer (`Shed`, plus `lyx loom start` as the seeder and `lyx loom pause` as the pause verb, both writing through the same lock) and no version-compatibility pressure.
   A version stamp here would be a rarely-exercised guard that goes stale;
   it is deliberately omitted, to be reintroduced only if a real incompatibility ever forces it.
+
+## The `hand_back` key
+
+`lyx loom status` carries a top-level `hand_back` key, and the loop's stop envelope carries `loop.hand_back`.
+Both are true when the run is blocked and the recipe's told check answers true for the status's `current_producer` and `error`, and false otherwise, including when no check is told.
+For loom and darn the check is `landingshed.HandsBack`: a blocked stop at Merge-In or Finalize whose reason opens with the landing-stop prefix, or a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
+A true key marks a halt that goes to the orch, so every driver hands it back instead of routing it.
 
 ## The `waiting` key
 

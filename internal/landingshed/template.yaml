@@ -1,4 +1,4 @@
-require_pr_to_base: ["main"]  # list of base branch names Publish requires a pull request against; a list rather than a bool because tasks branch off other tasks, and a bool would force a pull request on every intermediate task-to-task merge
+deploy_branches: ["main"]  # list of base branch names a landing into which batten's Land row deploys, by running deploy; a list because tasks branch off other tasks, and only a landing into a listed branch is deployed; empty deploys nothing
 squash: true  # whether Finalize's parent-side merge squashes; true because a run produces one commit per card and an ordinary merge floods the parent with implementation noise
 conflict: opus[high]  # model-spec for the conflict-resolution session both producers' resolver runs under (see contracts/specs/llm-model-spec.md)
 conflict_timeout_min: 60  # minutes the conflict-resolution session's shuttle run is allowed to run
@@ -7,5 +7,10 @@ describe_timeout_min: 30  # minutes the Describe session's shuttle run is allowe
 trailer_text: ""  # fixed lines copied verbatim into every landing commit's trailer block, before any engine line; empty adds none
 engine_trailers:  # engine name to the trailer text copied verbatim into the landing commit when that engine ran a session in the task; an engine left out or set to "" adds nothing
   claude: "Co-Authored-By: Claude <noreply@anthropic.com>"
-deploy: ""  # shell command batten's Land row runs in the prime after a landing into a branch listed in require_pr_to_base; empty runs nothing
-parent_lock_idle_release_min: 10  # minutes a waiting run, or an undecided PR-Gate hand-off, keeps its parent lock before the lock is released; a value below 1 reads as 10
+deploy: ""  # shell command batten's Land row runs in the prime after a landing into a branch listed in deploy_branches; empty runs nothing
+fixer: opus[high]  # model-spec for the merge fixer session that Merge-In and Finalize run to fix a merge or test failure (see contracts/specs/llm-model-spec.md)
+fixer_timeout_min: 60  # minutes one fixer turn may run
+merge_fix_attempts: 2  # fixer turns one Merge-In row entry may spend
+finalize_fix_attempts: 2  # fixer turns one Finalize row entry may spend
+finalize_fix_max_lines: 40  # added plus deleted lines a fixer change may hold before it is over the cap
+parent_lock_idle_release_min: 10  # minutes a waiting run keeps its parent lock before the lock is released, bar a run at Finalize and running or with a live verify, which keeps it; a value below 1 reads as 10

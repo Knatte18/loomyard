@@ -1,4 +1,4 @@
-// failure.go declares the Publish failure record: the never-tracked file Publish leaves when a verify fails and a later passing Publish removes.
+// failure.go declares the landing failure record: the never-tracked file a landing row leaves when its gate fails and a later passing gate removes.
 
 package verifytree
 
@@ -10,7 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// FailureKind names which Publish verify failed: the gate a record's tier belongs to, or a retired spelling of one.
+// FailureKind names which gate failed: the gate a record's tier belongs to, or a retired spelling of one.
 type FailureKind string
 
 const (
@@ -55,7 +55,7 @@ type TracedCard struct {
 	Range CommitRange `yaml:"range,omitempty"`
 }
 
-// FailureTrace is what tracing a failed verify log to the plan returns and the Publish failure record stores.
+// FailureTrace is what tracing a failed verify log to the plan returns and the landing failure record stores.
 type FailureTrace struct {
 	// Cards are the plan cards the failing locations were traced to.
 	Cards []TracedCard
@@ -65,25 +65,21 @@ type FailureTrace struct {
 	Untraced []string
 }
 
-// PublishFailure is the Publish failure record.
+// LandingFailure is the landing failure record.
 // Cards, LaterRange and Untraced are the optional trace of the failure: a record without them reads as it always did.
-type PublishFailure struct {
+type LandingFailure struct {
 	// Kind names the failing verify.
 	Kind FailureKind `yaml:"kind"`
 	// Tier is the number of the failing tier of Kind's gate; it is always written, since tier 0 is a real tier, and a record of a retired Kind carries none.
 	Tier int `yaml:"tier"`
-	// Row is the producer row whose verify failed, empty for a record written before the field existed.
-	Row string `yaml:"row,omitempty"`
 	// Tests are the failing tests the verify's log names.
 	Tests []FailedTest `yaml:"tests,omitempty"`
 	// LogPath is the failing run's own verify log, which pruning keeps while the record names it.
 	LogPath string `yaml:"log_path"`
 	// Head is the commit the verify ran at.
 	Head string `yaml:"head"`
-	// MergeCommit is the merge-in commit Publish made, empty when it made none.
+	// MergeCommit is the merge-in commit the row made, empty when it made none.
 	MergeCommit string `yaml:"merge_commit,omitempty"`
-	// Target is the producer row a fix is routed back to, empty when the writer told none.
-	Target string `yaml:"target,omitempty"`
 	// WrittenAt is the record's write time in RFC 3339 whole-second UTC, empty for a record written before the field existed.
 	WrittenAt string `yaml:"written_at,omitempty"`
 	// Cards are the plan cards the failing locations were traced to.
@@ -94,39 +90,39 @@ type PublishFailure struct {
 	Untraced []string `yaml:"untraced,omitempty"`
 }
 
-// WritePublishFailure writes f as given to p.PublishFailure.
-func WritePublishFailure(p Paths, f PublishFailure) error {
+// WriteLandingFailure writes f as given to p.LandingFailure.
+func WriteLandingFailure(p Paths, f LandingFailure) error {
 	data, err := yaml.Marshal(f)
 	if err != nil {
-		return fmt.Errorf("verifytree: encode publish failure: %w", err)
+		return fmt.Errorf("verifytree: encode landing failure: %w", err)
 	}
-	if err := os.WriteFile(p.PublishFailure, data, 0o644); err != nil {
-		return fmt.Errorf("verifytree: write publish failure %s: %w", p.PublishFailure, err)
+	if err := os.WriteFile(p.LandingFailure, data, 0o644); err != nil {
+		return fmt.Errorf("verifytree: write landing failure %s: %w", p.LandingFailure, err)
 	}
 	return nil
 }
 
-// ReadPublishFailure reads the record at p.PublishFailure.
+// ReadLandingFailure reads the record at p.LandingFailure.
 // It reports false for an absent record and an error for a malformed one.
-func ReadPublishFailure(p Paths) (PublishFailure, bool, error) {
-	data, err := os.ReadFile(p.PublishFailure)
+func ReadLandingFailure(p Paths) (LandingFailure, bool, error) {
+	data, err := os.ReadFile(p.LandingFailure)
 	if errors.Is(err, os.ErrNotExist) {
-		return PublishFailure{}, false, nil
+		return LandingFailure{}, false, nil
 	}
 	if err != nil {
-		return PublishFailure{}, false, fmt.Errorf("verifytree: read publish failure %s: %w", p.PublishFailure, err)
+		return LandingFailure{}, false, fmt.Errorf("verifytree: read landing failure %s: %w", p.LandingFailure, err)
 	}
-	var f PublishFailure
+	var f LandingFailure
 	if err := yaml.Unmarshal(data, &f); err != nil {
-		return PublishFailure{}, false, fmt.Errorf("verifytree: decode publish failure %s: %w", p.PublishFailure, err)
+		return LandingFailure{}, false, fmt.Errorf("verifytree: decode landing failure %s: %w", p.LandingFailure, err)
 	}
 	return f, true, nil
 }
 
-// RemovePublishFailure removes the record and leaves the log it names in place; an absent record is not an error.
-func RemovePublishFailure(p Paths) error {
-	if err := os.Remove(p.PublishFailure); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("verifytree: remove %s: %w", p.PublishFailure, err)
+// RemoveLandingFailure removes the record and leaves the log it names in place; an absent record is not an error.
+func RemoveLandingFailure(p Paths) error {
+	if err := os.Remove(p.LandingFailure); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("verifytree: remove %s: %w", p.LandingFailure, err)
 	}
 	return nil
 }

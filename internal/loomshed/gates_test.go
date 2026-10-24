@@ -1,6 +1,6 @@
 // gates_test.go covers NewDiscussionGate and NewPlanGate's own outcome mapping, the ParsePlan error
 // split that is the subtlest rule in the task, the fail-closed severity predicate both gates key
-// their pass/fail split on, and NewReworkPlanGate's whole-plan check against the told first_card.
+// their pass/fail split on.
 //
 // It reuses three fixture helpers -- validDecisionRecord, writeDiscussionFixture, and
 // seedPlanFormatFixture -- that used to live alongside the two removed validate producers'
@@ -18,9 +18,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1000,155 +998,4 @@ func TestHasBlockingFinding_AgainstTheGate(t *testing.T) {
 			}
 		})
 	}
-}
-
-// seedReworkGlyphPlan writes a one-card language: go plan under anchorPath: a new generation whose card is numbered cardNumber, declares first_card: cardNumber when that is above 1, creates the glyph creates and, when uses is non-empty, also uses it.
-// It returns the plan committed at HEAD before the rework round, keyed by anchor-relative path: a one-card generation whose card 1 creates sub#Foo, already built in the worktree.
-// The told number is therefore 2.
-func seedReworkGlyphPlan(t *testing.T, anchorPath string, cardNumber int, creates, uses string) map[string][]byte {
-	t.Helper()
-	var usesTargets []string
-	if uses != "" {
-		usesTargets = []string{uses}
-	}
-	firstCard := 0
-	if cardNumber > 1 {
-		firstCard = cardNumber
-	}
-	plankit.Write(t, planparser.PlanDir(anchorPath), plankit.Plan{
-		Approved:  true,
-		Language:  "go",
-		FirstCard: firstCard,
-		Framing:   "Framing.",
-		Cards: []plankit.Card{{
-			Number:  cardNumber,
-			Slug:    "new-card",
-			Summary: fmt.Sprintf("placeholder card %d", cardNumber),
-			Groups:  []plankit.Group{{Label: "Create", Targets: []string{creates}}},
-			Uses:    usesTargets,
-			Intent:  "new generation card.",
-		}},
-	})
-	committed := map[string][]byte{}
-	for name, data := range plankit.Render(firstCardPlan(true, "go", "sub#Foo", "")) {
-		committed[path.Join(planparser.PlanDirRel(), name)] = data
-	}
-	return committed
-}
-
-// committedReader returns a ReadCommitted seam over committed.
-func committedReader(committed map[string][]byte) func(string) ([]byte, bool, error) {
-	return func(rel string) ([]byte, bool, error) {
-		data, ok := committed[rel]
-		return data, ok, nil
-	}
-}
-
-func TestNewReworkPlanGate(t *testing.T) {
-	builtRepo := map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"}
-
-	t.Run("WholeNewPlanNumberedFromToldCardPasses", func(t *testing.T) {
-		anchorPath := t.TempDir()
-		worktreeRoot := plankit.Repo(t, builtRepo)
-		committed := seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "")
-
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed), PlanContext{})()
-		if err != nil {
-			t.Fatalf("gate() error = %v; want nil", err)
-		}
-		if !result.Passed {
-			t.Errorf("gate() = %+v; want a pass", result)
-		}
-	})
-
-	t.Run("FirstCardDifferingFromToldNumberFails", func(t *testing.T) {
-		anchorPath := t.TempDir()
-		worktreeRoot := plankit.Repo(t, builtRepo)
-		committed := seedReworkGlyphPlan(t, anchorPath, 1, "newpkg#Bar", "")
-
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed), PlanContext{})()
-		if err != nil {
-			t.Fatalf("gate() error = %v; want nil", err)
-		}
-		if result.Passed || !strings.Contains(result.Findings, "rework-first-card") {
-			t.Errorf("gate() = %+v; want a rework-first-card failure", result)
-		}
-	})
-
-	t.Run("EveryCardIsResolved", func(t *testing.T) {
-		anchorPath := t.TempDir()
-		worktreeRoot := plankit.Repo(t, builtRepo)
-		committed := seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "sub#Missing")
-
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed), PlanContext{})()
-		if err != nil {
-			t.Fatalf("gate() error = %v; want nil", err)
-		}
-		if result.Passed || !strings.Contains(result.Findings, "glyph-not-found") {
-			t.Errorf("gate() = %+v; want a glyph-not-found failure", result)
-		}
-	})
-
-	t.Run("NoCardIsExemptedAsBuilt", func(t *testing.T) {
-		anchorPath := t.TempDir()
-		worktreeRoot := plankit.Repo(t, builtRepo)
-		committed := seedReworkGlyphPlan(t, anchorPath, 2, "sub#Foo", "")
-
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed), PlanContext{})()
-		if err != nil {
-			t.Fatalf("gate() error = %v; want nil", err)
-		}
-		if result.Passed || !strings.Contains(result.Findings, "create-already-exists") {
-			t.Errorf("gate() = %+v; want a create-already-exists failure, since a new-generation card that creates a built symbol is a defect", result)
-		}
-	})
-
-	t.Run("SymbolPairWithNoRenameToolFails", func(t *testing.T) {
-		anchorPath := t.TempDir()
-		pc := seedPlanContextFixture(t, anchorPath, "`sub#Foo` -> `plan:sub#Bar`", "", "absent", "")
-		committed := map[string][]byte{}
-		for name, data := range plankit.Render(firstCardPlan(true, "go", "sub#Foo", "")) {
-			committed[path.Join(planparser.PlanDirRel(), name)] = data
-		}
-
-		result, err := NewReworkPlanGate(anchorPath, plankit.Repo(t, builtRepo), "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed), pc)()
-		if err != nil {
-			t.Fatalf("gate() error = %v; want nil", err)
-		}
-		if result.Passed || !strings.Contains(result.Findings, renameToolMissingCheck) {
-			t.Errorf("gate() = %+v; want a %s failure", result, renameToolMissingCheck)
-		}
-	})
-
-	t.Run("PatternHeadroomIsReportedThroughTheReworkGate", func(t *testing.T) {
-		anchorPath := t.TempDir()
-		baseOverview := overviewOf(pattern.HeadroomBytes-100, "- `PATTERN-a` — short.")
-		longLine := "- `PATTERN-a` — " + strings.Repeat("l", 200)
-		pc := seedPlanContextFixture(t, anchorPath, "", "", "absent", fenceOf(longLine))
-		pc.PatternBase = func() ([]byte, error) { return []byte(baseOverview), nil }
-		committed := map[string][]byte{}
-		for name, data := range plankit.Render(firstCardPlan(true, "go", "sub#Foo", "")) {
-			committed[path.Join(planparser.PlanDirRel(), name)] = data
-		}
-		worktreeRoot := plankit.Repo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n", "PATTERN.md": baseOverview})
-
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(committed), pc)()
-		if err != nil {
-			t.Fatalf("gate() error = %v; want nil", err)
-		}
-		if result.Passed || !strings.Contains(result.Findings, patternHeadroomCheck) {
-			t.Errorf("gate() = %+v; want a %s failure", result, patternHeadroomCheck)
-		}
-	})
-
-	t.Run("NoCommittedPlanReturnsAnError", func(t *testing.T) {
-		anchorPath := t.TempDir()
-		worktreeRoot := plankit.Repo(t, builtRepo)
-		seedReworkGlyphPlan(t, anchorPath, 2, "newpkg#Bar", "")
-
-		result, err := NewReworkPlanGate(anchorPath, worktreeRoot, "", planglyph.NewIndex(fabricengine.NewReferenceRule()), committedReader(nil), PlanContext{})()
-		if err == nil {
-			t.Fatalf("gate() = %+v, nil; want an error when HEAD carries no plan", result)
-		}
-	})
 }

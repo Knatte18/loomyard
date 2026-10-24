@@ -52,13 +52,12 @@ An unknown value is a construction error naming `rework-exempt`.
 A `Bouncer` row's optional `carry_over` key is a scalar naming the row's own review segment, for example `Plan-Review`, and selects `Env.CarryOver`, the closure that writes and commits the segment's carry-over entry into the decision record.
 It follows the same two rules as `commit_seam` and `skip_seam`: absent leaves the seam nil, and a present key naming a closure the `Env` does not carry is a construction error.
 The value is the segment name the entry is filed under, so a recipe test pins it equal to the row's `segment`.
-A `Bouncer` row's optional `subject` key takes one of exactly three literal values, `document`, `code` and `merge`, and selects the seams that tell the Bouncer what its segment judges.
+A `Bouncer` row's optional `subject` key takes one of exactly two literal values, `document` and `code`, and selects the seams that tell the Bouncer what its segment judges.
 `document` selects `Env.DocumentSubject`, told the row's resolved artifact paths, and `Env.RecordHead`, told as the settled base.
 `code` selects `Env.CodeSubject` and `Env.MergeInOnly`.
-`merge` selects `Env.MergeSubject` and makes a changed subject start a full generation instead of an amendment.
-Every kind also tells the Bouncer `Env.RejectReview`, which stays optional, and the segment's `AmendMaxBounces` as the amendment allowance.
+Every kind also tells the Bouncer `Env.ReviewInput`, which stays optional, and the segment's `AmendMaxBounces` as the amendment allowance.
 It follows the same two rules as `commit_seam`: absent tells no subject and keeps the Bouncer on its clear-and-reseed path, and a present key naming a seam the `Env` does not carry is a construction error naming that seam.
-An unknown value is a construction error naming the key, the value and the three legal ones.
+An unknown value is a construction error naming the key, the value and the two legal ones.
 
 A `MultiLLM` row runs one lead and its advisors as seats.
 Its keys are `role`, `segment` and `seats`, and the optional `gates`, `timeout_min`, `interactive` and `tokens`.
@@ -70,7 +69,7 @@ The row drives `Env.Seats`, and a nil seam is a construction error.
 A gate-capable row's `gates` key selects validators by name from a closed vocabulary, in order, each element carrying its own `attempts` budget (0 means off) and an optional `pass_on_cap`.
 An absent key is ungated, while an empty list, a duplicate name, or a negative budget is a construction error.
 `parent-review` must be the last element of its list, else construction fails.
-The vocabulary is `discussion`, `plan`, `rework-plan`, `description`, `verify` and `parent-review`.
+The vocabulary is `discussion`, `plan`, `description`, `verify` and `parent-review`.
 `verify` lints the comments, then runs the verify command the wiring tells in `Env.VerifyCommand`, which it requires.
 `Env.VerifyTreeScope`, when set, selects the darn form, which runs the tree-scoped command it answers for a diff wholly under the configured trees and the impact-scoped command otherwise, and the round form is the default.
 `Env.VerifyMergeBase`, when set, is the base of the headroom lint, which runs before the comment lint, or of both lints under the darn form, which requires it.

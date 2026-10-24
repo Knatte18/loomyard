@@ -24,9 +24,6 @@ import (
 // driveTestEpoch is the time the scripted history is laid out from.
 var driveTestEpoch = time.Date(2026, 10, 12, 10, 0, 0, 0, time.UTC)
 
-// verifyTestRow is the row a verify halt blocks at in these tests.
-const verifyTestRow = "Publish"
-
 // arbiterTestRole is the role name the scripted arbiter outcomes carry.
 const arbiterTestRole = "arbiter"
 
@@ -55,18 +52,6 @@ func driveStatusFor(t *testing.T, raw []byte) shedengine.Status {
 		status.History = append(status.History, shedengine.HistoryEntry{Producer: "Row", Outcome: shedengine.Done, At: driveTestEpoch.Add(time.Duration(i) * time.Second).Format(time.RFC3339)})
 	}
 	return status
-}
-
-// verifyHaltStatus is the status of a run whose verify row halted.
-func verifyHaltStatus() shedengine.Status {
-	return shedengine.Status{
-		State:           shedengine.StateBlocked,
-		CurrentProducer: verifyTestRow,
-		History: []shedengine.HistoryEntry{
-			{Producer: "Plan", Outcome: shedengine.Done, At: driveTestEpoch.Format(time.RFC3339)},
-			{Producer: verifyTestRow, Outcome: shedengine.Stuck, At: driveTestEpoch.Add(10 * time.Second).Format(time.RFC3339)},
-		},
-	}
 }
 
 // wiredExecutable is the lyx path the settle tests resolve at wiring time; a hand-over must spawn its successor from it.
@@ -102,9 +87,6 @@ func TestGoDriver_Settle(t *testing.T) {
 	interrupted := func(t *testing.T) []byte {
 		return driveEnvelopeJSON(t, map[string]any{"ok": false, "kind": "interrupted", "error": "the step ended without an envelope"},
 			map[string]any{"state": "running", "current_producer": "Build", "history_length": 2, "interrupt_policy": "reinvoke"})
-	}
-	verifyHalt := func(t *testing.T) []byte {
-		return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "blocked"}, map[string]any{"state": "blocked", "current_producer": verifyTestRow, "history_length": 2})
 	}
 	transientFailure := func(t *testing.T) []byte {
 		return driveEnvelopeJSON(t, map[string]any{"ok": false, "kind": "producer", "transient": "api", "error": "the API timed out"},
@@ -156,9 +138,16 @@ func TestGoDriver_Settle(t *testing.T) {
 		},
 	}
 
+	finalizeCapStatus := shedengine.Status{
+		State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: shedengine.ReasonRerouteCapReached + " for Finalize; way forward: the orch resumes",
+		History: append(slices.Clone(blockedStatus.History), shedengine.HistoryEntry{Producer: "Finalize", Outcome: shedengine.Stuck, At: driveTestEpoch.Add(2 * time.Second).Format(time.RFC3339)}),
+	}
+
 	tests := []struct {
 		name  string
 		steps []func(t *testing.T) []byte
+		// handsBack wires Deps.HandsBack to mark a blocked Finalize reroute-cap status.
+		handsBack bool
 		// statuses, when set, is the status the run shows after each step; otherwise the status the step's envelope describes.
 		statuses []shedengine.Status
 		// statusSeq, when set, is what the nth status read after the first step returns, the last entry repeating.
@@ -166,16 +155,11 @@ func TestGoDriver_Settle(t *testing.T) {
 		// initialStatus is what the status read before the first step returns; without it the run has no status file.
 		initialStatus *shedengine.Status
 		// settleSeed holds the settle records an earlier process left.
-		settleSeed  []SettleRecord
-		runLockHeld bool
-		escalation  bool
-		// haltTarget, when set, is the row the verify seam's Halt reports as matching the blocked stop.
-		haltTarget string
-		// watched is what the Watched seam reports; retrySpentElsewhere is what the verify seam's RetrySpentElsewhere reports.
-		watched             bool
-		retrySpentElsewhere bool
-		pauseCovered        []bool
-		orchRecorded        bool
+		settleSeed   []SettleRecord
+		runLockHeld  bool
+		escalation   bool
+		pauseCovered []bool
+		orchRecorded bool
 
 		// The agent seams: what Tackler and Arbiter return, and what ConsumeTackler refuses with.
 		tacklerReturns TacklerEnvelope
@@ -199,7 +183,7 @@ func TestGoDriver_Settle(t *testing.T) {
 		spawnErr     error
 
 		// Each no-group field leaves that optional group nil for the row.
-		noArbiter, noVerify, noHandOver, noTamper, noCommit bool
+		noArbiter, noHandOver, noTamper, noCommit bool
 
 		// startCheck wires the start check, which answers startRefusal and startErr.
 		startCheck   bool
@@ -266,36 +250,6 @@ func TestGoDriver_Settle(t *testing.T) {
 		{
 			name: "awaiting with a notice relays it and parks", steps: []func(*testing.T) []byte{awaiting("review is ready")}, orchRecorded: true,
 			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack,
-		},
-		{
-			name:  "unwatched verify halt with a matching record goes to its target once, and a second such halt parks",
-			steps: []func(*testing.T) []byte{verifyHalt, verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus(), verifyHaltStatus()}, haltTarget: "Build",
-			wantCalls:   []string{"step", "goto:Build", "step"},
-			wantActions: []string{shedrun.SettleVerifyRetry, shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
-		},
-		{
-			name: "watched verify halt parks with no goto and no notice", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
-			haltTarget: "Build", watched: true, orchRecorded: true,
-			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
-		},
-		{
-			name: "verify halt whose retry another actor spent parks with no goto", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
-			haltTarget: "Build", retrySpentElsewhere: true,
-			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
-		},
-		{
-			name: "verify halt with a retry record from an earlier process parks with no goto", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
-			haltTarget: "Build",
-			settleSeed: []SettleRecord{{StopKey: StopKey{CurrentProducer: verifyTestRow, HistoryLength: 1, State: "blocked"}, Settler: shedrun.SettlerGoRule, Action: shedrun.SettleVerifyRetry}},
-			wantCalls:  []string{"step"}, wantActions: []string{shedrun.SettleVerifyRetry, shedrun.SettleHandBack}, wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
-		},
-		{
-			name: "a verify halt that matches no record drives no goto and reaches the tackler", steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()},
-			tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
-			wantCalls:      []string{"step", "tackler", "snapshot", "snapshot"},
-			wantActions:    []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent},
-			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
-			wantReportHas: map[int][]string{2: {"what now?", "tackler attempt 1: verdict hand-back", "Friction directory: /loom-friction"}},
 		},
 		{
 			name:  "a transient stop calls the tackler once, and its resume is consumed then re-stepped",
@@ -485,11 +439,6 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantCalls: []string{"step", "hold", "step", "commit-records"}, wantActions: []string{shedrun.SettleRestep}, wantExit: ExitDone,
 		},
 		{
-			name: "a pause covering an unwatched verify halt holds the goto", steps: []func(*testing.T) []byte{verifyHalt, done},
-			statuses: []shedengine.Status{verifyHaltStatus(), driveStatusFor(t, done(t))}, haltTarget: "Build", pauseCovered: []bool{true},
-			wantCalls: []string{"step", "hold", "goto:Build", "step", "commit-records"}, wantActions: []string{shedrun.SettleVerifyRetry}, wantExit: ExitDone,
-		},
-		{
 			name:  "no arbiter: a returned tackler resume hands back with no arbiter call",
 			steps: []func(*testing.T) []byte{blocked}, openKey: &blockedKey, openTackler: "tackler/1", openApplied: true, noArbiter: true,
 			wantCalls:   []string{"step"},
@@ -512,13 +461,6 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
-			name:  "no verify seam: a blocked stop goes to the tackler, never a goto",
-			steps: []func(*testing.T) []byte{verifyHalt}, statuses: []shedengine.Status{verifyHaltStatus()}, haltTarget: "Build", noVerify: true, tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
-			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
-			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent},
-			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
-		},
-		{
 			name:  "no tamper seam: a tackler resume is consumed with no snapshot taken and no tampered cause",
 			steps: []func(*testing.T) []byte{transientFailure, done}, tacklerReturns: tacklerOutcome(TacklerVerdictResume, 1), noTamper: true,
 			currentSnap: WorktreeSnapshot{Head: "b"}, attemptSnap: WorktreeSnapshot{Head: "a"},
@@ -530,6 +472,19 @@ func TestGoDriver_Settle(t *testing.T) {
 			steps:     []func(*testing.T) []byte{done},
 			noCommit:  true,
 			wantCalls: []string{"step"}, wantExit: ExitDone,
+		},
+		{
+			name:  "a status moved to a blocked landing halt hands back with no tackler, arbiter or hand-over call",
+			steps: []func(*testing.T) []byte{blocked}, statusSeq: []shedengine.Status{finalizeCapStatus}, handsBack: true, buildChanged: true, escalation: true,
+			wantCalls: []string{"step"}, wantActions: []string{shedrun.SettleMoved, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerGoRule, shedrun.SettlerParent},
+			wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{1: {"only the orch's resume lifts it"}},
+		},
+		{
+			name:  "no hand-back check: a status moved to a blocked reroute-cap halt goes to the tackler",
+			steps: []func(*testing.T) []byte{blocked}, statusSeq: []shedengine.Status{finalizeCapStatus}, tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
+			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
+			wantActions: []string{shedrun.SettleMoved, shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerGoRule, shedrun.SettlerTackler, shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "a blocked start the check refuses hands back quoting the refusal and steps nothing",
@@ -711,7 +666,6 @@ func TestGoDriver_Settle(t *testing.T) {
 					calls = append(calls, "note")
 					return nil
 				},
-				Watched: func() bool { return tt.watched },
 				Arbiter: &ArbiterSeam{
 					EscalationPending: func(string) (bool, error) { return tt.escalation, nil },
 					Judge: func(envelopePath, reportPath, caseBriefPath string) (ArbiterOutcome, error) {
@@ -724,12 +678,6 @@ func TestGoDriver_Settle(t *testing.T) {
 					AttemptEnvelope: func(string) (string, error) {
 						calls = append(calls, "attempt-envelope")
 						return arbiterEnvelopePath, nil
-					},
-				},
-				Verify: &VerifySeam{
-					Halt: func() (bool, string, error) { return tt.haltTarget != "", tt.haltTarget, nil },
-					RetrySpentElsewhere: func() (bool, error) {
-						return tt.retrySpentElsewhere, nil
 					},
 				},
 				HandOver: &HandOverSeam{
@@ -762,9 +710,6 @@ func TestGoDriver_Settle(t *testing.T) {
 			if tt.noArbiter {
 				deps.Arbiter = nil
 			}
-			if tt.noVerify {
-				deps.Verify = nil
-			}
 			if tt.noHandOver {
 				deps.HandOver = nil
 			}
@@ -773,6 +718,11 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 			if tt.noCommit {
 				deps.CommitRecords = nil
+			}
+			if tt.handsBack {
+				deps.HandsBack = func(producer, reason string) bool {
+					return producer == "Finalize" && strings.HasPrefix(reason, shedengine.ReasonRerouteCapReached)
+				}
 			}
 			if tt.startCheck {
 				deps.StartCheck = func(row string) (string, error) {

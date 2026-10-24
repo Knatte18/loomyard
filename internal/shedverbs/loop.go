@@ -332,6 +332,7 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	obj.CurrentProducer = after.CurrentProducer
 	obj.HistoryLength = len(after.History)
 	obj.State = string(after.State)
+	obj.HandBack = spec.handsBack(after)
 	obj.StatusMoved = before.CurrentProducer != after.CurrentProducer || len(before.History) != len(after.History)
 	if spec.Hooks.InterruptPolicyFor != nil {
 		obj.InterruptPolicy = spec.Hooks.InterruptPolicyFor(after.CurrentProducer)

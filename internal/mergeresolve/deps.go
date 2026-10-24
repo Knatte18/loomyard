@@ -22,6 +22,8 @@ type MergeSurface interface {
 	// MergeIn merges source into the current pair, returning any conflicts as a result state rather
 	// than an error.
 	MergeIn(source string) (fabricengine.MergeResult, error)
+	// MergeInAt merges the commit tip into the current pair as a merge-in of source, returning any conflicts as a result state rather than an error.
+	MergeInAt(source, tip string) (fabricengine.MergeResult, error)
 	// MergeStageResolved stages the given, already-resolved conflict paths so MergeContinue's own
 	// index guard can pass.
 	MergeStageResolved(paths []string) (fabricengine.StageResult, error)

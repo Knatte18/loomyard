@@ -8,15 +8,14 @@ busy_quit_sec: 120  # seconds a Go test binary under lyx gate test may keep a CP
 # Inside the mapping a value holding a brace, comma or bracket is a double-quoted string.
 tiers: {}
 
-# Gate name to the list of tier numbers that site runs; card, batch, round, final, landing and publish are read by lyx.
-# Only publish may be empty; a tier a list names must be declared above when the gate runs.
+# Gate name to the list of tier numbers that site runs; card, batch, round, final and landing are read by lyx.
+# No list may be empty, and a tier a list names must be declared above when the gate runs.
 gates:
   card: [0]
   batch: [0]
   round: [0]
   final: [0]
   landing: [0]
-  publish: []
 
 # How a computed, base or card scope maps to {targets}: go derives the impacted Go packages per module, none runs every tier whole.
 scoper: none

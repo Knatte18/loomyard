@@ -14,6 +14,7 @@
 // --by shed is refused before any write, since shed is the label of lyx's own automatic steps.
 // status's generic core is eleven keys, and pause_reason is the status file's value; the human view prints it as a "why" line for a paused run with a non-empty reason.
 // Spec.GotoGuard is the recipe's told check of a goto target, which every goto passes on; nil admits every target.
+// Spec.HandBack is the recipe's told check of a blocked stop that goes to the orch, which keeps the package recipe-generic: the loop's stop envelope and lyx shed status report its answer as hand_back.
 //
 // step prints a short envelope by default.
 // Before printing, it writes the full envelope to its per-invocation record under Spec.StepsDir, and the short envelope names that record's path as "envelope_path".
@@ -47,7 +48,9 @@
 // LastStepBuildChanged reads whether the last step ran on a known build other than the one passed, which an in-process driver judges against the lyx on disk.
 //
 // The final envelope is the stop step's short envelope plus a loop object whose keys are closed:
-// steps, first_producer, stop, detail, status_moved, restep (only when a re-step ran), current_producer, history_length, state, interrupt_policy, trace_copy and stderr_path.
+// steps, first_producer, stop, detail, status_moved, hand_back, restep (only when a re-step ran), current_producer, history_length, state, interrupt_policy, trace_copy and stderr_path.
+// hand_back is true when the stop is blocked and Spec.HandBack, the recipe's told check, answers true for the status's current producer and error, so a driver hands the halt to the orch; nil marks nothing.
+// lyx shed status reports the same hand_back key at its top level, over the status file.
 // detail is the stop's error or reason and the WARN and ERROR lines and last lines of the stop step's trace, capped by lines and bytes.
 // trace_copy is a copy of the stop step's trace files, which outlives a sweep of the trace directory.
 // A refusal of the --until-stop invocation's own arming goes through ReportLoopArmError, which prints the bootstrap error with a loop object that stopped with no step run.

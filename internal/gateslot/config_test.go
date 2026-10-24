@@ -20,7 +20,7 @@ import (
 
 var templateDefaults = Config{
 	Slots: 2, BusyQuitSec: 120,
-	Gates:  map[string][]int{"card": {0}, "batch": {0}, "round": {0}, "final": {0}, "landing": {0}, "publish": {}},
+	Gates:  map[string][]int{"card": {0}, "batch": {0}, "round": {0}, "final": {0}, "landing": {0}},
 	Scoper: "none",
 }
 
@@ -456,6 +456,53 @@ func TestLoadConfig_DropsTierParallelOfUndeclaredTier(t *testing.T) {
 	}
 }
 
+func TestMigrateConfig(t *testing.T) {
+	t.Parallel()
+
+	withPublish := "gates:\n  card: [0]\n  round: [0, 1]\n  publish: [2]\nscoper: none\n"
+	withoutPublish := "gates:\n  card: [0]\n  round: [0, 1]\nscoper: none\n"
+
+	tests := []struct {
+		name      string
+		input     string
+		want      string
+		wantLines []string
+		wantErr   bool
+	}{
+		{"a publish list pruned and the round list kept", withPublish, withoutPublish, []string{"gates.publish: retired, removed"}, false},
+		{"an empty publish list pruned", "gates:\n  card: [0]\n  publish: []\n", "gates:\n  card: [0]\n", []string{"gates.publish: retired, removed"}, false},
+		{"a document without publish unchanged", withoutPublish, withoutPublish, nil, false},
+		{"an empty document unchanged", "", "", nil, false},
+		{"an unparseable document", "gates: [", "", nil, true},
+		{"a root that is not a mapping", "- card\n", "", nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, lines, err := MigrateConfig([]byte(tt.input))
+			if tt.wantErr {
+				if !errors.Is(err, configengine.ErrInvalid) {
+					t.Fatalf("MigrateConfig(%q) error = %v; want one marked configengine.ErrInvalid", tt.input, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("MigrateConfig(%q) error = %v; want none", tt.input, err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("MigrateConfig(%q) = %q; want %q", tt.input, got, tt.want)
+			}
+			if diff := cmp.Diff(tt.wantLines, lines); diff != "" {
+				t.Errorf("MigrateConfig(%q) lines mismatch (-want +got):\n%s", tt.input, diff)
+			}
+			again, againLines, err := MigrateConfig(got)
+			if err != nil || string(again) != string(got) || len(againLines) != 0 {
+				t.Errorf("second MigrateConfig = (%q, %v, %v); want the document unchanged with no lines", again, againLines, err)
+			}
+		})
+	}
+}
+
 func TestConfig_TierUse(t *testing.T) {
 	t.Parallel()
 
@@ -463,7 +510,7 @@ func TestConfig_TierUse(t *testing.T) {
 		Tiers: map[string]Tier{"tier0": {About: "unit tests"}, "tier1": {About: "integration tests"}},
 		Gates: map[string][]int{
 			"card": {0}, "batch": {0, 1}, "round": {0, 1}, "final": {0, 1}, "landing": {0, 1},
-			"publish": {}, "push": {0, 1}, "dangling": {0, 2}, "empty": {},
+			"push": {0, 1}, "dangling": {0, 2}, "empty": {},
 		},
 	}
 
@@ -477,10 +524,10 @@ func TestConfig_TierUse(t *testing.T) {
 			wantErr string
 		}{
 			{"a declared list", twoTier, "batch", []int{0, 1}, ""},
-			{"an empty publish list", twoTier, "publish", []int{}, ""},
 			{"a gate the config holds no list for", twoTier, "nope", nil, `gates holds no list for "nope"`},
 			{"a list naming an undeclared tier", twoTier, "dangling", nil, "gates.dangling lists tier2, which the hub does not declare"},
-			{"an empty list for a gate but publish", twoTier, "empty", nil, "gates.empty is empty, and only publish may verify nothing"},
+			{"an empty list for any gate", twoTier, "empty", nil, "gates.empty is empty, and every gate verifies at least one tier"},
+			{"an empty list for a gate lyx reads", Config{Tiers: twoTier.Tiers, Gates: map[string][]int{"round": {}}}, "round", nil, "gates.round is empty, and every gate verifies at least one tier"},
 			{"a hub with no tier0", Config{Tiers: map[string]Tier{"tier1": {}}, Gates: twoTier.Gates}, "batch", nil, "the hub declares no tier0"},
 		}
 		for _, tt := range tests {
@@ -524,7 +571,6 @@ func TestConfig_TierUse(t *testing.T) {
 			{"batch", []string{"--all"}, "lyx gate test --wait --tier 0 --tier 1 --all"},
 			{"card", []string{"--card", "03"}, "lyx gate test --wait --tier 0 --card 03"},
 			{"push", nil, "lyx gate test --wait --tier 0 --tier 1"},
-			{"publish", []string{"--all"}, ""},
 		}
 		for _, tt := range tests {
 			got, err := twoTier.GateCall(tt.gate, tt.scope...)
@@ -546,7 +592,7 @@ func TestConfig_TierUse(t *testing.T) {
 	t.Run("TiersValue", func(t *testing.T) {
 		t.Parallel()
 		want := "- tier0: unit tests\n- tier1: integration tests\n" +
-			"- gate card: [0]\n- gate batch: [0, 1]\n- gate round: [0, 1]\n- gate final: [0, 1]\n- gate landing: [0, 1]\n- gate publish: []"
+			"- gate card: [0]\n- gate batch: [0, 1]\n- gate round: [0, 1]\n- gate final: [0, 1]\n- gate landing: [0, 1]"
 		if got := twoTier.TiersValue(); got != want {
 			t.Errorf("TiersValue() = %q; want %q", got, want)
 		}

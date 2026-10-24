@@ -748,36 +748,14 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		assertErrContains(t, err, "SkipPlanReview")
 	})
 
-	t.Run("MergeOverlapResolvesToSkipMergeReview", func(t *testing.T) {
+	t.Run("RetiredMergeOverlapIsAnUnknownValue", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.Shuttle = judgeSeamShuttle()
-		skipCalls, planCalls := 0, 0
-		env.SkipMergeReview = func() (bool, error) { skipCalls++; return true, nil }
-		env.SkipPlanReview = func() (bool, error) { planCalls++; return false, nil }
-		cfg := minimalBouncerConfig(t, env)
-		cfg["skip_seam"] = "merge-overlap"
-
-		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
-		if err != nil {
-			t.Fatalf("bouncerEntry() error = %v; want nil", err)
-		}
-		outcome, _, err := producer.Call(context.Background())
-		if err != nil || outcome != shedengine.Done {
-			t.Fatalf("Call() = %q, %v; want Done, nil (the skip settles with no review)", outcome, err)
-		}
-		if skipCalls != 1 || planCalls != 0 {
-			t.Errorf("SkipMergeReview calls = %d, SkipPlanReview calls = %d; want 1 and 0", skipCalls, planCalls)
-		}
-	})
-
-	t.Run("MergeOverlapWithNilEnvClosureFails", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.SkipMergeReview = nil
 		cfg := minimalBouncerConfig(t, env)
 		cfg["skip_seam"] = "merge-overlap"
 
 		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
-		assertErrContains(t, err, "SkipMergeReview")
+		assertErrContains(t, err, "skip_seam")
+		assertErrContains(t, err, "rework-exempt")
 	})
 
 	t.Run("ZeroRoundsApprovesAtOnce", func(t *testing.T) {
@@ -827,7 +805,6 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "skip_seam")
 		assertErrContains(t, err, "rework-exempt")
-		assertErrContains(t, err, "merge-overlap")
 	})
 }
 
@@ -922,37 +899,14 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		}
 	})
 
-	t.Run("MergeResolvesToApproveMergeReview", func(t *testing.T) {
+	t.Run("RetiredMergeIsAnUnknownValue", func(t *testing.T) {
 		env := newTestEnv(t)
-		env.Shuttle = judgeSeamShuttle()
-		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
-		mergeCalls, planCalls := 0, 0
-		env.ApproveMergeReview = func() error { mergeCalls++; return nil }
-		env.ApprovePlan = func() error { planCalls++; return nil }
-		cfg := minimalBouncerConfig(t, env)
-		cfg["approve_seam"] = "merge"
-		layoutBouncerRound1Report(t, env)
-
-		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
-		if err != nil {
-			t.Fatalf("bouncerEntry() error = %v; want nil", err)
-		}
-		if _, _, err := producer.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v; want nil", err)
-		}
-		if mergeCalls != 1 || planCalls != 0 {
-			t.Errorf("ApproveMergeReview calls = %d, ApprovePlan calls = %d; want 1 and 0", mergeCalls, planCalls)
-		}
-	})
-
-	t.Run("MergeWithNilEnvClosureIsConstructionError", func(t *testing.T) {
-		env := newTestEnv(t)
-		env.ApproveMergeReview = nil
 		cfg := minimalBouncerConfig(t, env)
 		cfg["approve_seam"] = "merge"
 
 		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
-		assertErrContains(t, err, "ApproveMergeReview")
+		assertErrContains(t, err, "approve_seam")
+		assertErrContains(t, err, "plan")
 	})
 
 	t.Run("AbsentLeavesSeamNil", func(t *testing.T) {
@@ -984,7 +938,6 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "approve_seam")
 		assertErrContains(t, err, "plan")
-		assertErrContains(t, err, "merge")
 	})
 
 	t.Run("PresentButMissingEnvClosureIsConstructionError", func(t *testing.T) {
@@ -1349,8 +1302,8 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 
 // subjectSeamCounts counts the calls each subject seam of an Env received, and the artifact paths the document seam was told.
 type subjectSeamCounts struct {
-	document, code, merge, recordHead int
-	documentPaths                     []string
+	document, code, recordHead int
+	documentPaths              []string
 }
 
 // withSubjectSeams fills env's subject seams with fakes answering the subject build(hash) for the current value of *hash, and returns what they were called with.
@@ -1365,10 +1318,6 @@ func withSubjectSeams(env *Env, hash *string) *subjectSeamCounts {
 		counts.code++
 		return shedadapters.Subject{Kind: shedadapters.SubjectCode, MergeBase: "merge-base", Head: "head", FullHash: *hash, PatchID: "patch-id"}, true, nil
 	}
-	env.MergeSubject = func() (shedadapters.Subject, bool, error) {
-		counts.merge++
-		return shedadapters.Subject{Kind: shedadapters.SubjectMerge, Hash: *hash}, true, nil
-	}
 	env.MergeInOnly = func(string) (bool, error) { return false, nil }
 	env.RecordHead = func() (string, error) { counts.recordHead++; return "record-head", nil }
 	return counts
@@ -1376,7 +1325,7 @@ func withSubjectSeams(env *Env, hash *string) *subjectSeamCounts {
 
 // TestBouncerEntry_Subject covers the optional subject key and the amendment allowance:
 // each value reaches the Bouncer with the seams it selects, so a settled verdict is re-settled over an unchanged subject without a spawn.
-// A changed subject starts an amendment under the segment's allowance or, for merge, a full generation.
+// A changed subject starts an amendment under the segment's allowance.
 // A named seam the Env does not carry and an unknown value are construction errors, and an absent key keeps no record.
 func TestBouncerEntry_Subject(t *testing.T) {
 	t.Parallel()
@@ -1393,10 +1342,9 @@ func TestBouncerEntry_Subject(t *testing.T) {
 		wantCalls func(counts *subjectSeamCounts) bool
 	}{
 		{"Document_AllowanceZeroSettlesWithoutReview", "document", 0, false, func(c *subjectSeamCounts) bool {
-			return c.document > 0 && c.recordHead > 0 && c.code == 0 && c.merge == 0
+			return c.document > 0 && c.recordHead > 0 && c.code == 0
 		}},
-		{"Code_AllowanceReachesTheAmendment", "code", 2, true, func(c *subjectSeamCounts) bool { return c.code > 0 && c.document == 0 && c.merge == 0 }},
-		{"Merge_FullGenerationIgnoresTheAllowance", "merge", 0, true, func(c *subjectSeamCounts) bool { return c.merge > 0 && c.document == 0 && c.code == 0 }},
+		{"Code_AllowanceReachesTheAmendment", "code", 2, true, func(c *subjectSeamCounts) bool { return c.code > 0 && c.document == 0 }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1464,7 +1412,6 @@ func TestBouncerEntry_Subject(t *testing.T) {
 			{"document", func(env *Env) { env.RecordHead = nil }, "RecordHead"},
 			{"code", func(env *Env) { env.CodeSubject = nil }, "CodeSubject"},
 			{"code", func(env *Env) { env.MergeInOnly = nil }, "MergeInOnly"},
-			{"merge", func(env *Env) { env.MergeSubject = nil }, "MergeSubject"},
 		}
 		for _, tt := range tests {
 			t.Run(tt.want, func(t *testing.T) {
@@ -1486,10 +1433,10 @@ func TestBouncerEntry_Subject(t *testing.T) {
 		t.Parallel()
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
-		cfg["subject"] = "diff"
+		cfg["subject"] = "merge"
 
 		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
-		for _, want := range []string{"subject", "diff", "document", "code", "merge"} {
+		for _, want := range []string{"subject", "merge", "document", "code"} {
 			assertErrContains(t, err, want)
 		}
 	})
@@ -1511,7 +1458,7 @@ func TestBouncerEntry_Subject(t *testing.T) {
 		if outcome, _, err := producer.Call(context.Background()); err != nil || outcome != shedengine.Done {
 			t.Fatalf("Call() = %q, %v; want %q, nil", outcome, err, shedengine.Done)
 		}
-		if counts.document != 0 || counts.code != 0 || counts.merge != 0 || counts.recordHead != 0 {
+		if counts.document != 0 || counts.code != 0 || counts.recordHead != 0 {
 			t.Errorf("subject seam calls = %+v; want none for a row naming no subject", *counts)
 		}
 		if _, err := os.Stat(filepath.Join(env.RunRoot, "review-segment", "settle-record.json")); !os.IsNotExist(err) {
