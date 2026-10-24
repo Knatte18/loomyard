@@ -54,7 +54,7 @@ type failureRecorder struct {
 }
 
 // recordFailure writes the landing failure record for a verify of the row's gate key that ended in result.
-// The record's kind is that key, and its tier is the last failing tier the log's summary lines name;
+// The record's kind is that key, and its tier is the first failing tier the log's summary lines name;
 // a log without one, such as a refusal before the first tier, takes the highest tier of the key.
 // A result that is not a failed run, a timeout and a shell that could not start write none, since none of them names a failing test.
 // It returns whether it wrote the record: a write failure is logged, reported as false and changes nothing else.

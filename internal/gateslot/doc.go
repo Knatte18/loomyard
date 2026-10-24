@@ -113,7 +113,7 @@
 // The record is a domain log that no run reads to proceed.
 // A tier the gate carried forward over an unchanged tree writes its record with `carried` set.
 // A go-json tier's record lists a PackageLaunch per package whose test binary ran; a record written without the list reads with none.
-// TierSummaryLine renders the one stderr line the gate prints after each tier run, marking a carried tier with `carried` after the scope form, and FailedTier finds the last failing one in a log, so a site that keeps the gate's output can name the failing tier.
+// TierSummaryLine renders the one stderr line the gate prints after each tier run, marking a carried tier with `carried` after the scope form, and FailedTier finds the first failing one in a log, so a site that keeps the gate's output can name the failing tier.
 //
 // # Wait records
 //

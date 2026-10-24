@@ -118,7 +118,7 @@
 //
 // Merge-In and Finalize persist their verify failure.
 // When a row's gate call fails with a non-zero exit, Merge-In or Finalize writes the verifytree landing failure record with the row's gate key as its kind, the failing tier, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
-// The tier is the last failing tier the log's `lyx gate test` summary lines name; a log without one, such as a refusal before the first tier, takes the highest tier of the row's key, read through the told Deps.GateTiers.
+// The tier is the first failing tier the log's `lyx gate test` summary lines name; a log without one, such as a refusal before the first tier, takes the highest tier of the row's key, read through the told Deps.GateTiers.
 // The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Finalize takes it from its own merge.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
 // When Deps.TraceFailure is set and both the log and HEAD are non-empty, the record also carries the trace the seam returns: `cards`, `later_range` and `untraced`, the plan cards and commit ranges the failing locations trace to.
