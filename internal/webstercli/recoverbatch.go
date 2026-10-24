@@ -99,8 +99,8 @@ and every call then blocks for up to --wait watching it for a terminal
 classification. A terminal call fabric-commits the batch report and state.json and returns the digest
 envelope, exactly like record-batch's own terminal envelope plus "recoveries",
 the batch's counted recovery spawns, and "recovery_retry", true when the
-recovery is dead, committed work of its own and the batch has a recovery left
-to run. A terminal digest whose status is not done (stuck or dead) exits
+recovery is dead and earns another: none counted yet, or it committed
+work of its own. A terminal digest whose status is not done (stuck or dead) exits
 non-zero with "ok": false and the same fields, its message naming the way
 forward: "lyx webster recover-batch NN" once more when recovery_retry is
 true, else ending the run stuck naming the batch. A call that would spawn a

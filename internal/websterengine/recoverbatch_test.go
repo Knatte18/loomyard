@@ -1563,8 +1563,8 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 	}
 }
 
-// TestRecoveryRetry asserts the one retry rule recover-batch and begin-batch read: a terminal dead recovery below the cap retries only when HEAD descends from the recovery's start through a first-parent range holding a non-merge commit.
-// The recovery's own commits give true with the batch's recovery count; no commits of its own, a fork's earlier commits, a record with no start, a HEAD a reset moved off the start, a range of merge-ins only, the cap, and a stuck or failed recovery each give false;
+// TestRecoveryRetry asserts the one retry rule recover-batch and begin-batch read: a terminal dead recovery retries at no counted recovery, and otherwise below the cap only when HEAD descends from the recovery's start through a first-parent range holding a non-merge commit.
+// A dead recovery record a batch-start reset cleared and the recovery's own commits give true with the batch's recovery count; no commits of its own, a fork's earlier commits, a record with no start, a HEAD a reset moved off the start, a range of merge-ins only, the cap, a stuck or failed recovery, and a reset-cleared record that is not a recovery, not terminal or not dead each give false;
 // a failed git read, a start absent from the store, gives false and a Warn line.
 // It captures the logger's process-global output, so it and its rows run without t.Parallel.
 func TestRecoveryRetry(t *testing.T) {
@@ -1585,6 +1585,37 @@ func TestRecoveryRetry(t *testing.T) {
 				return deadRecovery(1, start)
 			},
 			wantRetry: true, wantRecoveries: 1,
+		},
+		{
+			name: "a dead recovery a batch-start reset cleared retries",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				return deadRecovery(0, "")
+			},
+			wantRetry: true, wantRecoveries: 0,
+		},
+		{
+			name: "a fork record a batch-start reset cleared does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				rec := deadRecovery(0, "")
+				rec.Kind = "fork"
+				return rec
+			},
+		},
+		{
+			name: "a non-terminal recovery a batch-start reset cleared does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				rec := deadRecovery(0, "")
+				rec.Terminal = false
+				return rec
+			},
+		},
+		{
+			name: "a stuck recovery a batch-start reset cleared does not retry",
+			setup: func(g *fakeGit) *websterengine.BatchState {
+				rec := deadRecovery(0, "")
+				rec.Status = websterengine.DigestStatusStuck
+				return rec
+			},
 		},
 		{
 			name: "a dead recovery without commits of its own does not retry",

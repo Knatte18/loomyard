@@ -184,11 +184,22 @@ func TestBeginBatch_Refusals(t *testing.T) {
 			prepare: func(t *testing.T, fx *beginFixture) {
 				seedReport(t, fx)
 				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
-					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead"},
+					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead", Recoveries: 1},
 				}
 			},
 			wantText:    []string{"terminal with status dead", "way forward: the recovery of batch 1 is dead and earns no retry, so end the run stuck naming the batch"},
 			wantNotText: []string{"record-batch", "recover-batch", "exhausted"},
+		},
+		{
+			name: "a report over a dead recovery a batch-start reset cleared names recover-batch once more",
+			prepare: func(t *testing.T, fx *beginFixture) {
+				seedReport(t, fx)
+				fx.Deps.State.Batches = map[int]*websterengine.BatchState{
+					1: {Slug: "json-flag", Kind: "recovery", Terminal: true, Status: "dead"},
+				}
+			},
+			wantText:    []string{"terminal with status dead", "way forward: `lyx webster recover-batch 1`, once more, since the batch earns another recovery"},
+			wantNotText: []string{"exhausted", "record-batch"},
 		},
 		{
 			name: "a report over a dead recovery at the cap with an unrendered amendment ends the run stuck without exhausted",

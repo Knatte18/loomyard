@@ -403,7 +403,7 @@ func predecessorDigestLine(batches []batcher.Batch, st *State, batchNumber int) 
 }
 
 // existingReportRemedy names the one step the recorded state of batch number calls for when begin-batch finds the batch's report already on disk.
-// retry is RecoveryRetry's verdict: a dead recovery that committed and is below the cap names recover-batch once more.
+// retry is RecoveryRetry's verdict: a dead recovery that earns a retry names recover-batch once more.
 // A terminal record other than done is worded in recover-batch's own order: the exhausted case first, which also reports true, then a dead recovery with a retry, any other dead recovery, and a stuck or failed record.
 func existingReportRemedy(number int, recorded *BatchState, retry bool) (string, bool) {
 	if !recorded.Terminal {
@@ -421,7 +421,7 @@ func existingReportRemedy(number int, recorded *BatchState, retry bool) (string,
 	}
 	if recorded.Status == DigestStatusDead {
 		if retry {
-			return fmt.Sprintf("`lyx webster recover-batch %d`, once more, since the dead recovery committed work of its own", number), false
+			return fmt.Sprintf("`lyx webster recover-batch %d`, once more, since the batch earns another recovery", number), false
 		}
 		return fmt.Sprintf("the recovery of batch %d is dead and earns no retry, so end the run stuck naming the batch", number), false
 	}
