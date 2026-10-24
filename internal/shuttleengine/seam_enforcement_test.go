@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // seam_enforcement_test.go enforces the Shared Decision "provider-seam import rule":
 // only internal/shuttleengines and an engine's own directory import a concrete engine package under internal/shuttleengine/.

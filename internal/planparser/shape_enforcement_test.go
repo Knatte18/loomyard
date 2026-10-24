@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // shape_enforcement_test.go is the requirement-4 capstone: the two AST-based boundary-enforcement
 // scans that prove PATTERN-ref-shape-registry holds over both packages'

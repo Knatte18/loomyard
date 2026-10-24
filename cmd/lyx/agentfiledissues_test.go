@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // agentfiledissues_test.go enforces `PATTERN-agent-filed-issues`: lyx files a GitHub issue only through `lyx selfreport create`,
 // run by an agent or the operator, so no production package outside the selfreport module calls selfreportengine.CreateIssue.

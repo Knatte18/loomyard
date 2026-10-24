@@ -67,10 +67,10 @@ func TestRedundancyTags(t *testing.T) {
 		want    string
 		wantErr string
 	}{
-		{name: "default is every tier but llm", want: "tier0,tier1,tier2,integration,tmux"},
+		{name: "default is every tier but tier3", want: "tier0,tier1,tier2"},
 		{name: "full", full: true, want: "tier1"},
-		{name: "explicit", tags: "tmux", want: "tmux"},
-		{name: "both", full: true, tags: "tmux", wantErr: "-full and -tags"},
+		{name: "explicit", tags: "tier2", want: "tier2"},
+		{name: "both", full: true, tags: "tier2", wantErr: "-full and -tags"},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {

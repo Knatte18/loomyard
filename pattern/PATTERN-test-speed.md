@@ -16,7 +16,7 @@ The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and
 - Tags are disjoint: `-tags tier1` compiles no `tier0`, `tier2` or `tier3` test file, so each test runs in exactly one tier, and a key that wants two tiers lists both.
 - A test file holding a `Test`, `Benchmark`, `Fuzz` or `Example` function carries exactly one tier tag, a platform term staying beside it (`tier2 && !windows`); an untagged test file holds support only, such as `TestMain` and helpers.
   Enforced by `cmd/lyx/tiertags_test.go`.
-- A file holding a `//lyx:guard` test takes `tierN || integration` until the deployed `lyx` replaces the installed guard scan, which accepts a marker only in a file compiling with no tag or with `integration` alone; the hub's tier commands carry both spellings of their tag for that transition.
+- A file holding a `//lyx:guard` test takes its one `tierN` tag like any other test file; `cmd/lyx/tiertags_test.go` refuses a constraint naming `integration`, `tmux` or `llm` in any test file.
 - A test needing two substrates takes the higher tier.
 - Each tag compiles on its own: `go vet -tags tier2 ./...` and `go vet -tags tier3 ./...` each pass.
 - A helper file used by files of two tiers carries the disjunction of their tags (`//go:build tier2 || tier3`), and holds no test; a helper only one tier uses lives in that tier's file, and a file whose helpers another tier's tests use is split.
@@ -37,28 +37,28 @@ A gate key in `gate.yaml` names a site's tiers and its scope, and a site runs `l
 | `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |
 | By hand | the `tier3` tier | |
 
-### No gate runs `llm`
+### No gate runs `tier3`
 
-Every gate compiles the `llm` tier through `go vet -tags llm`, and no gate runs it.
-Running it is the operator's call, because an `llm` run is billed, nondeterministic and needs a live session.
+Every gate compiles the `tier3` tier through `go vet -tags tier3`, and no gate runs it.
+Running it is the operator's call, because a `tier3` run is billed, nondeterministic and needs a live session.
 
 ### Every gate run takes a slot
 
 Every gate build or test run holds slots of the hub's gate-slot pool, so the hub never runs more at once than its configured count.
 A tier run takes the slots its tier asks for, and the non-tier holders `internal/gateslot`'s doc lists each hold one.
-An agent runs a module-wide or `tmux`-tier test only through `lyx gate test`, and never as a raw `go` run.
+An agent runs a module-wide or `tier2` test only through `lyx gate test`, and never as a raw `go` run.
 A tagged gate run builds `lyx` once and hands it to every package through the `LYX_PREBUILT_LYX` variable, which `lyxbin` returns instead of building.
 A tagged hub run exports a path named by the binary's content, and `lyx gate test` strips the trace id from `go test`'s environment, since Go keys a cached test result on every variable a test reads.
 Bound: a forged value misleads only an ungated raw run, since `lyx gate test` sets or strips the variable itself.
 
-## Only `llm` files reach an LLM
+## Only `tier3` files reach an LLM
 
-- A test file that imports `internal/testkit/llmkit` is constrained to `llm`, so `//go:build llm` and `//go:build llm && linux` pass while `//go:build tmux || llm`, `integration` and an untagged file fail.
+- A test file that imports `internal/testkit/llmkit` is constrained to `tier3`, so `//go:build tier3` and `//go:build tier3 && linux` pass while `//go:build tier2 || tier3`, `tier1` and an untagged file fail.
 - A test file outside `internal/testkit/llmkit` never calls `exec.LookPath` with an LLM binary name, as a string literal or a same-file constant; it calls `llmkit.Claude`.
 - A file under `internal/testkit/llmkit` uses no identifier of `os/exec` but `LookPath`, which the Testkit import check cannot see.
 - Enforced by `cmd/lyx/llmtier_test.go`.
 - Bound: the guard sees the static shape only.
-  A `tmux`-tier test that drives `lyx` into spawning an LLM without calling `llmkit` is caught by review.
+  A `tier2` test that drives `lyx` into spawning an LLM without calling `llmkit` is caught by review.
 
 ## Untagged tests spawn nothing
 
@@ -67,9 +67,9 @@ Bound: a forged value misleads only an ungated raw run, since `lyx gate test` se
 - Any `lyxbin.` reference, which builds the `lyx` binary, is likewise barred outside tier-tagged files.
 - Every `tmuxkit` export except `tmuxkit.Main` counts as a tmux spawn and is barred outside tier-tagged files, defined once in `cmd/lyx/tmuxkitspawn_test.go`.
   That covers the `/proc` probes although they spawn nothing, which costs nothing because an untagged test has no process to probe.
-- A file referencing a `tmuxkit` spawn is further constrained to the `tmux` tier: it compiles in neither the untagged nor the `integration` build on any platform, so `tmux`, `llm`, `tmux || llm` and `tmux && !windows` pass while `integration || tmux` fails.
+- A file referencing a `tmuxkit` spawn is further constrained to the `tier2` tier: it compiles in neither the untagged nor the `tier1` build on any platform, so `tier2`, `tier3`, `tier2 || tier3` and `tier2 && !windows` pass while `tier1 || tier2` fails.
   An allowlist entry with a reason admits a tier-2 file that uses only the spawn-free `/proc` probes.
-  The scan evaluates the build line under every assignment of its tags other than `tmux` and `llm`, so the host's GOOS plays no part.
+  The scan evaluates the build line under every assignment of its tags other than `tier2` and `tier3`, so the host's GOOS plays no part.
 - `time.Sleep(...)` of one second or more in an untagged file is flagged unless allowlisted.
 - Enforced by `cmd/lyx/tierpurity_test.go`.
 
@@ -100,6 +100,6 @@ Bound: a forged value misleads only an ungated raw run, since `lyx gate test` se
 
 - Linking tree-sitter slows a test binary's link, so only the packages that call the code index for real may do it.
 - `treeSitterAllowedLinks` in `cmd/lyx/treesitterlink_integration_test.go` lists those packages, each with its reason.
-- The `integration`-tier guard runs `go list -test -deps` under every tag and fails, naming one import chain, when a test binary outside the list links `github.com/tree-sitter/go-tree-sitter`.
+- The `tier1` guard runs `go list -test -deps` under every tag and fails, naming one import chain, when a test binary outside the list links `github.com/tree-sitter/go-tree-sitter`.
 - It also fails when a listed package's test binary no longer links it, so the list tracks the tree.
 - The chain search and the comparison are in `cmd/lyx/treesitterlink_test.go`.

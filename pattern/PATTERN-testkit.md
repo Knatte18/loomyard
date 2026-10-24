@@ -12,7 +12,7 @@ Shared test support — fakes, builders, fixtures and the scan harness — used 
   - `internal/testkit/tmuxkit` is the second exemption from the `os/exec` ban alone, bounded to running the `tmux` binary against sockets under its own directory or its own fixture keys, to starting servers under the kit's own config, and to the post-run `/proc` scan that kills a leftover process.
     No other kit imports it, for the same reason.
   - `internal/testkit/llmkit` is the third exemption from the `os/exec` ban alone, bounded to `exec.LookPath` for the `claude` binary; it starts nothing.
-    Only `llm`-tagged test files import it, and no other kit does, for the same reason.
+    Only `tier3`-tagged test files import it, and no other kit does, for the same reason.
 - A kit imports only the lowest packages defining the types it fakes.
   A package an import cycle bars from a kit keeps exactly one local copy, and a fixture used by one package stays in that package's `_test.go` files.
 - `internal/testkit/scankit` imports the standard library only, so every package's tests can import it.

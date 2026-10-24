@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // verifiedtree_test.go enforces `PATTERN-verified-tree`:
 // every plan-verify site goes through verifytree.Verify, so none verifies a dirty tree and none skips without the record.

@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // parentdirective_test.go pins PATTERN-parent-directive: every spawned role's opening stencil
 // renders the parent directive, and no stencil outside the orch family tells an agent to ask the

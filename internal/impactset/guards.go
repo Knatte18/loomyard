@@ -99,7 +99,7 @@ func FindGuardTests(worktree string, dirs []string) (map[string][]GuardTest, err
 const moduleDirsFormat = `{{.Dir}}{{"\t"}}{{with .Error}}{{.Err}}{{end}}{{"\x00"}}`
 
 // ModuleGuardTests returns, per package directory of the module at moduleDir, the tests marked `//lyx:guard` with their file's tier, keyed by the module-relative, slash-separated directory.
-// It lists the packages under the tier tags `tier0` through `tier3` and the older `integration`, `tmux` and `llm` spellings with `go list -e`, so a package whose test file cannot be read stays listed and the scan reports that file as a GuardParse error.
+// It lists the packages under the tier tags `tier0` through `tier3` with `go list -e`, so a package whose test file cannot be read stays listed and the scan reports that file as a GuardParse error.
 // A failed `go list` run, or an entry with no directory such as an unreadable package directory, is a plain error naming moduleDir and the enumeration's own error, and so is a listed package directory outside moduleDir.
 // A marker the scan rejects is a *GuardScanError.
 func ModuleGuardTests(moduleDir string) (map[string][]GuardTest, error) {
@@ -107,7 +107,7 @@ func ModuleGuardTests(moduleDir string) (map[string][]GuardTest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("impactset: resolve %s: %w", moduleDir, err)
 	}
-	cmd := exec.Command("go", "list", "-e", "-tags", "tier0,tier1,tier2,tier3,integration,tmux,llm", "-f", moduleDirsFormat, "./...")
+	cmd := exec.Command("go", "list", "-e", "-tags", "tier0,tier1,tier2,tier3", "-f", moduleDirsFormat, "./...")
 	cmd.Dir = moduleDir
 	logger.Info("impactset: spawning go list", "dir", moduleDir)
 	output, err := cmd.Output()
@@ -202,7 +202,7 @@ func onlyKeepLinesAfter(comments []*ast.Comment) bool {
 }
 
 // FileTier returns the tier of a test file: the N of the `tierN` tag its `//go:build` constraint names, 0 when it names none.
-// A negated tag does not count, and a constraint naming several tier tags reads as the lowest, so a transitional `tier1 || integration` file reads as tier 1.
+// A negated tag does not count, and a constraint naming several tier tags reads as the lowest.
 func FileTier(file *ast.File) int {
 	expr := buildConstraint(file)
 	if expr == nil {

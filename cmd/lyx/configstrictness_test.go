@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // configstrictness_test.go enforces the Config Strictness Invariant: a pinned set of
 // module package directories call internal/configengine's degrading entry point,

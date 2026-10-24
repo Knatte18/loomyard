@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // daemonwakeups_test.go enforces `PATTERN-daemon-wakeups`: the files that hold an unbounded wait carry no sub-second duration literal and no sub-second `MS` or `Ms` constant unless the line announces itself with `//lyx:one-shot <reason>`, and no production file outside that list starts a `time.NewTicker` or `time.Tick`.
 // The scan sees literal shapes only; a computed period, or a sleep loop in a file the list does not name, is left to review.

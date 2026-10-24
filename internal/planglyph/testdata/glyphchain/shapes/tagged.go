@@ -1,6 +1,6 @@
-//go:build integration
+//go:build tier1
 
-// tagged.go declares a member that only builds under the integration tag.
+// tagged.go declares a member that only builds under the tier1 tag.
 
 package shapes
 

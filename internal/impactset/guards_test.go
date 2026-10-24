@@ -57,11 +57,6 @@ func TestFindGuardTests(t *testing.T) {
 			want: []GuardTest{{Name: "TestA", Tier: 1}},
 		},
 		{
-			name: "a guard in a transitional tier1 or integration file is found as tier 1",
-			file: "//go:build tier1 || integration\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
-			want: []GuardTest{{Name: "TestA", Tier: 1}},
-		},
-		{
 			name:     "a file that does not parse fails naming the file",
 			file:     "package p\n\nfunc TestA(t *testing.T) {\n",
 			wantErr:  "impactset: parse dir/p/p_test.go",

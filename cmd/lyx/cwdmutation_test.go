@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // cwdmutation_test.go enforces the migrated half of the Cwd Resolution Invariant: an integration
 // test file this task moved onto the cwd-context seam (RunCLIIn / lyxcwd.WithCwd) must never

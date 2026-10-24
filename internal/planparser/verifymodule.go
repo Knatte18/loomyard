@@ -61,7 +61,7 @@ func checkVerifyNestedModule(plan *Plan, worktreeRoot string) []ValidationError 
 	return findings
 }
 
-// checkVerifyModuleWide implements verify-module-wide: a `go test`, `go build` or `go vet` in a card's Verify value must not name a module-wide package pattern (one holding `...`, or `all`), and a `go test` must not select the `tmux` or `llm` tier.
+// checkVerifyModuleWide implements verify-module-wide: a `go test`, `go build` or `go vet` in a card's Verify value must not name a module-wide package pattern (one holding `...`, or `all`), and a `go test` must not select the `tier2` or `tier3` tier.
 // An agent's settings deny such a command, so it can never run under a fork; the way forward is a `lyx gate test` call over the card's scope, run in the foreground under the gate rule in the agent's system prompt.
 // The overview's verify chain is not read.
 // Like the deny, it matches static shapes only: a command built from a variable or behind `bash -c` passes.
@@ -74,7 +74,7 @@ func checkVerifyModuleWide(plan *Plan) []ValidationError {
 				Check: "verify-module-wide",
 				Card:  cardID(c),
 				Detail: fmt.Sprintf(
-					"card %d Verify: `%s` is module-wide or runs the tmux or llm tier, which no fork may run raw; use `lyx gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in your system prompt",
+					"card %d Verify: `%s` is module-wide or runs the tier2 or tier3 tier, which no fork may run raw; use `lyx gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in your system prompt",
 					c.Number, cmd,
 				),
 			})
@@ -103,7 +103,7 @@ func moduleWideCommands(chain string) []string {
 	return found
 }
 
-// isModuleWideGoCommand reads the fields after `go` and reports whether the command is a build, test or vet over a module-wide pattern, or a test selecting the tmux or llm tier.
+// isModuleWideGoCommand reads the fields after `go` and reports whether the command is a build, test or vet over a module-wide pattern, or a test selecting the tier2 or tier3 tier.
 func isModuleWideGoCommand(fields []string) bool {
 	i := 0
 	for i < len(fields) && strings.HasPrefix(fields[i], "-") {
@@ -142,10 +142,10 @@ func isModuleWideGoCommand(fields []string) bool {
 	return false
 }
 
-// namesGateOnlyTier reports whether a -tags value lists the tmux, llm, tier2 or tier3 build tag.
+// namesGateOnlyTier reports whether a -tags value lists the tier2 or tier3 build tag.
 func namesGateOnlyTier(tags string) bool {
 	return slices.ContainsFunc(strings.FieldsFunc(strings.Trim(tags, `"'`), func(r rune) bool { return r == ',' || r == ' ' }), func(tag string) bool {
-		return tag == "tmux" || tag == "llm" || tag == "tier2" || tag == "tier3"
+		return tag == "tier2" || tag == "tier3"
 	})
 }
 

@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // destructiveguard_test.go closes slice 12's completeness proof by machine-checking that
 // internal/fabricengine's production source contains no destructive primitive call outside

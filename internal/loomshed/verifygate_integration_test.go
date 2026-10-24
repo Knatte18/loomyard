@@ -1,4 +1,4 @@
-//go:build tier1 || integration
+//go:build tier1
 
 // verifygate_integration_test.go exercises NewVerifyGate against a real scratch repo and real shell processes, so it carries the integration tag.
 

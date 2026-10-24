@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // spawnobservability_test.go enforces `PATTERN-spawn-observability`'s
 // mechanical half: a production (non-_test.go) .go file under internal/ or cmd/ that contains a real

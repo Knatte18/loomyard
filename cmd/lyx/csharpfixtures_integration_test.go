@@ -1,4 +1,4 @@
-//go:build tier1 || integration
+//go:build tier1
 
 // csharpfixtures_integration_test.go compiles every C# fixture under a `testdata/` directory with `dotnet build`.
 // Quarry's tree-sitter parse accepts invalid C#, so it cannot prove a fixture is valid.

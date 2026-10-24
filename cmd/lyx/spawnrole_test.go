@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // spawnrole_test.go enforces `PATTERN-agent-name`'s role-constant rule:
 // the module that spawns an agent owns its role name as a constant, so no spawn spec carries an inline role literal.

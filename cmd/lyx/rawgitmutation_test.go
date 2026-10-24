@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // rawgitmutation_test.go closes the Fabric Git Invariant's tracked gap by machine-checking that
 // internal/websterengine's production source never constructs a raw
