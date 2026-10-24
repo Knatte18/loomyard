@@ -136,7 +136,7 @@ func taskMergeBase(l *lyxcwd.Location) func() (string, error) {
 // codeSubject returns the identity of the task's diff against its merge base from taskMergeBase.
 // A run with no recorded parent branch, a standalone run, answers not found, so its code segments write no records.
 // The diff leaves out the run's own state directories and harnessOwnFiles while untracked; the run's records live on the records side of the fabric, so no diff of the task's code holds them.
-// Bound: a change confined to harnessOwnFiles reads as an unchanged subject; the verify tiers at Publish, darn's Merge-In and loom's Merge-Review bound it.
+// Bound: a change confined to harnessOwnFiles reads as an unchanged subject; the landing gate at Merge-In and Finalize bounds it.
 func codeSubject(location *lyxcwd.Location, runID string) (shedadapters.Subject, bool, error) {
 	origin, found, err := fabricengine.ReadOrigin(location)
 	if err != nil {
