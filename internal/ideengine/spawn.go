@@ -35,7 +35,7 @@ var KeybindingsPath = vscode.UserKeybindingsPath
 // When slug names the prime, Spawn regenerates the hub workspace file <hub>/<RepoName>.code-workspace, whose settings carry the prime's .vscode/settings.json, and launches that file instead;
 // every error on that path is returned, never degraded to the bare folder.
 // A failure to resolve the prime's name is logged and degrades to the bare-folder path.
-// Before launching it seeds the lyx block of terminal key bindings into the user's VS Code keybindings.json and returns the outcome beside the error;
+// Before launching it seeds the lyx block of key bindings into the user's VS Code keybindings.json and returns the outcome beside the error;
 // a skipped seed never fails the spawn.
 func Spawn(l *lyxcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	worktreeDir, color, primeName, primeResolved := resolveSpawnTarget(l, slug, targetUnknown)

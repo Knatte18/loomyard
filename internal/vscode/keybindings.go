@@ -1,5 +1,5 @@
-// keybindings.go seeds the marked block of terminal key bindings into the user's VS Code keybindings.json,
-// so the integrated terminal forwards the Alt keys reed's tmux bindings listen for.
+// keybindings.go seeds the marked block of key bindings into the user's VS Code keybindings.json,
+// so the integrated terminal forwards the Alt keys reed's tmux bindings listen for and one key runs the reed attach task.
 // It holds VS Code format knowledge only: the user-file location per platform, a comment-aware JSONC merge of the block, and an atomic write.
 
 package vscode
@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,15 +21,19 @@ const (
 	keybindingsBeginMarker = "lyx:begin"
 	keybindingsEndMarker   = "lyx:end"
 	keybindingsFileName    = "keybindings.json"
+
+	terminalSendSequenceCommand = "workbench.action.terminal.sendSequence"
 )
 
-// keybindingsBlockEntries are the block's entries, one terminal sendSequence per Alt key.
-// Each text is written as it appears in the JSON file, with its escape sequences unexpanded.
-var keybindingsBlockEntries = []struct{ key, text string }{
-	{"alt+up", `\u001b[1;3A`},
-	{"alt+down", `\u001b[1;3B`},
-	{"alt+right", `\u001b[1;3C`},
-	{"alt+left", `\u001b[1;3D`},
+// keybindingsBlockEntries are the block's entries: one terminal sendSequence per Alt key, and the key that runs the reed attach task.
+// Each args is written as it appears in the JSON file, so a sendSequence text keeps its escape sequences unexpanded;
+// an empty when writes no when clause.
+var keybindingsBlockEntries = []struct{ key, command, args, when string }{
+	{"alt+up", terminalSendSequenceCommand, `{ "text": "\u001b[1;3A" }`, "terminalFocus"},
+	{"alt+down", terminalSendSequenceCommand, `{ "text": "\u001b[1;3B" }`, "terminalFocus"},
+	{"alt+right", terminalSendSequenceCommand, `{ "text": "\u001b[1;3C" }`, "terminalFocus"},
+	{"alt+left", terminalSendSequenceCommand, `{ "text": "\u001b[1;3D" }`, "terminalFocus"},
+	{"ctrl+alt+a", "workbench.action.tasks.runTask", strconv.Quote(attachTaskLabel), ""},
 }
 
 // KeybindingsOutcome is what SeedKeybindings did to the user's file.
@@ -87,9 +92,11 @@ func userKeybindingsPath(goos string, getenv func(string) string, home string) (
 func keybindingsBlock(lineEnding string) string {
 	lines := []string{"// " + keybindingsBeginMarker}
 	for _, entry := range keybindingsBlockEntries {
-		lines = append(lines, fmt.Sprintf(
-			`  { "key": %q, "command": "workbench.action.terminal.sendSequence", "args": { "text": "%s" }, "when": "terminalFocus" },`,
-			entry.key, entry.text))
+		line := fmt.Sprintf(`  { "key": %q, "command": %q, "args": %s`, entry.key, entry.command, entry.args)
+		if entry.when != "" {
+			line += fmt.Sprintf(`, "when": %q`, entry.when)
+		}
+		lines = append(lines, line+" },")
 	}
 	lines = append(lines, "// "+keybindingsEndMarker)
 	return strings.Join(lines, lineEnding)
