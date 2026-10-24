@@ -51,7 +51,7 @@
 // The mark is display only,
 // so reed stores nothing for it and the options die with the pane;
 // the status bar renders it on the strand's own button, as " ⏳<label> <elapsed>m" appended to the strand's name with tmux computing the elapsed minutes at each refresh,
-// and no Go decision reads it.
+// and no Go decision reads it (PATTERN-wait-mark-display-only).
 // The options are set only through SetWaitMark, by shuttleengine and the landing wait-mark callback, which marks the verify and the parent lock wait with the label `parent lock <branch>`.
 //
 // Engine.CapturePaneStyled returns a pane's screen with its SGR attributes beside the plain CapturePane, for a caller that reads cell styles; reed interprets none of it.
