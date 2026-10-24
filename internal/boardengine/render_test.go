@@ -246,6 +246,7 @@ func readmeFixture() []boardengine.Task {
 // Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
 // A third row pins that a task with a run status renders under Running, before Ready and in no layer, ordered by handle over ID, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the recorded owner machine and blank when none is recorded.
 // The same row pins that a task waiting on a running one lands in Layer A, not Ready, still naming it under After, and that a task after that one lands in Layer B.
+// A fourth row pins the Projects section before Tasks: a beam project with its recorded owner and a grouping project, each member table listing the ordered members first and then the unordered ones by handle, a running, a note, a done and a Layer A member among them, and a done project listed in Done only.
 func TestRenderReadmeGolden(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -414,6 +415,106 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"## Notes (0)\n" +
 				"\n" +
 				"Not tasks: ideas and observations, merged into a task when one is promoted.\n",
+		},
+		{
+			name: "projects before tasks with ordered and unordered members",
+			tasks: []boardengine.Task{
+				{ID: 1, Handle: "P1", Slug: "ship", Title: "Ship it", Kind: boardengine.KindProject, Beam: true, Brief: "Ships the thing.", OwnerMachine: "box", Order: []string{"second", "first"}},
+				{ID: 2, Handle: "P2", Slug: "tidy", Title: "Tidy up", Kind: boardengine.KindProject, Brief: "Loose ends."},
+				{ID: 3, Handle: "P3", Slug: "old", Title: "Old project", Kind: boardengine.KindProject, Status: stringPtr("done")},
+				{ID: 4, Handle: "T1", Slug: "first", Title: "First step", Kind: boardengine.KindTask, Project: "ship"},
+				{ID: 5, Handle: "T2", Slug: "second", Title: "Second step", Kind: boardengine.KindTask, Project: "ship", Status: stringPtr(boardengine.RunStatus("running", "Webster"))},
+				{ID: 6, Handle: "T3", Slug: "third", Title: "Third step", Kind: boardengine.KindTask, Project: "ship", DependsOn: []string{"second"}},
+				{ID: 7, Handle: "E1", Slug: "thought", Title: "A thought", Kind: boardengine.KindNote, Project: "ship"},
+				{ID: 8, Handle: "T4", Slug: "shipped", Title: "Shipped step", Kind: boardengine.KindTask, Project: "ship", Status: stringPtr("done")},
+				{ID: 9, Handle: "T5", Slug: "chore", Title: "Chore", Kind: boardengine.KindTask, Project: "tidy"},
+			},
+			primeOwner: "neve",
+			want: "# Board\n" +
+				"\n" +
+				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
+				"Prime owner: `neve`.\n" +
+				"\n" +
+				"Tasks are grouped by dependency layer and notes by type.\n" +
+				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
+				"\n" +
+				"## Projects (2)\n" +
+				"\n" +
+				"Groups of entries; a beam spawns its members from its own worktree.\n" +
+				"\n" +
+				"### P1 Ship it\n" +
+				"\n" +
+				"Ships the thing.\n" +
+				"\n" +
+				"beam\n" +
+				"\n" +
+				"Owner: `box`.\n" +
+				"\n" +
+				"| # | Member | Kind | Standing |\n" +
+				"| --- | --- | --- | --- |\n" +
+				"| T2 | **Second step** | Task | Webster |\n" +
+				"| T1 | **First step** | Task | Ready |\n" +
+				"| E1 | **A thought** | Note | Note |\n" +
+				"| T3 | **Third step** | Task | Layer A |\n" +
+				"| T4 | **Shipped step** | Task | Done |\n" +
+				"\n" +
+				"### P2 Tidy up\n" +
+				"\n" +
+				"Loose ends.\n" +
+				"\n" +
+				"grouping\n" +
+				"\n" +
+				"| # | Member | Kind | Standing |\n" +
+				"| --- | --- | --- | --- |\n" +
+				"| T5 | **Chore** | Task | Ready |\n" +
+				"\n" +
+				"## Tasks (4)\n" +
+				"\n" +
+				"Concrete and claimable; only a task can run.\n" +
+				"\n" +
+				"### Running (1)\n" +
+				"\n" +
+				"Held by a run; its scope is locked until the run ends.\n" +
+				"\n" +
+				"| # | Task | Slug | Recipe | At | Owner | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T2 | **Second step** | `second` | loom | Webster |  |  |  |\n" +
+				"\n" +
+				"### Ready (2)\n" +
+				"\n" +
+				"Waits on nothing open; can start now.\n" +
+				"\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T1 | **First step** | `first` | loom |  |  |  |\n" +
+				"| T5 | **Chore** | `chore` | loom |  |  |  |\n" +
+				"\n" +
+				"### Layer A (1)\n" +
+				"\n" +
+				"Waits only on Running or Ready entries.\n" +
+				"\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T3 | **Third step** | `third` | loom | `second` |  |  |\n" +
+				"\n" +
+				"## Notes (1)\n" +
+				"\n" +
+				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
+				"\n" +
+				"### Other (1)\n" +
+				"\n" +
+				"| # | P | Note | Slug | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- |\n" +
+				"| E1 |  | **A thought** | `thought` |  |  |\n" +
+				"\n" +
+				"## Done (2)\n" +
+				"\n" +
+				"Finished, awaiting `lyx board prune --apply`.\n" +
+				"\n" +
+				"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| T4 | **Shipped step** | `shipped` |  |  |\n" +
+				"| P3 | **Old project** | `old` |  |  |\n",
 		},
 	}
 	for _, tt := range tests {

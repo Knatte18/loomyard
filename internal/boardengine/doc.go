@@ -156,8 +156,12 @@
 //
 // # README
 //
-// Every write renders README.md, opening with the UTC date and time it was rendered, so its ages read as of that moment, then a Tasks section, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
+// Every write renders README.md, opening with the UTC date and time it was rendered, so its ages read as of that moment, then a Projects section when a project is open, a Tasks section, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
 // An open project is in none of the Tasks layers: ComputeLayers puts it in its own Project layer, a run-held one in Running and a done one in the done layer, and RenderOrder places open projects by handle between open tasks and open notes, and a done project between done tasks and done notes.
+// Projects lists each open project as an H3 of its handle and title, its brief, `beam` or `grouping`, and for a beam its effective owner, the recorded owner_machine else the prime owner.
+// A table of its members follows: the entries whose project names it, in the order of its order key, then the members that key leaves out by handle.
+// A member table row gives the handle, the bold title, the kind and where the member stands: its Running place, Ready, its layer, Note or Done.
+// A member keeps its row in the Tasks, Notes and Done sections, and no project is a row of Tasks or Notes; a done project is a row of Done.
 // Every section heading ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)`, never the highest handle number, since handles have gaps.
 // Tasks splits into Running, Ready, the dependency layers A, B and on, and Independent for an isolated task.
 // A task a run holds, by IsRunStatus as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
