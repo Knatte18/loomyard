@@ -40,6 +40,13 @@
 // So a member whose beam pair is absent on this machine still reads the beam as its parent, and the beam's owner as its own.
 // ResolveParent keeps answering the parent pair's orch name for a reader that needs the pair itself.
 //
+// NearestLiveOrch is the destination of a notice to an orch.
+// It tries the worktree it is told, then walks upward through the origin records' parent worktrees.
+// It answers the nearest worktree whose orch a told predicate reports live, or the prime whatever its state when none is.
+// The predicate is told because the orch's state paths and reed belong to a package that imports hubgeom.
+// The answer's Name is that worktree's orch agent name, formed as ResolveParent forms it, and its Worktree names the worktree, empty for the prime.
+// A worktree with no origin record, an empty parent worktree or a parent worktree that is gone ends the walk at the prime, and so does a cycle; an error from the predicate is returned.
+//
 // Standalone CLIs do not call hubgeom — they have no Location to convert, resolving their own
 // geometry from CLI flags and local paths instead.
 package hubgeom
