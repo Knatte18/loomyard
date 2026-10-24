@@ -28,6 +28,7 @@ func TestOrigin_JSONRoundTrip(t *testing.T) {
 	}{
 		{"parent_branch", Origin{ParentBranch: "main"}, `"parent_branch":"main"`},
 		{"parent_worktree", Origin{ParentBranch: "main", ParentWorktree: "prime"}, `"parent_worktree":"prime"`},
+		{"beam", Origin{ParentBranch: "main", Beam: true}, `"beam":true`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -55,6 +56,17 @@ func TestOrigin_JSONRoundTrip(t *testing.T) {
 	}
 	if legacy.ParentWorktree != "" {
 		t.Errorf("legacy ParentWorktree = %q; want empty", legacy.ParentWorktree)
+	}
+	if legacy.Beam {
+		t.Errorf("legacy Beam = true; want false")
+	}
+
+	data, err := json.Marshal(Origin{ParentBranch: "main"})
+	if err != nil {
+		t.Fatalf("Marshal(no beam) error = %v", err)
+	}
+	if strings.Contains(string(data), `"beam"`) {
+		t.Errorf("Marshal(no beam) = %s; want no beam key", data)
 	}
 }
 

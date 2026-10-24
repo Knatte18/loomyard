@@ -26,6 +26,9 @@ type Origin struct {
 	// It is what a run's parent agent name is resolved from.
 	// A record written before the field existed, and a legacy-worktree repair whose creator is unknown, leave it empty.
 	ParentWorktree string `json:"parent_worktree,omitempty"`
+	// Beam marks the pair as a beam.
+	// A record written before the field existed decodes with it false.
+	Beam bool `json:"beam,omitempty"`
 }
 
 // originRecordDirName, originRecordFileName, and originRecordLockFileName are the segments of the
@@ -177,4 +180,42 @@ func WriteOrigin(rec *Mutations, l *lyxcwd.Location, slug string, o Origin) erro
 	// "after the primitive observably changed state" rule.
 	rec.Append(KindFileWritten, path, "")
 	return nil
+}
+
+// beamMarkSubjectPrefix is the commit subject prefix of the commit that marks a pair as a beam.
+const beamMarkSubjectPrefix = "fabric: mark beam "
+
+// MarkBeam writes the beam mark into the origin record of slug's pair, keeping the record's parent fields, and commits that one path on the pair's records branch.
+// It reports false and writes nothing when the record already carries the mark.
+// A pair with no origin record is refused: a mark on a missing record would invent its parents.
+// The caller pushes the commit through the pair's detached push; MarkBeam pushes nothing.
+func MarkBeam(rec *Mutations, l *lyxcwd.Location, slug string) (bool, error) {
+	weftPath := RecordsWorktreePath(l, slug)
+	origin, found, err := ReadOriginFor(l, slug)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, missingOriginRecordError(l, slug, weftPath)
+	}
+	if origin.Beam {
+		return false, nil
+	}
+	origin.Beam = true
+	if err := WriteOrigin(rec, l, slug, origin); err != nil {
+		return false, err
+	}
+	if _, _, err := CommitRecordsPaths(rec, weftPath, l.AnchorRel, []string{OriginRecordRel()}, beamMarkSubjectPrefix+slug, SyncOptions{}); err != nil {
+		return false, fmt.Errorf("commit the beam mark of %s: %w", slug, err)
+	}
+	return true, nil
+}
+
+// missingOriginRecordError refuses a beam mark on slug's pair that has no origin record, naming the way forward for each of the two causes.
+func missingOriginRecordError(l *lyxcwd.Location, slug, weftPath string) error {
+	if _, err := os.Stat(weftPath); err != nil {
+		return fmt.Errorf("pair %q has no records worktree at %s, so its origin record cannot be marked; way forward: run `lyx fabric reconcile`, which recreates the records worktree, then re-run the verb", slug, weftPath)
+	}
+	recordPath := filepath.ToSlash(filepath.Join(l.AnchorRel, OriginRecordRel()))
+	return fmt.Errorf("pair %q has no origin record at %s in its records worktree %s, and a mark on a missing record would invent its parents; way forward: restore the record from the records history in that worktree, with `git checkout HEAD -- %s` while the deletion is uncommitted, else from the commit before the one that deleted it (`git log -1 --format=%%H -- %s` names that commit, and `git checkout <commit>^ -- %s` restores it), then re-run the verb; `lyx fabric reconcile` never rewrites a deleted record", slug, recordPath, weftPath, recordPath, recordPath, recordPath)
 }
