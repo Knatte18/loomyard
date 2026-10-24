@@ -56,7 +56,8 @@ var unreadableFiles logger.EpisodeSet
 // and an undecodable record is logged once per episode so one torn file cannot hide another run.
 // Each run is read through the engine its record names, the set's default for a record naming none:
 // its events past its prompt offset are parsed through that engine, and the newest turn end among them is handed to the engine's ActivityReader;
-// a run with no turn end yet, or an engine without the capability, is judged by its events file alone.
+// a run with no turn end past the offset hands over the newest one before it, a skill-load turn end of the same session, for its last activity only, so a first turn spent in a fork still reads active.
+// A run with no turn end at all, or an engine without the capability, is judged by its events file alone.
 // A run whose record names an engine the set does not hold is skipped and logged once per episode.
 // An absent root returns no readings and no error.
 func ReadAgentActivity(cfg Config, anchorPath string, engines EngineSet) ([]AgentActivity, error) {
@@ -107,16 +108,20 @@ func readRunActivity(rs RunState, engine Engine, reader ActivityReader) AgentAct
 
 	var eventsActivity time.Time
 	var turnEnd *Event
+	var ownTurnEnd bool
 	if info, err := os.Stat(rs.EventsPath); err == nil {
 		eventsActivity = eventsFileActivity(rs, engine, info.ModTime())
-		turnEnd = newestTurnEnd(rs, engine)
+		turnEnd, ownTurnEnd = newestTurnEnd(rs, engine)
 	}
 
 	var activity TurnEndActivity
 	if reader != nil && turnEnd != nil {
 		activity = reader.TurnEndActivity(*turnEnd)
 	}
-	reading.APIError, reading.APIErrorText = activity.APIError, activity.APIErrorText
+	// A turn end before the prompt offset stands in only for the session's last activity: its API error is not the run's own.
+	if ownTurnEnd {
+		reading.APIError, reading.APIErrorText = activity.APIError, activity.APIErrorText
+	}
 
 	reading.LastActivity = activity.TranscriptModTime
 	if eventsActivity.After(reading.LastActivity) {
@@ -165,25 +170,33 @@ func eventsFileActivity(rs RunState, engine Engine, modTime time.Time) time.Time
 	return modTime
 }
 
-// newestTurnEnd returns the newest turn end in the run's events file past its prompt offset, or nil when there is none or the file cannot be parsed.
-func newestTurnEnd(rs RunState, engine Engine) *Event {
+// newestTurnEnd returns the newest turn end in the run's events file past its prompt offset, with own true.
+// When none follows the offset it returns the newest turn end before it, with own false: that one names the same session, so its transcript and forks can be read before the run's first own turn ends.
+// It returns nil when the file holds no turn end or cannot be parsed.
+func newestTurnEnd(rs RunState, engine Engine) (turnEnd *Event, own bool) {
 	data, err := os.ReadFile(rs.EventsPath)
 	if err != nil {
-		return nil
+		return nil, false
 	}
-	if rs.PromptOffset > 0 {
-		data = data[min(rs.PromptOffset, int64(len(data))):]
-	}
-	events, err := engine.ParseEvents(data)
-	if err != nil {
-		unreadableFiles.Fail(rs.EventsPath, "shuttle: could not parse a run's events for its activity", "eventsPath", rs.EventsPath, "cause", err)
-		return nil
-	}
-	unreadableFiles.Recover(rs.EventsPath, "shuttle: run events parse again", "eventsPath", rs.EventsPath)
-	for i := len(events) - 1; i >= 0; i-- {
-		if events[i].Kind == EventStop || events[i].Kind == EventWaiting {
-			return &events[i]
+	offset := min(max(rs.PromptOffset, 0), int64(len(data)))
+	for _, part := range []struct {
+		data []byte
+		own  bool
+	}{{data[offset:], true}, {data[:offset], false}} {
+		events, err := engine.ParseEvents(part.data)
+		if err != nil {
+			unreadableFiles.Fail(rs.EventsPath, "shuttle: could not parse a run's events for its activity", "eventsPath", rs.EventsPath, "cause", err)
+			return nil, false
+		}
+		for i := len(events) - 1; i >= 0; i-- {
+			if events[i].Kind == EventStop || events[i].Kind == EventWaiting {
+				// Recovery is logged only when the parts read so far have all parsed,
+				// so a part that fails cannot end and restart the episode on each poll.
+				unreadableFiles.Recover(rs.EventsPath, "shuttle: run events parse again", "eventsPath", rs.EventsPath)
+				return &events[i], part.own
+			}
 		}
 	}
-	return nil
+	unreadableFiles.Recover(rs.EventsPath, "shuttle: run events parse again", "eventsPath", rs.EventsPath)
+	return nil, false
 }
