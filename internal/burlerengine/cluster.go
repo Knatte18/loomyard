@@ -11,6 +11,7 @@ package burlerengine
 import (
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -48,29 +49,210 @@ var gitTagWritingOptions = map[string]bool{
 // gitTagValuedListOptions holds the git tag list-output options whose value may be the following word, so a value such as -version:refname is never read as an option.
 var gitTagValuedListOptions = map[string]bool{"--sort": true, "--format": true}
 
-// commandRunsMutatingGit reports whether a Bash command string invokes git with a state-mutating subcommand.
-// The command is split into segments at ;, &, | and newlines, and a segment counts when its first word is git, bare or path-prefixed.
+// gitRepositoryOptions holds git's global options that name the repository or working tree apart from the directory git runs in.
+var gitRepositoryOptions = map[string]bool{"--git-dir": true, "--work-tree": true}
+
+// gitInitValuedOptions holds the git init options whose value is the following word, so that word is never read as the directory.
+var gitInitValuedOptions = map[string]bool{
+	"-b": true, "--initial-branch": true, "--template": true, "--separate-git-dir": true,
+	"--object-format": true, "--ref-format": true,
+}
+
+// gitWorktreeAddValuedOptions holds the git worktree add options whose value is the following word, so that word is never read as the path.
+var gitWorktreeAddValuedOptions = map[string]bool{"-b": true, "-B": true, "--reason": true}
+
+// firstMutatingGitCommand returns the first of commands, one fork's Bash commands in transcript order, that invokes git with a state-mutating subcommand against a repository the fork did not create, and reports whether there is one.
+// A command is split into segments at ;, &, | and newlines, and a segment is a git invocation when its first word is git, bare or path-prefixed.
 // Only the subcommand word decides, so a mutating verb named as an argument, as in git help cherry-pick, never counts.
 // The one exception is git tag, which counts only when it does not merely list tags.
 // A -h or --help among the global options or directly after the subcommand only prints usage and never counts either;
 // further along it is an option value or an operand, as in git commit -m -h.
-func commandRunsMutatingGit(cmd string) bool {
+//
+// A mutating invocation whose directory lies inside a repository the fork created earlier, by git init or by git worktree add from such a repository, does not count, so a fork may experiment on a throwaway repository.
+// The directory is resolved lexically from each command's unknown starting directory, through the command's own cd segments and then the invocation's -C options.
+// git push, an invocation with --git-dir or --work-tree and one after a bare cd or cd - always count, since their target is not the resolved directory.
+// A git init whose relative path is the starting directory, an ancestor of it or leaves it through .. creates no recorded repository, since it may reinitialize the target.
+// A .. that would climb above a leading ~ or $ word leaves the directory unresolvable, so it matches no recorded repository either.
+func firstMutatingGitCommand(commands []string) (string, bool) {
+	var repos forkRepositories
+	for _, cmd := range commands {
+		if repos.runsMutatingGit(cmd) {
+			return cmd, true
+		}
+	}
+	return "", false
+}
+
+// forkRepositories holds the lexically resolved directories of the repositories one fork created.
+type forkRepositories []string
+
+// runsMutatingGit reports whether cmd invokes git with a state-mutating subcommand outside repos, and records each repository cmd creates.
+func (repos *forkRepositories) runsMutatingGit(cmd string) bool {
+	dir, dirKnown := ".", true
 	for _, words := range splitShellSegments(cmd) {
-		if len(words) == 0 || !isGitExecutable(words[0]) {
-			continue
+		switch {
+		case len(words) == 0:
+		case words[0] == "cd":
+			if len(words) < 2 || words[1] == "-" {
+				dirKnown = false
+			} else if dirKnown || isAnchoredShellPath(words[1]) {
+				dir, dirKnown = resolveShellPath(dir, words[1]), true
+			}
+		case isGitExecutable(words[0]):
+			if repos.gitInvocationMutates(parseGitInvocation(words[1:], dir, dirKnown)) {
+				return true
+			}
 		}
-		subcommand, rest, helpRequested := gitSubcommand(words[1:])
-		if helpRequested || len(rest) > 0 && isHelpFlag(rest[0]) {
-			continue
+	}
+	return false
+}
+
+// gitInvocationMutates reports whether invocation changes state outside repos, and records the repository invocation creates.
+func (repos *forkRepositories) gitInvocationMutates(invocation gitInvocation) bool {
+	if invocation.helpRequested || len(invocation.args) > 0 && isHelpFlag(invocation.args[0]) {
+		return false
+	}
+	switch invocation.subcommand {
+	case "init":
+		directory, found := firstOperand(invocation.args, gitInitValuedOptions)
+		if !found {
+			directory = "."
 		}
-		if subcommand == "tag" && gitTagListsOnly(rest) {
-			continue
+		repos.record(invocation, directory)
+	case "worktree":
+		if len(invocation.args) > 0 && invocation.args[0] == "add" && repos.contain(invocation) {
+			if worktreePath, found := firstOperand(invocation.args[1:], gitWorktreeAddValuedOptions); found {
+				repos.record(invocation, worktreePath)
+			}
 		}
-		if mutatingGitSubcommands[subcommand] {
+	case "tag":
+		if gitTagListsOnly(invocation.args) {
+			return false
+		}
+	}
+	if !mutatingGitSubcommands[invocation.subcommand] {
+		return false
+	}
+	return invocation.subcommand == "push" || !repos.contain(invocation)
+}
+
+// record adds operand, resolved against invocation's directory, to repos.
+// It records nothing when the directory is unknown or operand resolves to the starting directory, an ancestor of it or a path leaving it through ..;
+// such a path may name the starting directory under its own basename.
+func (repos *forkRepositories) record(invocation gitInvocation, operand string) {
+	if !invocation.dirKnown {
+		return
+	}
+	created := resolveShellPath(invocation.dir, operand)
+	if created == "." || created == ".." || strings.HasPrefix(created, "../") {
+		return
+	}
+	*repos = append(*repos, created)
+}
+
+// contain reports whether invocation's directory is known and lies inside one of repos.
+func (repos forkRepositories) contain(invocation gitInvocation) bool {
+	if !invocation.dirKnown {
+		return false
+	}
+	for _, root := range repos {
+		if invocation.dir == root || strings.HasPrefix(invocation.dir, root+"/") {
 			return true
 		}
 	}
 	return false
+}
+
+// gitInvocation is one git call of a shell segment, with the directory it acts on.
+type gitInvocation struct {
+	// subcommand is the first non-option word after git's global options, "" when there is none.
+	subcommand string
+	// args holds the words after subcommand.
+	args []string
+	// helpRequested reports whether a -h or --help stood among the global options.
+	helpRequested bool
+	// dir is the lexically resolved directory git acts on, meaningful only when dirKnown.
+	dir string
+	// dirKnown reports whether dir names the repository git acts on.
+	dirKnown bool
+}
+
+// parseGitInvocation parses args, the words after git, run from dir, skipping each valued global option's value and applying each -C to the directory.
+// dirKnown reports whether dir is known, and the result's directory is unknown too when --git-dir or --work-tree names the repository apart from it.
+func parseGitInvocation(args []string, dir string, dirKnown bool) gitInvocation {
+	invocation := gitInvocation{dir: dir, dirKnown: dirKnown}
+	for i := 0; i < len(args); i++ {
+		name, _, _ := strings.Cut(args[i], "=")
+		switch {
+		case args[i] == "-C" && i+1 < len(args):
+			i++
+			invocation.dir = resolveShellPath(invocation.dir, args[i])
+		case gitRepositoryOptions[name]:
+			invocation.dirKnown = false
+			if name == args[i] {
+				i++
+			}
+		case gitValuedGlobalOptions[args[i]]:
+			i++
+		case isHelpFlag(args[i]):
+			invocation.helpRequested = true
+			return invocation
+		case strings.HasPrefix(args[i], "-"):
+		default:
+			invocation.subcommand, invocation.args = args[i], args[i+1:]
+			return invocation
+		}
+	}
+	return invocation
+}
+
+// firstOperand returns the first non-option word of args, skipping the value of each option valuedOptions holds, and reports whether there is one.
+// After a -- it returns the next word, whatever its spelling.
+func firstOperand(args []string, valuedOptions map[string]bool) (string, bool) {
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--":
+			if i+1 < len(args) {
+				return args[i+1], true
+			}
+			return "", false
+		case valuedOptions[args[i]]:
+			i++
+		case strings.HasPrefix(args[i], "-"):
+		default:
+			return args[i], true
+		}
+	}
+	return "", false
+}
+
+// isAnchoredShellPath reports whether p names its directory independently of the current directory: absolute, or led by a ~ or a $ variable.
+func isAnchoredShellPath(p string) bool {
+	return strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~") || strings.HasPrefix(p, "$")
+}
+
+// resolveShellPath lexically resolves p against dir.
+// An anchored p stands as written and cleaned; if a .. would climb above its leading ~ or $ word, the result is ../ followed by p, which lies inside no anchored root.
+// A relative p joins dir; under a relative dir the result stays relative to the starting directory, so a result such as .. or ../x escapes it.
+func resolveShellPath(dir, p string) string {
+	if !isAnchoredShellPath(p) {
+		if !isAnchoredShellPath(dir) {
+			return path.Join(dir, p)
+		}
+		p = dir + "/" + p
+	}
+	if strings.HasPrefix(p, "/") {
+		return path.Clean(p)
+	}
+	anchor, rest, _ := strings.Cut(p, "/")
+	cleaned := path.Clean(strings.TrimLeft(rest, "/"))
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return "../" + p
+	}
+	if cleaned == "." {
+		return anchor
+	}
+	return anchor + "/" + cleaned
 }
 
 // gitTagListsOnly reports whether args, the words after git tag, only list tags.
@@ -188,24 +370,6 @@ func isGitExecutable(word string) bool {
 	return word == "git" || strings.HasSuffix(word, "/git") || strings.HasSuffix(word, `\git`)
 }
 
-// gitSubcommand returns the first non-option word of args, the words after git, skipping each valued global option's value.
-// It also returns the words after that subcommand; the subcommand is "" when there is none.
-// helpRequested reports whether a -h or --help stood among the global options.
-func gitSubcommand(args []string) (subcommand string, rest []string, helpRequested bool) {
-	for i := 0; i < len(args); i++ {
-		switch {
-		case gitValuedGlobalOptions[args[i]]:
-			i++
-		case isHelpFlag(args[i]):
-			return "", nil, true
-		case strings.HasPrefix(args[i], "-"):
-		default:
-			return args[i], args[i+1:], false
-		}
-	}
-	return "", nil, false
-}
-
 // auditClusterRound enforces the cluster-round fail-loud policy. Checks run in
 // a fixed order; the first violation is returned as a hard error.
 func auditClusterRound(audit *shuttleengine.ForkAudit, wantN int) ([]string, error) {
@@ -237,10 +401,8 @@ func forkViolation(audit *shuttleengine.ForkAudit) error {
 		}
 	}
 	for _, fork := range audit.Forks {
-		for _, cmd := range fork.BashCommands {
-			if commandRunsMutatingGit(cmd) {
-				return fmt.Errorf("fork %q ran a git-mutating command (%q) — a fork must never run a state-mutating git command", fork.TranscriptPath, cmd)
-			}
+		if cmd, found := firstMutatingGitCommand(fork.BashCommands); found {
+			return fmt.Errorf("fork %q ran a git-mutating command (%q) — a fork must never run a state-mutating git command", fork.TranscriptPath, cmd)
 		}
 	}
 	if audit.NamedSpawns > 0 {

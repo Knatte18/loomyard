@@ -302,6 +302,8 @@
 // a Bash command is git-mutating only when the subcommand word of one of its git invocations, the first non-option word after git's global options, mutates,
 // so a mutating verb named as an argument, as in git help cherry-pick or git log --grep merge, and a -h or --help request pass;
 // git tag alone is judged by its arguments too, and passes when bare or in list mode, as in git tag --points-at HEAD, with no option that creates, deletes or signs a tag;
+// a mutating invocation also passes when it acts inside a repository the fork itself created earlier, by git init or by git worktree add from such a repository, so a fork may experiment on a throwaway repository in its scratchpad;
+// the directory is resolved lexically from each command's cd segments and -C options, and git push, --git-dir, --work-tree and an unresolvable directory never pass this way, and a git init whose relative path is the starting directory, an ancestor or leaves it through .. records no repository, and a .. climbing above a leading ~ or $ word leaves the directory unresolvable;
 // any named spawn is a hard error.
 // A fork that ran clean but never returned a report is sloppiness no mechanism prevents in advance.
 // It is collected into ReviewResult.ClusterWarnings and never fails the round, since the handler's own consolidation phase already judges each fork's output on its merits.
