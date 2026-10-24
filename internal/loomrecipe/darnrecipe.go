@@ -1,5 +1,5 @@
 // darnrecipe.go implements NewDarn and DarnRouting, the builder and routing projection of the embedded darn recipe, and DarnRetiredRows, the row renames a darn run is carried across.
-// Neither of the recipe's budgets is declared in it: NewDarn stamps the verify budget `darn.yaml` supplies onto the verify gates of Darn-Write and Darn-Burler-Fix, and both apply its review budget to the Darn-Review perch, at every call.
+// Neither of the recipe's budgets is declared in it: NewDarn stamps the verify budget `darn.yaml` supplies onto the verify gates of Darn-Write and Code-Burler-Fix, and both apply the Code-Review segment's budget to the perch, at every call.
 
 package loomrecipe
 
@@ -16,17 +16,20 @@ import (
 // verifyGateName is the gate entry whose attempts the verify budget sets.
 const verifyGateName = "verify"
 
+// codeReviewSegment is the review segment of the code review perch, the darn recipe's only one.
+const codeReviewSegment = "Code-Review"
+
 // darnVerifyGatedRows are the darn recipe's rows whose verify gate runs the tree-scoped command, or the command impactset derives from the merge base, and runs darn.yaml's verify where impactset falls back.
-var darnVerifyGatedRows = []string{loomshed.NameDarnWrite, loomshed.NameDarnBurlerFix}
+var darnVerifyGatedRows = []string{loomshed.NameDarnWrite, loomshed.NameCodeBurlerFix}
 
 // DarnRetiredRows maps each row name a darn run's status file may still carry from an earlier recipe onto the row that replaced it.
 func DarnRetiredRows() map[string]string {
 	return map[string]string{"Darn": loomshed.NameDarnWrite}
 }
 
-// NewDarn parses recipes.DarnRecipe, stamps env.DarnVerifyAttempts onto the verify gates of Darn-Write and Darn-Burler-Fix, builds it against env, applies env.Segments["Darn-Review"].MaxBounces to the Darn-Review perch, and returns the assembled *shedengine.Shed.
+// NewDarn parses recipes.DarnRecipe, stamps env.DarnVerifyAttempts onto the verify gates of Darn-Write and Code-Burler-Fix, builds it against env, applies env.Segments["Code-Review"].MaxBounces to the Code-Review perch, and returns the assembled *shedengine.Shed.
 // A review budget of 0 routes Darn-Write's Done and Finalize's reroute straight to PR-Review, so neither the perch nor Describe runs.
-// It makes the status-path coherence checks New makes, then refuses an env.DarnVerifyAttempts below 1, a missing Darn-Review entry in env.Segments, naming the darn wiring's entry, and a Darn-Review budget below 0 before any row builds.
+// It makes the status-path coherence checks New makes, then refuses an env.DarnVerifyAttempts below 1, a missing Code-Review entry in env.Segments, naming the loom wiring's segment table, and a Code-Review budget below 0 before any row builds.
 func NewDarn(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error) {
 	if err := checkStatusPaths(env, paths); err != nil {
 		return nil, err
@@ -38,7 +41,7 @@ func NewDarn(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, e
 	if err != nil {
 		return nil, err
 	}
-	budgets, err := segmentBudgets(segments, env, darnEntryWayForward)
+	budgets, err := segmentBudgets(segments, env, loomSegmentTableWayForward)
 	if err != nil {
 		return nil, err
 	}
@@ -64,17 +67,14 @@ func NewDarn(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, e
 	return shed, nil
 }
 
-// darnEntryWayForward is the way forward of a missing Darn-Review budget.
-const darnEntryWayForward = "add the Darn-Review budget entry the darn wiring builds from darn.yaml's review_max_bounces"
-
-// DarnRouting projects the embedded darn recipe's routing without building any engine, with budgets' Darn-Review entry applied to the Darn-Review perch as NewDarn applies it.
-// A budgets map lacking Darn-Review is refused naming the segment and the darn wiring's budget entry, and a negative entry is refused with the runnable way forward.
+// DarnRouting projects the embedded darn recipe's routing without building any engine, with budgets' Code-Review entry applied to the perch as NewDarn applies it.
+// A budgets map lacking Code-Review is refused naming the segment and the loom wiring's segment table, and a negative entry is refused naming the segment.
 func DarnRouting(budgets map[string]int) (shedengine.Routing, error) {
 	segments, err := reviewSegments(recipes.DarnRecipe)
 	if err != nil {
 		return shedengine.Routing{}, err
 	}
-	if err := checkSegmentBudgets(segments, budgets, darnEntryWayForward); err != nil {
+	if err := checkSegmentBudgets(segments, budgets, loomSegmentTableWayForward); err != nil {
 		return shedengine.Routing{}, err
 	}
 
@@ -98,9 +98,9 @@ func checkVerifyAttempts(attempts int) error {
 	return nil
 }
 
-// applyDarnReviewBudget sets MaxBounces to budgets' Darn-Review entry on every row of the darn recipe's review segments, or, for a budget of 0, routes Darn-Write's Done and Finalize's reroute to PR-Review so neither a review row nor Describe is reached.
+// applyDarnReviewBudget sets MaxBounces to budgets' Code-Review entry on every row of the darn recipe's review segments, or, for a budget of 0, routes Darn-Write's Done and Finalize's reroute to PR-Review so neither a review row nor Describe is reached.
 func applyDarnReviewBudget(producers []shedengine.ProducerDef, budgets map[string]int) error {
-	if budgets[darnReviewSegment] == 0 {
+	if budgets[codeReviewSegment] == 0 {
 		for i := range producers {
 			switch producers[i].Name {
 			case loomshed.NameDarnWrite:

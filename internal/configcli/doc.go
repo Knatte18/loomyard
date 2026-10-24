@@ -53,12 +53,12 @@
 // A value whose first non-blank character is `{` or `[` writes the entry as a YAML flow mapping or list instead, replacing it whole, as in `lyx config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", timeout_min: 60, counter: go-json}'`.
 // It refuses when the map holds a list,
 // and removing an entry stays an editor edit.
-// A key that is itself a declared open map holding a scalar or a list, such as loom's model keys `reviewer_model`, `fixer_model` and each segment's `*_reviewer_model` and `*_fixer_model`, and each perch's fan keys `*_reviewer_fan` and `*_fixer_fan` in loom plus `darn_reviewer_fan` and `darn_fixer_fan` in darn, takes either shape:
+// A key that is itself a declared open map holding a scalar or a list, such as loom's model keys `reviewer_model`, `fixer_model` and each segment's `*_reviewer_model` and `*_fixer_model`, and each perch's fan keys `*_reviewer_fan` and `*_fixer_fan` in loom, takes either shape:
 // a value starting with `[` is written as a YAML flow list of scalars or mappings of scalars and any other value as a string, as in `lyx config loom --set 'plan_reviewer_model=["opus[medium]", "sonnet[high]"]'`.
 // An entry holding `[` or `]` must be quoted, and a bracketed value that is not such a list is refused, never written as a string.
 // Any other key must exist in the template;
 // pre-existing keys the template lacks are preserved and reported in a `preserved` field.
-// A module whose spec sets `configengine.Spec.JSONEntries`, the run profiles of `profiles`, takes instead a top-level name and a JSON object, as in `lyx config profiles --set wide='{"darn":{"review_max_bounces":2}}'`:
+// A module whose spec sets `configengine.Spec.JSONEntries`, the run profiles of `profiles`, takes instead a top-level name and a JSON object, as in `lyx config profiles --set wide='{"loom":{"code_max_bounces":2}}'`:
 // the object replaces that entry whole or is appended as a new one, the other entries left as they are, and a value that is not a JSON object is refused.
 // An absent hub file starts from the template.
 // A module with a template overlay picks its layer through a selector key only the base file may hold, so a hub worktree write picking a layer the base does not pick is refused, naming `--layer default` from the prime worktree.

@@ -281,7 +281,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			"Discussion-Review": fullEnvSegment(3, "loom.yaml"),
 			"Plan-Review":       fullEnvSegment(3, "loom.yaml"),
 			"Code-Review":       fullEnvSegment(3, "loom.yaml"),
-			"Darn-Review":       fullEnvSegment(1, "darn.yaml"),
 		},
 		WebsterRun: func(websterengine.RunDeps, websterengine.RunOptions) (websterengine.RunResult, error) {
 			return websterengine.RunResult{}, nil

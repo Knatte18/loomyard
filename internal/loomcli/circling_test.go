@@ -218,37 +218,13 @@ func TestPerchHardCap(t *testing.T) {
 			wantRaise: []string{"lyx config loom --layer local --set review_hard_max_bounces=<n>", "lyx board upsert"},
 		},
 		{
-			name: "the darn template cap",
-			row:  loomshed.NameDarnBouncer,
+			name: "a code cap, the darn recipe's perch's too",
+			row:  loomshed.NameCodeBouncer,
 			seed: func(t *testing.T, loc *lyxcwd.Location) {
-				seedDarnHubConfig(t, loc.HubPath, "3")
+				seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"code_hard_max_bounces": "7"})
 			},
-			wantHard:  2,
-			wantRaise: []string{"lyx config darn --set review_hard_max_bounces=<n>"},
-		},
-		{
-			name: "a local darn cap",
-			row:  loomshed.NameDarnBouncer,
-			seed: func(t *testing.T, loc *lyxcwd.Location) {
-				seedDarnHubConfig(t, loc.HubPath, "3")
-				localPath := configengine.LocalFile(loc.AnchorPath(), "darn")
-				if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
-					t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
-				}
-				if err := os.WriteFile(localPath, []byte("review_hard_max_bounces: 5\n"), 0o644); err != nil {
-					t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
-				}
-			},
-			wantHard:  5,
-			wantRaise: []string{"lyx config darn --layer local --set review_hard_max_bounces=<n>", "lyx board upsert"},
-		},
-		{
-			name: "a darn.yaml holding a malformed tree key",
-			row:  loomshed.NameDarnBouncer,
-			seed: func(t *testing.T, loc *lyxcwd.Location) {
-				seedDarnHubConfig(t, loc.HubPath, "3", "tree_scope: {}", `tree_scope: {"./tools": ""}`)
-			},
-			wantErr: []string{"./tools", "lyx config darn's editor"},
+			wantHard:  7,
+			wantRaise: []string{"lyx config loom --set code_hard_max_bounces=<n>"},
 		},
 	}
 	for _, tt := range tests {

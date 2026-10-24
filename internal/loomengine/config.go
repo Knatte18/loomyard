@@ -166,6 +166,13 @@ func DiscussionRelevant(l *lyxcwd.Location) string {
 	return filepath.Join(DiscussionDir(l), "relevant.md")
 }
 
+// DiscussionBoardEntry returns the path to the darn run's snapshot of its task's board entry, the Code-Review perch's answer key on that recipe.
+// It shares DiscussionDir's AnchorPath anchoring.
+// Per the Cwd Resolution Invariant, no other package may construct this path.
+func DiscussionBoardEntry(l *lyxcwd.Location) string {
+	return filepath.Join(DiscussionDir(l), "board-entry.md")
+}
+
 // LoomDriverLog returns the path to the detached driver's captured stdout and stderr for this
 // worktree's session bootstrap.
 // It is AnchorPath-anchored, living under the ephemeral tree at the mirrored subpath of the durable
@@ -1115,9 +1122,9 @@ func copyWebsterModelsOntoMerge(document []byte) ([]byte, []string, error) {
 	}
 	root := parsed.Content[0]
 	var lines []string
-	for _, copied := range []struct{ webster, websterRenamed, merge, darn string }{
-		{"webster_review", "webster_reviewer_model", "merge_reviewer_model", "darn_reviewer_model"},
-		{"webster_fix", "webster_fixer_model", "merge_fixer_model", "darn_fixer_model"},
+	for _, copied := range []struct{ webster, websterRenamed, merge string }{
+		{"webster_review", "webster_reviewer_model", "merge_reviewer_model"},
+		{"webster_fix", "webster_fixer_model", "merge_fixer_model"},
 	} {
 		retiredAt := mappingKeyIndex(root, copied.webster)
 		if retiredAt < 0 || mappingKeyIndex(root, copied.merge) >= 0 {
@@ -1133,7 +1140,7 @@ func copyWebsterModelsOntoMerge(document []byte) ([]byte, []string, error) {
 			value.LineComment = templated.LineComment
 		}
 		root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: copied.merge}, &value)
-		lines = append(lines, fmt.Sprintf("%s: set to %s's value, the models Merge-Review ran on; Darn-Review now reads %s in darn.yaml, which this rewrite cannot set", copied.merge, source, copied.darn))
+		lines = append(lines, fmt.Sprintf("%s: set to %s's value, the models Merge-Review ran on", copied.merge, source))
 	}
 	if len(lines) == 0 {
 		return document, nil, nil

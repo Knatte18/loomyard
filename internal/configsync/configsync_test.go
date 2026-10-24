@@ -1588,6 +1588,21 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 	}
 }
 
+// TestFormerSourceDefaults_NameDeclaredMoveSources pins that every former source default names the source key of a declared key move.
+func TestFormerSourceDefaults_NameDeclaredMoveSources(t *testing.T) {
+	t.Parallel()
+	for module, keys := range formerSourceDefaults {
+		for key := range keys {
+			declared := slices.ContainsFunc(configreg.KeyMoves(), func(move configreg.KeyMove) bool {
+				return move.FromModule == module && move.FromKey == key
+			})
+			if !declared {
+				t.Errorf("formerSourceDefaults names %s.%s, which no declared key move takes as its source", module, key)
+			}
+		}
+	}
+}
+
 // TestFormerTemplateValues_DifferFromTheTemplate pins that every former value names a registered module and a unit its template holds, and differs from the template's current value, compared as YAML nodes with the module's open maps.
 func TestFormerTemplateValues_DifferFromTheTemplate(t *testing.T) {
 	t.Parallel()
@@ -1912,6 +1927,63 @@ func TestReconcile_MovesKeysAcrossModules(t *testing.T) {
 			contains: map[string][]string{"board:claude": {"binary: /x"}, "board:shuttle": {configengine.SparseBaseHeader}},
 			excludes: map[string][]string{"board:claude": {"deny_agent_tool"}, "board:shuttle": {"claude: /x"}},
 			moved:    []string{"shuttle.claude -> claude.binary"},
+		},
+		{
+			name:     "a hub's tuned darn perch keys move to loom's Code-Review keys",
+			files:    map[string]string{"board:darn": "review_max_bounces: 0\ndarn_fixer_fan: fix-plan\n"},
+			call:     "board",
+			contains: map[string][]string{"board:loom": {"code_max_bounces: 0", "code_fixer_fan: fix-plan"}, "board:darn": {configengine.SparseBaseHeader}},
+			excludes: map[string][]string{"board:darn": {"review_max_bounces", "darn_fixer_fan"}},
+			moved:    []string{"darn.darn_fixer_fan -> loom.code_fixer_fan", "darn.review_max_bounces -> loom.code_max_bounces"},
+		},
+		{
+			name: "a hub's tuned darn model, fan and amend keys move to loom's Code-Review keys",
+			files: map[string]string{"board:darn": "darn_reviewer_model: opus[high]\ndarn_fixer_model: opus[low]\ndarn_reviewer_fan: review-plan\n" +
+				"review_fan: review-plan\nreview_fix_fan: fix-plan\nreview_hard_max_bounces: 3\nreview_amend_max_bounces: 0\n"},
+			call: "board",
+			contains: map[string][]string{"board:loom": {"code_reviewer_model: opus[high]", "code_fixer_model: opus[low]", "code_reviewer_fan: review-plan",
+				"code_fixer_fan: fix-plan", "code_hard_max_bounces: 3", "review_amend_max_bounces: 0"}, "board:darn": {configengine.SparseBaseHeader}},
+			moved: []string{
+				"darn.darn_fixer_model -> loom.code_fixer_model", "darn.darn_reviewer_fan -> loom.code_reviewer_fan", "darn.darn_reviewer_model -> loom.code_reviewer_model",
+				"darn.review_amend_max_bounces -> loom.review_amend_max_bounces", "darn.review_fix_fan -> loom.code_fixer_fan",
+				"darn.review_hard_max_bounces -> loom.code_hard_max_bounces",
+			},
+			kept: []string{"darn.review_fan: review-plan dropped, loom.code_reviewer_fan: review-plan kept"},
+		},
+		{
+			name:     "an untuned darn.yaml's former defaults are dropped and leave loom's Code-Review keys as they are",
+			files:    map[string]string{"board:darn": "darn_reviewer_model: sonnet[high]\nreview_hard_max_bounces: 2\ndarn_fixer_fan: \"\"\nreview_fan: \"\"\n", "board:loom": "code_hard_max_bounces: 0\ncode_reviewer_model: sonnet[medium]\ncode_max_bounces: 1\n"},
+			call:     "board",
+			contains: map[string][]string{"board:loom": {"code_hard_max_bounces: 0", "code_reviewer_model: sonnet[medium]"}, "board:darn": {configengine.SparseBaseHeader}},
+			excludes: map[string][]string{"board:loom": {"sonnet[high]", "code_hard_max_bounces: 2", "code_fixer_fan: \"\""}},
+			kept: []string{
+				"darn.darn_fixer_fan:  dropped, a former template default", "darn.review_fan:  dropped, a former template default", "darn.darn_reviewer_model: sonnet[high] dropped, a former template default",
+				"darn.review_hard_max_bounces: 2 dropped, a former template default",
+			},
+		},
+		{
+			name:     "a former default dropped from a prime-seeded darn.yaml is reported though the move writes no file",
+			files:    map[string]string{"prime:darn": "review_hard_max_bounces: 2\n"},
+			call:     "board",
+			excludes: map[string][]string{"board:loom": {"code_hard_max_bounces: 2"}},
+			kept:     []string{"darn.review_hard_max_bounces: 2 dropped, a former template default"},
+		},
+		{
+			name:     "a loom.yaml's tuned code value is kept over a darn value at a base layer",
+			files:    map[string]string{"base:darn": "review_max_bounces: 0\n", "base:loom": "code_max_bounces: 2\n"},
+			call:     "standalone",
+			contains: map[string][]string{"base:loom": {"code_max_bounces: 2"}},
+			absent:   []string{"base:darn"},
+			kept:     []string{"darn.review_max_bounces: 0 dropped, loom.code_max_bounces: 2 kept"},
+		},
+		{
+			name:        "a loom.yaml's tuned code value is kept over a darn value at a sparse layer",
+			files:       map[string]string{"board:darn": "review_max_bounces: 0\n", "board:loom": "code_max_bounces: 2\n"},
+			boardMarker: true,
+			call:        "board",
+			contains:    map[string][]string{"board:loom": {"code_max_bounces: 2"}},
+			excludes:    map[string][]string{"board:darn": {"review_max_bounces"}},
+			kept:        []string{"darn.review_max_bounces: 0 dropped, loom.code_max_bounces: 2 kept"},
 		},
 		{
 			name:     "a board default seeded from the prime's shuttle.yaml carries the moved value and the prime's non-template units",

@@ -138,7 +138,7 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 		wantViolations int
 	}{
 		{name: "shipped loom recipe with a fan on every review perch", recipe: shipped, fans: reviewFans},
-		{name: "shipped darn recipe with a Darn-Review fan", recipe: shippedDarn, fans: darnFans},
+		{name: "shipped darn recipe with a Code-Review fan", recipe: shippedDarn, fans: darnFans},
 		{name: "gated writer row naming a fixer fan setting", recipe: shedbuild.Recipe{Producers: []shedbuild.Row{{Name: "Writer", Engine: "DiscussionWrite", Config: map[string]any{"gates": []any{map[string]any{"name": "discussion"}}, "fixer_fan_setting": "loom.discussion_fixer_fan"}}}}, wantViolations: 1},
 		{name: "gated writer row receiving a fan from the map", recipe: gatedWriter(nil), fans: map[string][]string{"Writer": {"", "standard"}}, wantViolations: 1},
 		{name: "gated writer row receiving a fan from its profile", recipe: gatedWriter("standard"), wantViolations: 1},

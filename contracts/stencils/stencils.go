@@ -84,15 +84,10 @@ var LoomRubricDiscussionReview []byte
 //go:embed loom/loom-rubric-plan-review.md
 var LoomRubricPlanReview []byte
 
-// LoomRubricCodeReview is the Code-Review rubric, read by both rows of the Code-Review perch.
+// LoomRubricCodeReview is the Code-Review rubric, read by both rows of the Code-Review perch in the loom and darn recipes.
 //
 //go:embed loom/loom-rubric-code-review.md
 var LoomRubricCodeReview []byte
-
-// LoomRubricDarnReview is the Darn-Review rubric, read by both rows of the darn recipe's Darn-Review perch.
-//
-//go:embed loom/loom-rubric-darn-review.md
-var LoomRubricDarnReview []byte
 
 // LoomTemplatePriorPlan is the prior-plan block appended to the end of the Plan prompt on a respawn.
 //
@@ -465,7 +460,6 @@ var entries = []registryEntry{
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-code-review", &LoomRubricCodeReview},
-	{"loom-rubric-darn-review", &LoomRubricDarnReview},
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"loom-template-parent-review-delivery", &LoomTemplateParentReviewDelivery},
 	{"loom-template-parent-review-brief", &LoomTemplateParentReviewBrief},

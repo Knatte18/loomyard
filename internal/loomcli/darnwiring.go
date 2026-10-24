@@ -1,4 +1,4 @@
-// darnwiring.go holds the wiring only a darn run needs: the tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the writer's and Describe's Spec sources, and the rename of retired darn rows in a run's status file.
+// darnwiring.go holds the wiring only a darn run needs: the tree scope reader the darn recipe tells its verify gate, the verify source its landing producers read, the Darn-Write row's seams, the board entry snapshot its discussion commit writes, the writer's and Describe's Spec sources, and the rename of retired darn rows in a run's status file.
 // A loom run leaves all of it unwired, but shares the merge base readers `pairMergeBase` and `taskMergeBase` build.
 
 package loomcli
@@ -10,9 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -20,19 +21,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/seatengine"
-	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
-	"gopkg.in/yaml.v3"
 )
-
-// darnReviewSegment is the darn recipe's review segment, the key of its entry in shedrecipe.Env.Segments.
-const darnReviewSegment = "Darn-Review"
 
 // darnVerifySource returns the darn recipe's verify source: the hub's `landing` gate call.
 // command resolves at each call, never at construction, so an edit between steps is seen:
@@ -176,50 +170,33 @@ func (c *loomCLI) renameRetiredDarnRows() error {
 	return nil
 }
 
-// darnReviewBudget returns the Darn-Review segment's budget, darn.yaml's review_max_bounces, for the routing projection.
-// The full wiring has already loaded darn.yaml into c.darnCfg; the lightweight wiring loads no config, so it reads the hub-wide file here.
-// An unreadable file degrades to the template's default with a warning, because the lightweight verbs (status, pause) must not refuse over a config they otherwise never read.
-func (c *loomCLI) darnReviewBudget() (map[string]int, error) {
-	if c.darnCfg != nil {
-		return map[string]int{darnReviewSegment: c.darnCfg.ReviewMaxBounces}, nil
-	}
-
-	cfg, err := darnengine.LoadConfig(fabricengine.ConfigDirs(c.location), "darn")
-	if err == nil {
-		return map[string]int{darnReviewSegment: cfg.ReviewMaxBounces}, nil
-	}
-	logger.Warn("loom: could not read darn.yaml for the review bounce budget; reporting the template default", "error", err)
-
-	var template darnengine.Config
-	if err := yaml.Unmarshal([]byte(darnengine.ConfigTemplate()), &template); err != nil {
-		return nil, err
-	}
-
-	return map[string]int{darnReviewSegment: template.ReviewMaxBounces}, nil
-}
-
-// wireDarnReview adds the Darn-Review segment's settings from cfg to env.Segments.
-// The models resolve through registry, each empty darn.yaml model key taking its shared list, and a refusal names the key the failing value came from.
-// The segment's Bouncer pair is bouncer.
-func wireDarnReview(env *shedrecipe.Env, cfg darnengine.Config, shared burlerengine.RoundModels, bouncer shedadapters.BouncerModels, registry modelspec.Registry) error {
-	models, keys, err := loomengine.ResolveDarnReview(shared, cfg, registry)
-	if err != nil {
+// commitDarnDiscussion writes the snapshot of location's task's board entry into the discussion directory, then commits the directory as commitDiscussion does.
+// A snapshot that cannot be written fails the commit with nothing committed.
+func commitDarnDiscussion(location *lyxcwd.Location) error {
+	if err := writeBoardEntrySnapshot(location); err != nil {
 		return err
 	}
-	if env.Segments == nil {
-		env.Segments = map[string]shedrecipe.SegmentSettings{}
+	return commitDiscussion(location)
+}
+
+// writeBoardEntrySnapshot writes the snapshot of location's task's board entry to the discussion directory.
+// The snapshot is the darn Code-Review perch's answer key, kept apart from the writer's decision record; the run's board lock keeps the entry's body and scope fixed for the run.
+// A board that cannot be read, or holds no entry for the task, is refused.
+func writeBoardEntrySnapshot(location *lyxcwd.Location) error {
+	board, err := boardengine.OpenHub(location.HubPath)
+	if err != nil {
+		return fmt.Errorf("loom: open the board to snapshot the task's entry: %w; way forward: fix the board, then hand off again", err)
 	}
-	env.Segments[darnReviewSegment] = shedrecipe.SegmentSettings{
-		Models:            models,
-		ReviewKey:         keys.Review,
-		FixKey:            keys.Fix,
-		Bouncer:           bouncer,
-		MaxBounces:        cfg.ReviewMaxBounces,
-		MaxBouncesKey:     reviewbudget.RunSoftKey,
-		HardMaxBounces:    cfg.ReviewHardMaxBounces,
-		HardMaxBouncesKey: reviewbudget.RunHardKey,
-		AmendMaxBounces:   cfg.ReviewAmendMaxBounces,
-		ConfigFile:        "darn.yaml",
+	slug := seedSlug(location.WorktreeName)
+	task, found, err := board.GetTask(slug)
+	if err != nil {
+		return fmt.Errorf("loom: read board entry %q to snapshot it: %w; way forward: fix the board, then hand off again", slug, err)
+	}
+	if !found {
+		return fmt.Errorf("loom: the board holds no entry %q to snapshot as the review's answer key; way forward: restore the entry with \"lyx board upsert\", then hand off again", slug)
+	}
+	if err := fsx.AtomicWriteBytes(loomengine.DiscussionBoardEntry(location), darnengine.BoardEntrySnapshot(slug, task.Title, task.Brief, task.Body)); err != nil {
+		return fmt.Errorf("loom: write the board entry snapshot: %w", err)
 	}
 	return nil
 }
@@ -227,7 +204,8 @@ func wireDarnReview(env *shedrecipe.Env, cfg darnengine.Config, shared burlereng
 // wireDarn fills the Env fields a darn run reads beyond the ones wire fills for every recipe, and replaces the loom DescribeTable with the darn one, which reads the decision record but no run record.
 // It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
 // A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
-func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry, shared burlerengine.RoundModels, bouncer shedadapters.BouncerModels) error {
+// budgets is the loom review segments' budgets, whose Code-Review entry the darn routing applies to the perch.
+func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, frictionDir string, landingCfg landingshed.Config, registry modelspec.Registry, budgets map[string]int) error {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := darnengine.LoadConfig(dirs, "darn")
 	if err != nil {
@@ -244,19 +222,16 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 	c.env.VerifyMergeBase = taskMergeBase(location)
 	c.env.VerifyTreeScope = darnTreeScope(location)
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts
-	if err := wireDarnReview(&c.env, cfg, shared, bouncer, registry); err != nil {
-		return err
-	}
-	c.darnCfg = &cfg
-	// The Darn-Review perch's CIRCLING Reason names the budget the darn routing applies, not loom's.
+	// The perch's CIRCLING Reason names the budget the darn routing applies.
 	c.env.SegmentBounces = segmentBounces(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func() (shedengine.Routing, error) {
-		return loomrecipe.DarnRouting(map[string]int{darnReviewSegment: cfg.ReviewMaxBounces})
+		return loomrecipe.DarnRouting(budgets)
 	})
 	c.env.Darn = darnDeps(location, c.runID)
-	// The overlap note Finalize writes on a large-merge reroute is the Darn-Bouncer's review input.
+	// The overlap note Finalize writes on a large-merge reroute is the Code-Bouncer's review input.
 	c.env.ReviewInput = overlapNoteInput(loomengine.LoomScratchDir(location))
-	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate.
+	// The history seam turns the Darn-Write row's "discussion" gate into the darn gate, whose commit snapshots the board entry the perch reads.
 	c.env.DiscussionHistory = discussionHistory(location)
+	c.env.CommitDiscussion = func() error { return commitDarnDiscussion(location) }
 	c.env.DarnTable = func(told loomshed.DarnTold) (seatengine.Table, error) {
 		return darnengine.DarnTable(darnengine.DarnInputs{
 			StencilsDir:        stencilsDir,
@@ -271,12 +246,12 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 			LanguageSkills:     c.languageSkills,
 		}, cfg, registry)
 	}
-	reviewSubdir, isBouncer, err := loomrecipe.BouncerRunSubdir(loomshed.NameDarnBouncer)
+	reviewSubdir, isBouncer, err := loomrecipe.BouncerRunSubdir(loomshed.NameCodeBouncer)
 	if err != nil {
 		return err
 	}
 	if !isBouncer {
-		return fmt.Errorf("loom: the embedded darn recipe's %s row is not a Bouncer with a run_subdir, so this lyx build is broken", loomshed.NameDarnBouncer)
+		return fmt.Errorf("loom: the embedded darn recipe's %s row is not a Bouncer with a run_subdir, so this lyx build is broken", loomshed.NameCodeBouncer)
 	}
 	// DescribeTable opens the fabric lazily, for the reason the loom DescribeTable gives.
 	c.env.DescribeTable = func() (seatengine.Table, error) {

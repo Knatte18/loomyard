@@ -14,11 +14,12 @@
 //
 // The loom recipe's tail after Webster reads `Merge-In → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`.
 // PR-Review always ends Done, so it carries no on_stuck, and Finalize's reroute names Merge-In.
-// The darn recipe's tail after Darn-Write reads `Darn-Review → Describe → PR-Review → Finalize → Friction-Reflect`, with no Merge-In, and Finalize's reroute names Darn-Bouncer.
+// The darn recipe's tail after Darn-Write reads `Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`, with no Merge-In, and Finalize's reroute names Code-Bouncer.
+// Its Code-Review rows are loom's, with the same names, segment, rubric and `loom.yaml` keys; only their answer key differs, the board entry snapshot and the decision record in place of the record and the plan.
 //
 // NewDarn is the second builder: it builds the embedded darn recipe, and DarnRouting projects that recipe's routing.
-// Its verify budget is not declared in the recipe: NewDarn stamps shedrecipe.Env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`, onto the verify gates of the `Darn-Write` and `Darn-Burler-Fix` rows at every build and refuses a value below 1.
-// Nor is the bounce budget of its Darn-Review perch: NewDarn takes it from shedrecipe.Env.Segments["Darn-Review"], whose budget is the `review_max_bounces` of `darn.yaml`, and DarnRouting from a map keyed by segment, and both set it on the perch's rows and refuse a missing Darn-Review entry and a value below 0.
+// Its verify budget is not declared in the recipe: NewDarn stamps shedrecipe.Env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`, onto the verify gates of the `Darn-Write` and `Code-Burler-Fix` rows at every build and refuses a value below 1.
+// Nor is the bounce budget of its perch: NewDarn takes it from shedrecipe.Env.Segments["Code-Review"], whose budget is the Code-Review perch's resolved soft cap from `loom.yaml`, and DarnRouting from a map keyed by segment, and both set it on the perch's rows and refuse a missing Code-Review entry and a value below 0.
 // A budget of 0 turns the perch off: both route `Darn-Write`'s Done and `Finalize`'s reroute straight to PR-Review, so a run reaches neither the perch's rows nor the `Describe` row after them, and the writer's own change description stands.
 // DarnRetiredRows maps the writer row's former name, `Darn`, onto `Darn-Write`, so the caller can carry a darn run parked under the old name across with shedengine.RenameProducers.
 //

@@ -114,10 +114,10 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "plan_max_bounces: 2\n"},
 		},
 		{
-			name:        "a retired darn fan key is renamed by darn's Migrate and refused as a guard key",
+			name:        "a retired darn fan key moves to loom's code_fixer_fan and is refused as a guard key",
 			settings:    map[string]any{"darn": map[string]any{"review_fix_fan": "fix-code"}},
-			wantRefusal: "darn_fixer_fan",
-			wantModule:  "darn",
+			wantRefusal: "code_fixer_fan",
+			wantModule:  "loom",
 			wantInvalid: true,
 		},
 		{
@@ -170,20 +170,37 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
-			name:     "darn's review budget of zero is open to run settings",
-			settings: map[string]any{"darn": map[string]any{"review_max_bounces": float64(0)}},
-			wantDocs: map[string]string{"darn": "review_max_bounces: 0\n"},
+			name:         "a retired darn review budget of zero moves to loom's code_max_bounces",
+			settings:     map[string]any{"darn": map[string]any{"review_max_bounces": float64(0)}},
+			wantDocs:     map[string]string{"loom": "code_max_bounces: 0\n"},
+			wantNoModule: "darn",
 		},
 		{
-			name:     "darn's review budget and hard cap are both settable through run_settings",
+			name:     "a retired darn review budget and hard cap move to loom's code keys",
 			settings: map[string]any{"darn": map[string]any{"review_max_bounces": float64(2), "review_hard_max_bounces": float64(3)}},
-			wantDocs: map[string]string{"darn": "review_hard_max_bounces: 3\nreview_max_bounces: 2\n"},
+			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 3\ncode_max_bounces: 2\n"},
 		},
 		{
-			name:        "darn's review hard cap of zero is refused by darn's CheckValues",
-			settings:    map[string]any{"darn": map[string]any{"review_hard_max_bounces": float64(0)}},
-			wantRefusal: "review_hard_max_bounces",
-			wantModule:  "darn",
+			name: "a retired darn model and amend key moves to loom's code key",
+			settings: map[string]any{"darn": map[string]any{
+				"darn_reviewer_model":      "opus[high]",
+				"darn_fixer_model":         "opus[low]",
+				"review_amend_max_bounces": float64(0),
+			}},
+			wantDocs: map[string]string{"loom": "code_fixer_model: opus[low]\ncode_reviewer_model: opus[high]\nreview_amend_max_bounces: 0\n"},
+		},
+		{
+			name:        "a retired darn reviewer fan key moves to loom's code_reviewer_fan and is refused as a guard key",
+			settings:    map[string]any{"darn": map[string]any{"darn_reviewer_fan": "review-code"}},
+			wantRefusal: "code_reviewer_fan",
+			wantModule:  "loom",
+			wantInvalid: true,
+		},
+		{
+			name:        "a retired darn review_fan moves to loom's code_reviewer_fan and is refused as a guard key",
+			settings:    map[string]any{"darn": map[string]any{"review_fan": "review-code"}},
+			wantRefusal: "code_reviewer_fan",
+			wantModule:  "loom",
 			wantInvalid: true,
 		},
 		{
@@ -378,9 +395,9 @@ func TestLayerRunSettings(t *testing.T) {
 		},
 		{
 			name:     "a module only one side names is written as that side has it",
-			profile:  map[string]any{"darn": map[string]any{"review_max_bounces": float64(0)}},
+			profile:  map[string]any{"darn": map[string]any{"verify_attempts": float64(2)}},
 			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(2)}},
-			wantDocs: map[string]string{"darn": "review_max_bounces: 0\n", "loom": "plan_max_bounces: 2\n"},
+			wantDocs: map[string]string{"darn": "verify_attempts: 2\n", "loom": "plan_max_bounces: 2\n"},
 		},
 		{
 			name:     "no task settings writes the profile alone",

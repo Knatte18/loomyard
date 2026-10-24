@@ -22,7 +22,7 @@ func TestInterruptPolicyFor(t *testing.T) {
 		{"writer reinvoke", NameDiscussionWrite, shedverbs.InterruptPolicyReinvoke},
 		{"bouncer reinvoke", NameDiscussionBouncer, shedverbs.InterruptPolicyReinvoke},
 		{"burler review reinvoke", NameDiscussionBurlerReview, shedverbs.InterruptPolicyReinvoke},
-		{"burler fix reinvoke", NameDarnBurlerFix, shedverbs.InterruptPolicyReinvoke},
+		{"burler fix reinvoke", NameCodeBurlerFix, shedverbs.InterruptPolicyReinvoke},
 		{"darn reinvoke", NameDarnWrite, shedverbs.InterruptPolicyReinvoke},
 		{"empty name", "", ""},
 		{"unknown name", "Not-A-Real-Row", ""},

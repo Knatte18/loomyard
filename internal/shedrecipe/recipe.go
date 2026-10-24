@@ -263,7 +263,7 @@ type Env struct {
 	// internal/loomcli's wire() is what supplies it.
 	DarnTable func(loomshed.DarnTold) (seatengine.Table, error)
 	// DarnVerifyAttempts is the verify gate's attempt budget of the darn recipe, which `darn.yaml`'s verify_attempts supplies.
-	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the Darn-Write and Darn-Burler-Fix rows at every build.
+	// internal/loomrecipe alone reads it, stamping it onto the verify gates of the darn recipe's Darn-Write and Code-Burler-Fix rows at every build.
 	DarnVerifyAttempts int
 	// Darn is a whole-struct passthrough to loomshed.NewDarnWrite, following Env.Landing's own precedent:
 	// the producer has behaviour of its own that per-seam fakes must be able to substitute individually.

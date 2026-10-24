@@ -42,7 +42,6 @@ var InterruptPolicies = map[string]string{
 	NameMergeIn:           shedverbs.InterruptPolicyReinvoke, // spawns only the conflict session the resolver reattaches
 	NamePRReview:          shedverbs.InterruptPolicyReinvoke, // spawns nothing
 	NameDarnWrite:         shedverbs.InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
-	NameDarnBouncer:       shedverbs.InterruptPolicyReinvoke,
 	NameFinalize:          shedverbs.InterruptPolicyReinvoke,
 	NameFrictionReflect:   shedverbs.InterruptPolicyReinvoke,
 
@@ -53,8 +52,6 @@ var InterruptPolicies = map[string]string{
 	NamePlanBurlerFix:          shedverbs.InterruptPolicyReinvoke,
 	NameCodeBurlerReview:       shedverbs.InterruptPolicyReinvoke,
 	NameCodeBurlerFix:          shedverbs.InterruptPolicyReinvoke,
-	NameDarnBurlerReview:       shedverbs.InterruptPolicyReinvoke,
-	NameDarnBurlerFix:          shedverbs.InterruptPolicyReinvoke,
 }
 
 // InterruptPolicyFor returns InterruptPolicies' entry for name, or the empty string when name is

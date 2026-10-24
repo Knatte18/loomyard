@@ -478,3 +478,44 @@ func TestMergeableTips(t *testing.T) {
 		})
 	}
 }
+
+// TestRerouteReviewed_ReadsTheCodeBudgetFromLoomYaml pins that the reroute and budget-zero seams read loom.yaml's Code-Review budget at call time:
+// a budget of 0 reports no review after the reroute and a budget above 0 reports one, and a loom.yaml that fails to load is returned as the seams' error.
+func TestRerouteReviewed_ReadsTheCodeBudgetFromLoomYaml(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name         string
+		codeBudget   string
+		wantReviewed bool
+		wantErr      bool
+	}{
+		{name: "a zero budget leaves no review after the reroute", codeBudget: "0", wantReviewed: false},
+		{name: "a budget above zero leaves a review after the reroute", codeBudget: "2", wantReviewed: true},
+		{name: "a loom.yaml that fails to load is returned as the error", codeBudget: "-1", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"code_max_bounces": tt.codeBudget})
+
+			reviewed, err := rerouteReviewed(loc)()
+			zero, zeroErr := codeBudgetZero(loc)()
+			if tt.wantErr {
+				if err == nil || zeroErr == nil {
+					t.Fatalf("rerouteReviewed() error = %v, codeBudgetZero() error = %v; want both to return the load error", err, zeroErr)
+				}
+				return
+			}
+			if err != nil || zeroErr != nil {
+				t.Fatalf("rerouteReviewed() error = %v, codeBudgetZero() error = %v; want nil", err, zeroErr)
+			}
+			if reviewed != tt.wantReviewed {
+				t.Errorf("rerouteReviewed() = %v; want %v", reviewed, tt.wantReviewed)
+			}
+			if zero != !tt.wantReviewed {
+				t.Errorf("codeBudgetZero() = %v; want %v", zero, !tt.wantReviewed)
+			}
+		})
+	}
+}

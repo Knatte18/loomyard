@@ -1,4 +1,4 @@
-// darnrecipe_test.go covers NewDarn and DarnRouting: the darn recipe's row order, engines and producer types, its PR-Review and Darn-Review routing through Describe, the verify budget stamped onto both verify-gated rows, the review budget applied to the perch, and the refusal of a budget out of range.
+// darnrecipe_test.go covers NewDarn and DarnRouting: the darn recipe's row order, engines and producer types, its PR-Review and Code-Review routing through Describe, the perch shared with loom's recipe bar its answer key, the verify budget stamped onto both verify-gated rows, the review budget applied to the perch, and the refusal of a budget out of range.
 
 package loomrecipe
 
@@ -20,16 +20,16 @@ import (
 var wantDarnProducerTable = []wantProducerRow{
 	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflight("", ""))},
 	{loomshed.NameDarnWrite, "DarnWrite", reflect.TypeOf(loomshed.NewDarnWrite("", nil, loomshed.DarnDeps{}))},
-	{loomshed.NameDarnBouncer, "Bouncer", bouncerType},
-	{loomshed.NameDarnBurlerReview, "BurlerReview", burlerReviewType},
-	{loomshed.NameDarnBurlerFix, "BurlerFix", burlerFixType},
+	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},
+	{loomshed.NameCodeBurlerReview, "BurlerReview", burlerReviewType},
+	{loomshed.NameCodeBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NamePRReview, "PRReview", reflect.TypeOf(&landingshed.PRReview{})},
 	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},
 	{loomshed.NameFrictionReflect, "FrictionReflect", frictionReflectProducerType()},
 }
 
-// TestNewDarn_RowsMatchTheDarnTable pins the darn recipe's rows against wantDarnProducerTable in order, and that the Darn-Burler-Review row's fasit instructions name the amended board entry, the writer's claim and the deferral of an unrecorded parent correction.
+// TestNewDarn_RowsMatchTheDarnTable pins the darn recipe's rows against wantDarnProducerTable in order.
 func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := NewDarn(env, paths)
@@ -58,38 +58,76 @@ func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
 			t.Errorf("recipe row %q engine = %q; want %q", want.name, recipe.Producers[i].Engine, want.engine)
 		}
 	}
+}
 
-	var fasit string
-	for _, row := range recipe.Producers {
-		if row.Name != loomshed.NameDarnBurlerReview {
-			continue
+// TestDarnPerch_SharesLoomsPerchBarTheAnswerKey pins that the darn recipe's Code-Review rows carry loom's segment, run directory, role prefix, rubric and loom.yaml setting keys,
+// and that only their answer key differs: the board entry snapshot and the decision record, whose fasit instructions read the record's added entries as amendments and its other sections as the writer's claim.
+func TestDarnPerch_SharesLoomsPerchBarTheAnswerKey(t *testing.T) {
+	rowsOf := func(source []byte) map[string]shedbuild.Row {
+		t.Helper()
+		recipe, err := shedbuild.Parse(source)
+		if err != nil {
+			t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
 		}
+		rows := map[string]shedbuild.Row{}
+		for _, row := range recipe.Producers {
+			rows[row.Name] = row
+		}
+		return rows
+	}
+	darn, loom := rowsOf(recipes.DarnRecipe), rowsOf(recipes.LoomRecipe)
+	profileOf := func(row shedbuild.Row) map[string]any {
 		profile, _ := row.Config["profile"].(map[string]any)
-		fasitConfig, _ := profile["fasit"].(map[string]any)
-		fasit, _ = fasitConfig["instructions"].(string)
+		return profile
 	}
-	for _, want := range []string{
-		"Added after Discussion", "claim", "unrecorded parent correction", "decision", "MEDIUM", "leave the code",
-	} {
-		if !strings.Contains(fasit, want) {
-			t.Errorf("Darn-Burler-Review fasit instructions lack %q; got %q", want, fasit)
+
+	shared := []string{"run_subdir", "subject", "role_prefix", "reviewer_fan_setting", "fixer_fan_setting", "auto_accept_setting", "rubric_stencil", "carry_over", "review_row"}
+	for _, name := range []string{loomshed.NameCodeBouncer, loomshed.NameCodeBurlerReview, loomshed.NameCodeBurlerFix} {
+		darnRow, loomRow := darn[name], loom[name]
+		if darnRow.Segment != loomRow.Segment || darnRow.Engine != loomRow.Engine || darnRow.OnStuck != loomRow.OnStuck {
+			t.Errorf("darn %s segment/engine/on_stuck = %q/%q/%q; want loom's %q/%q/%q", name, darnRow.Segment, darnRow.Engine, darnRow.OnStuck, loomRow.Segment, loomRow.Engine, loomRow.OnStuck)
+		}
+		for _, key := range shared {
+			if !reflect.DeepEqual(darnRow.Config[key], loomRow.Config[key]) {
+				t.Errorf("darn %s config %s = %v; want loom's %v", name, key, darnRow.Config[key], loomRow.Config[key])
+			}
+		}
+		for _, key := range []string{"rubric_stencil", "fix-scope", "tool-use", "language-skills"} {
+			if got, want := profileOf(darnRow)[key], profileOf(loomRow)[key]; !reflect.DeepEqual(got, want) {
+				t.Errorf("darn %s profile %s = %v; want loom's %v", name, key, got, want)
+			}
+		}
+	}
+
+	answerKey := []any{"_lyx/discussion/board-entry.md", "_lyx/discussion/decision-record.md"}
+	if got := darn[loomshed.NameCodeBouncer].Config["artifact_paths"]; !reflect.DeepEqual(got, answerKey) {
+		t.Errorf("darn Code-Bouncer artifact_paths = %v; want %v", got, answerKey)
+	}
+	fasit, _ := profileOf(darn[loomshed.NameCodeBurlerReview])["fasit"].(map[string]any)
+	if got := fasit["paths"]; !reflect.DeepEqual(got, answerKey) {
+		t.Errorf("darn Code-Burler-Review fasit paths = %v; want %v", got, answerKey)
+	}
+	instructions, _ := fasit["instructions"].(string)
+	for _, want := range []string{"Added after Discussion", "writer's own claim"} {
+		if !strings.Contains(instructions, want) {
+			t.Errorf("darn Code-Burler-Review fasit instructions lack %q; got %q", want, instructions)
 		}
 	}
 }
 
-// setDarnBudget sets the Darn-Review segment's budget in env, keeping its config key and file.
-func setDarnBudget(env *shedrecipe.Env, budget int) {
-	settings := env.Segments["Darn-Review"]
+// setCodeBudget sets the Code-Review segment's budget in env, keeping its config key and file.
+func setCodeBudget(env *shedrecipe.Env, budget int) {
+	settings := env.Segments[codeReviewSegment]
 	settings.MaxBounces = budget
-	env.Segments["Darn-Review"] = settings
+	env.Segments[codeReviewSegment] = settings
 }
 
-// TestNewDarn_Routing pins the darn tail: the Darn-Review perch, then Describe, PR-Review and Finalize after Darn-Write with the review budget on all three perch rows, Finalize's reroute to Darn-Bouncer, no Merge-In row, and a review budget of 0 routing Darn-Write's Done and Finalize's reroute straight to PR-Review.
+// TestNewDarn_Routing pins the darn tail: the Code-Review perch, then Describe, PR-Review and Finalize after Darn-Write with the review budget on all three perch rows, Finalize's reroute to Code-Bouncer, no Merge-In row, and a review budget of 0 routing Darn-Write's Done and Finalize's reroute straight to PR-Review.
 func TestNewDarn_Routing(t *testing.T) {
 	build := func(t *testing.T, reviewBudget int) map[string]shedengine.ProducerDef {
 		t.Helper()
 		env, paths := testEnv(t)
-		setDarnBudget(&env, reviewBudget)
+		setCodeBudget(&env, reviewBudget)
 		shed, err := NewDarn(env, paths)
 		if err != nil {
 			t.Fatalf("NewDarn() error = %v; want nil", err)
@@ -104,12 +142,12 @@ func TestNewDarn_Routing(t *testing.T) {
 	t.Run("the perch and Describe sit between Darn-Write and PR-Review, and Finalize reroutes to the perch", func(t *testing.T) {
 		rows := build(t, 4)
 		darn := rows[loomshed.NameDarnWrite]
-		if darn.OnDone != loomshed.NameDarnBouncer || darn.OnStuck != "" || darn.OnReroute != "" || darn.Segment != "" {
-			t.Errorf("Darn-Write OnDone/OnStuck/OnReroute/Segment = %q/%q/%q/%q; want %q/empty/empty/empty", darn.OnDone, darn.OnStuck, darn.OnReroute, darn.Segment, loomshed.NameDarnBouncer)
+		if darn.OnDone != loomshed.NameCodeBouncer || darn.OnStuck != "" || darn.OnReroute != "" || darn.Segment != "" {
+			t.Errorf("Darn-Write OnDone/OnStuck/OnReroute/Segment = %q/%q/%q/%q; want %q/empty/empty/empty", darn.OnDone, darn.OnStuck, darn.OnReroute, darn.Segment, loomshed.NameCodeBouncer)
 		}
-		bouncer, review, fix := rows[loomshed.NameDarnBouncer], rows[loomshed.NameDarnBurlerReview], rows[loomshed.NameDarnBurlerFix]
-		if bouncer.OnDone != loomshed.NameDescribe || bouncer.OnStuck != loomshed.NameDarnBurlerReview || review.OnStuck != loomshed.NameDarnBurlerFix || fix.OnStuck != loomshed.NameDarnBouncer {
-			t.Errorf("Darn-Bouncer OnDone/OnStuck = %q/%q, review OnStuck = %q, fix OnStuck = %q; want %q/%q, %q, %q", bouncer.OnDone, bouncer.OnStuck, review.OnStuck, fix.OnStuck, loomshed.NameDescribe, loomshed.NameDarnBurlerReview, loomshed.NameDarnBurlerFix, loomshed.NameDarnBouncer)
+		bouncer, review, fix := rows[loomshed.NameCodeBouncer], rows[loomshed.NameCodeBurlerReview], rows[loomshed.NameCodeBurlerFix]
+		if bouncer.OnDone != loomshed.NameDescribe || bouncer.OnStuck != loomshed.NameCodeBurlerReview || review.OnStuck != loomshed.NameCodeBurlerFix || fix.OnStuck != loomshed.NameCodeBouncer {
+			t.Errorf("Code-Bouncer OnDone/OnStuck = %q/%q, review OnStuck = %q, fix OnStuck = %q; want %q/%q, %q, %q", bouncer.OnDone, bouncer.OnStuck, review.OnStuck, fix.OnStuck, loomshed.NameDescribe, loomshed.NameCodeBurlerReview, loomshed.NameCodeBurlerFix, loomshed.NameCodeBouncer)
 		}
 		if describe := rows[loomshed.NameDescribe]; describe.OnDone != loomshed.NamePRReview || describe.OnStuck != "" {
 			t.Errorf("Describe OnDone/OnStuck = %q/%q; want %q/empty", describe.OnDone, describe.OnStuck, loomshed.NamePRReview)
@@ -120,14 +158,14 @@ func TestNewDarn_Routing(t *testing.T) {
 		if _, ok := rows[loomshed.NameMergeIn]; ok {
 			t.Errorf("darn recipe has a %s row; want none", loomshed.NameMergeIn)
 		}
-		if finalize := rows[loomshed.NameFinalize]; finalize.OnReroute != loomshed.NameDarnBouncer || finalize.OnDone != loomshed.NameFrictionReflect || finalize.OnStuck != "" {
-			t.Errorf("Finalize OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/empty/%q", finalize.OnDone, finalize.OnStuck, finalize.OnReroute, loomshed.NameFrictionReflect, loomshed.NameDarnBouncer)
+		if finalize := rows[loomshed.NameFinalize]; finalize.OnReroute != loomshed.NameCodeBouncer || finalize.OnDone != loomshed.NameFrictionReflect || finalize.OnStuck != "" {
+			t.Errorf("Finalize OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/empty/%q", finalize.OnDone, finalize.OnStuck, finalize.OnReroute, loomshed.NameFrictionReflect, loomshed.NameCodeBouncer)
 		}
-		if bouncer.Segment != "Darn-Review" || review.Segment != bouncer.Segment || fix.Segment != bouncer.Segment {
-			t.Errorf("segments Darn-Bouncer/review/fix = %q/%q/%q; want all Darn-Review", bouncer.Segment, review.Segment, fix.Segment)
+		if bouncer.Segment != codeReviewSegment || review.Segment != bouncer.Segment || fix.Segment != bouncer.Segment {
+			t.Errorf("segments Code-Bouncer/review/fix = %q/%q/%q; want all %s", bouncer.Segment, review.Segment, fix.Segment, codeReviewSegment)
 		}
 		if bouncer.MaxBounces != 4 || review.MaxBounces != 4 || fix.MaxBounces != 4 {
-			t.Errorf("MaxBounces Darn-Bouncer/review/fix = %d/%d/%d; want 4/4/4", bouncer.MaxBounces, review.MaxBounces, fix.MaxBounces)
+			t.Errorf("MaxBounces Code-Bouncer/review/fix = %d/%d/%d; want 4/4/4", bouncer.MaxBounces, review.MaxBounces, fix.MaxBounces)
 		}
 	})
 
@@ -140,10 +178,47 @@ func TestNewDarn_Routing(t *testing.T) {
 			t.Errorf("Finalize OnReroute = %q; want %q", got, loomshed.NamePRReview)
 		}
 	})
+
+	t.Run("a review budget below 0 is refused with the way forward before any row builds", func(t *testing.T) {
+		env, paths := testEnv(t)
+		env.Segments[codeReviewSegment] = shedrecipe.SegmentSettings{MaxBounces: -1, MaxBouncesKey: "code_max_bounces", ConfigFile: "loom.yaml"}
+		env.Landing.OpenFabric = nil
+		shed, err := NewDarn(env, paths)
+		if err == nil || shed != nil {
+			t.Fatalf("NewDarn() = %v, %v; want nil and an error", shed, err)
+		}
+		want := `loomrecipe: bounce budget of review segment "Code-Review" = -1 from code_max_bounces in loom.yaml; want 0 or more; way forward: set code_max_bounces in loom.yaml`
+		if err.Error() != want {
+			t.Errorf("NewDarn() error = %q; want %q", err.Error(), want)
+		}
+	})
+
+	t.Run("a missing Code-Review segment is refused before any row builds", func(t *testing.T) {
+		env, paths := testEnv(t)
+		delete(env.Segments, codeReviewSegment)
+		env.Landing.OpenFabric = nil
+		shed, err := NewDarn(env, paths)
+		if err == nil || shed != nil {
+			t.Fatalf("NewDarn() = %v, %v; want nil and an error", shed, err)
+		}
+		for _, want := range []string{codeReviewSegment, loomSegmentTableWayForward} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("NewDarn() error = %q; want it to contain %q", err, want)
+			}
+		}
+	})
+
+	t.Run("a diverging status path is refused first", func(t *testing.T) {
+		env, paths := testEnv(t)
+		paths.StatusPath += ".other"
+		if _, err := NewDarn(env, paths); err == nil || !strings.Contains(err.Error(), "StatusPath") {
+			t.Errorf("NewDarn() error = %v; want it to name StatusPath", err)
+		}
+	})
 }
 
 func TestDarnVerifyBudget(t *testing.T) {
-	t.Run("stamped onto the verify gates of Darn-Write and Darn-Burler-Fix only", func(t *testing.T) {
+	t.Run("stamped onto the verify gates of Darn-Write and Code-Burler-Fix only", func(t *testing.T) {
 		recipe, err := shedbuild.Parse(recipes.DarnRecipe)
 		if err != nil {
 			t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
@@ -155,7 +230,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 		}
 		want := map[string]map[any]any{
 			loomshed.NameDarnWrite:     {"discussion": 3, "verify": 7, "description": 3},
-			loomshed.NameDarnBurlerFix: {"verify": 7},
+			loomshed.NameCodeBurlerFix: {"verify": 7},
 			loomshed.NameDescribe:      {"description": 3},
 		}
 		for _, row := range recipe.Producers {
@@ -197,49 +272,12 @@ func TestDarnVerifyBudget(t *testing.T) {
 			t.Errorf("NewDarn() error = %q; want %q", err.Error(), want)
 		}
 	})
-
-	t.Run("a review budget below 0 is refused with the way forward before any row builds", func(t *testing.T) {
-		env, paths := testEnv(t)
-		env.Segments["Darn-Review"] = shedrecipe.SegmentSettings{MaxBounces: -1, MaxBouncesKey: "review_max_bounces", ConfigFile: "darn.yaml"}
-		env.Landing.OpenFabric = nil
-		shed, err := NewDarn(env, paths)
-		if err == nil || shed != nil {
-			t.Fatalf("NewDarn() = %v, %v; want nil and an error", shed, err)
-		}
-		want := `loomrecipe: bounce budget of review segment "Darn-Review" = -1 from review_max_bounces in darn.yaml; want 0 or more; way forward: run "lyx config darn --set review_max_bounces=<n>" from the prime, then "lyx loom resume"`
-		if err.Error() != want {
-			t.Errorf("NewDarn() error = %q; want %q", err.Error(), want)
-		}
-	})
-
-	t.Run("a missing Darn-Review segment is refused before any row builds", func(t *testing.T) {
-		env, paths := testEnv(t)
-		delete(env.Segments, "Darn-Review")
-		env.Landing.OpenFabric = nil
-		shed, err := NewDarn(env, paths)
-		if err == nil || shed != nil {
-			t.Fatalf("NewDarn() = %v, %v; want nil and an error", shed, err)
-		}
-		for _, want := range []string{"Darn-Review", "darn wiring", "review_max_bounces"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("NewDarn() error = %q; want it to contain %q", err, want)
-			}
-		}
-	})
-
-	t.Run("a diverging status path is refused first", func(t *testing.T) {
-		env, paths := testEnv(t)
-		paths.StatusPath += ".other"
-		if _, err := NewDarn(env, paths); err == nil || !strings.Contains(err.Error(), "StatusPath") {
-			t.Errorf("NewDarn() error = %v; want it to name StatusPath", err)
-		}
-	})
 }
 
 // TestDarnRouting pins the projection's rows and its review budget applied as NewDarn applies it, the routes to PR-Review under a budget of 0, and the refusal of a budget below 0.
 func TestDarnRouting(t *testing.T) {
 	t.Run("rows and the review budget on the perch", func(t *testing.T) {
-		routing, err := DarnRouting(map[string]int{"Darn-Review": 2})
+		routing, err := DarnRouting(map[string]int{codeReviewSegment: 2})
 		if err != nil {
 			t.Fatalf("DarnRouting() error = %v; want nil", err)
 		}
@@ -256,7 +294,7 @@ func TestDarnRouting(t *testing.T) {
 		if !reflect.DeepEqual(names, want) {
 			t.Errorf("DarnRouting() rows = %v; want %v", names, want)
 		}
-		for _, row := range []string{loomshed.NameDarnBouncer, loomshed.NameDarnBurlerReview, loomshed.NameDarnBurlerFix} {
+		for _, row := range []string{loomshed.NameCodeBouncer, loomshed.NameCodeBurlerReview, loomshed.NameCodeBurlerFix} {
 			if budgets[row] != 2 {
 				t.Errorf("DarnRouting() MaxBounces %s = %d; want 2", row, budgets[row])
 			}
@@ -264,7 +302,7 @@ func TestDarnRouting(t *testing.T) {
 	})
 
 	t.Run("a review budget of 0 routes Darn-Write's Done and Finalize's reroute straight to PR-Review", func(t *testing.T) {
-		routing, err := DarnRouting(map[string]int{"Darn-Review": 0})
+		routing, err := DarnRouting(map[string]int{codeReviewSegment: 0})
 		if err != nil {
 			t.Fatalf("DarnRouting() error = %v; want nil", err)
 		}
@@ -278,24 +316,24 @@ func TestDarnRouting(t *testing.T) {
 		}
 	})
 
-	t.Run("a review budget below 0 is refused with the way forward", func(t *testing.T) {
-		_, err := DarnRouting(map[string]int{"Darn-Review": -1})
+	t.Run("a review budget below 0 is refused naming the segment", func(t *testing.T) {
+		_, err := DarnRouting(map[string]int{codeReviewSegment: -1})
 		if err == nil {
 			t.Fatal("DarnRouting() with a negative entry error = nil; want non-nil")
 		}
-		for _, want := range []string{"Darn-Review", "review_max_bounces", "darn.yaml", `"lyx config darn --set review_max_bounces=<n>" from the prime, then "lyx loom resume"`} {
+		for _, want := range []string{codeReviewSegment, "loom.yaml"} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("DarnRouting() error = %q; want it to contain %q", err, want)
 			}
 		}
 	})
 
-	t.Run("a map lacking Darn-Review is refused", func(t *testing.T) {
+	t.Run("a map lacking Code-Review is refused", func(t *testing.T) {
 		_, err := DarnRouting(map[string]int{})
 		if err == nil {
-			t.Fatal("DarnRouting() without a Darn-Review entry error = nil; want non-nil")
+			t.Fatal("DarnRouting() without a Code-Review entry error = nil; want non-nil")
 		}
-		for _, want := range []string{"Darn-Review", "darn wiring"} {
+		for _, want := range []string{codeReviewSegment, loomSegmentTableWayForward} {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("DarnRouting() error = %q; want it to contain %q", err, want)
 			}

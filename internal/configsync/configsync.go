@@ -41,14 +41,8 @@ var legacyConfigModules = map[string][]string{
 // An open map is one unit, so a whole map is compared whole; under any other mapping, a per-name map included, each leaf unit is compared alone.
 // Only the replaced units are listed; an older template generation's value is kept as tuned.
 var formerTemplateValues = map[string]map[string]string{
-	"loom": formerLoomValues(),
-	"shed": {"driver_kind": "llm"},
-	"darn": {
-		"darn_reviewer_model": "sonnet[high]",
-		"darn_fixer_model":    `""`,
-		"darn_reviewer_fan":   `""`,
-		"darn_fixer_fan":      `""`,
-	},
+	"loom":   formerLoomValues(),
+	"shed":   {"driver_kind": "llm"},
 	"claude": {"prompt_cache_ttl_roles": "{driver: 1h, webster: 1h}"},
 	"orch": {
 		"soft_threshold_tokens": "300000",
@@ -168,6 +162,7 @@ type Result struct {
 	// Set only by a key move, on a dry run too.
 	Moved []string
 	// KeptTarget lists, sorted, each move whose source value was dropped because the target already held its own, as "<source>: <value> dropped, <target>: <value> kept".
+	// A source value that is its key's former template default is dropped as "<source>: <value> dropped, a former template default".
 	// A move that keeps whatever the target holds renders "<source> dropped, <target> kept", without the values.
 	// Set only by a key move, on a dry run too.
 	KeptTarget []string

@@ -449,13 +449,13 @@ func TestRenderChecklist(t *testing.T) {
 		{
 			name:   "a darn run numbers the rows its seed's recipe gives, its review segment taking one number",
 			rows:   darnRows,
-			poll:   checklistStatus(shedengine.StateRunning, "Darn-Bouncer", doneEntry("Preflight", 5), doneEntry("Darn-Write", 10)),
+			poll:   checklistStatus(shedengine.StateRunning, "Code-Bouncer", doneEntry("Preflight", 5), doneEntry("Darn-Write", 10)),
 			nowMin: 12,
 			want: []string{
 				"[x] 1. Preflight 5m00s", "  10:00 5m00s done",
 				"[x] 2. Darn-Write 5m00s", "  10:05 5m00s done",
-				"[>] 3. Darn-Review 2m rounds 0",
-				"  10:10 2m Darn-Bouncer running",
+				"[>] 3. Code-Review 2m rounds 0",
+				"  10:10 2m Code-Bouncer running",
 				"[ ] 4. Describe", "[ ] 5. PR-Review", "[ ] 6. Finalize", "[ ] 7. Friction-Reflect",
 				"loom running | now working", "waiting on nothing",
 			},

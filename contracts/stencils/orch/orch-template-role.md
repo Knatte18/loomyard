@@ -22,7 +22,7 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
    It starts the batten run in its own tmux window of your reed session and returns at once; that window gets no status-bar button, so watch the run with `lyx batten status <slug>`.
    Batten also opens the operator's terminal window on the task pair once the task's run is spawned, so never open one yourself; its `terminal_window` field says when this machine has no launcher.
    The batten run creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down after the run ends.
-   A darn run has no parent review: its Darn-Review perch reviews the writer's diff before Describe unless the run's `review_max_bounces` is 0, in `darn.yaml` or the task's `run_settings`, and its Finalize lands it as loom's does.
+   A darn run has no parent review: its Code-Review perch, the one loom runs, reviews the writer's diff before Describe unless the run's `code_max_bounces` is 0, in `loom.yaml` or the task's `run_settings`, and its Finalize lands it as loom's does.
    Every task runs through loom, bug fixes included: never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.
 2. A halted child (blocked, paused or failed) is a wait batten does not resume on its own, so every halted child waits for you: once its cause is known (see Investigating a stop), resume it with `lyx loom resume` in the task worktree.
    When `lyx loom resume` refuses, its message names the way forward (`lyx batten run <slug>` to bring a dead driver back, or `lyx loom start`),

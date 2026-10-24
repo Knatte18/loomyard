@@ -89,12 +89,6 @@ func New(env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedengine.Shed, error
 // loomSegmentTableWayForward is the way forward of a loom review segment missing from the wiring.
 const loomSegmentTableWayForward = "add the segment's row to the loom wiring's segment-to-perch table"
 
-// darnReviewSegment is the darn recipe's review segment.
-const darnReviewSegment = "Darn-Review"
-
-// darnBudgetWayForward is the way forward of a negative darn review budget.
-const darnBudgetWayForward = `run "lyx config darn --set review_max_bounces=<n>" from the prime, then "lyx loom resume"`
-
 // checkStatusPaths refuses an env whose status and status-lock paths differ from paths' copies of them.
 func checkStatusPaths(env shedrecipe.Env, paths shedbuild.ShedPaths) error {
 	if env.StatusPath != paths.StatusPath {
@@ -161,9 +155,6 @@ func checkSegmentBudgets(segments map[string]string, budgets map[string]int, way
 		if budget >= 0 {
 			continue
 		}
-		if segment == darnReviewSegment {
-			return negativeBudgetError(segment, budget, "review_max_bounces", "darn.yaml")
-		}
 
 		return fmt.Errorf("loomrecipe: bounce budget of review segment %q = %d; want 0 or more; way forward: set the perch's <perch>_max_bounces, or review_max_bounces, in loom.yaml", segment, budget)
 	}
@@ -172,14 +163,8 @@ func checkSegmentBudgets(segments map[string]string, budgets map[string]int, way
 }
 
 // negativeBudgetError refuses a negative budget of segment, naming the config key and file it resolved from.
-// The darn segment's way forward is the runnable command pair; any other names the key to set.
 func negativeBudgetError(segment string, budget int, key, file string) error {
-	wayForward := fmt.Sprintf("set %s in %s", key, file)
-	if segment == darnReviewSegment {
-		wayForward = darnBudgetWayForward
-	}
-
-	return fmt.Errorf("loomrecipe: bounce budget of review segment %q = %d from %s in %s; want 0 or more; way forward: %s", segment, budget, key, file, wayForward)
+	return fmt.Errorf("loomrecipe: bounce budget of review segment %q = %d from %s in %s; want 0 or more; way forward: set %s in %s", segment, budget, key, file, key, file)
 }
 
 // reviewSegments maps each segment of the recipe source that holds a Bouncer row to that Bouncer row's name.

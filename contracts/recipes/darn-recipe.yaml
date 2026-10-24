@@ -1,5 +1,5 @@
 # darn-recipe.yaml is the darn task recipe: one gated writer reads the board entry, edits, tests and
-# commits, the Darn-Review perch reviews the committed diff, Describe rewrites the change
+# commits, the Code-Review perch reviews the committed diff, Describe rewrites the change
 # description from the final diff, then PR-Review and Finalize land it. It is
 # embedded into the binary by the sibling recipes.go rather than read from disk. The row names below are the
 # durable on-disk identities pinned against internal/loomshed's Name* constants -- a rename here
@@ -18,29 +18,29 @@
 # an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget.
 # PR-Review, like Friction-Reflect, carries none either, because it never returns Stuck.
 #
-# Darn-Bouncer, Darn-Burler-Review and Darn-Burler-Fix are the Darn-Review perch, wired like loom's
-# Code-Review ring under one shared segment label: the Bouncer's on_stuck names the review row,
-# the review row's on_stuck names the fix row, the fix row's on_stuck names the Bouncer, and each
-# Burler row's on_done names the same row as its on_stuck, since neither ever returns Done. The
-# segment's rows declare no max_bounces: their budget is darn.yaml's review_max_bounces, applied by
-# internal/loomrecipe, and a budget of 0 turns the perch off by routing Darn-Write's Done straight
-# to PR-Review, past Describe, so the writer's own description stands.
-# The perch's judge and seed models are loom.yaml's Code-Review keys, the other committed-diff review;
-# its reviewer and fixer models are darn.yaml's darn_reviewer_model and darn_fixer_model, an empty one
-# taking loom.yaml's reviewer_model or fixer_model.
-# The perch's rows share one role_prefix, which leads their sessions' roles,
-# so ly:<slug>:darn-burler-review names its segment.
+# Code-Bouncer, Code-Burler-Review and Code-Burler-Fix are the Code-Review perch, the same perch
+# loom's recipe runs, with the same row names, segment, run_subdir, role_prefix, rubric and loom.yaml
+# code_* keys; only its answer key differs. Its ring is the shared-segment one: the Bouncer's on_stuck
+# names the review row, the review row's on_stuck names the fix row, the fix row's on_stuck names the
+# Bouncer, and each Burler row's on_done names the same row as its on_stuck, since neither ever
+# returns Done. The segment's rows declare no max_bounces: their budget is loom.yaml's
+# code_max_bounces, applied by internal/loomrecipe, and a budget of 0 turns the perch off by routing
+# Darn-Write's Done straight to PR-Review, past Describe, so the writer's own description stands.
 #
-# Finalize declares on_reroute: Darn-Bouncer, the row a conflict or a merge too large to land sends
+# The perch's answer key is the task's board entry, which the discussion gate's commit snapshots into
+# _lyx/discussion/board-entry.md, as amended by the decision record's `Added after Discussion`
+# entries; the record's other sections are the writer's own claim, reviewed against the snapshot.
+#
+# Finalize declares on_reroute: Code-Bouncer, the row a conflict or a merge too large to land sends
 # the run back to, so the perch reviews the code the writer changed in answer.
 # Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
 # A budget of 0 reroutes Finalize to PR-Review instead, since no perch is reached.
 #
 # An in-flight run parked on a row this recipe removed -- Merge-In, Publish, PR-Align, PR-Gate -- or
-# on a row whose edges changed with them, or on the retired Darn-Burler row, is restarted, not
-# migrated.
+# on a row whose edges changed with them, or on the retired Darn-Burler, Darn-Bouncer,
+# Darn-Burler-Review or Darn-Burler-Fix row, is restarted, not migrated.
 #
-# Describe follows the perch because Darn-Burler-Fix can change the code after the writer described it.
+# Describe follows the perch because Code-Burler-Fix can change the code after the writer described it.
 
 version: 1
 entry: Preflight
@@ -54,16 +54,16 @@ producers:
 
   - name: Darn-Write
     engine: DarnWrite
-    # internal/loomrecipe rewrites this edge to PR-Review when darn.yaml's review_max_bounces is 0.
-    on_done: Darn-Bouncer
+    # internal/loomrecipe rewrites this edge to PR-Review when loom.yaml's code_max_bounces is 0.
+    on_done: Code-Bouncer
     config:
       # gates holds this row's handoff until it is mechanically valid: each entry names a gate and
       # re-prompts the live session up to its attempts times. The verify gate's attempts here is a
       # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
       gates:
         # On a darn run the discussion gate is the darn gate: it also refuses a record missing an
-        # entry its commit history held, and commits the decision record and support log when it
-        # passes.
+        # entry its commit history held, and when it passes snapshots the task's board entry and
+        # commits it with the decision record and support log.
         - name: discussion
           attempts: 3
         - name: verify
@@ -71,42 +71,43 @@ producers:
         - name: description
           attempts: 3
 
-  - name: Darn-Bouncer
+  - name: Code-Bouncer
     engine: Bouncer
-    segment: Darn-Review
-    on_stuck: Darn-Burler-Review
+    segment: Code-Review
+    on_stuck: Code-Burler-Review
     on_done: Describe
     config:
-      run_subdir: darn
+      run_subdir: code
       subject: code
-      role_prefix: darn
-      reviewer_fan_setting: darn.darn_reviewer_fan
-      # The subject under review is the committed diff, which artifact_paths cannot name; the key is
-      # required, so it names the change description the writer committed, the writer's own claim
-      # of what the diff does. The rubric names the diff as the subject and the amended board entry
-      # as the measuring stick.
+      role_prefix: code
+      reviewer_fan_setting: loom.code_reviewer_fan
+      auto_accept_setting: loom.code_auto_accept
+      # The subject under review is the committed diff, which artifact_paths cannot name; the key
+      # names the answer key instead: the board entry snapshot and the decision record. The rubric
+      # names the diff as the subject.
       artifact_paths:
-        - _lyx/landing/summary.md
-      rubric_stencil: loom-rubric-darn-review
-      # No commit_seam: Darn-Burler-Fix runs fix-scope: source and commits each fix itself.
+        - _lyx/discussion/board-entry.md
+        - _lyx/discussion/decision-record.md
+      rubric_stencil: loom-rubric-code-review
+      # No commit_seam: Code-Burler-Fix runs fix-scope: source and commits each fix itself.
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
-      carry_over: Darn-Review
+      carry_over: Code-Review
 
-  - name: Darn-Burler-Review
+  - name: Code-Burler-Review
     engine: BurlerReview
-    segment: Darn-Review
-    on_stuck: Darn-Burler-Fix
+    segment: Code-Review
+    on_stuck: Code-Burler-Fix
     # BurlerReviewProducer never returns Done, so this edge is unreachable -- but an empty on_done
     # is load-bearing and ends the whole run silently, so it names the row it can never reach.
-    on_done: Darn-Burler-Fix
+    on_done: Code-Burler-Fix
     config:
-      # The same run_subdir value as Darn-Bouncer is what makes the three rows write into one
+      # The same run_subdir value as Code-Bouncer is what makes the three rows write into one
       # shared run directory.
-      run_subdir: darn
-      role_prefix: darn
-      reviewer_fan_setting: darn.darn_reviewer_fan
-      fixer_fan_setting: darn.darn_fixer_fan
+      run_subdir: code
+      role_prefix: code
+      reviewer_fan_setting: loom.code_reviewer_fan
+      fixer_fan_setting: loom.code_fixer_fan
       profile:
         target:
           # No paths key: a diff has no file on disk for the profile's path check to stat.
@@ -115,40 +116,38 @@ producers:
             the single definition of the review range: read its "Determining the review range"
             section and derive the range exactly as written there.
         fasit:
+          paths:
+            - _lyx/discussion/board-entry.md
+            - _lyx/discussion/decision-record.md
           instructions: >
-            The board entry of this run's task is the answer key: read it with
-            `lyx board get '{"slug":"<slug>"}'`, where <slug> is this worktree's own directory
-            name, as amended by the `Added after Discussion` entries of
-            `_lyx/discussion/decision-record.md`, which win where they differ. The record's other
-            sections are the writer's claim, checked against the board entry and never the answer
-            key. The diff's job is to make the change the amended entry asks for. A deviation the
-            change description names as an unrecorded parent correction is a `decision`-class
-            MEDIUM finding whose fix text tells the fixer to leave the code and defer to the
-            parent.
-        rubric_stencil: loom-rubric-darn-review
+            The board entry snapshot named above is the task's scope, as amended by the
+            `Added after Discussion` entries of the decision record named above, which win where
+            they differ. The record's other sections are the writer's own claim, checked against
+            the snapshot and never the answer key. The diff's job is to make the change the
+            amended entry asks for.
+        rubric_stencil: loom-rubric-code-review
         # fix-scope: source: the target is the repo's own source files, and a fixer that cannot
         # write and commit source cannot fix a diff.
         fix-scope: source
-        # tool-use is required: the round runs read-only git to obtain the diff and reads the board
-        # entry.
+        # tool-use is required: the round runs read-only git to obtain the diff.
         tool-use: true
         # The round reviews code, so its seats load the hub's language skills after their own.
         language-skills: true
-        # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name darn.yaml's
-        # darn_reviewer_fan and darn_fixer_fan.
+        # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name loom.yaml's
+        # code_reviewer_fan and code_fixer_fan.
 
-  - name: Darn-Burler-Fix
+  - name: Code-Burler-Fix
     engine: BurlerFix
-    segment: Darn-Review
-    on_stuck: Darn-Bouncer
+    segment: Code-Review
+    on_stuck: Code-Bouncer
     # BurlerFixProducer never returns Done, so this edge is unreachable -- but an empty on_done is
     # load-bearing and ends the whole run silently, so it names the row it can never reach.
-    on_done: Darn-Bouncer
+    on_done: Code-Bouncer
     config:
-      run_subdir: darn
-      role_prefix: darn
-      fixer_fan_setting: darn.darn_fixer_fan
-      review_row: Darn-Burler-Review
+      run_subdir: code
+      role_prefix: code
+      fixer_fan_setting: loom.code_fixer_fan
+      review_row: Code-Burler-Review
       # The verify gate runs the tree-scoped command, or the hub's `landing` call narrowed to the diff
       # from the merge base, on the committed tree after each round,
       # and re-prompts the fix session with the findings until it passes. Its attempts here is a
@@ -182,10 +181,10 @@ producers:
 
   # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
   # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.
-  # A conflict or a merge too large to land reroutes to Darn-Bouncer.
+  # A conflict or a merge too large to land reroutes to Code-Bouncer.
   - name: Finalize
     engine: Finalize
-    on_reroute: Darn-Bouncer
+    on_reroute: Code-Bouncer
     # Hands off to the reflection row rather than ending the run.
     on_done: Friction-Reflect
 

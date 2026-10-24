@@ -303,14 +303,17 @@ var loomRowPhases = []struct{ row, phase string }{
 	{loomshed.NamePRReview, PhasePublishFinalize},
 }
 
-// darnRowPhases lists every darn row, the retired writer row name included, with the phase it counts under, in the order the rows run.
+// darnRowPhases lists every darn row, the retired writer and perch row names included, with the phase it counts under, in the order the rows run.
 var darnRowPhases = []struct{ row, phase string }{
 	{loomshed.NamePreflight, PhaseSetup},
 	{"Darn", PhaseWrite},
 	{loomshed.NameDarnWrite, PhaseWrite},
-	{loomshed.NameDarnBouncer, PhaseReview},
-	{loomshed.NameDarnBurlerReview, PhaseReview},
-	{loomshed.NameDarnBurlerFix, PhaseReview},
+	{retiredDarnBouncerRow, PhaseReview},
+	{retiredDarnBurlerReviewRow, PhaseReview},
+	{retiredDarnBurlerFixRow, PhaseReview},
+	{loomshed.NameCodeBouncer, PhaseReview},
+	{loomshed.NameCodeBurlerReview, PhaseReview},
+	{loomshed.NameCodeBurlerFix, PhaseReview},
 	{loomshed.NameDescribe, PhaseWrite},
 	{loomshed.NameMergeIn, PhaseMerge},
 	{retiredPublishRow, PhasePublishFinalize},
@@ -571,14 +574,14 @@ func TestComputeTiming(t *testing.T) {
 				// its 30s counts under review and not under write, the phase of the Darn-Write row before it.
 				batten := battenRecordOf(
 					entryAt(battenrecipe.NameWorktreeCreate, run),
-					changeAt("child running → running at "+loomshed.NameDarnBurlerReview, secondsAfter(run, 750)),
+					changeAt("child running → running at "+loomshed.NameCodeBurlerReview, secondsAfter(run, 750)),
 				)
 				landedRun(w, "darned", "t1", 3, fmt.Sprintf(`{"recipe":"darn","driver":"go","started_at":%q}`, run.Format(time.RFC3339)), darn, batten)
 				landedRun(w, "loomed", "t2", 14, seedStartedAt(at(10)), []shedengine.HistoryEntry{entryAt(loomshed.NameFinalize, secondsAfter(at(10), 900))})
 				start := at(199)
 				status := shedengine.Status{
 					State:           shedengine.StateRunning,
-					CurrentProducer: loomshed.NameDarnBouncer,
+					CurrentProducer: loomshed.NameCodeBouncer,
 					History:         []shedengine.HistoryEntry{entryAt(loomshed.NameDarnWrite, secondsAfter(start, 600))},
 				}
 				w.pairBranch("darn-flight", "pf1", secondsAfter(start, 700), fmt.Sprintf(`{"recipe":"darn","driver":"go","started_at":%q}`, start.Format(time.RFC3339)), statusJSON(w.t, status), nil)
@@ -588,7 +591,7 @@ func TestComputeTiming(t *testing.T) {
 				if darned.Recipe != shedrun.RecipeDarn || runOf(t, got, "loomed").Recipe != shedrun.RecipeLoom {
 					t.Errorf("recipes = %s, %s; want darn and loom", darned.Recipe, runOf(t, got, "loomed").Recipe)
 				}
-				wantPhases(t, darned, map[string]int64{PhaseSetup: 600, PhaseWrite: 180, PhaseReview: 180, PhaseMerge: 60, PhasePublishFinalize: 360})
+				wantPhases(t, darned, map[string]int64{PhaseSetup: 600, PhaseWrite: 180, PhaseReview: 360, PhaseMerge: 60, PhasePublishFinalize: 360})
 				flight := runOf(t, got, "darn-flight")
 				if flight.Recipe != shedrun.RecipeDarn || flight.State != RunStateInFlight {
 					t.Errorf("run in flight = %s %s; want a darn run in flight", flight.Recipe, flight.State)

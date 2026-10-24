@@ -1,4 +1,4 @@
-// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the Darn-Review model and fan lists and their keys, the early refusals of a malformed or absent darn.yaml, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
+// wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the perch's settings taken from loom.yaml's Code-Review keys, the board entry snapshot its discussion commit writes, the early refusals of a malformed or absent darn.yaml, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
 // Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
@@ -6,10 +6,10 @@ package loomcli
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -17,11 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
@@ -95,8 +95,11 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if got, want := c.env.GateFindingsFile("Darn-Write"), shedrun.GateFindingsFile(loc, c.runID, "Darn-Write"); got != want {
 			t.Errorf("c.env.GateFindingsFile(\"Darn-Write\") = %q; want %q", got, want)
 		}
-		if segment := c.env.Segments["Darn-Review"]; segment.MaxBounces != 1 || segment.HardMaxBounces != 2 || c.darnCfg == nil {
-			t.Errorf("Segments[Darn-Review] = %+v, c.darnCfg nil = %v; want the template's budget 1 and hard cap 2 and the loaded config", segment, c.darnCfg == nil)
+		if segment := c.env.Segments["Code-Review"]; segment.MaxBounces != 1 || segment.ConfigFile != "loom.yaml" {
+			t.Errorf("Segments[Code-Review] = %+v; want loom.yaml's template budget 1", segment)
+		}
+		if _, ok := c.env.Segments["Darn-Review"]; ok {
+			t.Error("a darn seed filled a Darn-Review segment; want the perch to be loom's Code-Review")
 		}
 		if command, err := c.env.VerifyCommand(); err != nil || command != wantDarnLandingCall {
 			t.Errorf("c.env.VerifyCommand() = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
@@ -108,6 +111,21 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if call := round.Render("--all"); call != wantDarnLandingCall {
 			t.Errorf("c.env.Round().Render(--all) = %q; want the landing call %q", call, wantDarnLandingCall)
+		}
+	})
+
+	t.Run("the discussion commit seam snapshots the board entry before it commits", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedDarnHubConfig(t, loc.HubPath, "3")
+		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+		if err := c.wire(loc, loc.AnchorPath()); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		// The hub holds no board entry, so only the snapshot-writing seam refuses, and it names the snapshot.
+		if err := c.env.CommitDiscussion(); err == nil || !strings.Contains(err.Error(), "snapshot") {
+			t.Errorf("c.env.CommitDiscussion() = %v; want the board entry snapshot's refusal", err)
 		}
 	})
 
@@ -125,121 +143,24 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 	})
 
-	t.Run("a local darn override sets the run's budget and hard cap", func(t *testing.T) {
+	t.Run("a local loom override sets a darn run's perch budget and hard cap", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		seedDarnHubConfig(t, loc.HubPath, "3")
-		localPath := configengine.LocalFile(loc.AnchorPath(), "darn")
+		localPath := configengine.LocalFile(loc.AnchorPath(), "loom")
 		if err := os.MkdirAll(filepath.Dir(localPath), 0o755); err != nil {
 			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(localPath), err)
 		}
-		if err := os.WriteFile(localPath, []byte("review_max_bounces: 2\nreview_hard_max_bounces: 3\n"), 0o644); err != nil {
+		if err := os.WriteFile(localPath, []byte("code_max_bounces: 2\ncode_hard_max_bounces: 3\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
 		}
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		segment := c.env.Segments["Darn-Review"]
-		if segment.MaxBounces != 2 || segment.MaxBouncesKey != "review_max_bounces" || segment.HardMaxBounces != 3 || segment.HardMaxBouncesKey != "review_hard_max_bounces" || segment.ConfigFile != "darn.yaml" {
-			t.Errorf("Segments[Darn-Review] = %+v; want the local budget 2 and hard cap 3 under their run-wide keys in darn.yaml", segment)
-		}
-	})
-
-	// The Darn-Review segment takes darn.yaml's model keys, an empty one taking loom.yaml's shared key.
-	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
-	darnKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "darn", Key: key} }
-	for _, tt := range []struct {
-		name                      string
-		replacements              []string
-		wantReviewKey, wantFixKey shuttleengine.ModelKey
-		// wantReview and wantFix are the first entry's model and effort, or "" for the shared list.
-		wantReview, wantFix string
-		// wantFixerFanSetting is what env.Setting answers for darn_fixer_fan.
-		wantFixerFanSetting string
-	}{
-		{
-			name:          "the template's fans and models",
-			wantReviewKey: darnKey("darn_reviewer_model"), wantFixKey: darnKey("darn_fixer_model"),
-			wantReview:          "sonnet medium",
-			wantFix:             "sonnet medium",
-			wantFixerFanSetting: "fix-code",
-		},
-		{
-			name: "set fans and models",
-			replacements: []string{
-				`darn_reviewer_fan: ["review-code", ""]`, "darn_reviewer_fan:\n  - \"\"\n  - review-code", "darn_fixer_fan: fix-code", "darn_fixer_fan: fix-plan",
-				"darn_reviewer_model: sonnet[medium]", `darn_reviewer_model: ""`, "darn_fixer_model: sonnet[medium]", "darn_fixer_model: sonnet[low]",
-			},
-			wantReviewKey:       loomKey("reviewer_model"),
-			wantFixKey:          darnKey("darn_fixer_model"),
-			wantReview:          "opus medium",
-			wantFix:             "sonnet low",
-			wantFixerFanSetting: "fix-plan",
-		},
-	} {
-		t.Run("darn.yaml's model and fan keys reach the Darn-Review rows under "+tt.name, func(t *testing.T) {
-			t.Parallel()
-			loc := hubLocation(t, "pair", ".")
-			seedDarnHubConfig(t, loc.HubPath, "3", tt.replacements...)
-			c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
-			if err := c.wire(loc, loc.AnchorPath()); err != nil {
-				t.Fatalf("wire() = %v; want nil", err)
-			}
-			shared := c.env.Segments["Discussion-Review"].Models
-			wantSegment := shedrecipe.SegmentSettings{
-				Models:         c.env.Segments["Darn-Review"].Models,
-				ReviewKey:      tt.wantReviewKey,
-				FixKey:         tt.wantFixKey,
-				Bouncer:        c.env.Segments["Code-Review"].Bouncer,
-				MaxBounces:     1,
-				MaxBouncesKey:  "review_max_bounces",
-				HardMaxBounces: 2, HardMaxBouncesKey: "review_hard_max_bounces",
-				AmendMaxBounces: 1,
-				ConfigFile:      "darn.yaml",
-			}
-			if got := c.env.Segments["Darn-Review"]; !reflect.DeepEqual(got, wantSegment) {
-				t.Errorf("Segments[Darn-Review] = %+v; want %+v", got, wantSegment)
-			}
-			if got, err := c.env.Setting("darn", "darn_fixer_fan"); err != nil || got != tt.wantFixerFanSetting {
-				t.Errorf("env.Setting(darn, darn_fixer_fan) = %v, %v; want %q, nil", got, err, tt.wantFixerFanSetting)
-			}
-			models := c.env.Segments["Darn-Review"].Models
-			for _, half := range []struct {
-				name   string
-				got    []shuttleengine.ModelChoice
-				shared []shuttleengine.ModelChoice
-				want   string
-			}{
-				{"Review", models.Review, shared.Review, tt.wantReview},
-				{"Fix", models.Fix, shared.Fix, tt.wantFix},
-			} {
-				if half.want == "" {
-					if !reflect.DeepEqual(half.got, half.shared) {
-						t.Errorf("Segments[Darn-Review].Models.%s = %+v; want the shared %+v", half.name, half.got, half.shared)
-					}
-					continue
-				}
-				if len(half.got) != 1 || half.got[0].Model+" "+half.got[0].Effort != half.want {
-					t.Errorf("Segments[Darn-Review].Models.%s = %+v; want one %s entry", half.name, half.got, half.want)
-				}
-			}
-		})
-	}
-
-	t.Run("a darn.yaml model the registry does not define is refused naming the key and darn.yaml", func(t *testing.T) {
-		t.Parallel()
-		loc := hubLocation(t, "pair", ".")
-		seedDarnHubConfig(t, loc.HubPath, "3", "darn_reviewer_model: sonnet[medium]", "darn_reviewer_model: ghost")
-		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
-		err := c.wire(loc, loc.AnchorPath())
-		if err == nil {
-			t.Fatal("wire() = nil; want a refusal naming darn_reviewer_model")
-		}
-		for _, want := range []string{"darn_reviewer_model entry 1", "set that entry in darn.yaml"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("wire() error = %q; want it to contain %q", err.Error(), want)
-			}
+		segment := c.env.Segments["Code-Review"]
+		if segment.MaxBounces != 2 || segment.MaxBouncesKey != "code_max_bounces" || segment.HardMaxBounces != 3 || segment.HardMaxBouncesKey != "code_hard_max_bounces" || segment.ConfigFile != "loom.yaml" {
+			t.Errorf("Segments[Code-Review] = %+v; want the local budget 2 and hard cap 3 under their code keys in loom.yaml", segment)
 		}
 	})
 
@@ -376,7 +297,7 @@ func TestRecipeRouting(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {
 			t.Parallel()
-			c := &loomCLI{recipe: tt.recipe, darnCfg: &darnengine.Config{ReviewMaxBounces: 3}}
+			c := &loomCLI{recipe: tt.recipe}
 			c.cfg.ReviewMaxBounces, c.cfg.ReviewHardMaxBounces = 3, 4
 			routing, err := c.recipeRouting()
 			if err != nil {
@@ -391,6 +312,46 @@ func TestRecipeRouting(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestWriteBoardEntrySnapshot pins that the darn discussion commit's snapshot holds the task's board entry, and that an entry the board lacks is refused with nothing written.
+// It sets the board skip variables, which are process-global, so it does not call t.Parallel.
+func TestWriteBoardEntrySnapshot(t *testing.T) {
+	t.Setenv("BOARD_SKIP_GIT", "1")
+	t.Setenv("BOARD_SKIP_PUSH", "1")
+
+	t.Run("the task's entry is written", func(t *testing.T) {
+		location := &lyxcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "one-perch", AnchorRel: "."}
+		board, err := boardengine.OpenHub(location.HubPath)
+		if err != nil {
+			t.Fatalf("OpenHub() error = %v; want nil", err)
+		}
+		if _, err := board.UpsertTask(map[string]any{"slug": "one-perch", "title": "One perch", "kind": "task", "labels": []string{"bug"}, "brief": "Merge the perches.", "body": "## Idea\n\nOne perch."}); err != nil {
+			t.Fatalf("UpsertTask() error = %v; want nil", err)
+		}
+
+		if err := writeBoardEntrySnapshot(location); err != nil {
+			t.Fatalf("writeBoardEntrySnapshot() = %v; want nil", err)
+		}
+		got, err := os.ReadFile(loomengine.DiscussionBoardEntry(location))
+		if err != nil {
+			t.Fatalf("read the snapshot: %v", err)
+		}
+		if want := darnengine.BoardEntrySnapshot("one-perch", "One perch", "Merge the perches.", "## Idea\n\nOne perch."); string(got) != string(want) {
+			t.Errorf("snapshot = %q; want %q", got, want)
+		}
+	})
+
+	t.Run("an entry the board lacks is refused with the way forward", func(t *testing.T) {
+		location := &lyxcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "no-entry", AnchorRel: "."}
+		err := writeBoardEntrySnapshot(location)
+		if err == nil || !strings.Contains(err.Error(), `"no-entry"`) || !strings.Contains(err.Error(), "lyx board upsert") {
+			t.Errorf("writeBoardEntrySnapshot() = %v; want a refusal naming the slug and lyx board upsert", err)
+		}
+		if _, statErr := os.Stat(loomengine.DiscussionBoardEntry(location)); !os.IsNotExist(statErr) {
+			t.Errorf("snapshot stat = %v; want no file written", statErr)
+		}
+	})
 }
 
 func TestLatestDarnOutcome(t *testing.T) {
