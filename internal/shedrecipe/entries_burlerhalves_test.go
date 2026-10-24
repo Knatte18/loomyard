@@ -740,6 +740,36 @@ func TestBurlerHalfEntries_RunDirectory(t *testing.T) {
 	})
 }
 
+// TestBurlerFixEntry_RoutesDecisionFindingsThroughEnvNotifyParent proves a BurlerFix row built under an Env carrying a NotifyParent posts the accepted review's decision-class finding through it and routes the finding out of the fixer's work.
+func TestBurlerFixEntry_RoutesDecisionFindingsThroughEnvNotifyParent(t *testing.T) {
+	env := newTestEnv(t)
+	var lines []string
+	env.NotifyParent = func(line string) error {
+		lines = append(lines, line)
+		return nil
+	}
+	producer, err := burlerFixEntry(reviewRow("fix-row"), minimalFixConfig(), env)
+	if err != nil {
+		t.Fatalf("burlerFixEntry() error = %v; want nil", err)
+	}
+	runDir := filepath.Join(env.RunRoot, "review-segment")
+	writeFixRound(t, runDir)
+	review := "---\nverdict: APPROVED\nfindings:\n  - id: D1\n    severity: LOW\n    class: decision\n    location: plan.md:4\n    summary: cache scope left open\n    fix: ask the parent to record the cache scope\n---\n### [LOW] cache scope left open\n"
+	if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte(review), 0o644); err != nil {
+		t.Fatalf("write the round-1 review: %v", err)
+	}
+
+	_, _, _ = producer.Call(context.Background())
+
+	if len(lines) != 1 || !strings.Contains(lines[0], "D1: cache scope left open") {
+		t.Errorf("parent lines = %q; want one line carrying D1", lines)
+	}
+	fake := env.Burler.(*shedfake.BurlerHalfRunner)
+	if len(fake.GotFixOpts) != 1 || !fake.GotFixOpts[0].DecisionsRouted {
+		t.Errorf("Fix opts = %+v; want one call with DecisionsRouted set", fake.GotFixOpts)
+	}
+}
+
 // TestBurlerFixEntry_GateConfig covers the "gates" Config key burlerFixEntry resolves through resolveRowGateSpec into RunOpts.Gate:
 // a "gates" list is accepted at row level and selects the matching validators, "gates" is rejected inside the profile: sub-map -- the guard against the two allowlists being confused -- and an unrecognised name fails loud.
 func TestBurlerFixEntry_GateConfig(t *testing.T) {

@@ -280,6 +280,9 @@ type Env struct {
 	// ParentName is the run-wide name of the session this run's spawned roles escalate to, read by the Bouncer entry for shedadapters.BouncerConfig.ParentName.
 	// Empty is the absent value and renders the parent directive's no-parent variant.
 	ParentName string
+	// NotifyParent is the told poster of one line to the run's parent, read by the BurlerFix entry, whose rows send a round's decision-class findings through it.
+	// Nil sends nothing, and those rows keep the findings as fixer work.
+	NotifyParent func(line string) error
 	// SegmentBounces answers a row's segment bounce count and budget from the run's persisted history,
 	// read by the Bouncer entry for the budget sentence of its CIRCLING Awaiting Reason.
 	// It is run-wide and takes the row's name, so one closure serves every Bouncer row; inSegment is false for a row outside any segment.

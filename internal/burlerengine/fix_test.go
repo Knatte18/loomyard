@@ -1,5 +1,5 @@
 // fix_test.go tables the fix half (Engine.Fix, ProbeFix, ResumeFix) against the same-package fakeShuttle.
-// It covers the one-seat table's shape, a spawn for a review holding only a NIT finding, the empty-review skip, a failing gate spawning the fixer with the gate findings as its work, a gate closure error spawning nothing, ErrReviewChanged before and after the fixer, a failed fixer gate passing through, probe and resume, and what the fixer's files hold.
+// It covers the one-seat table's shape, a spawn for a review holding only a NIT finding, the empty-review skip, routed decision findings, a failing gate spawning the fixer with the gate findings as its work, a gate closure error spawning nothing, ErrReviewChanged before and after the fixer, a failed fixer gate passing through, probe and resume, and what the fixer's files hold.
 
 package burlerengine
 
@@ -29,6 +29,15 @@ const (
 	nitReview = "---\nverdict: APPROVED\nfindings:\n" +
 		"  - id: N1\n    severity: NIT\n    class: consistency\n    location: target.txt:1\n    summary: naming\n    fix: rename x to y in target.txt:1\n" +
 		"---\n### [NIT] naming\n**Location:** target.txt:1\n**Issue:** naming\n"
+	// decisionReview holds one decision-class finding and nothing else.
+	decisionReview = "---\nverdict: APPROVED\nfindings:\n" +
+		"  - id: D1\n    severity: LOW\n    class: decision\n    location: target.txt:1\n    summary: cache scope left open\n    fix: ask the parent to record the cache scope\n" +
+		"---\n### [LOW] cache scope left open\n"
+	// mixedReview holds one decision-class finding beside one NIT.
+	mixedReview = "---\nverdict: APPROVED\nfindings:\n" +
+		"  - id: D1\n    severity: LOW\n    class: decision\n    location: target.txt:1\n    summary: cache scope left open\n    fix: ask the parent to record the cache scope\n" +
+		"  - id: N1\n    severity: NIT\n    class: consistency\n    location: target.txt:1\n    summary: naming\n    fix: rename x to y in target.txt:1\n" +
+		"---\n### [LOW] cache scope left open\n### [NIT] naming\n"
 )
 
 // newFixCase writes review as the profile's review file and returns the engine root, the profile and the digest the review half would have handed over.
@@ -178,7 +187,7 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 		t.Errorf("review-format.md is empty; want the review-file format written")
 	}
 	singleStep, err := stencil.FillOptional(bytes.ReplaceAll(stencils.BurlerStepFix, []byte("{{.self_check}}"), nil), map[string]string{
-		"work":              fixWork(resolved.ReviewPath, ""),
+		"work":              fixWork(resolved.ReviewPath, "", false),
 		"fix_scope_rules":   fixScopeRules(&resolved),
 		"review_path":       resolved.ReviewPath,
 		"fixer_report_path": resolved.FixerReportPath,
@@ -245,7 +254,14 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 		fixFan       bool
 		wantForks    int
 		wantWarnings []string
+		// routed sets RunOpts.DecisionsRouted, and wantWork is text the spawned fixer's fix step must hold.
+		routed   bool
+		wantWork string
 	}{
+		{name: "a routed review holding only decision findings over passing gates is skipped with the routed report", review: decisionReview, routed: true, gateResult: passing, wantOutcome: shuttleengine.OutcomeDone, wantSkipped: true},
+		{name: "an unrouted review holding only decision findings spawns the fixer", review: decisionReview, script: halfScript{result: done, writes: "fixed"}, gateResult: passing, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, wantWork: "Fix every finding of the review at"},
+		{name: "a routed review with other findings tells the fixer the decision class is not its own", review: mixedReview, routed: true, script: halfScript{result: done, writes: "fixed"}, gateResult: passing, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, wantWork: routedDecisionsLine},
+		{name: "a routed review holding only decision findings over a failing gate spawns the fixer on the gate findings", review: decisionReview, routed: true, script: halfScript{result: done, writes: "fixed"}, gateResult: failing, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, wantGate: true, wantWork: routedDecisionsLine},
 		{name: "a twill fixer whose fork wrote is the violation error with its gate", review: blockingReview, script: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Reason: "spent"}, ForkAudit: &shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "t1", ReportReturned: true, WriteCalls: 1}, {TranscriptPath: "t2", ReportReturned: true}}}}, writes: "fixed"}, gateResult: passing, fixFan: true, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, wantGate: true, wantErrText: "burler: twill fixer fork \"t1\" attempted 1 write/edit tool call(s)", wantForks: 2},
 		{name: "a twill fixer with no fork audit is a count warning", review: blockingReview, script: halfScript{result: done, writes: "fixed"}, gateResult: passing, fixFan: true, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true, wantWarnings: []string{"twill fixer spawned 0 fork(s) for 2 lens(es)"}},
 		{name: "a review with findings spawns the fixer", review: blockingReview, script: halfScript{result: done, writes: "fixed"}, gateResult: passing, wantOutcome: shuttleengine.OutcomeDone, wantSpawn: true},
@@ -284,7 +300,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 				p.FixFan = "standard"
 			}
 
-			got, err := e.Fix(p, RunOpts{Gate: gateOf("build", tt.gateResult, tt.gateErr, &calls)}, digest)
+			got, err := e.Fix(p, RunOpts{Gate: gateOf("build", tt.gateResult, tt.gateErr, &calls), DecisionsRouted: tt.routed}, digest)
 
 			wantErr := tt.wantErrText != "" || tt.wantErrIs != nil
 			if (err != nil) != wantErr {
@@ -314,9 +330,21 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 
 			report, readErr := os.ReadFile(filepath.Join(root, "fixer-report.md"))
 			if tt.wantSkipped {
-				if readErr != nil || string(report) != skippedFixerReport {
-					t.Errorf("fixer report = %q, %v; want the skipped report", report, readErr)
+				want := skippedFixerReport
+				if tt.routed {
+					want = skippedRoutedFixerReport
 				}
+				if readErr != nil || string(report) != want {
+					t.Errorf("fixer report = %q, %v; want %q", report, readErr, want)
+				}
+			}
+			if tt.wantWork != "" {
+				if fixStep := fixInstructionFiles(t, root)["instruction-fix.md"]; !strings.Contains(fixStep, tt.wantWork) {
+					t.Errorf("instruction-fix.md = %q; want it to hold %q", fixStep, tt.wantWork)
+				}
+			}
+			if tt.wantWork != "" && !tt.routed && strings.Contains(fixInstructionFiles(t, root)["instruction-fix.md"], routedDecisionsLine) {
+				t.Errorf("instruction-fix.md names routed decisions; want it only on a routed fix")
 			}
 			if tt.name == "an empty review over a failing gate spawns the fixer with the gate findings as its work" {
 				files := fixInstructionFiles(t, root)

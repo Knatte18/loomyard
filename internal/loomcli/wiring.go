@@ -700,8 +700,13 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		SupportLogPath:     loomengine.DiscussionSupportLog(location),
 		RelevantPath:       loomengine.DiscussionRelevant(location),
 		ParentName:         c.parentName,
-		WebsterDeps:        runDeps,
-		PlanIndex:          websterGeom.Index,
+		// NotifyParent names the run first, since the orch reads the notices of every run of the hub.
+		NotifyParent: func(line string) error {
+			_, err := orchcli.NotifyPrime(location, loomProgram, fmt.Sprintf("loom %s: %s", seedSlug(location.WorktreeName), line))
+			return err
+		},
+		WebsterDeps: runDeps,
+		PlanIndex:   websterGeom.Index,
 		// ReflectFriction is a method value over the receiver, so frictionDir is read when the row runs, not when wire runs.
 		ReflectFriction: c.reflectFrictionRow,
 		// WebsterRun is set explicitly to websterengine.Run, per the

@@ -236,6 +236,8 @@
 // The fingerprint refusals in begin-batch and run name the landing too, and for an index-only change name rebaseline with the added cards' flags.
 // An operator decision taken mid-Webster reaches the plan in this order:
 // `lyx loom decision add` for the record, the card edit (or a follow-up card with its index line), then `lyx webster rebaseline --card NN`.
+// The verb's notice reaches Master with the decision's text inline, since Master reads no decision record;
+// Master hands it on through the forks it spawns afterwards, whose implementer and verify-fix bodies let a parent decision win over a card, and with no batch left it tells its parent the decision reaches the code only through a gate fixer or a plan amendment.
 // No refusal or prompt text names a loom verb.
 //
 // validate, record-batch and recovery refuse a plan that changed before their own rewrites, instead of adopting it:

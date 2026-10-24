@@ -6,6 +6,12 @@ No code reaches you from Master: the plan and the repo's rules you hold stay cur
 Only your own reads of code, taken in this batch, are current.
 Before you edit anything, read — in THIS turn — every card file this section points you at, plus every file that card's own target list and `Uses:` list name.
 
+## A parent decision
+
+A decision notice in your inherited context, the one your parent directive admits, is your parent's call for this run.
+Where it touches your cards, follow it over the card, inside your cards' targets;
+a change it needs outside them is not yours to make.
+
 ## Prior-batch context
 
 {{.prev_digest}}

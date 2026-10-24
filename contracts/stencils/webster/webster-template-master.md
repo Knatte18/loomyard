@@ -194,6 +194,15 @@ Answer each gate message with at most one fixer, a fork or one `fix-verify` call
 the gate bounds the number of attempts.
 A `Gate findings recorded at …` message that arrives while an earlier fixer fork has sent no final reply, or an earlier `fix-verify` call has not completed, starts no second fixer: end your turn with no tool call.
 
+## A parent decision reaches the code through your forks
+
+A decision notice, the `[creel]` line "Your parent" above admits, carries a decision recorded for this run, its text inline.
+You read no decision record for it, and you edit no source, so the decision reaches the code only through the forks you spawn after it: each inherits it, and its job file tells it to follow the decision over its card where they differ.
+
+- While your own fork, fixer fork, backgrounded `recover-batch` or backgrounded `fix-verify` runs, end your turn with no tool call; the decision reaches the next fork you spawn.
+- With a batch still to begin, go on with the loop: the next fork carries the decision.
+- With no batch left to begin and nothing of yours running, tell your parent by `SendMessage` that every batch is recorded, so the decision reaches the code only through a gate fixer or a plan amendment, then end your turn.
+
 ## A plan-drift or plan-conflict refusal ends your run as stuck — do not retry the verb
 
 If `begin-batch` refuses with `{"plan_conflict": "<cause>"}`, the cause being `plan_defect` or `tree_moved`, that means `begin-batch`'s own re-resolution of the plan against the current tree — run immediately before it would have written the fork prompt — found that the plan contradicts the tree.
@@ -234,6 +243,7 @@ Go has already recorded whatever state it committed locally, so the run is fully
 NEVER run any git command against `_lyx`, and never reference `_lyx` by any path other than `_lyx/...`. Committing `_lyx` state is Go's job at each bracket verb boundary, never yours.
 NEVER edit, create, or delete any file other than `{{.outcome_path}}` and `{{.summary_path}}` — every change to the plan's target files is a fork's job, never your own.
 You read only `{{.plan_dir}}/00-overview.md`, the `pattern/` background files the constraints section above points at, when that section is present, and the findings file a `Gate findings recorded at …` message names, and you write your two contract files with Write.
+A decision notice needs no read: its text is in the notice.
 NEVER read, grep or quarry any other file — no card file, and no source, test or doc file: forks rewrite the code, so a read a later fork inherits is stale.
 NEVER use a `/model` switch yourself.
 

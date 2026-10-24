@@ -1,5 +1,5 @@
 // burlerfix.go implements BurlerFixProducer, the shedadapters adapter over the fix half of a burlerengine round:
-// it reads the round's acceptance record and runs one fixer session over the accepted review with a bounded retry on died/timeout.
+// it reads the round's acceptance record, sends the review's decision-class findings to the run's parent, and runs one fixer session over the accepted review with a bounded retry on died/timeout.
 // It hands off to the segment's Bouncer as a routine Stuck -- never Done.
 
 package shedadapters
@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -35,10 +36,12 @@ type BurlerFixProducer struct {
 	requiresFans bool
 	// gateFindingsPath, when non-empty, is the file an exhausted fixer gate's findings are kept in.
 	gateFindingsPath string
-	profile          burlerengine.Profile
-	opts             burlerengine.RunOpts
-	runDir           string
-	now              func() time.Time
+	// notifyParent, when non-nil, is where a round's decision-class findings are sent.
+	notifyParent func(line string) error
+	profile      burlerengine.Profile
+	opts         burlerengine.RunOpts
+	runDir       string
+	now          func() time.Time
 }
 
 // Compile-time proof that *BurlerFixProducer satisfies shedengine.ShedProducer.
@@ -61,7 +64,41 @@ func NewBurlerFixProducer(name, reviewRow string, deps BurlerHalfDeps, profile b
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerFixProducer{name: name, reviewRow: reviewRow, runner: deps.Runner, models: deps.Models, requiresFans: deps.RequiresFans, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	opts.DecisionsRouted = deps.NotifyParent != nil
+	return &BurlerFixProducer{name: name, reviewRow: reviewRow, runner: deps.Runner, models: deps.Models, requiresFans: deps.RequiresFans, gateFindingsPath: deps.GateFindingsPath, notifyParent: deps.NotifyParent, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+}
+
+// sendDecisionFindings posts the decision-class findings of round's accepted review at reviewPath to the run's parent in one line.
+// It sends nothing without a notifier or with no such finding.
+// A review that does not parse and a failed post are logged at Warn and never fail the round: the findings stay in the review on disk.
+func (p *BurlerFixProducer) sendDecisionFindings(round int, reviewPath string) {
+	if p.notifyParent == nil {
+		return
+	}
+	content, err := os.ReadFile(reviewPath)
+	var findings []burlerengine.Finding
+	if err == nil {
+		_, findings, err = burlerengine.ParseCurrentReview(content)
+	}
+	if err != nil {
+		logger.Warn("shedadapters: burler fix could not read the review's decision findings; none sent to the parent", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "error", err)
+		return
+	}
+	var items []string
+	for _, f := range findings {
+		if f.Class == burlerengine.ClassDecision {
+			items = append(items, fmt.Sprintf("%s: %s Fix: %s", f.ID, strings.TrimSpace(f.Summary), strings.TrimSpace(f.Fix)))
+		}
+	}
+	if len(items) == 0 {
+		return
+	}
+	line := fmt.Sprintf("%s round %d raised decision findings its fixer does not take, each a call for you: %s. Review: %s. Way forward: record each call with \"lyx loom decision add <slug> --by parent\", or leave it open; the round goes on.", p.name, round, strings.Join(items, "; "), reviewPath)
+	if err := p.notifyParent(line); err != nil {
+		logger.Warn("shedadapters: burler fix could not send the review's decision findings to the parent", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "findings", len(items), "error", err)
+		return
+	}
+	logger.Info("shedadapters: burler fix sent the review's decision findings to the parent", "producer", p.name, "engine", burlerFixEngineLabel, "round", round, "findings", len(items))
 }
 
 // wayForward is the way forward every refusal that needs the round reviewed again ends with.
@@ -89,7 +126,8 @@ func (p *BurlerFixProducer) archiveReport(round int) {
 
 // Call runs one fix: resolve the round to fix from disk and hand control on without spawning when the highest complete round is still unjudged.
 // It refuses a round with no accepted review, and on a row told to require fans a round whose usage record holds no recorded fan names once no live fixer is found; the refusal archives the round's review, fixer report and acceptance record.
-// Otherwise it runs at most two attempts over the accepted review (a second only on a died/timeout first attempt), and maps the outcome onto shedengine's contract.
+// Otherwise it sends the review's decision-class findings to the run's parent, when told a notifier, and runs at most two attempts over the accepted review (a second only on a died/timeout first attempt), and maps the outcome onto shedengine's contract.
+// The findings are sent once per call that starts a fresh fix, never on the resume of a live fixer.
 //
 // A live fixer is probed before anything is archived, because archiving renames the very file a live fixer is about to write.
 // Only a stale fixer report is archived before an attempt.
@@ -155,6 +193,8 @@ func (p *BurlerFixProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		}
 		return "", shedengine.OutputPointer{}, unrecorded
 	}
+
+	p.sendDecisionFindings(round, reviewPath)
 
 	var priorResult burlerengine.FixResult
 	var priorToken string

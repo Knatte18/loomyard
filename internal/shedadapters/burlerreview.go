@@ -55,6 +55,9 @@ type BurlerHalfDeps struct {
 	// GateFindingsPath is the file an exhausted gate's findings are kept in and the Stuck reason names; the producer removes it on a call whose gate passed.
 	// Empty keeps no findings file.
 	GateFindingsPath string
+	// NotifyParent posts one line to the run's parent, read by the fix producer, which sends a round's decision-class findings through it and keeps them out of the fixer's work.
+	// Nil sends nothing and keeps every finding as fixer work.
+	NotifyParent func(line string) error
 }
 
 // checkHalfProducerArgs returns the constructor error of a half producer named name under label, or nil.

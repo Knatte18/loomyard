@@ -1,5 +1,5 @@
 // burlerfix_test.go pins BurlerFixProducer over shedfake.BurlerHalfRunner:
-// It covers the refusal of a round with no accepted review, the hand-on of an unjudged round, and the fix a finished round carries and records.
+// It covers the refusal of a round with no accepted review, the hand-on of an unjudged round, the fix a finished round carries and records, and the decision findings it sends to the parent.
 // It also covers the gate-failed and changed-review exits and their archive sets, every other failure exit, cancellation, and probe and resume.
 
 package shedadapters
@@ -23,7 +23,7 @@ import (
 // newFixProducer builds a BurlerFixProducer over runDir whose review row is named "burler-review", failing the test on constructor error.
 func newFixProducer(t *testing.T, runDir string, runner *shedfake.BurlerHalfRunner, spec halfProducerSpec) *BurlerFixProducer {
 	t.Helper()
-	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath}, spec.profile, spec.opts, runDir, spec.now)
+	p, err := NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, Fans: spec.fans, RequiresFans: spec.requiresFans, GateFindingsPath: spec.gateFindingsPath, NotifyParent: spec.notifyParent}, spec.profile, spec.opts, runDir, spec.now)
 	if err != nil {
 		t.Fatalf("NewBurlerFixProducer() error = %v; want nil", err)
 	}
@@ -241,6 +241,74 @@ func TestBurlerFixProducer_Call_FinishedFixIsRecorded(t *testing.T) {
 			}
 			requireArchived(t, runDir, "round-2-review.md", 0)
 			requireArchived(t, runDir, "round-2-acceptance.md", 0)
+		})
+	}
+}
+
+// TestBurlerFixProducer_Call_SendsDecisionFindingsToTheParent proves a row told a notifier sends the accepted review's decision-class findings to the parent in one line and routes them out of the fixer's work.
+// It proves a review with none, or one that does not parse, sends nothing, a failed post leaves the round's outcome as it is, and a row told no notifier routes nothing.
+func TestBurlerFixProducer_Call_SendsDecisionFindingsToTheParent(t *testing.T) {
+	t.Parallel()
+	const decisionFinding = "  - id: D1\n    severity: LOW\n    class: decision\n    location: plan.md:4\n    summary: cache scope left open\n    fix: ask the parent to record the cache scope\n"
+	const nitFinding = "  - id: N1\n    severity: NIT\n    class: consistency\n    location: plan.md:9\n    summary: naming\n    fix: rename x to y\n"
+	const decisionProse, nitProse = "### [LOW] cache scope left open\n", "### [NIT] naming\n"
+	tests := []struct {
+		name       string
+		review     string
+		notify     bool
+		notifyErr  error
+		wantLines  int
+		wantRouted bool
+	}{
+		{name: "a decision finding is sent once and routed", review: "---\nverdict: APPROVED\nfindings:\n" + decisionFinding + nitFinding + "---\n" + decisionProse + nitProse, notify: true, wantLines: 1, wantRouted: true},
+		{name: "a review with no decision finding sends nothing", review: "---\nverdict: APPROVED\nfindings:\n" + nitFinding + "---\n" + nitProse, notify: true, wantRouted: true},
+		{name: "a review that does not parse sends nothing", review: "no frontmatter\n", notify: true, wantRouted: true},
+		{name: "a failed post leaves the round's outcome", review: "---\nverdict: APPROVED\nfindings:\n" + decisionFinding + "---\n" + decisionProse, notify: true, notifyErr: errors.New("creel down"), wantRouted: true},
+		{name: "a row told no notifier routes nothing", review: "---\nverdict: APPROVED\nfindings:\n" + decisionFinding + "---\n" + decisionProse},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			runDir := filepath.Join(t.TempDir(), "plan")
+			writeAcceptedRound(t, runDir, 1, "digest-1")
+			if err := os.WriteFile(roundReviewPath(runDir, 1), []byte(tt.review), 0o644); err != nil {
+				t.Fatalf("WriteFile(review): %v", err)
+			}
+			var lines []string
+			spec := newHalfSpec()
+			if tt.notify {
+				spec.notifyParent = func(line string) error {
+					if tt.notifyErr != nil {
+						return tt.notifyErr
+					}
+					lines = append(lines, line)
+					return nil
+				}
+			}
+			runner := &shedfake.BurlerHalfRunner{FixResults: []burlerengine.FixResult{fixDone}}
+			p := newFixProducer(t, runDir, runner, spec)
+
+			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
+
+			if ptr.Path != roundReviewPath(runDir, 1) || runner.FixCalls != 1 {
+				t.Errorf("Call() pointer %+v after %d Fix calls; want round 1's review after one", ptr, runner.FixCalls)
+			}
+			if got := runner.GotFixOpts[0].DecisionsRouted; got != tt.wantRouted {
+				t.Errorf("Fix opts DecisionsRouted = %v; want %v", got, tt.wantRouted)
+			}
+			if len(lines) != tt.wantLines {
+				t.Fatalf("parent lines = %q; want %d", lines, tt.wantLines)
+			}
+			for _, line := range lines {
+				for _, want := range []string{"burler-fix round 1", "D1: cache scope left open Fix: ask the parent to record the cache scope", roundReviewPath(runDir, 1), "lyx loom decision add"} {
+					if !strings.Contains(line, want) {
+						t.Errorf("parent line = %q; want it to carry %q", line, want)
+					}
+				}
+				if strings.Contains(line, "N1") {
+					t.Errorf("parent line = %q; want no finding of another class", line)
+				}
+			}
 		})
 	}
 }
@@ -477,8 +545,11 @@ func TestBurlerFixProducer_Call_ProbeAndResume(t *testing.T) {
 		wantFixes     int
 		wantResumes   int
 		wantReviewArc int
+		// decisionReview makes the accepted review hold a decision-class finding and the row told a notifier.
+		decisionReview bool
 	}{
 		{name: "not live proceeds to the spawn", wantFixes: 1},
+		{name: "a live fixer is resumed without a decision notice", probe: []burlerengine.LiveHalf{live}, resume: fixDone, wantResumes: 1, decisionReview: true},
 		{name: "a live fixer is resumed and finishes", probe: []burlerengine.LiveHalf{live}, resume: fixDone, wantResumes: 1},
 		{name: "a resumed death falls through to a fresh attempt", probe: []burlerengine.LiveHalf{live}, resume: burlerengine.FixResult{Outcome: shuttleengine.OutcomeTimeout}, wantResumes: 1, wantFixes: 1},
 		{name: "a resumed unrecognized outcome is a hard error", probe: []burlerengine.LiveHalf{live}, resume: burlerengine.FixResult{Outcome: "weird"}, wantErr: "unrecognized outcome", wantResumes: 1},
@@ -491,16 +562,31 @@ func TestBurlerFixProducer_Call_ProbeAndResume(t *testing.T) {
 			t.Parallel()
 			runDir := t.TempDir()
 			writeAcceptedRound(t, runDir, 1, "recorded")
+			spec := newHalfSpec()
+			var lines []string
+			if tt.decisionReview {
+				review := "---\nverdict: APPROVED\nfindings:\n  - id: D1\n    severity: LOW\n    class: decision\n    location: plan.md:4\n    summary: cache scope left open\n    fix: ask the parent to record the cache scope\n---\n### [LOW] cache scope left open\n"
+				if err := os.WriteFile(roundReviewPath(runDir, 1), []byte(review), 0o644); err != nil {
+					t.Fatalf("WriteFile(review): %v", err)
+				}
+				spec.notifyParent = func(line string) error {
+					lines = append(lines, line)
+					return nil
+				}
+			}
 			runner := &shedfake.BurlerHalfRunner{
 				LiveFixes: tt.probe, ProbeFixErrs: []error{tt.probeErr},
 				ResumeFixResults: []burlerengine.FixResult{tt.resume}, ResumeFixErrs: []error{tt.resumeErr},
 				FixResults: []burlerengine.FixResult{fixDone},
 			}
 			runner.DuringFix = func(int) { writeRoundFile(t, roundFixerReportPath(runDir, 1)) }
-			p := newFixProducer(t, runDir, runner, newHalfSpec())
+			p := newFixProducer(t, runDir, runner, spec)
 
 			_, ptr, err := p.Call(context.Background())
 
+			if len(lines) != 0 {
+				t.Errorf("parent lines = %q; want none on the resume of a live fixer", lines)
+			}
 			wantErr := tt.wantErr != "" || tt.wantErrIs != nil
 			if (err != nil) != wantErr {
 				t.Fatalf("Call() error = %v; want an error: %v", err, wantErr)

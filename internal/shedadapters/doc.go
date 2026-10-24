@@ -342,6 +342,9 @@
 // Every other end, a gate or strict-parse failure included, is a hard error that archives the round's review, fixer report and acceptance record;
 // a reviewer that could not be stopped returns bare, with nothing archived.
 // A review with no record beside it is an orphan and is reviewed again.
+// A fix row told BurlerHalfDeps.NotifyParent sends the accepted review's decision-class findings to the run's parent in one line, each with its id, summary and fix, before a fresh fix starts, and runs the fix with burlerengine's DecisionsRouted set.
+// The line is sent once per call that starts a fresh fix and never on the resume of a live fixer; a review that does not parse and a failed post are logged at Warn and never fail the round.
+// A row told no notifier sends nothing and keeps every finding as fixer work.
 //
 // The fix row hands on an unjudged highest round the same way, and otherwise requires the next round's acceptance record and review.
 // Without them it is a hard error whose way forward is a goto to the review row and a resume, since the review row's hand-on never produces that state:
