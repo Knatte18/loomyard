@@ -890,6 +890,14 @@
 // See `PATTERN-fabric-git` for the rules;
 // this section is the rationale the invariant deliberately omits.
 //
+// **The records reset.** `ResetRecordsToParent(rec, l, slug)` resets the records content of slug's pair to what a fresh fork from its parent's records branch leaves, in one commit on the pair's records branch, never rewriting history.
+// It reads the origin record, refusing a missing record or records worktree (`lyx fabric reconcile`, or restoring the record from the records history in that worktree) and a root pair with no parent (a project entry through `lyx board upsert` and `lyx beam create`);
+// commits the records worktree's uncommitted record content under the record pathspec (`commitPendingRecords`), so the history keeps it;
+// runs the shared pipeline over the records worktree, with the hub as container, ownership as the pair's registered linked worktree of the weft repo and dirtiness `dirtyScopeAll`, so content outside the record pathspec refuses naming its paths and `lyx beam promote`;
+// and replaces the tracked content with the parent tip's tree minus the run-records root, removing the tracked files the parent lacks and restoring the origin record, under the subject `fabric: reset records of <slug> to its parent`.
+// A pair whose content already equals that tree commits nothing and reports `Committed: false`, so a re-run after a stop finishes the reset.
+// `ResetRecordsResult` carries the pre-commit's SHA when one was made, the reset commit's SHA and `Committed`; the caller pushes through the pair's detached push.
+//
 // **The pair-scoped reset.** `ResetPairCode(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`, which refuses on any tracked dirt and accepts the prime checkout.
 // Its request declares the hub as container and the warp worktree as target;
 // ownership `ownedPairWarpCheckout`, a registered linked worktree that is not on `parentBranch` and whose weft checkout has `RecordsBranchName` of the same branch checked out, a detached HEAD refusing;
