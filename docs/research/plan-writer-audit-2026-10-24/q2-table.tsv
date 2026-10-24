@@ -1,0 +1,35 @@
+run	read	read_named	pct_read_named	named	named_read	pct_named_read	read_exdocs	read_exdocs_named	pct_exdocs
+batten-cancel-verb	67	17	25%	20	17	85%	66	17	26%
+batten-start-speed	74	21	28%	21	21	100%	71	21	30%
+card-own-entry-edit	12	9	75%	10	9	90%	8	6	75%
+creel-cli-output-fixes	12	9	75%	10	9	90%	12	9	75%
+creel-notices	96	30	31%	30	30	100%	91	27	30%
+creel-sandbox-suite	12	9	75%	10	9	90%	11	8	73%
+creel-stage1-fixes	93	21	23%	21	21	100%	84	20	24%
+darn-verify-fixes	70	20	29%	22	20	91%	67	20	30%
+engine-usage-readers	36	16	44%	16	16	100%	33	16	48%
+fan-prompt-tuning	72	20	28%	25	20	80%	67	20	30%
+finalize-dirty-names-paths	52	14	27%	15	14	93%	50	14	28%
+hub-workspaces	82	18	22%	19	18	95%	79	16	20%
+lenses-language-sets	34	12	35%	13	12	92%	29	12	41%
+loom-stencil-wording	51	8	16%	18	8	44%	49	8	16%
+machine-handover	128	13	10%	16	13	81%	121	13	11%
+orch-continue	24	12	50%	14	12	86%	24	12	50%
+orch-intake-fork	13	6	46%	6	6	100%	13	6	46%
+orch-role-stencil-fixes	26	12	46%	17	12	71%	26	12	46%
+orch-rules-files	27	11	41%	15	11	73%	27	11	41%
+orch-strand-cycle	65	25	38%	33	25	76%	64	25	39%
+plan-card-rules	112	25	22%	28	25	89%	110	24	22%
+pr-gate-run-identity	40	17	42%	20	17	85%	39	17	44%
+quarry-csharp	69	16	23%	19	16	84%	67	15	22%
+reed-add-parentless-placement	53	18	34%	25	18	72%	52	17	33%
+reed-down-and-pane-path	37	12	32%	13	12	92%	35	12	34%
+run-process-ownership	104	20	19%	25	20	80%	100	18	18%
+shedrecipe-capabilities	56	23	41%	23	23	100%	51	23	45%
+shuttle-open-permission	18	10	56%	10	10	100%	17	9	53%
+tender-pause-holds-reprompt	86	29	34%	31	29	94%	80	28	35%
+ubuntu-2404-support	63	16	25%	20	16	80%	58	14	24%
+webster-deviations-list	17	6	35%	11	6	55%	14	6	43%
+webster-fork-stencil-fixes	98	15	15%	27	15	56%	97	15	15%
+TOTAL(32 runs)	1799	510	28%	603	510	85%	1712	491	29%
+MEAN-of-run-shares			36%			85%

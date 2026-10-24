@@ -1,0 +1,5 @@
+A1 before 10-15 (solo writer, mostly no forks)	28	9.08	8.50	0.58	9.08	1.1	40.1	16.4	1.32
+A2 10-15..10-19 (early fan, 6 fork sessions)	41	16.01	5.53	3.86	9.39	6.1	18.5	16.3	1.88
+B 10-20..c62274be5 (full fan, 9 fork sessions)	7	30.18	10.48	7.66	18.14	9.0	23.9	23.6	2.00
+C after c62274be5 (five lenses, 6 fork sessions)	3	26.59	9.24	7.40	16.64	6.0	23.9	23.6	1.33
+group	runs	mean_plan_total	mean_writer	mean_forks	mean_writer+forks	mean_fork_sessions	mean_PlanWrite_elapsed_min	mean_PlanWrite_active_min	mean_plan_rounds
