@@ -7,9 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/build"
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -62,6 +64,8 @@ type scope struct {
 	guardDir string
 	// guards maps a tier number to the directory of each package outside the scope that holds guard tests of that tier, and to their names, keyed relative to guardDir; nil when no scan has run.
 	guards map[int]map[string][]string
+	// tagTiers are the declared tiers, ascending, whose build tag brings a file into a --card scope's package that a build without tags leaves out; the vet step is planned over them.
+	tagTiers []int
 }
 
 // forTier returns s with the narrowing of tier number in place of its own whole and modules.
@@ -98,7 +102,7 @@ func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
 // Under the none scoper each of the three forms is whole.
 // Under the go scoper a computed or --base scope is the impacted set of the diff from its base to the working tree, derived once per base and shared by the tiers that land on it, each derivation named on request.stderr.
 // A set that cannot be narrowed falls back to whole, naming the reason on request.stderr;
-// a --card scope is the cards' packages per module.
+// a --card scope is the cards' packages per module, with the declared tiers whose build tag brings a file into one of them.
 // A guard scan error refuses with its file, line and way forward.
 // ctx bounds the derivation, so a stalled `go list` is killed when it ends.
 func computeScope(ctx context.Context, cfg gateslot.Config, location *lyxcwd.Location, root string, request testRequest, green *greenRun) (scope, error) {
@@ -134,7 +138,7 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lyxcwd.Loc
 		for i, module := range cardModules {
 			modules[i] = moduleTargets{dir: module.Dir, targets: module.Packages}
 		}
-		return scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir}, nil
+		return scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir, tagTiers: tagTiers(cfg, root, modules)}, nil
 	}
 
 	groups, wholeTiers := diffBaseGroups(cfg, location, root, request, form, green)
@@ -374,6 +378,54 @@ func cardMatches(card planparser.Card, id string) bool {
 		return false
 	}
 	return !hasSlug || slug == card.Slug
+}
+
+// tagTiers returns the tiers cfg declares, ascending, whose build tag `tierN` alone brings a `.go` file of a package of modules into the build that a build without tags leaves out, on the host's GOOS and GOARCH.
+// Package directories resolve against root, and a directory or file that cannot be read or matched is left out, since the listed tiers' own compiles report it.
+func tagTiers(cfg gateslot.Config, root string, modules []moduleTargets) []int {
+	var dirs []string
+	for _, module := range modules {
+		for _, target := range module.targets {
+			dirs = append(dirs, filepath.Join(root, filepath.FromSlash(module.dir), filepath.FromSlash(target)))
+		}
+	}
+	var numbers []int
+	for key := range cfg.Tiers {
+		number, err := strconv.Atoi(strings.TrimPrefix(key, "tier"))
+		if err != nil {
+			continue
+		}
+		tagged := build.Default
+		tagged.BuildTags = []string{tierName(number)}
+		if slices.ContainsFunc(dirs, func(dir string) bool { return tagAddsFile(tagged, dir) }) {
+			numbers = append(numbers, number)
+		}
+	}
+	slices.Sort(numbers)
+	return numbers
+}
+
+// tagAddsFile reports whether dir directly holds a `.go` file that matches the build tags of tagged and that a build without tags leaves out.
+func tagAddsFile(tagged build.Context, dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	plain := build.Default
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		withTag, err := tagged.MatchFile(dir, name)
+		if err != nil || !withTag {
+			continue
+		}
+		if withoutTag, err := plain.MatchFile(dir, name); err == nil && !withoutTag {
+			return true
+		}
+	}
+	return false
 }
 
 // parentMergeBase returns the merge base of HEAD with the parent branch the pair's fabric origin record names.

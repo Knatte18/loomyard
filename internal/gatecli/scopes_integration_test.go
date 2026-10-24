@@ -7,6 +7,7 @@ package gatecli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -215,6 +216,56 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 	})
 
+	// vetSummary returns the summary line of tier1's vet run in output, failing the test when there is none.
+	vetSummary := func(t *testing.T, output string) string {
+		t.Helper()
+		for _, line := range strings.Split(output, "\n") {
+			if strings.HasPrefix(line, "gate test: tier1 vet ") {
+				return line
+			}
+		}
+		t.Fatalf("output %q holds no summary line of tier1's vet run", output)
+		return ""
+	}
+	tier1File := "//go:build tier1\n\npackage lib\n\nimport \"testing\"\n\nfunc TestUse(t *testing.T) { _ = %s() }\n"
+
+	t.Run("--card vets a card's packages per module under the tag of a tier that adds a file to one, between the listed tier and the guard step", func(t *testing.T) {
+		edit(t, "lib/use_test.go", fmt.Sprintf(tier1File, "One"))
+		g := gate(t, pair, nil, "--card", "1")
+		wantArgs(t, g, []string{"./lib"}, []string{"."}, []string{"vet", "-tags", "tier1", "./lib"}, []string{"vet", "-tags", "tier1", "."}, guardInvocation)
+		if line := vetSummary(t, g.stdout.String()); !strings.Contains(line, " exit 0 ") {
+			t.Errorf("vet summary line = %q; want exit 0", line)
+		}
+		requireFree(t)
+	})
+
+	t.Run("--card fails a card whose tier1 file uses a helper only a tier0 file defines, naming the vet run", func(t *testing.T) {
+		edit(t, "lib/helper_test.go", "//go:build tier0\n\npackage lib\n\nfunc helper() int { return One() }\n")
+		edit(t, "lib/use_test.go", fmt.Sprintf(tier1File, "helper"))
+		g := startGate(t, gateRun{cwd: pair, args: []string{"test", "--card", "1"}, realGo: true})
+		g.exit = g.wait(t)
+		output := g.stdout.String()
+		if g.exit == 0 {
+			t.Errorf("exit code = 0, stdout %q; want the vet run's failure", output)
+		}
+		if line := vetSummary(t, output); strings.Contains(line, " exit 0 ") {
+			t.Errorf("vet summary line = %q; want a non-zero exit", line)
+		}
+		for _, want := range []string{"undefined: helper", "failed runs: vet tier1"} {
+			if !strings.Contains(output, want) {
+				t.Errorf("stdout = %q; want it to hold %q", output, want)
+			}
+		}
+		_, logPath, _ := strings.Cut(vetSummary(t, output), " log ")
+		if vet, _ := runRecordAt(t, logPath, 1); !slices.Equal(vet.TierList, []int{0}) {
+			t.Errorf("vet run record tier list = %v; want [0], the listed tiers alone", vet.TierList)
+		}
+		if guard, _ := guardRunRecordOf(t, output, 0); !guard.GuardStep {
+			t.Errorf("guard run record = %+v; want the guard step to have run after the failed vet", guard)
+		}
+		requireFree(t)
+	})
+
 	t.Run("--card with a tier that outlives timeout_min across its invocations is killed with the timeout line", func(t *testing.T) {
 		// A dirty tree is never carried, so the packages the row before ran green run again.
 		edit(t, "docs/note.md", "a dirtying note\n")
@@ -366,6 +417,29 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 		defer writeScoper(t, "go")
 		wantArgs(t, real(t, "--all"), []string{"./...", "extra"})
+	})
+
+	t.Run("--card carries a vet run that passed on the same clean tree", func(t *testing.T) {
+		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		before := gitkit.RevParse(t, pair, "HEAD")
+		gitkit.CommitFile(t, pair, "lib/use_test.go", fmt.Sprintf(tier1File, "One"), "add a tier1 file")
+		t.Cleanup(func() { gitkit.Git(t, pair, "reset", "-q", "--hard", before) })
+
+		first := real(t, "--card", "1")
+		if line := vetSummary(t, first.stdout.String()); first.exit != 0 || !strings.Contains(line, " exit 0 ") || strings.Contains(line, " carried ") {
+			t.Fatalf("first call = exit %d, vet summary line %q; want a pass that ran the vet", first.exit, line)
+		}
+
+		second := real(t, "--card", "1")
+		// wantCarried names the all scope form, which a --card call never prints.
+		if got := second.tierArgs(t); second.exit != 0 || len(got) != 0 || strings.Count(second.stdout.String(), " carried ") != 3 {
+			t.Errorf("second call = exit %d, tier invocations %q, stdout %q; want the listed tier, the vet run and the guard step carried", second.exit, got, second.stdout.String())
+		}
+		if line := vetSummary(t, second.stdout.String()); !strings.Contains(line, " carried ") {
+			t.Errorf("second call vet summary line = %q; want it marked carried", line)
+		}
 	})
 
 	t.Run("a tier whose command edits a tracked file and commits it before passing records nothing", func(t *testing.T) {

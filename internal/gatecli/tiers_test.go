@@ -75,6 +75,11 @@ func TestPlanTierRuns(t *testing.T) {
 	}
 	narrowerWithBothTiers := narrower
 	narrowerWithBothTiers.guards = bothTierGuards
+	card := narrower
+	card.form = scopeCard
+	card.tagTiers = []int{0, 1, 3}
+	cardOfTier0And1 := card
+	cardOfTier0And1.tagTiers = []int{0, 1}
 	tests := []struct {
 		name    string
 		mutate  func(*gateslot.Config)
@@ -227,6 +232,24 @@ func TestPlanTierRuns(t *testing.T) {
 			request: testRequest{tiers: []int{1}},
 			scope:   narrower,
 			want:    []string{"tier1 computed dir=. ./a ./b | dir=nested .", "tier1 guard dir=. guard"},
+		},
+		{
+			name:   "a --card scope vets each tag tier no listed tier runs, after the listed tiers and before the guard group",
+			mutate: withManualTier3,
+			scope:  card,
+			want:   []string{"tier0 card dir=. ./a ./b | dir=nested .", "tier1 vet dir=. ./a ./b | dir=nested .", "tier3 vet dir=. ./a ./b | dir=nested .", "tier1 guard dir=. guard"},
+		},
+		{
+			name:    "a --card scope vets no tier a listed tier covers",
+			request: testRequest{tiers: []int{1}},
+			scope:   cardOfTier0And1,
+			want:    []string{"tier1 card dir=. ./a ./b | dir=nested .", "tier1 guard dir=. guard"},
+		},
+		{
+			name:   "a --card scope under the none scoper plans no vet run",
+			mutate: func(cfg *gateslot.Config) { cfg.Scoper = "none" },
+			scope:  scope{form: scopeCard, whole: true, tagTiers: []int{1}},
+			want:   []string{"tier0 card dir=. ./..."},
 		},
 	}
 	for _, tc := range tests {

@@ -4,9 +4,9 @@
 //
 // # Verb
 //
-// `lyx gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and then the guard step below when one is planned.
-// A run that fails does not stop the call: every later tier and guard run still runs, so a failure the change under test did not cause, such as one present at the base, hides no later check.
-// When a run failed, the verb closes with one stderr line naming each failed run, a guard run as `guard tierN`, with its exit code.
+// `lyx gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and then the vet step and the guard step below when they are planned.
+// A run that fails does not stop the call: every later tier, vet and guard run still runs, so a failure the change under test did not cause, such as one present at the base, hides no later check.
+// When a run failed, the verb closes with one stderr line naming each failed run, a vet run as `vet tierN` and a guard run as `guard tierN`, with its exit code.
 // A refusal, a slot wait that does not end with the slots held and a terminating signal still end the call at once.
 // `--gate <key>` runs the tiers and the scope the `gates` key of that name holds, and `listedTiers` takes the key's tiers as the listed tiers.
 // It goes with none of `--tier`, `--upto`, `--all` and `--base`, which is refused before hub resolution naming the key and the flag to drop, since the key's tiers and scope come from gate.yaml.
@@ -61,6 +61,14 @@
 // Once the config is loaded, `planTierRuns` refuses, before any slot and naming `lyx config gate`: words after `--` for a tier whose command lacks `{args}`, an undeclared tier, a hub with no `tier0`, a `covers` entry naming a tier the hub does not declare, and, for the guard step below, a guard group whose tier the hub does not declare.
 // Every such refusal closes with the clause that a session that is not the prime takes none of the steps, reports status: FAILED and leaves them to the orch.
 //
+// # Vet step
+//
+// Under the `go` scoper a `--card` scope also plans, after the listed tiers and before the guard step, one vet run per declared tier whose build tag `tierN` brings a `.go` file into a card package that a build without tags leaves out (`tagTiers`), ascending, leaving out a listed tier and a tier a listed tier covers, since their own commands compile under that tag.
+// So a card that breaks the compile under another tier's tag, such as a helper a `tier0` file defines and a `tier1` file uses, fails at its own gate instead of at the batch gate's `go vet` steps.
+// A vet run is `go vet -tags tierN` over the card's packages, once per module in that module's directory, with the go command the prebuild uses, under the tier's `env`, `parallel` and `timeout_min` and holding one slot.
+// Its summary line and run record carry the scope form `vet`, it takes part in the green record under its own fingerprint, and a failed vet run stops no later run.
+// Bound: a break visible only under a combination of tags, or under a tag that adds no file to a card package, is not vetted here and stays the batch gate's to find.
+//
 // # Guard step
 //
 // With `--guards`, and under the `go` scoper after any computed, `--base` or `--card` scope, the verb runs, after the listed tiers, the step `guardStepRun` builds over the module's `//lyx:guard` tests outside the scope.
@@ -68,7 +76,7 @@
 // So the round and darn writer gates, which run `--base`, keep the guard coverage they have had, where every guard package counts as outside a tier that does not compile it.
 // The scan reads each guard test's tier from its file's `tierN` build tag, a file naming none counting as `tier0`, and the step plans one guard run per tier holding guard tests, ascending.
 // A guard run is one run of that tier's command with the group's guard packages as `{targets}` and `-run '^(<names>)$'` after any words from `--` as `{args}`, so the guard's own pattern is the last `-run` and wins over one among those words.
-// It acquires that tier's slots after the last listed tier released its own, runs under that tier's `timeout_min` and `prebuilt_lyx`, and is logged as a guard step; a failed guard run, like a failed listed tier, stops no later run.
+// It acquires that tier's slots after the last listed tier and vet run released their own, runs under that tier's `timeout_min` and `prebuilt_lyx`, and is logged as a guard step; a failed guard run, like a failed listed tier, stops no later run.
 // A group is skipped when the call ran its tier, or a tier covering it, whole, and a group whose tier the green record holds green carries.
 // A group whose tier is undeclared, or whose command lacks `{targets}` or `{args}`, is refused before any slot, naming `lyx config gate`.
 // A scan error refuses the call before any slot with the file, the line when there is one and a way forward for its kind:

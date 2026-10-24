@@ -172,7 +172,7 @@ type gateRun struct {
 	args []string
 	// env holds extra KEY=VALUE entries for the gate process, and so for its tier commands.
 	env []string
-	// realGo makes the prebuild run the real go command instead of the stand-in.
+	// realGo makes the prebuild and the vet step run the real go command instead of the stand-in.
 	realGo bool
 }
 
