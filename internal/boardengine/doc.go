@@ -113,6 +113,7 @@
 // # README
 //
 // Every write renders README.md, opening with the UTC date and time it was rendered, so its ages read as of that moment, then a Tasks section, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
+// Every section heading ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)`, never the highest handle number, since handles have gaps.
 // Tasks splits into Running, Ready, the dependency layers A, B and on, and Independent for an isolated task.
 // A task a run holds, by IsRunStatus as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
 // Ready holds the open tasks with no open dependency, and is always written, as `_None._` when empty.
