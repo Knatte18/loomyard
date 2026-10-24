@@ -7,7 +7,7 @@ Every verify site runs the call rendered from a gate of the hub's `gate.yaml` th
 - Records are per command, each entry with its tree and its commit; a skip requires an entry of the same command naming HEAD's tree.
 - The record is written only by `Verify`, and only after a pass; no prompt names its path.
 - The sites are the webster gate, the Webster-Burler-Fix gate, the Code-Burler-Fix, Darn-Write and Darn-Burler-Fix gates, Merge-In, Finalize and `lyx webster verify`.
-- The `round` gate's sites are Webster's two verify-gate fixers, the fixer fork and the cold fixer `lyx webster fix-verify` spawns, which each run the `round` call through `Verify` with `BaseCommand` set to the told base command, so a pass keeps the entry the next round diffs from.
+- The `round` gate's sites are Webster's two verify-gate fixers, the fixer fork and the cold fixer `lyx webster fix-verify` spawns, which share one prompt body and each run the hub's `round` call, rendered into the prompt's `fix_gate` marker, before they report.
 - Code-Burler-Fix, Darn-Write and Darn-Burler-Fix run the `landing` call through `Verify`.
   Darn-Write and Darn-Burler-Fix run the tree-scoped command for a diff wholly under `darn.yaml`'s `tree_scope`, else the `landing` call, with `BaseCommand` set to the `landing` call, since darn has no webster gate.
 - Merge-In and Finalize run the `landing` call through `Verify` with `BaseCommand` set to the base command, which is the `final` call in a loom run and the `landing` call in a darn run, so a landing-list pass keeps the entry the next round diffs from.
