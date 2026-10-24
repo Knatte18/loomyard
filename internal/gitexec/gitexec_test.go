@@ -82,8 +82,9 @@ func TestRunGit(t *testing.T) {
 }
 
 // TestRun pins Run's contract: a successful command returns its stdout with a nil error; a non-zero exit is recoverable via errors.As as *gitexec.GitError carrying the exit code, the args and dir it was given and non-empty stderr; and an exec-level failure — a cwd that does not exist — returns a non-nil error that errors.As does NOT match as *gitexec.GitError, the distinction every errors.As recovery site depends on.
-// A last row sets GIT_DIR and GIT_WORK_TREE to a second repository and asserts the child still answers the directory it was run in, because git children never inherit those two variables.
-// That row touches process-global state, the environment, so the test does not call t.Parallel; its table rows do.
+// One row sets GIT_DIR and GIT_WORK_TREE to a second repository and asserts the child still answers the directory it was run in, because git children never inherit those two variables.
+// Another sets GIT_OPTIONAL_LOCKS=1 and asserts the child sees it as 0 alone, so a read-only command never takes the index lock.
+// Those rows touch process-global state, the environment, so the test does not call t.Parallel; its table rows do.
 func TestRun(t *testing.T) {
 
 	nonZeroArgs := []string{"log", "--format=stdout-marker", "-1"}
@@ -174,6 +175,24 @@ func TestRun(t *testing.T) {
 		}
 		if gotDir != wantDir {
 			t.Errorf("git dir = %q; want %q, the directory the command ran in", gotDir, wantDir)
+		}
+	})
+
+	t.Run("turns optional locks off", func(t *testing.T) {
+		t.Setenv("GIT_OPTIONAL_LOCKS", "1")
+
+		got, err := gitexec.Run([]string{"-c", "alias.lyxenv=!env", "lyxenv"}, t.TempDir())
+		if err != nil {
+			t.Fatalf("Run(lyxenv) error = %v", err)
+		}
+		var values []string
+		for _, line := range strings.Split(got, "\n") {
+			if value, found := strings.CutPrefix(strings.TrimRight(line, "\r"), "GIT_OPTIONAL_LOCKS="); found {
+				values = append(values, value)
+			}
+		}
+		if !reflect.DeepEqual(values, []string{"0"}) {
+			t.Errorf("GIT_OPTIONAL_LOCKS values in the child environment = %v; want [0]", values)
 		}
 	})
 }
@@ -396,7 +415,7 @@ func TestRun_RemoteBounds(t *testing.T) {
 		if !errors.As(err, &gitErr) {
 			t.Fatalf("Run error = %v; want a *GitError from the failing ext command", err)
 		}
-		for _, want := range []string{"GIT_HTTP_LOW_SPEED_LIMIT=1000", "GIT_HTTP_LOW_SPEED_TIME=60"} {
+		for _, want := range []string{"GIT_HTTP_LOW_SPEED_LIMIT=1000", "GIT_HTTP_LOW_SPEED_TIME=60", "GIT_OPTIONAL_LOCKS=0"} {
 			if !strings.Contains(gitErr.Stderr, want) {
 				t.Errorf("remote command environment lacks %s; stderr: %s", want, gitErr.Stderr)
 			}

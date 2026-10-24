@@ -191,7 +191,7 @@ func runCore(args []string, cwd, stdin string) (stdout, stderr string, exitCode 
 // A remote subcommand runs under deadline, in its own process group, with lowSpeedEnv added to the environment;
 // a local one runs unbounded.
 // A remote subcommand first waits while a pause covers the process, through the installed network gate, if any, and its deadline starts only once it runs.
-// Every child gets the process environment less GIT_DIR and GIT_WORK_TREE.
+// Every child gets the process environment less GIT_DIR, GIT_WORK_TREE and GIT_OPTIONAL_LOCKS, with GIT_OPTIONAL_LOCKS=0 set.
 func runCoreWithin(args []string, cwd, stdin string, deadline time.Duration) (stdout, stderr string, exitCode int, err error) {
 	if floorErr := CheckFloor(); floorErr != nil {
 		return "", "", -1, floorErr
@@ -245,17 +245,22 @@ func runCoreWithin(args []string, cwd, stdin string, deadline time.Duration) (st
 	return outBuf.String(), errBuf.String(), 0, nil
 }
 
-// childEnv returns the process environment without GIT_DIR and GIT_WORK_TREE, followed by extra.
-// Dropping the two variables makes a git child follow the directory it is run in, so one command never reads one repository and writes another.
+// noOptionalLocksEnv stops a read-only git command, such as `git status`, from taking the index lock to write back a refreshed stat cache.
+// Such a probe runs under no lyx lock, so its index lock would otherwise fail a concurrent `git add` with "index.lock: File exists".
+const noOptionalLocksEnv = "GIT_OPTIONAL_LOCKS=0"
+
+// childEnv returns the process environment without GIT_DIR, GIT_WORK_TREE and GIT_OPTIONAL_LOCKS, followed by noOptionalLocksEnv and extra.
+// Dropping GIT_DIR and GIT_WORK_TREE makes a git child follow the directory it is run in, so one command never reads one repository and writes another.
 func childEnv(extra []string) []string {
 	environ := os.Environ()
-	env := make([]string, 0, len(environ)+len(extra))
+	env := make([]string, 0, len(environ)+1+len(extra))
 	for _, entry := range environ {
-		if strings.HasPrefix(entry, "GIT_DIR=") || strings.HasPrefix(entry, "GIT_WORK_TREE=") {
+		if strings.HasPrefix(entry, "GIT_DIR=") || strings.HasPrefix(entry, "GIT_WORK_TREE=") || strings.HasPrefix(entry, "GIT_OPTIONAL_LOCKS=") {
 			continue
 		}
 		env = append(env, entry)
 	}
+	env = append(env, noOptionalLocksEnv)
 	return append(env, extra...)
 }
 

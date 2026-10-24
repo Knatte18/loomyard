@@ -27,6 +27,9 @@
 //
 // Every git child inherits the process environment except GIT_DIR and GIT_WORK_TREE, which are dropped so the child follows the directory it is run in, as the in-process reads do, and one command never reads one repository and writes another.
 // Bound: an operator who sets either variable to point `lyx` at another repository has it ignored; `lyx`'s own post-checkout hook already unsets them.
+// Every git child also runs with GIT_OPTIONAL_LOCKS=0, whatever the process environment sets it to, so a read-only command such as `git status` never takes the index lock to write back a refreshed stat cache.
+// Such a probe holds no lyx lock, and its index lock would otherwise fail a concurrent locked commit's `git add` on the same worktree with "index.lock: File exists".
+// Bound: a read probe leaves the stat cache unrefreshed, so a later probe may re-read files a refresh would have cached.
 //
 // The bounds are not configuration.
 // A legitimate remote command that runs longer than the deadline, or moves under the low-speed limit for the low-speed time, fails as a transport failure.
