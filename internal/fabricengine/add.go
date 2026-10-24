@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -29,11 +30,22 @@ var addBeforeWeftReplaceHook func()
 var addFailAfterWarpHook func() error
 
 // AddOptions controls optional behaviour for Add.
-// It is an alias of SyncOptions rather than a distinct type, so Add can pass opts straight through to the records helpers, which already take SyncOptions.
 // SkipGit or SkipPush skips the origin probes and the archived-leftover replacement, leaving a pair live only by a local weft branch.
 // Tests pass these directly instead of relying on environment variables, which makes t.Parallel()
 // safe.
-type AddOptions = SyncOptions
+type AddOptions struct {
+	// SkipGit skips all git operations of the records helpers if true.
+	SkipGit bool
+	// SkipPush skips push operations if true.
+	SkipPush bool
+	// BackoffSleep sleeps one delay of the backoff a push waits out before it records a branch gone from origin or an unreachable origin; nil sleeps for the delay.
+	BackoffSleep func(time.Duration)
+}
+
+// syncOptions returns the options the records helpers take.
+func (o AddOptions) syncOptions() SyncOptions {
+	return SyncOptions{SkipGit: o.SkipGit, SkipPush: o.SkipPush, BackoffSleep: o.BackoffSleep}
+}
 
 // AddResult contains the result of successfully adding a new worktree pair.
 // It embeds MutationRecord, which carries the mutation record accumulated over the call.
@@ -451,7 +463,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		if runRecordsTracked {
 			commitPaths = append(commitPaths, shedrun.RunsRootRel())
 		}
-		if _, _, err := CommitRecordsPaths(rec, weftPath, l.AnchorRel, commitPaths, OriginRecordSubject(slug), opts); err != nil {
+		if _, _, err := CommitRecordsPaths(rec, weftPath, l.AnchorRel, commitPaths, OriginRecordSubject(slug), opts.syncOptions()); err != nil {
 			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("commit parent branch record: %w", err)
 		}

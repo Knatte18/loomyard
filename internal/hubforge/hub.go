@@ -437,7 +437,7 @@ func AddPairWith(tb testing.TB, h *Hub, slug string, opts fabricengine.AddOption
 	if err != nil {
 		tb.Fatalf("AddPairWith(%s): %v", slug, err)
 	}
-	if _, err := fabricengine.CoalescePushBothAt(res.Path, fabricengine.RecordsWorktreePath(h.Location, slug), opts); err != nil {
+	if _, err := fabricengine.CoalescePushBothAt(res.Path, fabricengine.RecordsWorktreePath(h.Location, slug), fabricengine.SyncOptions{SkipGit: opts.SkipGit, SkipPush: opts.SkipPush, BackoffSleep: opts.BackoffSleep}); err != nil {
 		tb.Fatalf("AddPairWith(%s): push the new pair: %v", slug, err)
 	}
 	return res
