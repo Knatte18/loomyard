@@ -140,7 +140,7 @@ func reasonLabel(state shedengine.State) string {
 	return "waiting"
 }
 
-// haltText renders what the child's state says happened: the state and, when known, the row it stopped at, for example "awaiting at PR-Gate".
+// haltText renders what the child's state says happened: the state and, when known, the row it stopped at, for example "awaiting at Plan-Bouncer".
 func haltText(status shedengine.Status) string {
 	if status.CurrentProducer == "" {
 		return string(status.State)

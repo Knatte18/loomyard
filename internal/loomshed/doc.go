@@ -49,7 +49,7 @@
 // The round runs the tiers the told list holds and nothing else, so `tmux` and `llm` tiers run only if the hub lists them in the `landing` gate.
 // Publish reruns both verifies in full regardless, and stays the guard.
 // Told a tree scope reader, it takes the darn form the `Darn-Write` and `Darn-Burler-Fix` rows run, and requires the merge base reader:
-// the headroom lint and then the comment lint run from the task branch's merge base with the parent to HEAD, so every attempt diffs from the merge base and a PR-Gate rework is never narrowed to a stale pass.
+// the headroom lint and then the comment lint run from the task branch's merge base with the parent to HEAD, so every attempt diffs from the merge base and is never narrowed to a stale pass.
 // The tree scope reader is then read at each arrival.
 // A tree-scoped diff, wholly under the hub's configured non-production trees, runs only the tree-scoped command the reader answers; an empty command, as for a docs-only diff whose trees name no target, runs nothing, logs so and passes, so an empty tree scope never falls back to the computed scope.
 // Any other diff runs the round call over `--base` the merge base, with the same guard step the round form gets from it.
