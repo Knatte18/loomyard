@@ -518,7 +518,8 @@ func RenderBatchIndex(batches []batcher.Batch) string {
 // RenderProgress renders {{.progress}}'s per-batch state summary for resume, walking batches in
 // the sequenced execution order the caller hands it and looking each one up in st's persisted
 // BatchState entries by its own identity.
-// Returns "none" when no batch has reached terminal state.
+// Returns "none" when no batch has reached terminal state or waits on its parent.
+// A waiting batch's line names its need and the verb that resumes it.
 // st may be nil (as-yet-uninitialized run).
 // Walking batches rather than cards preserves the property doc.go already relies on: every batch
 // number is positive, so a legacy -1 record in State.Batches can never surface here.
@@ -536,6 +537,10 @@ func RenderProgress(batches []batcher.Batch, st *State) string {
 		// predecessorDigestLine) already guards it. Without it this line panics INSIDE Run's Master
 		// prompt render, taking the run down instead of surfacing a diagnosable error.
 		bs, ok := st.Batches[number]
+		if waitsOnParent(bs) {
+			lines = append(lines, waitingProgressLine(bs, number, slug))
+			continue
+		}
 		if !ok || bs == nil || !bs.Terminal {
 			continue
 		}

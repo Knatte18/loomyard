@@ -90,7 +90,7 @@ type HistoryEntry struct {
 	// GateSpans are the time spans this call's gate entries took, in the order they started.
 	// A status file written before the field existed decodes as nil, and a nil list is not written.
 	GateSpans []GateSpan `json:"gate_spans,omitempty"`
-	// BudgetExempt is true on a Stuck entry the producer marked as not counted against the bounce budget.
+	// BudgetExempt is true on a Stuck entry not counted against the bounce budget: one the producer marked, a Halt, or one at a row with no OnStuck.
 	// A status file written before the field existed decodes as false and counts as before.
 	BudgetExempt bool `json:"budget_exempt,omitempty"`
 	// Repeats is the number of further identical calls folded into this entry, zero when none.

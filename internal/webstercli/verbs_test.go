@@ -1166,10 +1166,65 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outStuck, []string{"1", "--wait", "1ns"}); code == 0 {
 		t.Fatalf("recover-batch 1 over a stuck recovery = 0; want non-zero, output: %s", outStuck.String())
 	}
-	for _, want := range []string{`"ok":false`, `"status":"stuck"`, `"recovery_retry":false`, `"recoveries":2`, `"batch":"01-only"`, "end the run stuck, naming batch 01-only"} {
+	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() after the stuck recovery = %v, %v; want a state, nil", loaded, err)
+	}
+	sessions := loaded.Batches[1].RecoverySessions
+	if len(sessions) == 0 {
+		t.Fatalf("loaded.Batches[1].RecoverySessions is empty; want the spawned sessions")
+	}
+	stuckSession := sessions[len(sessions)-1]
+	for _, want := range []string{`"ok":false`, `"status":"stuck"`, `"recovery_retry":false`, `"recoveries":2`, `"batch":"01-only"`, "end the run stuck, naming batch 01-only", `"recovery_session":"` + stuckSession + `"`, "(session " + stuckSession + ")"} {
 		if !strings.Contains(outStuck.String(), want) {
 			t.Errorf("stuck recovery output missing %q; got %q", want, outStuck.String())
 		}
+	}
+
+	// A recovery that reports NEEDS_PARENT leaves the batch waiting, exits 0 and spends nothing;
+	// the next call resumes it with a fresh strand, uncounted even at two recoveries.
+	loaded.Batches[1].AmendedCards = []websterengine.AmendedCard{{Card: "01-only"}}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, loaded); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	var outWaitSpawn strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outWaitSpawn, []string{"1", "--wait", "1ns"}); code != 0 || !strings.Contains(outWaitSpawn.String(), `"status":"running"`) {
+		t.Fatalf("recover-batch 1 over another new amendment = %d, output: %s; want a running respawn", code, outWaitSpawn.String())
+	}
+	reportPath := filepath.Join(fx.CLI.geom.ReportsDir, websterengine.ReportFileName(1, "only"))
+	need := "raise the tier 2 timeout in the hub gate.yaml"
+	if err := websterengine.WriteReport(reportPath, &websterengine.Report{Status: websterengine.ReportStatusNeedsParent, HeadSHA: head, Need: need}); err != nil {
+		t.Fatalf("write the waiting report: %v", err)
+	}
+	var outWaiting strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outWaiting, []string{"1", "--wait", "1ns"}); code != 0 {
+		t.Fatalf("recover-batch 1 over a NEEDS_PARENT report = %d; want 0, output: %s", code, outWaiting.String())
+	}
+	for _, want := range []string{`"ok":true`, `"status":"waiting"`, `"need":"` + need + `"`, `"recoveries":2`} {
+		if !strings.Contains(outWaiting.String(), want) {
+			t.Errorf("waiting recovery output missing %q; got %q", want, outWaiting.String())
+		}
+	}
+	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() after the waiting recovery = %v, %v; want a state, nil", loaded, err)
+	}
+	if bs := loaded.Batches[1]; bs.Terminal || bs.Status != websterengine.DigestStatusWaiting || bs.Recoveries != 2 {
+		t.Errorf("waiting record Terminal, Status, Recoveries = %v, %q, %d; want false, %q, 2", bs.Terminal, bs.Status, bs.Recoveries, websterengine.DigestStatusWaiting)
+	}
+	if _, err := os.Stat(reportPath); !os.IsNotExist(err) {
+		t.Errorf("stat of the waiting report = %v; want it archived", err)
+	}
+	var outResume strings.Builder
+	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &outResume, []string{"1", "--wait", "1ns"}); code != 0 || !strings.Contains(outResume.String(), `"status":"running"`) {
+		t.Fatalf("recover-batch 1 over a waiting batch at two recoveries = %d, output: %s; want a running respawn", code, outResume.String())
+	}
+	loaded, err = websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil || loaded == nil {
+		t.Fatalf("LoadState() after the resume = %v, %v; want a state, nil", loaded, err)
+	}
+	if got := loaded.Batches[1].Recoveries; got != 2 {
+		t.Errorf("Recoveries after the resume spawn = %d; want 2, since a resume is not counted", got)
 	}
 }
 

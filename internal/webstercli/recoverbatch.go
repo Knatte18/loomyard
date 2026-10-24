@@ -45,13 +45,23 @@ func batchSlugFor(batches []batcher.Batch, batchNumber int) string {
 	return ""
 }
 
-// recoveryNotDoneMessage is the error of a recover-batch call whose terminal digest is not done:
-// the recovery did not recover the batch, and the way forward is one more recovery when the batch has one left, else ending the run stuck.
-func recoveryNotDoneMessage(batchName string, batchNumber int, status string, retry bool) string {
+// recoveryNotDoneMessage is the error of a recover-batch call whose terminal digest is neither done nor waiting:
+// the recovery in session did not recover the batch, and the way forward is one more recovery when the batch has one left, else ending the run stuck.
+// Naming the session tells two consecutive refusals over different strands apart.
+func recoveryNotDoneMessage(batchName string, batchNumber int, status, session string, retry bool) string {
 	if retry {
-		return fmt.Sprintf("webster: batch %s recovery ended %s; way forward: run `lyx webster recover-batch %d` once more", batchName, status, batchNumber)
+		return fmt.Sprintf("webster: batch %s recovery (session %s) ended %s; way forward: run `lyx webster recover-batch %d` once more", batchName, session, status, batchNumber)
 	}
-	return fmt.Sprintf("webster: batch %s recovery ended %s and the batch has no recovery left; way forward: end the run stuck, naming batch %s", batchName, status, batchName)
+	return fmt.Sprintf("webster: batch %s recovery (session %s) ended %s and the batch has no recovery left; way forward: end the run stuck, naming batch %s", batchName, session, status, batchName)
+}
+
+// lastRecoverySession returns the session of the newest recovery strand st records for batch number, empty when it records none.
+func lastRecoverySession(st *websterengine.State, number int) string {
+	bs := st.Batches[number]
+	if bs == nil || len(bs.RecoverySessions) == 0 {
+		return ""
+	}
+	return bs.RecoverySessions[len(bs.RecoverySessions)-1]
 }
 
 // recoverDeps builds the websterengine.RecoverDeps for this CLI's current wiring over the loaded plan, execution batches and run state.
@@ -92,22 +102,23 @@ func (c *websterCLI) recoverBatchCmd() *cobra.Command {
 		Short:       "escalate one batch to a cold recovery strand and long-poll it for a terminal digest",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `recover-batch <nn> spawns a cold, fresh recovery strand for a batch a fork
-reported stuck (or never reported at all) -- or, on a re-entrant call,
-attaches to the recovery strand a prior call already spawned. A call that
+reported stuck (or never reported at all) -- or, re-entrant, attaches to
+the strand a prior call spawned. A call that
 spawns the recovery strand first waits for its provider to come up,
 and every call then blocks for up to --wait watching it for a terminal
-classification. A terminal call fabric-commits the batch report and state.json and returns the digest
-envelope, exactly like record-batch's own terminal envelope plus "recoveries",
+classification. A terminal call fabric-commits the report and state.json and
+returns record-batch's terminal envelope plus "recoveries",
 the batch's counted recovery spawns, and "recovery_retry", true when the
 recovery is dead and earns another: none counted yet, or it committed
-work of its own. A terminal digest whose status is not done (stuck or dead) exits
-non-zero with "ok": false and the same fields, its message naming the way
+work of its own. A stuck or dead digest exits non-zero with the same fields
+and "recovery_session", the strand's session, its message naming the way
 forward: "lyx webster recover-batch NN" once more when recovery_retry is
-true, else ending the run stuck naming the batch. A call that would spawn a
-third counted recovery refuses with {"recovery_exhausted": true}. A recovery
-the post-batch checks reject takes the batch terminal failed: the failed
-state and archived report are saved and committed, and the call exits
-non-zero with {"batch_failed": true, "batch": "NN-<slug>", "warnings": [...]};
+true, else ending the run stuck. A NEEDS_PARENT report leaves the batch
+waiting, exiting 0 with its "need"; the next call resumes it uncounted.
+A call that would spawn a third counted recovery refuses with
+{"recovery_exhausted": true}. A recovery the post-batch checks reject takes
+the batch terminal failed, saved and committed, and exits non-zero with
+{"batch_failed": true, "batch": "NN-<slug>", "warnings": [...]};
 "card_amended": true marks a card amended after the recovery spawned.
 The error names "lyx webster recover-batch NN", which re-runs the batch,
 unless a later card still references a symbol the batch deletes: a call that
@@ -344,8 +355,12 @@ Example:
 				retry, recoveries := websterengine.RecoveryRetry(c.geom, fresh, batchNumber)
 				fields["recovery_retry"], fields["recoveries"] = retry, recoveries
 				fields["warnings"] = ownerlessRunWarnings(c.geom.ScratchDir, result.Warnings)
-				if result.Digest.Status != websterengine.DigestStatusDone {
-					clihelp.SetExit(cmd.Context(), output.ErrFields(out, recoveryNotDoneMessage(batchName, batchNumber, result.Digest.Status, retry), fields))
+				switch result.Digest.Status {
+				case websterengine.DigestStatusDone, websterengine.DigestStatusWaiting:
+				default:
+					session := lastRecoverySession(fresh, batchNumber)
+					fields["recovery_session"] = session
+					clihelp.SetExit(cmd.Context(), output.ErrFields(out, recoveryNotDoneMessage(batchName, batchNumber, result.Digest.Status, session, retry), fields))
 					return nil
 				}
 				clihelp.SetExit(cmd.Context(), output.Ok(out, fields))

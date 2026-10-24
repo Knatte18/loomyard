@@ -1385,6 +1385,45 @@ func TestRecordBatch_UnresolvableHeadSHARefused(t *testing.T) {
 	}
 }
 
+// TestRecordBatch_NeedsParentWaits proves a NEEDS_PARENT report records the batch waiting with its need, in flight, its report archived and its recovery count unchanged,
+// and that record-batch on the waiting batch then refuses naming the need and begin-batch.
+func TestRecordBatch_NeedsParentWaits(t *testing.T) {
+	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
+	})
+	fx.Deps.State.Batches[1].Recoveries = 1
+	need := "raise the tier 2 timeout in the hub gate.yaml"
+	writeReport(t, fx.ReportsDir, "status: NEEDS_PARENT\nhead_sha: "+fx.HeadSHA+"\nneed: "+need+"\n")
+
+	result, err := websterengine.RecordBatch(fx.Deps, 1)
+	if err != nil {
+		t.Fatalf("RecordBatch() error = %v; want nil", err)
+	}
+	if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusWaiting || result.Digest.Need != need || result.Digest.Batch != "01-json-flag" {
+		t.Fatalf("RecordBatch() digest = %+v; want waiting on %q for 01-json-flag", result.Digest, need)
+	}
+	bs := fx.Deps.State.Batches[1]
+	if bs.Terminal || bs.Status != websterengine.DigestStatusWaiting || bs.Recoveries != 1 || len(bs.CardSHAs) != 0 {
+		t.Errorf("Batches[1] Terminal, Status, Recoveries, CardSHAs = %v, %q, %d, %v; want false, %q, 1, none", bs.Terminal, bs.Status, bs.Recoveries, bs.CardSHAs, websterengine.DigestStatusWaiting)
+	}
+	if got := fx.Deps.State.CurrentBatch; got != 1 {
+		t.Errorf("CurrentBatch = %d; want 1, the waiting batch", got)
+	}
+	if _, err := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(err) {
+		t.Errorf("stat of the report = %v; want it archived", err)
+	}
+
+	_, err = websterengine.RecordBatch(fx.Deps, 1)
+	if err == nil {
+		t.Fatal("RecordBatch() on a waiting batch error = nil; want the waiting refusal")
+	}
+	for _, want := range []string{"waits on its parent (" + need + ")", "way forward: once the parent has taken the step, `lyx webster begin-batch 1`"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("RecordBatch() on a waiting batch error = %q; want it to contain %q", err.Error(), want)
+		}
+	}
+}
+
 // TestRecordBatch_MalformedReportYAMLErrors proves an unparseable batch-report (here, an
 // unrecognized status value) is a hard error, never a guessed digest.
 func TestRecordBatch_MalformedReportYAMLErrors(t *testing.T) {

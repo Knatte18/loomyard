@@ -57,8 +57,8 @@
 // # Fork-return contract: OK/FAILED and a head SHA
 //
 // A fork's whole return contract is the minimal report shape report.go
-// implements (Report/ParseReport/WriteReport): `status: OK` or `status:
-// FAILED`, and the `head_sha` the fork left the worktree at.
+// implements (Report/ParseReport/WriteReport): `status: OK`, `status:
+// FAILED` or `status: NEEDS_PARENT` with its `need`, and the `head_sha` the fork left the worktree at.
 // An older fork's `deviations` key is accepted and ignored.
 // The digest's `deviations` list is the glyph scope guard's file list over the batch delta, the files changed outside the batch's own targets.
 // Record-batch and recover-batch fill it.
@@ -437,6 +437,23 @@
 // recover-batch's terminal envelope and status's batch entries carry the count as recoveries and the verdict as recovery_retry, and the refusal wrapping ErrRecoveryExhausted carries recovery_exhausted.
 // reset --to batch-start clears the batch's count and start, so the reset batch reads recovery_retry: true; reset --to start archives the whole record.
 // Merriam runs another recovery on recovery_retry: true and stops stuck on false or on recovery_exhausted.
+// A dead or stuck envelope also carries recovery_session, the session of the strand the verdict is about, and its message names it.
+// Two consecutive refusals over different strands, such as either side of a batch-start reset, are thus told apart.
+// Run refuses on entry, before it spawns Master, while a recorded batch is at such a dead end: terminal and not done with its recoveries spent, or dead with no retry, in either case holding no amendment a spawn has not rendered.
+// A git read that fails while judging a dead recovery refuses with a plain error that names the re-run and the batch-start reset, never as a dead end.
+// The refusal wraps ErrBatchDeadEnd, its text depends only on the batch's record and the tree, and its way forward is the batch-start reset then the re-entry step, or the reset to start;
+// a re-entry of a run halted on the dead end therefore halts again with the same text and spends no Master session.
+//
+// # A batch waiting on its parent
+//
+// A step only the run's parent can take, such as a hub setting in `gate.yaml`, a mutating `lyx fabric` verb lyx refuses from a strand or a board write, is no card failure: no fix and no recovery strand can take it.
+// The implementer body tells a fork or recovery strand that meets one to stop and report `status: NEEDS_PARENT` with a one-line `need` naming the step.
+// record-batch, and recover-batch through PersistRecoveryTerminal, record such a report as a waiting batch (waiting.go):
+// `Terminal` stays false, `Status` is `waiting`, the digest carries the need, the report is archived, and neither the post-batch pass nor the suspect check runs.
+// The wait spends no recovery: the recovery count and start commit are unchanged, and recover-batch never attaches to a waiting record, never refuses it as exhausted and counts no spawn that resumes it.
+// Merriam tells its parent the need by message and ends its turn; once the parent says the step is taken, it resumes the batch where it stood, through begin-batch's re-begin for a fork batch and through recover-batch for a recovery batch.
+// record-batch on a waiting batch refuses naming that resume verb, and the progress trail lists a waiting batch with its need and the resume verb, so a fresh Master re-drives it.
+// recover-batch exits 0 on a waiting digest.
 //
 // # digest persistence carries batch context forward
 //

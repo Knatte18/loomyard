@@ -1,9 +1,7 @@
 //go:build tier0
 
-// report_test.go covers Report's round-trip through WriteReport->ParseReport for both terminal
-// statuses and both empty and populated deviation lists, plus ParseReport's strict-decode
-// rejections: an unknown key, a missing head_sha, an unrecognized status, malformed YAML, an
-// empty file and a missing file.
+// report_test.go covers Report's round-trip through WriteReport->ParseReport for every status and both empty and populated deviation lists.
+// It also covers ParseReport's strict-decode rejections: an unknown key, a missing head_sha, an unrecognized status, a need missing or misplaced, malformed YAML, an empty file and a missing file.
 // Tier 1: no git, only t.TempDir().
 
 package websterengine
@@ -42,6 +40,13 @@ func TestReport_RoundTrip(t *testing.T) {
 				Deviations: []string{"internal/foo/bar.go", "docs/notes.md"},
 			},
 		},
+		{
+			name:     "NEEDS_PARENT with its need",
+			number:   4,
+			slug:     "needs",
+			wantFile: "04-needs.yaml",
+			want:     &Report{Status: ReportStatusNeedsParent, HeadSHA: "fed789", Need: "raise the hub's tier 2 timeout in gate.yaml"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -67,6 +72,9 @@ func TestReport_RoundTrip(t *testing.T) {
 			if got.HeadSHA != tt.want.HeadSHA {
 				t.Errorf("HeadSHA = %q; want %q", got.HeadSHA, tt.want.HeadSHA)
 			}
+			if got.Need != tt.want.Need {
+				t.Errorf("Need = %q; want %q", got.Need, tt.want.Need)
+			}
 		})
 	}
 }
@@ -83,6 +91,8 @@ func TestParseReport_Rejects(t *testing.T) {
 		{name: "an unknown key", content: "status: OK\nhead_sha: abc123\ndeviations: []\nextra_field: surprise\n"},
 		{name: "a missing head_sha", content: "status: OK\nhead_sha: \"\"\ndeviations: []\n"},
 		{name: "an unrecognized status", content: "status: MAYBE\nhead_sha: abc123\ndeviations: []\n"},
+		{name: "NEEDS_PARENT without a need", content: "status: NEEDS_PARENT\nhead_sha: abc123\nneed: \"  \"\n"},
+		{name: "a need on an OK report", content: "status: OK\nhead_sha: abc123\nneed: change gate.yaml\n"},
 		{name: "malformed YAML", content: "status: [this is not a mapping\n"},
 		{name: "an empty file", content: ""},
 		{name: "a missing file", missing: true},

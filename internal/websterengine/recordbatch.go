@@ -265,6 +265,7 @@ func archiveUnattributable(deps RecordDeps, number int, slug string, cause error
 // RecordBatch drives one record-batch call: the bracket-discipline check, incremental fork audit, fork-audit finding dispositions, transcript-attribution advance, report parse, and digest persistence.
 // Each audit finding is dispositioned once per run: a policy finding is recorded as a warning (after its batch's card verify commands pass, when the report is OK),
 // and a correctness finding, or a policy finding whose evidence re-run fails, fails the batch and returns a *BatchFailedError naming `lyx webster recover-batch`, alongside a RecordResult carrying the failed digest.
+// A NEEDS_PARENT report records the batch waiting with its need and archives the report, and a call on a waiting batch refuses naming the resume step.
 // The caller persists deps.State via SaveState once RecordBatch returns, whether or not it returned a *BatchFailedError.
 func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// The plan is a hard precondition, refused loudly rather than dereferenced several frames down
@@ -300,6 +301,9 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 			way = "continue with the next batch"
 		}
 		return nil, fmt.Errorf("webster: batch %02d is already terminal (%s), so record-batch has nothing to record; way forward: %s", batchNumber, bs.Status, way)
+	}
+	if waitsOnParent(bs) {
+		return nil, waitingRefusal("record-batch", bs, batchNumber)
 	}
 
 	// Recovery batches are consumed by recover-batch, not record-batch.
@@ -514,6 +518,16 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		if text, added := recordBatchWarning(deps.State, bs, cf.ID, string(cf.Violation.Class), cf.Violation.Detail); added {
 			warnings = append(warnings, text)
 		}
+	}
+
+	// A batch waiting on its parent has not finished, so it runs no post-batch pass and spends no recovery.
+	if report.Status == ReportStatusNeedsParent {
+		digest := distill(report)
+		digest.Batch = polledID
+		if err := recordWaiting(bs, &digest, deps.Geom.ReportsDir, number, slug, time.Now); err != nil {
+			return nil, err
+		}
+		return &RecordResult{Digest: &digest, Warnings: warnings}, nil
 	}
 
 	deviations, postWarnings, err := postBatchChecks(postBatchInputs{
