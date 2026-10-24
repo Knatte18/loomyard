@@ -31,7 +31,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
-	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
@@ -97,10 +96,11 @@ func driveEnvelopePath(l *lyxcwd.Location, runID string, now func() time.Time, r
 const (
 	loomTacklerRecipe = "loom: a phased task run (discussion, plan, webster's coded batches, reviews, landing)"
 	darnTacklerRecipe = "darn: a one-writer task run (one darn writer session, its review, verify and landing)"
+	beamTacklerRecipe = "beam: a beam's landing run (its description, then Finalize into its parent)"
 )
 
 // tacklerFor resolves the tackler settings of a run of recipe from the config layers under dirs, and the one-line recipe description its prompt names:
-// shed.yaml's defaults under the recipe's own module overrides, so a darn run takes darn.yaml's keys and a loom run loom.yaml's.
+// shed.yaml's defaults under the recipe's own module overrides, so a darn run takes darn.yaml's keys and a loom or beam run loom.yaml's.
 func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (sheddriver.TacklerSettings, string, error) {
 	shed, err := sheddriver.LoadConfig(dirs)
 	if err != nil {
@@ -114,8 +114,11 @@ func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (
 	if err != nil {
 		return sheddriver.TacklerSettings{}, "", err
 	}
-	if recipe == shedrun.RecipeDarn {
+	switch recipe {
+	case shedrun.RecipeDarn:
 		return settings, darnTacklerRecipe, nil
+	case shedrun.RecipeBeam:
+		return settings, beamTacklerRecipe, nil
 	}
 	return settings, loomTacklerRecipe, nil
 }
@@ -222,9 +225,9 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		NewReportPath: func() string { return driverReportPath(location, c.runID, time.Now, reportRand) },
 		HandBack: sheddriver.HandBackDeps{
 			Notify: func(_ sheddriver.Stop, line string) (bool, error) {
-				return orchcli.NotifyPrime(location, loomProgram, line)
+				return orchcli.NotifyParent(location, loomProgram, line)
 			},
-			OrchRecorded: func() (bool, error) { return primeOrchRecorded(location) },
+			OrchRecorded: func() (bool, error) { return orchcli.ParentOrchRecorded(location) },
 			Park:         loomPark(loomCommitStatusDeps(location, c.runID), shedrun.ParkMarker(location, runID)),
 			Now:          time.Now,
 		},
@@ -349,23 +352,6 @@ func loomPark(commit commitStatusDeps, markerPath string) func(reportPath string
 		}
 		return nil
 	}
-}
-
-// primeOrchRecorded reports whether the hub's prime has an orch strand recorded to receive notices.
-func primeOrchRecorded(location *lyxcwd.Location) (bool, error) {
-	primeName, err := fabricengine.PrimeName(location)
-	if err != nil {
-		return false, err
-	}
-	prime, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName))
-	if err != nil {
-		return false, err
-	}
-	orch, err := orchengine.LoadState(orchcli.PrimePaths(prime))
-	if err != nil {
-		return false, err
-	}
-	return orch.Strand != "", nil
 }
 
 // writeDrivePausedNote writes the `go-driver-paused` friction note for a paused stop that carries no reason, naming the stop, its producer and its envelope.

@@ -17,11 +17,13 @@ func Command() *cobra.Command {
 	var req request
 	cmd := &cobra.Command{
 		Use:         "adopt [<slug>...]",
-		Short:       "take over tasks or the prime from another machine",
+		Short:       "take over tasks, beams or the prime from another machine",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Records this machine as the owner of the named tasks, and of the prime with --prime,
-and carries on their runs here. --all names the prime and every task that is not done
-and has an owner or a run status. It runs from the hub's prime worktree only.
+		Long: `Records this machine as the owner of the named tasks and beams, and of the prime with
+--prime, and carries on their runs here. A beam is a project entry whose beam flag is set;
+adopting it moves the beam only, its members keeping their own owners. --all names the
+prime, every task that is not done and has an owner or a run status, and every open beam
+with an owner. It runs from the hub's prime worktree and from any beam.
 
 Steps, in order:
   1. a moving origin reconcile of the hub; a stop on Bolt or the prime's records branch,
@@ -60,11 +62,12 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			if err := battencli.RefuseUnlessPrime(location); err != nil {
+			prime, err := battencli.ResolveBattenPrime(location)
+			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			deps, err := hubDeps(location)
+			deps, err := hubDeps(prime)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
@@ -91,7 +94,7 @@ Example:
 		},
 	}
 	cmd.Flags().BoolVar(&req.Prime, "prime", false, "record this machine as the prime's owner")
-	cmd.Flags().BoolVar(&req.All, "all", false, "adopt the prime and every task that is not done and has an owner or a run status")
+	cmd.Flags().BoolVar(&req.All, "all", false, "adopt the prime, every task that is not done and has an owner or a run status, and every open owned beam")
 	cmd.Flags().BoolVar(&req.KeepLocal, "keep-local", false, "record the owner over local commits origin lacks and over a live pair")
 	cmd.Flags().BoolVar(&req.DropLocal, "drop-local", false, "keep each local tip origin lacks under an archive tag and move the branches to origin's")
 	return cmd

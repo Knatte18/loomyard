@@ -1,5 +1,14 @@
-// Package orchcli is the CLI for the hub orchestrator: the long-lived session in the hub's prime worktree that runs the task loop for the operator.
+// Package orchcli is the CLI for the hub orchestrator: the long-lived session in the hub's prime worktree, or in any beam, that runs the task loop for the operator.
 // Its verbs (`start`, `status`, `refresh`, `distill`, `withdraw`, `stop`, `cleanup`, `rules` and the watcher behind them) host that session as an interactive agent in a reed strand and cycle its context before it fills; this comment records the loop the session runs, which the verbs exist to serve.
+//
+// # The orch in a beam
+//
+// Every verb runs in the hub's prime worktree and in a beam, a pair whose own origin record carries the beam mark, and is refused in every other worktree with the beam verbs that make a pair one.
+// There is one orch per worktree: a beam's orch keeps its files under that worktree's own `.lyx/orch/` and `_lyx/orch/`, its strand is `<shortname>:<slug>:orch`, and its watcher is its own.
+// `start` in a beam claims no prime.
+// It refuses a beam another machine owns, naming the owner and `lyx adopt <slug>`, and a beam whose board entry its landing holds, naming `lyx batten status <slug>`, before it creates anything.
+// The hub-scope origin reconcile runs from the prime whichever orch starts it.
+// `OrchLive` is the liveness predicate other modules call: the worktree's orch state records a strand that reed tracks and reports live.
 //
 // # The role file and the note
 //
@@ -112,8 +121,8 @@
 // # The session-start hook
 //
 // The orch run's spec is the one that installs the provider's context-after-compaction hook.
-// Its command is built through the POSIX shell dialect, which the provider runs hooks under on every OS: a change of directory to the prime's anchor, then the bare hidden verb `lyx orch resume-context`.
-// The verb therefore runs in the prime whatever directory the session has moved to, and its own prime refusal bounds a failed change of directory.
+// Its command is built through the POSIX shell dialect, which the provider runs hooks under on every OS: a change of directory to the acting orch's own anchor, the beam's in a beam, then the bare hidden verb `lyx orch resume-context`.
+// The verb therefore runs in that worktree whatever directory the session has moved to, and its own prime-or-beam refusal bounds a failed change of directory.
 // It prints the resume pointer as the provider's additional-context JSON and nothing else, and writes the delivery mark the watcher reads.
 // A failure prints the JSON error envelope and writes no mark, so the watcher types the pointer itself.
 //
@@ -124,6 +133,13 @@
 // `NotifyPrime` is the way a task-worktree module does that: it takes the task worktree's location, the module's program name and a line, resolves the prime itself, and posts the line to the prime's orch strand through creel.
 // It reports whether the line was posted, and a prime with no orch strand recorded posts nothing and is no error.
 // `PrimeOrchStrand` answers the name of that strand: the name reed's state holds for the recorded GUID, or the fixed `<shortname>:orch` name for a GUID reed no longer holds, which creel then accepts or refuses.
+// `OrchStrandOf` answers the same for any worktree's orch, the fixed name being `<shortname>:<slug>:orch` in a beam.
+// A notice of a run goes to the nearest live orch up its pair's beam chain, the prime's when none is live:
+// `NotifyParent` resolves it from the pair's recorded parent worktree at each call, `NotifyFrom` starts the walk at the given worktree itself, for a run whose pair is absent,
+// and `ParentOrchRecorded` answers whether that destination records a strand, the watched-or-silent decision a driver reads.
+// Callers that act on no run's pair, hibernate's notice and fabric's push notifier, keep `NotifyPrime`.
+// `HubOrchs` lists the worktrees an orch may run in, the prime's location and each local pair whose origin record carries the beam mark, for the readers that must cover every orch of the hub.
+// A beam's `watch` tells its watcher the orch's own agent name, so the pause checks match an orch caller or network operation marker against that name, and the prime's watcher keeps matching an orch name with no slug.
 // `InstallPushNotifier` routes fabric's failed-push notice to the prime orch as mail signed `FABRIC`, for every lyx process from the root pre-run.
 // It resolves the hub from the working directory as the network gate does, so a detached push child starting in the board worktree is covered, and installs nothing outside a hub.
 package orchcli

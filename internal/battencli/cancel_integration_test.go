@@ -133,6 +133,29 @@ func TestCancelIntegration_BlockedRunWithNoPair(t *testing.T) {
 	}
 
 	envelope.RequireErr(t, runCancel(t, h.PrimeWorktree(), slug), "nothing of "+slug+" is left to cancel")
+
+	// A blocked run whose directory is committed and then deleted on disk, with no pair or claim, has only its records deletion outstanding.
+	const deleted = "cancel-deleted-on-disk"
+	seedCancelRun(t, h, deleted, battenrecipe.NameWorktreeCreate, shedengine.StateBlocked, "running · Worktree-Create")
+	board, err := boardengine.OpenHub(h.Path)
+	if err != nil {
+		t.Fatalf("open the hub board: %v", err)
+	}
+	if err := board.SetStatus(deleted, nil); err != nil {
+		t.Fatalf("clear the claim of %q: %v", deleted, err)
+	}
+	if err := os.RemoveAll(shedrun.RunDir(h.Location, deleted)); err != nil {
+		t.Fatalf("delete the run directory of %q: %v", deleted, err)
+	}
+
+	got = envelope.RequireOK(t, runCancel(t, h.PrimeWorktree(), deleted))
+
+	if got.Raw["records_removed"] != true || got.Raw["pair_removed"] != false {
+		t.Errorf("envelope = %v; want the tracked records removed and no pair", got.Raw)
+	}
+	if _, found, err := fabricengine.CommittedAnchoredFile(h.Location, shedrun.StatusRel(h.Location, deleted)); err != nil || found {
+		t.Errorf("committed status found=%v err=%v; want its deletion committed", found, err)
+	}
 }
 
 // TestCancelIntegration_KeptPairJudgeOnly cancels, without --remove, a paused run whose pair's records branch on origin is ahead of the local one:

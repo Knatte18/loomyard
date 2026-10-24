@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -26,6 +27,8 @@ func TestArmAt_StartGuardRefusesBeforeAnyWrite(t *testing.T) {
 
 	const slug = "guarded-task"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	// Added before the dirty-source rows, since a pair forks only from a clean source.
+	hubforge.AddPairWith(t, h, "own-beam", fabricengine.AddOptions{SkipPush: true, Beam: true})
 	readme := filepath.Join(h.PrimeWorktree(), "README")
 	clean, err := os.ReadFile(readme)
 	if err != nil {
@@ -58,6 +61,29 @@ func TestArmAt_StartGuardRefusesBeforeAnyWrite(t *testing.T) {
 			}
 		}
 		assertNothingWritten(t, fake)
+	})
+
+	t.Run("RunOfTheBeamFromInsideItRefusesBeforeAnyWrite", func(t *testing.T) {
+		beam, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("own-beam"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		primeName, err := fabricengine.PrimeName(h.Location)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fake := &fakeOwners{machine: "here", owners: owners}
+		c := &battenCLI{owner: fake.seams()}
+
+		_, err = c.armAt(beam, "own-beam", true, "run")
+
+		if err == nil || !strings.Contains(err.Error(), `"`+primeName+`"`) {
+			t.Fatalf("armAt(run) of the beam from inside it = %v; want a refusal naming the beam's parent %q", err, primeName)
+		}
+		if fake.pulls != 0 || len(fake.sets) != 0 {
+			t.Errorf("owner seams saw %d pulls and writes %v; want none", fake.pulls, fake.sets)
+		}
+		assertNoRunWritten(t, h.Location, "own-beam")
 	})
 
 	t.Run("RunWindowOnTheDirtySourceRefusesOnTheEnvelopeWithNoSeed", func(t *testing.T) {

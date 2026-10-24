@@ -18,8 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/orchcli"
-	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -39,6 +37,9 @@ var intentionallyNil = map[string]string{
 	"GateFindingsFile":            "loom-only seam, batten has no gated row that keeps findings",
 	"Shuttle":                     "loom-only seam, batten drives no agent itself",
 	"Burler":                      "loom-only seam, batten runs no review round",
+	"BeamDescribe.Entry":          "loom-only seam, batten runs no beam description row",
+	"BeamDescribe.CommitSubjects": "loom-only seam, batten runs no beam description row",
+	"BeamDescribe.Commit":         "loom-only seam, batten runs no beam description row",
 	"Seats":                       "loom-only seam, batten runs no seat table",
 	"Models":                      "loom-only seam, batten resolves no seat model",
 	"WebsterRun":                  "loom-only seam, batten runs no webster",
@@ -385,24 +386,6 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	}
 }
 
-// TestWire_OrchStrandRecordedReadsThePrimesOrchState asserts the seam reports whether the prime orch's state records a strand, the fact a notice needs a destination for.
-func TestWire_OrchStrandRecordedReadsThePrimesOrchState(t *testing.T) {
-	t.Parallel()
-
-	c, location := wiredPrime(t)
-	if recorded, err := c.env.InnerRun.OrchStrandRecorded(); err != nil || recorded {
-		t.Fatalf("OrchStrandRecorded() = %v, %v with no orch state; want false", recorded, err)
-	}
-
-	paths := orchcli.PrimePaths(location)
-	if err := orchengine.SaveState(paths, orchengine.State{Strand: "orch-strand", Phase: orchengine.PhaseIdle}); err != nil {
-		t.Fatalf("SaveState: %v", err)
-	}
-	if recorded, err := c.env.InnerRun.OrchStrandRecorded(); err != nil || !recorded {
-		t.Errorf("OrchStrandRecorded() = %v, %v with a strand recorded; want true", recorded, err)
-	}
-}
-
 // TestWire_CreateWorktreeClaimsTheBoardEntry asserts the Worktree-Create closure claims the board entry with this machine as its owner before it touches the pair:
 // a setter error and an entry another machine owns each fail the row naming their cause, an absent entry passes the claim with nothing written, and the real setter records the owner beside the claim status.
 // Every row that passes the claim fails the closure on the absent fabric config, so no pair is created.
@@ -428,6 +411,8 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 		name string
 		// set replaces the owner setter; nil keeps the real one over the hub's board.
 		set func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error)
+		// landing replaces the beam landing seams; nil keeps the real ones, which read the seeded task.
+		landing *landingSeams
 		// wantErr lists substrings the row's error carries; an empty list wants the absent fabric config, the row's own failure.
 		wantErr []string
 		// wantStatus and wantOwner are the seeded entry's status and owner after the call; empty skips the read.
@@ -458,6 +443,33 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 			},
 		},
 		{
+			name: "BeamProjectWithAMemberAddedAfterTheGuardIsRefusedAfterTheClaim",
+			set: func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
+				if req.Claim == "" {
+					return boardengine.OwnerWrite{}, errors.New("the refusal ran before the claim")
+				}
+				return boardengine.OwnerWrite{}, nil
+			},
+			landing: &landingSeams{
+				Project: func() (bool, error) { return true, nil },
+				Refusal: func() error {
+					return errors.New("the open entry late-member is a member of the beam: end it with `lyx batten cancel late-member --remove`")
+				},
+			},
+			wantErr: []string{"late-member", "lyx batten cancel late-member"},
+		},
+		{
+			name: "BeamProjectWithNoPairStopsWithThePreconditionAndAddsNothing",
+			set: func(boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
+				return boardengine.OwnerWrite{}, nil
+			},
+			landing: &landingSeams{
+				Project: func() (bool, error) { return true, nil },
+				Refusal: func() error { return nil },
+			},
+			wantErr: []string{"the beam " + slug + " has no pair on this machine", "lyx beam create " + slug, "lyx adopt " + slug},
+		},
+		{
 			name:       "RealSetterRecordsTheOwnerBesideTheClaim",
 			wantStatus: "running · Worktree-Create",
 			wantOwner:  machine,
@@ -475,6 +487,9 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 			c.owner.Machine = func() (string, error) { return machine, nil }
 			if tt.set != nil {
 				c.owner.Set = tt.set
+			}
+			if tt.landing != nil {
+				c.beam = *tt.landing
 			}
 
 			err := c.env.CreateWorktree(context.Background())

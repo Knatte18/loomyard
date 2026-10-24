@@ -214,14 +214,14 @@ func TestRecipe_SeedAndResumeRowNamesExist(t *testing.T) {
 }
 
 // TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
-// own recipe's engine set plus the darn recipe's DarnWrite, sorted and de-duplicated -- derived from wantProducerTable's own engine
+// own recipe's engine set plus the darn recipe's DarnWrite and the beam recipe's BeamDescribe, sorted and de-duplicated -- derived from wantProducerTable's own engine
 // column rather than a second hand-written literal, for the same reason its battenrecipe twin
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
-	// The darn recipe's writer is one a loom row can reach, beside the loom recipe's.
-	seen := map[string]bool{"DarnWrite": true}
-	want := []string{"DarnWrite"}
+	// The darn recipe's writer and the beam recipe's description row are ones a loom row can reach, beside the loom recipe's.
+	seen := map[string]bool{"DarnWrite": true, "BeamDescribe": true}
+	want := []string{"DarnWrite", "BeamDescribe"}
 	for _, row := range wantProducerTable {
 		engine := row.engine
 		if seen[engine] {
@@ -253,6 +253,7 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 		{shedrun.RecipeLoom, recipes.LoomRecipe},
 		{shedrun.RecipeDarn, recipes.DarnRecipe},
 		{shedrun.RecipeBatten, recipes.BattenRecipe},
+		{shedrun.RecipeBeam, recipes.BeamRecipe},
 	} {
 		t.Run(tt.recipe, func(t *testing.T) {
 			parsed, err := shedbuild.Parse(tt.source)

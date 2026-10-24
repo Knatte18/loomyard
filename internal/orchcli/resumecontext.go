@@ -17,12 +17,12 @@ import (
 // resumeContextVerb is the hidden verb's name, which the hook command spells.
 const resumeContextVerb = "resume-context"
 
-// resumeContextCommand returns the hook command that delivers the resume pointer: a change of directory to the prime's anchor chained with the bare verb, so the verb runs in the prime whatever directory the session has moved to.
+// resumeContextCommand returns the hook command that delivers the resume pointer: a change of directory to the acting orch's own anchor, the beam's in a beam, chained with the bare verb, so the verb runs in that worktree whatever directory the session has moved to.
 // It is built through the POSIX dialect whatever the host, because the provider runs its hooks under a POSIX shell on every OS.
 // `lyx` is named bare and resolves to the binary that spawned the session, through the pane's PATH prelude.
-func resumeContextCommand(primeAnchor string) string {
+func resumeContextCommand(orchAnchor string) string {
 	sh := shell.Posix()
-	return sh.Chain(sh.ChangeDir(primeAnchor), "lyx orch "+resumeContextVerb)
+	return sh.Chain(sh.ChangeDir(orchAnchor), "lyx orch "+resumeContextVerb)
 }
 
 // resumeContextCmd builds the `resume-context` subcommand, hidden because only the session-start hook runs it.

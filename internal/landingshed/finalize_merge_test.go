@@ -47,9 +47,11 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 	tests := []struct {
 		name string
 		// loom tells Deps.ConflictReroutes; a darn Finalize merges through its resolver, which starts a conflict session when session is set.
-		loom    bool
-		merge   fabricengine.MergeResult
-		session bool
+		loom bool
+		// largeLands tells Deps.LargeMergeLands.
+		largeLands bool
+		merge      fabricengine.MergeResult
+		session    bool
 		// record is the merge record at entry: "keep" holds earlierTip, "unreadable" does not decode and "absent" is missing.
 		record string
 		// paths answers ChangedPaths by "from..to".
@@ -109,6 +111,15 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 			wantChanged: []string{"p1..p2", "b0..t1"}, wantRecord: true, wantMergeCommit: "t2",
 		},
 		{
+			name: "a conflict session merge lands to the gate with no note when large merges land", largeLands: true, merge: committed, session: true, record: "keep",
+			wantChanged: []string{"p1..p2", "b0..t1"}, wantRecord: true, wantMergeCommit: "t2",
+		},
+		{
+			name: "an overlapping parent change lands to the gate with no note when large merges land", largeLands: true, merge: committed, record: "keep",
+			paths:       map[string][]string{"p1..p2": {"a.go", "b.go"}, "b0..t1": {"b.go", "c.go"}},
+			wantChanged: []string{"p1..p2", "b0..t1"}, wantRecord: true, wantMergeCommit: "t2", wantOverlap: []string{"b.go"},
+		},
+		{
 			name: "a darn run with no merge record measures the parent side from the task's merge base", merge: committed, record: "absent",
 			wantChanged: []string{"b0..p2", "b0..t1"}, wantRecord: true, wantMergeCommit: "t2",
 		},
@@ -117,6 +128,7 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.ConflictReroutes = tt.loom
+			deps.LargeMergeLands = tt.largeLands
 			head := "t1"
 			deps.TaskHead = func() (string, error) { return head, nil }
 			deps.MergeBase = func(string) (string, error) { return taskBase, nil }

@@ -126,9 +126,11 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	v := reflect.ValueOf(deps)
 	typ := v.Type()
 	// FixerSeats is filled by wireLanding, from the seat engine wire built, and GateKey by each landing row's registry entry, on its own copy of Deps.
+	// LargeMergeLands is true for a beam run only, and the loom run built here leaves it false.
 	unfilled := map[string]bool{
-		"FixerSeats": true,
-		"GateKey":    true,
+		"FixerSeats":      true,
+		"GateKey":         true,
+		"LargeMergeLands": true,
 	}
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)

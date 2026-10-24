@@ -3,11 +3,15 @@
 //
 // # The verb
 //
-// It runs from the hub's prime only, by `battencli.RefuseUnlessPrime`.
+// It runs from the hub's prime and from any beam, by `battencli.ResolveBattenPrime`, and acts on the prime's location in both.
 // `request` holds the slugs, `Prime`, `All`, `KeepLocal` and `DropLocal`; `adoptDeps` holds every step's seam, which `hubDeps` fills over the hub and `TestAdopt` fakes.
 //
 // Before anything runs, `adopt` reads the local Bolt and refuses an unknown slug (naming `lyx board list`), a note (naming `lyx board promote`), a done task (naming that it already landed, and `lyx resume <slug>` to let a run that landed there go on to Land under its owner pause), `--keep-local` with `--drop-local`, and no slug without `--prime` or `--all`.
-// `--all` names the prime and every task that is not done and has an owner or a run status, passing over a done task.
+// `--all` names the prime, every task that is not done and has an owner or a run status, and every beam project (a project entry whose `beam` is true) that is not done and has an owner, passing over a done entry.
+//
+// A beam project is admitted as a started task is: adopt takes over its owner and adds its pair when its branches are on origin.
+// Adopting a beam moves the beam only, its members keeping their own owners.
+// A project whose `beam` is false has no pair to take over, so it is refused naming `lyx beam create <slug>`, where a note is refused naming `lyx board promote`.
 //
 // # Step 1: the origin reconcile
 //
@@ -22,7 +26,8 @@
 //
 // # Step 2: the pair
 //
-// Through `Topology.Add` from the prime, adopt adds the pair of each named task that holds an owner or a run status and that this machine has no pair for.
+// Through `Topology.Add` from the prime, adopt adds the pair of each named task or beam that holds an owner or a run status and that this machine has no pair for.
+// Add adopts the live branches and their origin record, the beam mark included.
 // A refusal stops that slug and the other slugs go on.
 // It carries fabric's own message and way forward, bar `*fabricengine.ErrBranchExists`, the leftover local branch's: dropping that branch would lose this machine's unpushed commits with no archive, so adopt rewords it to name tagging the leftover tip under `archive/<slug>/<tip>`, then `git branch -D <branch>` and a re-run of `lyx adopt <slug>`.
 //

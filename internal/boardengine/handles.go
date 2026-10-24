@@ -17,15 +17,18 @@ type Handle string
 // taskHandleLetter is the letter of every task's handle.
 const taskHandleLetter = "T"
 
+// projectHandleLetter is the letter of every project's handle.
+const projectHandleLetter = "P"
+
 // typeHandleLetter is the handle letter of a note carrying the type label typeLabel: the label's first letter, upper-cased.
 func typeHandleLetter(typeLabel string) string {
 	first, _ := utf8.DecodeRuneInString(typeLabel)
 	return string(unicode.ToUpper(first))
 }
 
-// validateTypeLetters refuses type labels that would give two kinds of entry one handle letter: a label not beginning with a letter, two labels sharing a first letter, or a label whose letter is the task letter.
+// validateTypeLetters refuses type labels that would give two kinds of entry one handle letter: a label not beginning with a letter, two labels sharing a first letter, or a label whose letter is the task or the project letter.
 func validateTypeLetters(types []Label) error {
-	owner := map[string]string{taskHandleLetter: "tasks"}
+	owner := map[string]string{taskHandleLetter: "tasks", projectHandleLetter: "projects"}
 	for _, typeLabel := range types {
 		first, _ := utf8.DecodeRuneInString(typeLabel.Name)
 		if !unicode.IsLetter(first) {
@@ -57,11 +60,14 @@ func ParseHandle(handle string) (string, int, bool) {
 	return string(unicode.ToUpper(first)), number, true
 }
 
-// handleLetter returns the handle letter t takes and whether it can be decided: the task letter for a task, and for a note the letter of its first type label;
+// handleLetter returns the handle letter t takes and whether it can be decided: the task letter for a task, the project letter for a project, and for a note the letter of its first type label;
 // a note's letter is undecided without a vocabulary or when it carries no configured type label.
 func handleLetter(t Task, vocab *Vocabulary) (string, bool) {
 	if t.Kind == KindTask {
 		return taskHandleLetter, true
+	}
+	if t.Kind == KindProject {
+		return projectHandleLetter, true
 	}
 	if vocab == nil {
 		return "", false

@@ -10,6 +10,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -209,6 +210,37 @@ func TestRunLock(t *testing.T) {
 
 		if err := b.SetStatus("locked", strPtr("paused · X")); err != nil {
 			t.Fatalf("SetStatus on a held task stored with a priority: %v", err)
+		}
+	})
+
+	t.Run("order of a run-held project", func(t *testing.T) {
+		t.Parallel()
+		boardPath := t.TempDir()
+		b := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
+		for _, seed := range []map[string]any{
+			{"slug": "locked", "title": "Held", "kind": "project", "labels": []string{"bug"}},
+			{"slug": "fin", "title": "Fin", "kind": "task", "labels": []string{"bug"}, "project": "locked", "status": "done"},
+			{"slug": "open", "title": "Open", "kind": "task", "labels": []string{"bug"}, "project": "locked"},
+			{"slug": "locked", "order": []string{"fin", "open"}},
+		} {
+			if _, err := b.UpsertTask(seed); err != nil {
+				t.Fatalf("seed %v: %v", seed["slug"], err)
+			}
+		}
+		if err := b.SetRunStatus("locked", boardengine.RunStatus("running", "Webster")); err != nil {
+			t.Fatalf("SetRunStatus: %v", err)
+		}
+
+		if _, err := b.UpsertTask(map[string]any{"slug": "locked", "order": []string{"open", "fin"}}); !errors.Is(err, boardengine.ErrRunLocked) {
+			t.Errorf("hand change of the order of a held project error = %v; want ErrRunLocked", err)
+		}
+		removed, err := b.Prune(true)
+		if err != nil || len(removed) != 1 || removed[0] != "fin" {
+			t.Fatalf("Prune(true) = %v, %v; want [fin] removed and no refusal, since the order rewrite only drops a done slug", removed, err)
+		}
+		held, _, err := b.GetTask("locked")
+		if err != nil || !slices.Equal(held.Order, []string{"open"}) {
+			t.Errorf("held project after prune = %+v, %v; want order [open]", held, err)
 		}
 	})
 

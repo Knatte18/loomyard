@@ -24,6 +24,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -444,7 +445,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	if !errors.Is(err, battenshed.ErrUnsupportedChildRecipe) {
 		t.Fatalf("WriteSeed(batten) error = %v; want it to wrap ErrUnsupportedChildRecipe", err)
 	}
-	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn} {
+	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipeBeam} {
 		if !strings.Contains(err.Error(), admitted) {
 			t.Errorf("WriteSeed(batten) error = %q; want it to name the admitted recipe %q", err, admitted)
 		}
@@ -455,7 +456,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 		t.Errorf("WriteSeed(unknown) error = %v; want it to wrap ErrUnknownRecipe", err)
 	}
 
-	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn} {
+	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipeBeam} {
 		err = c.env.SeedChild.WriteSeed(context.Background(), admitted, shedrun.DriverGo)
 		if errors.Is(err, battenshed.ErrUnsupportedChildRecipe) || errors.Is(err, battenshed.ErrUnknownRecipe) {
 			t.Fatalf("WriteSeed(%s) error = %v; want the child admitted past the recipe checks", admitted, err)
@@ -463,6 +464,30 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 		if err == nil || !strings.Contains(err.Error(), "not present") {
 			t.Errorf("WriteSeed(%s) error = %v; want the absent-pair refusal, proving the recipe check ran first", admitted, err)
 		}
+	}
+}
+
+// TestBoardRecipe asserts the recipe Seed-Child seeds: beam for a project entry, the entry's own recipe field otherwise.
+func TestBoardRecipe(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		task boardengine.Task
+		want string
+	}{
+		{"ProjectSeedsBeam", boardengine.Task{Kind: boardengine.KindProject}, shedrun.RecipeBeam},
+		{"ProjectIgnoresItsRecipeField", boardengine.Task{Kind: boardengine.KindProject, Recipe: shedrun.RecipeDarn}, shedrun.RecipeBeam},
+		{"TaskWithDarnRecipe", boardengine.Task{Kind: boardengine.KindTask, Recipe: shedrun.RecipeDarn}, shedrun.RecipeDarn},
+		{"TaskWithNoRecipe", boardengine.Task{Kind: boardengine.KindTask}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := boardRecipe(tt.task); got != tt.want {
+				t.Errorf("boardRecipe(%+v) = %q; want %q", tt.task, got, tt.want)
+			}
+		})
 	}
 }
 

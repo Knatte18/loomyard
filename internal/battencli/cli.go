@@ -55,6 +55,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -127,6 +130,8 @@ type battenCLI struct {
 	owner ownerSeams
 	// guard carries the pre-run's refusals of a cancel under way, a dirty source and a left pair; armAt fills it with hubStartGuard when its Marker is nil, and a hand-populated receiver leaves it zero, which checks nothing.
 	guard startGuard
+	// beam carries the reads Worktree-Create makes for a beam's landing; wire fills it with hubLandingSeams, and a receiver that calls no wire leaves it zero, which reads every entry as a task.
+	beam landingSeams
 	// preDrive re-reads the cancel marker and the seed at the seeding of an absent status and under the shed's run lock; armAt sets it to preDriveCheck, and nil checks nothing, which only a hand-populated receiver has.
 	preDrive func() error
 	// clientAttached reports whether any client is attached to the task worktree's reed session; wire fills it, and nil reads as no reopening, which only a hand-populated receiver has.
@@ -169,8 +174,8 @@ first holds the driver lock.
 The run-id is required in practice: an omitted run-id refuses by name
 rather than defaulting to "self".
 
-With --window, the same run starts in its own tmux window of the prime's reed
-session and the verb returns at once with the window's id and name; the tmux
+With --window, the same run starts in its own tmux window of its parent worktree's
+reed session, the prime's or a beam's, and the verb returns at once with the window's id and name; the tmux
 window lives as long as the reed session. A window of that name with a live run
 is reported and nothing is started.
 
@@ -296,8 +301,9 @@ records and scratch of every done run, and the scratch of aged orphans.
 processes and strands, clears its board claim and removes its records, and with
 --remove also its pair and task branches.
 
-Every verb runs from the hub's prime worktree only: they refuse when invoked
-from a task worktree, from the pair's fabric sibling, or from _board.
+Every verb runs from the hub's prime worktree and from any beam: they refuse when
+invoked from a task worktree that is not a beam, from the pair's fabric sibling, or
+from _board.
 
 Example:
   lyx batten run some-slug
@@ -334,7 +340,7 @@ Example:
 	// here.
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
-	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once, and have its Open-Window row run its command whatever batten.yaml's open_window says")
+	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of its parent worktree's reed session, the prime's or a beam's, and return at once, and have its Open-Window row run its command whatever batten.yaml's open_window says")
 	runVerb.Flags().BoolVar(&c.openTerminalFlag, openTerminalFlagName, false, "answer the open_window setting true for this run whatever batten.yaml says; --window passes it")
 	_ = runVerb.Flags().MarkHidden(openTerminalFlagName)
 	runVerb.RunE = func(cmd *cobra.Command, args []string) error {
@@ -462,17 +468,52 @@ func (c *battenCLI) runInWindow(cmd *cobra.Command) error {
 	return nil
 }
 
-// openWindowInPrimeSession opens the window through the prime's own reed engine.
+// openWindowInPrimeSession opens the window in the reed session of the run's parent worktree, the prime's or a beam's, with the prime as its working directory.
+// A beam's session is brought up first when it is absent, since a beam with no orch has none.
 func (c *battenCLI) openWindowInPrimeSession(name string, lyxArgs []string) (reedengine.WindowResult, error) {
-	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(c.location), "reed")
+	site, ensureSession, err := windowSite(c.location, c.slug, func(slug string) (string, error) { return hubgeom.ParentOf(c.location, slug) })
 	if err != nil {
 		return reedengine.WindowResult{}, err
 	}
-	reedGeom, err := hubgeom.ReedGeometry(c.location)
+	reedCfg, err := reedengine.LoadConfig(fabricengine.ConfigDirs(site), "reed")
 	if err != nil {
 		return reedengine.WindowResult{}, err
 	}
-	return reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()).OpenWindow(name, lyxArgs)
+	reedGeom, err := hubgeom.ReedGeometry(site)
+	if err != nil {
+		return reedengine.WindowResult{}, err
+	}
+	engine := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
+	if ensureSession {
+		if _, err := engine.Up(); err != nil {
+			return reedengine.WindowResult{}, fmt.Errorf("bring up the reed session of %q: %w", site.WorktreeName, err)
+		}
+	}
+	return engine.OpenWindowIn(name, c.location.AnchorPath(), lyxArgs)
+}
+
+// windowSite returns the worktree whose reed session holds the window of the run slug: the run's parent worktree, the prime's or a beam's.
+// A run with no parent beam, and a run whose beam worktree is absent here, read as the prime's, since only a session present on this machine can hold the window.
+// ensureSession reports that the opener must bring the site's session up before it opens the window, which holds for a beam and never for the prime.
+func windowSite(prime *lyxcwd.Location, slug string, parentOf func(slug string) (string, error)) (site *lyxcwd.Location, ensureSession bool, err error) {
+	parent, err := parentOf(slug)
+	if err != nil {
+		return nil, false, err
+	}
+	if parent == "" {
+		return prime, false, nil
+	}
+	beamPath := fabricengine.WorktreePath(prime, parent)
+	if _, err := os.Stat(filepath.Join(beamPath, ".git")); errors.Is(err, fs.ErrNotExist) {
+		return prime, false, nil
+	} else if err != nil {
+		return nil, false, err
+	}
+	beam, err := lyxcwd.ResolveWorktree(beamPath)
+	if err != nil {
+		return nil, false, err
+	}
+	return beam, true, nil
 }
 
 // ResumeInWindow runs "lyx batten run <slug> --window"'s body in this process, against the hub's prime worktree at location, and returns the envelope that verb prints.

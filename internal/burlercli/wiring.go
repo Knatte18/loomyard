@@ -150,7 +150,7 @@ func (c *burlerCLI) wireHub(loc *lyxcwd.Location, stencilsDirOverride, targetDir
 	}
 	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error {
-		_, err := orchcli.NotifyPrime(loc, burlerProgram, line)
+		_, err := orchcli.NotifyParent(loc, burlerProgram, line)
 		return err
 	})
 

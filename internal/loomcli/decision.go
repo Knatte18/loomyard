@@ -5,9 +5,9 @@
 // The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
 // It resolves the target worktree through the same resolver the review group uses.
 //
-// The verb refuses a task session's label: a caller whose exported strand name differs from the run's recorded parent is refused, and the operator's own unnamed shell always passes.
+// The verb refuses a task session's label: a caller whose exported strand name differs from the run's parent orch, the nearest live orch up its beam chain, is refused, and the operator's own unnamed shell always passes.
 // The one other caller is the run's own arbiter strand, which alone may pass `--by arbiter`; any other caller of that label is refused.
-// The check reads only the exported strand name and the recorded parent name, so it guards a mistaken call, not a session that clears or forges the variable, and `--by` stays an unverified label.
+// The check reads only the exported strand name and the parent orch's name, so it guards a mistaken call, not a session that clears or forges the variable, and `--by` stays an unverified label.
 // That is bounded by each entry being append-only, under an `Added after Discussion` heading with the claimed label and the date, in the call's one committed diff.
 //
 // On a darn run the verb works once Darn-Write has validated and committed its record, and also while Darn-Write runs.
@@ -51,6 +51,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
@@ -221,7 +222,7 @@ func unknownEntryKey(data []byte) (int, string) {
 type decisionDeps struct {
 	// strandName is the full name reed exported to the calling session, empty for a shell reed did not spawn.
 	strandName string
-	// parent resolves the run's recorded parent, called only for a named caller.
+	// parent resolves the orch that receives the run's notices, the nearest live one up the beam chain, called only for a named caller.
 	parent func() (hubgeom.Parent, error)
 	// arbiterStrand reports whether name is the target run's own arbiter strand, called only for a named caller.
 	arbiterStrand func(name string) bool
@@ -748,7 +749,7 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 	supportLogPath := loomengine.DiscussionSupportLog(target)
 	s.deps = decisionDeps{
 		strandName: os.Getenv(agentname.StrandNameEnv),
-		parent:     func() (hubgeom.Parent, error) { return hubgeom.ResolveParent(target) },
+		parent:     func() (hubgeom.Parent, error) { return orchcli.NearestLiveParent(target) },
 		arbiterStrand: func(name string) bool {
 			geometry, err := hubgeom.ReedGeometry(target)
 			if err != nil {
@@ -878,7 +879,7 @@ ended is recorded in the decision record. "decision add" is the only verb.
 The verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. It refuses a task
 session's label: a caller whose reed strand name differs from the run's
-recorded parent is refused, and the operator's own unnamed shell always passes.
+parent orch is refused, and the operator's own unnamed shell always passes.
 The one other caller is the run's own arbiter strand, which passes --by arbiter.
 --by is a label that is not verified.
 
@@ -901,7 +902,7 @@ notifies the run's other live agents ("notified", "notice_errors").
 
 --by is parent, operator or arbiter, the last only from the run's own arbiter
 strand. --title, --decision and --rationale are required unless --from is
-passed. A named session other than the run's recorded parent or arbiter is
+passed. A named session other than the run's parent orch or arbiter is
 refused. It is refused while Discussion-Write runs, and on a darn run until
 Darn-Write has validated and committed its record.
 

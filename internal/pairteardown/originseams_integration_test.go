@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 )
 
-// TestHubSeamOptions pins the options a call site holding only the prime builds: the pause record read at each call and the prime branch's parent lock read from the store.
+// TestHubSeamOptions pins the options a call site holding only the prime builds: the pause record read at each call, the prime branch's parent lock read from the store, and the beam an unspawned member of a beam project reads as its parent.
 func TestHubSeamOptions(t *testing.T) {
 	hub := t.TempDir()
 	primeRoot := filepath.Join(hub, "prime")
@@ -82,5 +82,19 @@ func TestHubSeamOptions(t *testing.T) {
 	}
 	if free, err := options.PrimeParentLockFree(); err != nil || free {
 		t.Errorf("PrimeParentLockFree() with a live owner's record = %v, %v; want held", free, err)
+	}
+
+	boardDir := fabricengine.BoardDir(prime.HubPath)
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("create the board dir: %v", err)
+	}
+	board := `{"version":1,"entries":[` +
+		`{"id":0,"slug":"beam","title":"Beam","kind":"project","labels":["bug"],"beam":true},` +
+		`{"id":1,"slug":"member","title":"Member","kind":"task","labels":["bug"],"project":"beam"}]}`
+	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(board), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+	if parent, err := options.ParentOf("member"); err != nil || parent != "beam" {
+		t.Errorf("ParentOf(member) for an unspawned member of a beam project = %q, %v; want the beam", parent, err)
 	}
 }

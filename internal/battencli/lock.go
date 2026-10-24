@@ -27,7 +27,7 @@ func lockCommand() *cobra.Command {
 		Use:   "lock",
 		Short: "see and free the parent locks of the hub's runs",
 		Long: `lock shows the parent locks the hub's runs hold on parent branches, and frees one
-whose owner is alive but wedged. Both verbs run from the hub's prime worktree only.
+whose owner is alive but wedged. Both verbs run from the hub's prime worktree and from any beam.
 A release frees the record and never stops a run: the released run takes the lock
 again at its next lock-taking row and reroutes if the parent moved meanwhile.
 
@@ -61,7 +61,7 @@ func inLockGroup(cmd *cobra.Command) bool {
 	return cmd.Name() == "lock" || (cmd.Parent() != nil && cmd.Parent().Name() == "lock")
 }
 
-// lockStore resolves the cwd, refuses outside the hub's prime worktree and returns the store at the hub's parent lock directory.
+// lockStore resolves the cwd, refuses outside the hub's prime worktree and its beams and returns the store at the hub's parent lock directory.
 func lockStore(ctx context.Context) (*parentlock.Store, error) {
 	cwd, err := lyxcwd.CwdFrom(ctx)
 	if err != nil {
@@ -71,10 +71,11 @@ func lockStore(ctx context.Context) (*parentlock.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := RefuseUnlessPrime(location); err != nil {
+	prime, err := ResolveBattenPrime(location)
+	if err != nil {
 		return nil, err
 	}
-	return &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(location.HubPath))}, nil
+	return &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(prime.HubPath))}, nil
 }
 
 // runLockList prints one entry per parent lock record.

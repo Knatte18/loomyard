@@ -72,13 +72,15 @@ const (
 	RecipeBatten = "batten"
 	// RecipeDarn names the darn recipe.
 	RecipeDarn = "darn"
+	// RecipeBeam names the beam recipe.
+	RecipeBeam = "beam"
 )
 
 // RecipeNames returns the closed recipe-name vocabulary as a freshly allocated, sorted slice.
 // Callers must not rely on a fixed order beyond "sorted" and must not mutate the vocabulary through
 // the returned slice affecting any other caller, since each call allocates its own.
 func RecipeNames() []string {
-	return []string{RecipeBatten, RecipeDarn, RecipeLoom}
+	return []string{RecipeBatten, RecipeBeam, RecipeDarn, RecipeLoom}
 }
 
 // ValidateRecipe reports whether name is a legal Seed.Recipe value.

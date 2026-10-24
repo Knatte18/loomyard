@@ -343,6 +343,7 @@
 // Detached windows: OpenWindow (window.go) opens a detached, named window in the worktree's reed session running a `lyx` command, for a caller that wants a long-running command to live in the session without a status-bar button.
 // One multiplexer invocation runs `new-window -d -a -t <highest-index window> -P -F '#{window_id}' -n <temporary> <command>`, or in the plain form `new-window -d -t '=<session>:' -P -F '#{window_id}' -n <temporary> <command>` when no window is listed, chained with `set-option -w -t '=<session>:=<temporary>' remain-on-exit off`, `set-option -w -t '=<session>:=<temporary>' @lyx_hidden 1` and a final `rename-window -t '=<session>:=<temporary>' <name>`.
 // The window is detached and never selected, so it takes no focus.
+// OpenWindowIn is OpenWindow with a working directory: a non-empty directory adds `-c <dir>` before the command, and OpenWindow passes an empty one.
 // The options are chained by exact name because one chained after a detached new-window without a target lands on the current window, which can be any window since attach and the focus rules select agent and overview windows, and whose remain-on-exit must stay on.
 // The name is a per-call temporary one no other window holds and the rename comes last, because an own window may share the requested name and the options would otherwise land on it.
 // The status bar skips a window carrying @lyx_hidden, and window placement and the shell check read the flag to find the last non-hidden window; no focus rule reads it.

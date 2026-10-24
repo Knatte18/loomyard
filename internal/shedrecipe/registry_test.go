@@ -84,6 +84,7 @@ func TestNames(t *testing.T) {
 	// The exact-contents pin belongs beside the registry rather than with any one consumer of it.
 	t.Run("ShipsExpectedEntries", func(t *testing.T) {
 		want := []string{
+			"BeamDescribe",
 			"Bouncer",
 			"BurlerFix",
 			"BurlerReview",

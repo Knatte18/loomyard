@@ -145,6 +145,9 @@ type Watcher struct {
 
 	// pause is the told pause-record reading, nil when the watcher was never told one.
 	pause *PauseWatch
+	// ownOrchName is the agent name of the orch the watcher watches, empty for the prime's orch.
+	// The pause checks match an orch caller or marker against it.
+	ownOrchName string
 	// binaryCheck re-execs the process onto a replaced binary, nil when the watcher was never told one.
 	binaryCheck func()
 	// firstTick is the time of the watcher's first tick, zero before it.

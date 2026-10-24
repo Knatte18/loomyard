@@ -1,6 +1,6 @@
 //go:build tier1
 
-// refusal_integration_test.go proves the orch refusals end to end over one hub: the prime-only rule (`status`, `start`, `resume-context` and `rules` from a task worktree or the prime's records sibling) and the config refusal (a non-bypass permission_mode makes `status` and the watcher start fail with the fix named), each landing before any .lyx/orch is created.
+// refusal_integration_test.go proves the orch refusals end to end over one hub: the prime-or-beam rule (`status`, `start`, `resume-context` and `rules` from a task worktree that is no beam or the prime's records sibling) and the config refusal (a non-bypass permission_mode makes `status` and the watcher start fail with the fix named), each landing before any .lyx/orch is created.
 
 package orchcli
 
@@ -18,7 +18,7 @@ import (
 )
 
 // TestOrchIntegration_Refusals runs both refusal families as steps over one hub.
-// The prime-only step goes first and leaves the prime's config untouched; the permission-mode step then writes orch.yaml into the prime and relies on no earlier state.
+// The prime-or-beam step goes first and leaves the prime's config untouched; the permission-mode step then writes orch.yaml into the prime and relies on no earlier state.
 // It calls t.Parallel as a whole and no step does, since the steps share the one hub.
 func TestOrchIntegration_Refusals(t *testing.T) {
 	t.Parallel()
@@ -27,7 +27,7 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 	hubforge.AddPair(t, h, "orch-task")
 	anchor := h.Location.AnchorPath()
 
-	if !t.Run("prime-only", func(t *testing.T) {
+	if !t.Run("prime-or-beam", func(t *testing.T) {
 		cases := map[string]string{
 			"task worktree": h.PairCodeWorktree("orch-task"),
 			"records prime": h.PrimeRecords(),
@@ -115,7 +115,8 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 	})
 }
 
-// refusalCase runs verb from cwd and asserts the prime-only refusal.
+// refusalCase runs verb from cwd and asserts the prime-or-beam refusal both a task worktree and the prime's records sibling meet.
+// The beam verbs the task worktree's refusal names are asserted by TestRefuseNonPrime, since the records sibling's refusal names none.
 func refusalCase(t *testing.T, cwd, verb string) {
 	t.Helper()
 	var out bytes.Buffer
@@ -124,8 +125,8 @@ func refusalCase(t *testing.T, cwd, verb string) {
 	if code != 1 {
 		t.Fatalf("exit code = %d; want 1; output: %s", code, out.String())
 	}
-	if !strings.Contains(out.String(), "prime worktree only") {
-		t.Errorf("refusal = %q; want the prime-only wording", out.String())
+	if !strings.Contains(out.String(), "lyx orch runs from the hub's prime worktree or a beam") {
+		t.Errorf("refusal = %q; want the prime-or-beam wording", out.String())
 	}
 	if _, err := os.Stat(filepath.Join(cwd, lyxdirs.DotLyxDirName, orchDirName)); err == nil {
 		t.Errorf(".lyx/orch was created under %s; the refusal must land first", cwd)

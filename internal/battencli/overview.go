@@ -258,9 +258,12 @@ type overviewSource struct {
 	// pauseRecord is the path of the hub's pause record.
 	pauseRecord string
 	now         func() time.Time
-	// orchPaths locates the prime's orch state file.
-	orchPaths  orchengine.Paths
-	orchCache  orchStateCache
+	// orchPaths locates the prime's orch state file; the frame reads it alone when orchs is nil or fails.
+	orchPaths orchengine.Paths
+	// orchs returns the paths of every orch of the hub, the prime's first, with the slug label of each, empty for the prime; read on each frame.
+	orchs func() ([]orchengine.Paths, []string, error)
+	// orchCaches holds one state cache per orch, by state file path.
+	orchCaches map[string]*orchStateCache
 	thresholds overviewThresholds
 	// childStatus returns the path of the status file of the task worktree slug names; a test replaces it.
 	childStatus func(slug string) (string, error)
@@ -277,13 +280,15 @@ type overviewSource struct {
 	childRecipes map[string]string
 }
 
-// newOverviewSource returns a source over the prime's orch state, drawn against thresholds, and the prime's runs and the pause record at pauseRecord, that reads the time from now.
+// newOverviewSource returns a source over the orch state of every orch of the hub, drawn against thresholds, and the prime's runs and the pause record at pauseRecord, that reads the time from now.
 func newOverviewSource(prime *lyxcwd.Location, pauseRecord string, thresholds overviewThresholds, now func() time.Time) *overviewSource {
 	s := &overviewSource{
 		prime:        prime,
 		pauseRecord:  pauseRecord,
 		now:          now,
 		orchPaths:    orchcli.PrimePaths(prime),
+		orchs:        func() ([]orchengine.Paths, []string, error) { return hubOrchPaths(prime) },
+		orchCaches:   map[string]*orchStateCache{},
 		thresholds:   thresholds,
 		battenCaches: map[string]*statuspane.StatusCache{},
 		childCaches:  map[string]*statuspane.StatusCache{},
@@ -294,6 +299,49 @@ func newOverviewSource(prime *lyxcwd.Location, pauseRecord string, thresholds ov
 	s.childPair = s.resolveChildPair
 	s.childStatus = s.resolveChildStatus
 	return s
+}
+
+// hubOrchPaths returns the orch paths of every orch of the hub that prime belongs to, the prime's first, with the slug of each beam's worktree as its label and an empty label for the prime.
+func hubOrchPaths(prime *lyxcwd.Location) ([]orchengine.Paths, []string, error) {
+	locations, err := orchcli.HubOrchs(prime)
+	if err != nil {
+		return nil, nil, err
+	}
+	paths := make([]orchengine.Paths, len(locations))
+	labels := make([]string, len(locations))
+	for i, location := range locations {
+		paths[i] = orchcli.PrimePaths(location)
+		if i > 0 {
+			labels[i] = location.WorktreeName
+		}
+	}
+	return paths, labels, nil
+}
+
+// orchLines polls every orch's state and returns one orch line per orch that has a state file to show, the prime's first.
+// An orch list that cannot be read falls back to the prime's orch alone.
+func (s *overviewSource) orchLines() []string {
+	paths, labels := []orchengine.Paths{s.orchPaths}, []string{""}
+	if s.orchs != nil {
+		listed, listedLabels, err := s.orchs()
+		if err != nil {
+			logger.Debug("batten: listing the hub's orchs for the overview failed", "err", err)
+		} else {
+			paths, labels = listed, listedLabels
+		}
+	}
+	var lines []string
+	for i, orchPaths := range paths {
+		cache, ok := s.orchCaches[orchPaths.StatePath]
+		if !ok {
+			cache = &orchStateCache{}
+			s.orchCaches[orchPaths.StatePath] = cache
+		}
+		if line, ok := overviewLabeledOrchLine(labels[i], cache.Poll(orchPaths), s.thresholds); ok {
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }
 
 // resolveChildPair resolves the task worktree of slug once while its directory exists.
@@ -337,19 +385,15 @@ func (s *overviewSource) resolveChildRecipe(slug string) (string, error) {
 	return seed.Recipe, nil
 }
 
-// frame polls the orch state and the prime's runs and returns the overview frame.
-// It reads the orch state, the run records and the status files without their locks, and writes nothing.
+// frame polls the state of every orch and the prime's runs and returns the overview frame.
+// It reads the orch states, the run records and the status files without their locks, and writes nothing.
 func (s *overviewSource) frame() statuspane.Frame {
-	orch := s.orchCache.Poll(s.orchPaths)
+	orchLines := s.orchLines()
 
 	slugs, err := shedrun.List(s.prime)
 	if err != nil {
 		logger.Debug("batten: listing the runs for the overview failed", "err", err)
-		lines := []string{overviewRunsBroken}
-		if line, ok := overviewOrchLine(orch, s.thresholds); ok {
-			lines = []string{line, overviewRunsBroken}
-		}
-		return statuspane.Frame{Lines: lines}
+		return statuspane.Frame{Lines: append(orchLines, overviewRunsBroken)}
 	}
 
 	record, err := pauserecord.Read(s.pauseRecord)
@@ -367,7 +411,7 @@ func (s *overviewSource) frame() statuspane.Frame {
 			runs = append(runs, run)
 		}
 	}
-	return statuspane.Frame{Lines: renderOverview(orch, s.thresholds, runs, s.now())}
+	return statuspane.Frame{Lines: append(orchLines, renderOverview(orchStatePoll{}, s.thresholds, runs, s.now())...)}
 }
 
 // poll builds the overviewRun of slug; false when its seed names another recipe.
@@ -446,7 +490,7 @@ against the soft and hard thresholds, its cycle phase and cycle count -- then on
 line per batten run in flight -- its state, stage, time in the stage, age and
 reed session -- redrawing in place until it is signalled.
 The prime's runs strand runs it, and every line is drawn uncut. It reads
-files only, and runs from the prime only.`,
+files only, and runs from the prime and from any beam.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -465,7 +509,8 @@ files only, and runs from the prime only.`,
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			if err := RefuseUnlessPrime(location); err != nil {
+			location, err = ResolveBattenPrime(location)
+			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}

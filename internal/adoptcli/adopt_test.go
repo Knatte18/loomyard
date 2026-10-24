@@ -381,6 +381,29 @@ func TestAdopt(t *testing.T) {
 				t.Errorf("owner request = %+v, want the prime and alpha, beta with takeover, passing over the idle and the done task", w.ownerReq)
 			}
 		}},
+		{name: "AllIncludesAnOwnedOpenBeamAndPassesOverTheOthers", req: request{All: true}, setup: func(w *world) {
+			w.owners.Entries["base"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there}
+			w.owners.Entries["ownerless"] = boardengine.OwnerEntry{IsProject: true, Beam: true}
+			w.owners.Entries["landed"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there, Done: true}
+			w.owners.Entries["grp"] = boardengine.OwnerEntry{IsProject: true}
+		}, check: func(t *testing.T, w *world, _ outcome) {
+			if !slices.Equal(w.ownerReq.Slugs, []string{"alpha", "base", "beta"}) {
+				t.Errorf("owner request slugs = %v, want alpha, base, beta: the owned open beam beside the tasks, passing over the ownerless, the done and the grouping project", w.ownerReq.Slugs)
+			}
+		}},
+		{name: "NamedBeamIsAdoptedWithItsPairAdded", req: request{Slugs: []string{"base"}}, setup: func(w *world) {
+			w.owners.Entries["base"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there}
+		}, check: func(t *testing.T, w *world, got outcome) {
+			if base := slugOf(t, got, "base"); !base.PairAdded || !base.OwnerRecorded || !w.pairs["base"] || base.Run != "none" {
+				t.Errorf("base = %+v, want the pair added, the owner recorded and no run", base)
+			}
+			if !slices.Equal(w.ownerReq.Slugs, []string{"base"}) {
+				t.Errorf("owner request slugs = %v, want the beam alone, its members keeping their own owners", w.ownerReq.Slugs)
+			}
+		}},
+		{name: "GroupingProjectRefusedNamingBeamCreate", req: request{Slugs: []string{"grp"}}, setup: func(w *world) {
+			w.owners.Entries["grp"] = boardengine.OwnerEntry{IsProject: true}
+		}, wantErr: "lyx beam create grp"},
 	}
 
 	for _, tt := range tests {

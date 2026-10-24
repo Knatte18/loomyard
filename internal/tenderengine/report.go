@@ -54,6 +54,22 @@ type Pair interface {
 	Running() (producer string, running bool, err error)
 }
 
+// Orch is one orch of the hub, the prime's or a beam's, with the seams tender reads and revives it through.
+type Orch struct {
+	// Strand is the guid of the orch strand recorded in the worktree's orch state.
+	Strand string
+	// Name is the orch strand's agent name, which a report names it by.
+	Name string
+	// Pair is the session set whose reed session holds the strand.
+	Pair Pair
+	// WatcherLive reports whether this orch's watcher is running.
+	WatcherLive func() bool
+	// RevivePending reports whether a revive inject of tender's own to this orch's strand stands with no outcome yet.
+	RevivePending func() (bool, error)
+	// InjectRevive injects line into this orch's strand and returns the inject's id.
+	InjectRevive func(line string) (int64, error)
+}
+
 // Deps is everything the sequences read and write, all of it told.
 type Deps struct {
 	// RecordPath is the pause record file.
@@ -80,14 +96,8 @@ type Deps struct {
 	NetOps func() ([]pauserecord.NetOp, error)
 	// Locks lists the parent lock records.
 	Locks func() ([]parentlock.Entry, error)
-	// OrchWatcherLive reports whether an orch watcher is running.
-	OrchWatcherLive func() bool
-	// OrchStrand is the orch strand recorded in the prime's orch state, empty when none.
-	OrchStrand func() (string, error)
-	// OrchRevivePending reports whether a revive inject of tender's own to the orch strand stands with no outcome yet.
-	OrchRevivePending func() (bool, error)
-	// InjectOrchRevive injects line into the orch strand and returns the inject's id.
-	InjectOrchRevive func(line string) (int64, error)
+	// Orchs lists every orch of the hub that records a strand, the prime's and each beam's; nil lists none.
+	Orchs func() ([]Orch, error)
 	// Owners lists each local pair with its effective owner and each run-held entry owned elsewhere; nil reports none.
 	Owners func() ([]PairOwner, error)
 	// PushPair spawns the detached push of the pair slug names; nil spawns none.
@@ -213,8 +223,8 @@ func netOpReports(deps Deps, covers func(slug string) bool) ([]NetOpReport, erro
 	return reports, nil
 }
 
-// isOrchStrand reports whether strand names the orch of the prime.
+// isOrchStrand reports whether strand names an orch of the hub, the prime's or a beam's.
 func isOrchStrand(strand string) bool {
 	name, err := agentname.Parse(strand)
-	return err == nil && name.Role == agentname.RoleOrch && name.Slug == ""
+	return err == nil && name.Role == agentname.RoleOrch
 }

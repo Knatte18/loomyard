@@ -17,8 +17,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 )
 
-// newRenameBoard returns a board whose clock reads *now, holding other, old, waiter, prose, exact, starts, ends and near in that store order.
-// old carries every field a rename must keep, a kept unknown key included, and mentions its own slug;
+// newRenameBoard returns a board whose clock reads *now, holding other, old, waiter, prose, exact, starts, ends, near and grouping in that store order.
+// old carries every field a rename must keep, a kept unknown key included, and mentions its own slug, and is the one member of the project grouping;
 // waiter is a run-held task depending on other and old;
 // prose, exact, starts and ends mention old as a whole slug mid-text, as the whole text, at its start and at its end.
 // near holds it only beside a hyphen, underscore, letter or digit.
@@ -39,6 +39,12 @@ func newRenameBoard(t *testing.T, now *time.Time) (*boardengine.Board, string) {
 		{"slug": "ends", "title": "Ends", "labels": bugLabels, "brief": "comes after old"},
 		{"slug": "near", "title": "Near", "labels": bugLabels, "brief": "old-thing, bold, old_x, old2 and 2old are other words"},
 	}
+	// grouping is a project holding old, so a rename must follow in both of its directions.
+	entries = append(entries,
+		map[string]any{"slug": "grouping", "title": "Grouping", "kind": boardengine.KindProject, "labels": bugLabels},
+		map[string]any{"slug": "old", "project": "grouping"},
+		map[string]any{"slug": "grouping", "order": []string{"old"}},
+	)
 	for _, fields := range entries {
 		if _, err := b.UpsertTask(fields); err != nil {
 			t.Fatalf("UpsertTask %v: %v", fields["slug"], err)
@@ -96,11 +102,24 @@ func TestRename_KeepsEntryRewritesDependentsAndReportsMentions(t *testing.T) {
 	for _, task := range full {
 		slugs = append(slugs, task.Slug)
 	}
-	if wantSlugs := []string{"other", "new", "waiter", "prose", "exact", "starts", "ends", "near"}; !slices.Equal(slugs, wantSlugs) {
+	if wantSlugs := []string{"other", "new", "waiter", "prose", "exact", "starts", "ends", "near", "grouping"}; !slices.Equal(slugs, wantSlugs) {
 		t.Errorf("store order after rename = %v; want %v", slugs, wantSlugs)
 	}
 	if !reflect.DeepEqual(full[1], want) {
 		t.Errorf("stored renamed entry = %+v; want %+v", full[1], want)
+	}
+	if grouping := full[8]; !slices.Equal(grouping.Order, []string{"new"}) {
+		t.Errorf("stored grouping order = %v; want [new]", grouping.Order)
+	}
+	renamedProject, _, err := b.GetTask("grouping")
+	if err != nil {
+		t.Fatalf("GetTask(grouping): %v", err)
+	}
+	if _, err := b.Rename(renamedProject.ID, "grouping-two"); err != nil {
+		t.Fatalf("Rename(grouping, grouping-two): %v", err)
+	}
+	if member, _, _ := b.GetTask("new"); member.Project != "grouping-two" {
+		t.Errorf("member project after renaming its project = %q; want grouping-two", member.Project)
 	}
 	waiterWant := waiterBefore
 	waiterWant.DependsOn = []string{"other", "new"}
@@ -132,19 +151,42 @@ func TestRename_Refusals(t *testing.T) {
 		to         string
 		wantErrHas string
 		wantLocked bool
+		// build makes the board the rename runs against; nil is newRenameBoard's.
+		build func(t *testing.T) (*boardengine.Board, string)
 	}{
-		{"AbsentSource", "ghost", "fresh", "task not found", false},
-		{"TargetExists", "old", "other", `"other" already names an entry`, false},
-		{"TargetIsSource", "old", "old", `"old" already names an entry`, false},
-		{"EmptyTarget", "old", "", "non-empty slug", false},
-		{"TargetTooLong", "old", strings.Repeat("x", boardengine.MaxSlugLength+1), "pick a shorter target slug", false},
-		{"RunHeldSource", "waiter", "fresh", `"waiter" is held by a run`, true},
+		{"AbsentSource", "ghost", "fresh", "task not found", false, nil},
+		{"TargetExists", "old", "other", `"other" already names an entry`, false, nil},
+		{"TargetIsSource", "old", "old", `"old" already names an entry`, false, nil},
+		{"EmptyTarget", "old", "", "non-empty slug", false, nil},
+		{"TargetTooLong", "old", strings.Repeat("x", boardengine.MaxSlugLength+1), "pick a shorter target slug", false, nil},
+		{"RunHeldSource", "waiter", "fresh", `"waiter" is held by a run`, true, nil},
+		{"BeamProject", "beamer", "fresh", "lyx board upsert", false, func(t *testing.T) (*boardengine.Board, string) {
+			var boardPath string
+			b := newProjectBoard(t, func(cfg *boardengine.Config) { boardPath = cfg.Path })
+			seedBoardJSON(t, boardPath, `{"id":0,"slug":"beamer","title":"Beamer","kind":"project","labels":["bug"],"beam":true}`)
+			return b, boardPath
+		}},
+		{"EntryWithAPair", "paired", "fresh", "lyx batten cancel paired --remove", false, func(t *testing.T) (*boardengine.Board, string) {
+			var boardPath string
+			b := newProjectBoard(t, func(cfg *boardengine.Config) {
+				boardPath = cfg.Path
+				cfg.PairExists = func(slug string) bool { return slug == "paired" }
+			})
+			seedBoardJSON(t, boardPath, `{"id":0,"slug":"paired","title":"Paired","kind":"task","labels":["bug"]}`)
+			return b, boardPath
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			now := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
-			b, boardPath := newRenameBoard(t, &now)
+			var b *boardengine.Board
+			var boardPath string
+			if tt.build != nil {
+				b, boardPath = tt.build(t)
+			} else {
+				b, boardPath = newRenameBoard(t, &now)
+			}
 			before := dataFiles(t, boardPath)
 
 			_, err := b.Rename(tt.selector, tt.to)

@@ -22,6 +22,10 @@ type Board struct {
 	skipPush  bool
 	now       func() time.Time
 	parentOf  func(slug string) (string, error)
+	// pairExists is Config.PairExists, copied onto every store the board builds.
+	pairExists func(slug string) bool
+	// validateSlug is Config.ValidateSlug, applied to the task and project slugs a write makes.
+	validateSlug func(slug string) error
 	// strandName is the writing session's agent name, which checkTaskCreation judges.
 	strandName string
 }
@@ -33,14 +37,16 @@ func New(cfg Config) *Board {
 		now = time.Now
 	}
 	return &Board{
-		boardPath:  cfg.Path,
-		out:        cfg.Outputs(),
-		vocab:      cfg.Vocabulary(),
-		skipGit:    cfg.SkipGit,
-		skipPush:   cfg.SkipPush,
-		now:        now,
-		parentOf:   cfg.ParentOf,
-		strandName: cfg.StrandName,
+		boardPath:    cfg.Path,
+		out:          cfg.Outputs(),
+		vocab:        cfg.Vocabulary(),
+		skipGit:      cfg.SkipGit,
+		skipPush:     cfg.SkipPush,
+		now:          now,
+		parentOf:     cfg.ParentOf,
+		pairExists:   cfg.PairExists,
+		validateSlug: cfg.ValidateSlug,
+		strandName:   cfg.StrandName,
 	}
 }
 
@@ -80,6 +86,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	store := NewStore(b.boardPath)
 	store.vocab = &b.vocab
 	store.parentOf = b.parentOf
+	store.pairExists = b.pairExists
 	if err := store.Load(); err != nil {
 		return nil, err
 	}
@@ -101,8 +108,10 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		result = p.task
 	}
 	// A renamed slug is the same entry, so the loaded entries are judged under the new slug.
+	renamedTo := ""
 	if r, ok := result.(RenameResult); ok {
 		renameSlug(loaded, r.From, r.Task.Slug)
+		renamedTo = r.Task.Slug
 	}
 	stampDates(loaded, store.tasks, now, promotedSlug)
 	assignHandles(store.tasks, store.vocab)
@@ -119,6 +128,12 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	}
 
 	if err := checkRunLocks(loaded, store.Tasks()); err != nil {
+		return nil, err
+	}
+	if err := checkProjectRules(loaded, store.Tasks(), store.pairExists); err != nil {
+		return nil, err
+	}
+	if err := checkNewSlugs(loaded, store.Tasks(), renamedTo, b.validateSlug); err != nil {
 		return nil, err
 	}
 	if err := checkTaskCreation(b.strandName, loaded, store.Tasks()); err != nil {
@@ -252,6 +267,7 @@ func (b *Board) loadStore() (*Store, error) {
 	store := NewStore(b.boardPath)
 	store.vocab = &b.vocab
 	store.parentOf = b.parentOf
+	store.pairExists = b.pairExists
 	if err := store.Load(); err != nil {
 		return nil, err
 	}

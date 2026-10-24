@@ -73,6 +73,11 @@ func landingDeps(
 	if recipe == shedrun.RecipeLoom {
 		traceFailure = failuretrace.NewTracer(l.WorktreePath(), l.AnchorPath())
 	}
+	// A beam run has no review segment, so it has no review to follow a reroute and a nil seam halts a spent or over-cap fixer for the orch.
+	var reviewFollowsReroute func() (bool, error)
+	if recipe != shedrun.RecipeBeam {
+		reviewFollowsReroute = rerouteReviewed(l)
+	}
 	return landingshed.Deps{
 		ParentName:      parentName,
 		LanguageSkills:  languageSkills,
@@ -178,10 +183,10 @@ func landingDeps(
 		ConfigChanges: func() (fabricengine.ConfigChanges, error) {
 			return fabricengine.ReadConfigChanges(l, taskBranch, parentBranch, perWorktreeConfigRels())
 		},
-		// Notify posts one orch notice as creel mail for the hub's prime, resolved at call time.
-		// A prime with no orch strand recorded is not an error: the notice is logged instead.
+		// Notify posts one orch notice as creel mail for the nearest live orch up the pair's beam chain, resolved at call time.
+		// A destination with no orch strand recorded is not an error: the notice is logged instead.
 		Notify: func(line string) error {
-			_, err := orchcli.NotifyPrime(l, loomProgram, line)
+			_, err := orchcli.NotifyParent(l, loomProgram, line)
 			return err
 		},
 		VerifyCommand:  verify.command,
@@ -239,7 +244,9 @@ func landingDeps(
 			return rowEntry(status.History, row), nil
 		},
 		CodeReviewOff:   codeReviewOff(l, recipe),
-		RerouteReviewed: rerouteReviewed(l),
+		RerouteReviewed: reviewFollowsReroute,
+		// A beam run has no reroute edge: a large merge runs the gate, and a spent or over-cap fixer halts for the orch.
+		LargeMergeLands: recipe == shedrun.RecipeBeam,
 		// The task branch's remote-tracking ref is read without a fetch, so an absent one is no tip.
 		TaskRemoteTip: func() (string, error) {
 			tip, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/remotes/origin/" + taskBranch)
@@ -252,9 +259,9 @@ func landingDeps(
 }
 
 // codeReviewOff returns the seam Merge-In reads: whether the Code-Perch's effective review budget is 0.
-// A darn run has no Merge-In, and its seam reads false.
+// A darn or beam run has no Merge-In, and its seam reads false.
 func codeReviewOff(l *lyxcwd.Location, recipe string) func() (bool, error) {
-	if recipe == shedrun.RecipeDarn {
+	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipeBeam {
 		return func() (bool, error) { return false, nil }
 	}
 	return codeBudgetZero(l)
@@ -281,19 +288,19 @@ func codeBudgetZero(l *lyxcwd.Location) func() (bool, error) {
 	}
 }
 
-// fixerPlanDir returns the plan directory the merge fixer reads: the run's plan directory on a loom run, and "" on a darn run, which has none.
+// fixerPlanDir returns the plan directory the merge fixer reads: the run's plan directory on a loom run, and "" on a darn or beam run, which has none.
 func fixerPlanDir(l *lyxcwd.Location, recipe string) string {
-	if recipe == shedrun.RecipeDarn {
+	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipeBeam {
 		return ""
 	}
 	return planparser.PlanDir(l.AnchorPath())
 }
 
 // fixerTestFileMatcher returns the test-file predicate the fixer's kind cap judges a path by.
-// A darn run has no plan and so no language, and matches a test file of any language.
+// A darn or beam run has no plan and so no language, and matches a test file of any language.
 // A loom run parses the live plan at call time, reading an absent `language:` as go and a plan that does not parse as none, whose matcher counts every file a test file and so over-covers.
 func fixerTestFileMatcher(recipe, planDir string) func(path string) bool {
-	if recipe == shedrun.RecipeDarn {
+	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipeBeam {
 		return planparser.IsAnyLanguageTestFile
 	}
 	return func(path string) bool {
@@ -513,7 +520,7 @@ func parentOwner(l *lyxcwd.Location, slug string) func() (landingshed.ParentOwne
 			return landingshed.ParentOwnership{}, err
 		}
 		parentOf := func(slug string) (string, error) {
-			return fabricengine.ParentSlug(prime, slug)
+			return hubgeom.ParentOf(prime, slug)
 		}
 		parentSlug, err := parentOf(slug)
 		if err != nil {

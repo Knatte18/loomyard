@@ -30,6 +30,7 @@ var registry = map[string]Constructor{
 	"Implementer":      implementerEntry,
 	"DiscussionWrite":  discussionWriteEntry,
 	"Describe":         describeEntry,
+	"BeamDescribe":     beamDescribeEntry,
 	"PlanWrite":        planWriteEntry,
 	"Stub":             stubEntry,
 	"MultiLLM":         multiLLMEntry,

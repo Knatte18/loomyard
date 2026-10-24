@@ -6,6 +6,11 @@
 // An interrupted stop's note carries the `interrupted-stop` anomaly kind, never `producer-hard-failure`, with the stop's cause as its reason and the in-flight step's trace file where the stop knows it.
 // `lyx start` is the same start verb mounted a second time at the root, resolving the full engine stack exactly as `lyx loom start` does.
 //
+// A run seeded with the recipe `beam` is a beam's landing run, batten's Seed-Child seeds it in the beam's pair.
+// Its shed has two rows, Beam-Describe and Finalize, and no reroute edge, no plan and no review segment.
+// Beam-Describe writes the change description from the beam's board entry and the commits the beam adds over the parent branch its pair records.
+// Its Finalize reads the hub's `finalize` gate key over the whole merged tree, lets a large merge go on to the gate in place of a reroute, and halts for the orch on a fixer that is spent or over its caps.
+//
 // # Start
 //
 // `lyx loom start` works in order.

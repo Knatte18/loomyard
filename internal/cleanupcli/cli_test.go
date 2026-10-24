@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
@@ -55,8 +56,12 @@ func TestRunSegments(t *testing.T) {
 func TestPrimeSegments(t *testing.T) {
 	t.Parallel()
 
-	location := locationkit.Location(t.TempDir(), "prime", "")
-	segments := primeSegments(location)
+	hub := t.TempDir()
+	location := locationkit.Location(hub, "prime", "")
+	beam := locationkit.Location(hub, "b", "")
+	segments := segmentsOver(location, func(*lyxcwd.Location) ([]*lyxcwd.Location, error) {
+		return []*lyxcwd.Location{location, beam}, nil
+	})
 
 	var names []string
 	for _, s := range segments {
@@ -92,9 +97,19 @@ func TestPrimeSegments(t *testing.T) {
 	if err := os.MkdirAll(paths.HandoffsDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
-	for _, name := range []string{"old.md", "new.md"} {
-		if err := os.WriteFile(filepath.Join(paths.HandoffsDir, name), []byte("note"), 0o644); err != nil {
-			t.Fatalf("WriteFile: %v", err)
+	// A beam's idle orch cleans its stale handoff beside the prime's.
+	beamPaths := orchcli.PrimePaths(beam)
+	if err := orchengine.SaveState(beamPaths, orchengine.State{Phase: orchengine.PhaseIdle, LastHandoff: "new.md"}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	if err := os.MkdirAll(beamPaths.HandoffsDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	for _, handoffsDir := range []string{paths.HandoffsDir, beamPaths.HandoffsDir} {
+		for _, name := range []string{"old.md", "new.md"} {
+			if err := os.WriteFile(filepath.Join(handoffsDir, name), []byte("note"), 0o644); err != nil {
+				t.Fatalf("WriteFile: %v", err)
+			}
 		}
 	}
 
@@ -102,16 +117,37 @@ func TestPrimeSegments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("orch segment: %v", err)
 	}
-	fields := listed.(map[string]any)
-	if removed := fields["removed"].([]string); len(removed) != 0 {
+	worktrees := listed.(map[string]any)["worktrees"].([]map[string]any)
+	if len(worktrees) != 2 {
+		t.Fatalf("orch segment listed %d worktrees, want the prime and the beam", len(worktrees))
+	}
+	if name := worktrees[0]["worktree"]; name != "prime" {
+		t.Errorf("first worktree = %v, want prime", name)
+	}
+	if removed := worktrees[0]["removed"].([]string); len(removed) != 0 {
 		t.Errorf("orch segment removed %v in the clearing phase, want nothing", removed)
 	}
-	if reason := fields["reason"].(string); !strings.Contains(reason, "phase clearing") {
+	if reason := worktrees[0]["reason"].(string); !strings.Contains(reason, "phase clearing") {
 		t.Errorf("orch segment reason = %q, want it to name the phase", reason)
+	}
+	if name := worktrees[1]["worktree"]; name != "b" {
+		t.Errorf("second worktree = %v, want b", name)
+	}
+	if kept := worktrees[1]["kept"]; kept != "new.md" {
+		t.Errorf("beam kept = %v, want new.md", kept)
+	}
+	if removed := worktrees[1]["removed"].([]string); !slices.Equal(removed, []string{"old.md"}) {
+		t.Errorf("beam removed = %v, want [old.md]", removed)
 	}
 	for _, name := range []string{"old.md", "new.md"} {
 		if _, err := os.Stat(filepath.Join(paths.HandoffsDir, name)); err != nil {
-			t.Errorf("handoff %s did not survive: %v", name, err)
+			t.Errorf("prime handoff %s did not survive: %v", name, err)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(beamPaths.HandoffsDir, "old.md")); !os.IsNotExist(err) {
+		t.Errorf("beam's stale handoff survived (stat err %v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(beamPaths.HandoffsDir, "new.md")); err != nil {
+		t.Errorf("beam's kept handoff did not survive: %v", err)
 	}
 }

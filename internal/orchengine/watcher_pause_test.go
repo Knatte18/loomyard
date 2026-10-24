@@ -363,6 +363,30 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 				t.Errorf("interrupts = %d; want 0", n)
 			}
 		}},
+		{"a beam orch's watcher settles on its own strand and interrupts for another orch's pause", func(t *testing.T, e *watchEnv) {
+			beamCaller, err := agentname.Format("lyx", "b", agentname.RoleOrch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.w.SetOrchName(beamCaller)
+			e.s.idle = false
+			e.tick()
+			e.pauseHub(beamCaller, pauseGrace)
+			e.clock.advance(pauseGrace)
+			e.tick()
+			if n := e.callCount(interruptCall); n != 0 {
+				t.Fatalf("interrupts for the beam orch's own pause = %d; want 0", n)
+			}
+			e.resumeHub()
+			e.tick()
+			e.clock.advance(time.Second)
+			e.pauseHub(orchCaller, pauseGrace)
+			e.clock.advance(pauseGrace)
+			e.tick()
+			if n := e.callCount(interruptCall); n != 1 {
+				t.Errorf("interrupts for the prime orch's pause = %d; want 1", n)
+			}
+		}},
 		{"a watcher created after the grace end interrupts nothing, still holds, and posts no resume line", func(t *testing.T, e *watchEnv) {
 			e.s.idle = false
 			e.pauseHub("EXTERNAL", pauseGrace)

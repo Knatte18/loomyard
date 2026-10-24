@@ -163,6 +163,36 @@ func TestKindDependencyRules(t *testing.T) {
 		}
 	})
 
+	t.Run("a project carrying a task-only field refused naming the field", func(t *testing.T) {
+		for field, value := range map[string]any{
+			"depends_on":   []string{"dep"},
+			"recipe":       "darn",
+			"profile":      "light",
+			"run_settings": map[string]any{"loom": map[string]any{"code_max_bounces": 1}},
+			"priority":     "high",
+		} {
+			s := seed(t)
+			_, err := s.UpsertTask(map[string]any{"slug": "p", "kind": "project", field: value})
+			if err == nil || !stringContains(err.Error(), `"p"`) || !stringContains(err.Error(), field) {
+				t.Errorf("project with %s: expected refusal naming p and the field, got %v", field, err)
+			}
+		}
+		if _, err := seed(t).UpsertTask(map[string]any{"slug": "p", "kind": "project", "title": "P"}); err != nil {
+			t.Errorf("a bare project refused: %v", err)
+		}
+	})
+
+	t.Run("a task or a note carrying order or beam is refused naming the field", func(t *testing.T) {
+		for _, kind := range []string{"task", "note"} {
+			for field, value := range map[string]any{"order": []string{"dep"}, "beam": true} {
+				fields := map[string]any{"slug": "x", "kind": kind, field: value}
+				if _, err := boardengine.NewTask(fields, 1); err == nil || !stringContains(err.Error(), field) {
+					t.Errorf("%s with %s: expected refusal naming the field, got %v", kind, field, err)
+				}
+			}
+		}
+	})
+
 	t.Run("set-deps on a note refused", func(t *testing.T) {
 		s := seed(t)
 		if err := s.SetDeps("idea", []string{"dep"}); err == nil {
@@ -276,6 +306,76 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 		}
 		if retrieved.Status == nil || *retrieved.Status != "active" {
 			t.Errorf("expected stored status=active, got %v", retrieved.Status)
+		}
+	})
+
+	t.Run("upsert_project_and_order_fields_allowed_and_persisted", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		for _, fields := range []map[string]any{
+			{"slug": "proj", "kind": "project", "order": []string{"member"}},
+			{"slug": "member", "kind": "task", "project": "proj"},
+		} {
+			if _, err := s.UpsertTask(fields); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		}
+		member, _ := s.GetTask("member")
+		proj, _ := s.GetTask("proj")
+		if member.Project != "proj" || !sliceEqualStrings(proj.Order, []string{"member"}) {
+			t.Errorf("stored member project %q, proj order %v; want proj and [member]", member.Project, proj.Order)
+		}
+	})
+
+	t.Run("upsert_beam_field_allowed_only_as_the_stored_value", func(t *testing.T) {
+		dir := t.TempDir()
+		stored := `{"version":1,"entries":[` +
+			`{"id":0,"slug":"beamer","title":"B","kind":"project","labels":["bug"],"beam":true},` +
+			`{"id":1,"slug":"grouper","title":"G","kind":"project","labels":["bug"]},` +
+			`{"id":2,"slug":"work","title":"W","kind":"task","labels":["bug"]}]}`
+		if err := os.WriteFile(filepath.Join(dir, "board.json"), []byte(stored), 0o644); err != nil {
+			t.Fatalf("write board.json: %v", err)
+		}
+		s := boardengine.NewStore(dir)
+		if err := s.Load(); err != nil {
+			t.Fatalf("Load() error = %v; want nil", err)
+		}
+
+		refused := []struct {
+			name    string
+			fields  map[string]any
+			wantHas []string
+		}{
+			{"true on a project", map[string]any{"slug": "grouper", "beam": true}, []string{`"grouper"`, "lyx beam create grouper"}},
+			{"true on a task", map[string]any{"slug": "work", "beam": true}, []string{`"work"`, "lyx beam promote work"}},
+			{"true on a new project", map[string]any{"slug": "fresh", "kind": "project", "beam": true}, []string{`"fresh"`, "lyx beam create fresh"}},
+			{"true on a new task", map[string]any{"slug": "fresh", "kind": "task", "beam": true}, []string{`"fresh"`, "lyx beam promote fresh"}},
+			{"false on a beam", map[string]any{"slug": "beamer", "beam": false}, []string{`"beamer"`, "stays set for the beam's life", "lyx beam land beamer"}},
+			{"not a boolean", map[string]any{"slug": "work", "beam": "yes"}, []string{`"work"`, "true or false"}},
+		}
+		for _, tt := range refused {
+			_, err := s.UpsertTask(tt.fields)
+			if err == nil {
+				t.Errorf("%s: error = nil; want a refusal", tt.name)
+				continue
+			}
+			for _, want := range tt.wantHas {
+				if !stringContains(err.Error(), want) {
+					t.Errorf("%s: error = %q; want it to contain %q", tt.name, err, want)
+				}
+			}
+		}
+
+		for _, fields := range []map[string]any{
+			{"slug": "beamer", "beam": true, "title": "Renamed title"},
+			{"slug": "grouper", "beam": false, "title": "G2"},
+			{"slug": "fresh", "kind": "project", "beam": false},
+		} {
+			if _, err := s.UpsertTask(fields); err != nil {
+				t.Errorf("UpsertTask(%v) error = %v; want nil, since the beam value is the stored one", fields, err)
+			}
+		}
+		if beamer, _ := s.GetTask("beamer"); !beamer.Beam || beamer.Title != "Renamed title" {
+			t.Errorf("beamer after a write carrying its stored beam = %+v; want the flag kept and the title changed", beamer)
 		}
 	})
 
@@ -640,6 +740,73 @@ func TestMergeTasks(t *testing.T) {
 		}
 	})
 
+	t.Run("TestMergeTasksCarriesMembership", func(t *testing.T) {
+		seed := func(t *testing.T) *boardengine.Store {
+			t.Helper()
+			s := boardengine.NewStore("")
+			for _, fields := range []map[string]any{
+				{"slug": "p", "kind": "project"},
+				{"slug": "x", "kind": "task", "project": "p"},
+				{"slug": "y", "kind": "task", "project": "p"},
+				{"slug": "p", "order": []string{"x", "y"}},
+			} {
+				if _, err := s.UpsertTask(fields); err != nil {
+					t.Fatal(err)
+				}
+			}
+			return s
+		}
+
+		s := seed(t)
+		merged, err := s.MergeTasks([]string{"x"}, map[string]any{"slug": "z", "kind": "task"}, nil)
+		if err != nil || merged.Project != "p" {
+			t.Fatalf("MergeTasks(x into z) = %+v, %v; want z to take the removed member's project p", merged, err)
+		}
+		if p, _ := s.GetTask("p"); !slices.Equal(p.Order, []string{"z", "y"}) {
+			t.Errorf("order of p = %v; want [z y], the upserted slug in the removed slug's place", p.Order)
+		}
+
+		s = seed(t)
+		if _, err := s.MergeTasks([]string{"x", "y"}, map[string]any{"slug": "z", "kind": "task"}, nil); err != nil {
+			t.Fatalf("MergeTasks(x and y into z) error = %v; want nil", err)
+		}
+		if p, _ := s.GetTask("p"); !slices.Equal(p.Order, []string{"z"}) {
+			t.Errorf("order of p = %v; want [z], the upserted slug once", p.Order)
+		}
+
+		s = seed(t)
+		explicit, err := s.MergeTasks([]string{"x"}, map[string]any{"slug": "y", "body": "merged"}, nil)
+		if err != nil || explicit.Project != "p" {
+			t.Fatalf("MergeTasks(x into y) = %+v, %v; want y to keep p", explicit, err)
+		}
+		if p, _ := s.GetTask("p"); !slices.Equal(p.Order, []string{"y"}) {
+			t.Errorf("order of p = %v; want [y], the upserted slug that the order already names kept once", p.Order)
+		}
+
+		s = seed(t)
+		_, err = s.MergeTasks([]string{"p"}, map[string]any{"slug": "z", "kind": "task"}, nil)
+		if err == nil || !stringContains(err.Error(), `"p"`) || !stringContains(err.Error(), "x, y") {
+			t.Errorf("MergeTasks removing p = %v; want a refusal naming p and the members x, y to move first", err)
+		}
+		if _, found := s.GetTask("p"); !found || len(s.Tasks()) != 3 {
+			t.Errorf("a refused merge changed the store: %+v", s.Tasks())
+		}
+	})
+
+	t.Run("TestMergeTasksRefusesABeamPayload", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		if _, err := s.UpsertTask(map[string]any{"slug": "gone", "title": "G"}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := s.MergeTasks([]string{"gone"}, map[string]any{"slug": "p", "kind": "project", "beam": true}, nil)
+		if err == nil || !stringContains(err.Error(), "lyx beam create p") {
+			t.Errorf("MergeTasks with beam true = %v; want a refusal naming lyx beam create p", err)
+		}
+		if _, found := s.GetTask("gone"); !found || len(s.Tasks()) != 1 {
+			t.Errorf("a refused merge changed the store: %+v", s.Tasks())
+		}
+	})
+
 	t.Run("TestMergeTasksNonStringSlugErrors", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
@@ -793,6 +960,42 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	// Both should have a layer assigned (even if empty or a letter)
 	if task1.Layer == "" || task2.Layer == "" {
 		t.Logf("task1 layer: %s, task2 layer: %s", task1.Layer, task2.Layer)
+	}
+
+	// A project lists the Project layer, and an open task beside it keeps its own.
+	withProject := boardengine.NewStore("")
+	for _, fields := range []map[string]any{{"slug": "proj", "kind": "project"}, {"slug": "work", "kind": "task"}} {
+		if _, err := withProject.UpsertTask(fields); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+	layers := map[string]string{}
+	for _, b := range withProject.ListTasksBrief(nil) {
+		layers[b.Slug] = b.Layer
+	}
+	if want := map[string]string{"proj": "Project", "work": "Ready"}; !maps.Equal(layers, want) {
+		t.Errorf("listed layers = %v; want %v", layers, want)
+	}
+
+	// With no parent seam, the parent beam a list carries is ParentBeam over the store's own entries.
+	beamDir := t.TempDir()
+	beamBoard := `{"version":1,"entries":[` +
+		`{"id":0,"slug":"beamer","title":"B","kind":"project","labels":["bug"],"beam":true},` +
+		`{"id":1,"slug":"member","title":"M","kind":"task","labels":["bug"],"project":"beamer"},` +
+		`{"id":2,"slug":"loose","title":"L","kind":"task","labels":["bug"]}]}`
+	if err := os.WriteFile(filepath.Join(beamDir, "board.json"), []byte(beamBoard), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+	beamStore := boardengine.NewStore(beamDir)
+	if err := beamStore.Load(); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	parentBeams := map[string]string{}
+	for _, b := range beamStore.ListTasksBrief(nil) {
+		parentBeams[b.Slug] = b.ParentBeam
+	}
+	if want := map[string]string{"beamer": "", "member": "beamer", "loose": ""}; !maps.Equal(parentBeams, want) {
+		t.Errorf("listed parent beams = %v; want %v", parentBeams, want)
 	}
 
 	// The owner a task lists is its recorded one, else the prime's; a note lists none, and a parent resolver that fails empties the cell without failing the list.
@@ -1009,6 +1212,20 @@ func TestUpsertTasksBatch(t *testing.T) {
 
 		if tasks[0].Slug != "task1" || tasks[1].Slug != "task2" {
 			t.Errorf("expected slugs task1 and task2, got %s and %s", tasks[0].Slug, tasks[1].Slug)
+		}
+	})
+
+	t.Run("TestUpsertTasksBatchRefusesABeamPayload", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		err := s.UpsertTasksBatch([]map[string]any{
+			{"slug": "t", "title": "T"},
+			{"slug": "p", "kind": "project", "beam": true},
+		})
+		if err == nil || !stringContains(err.Error(), "lyx beam create p") {
+			t.Errorf("UpsertTasksBatch with beam true = %v; want a refusal naming lyx beam create p", err)
+		}
+		if len(s.Tasks()) != 0 {
+			t.Errorf("a refused batch changed the store: %+v", s.Tasks())
 		}
 	})
 
@@ -1620,6 +1837,34 @@ func TestPromote(t *testing.T) {
 		}
 	})
 
+	t.Run("a note keeps its project", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "proj", "kind": "project"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "a", "project": "proj"}); err != nil {
+			t.Fatal(err)
+		}
+		got, _, err := s.Promote("a")
+		if err != nil || got.Project != "proj" {
+			t.Errorf("Promote(a) = %+v, %v; want the promoted task to keep project proj", got, err)
+		}
+	})
+
+	t.Run("a project refused naming lyx beam create", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "proj", "kind": "project"}); err != nil {
+			t.Fatal(err)
+		}
+		_, changed, err := s.Promote("proj")
+		if err == nil || changed || !stringContains(err.Error(), `"proj"`) || !stringContains(err.Error(), "lyx beam create proj") {
+			t.Fatalf("changed %v, err %v; want a refusal naming proj and lyx beam create", changed, err)
+		}
+		if stored, _ := s.GetTask("proj"); stored.Kind != boardengine.KindProject {
+			t.Errorf("a refused promote changed the project: kind %q", stored.Kind)
+		}
+	})
+
 	t.Run("missing entry refused", func(t *testing.T) {
 		s := seed(t)
 		if _, _, err := s.Promote("nope"); err == nil || !stringContains(err.Error(), "not found") {
@@ -1670,6 +1915,31 @@ func TestPrune(t *testing.T) {
 	if again := s.Prune(); len(again) != 0 {
 		t.Errorf("second prune removed %v", again)
 	}
+
+	t.Run("a pruned slug leaves every order and a done project a surviving member names stays", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		for _, fields := range []map[string]any{
+			{"slug": "outer", "kind": "project"},
+			{"slug": "inner", "kind": "project", "project": "outer"},
+			{"slug": "kept-member", "kind": "task", "project": "inner"},
+			{"slug": "done-member", "kind": "task", "project": "inner", "status": "done"},
+			{"slug": "empty", "kind": "project", "status": "done"},
+			{"slug": "inner", "order": []string{"done-member", "kept-member"}},
+			{"slug": "outer", "status": "done"},
+			{"slug": "inner", "status": "done"},
+		} {
+			if _, err := s.UpsertTask(fields); err != nil {
+				t.Fatal(err)
+			}
+		}
+		removed := s.Prune()
+		if !sliceEqualStrings(removed, []string{"done-member", "empty"}) {
+			t.Errorf("removed = %v; want [done-member empty], the done projects outer and inner staying for kept-member", removed)
+		}
+		if inner, _ := s.GetTask("inner"); !sliceEqualStrings(inner.Order, []string{"kept-member"}) {
+			t.Errorf("order of inner = %v; want [kept-member]", inner.Order)
+		}
+	})
 }
 
 func TestFind(t *testing.T) {

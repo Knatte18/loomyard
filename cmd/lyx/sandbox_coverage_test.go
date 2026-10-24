@@ -58,6 +58,10 @@ var excludedModules = []scankit.Entry{
 		Key: "adopt",
 		Why: "takes over runs from another machine, which needs a second clone of the hub that no sandbox scenario builds",
 	},
+	{
+		Key: "beam",
+		Why: "makes, promotes and lands beams over a board project entry and a pair that a scenario would have to build; exercised by internal/beamcli's own hubforge tests instead",
+	},
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.

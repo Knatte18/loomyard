@@ -22,7 +22,7 @@ type Task struct {
 	Handle    string   `json:"handle,omitempty"`
 	Slug      string   `json:"slug"`
 	Title     string   `json:"title"`
-	Kind      string   `json:"kind"`             // KindTask or KindNote
+	Kind      string   `json:"kind"`             // KindTask, KindNote or KindProject
 	Labels    []string `json:"labels"`           // type and plain labels, validated against the board's Vocabulary
 	Issues    []int    `json:"issues"`           // numbers of the GitHub issues this entry records; a number is not checked against GitHub
 	Recipe    string   `json:"recipe,omitempty"` // recipe name for the task's child worktree; empty means "loom". Resolved (and validated against the recipe vocabulary) at the seeding site, not here.
@@ -44,6 +44,12 @@ type Task struct {
 	Profile string `json:"profile,omitempty"`
 	// OwnerMachine names the machine that owns the entry; empty means none is recorded, and a note never carries one.
 	OwnerMachine string `json:"owner_machine,omitempty"`
+	// Project names the project entry this entry belongs to; empty means it belongs to none.
+	Project string `json:"project,omitempty"`
+	// Order lists the slugs of the project's member entries in plan order; only a project carries it.
+	Order []string `json:"order,omitempty"`
+	// Beam reports whether a project is a beam, a long-lived pair that runs its members; only a project carries it.
+	Beam bool `json:"beam,omitempty"`
 
 	// Unknown holds the decoded entry's keys this binary does not know, each with its raw JSON value, nil when there are none.
 	// Encoding writes them back after the known fields in key order, and no step decodes a value into a Go type.
@@ -240,9 +246,10 @@ func (t Task) MarshalJSON() ([]byte, error) {
 }
 
 const (
-	// KindTask is an entry that can run; KindNote is an idea or observation.
-	KindTask = "task"
-	KindNote = "note"
+	// KindTask is an entry that can run; KindNote is an idea or observation; KindProject groups entries and is a beam when its Beam flag is set.
+	KindTask    = "task"
+	KindNote    = "note"
+	KindProject = "project"
 )
 
 // The priority values a note accepts; a task carries none.
@@ -253,10 +260,11 @@ const (
 	PriorityLow    = "low"
 )
 
-// normalizeTask stores a normal priority and an empty run settings object as the empty value, clears the owner of a note and stores the dates in whole UTC seconds, then checks that the Kind is one of the two kinds, the Priority one of the accepted values and a task without one.
+// normalizeTask stores a normal priority and an empty run settings object as the empty value, clears the owner of a note and stores the dates in whole UTC seconds, then checks that the Kind is one of the three kinds, the Priority one of the accepted values and a task without one.
+// A project carries none of depends_on, recipe, profile, run_settings or priority, and only a project carries order or beam.
 func normalizeTask(t *Task) error {
-	if t.Kind != KindTask && t.Kind != KindNote {
-		return fmt.Errorf("kind %q is not one of %s, %s", t.Kind, KindTask, KindNote)
+	if t.Kind != KindTask && t.Kind != KindNote && t.Kind != KindProject {
+		return fmt.Errorf("kind %q is not one of %s, %s, %s", t.Kind, KindTask, KindNote, KindProject)
 	}
 	if t.Priority == PriorityNormal {
 		t.Priority = ""
@@ -276,6 +284,35 @@ func normalizeTask(t *Task) error {
 	if t.Kind == KindTask && t.Priority != "" {
 		return fmt.Errorf("task %q has priority %q, and only a note carries a priority: set %q to clear it, or make a note a task with \"lyx board promote\", which clears it",
 			t.Slug, t.Priority, PriorityNormal)
+	}
+	if t.Kind == KindProject {
+		return checkProjectFields(*t)
+	}
+	if len(t.Order) > 0 {
+		return fmt.Errorf("%s %q has order, and only a project carries a plan order: drop the order field", t.Kind, t.Slug)
+	}
+	if t.Beam {
+		return fmt.Errorf("%s %q has beam, and only a project can be a beam: drop the beam field", t.Kind, t.Slug)
+	}
+	return nil
+}
+
+// checkProjectFields refuses a project carrying a field only a task carries, naming the entry and the field to drop.
+func checkProjectFields(t Task) error {
+	carried := []struct {
+		field   string
+		present bool
+	}{
+		{"depends_on", len(t.DependsOn) > 0},
+		{"recipe", t.Recipe != ""},
+		{"profile", t.Profile != ""},
+		{"run_settings", len(t.RunSettings) > 0},
+		{"priority", t.Priority != ""},
+	}
+	for _, c := range carried {
+		if c.present {
+			return fmt.Errorf("project %q has %s, and a project carries no %s: drop the %s field", t.Slug, c.field, c.field, c.field)
+		}
 	}
 	return nil
 }

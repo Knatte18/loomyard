@@ -138,15 +138,31 @@ no fabric push publishes them. A plain "lyx fabric add" over a local pair's kept
 branches adopts them and clears the marks. --local refuses a slug whose branch
 already belongs to an ordinary pair.
 
+With --parent <slug> the pair forks from that live pair of the hub, its last
+commit and its records branch, not from the acting worktree. The parent's
+uncommitted changes are not carried and are not checked.
+
+With --adopt-local the pair is made over an unmarked local branch of the slug
+that already exists. Neither it nor its records branch may be checked out
+elsewhere. Over the default branch the pair is a root pair with no parent.
+
+--local takes neither flag.
+
 Example:
   lyx fabric add my-task
-  lyx fabric add --local my-task`,
+  lyx fabric add --local my-task
+  lyx fabric add my-task --parent my-beam
+  lyx fabric add my-task --adopt-local`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
 			local, _ := addCmd.Flags().GetBool("local")
-			return runAdd(ctx, out, args, local)
+			parent, _ := addCmd.Flags().GetString("parent")
+			adoptLocal, _ := addCmd.Flags().GetBool("adopt-local")
+			return runAdd(ctx, out, args, local, addOptionsFromEnv(parent, adoptLocal))
 		}),
 	}
 	addCmd.Flags().Bool("local", false, "create a local-only pair: no origin is read or written, no launcher is created, and both branches are marked local so no fabric push publishes them")
+	addCmd.Flags().String("parent", "", "fork the new pair from this live pair of the hub instead of from the acting worktree")
+	addCmd.Flags().Bool("adopt-local", false, "make the pair over a local branch of the slug that already exists, instead of refusing it")
 	cmd.AddCommand(addCmd)
 
 	// list
@@ -502,7 +518,14 @@ func resolveWarpLocation(ctx context.Context) (cwd string, l *lyxcwd.Location, e
 
 // runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
 // With local it creates a local-only pair, spawns no detached push and reports local: true.
-func runAdd(ctx context.Context, out io.Writer, args []string, local bool) int {
+// A local pair takes neither opts.Parent nor opts.AdoptLocal, and the add is refused before any mutation naming the flag to drop.
+func runAdd(ctx context.Context, out io.Writer, args []string, local bool, opts fabricengine.AddOptions) int {
+	if local && opts.Parent != "" {
+		return output.Err(out, "--local cannot be combined with --parent: a local-only pair forks from the acting worktree; way forward: drop --parent, or drop --local")
+	}
+	if local && opts.AdoptLocal {
+		return output.Err(out, "--local cannot be combined with --adopt-local: a local-only pair already adopts its own marked branches; way forward: drop --adopt-local, or drop --local")
+	}
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
@@ -526,7 +549,7 @@ func runAdd(ctx context.Context, out io.Writer, args []string, local bool) int {
 	if local {
 		r, err = top.AddLocal(l, slug)
 	} else {
-		r, err = top.Add(l, slug, addOptionsFromEnv())
+		r, err = top.Add(l, slug, opts)
 	}
 	if err != nil {
 		// A leftover or local-over-ordinary refusal fires before Add's first mutation, so it is a pre-flight failure: a bare output.Err.
@@ -1186,9 +1209,8 @@ func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResul
 	return fields
 }
 
-// addOptionsFromEnv returns the AddOptions for a CLI-driven `lyx fabric add`,
-// always returning the zero value, so the origin probes always run.
+// addOptionsFromEnv returns the AddOptions for a CLI-driven `lyx fabric add`: the named parent and the adopt-local choice, with the origin probes always on.
 // The new pair's detached push is gated by FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH alone, as every detached push is.
-func addOptionsFromEnv() fabricengine.AddOptions {
-	return fabricengine.AddOptions{}
+func addOptionsFromEnv(parent string, adoptLocal bool) fabricengine.AddOptions {
+	return fabricengine.AddOptions{Parent: parent, AdoptLocal: adoptLocal}
 }

@@ -24,7 +24,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
-	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -42,14 +41,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// cancelCmd builds "lyx batten cancel <slug> [--remove]", the prime-only end of a run for good.
+// cancelCmd builds "lyx batten cancel <slug> [--remove]", the end of a run for good, run from the prime or a beam.
 func (c *battenCLI) cancelCmd() *cobra.Command {
 	var remove bool
 	cmd := &cobra.Command{
 		Use:         "cancel <slug>",
 		Short:       "end a run for good, whatever its state, and optionally remove its pair",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `cancel ends the batten run of one slug for good, from the prime, whatever its state.
+		Long: `cancel ends the batten run of one slug for good, from the prime or a beam, whatever its state.
 It ends the run's registered processes and strands, stops the tackler strand its marker names,
 clears the board claim, removes the run's records and scratch and commits that removal on the
 records side, lifts the slug's own pause entries and spawns the push of the records.
@@ -101,10 +100,16 @@ Example:
 			if err != nil {
 				return fail(err)
 			}
-			if err := RefuseUnlessPrime(location); err != nil {
+			prime, err := ResolveBattenPrime(location)
+			if err != nil {
 				return fail(err)
 			}
-			deps, err := hubCancelDeps(location, slug)
+			if remove {
+				if err := refuseOwnPair(location, prime, slug, "cancel --remove"); err != nil {
+					return fail(err)
+				}
+			}
+			deps, err := hubCancelDeps(prime, slug)
 			if err != nil {
 				return fail(err)
 			}
@@ -184,7 +189,7 @@ func hubCancelDeps(location *lyxcwd.Location, slug string) (cancelDeps, error) {
 			if err != nil {
 				return "", "", err
 			}
-			owner, err := owners.Effective(slug, func(slug string) (string, error) { return fabricengine.ParentSlug(location, slug) })
+			owner, err := owners.Effective(slug, func(slug string) (string, error) { return hubgeom.ParentOf(location, slug) })
 			return machine, owner, err
 		},
 		ReadStatus: func() (shedengine.Status, bool, error) { return readBattenStatus(location, slug) },
@@ -201,10 +206,20 @@ func hubCancelDeps(location *lyxcwd.Location, slug string) (cancelDeps, error) {
 		},
 		RecordsPresent: func() (bool, error) {
 			_, err := os.Stat(shedrun.RunDir(location, slug))
-			if errors.Is(err, fs.ErrNotExist) {
-				return false, nil
+			if err == nil {
+				return true, nil
 			}
-			return err == nil, err
+			if !errors.Is(err, fs.ErrNotExist) {
+				return false, err
+			}
+			// A run directory deleted on disk but still tracked at the records HEAD has its deletion outstanding, which the cancel's records removal commits.
+			for _, rel := range []string{shedrun.StatusRel(location, slug), shedrun.SeedRel(location, slug)} {
+				_, tracked, err := fabricengine.CommittedAnchoredFile(location, rel)
+				if err != nil || tracked {
+					return tracked, err
+				}
+			}
+			return false, nil
 		},
 		ChildReachedParent: func(batten shedengine.Status, battenFound bool) (bool, error) {
 			child, childFound := reader.readChildStatus()
@@ -296,7 +311,7 @@ func hubCancelDeps(location *lyxcwd.Location, slug string) (cancelDeps, error) {
 			return err
 		},
 		Notify: func(line string) error {
-			_, err := orchcli.NotifyPrime(location, battenProgram, line)
+			_, err := notifyRunParent(location, slug, line)
 			return err
 		},
 	}, nil

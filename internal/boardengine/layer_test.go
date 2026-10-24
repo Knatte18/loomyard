@@ -56,6 +56,16 @@ func TestComputeLayers(t *testing.T) {
 			want: map[string]string{"run": "Running", "x": "A", "y": "B", "free": "Ready", "word": "Ready"},
 		},
 		{
+			name: "an open project is neither ready nor a letter and weighs on no dependent",
+			tasks: []boardengine.Task{
+				{ID: 1, Slug: "open", Title: "Open", Kind: boardengine.KindProject},
+				{ID: 2, Slug: "held", Title: "Held", Kind: boardengine.KindProject, Beam: true, Status: stringPtr(boardengine.RunStatus("running", "Webster"))},
+				{ID: 3, Slug: "finished", Title: "Finished", Kind: boardengine.KindProject, Status: stringPtr("done")},
+				{ID: 4, Slug: "task", Title: "Task", Kind: boardengine.KindTask, DependsOn: []string{"open"}},
+			},
+			want: map[string]string{"open": "Project", "held": "Running", "finished": "__done__", "task": "Ready"},
+		},
+		{
 			name: "isolated task",
 			tasks: []boardengine.Task{
 				{ID: 1, Slug: "a", Title: "Task A", Isolated: true},
@@ -199,6 +209,28 @@ func TestRenderOrder(t *testing.T) {
 					got = append(got, r.Slug)
 				}
 				want := []string{"t3", "t10", "t1-after", "b5-isolated", "e1", "e2", "t9-done", "b1-done"}
+				if strings.Join(got, ",") != strings.Join(want, ",") {
+					t.Errorf("RenderOrder() order = %v, want %v", got, want)
+				}
+			},
+		},
+		{
+			name: "open projects sort by handle between open tasks and open notes, and a done project between done tasks and done notes",
+			tasks: []boardengine.Task{
+				{ID: 1, Handle: "B1", Slug: "done-note", Kind: boardengine.KindNote, Status: stringPtr("done")},
+				{ID: 2, Handle: "P2", Slug: "p2", Kind: boardengine.KindProject},
+				{ID: 3, Handle: "B2", Slug: "note", Kind: boardengine.KindNote},
+				{ID: 4, Handle: "P1", Slug: "p1", Kind: boardengine.KindProject, Beam: true, Status: stringPtr(boardengine.RunStatus("running", "Webster"))},
+				{ID: 5, Handle: "P3", Slug: "done-project", Kind: boardengine.KindProject, Status: stringPtr("done")},
+				{ID: 6, Handle: "T1", Slug: "task", Kind: boardengine.KindTask},
+				{ID: 7, Handle: "T2", Slug: "done-task", Kind: boardengine.KindTask, Status: stringPtr("done")},
+			},
+			check: func(t *testing.T, result []boardengine.TaskWithLayer) {
+				var got []string
+				for _, r := range result {
+					got = append(got, r.Slug)
+				}
+				want := []string{"task", "p1", "p2", "note", "done-task", "done-project", "done-note"}
 				if strings.Join(got, ",") != strings.Join(want, ",") {
 					t.Errorf("RenderOrder() order = %v, want %v", got, want)
 				}

@@ -55,6 +55,11 @@ const windowReadBackFormat = "#{window_id} #{remain-on-exit}"
 // ErrNewWindowFailed wrapping the multiplexer's error when it refuses the window;
 // and ErrWindowReadBack when the new window does not read remain-on-exit off, after killing it.
 func (e *Engine) OpenWindow(name string, lyxArgs []string) (WindowResult, error) {
+	return e.OpenWindowIn(name, "", lyxArgs)
+}
+
+// OpenWindowIn is OpenWindow with a working directory: a non-empty dir is the directory the window's command starts in, and an empty one leaves the multiplexer's default.
+func (e *Engine) OpenWindowIn(name, dir string, lyxArgs []string) (WindowResult, error) {
 	var result WindowResult
 	err := e.withOpLock(func() error {
 		if err := e.requireSessionLocked(); err != nil {
@@ -94,10 +99,15 @@ func (e *Engine) OpenWindow(name string, lyxArgs []string) (WindowResult, error)
 		// No other window holds the temporary name, so the chained options cannot land on a same-named window.
 		temporaryName := fmt.Sprintf("%s%d-%d", temporaryWindowNamePrefix, os.Getpid(), temporaryWindowCounter.Add(1))
 		temporaryTarget := exactSessionWindowTarget(session) + "=" + temporaryName
-		out, err := e.newWindowLocked(hiddenWindowInsertArgs(windows), []string{"-P", "-F", "#{window_id}", "-n", temporaryName, command,
+		newWindowArgs := []string{"-P", "-F", "#{window_id}", "-n", temporaryName}
+		if dir != "" {
+			newWindowArgs = append(newWindowArgs, "-c", dir)
+		}
+		newWindowArgs = append(newWindowArgs, command,
 			";", "set-option", "-w", "-t", temporaryTarget, "remain-on-exit", "off",
 			";", "set-option", "-w", "-t", temporaryTarget, "@lyx_hidden", "1",
-			";", "rename-window", "-t", temporaryTarget, name})
+			";", "rename-window", "-t", temporaryTarget, name)
+		out, err := e.newWindowLocked(hiddenWindowInsertArgs(windows), newWindowArgs)
 		if err != nil {
 			return fmt.Errorf("%w: %w", ErrNewWindowFailed, err)
 		}

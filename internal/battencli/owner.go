@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -42,7 +43,7 @@ func hubOwnerSeams(location *lyxcwd.Location) ownerSeams {
 	if _, err := os.Stat(boardDir); errors.Is(err, fs.ErrNotExist) {
 		return ownerSeams{}
 	}
-	parentOf := func(slug string) (string, error) { return fabricengine.ParentSlug(location, slug) }
+	parentOf := func(slug string) (string, error) { return hubgeom.ParentOf(location, slug) }
 	return ownerSeams{
 		Machine:  machinename.Name,
 		Pull:     func() error { return pullBolt(boardDir) },

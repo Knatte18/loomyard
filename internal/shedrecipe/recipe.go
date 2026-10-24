@@ -217,6 +217,9 @@ type Env struct {
 	// CommitDescription is the injected closure that commits the change description's directory,
 	// invoked by the Describe entry's commit decorator on a Done outcome.
 	CommitDescription func() error
+	// BeamDescribe is a whole-struct passthrough to landingshed.NewBeamDescribe, following Env.Landing's precedent, read by the BeamDescribe entry only.
+	// Every field of it is required.
+	BeamDescribe landingshed.BeamDescribeDeps
 	// PlanTable is the injected shedadapters.TableSource the PlanWrite entry evaluates once per Call.
 	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly; internal/loomcli's wire() is what supplies it.
 	// It is named per-producer, like DiscussionTable, because Env already carries per-producer named fields.

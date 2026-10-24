@@ -341,9 +341,8 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 	return c.armAt(location, runID, explicit, verb)
 }
 
-// armAt applies the non-prime refusal, refuses a self address, gates the auto-seed, wires the
-// receiver, and returns the filled Spec. It performs no lyxcwd.Resolve of its own: location is
-// already resolved, told rather than derived, by whichever caller holds it.
+// armAt applies the prime-or-beam guard, refuses a self address, gates the auto-seed, wires the receiver over the prime's location, and returns the filled Spec.
+// It performs no lyxcwd.Resolve of its own: location is already resolved, told rather than derived, by whichever caller holds it.
 //
 // explicit carries resolveBattenRunID's own distinction through to refuseSelfAddress: it is always
 // true when called through the exported ArmAt, since that entry point receives an already-resolved
@@ -358,18 +357,21 @@ func (c *battenCLI) arm(cwd string, verb string, args []string) (shedverbs.Spec,
 // is always the same value the caller holds: the pre-run's own c on the "lyx batten" path, the
 // wrapper's freshly-constructed one on the "lyx shed" path.
 func (c *battenCLI) armAt(location *lyxcwd.Location, runID string, explicit bool, verb string) (shedverbs.Spec, error) {
-	// The drivable-worktree check runs ahead of the prime-name check, because that check asks "is
-	// this the prime of the repository I am standing in" and the pair's fabric sibling is a
-	// repository of its own with a prime of its own: from that sibling's prime the name check
-	// passes and both bookend rows would then drive fabric's topology against the wrong repository
-	// (see refusal.go).
-	if refusalErr := RefuseUnlessPrime(location); refusalErr != nil {
+	// The guard admits the prime and a beam, and returns the prime's location, which every path below lies under (see refusal.go).
+	prime, refusalErr := ResolveBattenPrime(location)
+	if refusalErr != nil {
 		return shedverbs.Spec{}, refusalErr
 	}
 
 	if refusalErr := refuseSelfAddress(runID, explicit); refusalErr != nil {
 		return shedverbs.Spec{}, refusalErr
 	}
+	if verb == "run" || verb == "step" || verb == "goto" {
+		if refusalErr := refuseOwnPair(location, prime, runID, verb); refusalErr != nil {
+			return shedverbs.Spec{}, refusalErr
+		}
+	}
+	location = prime
 
 	c.location = location
 	c.slug = runID

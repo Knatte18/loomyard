@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	overviewOrchBroken   = "orch  state unreadable"
+	overviewOrchBroken   = "state unreadable"
 	overviewWatcherDown  = "watcher down"
 	overviewOrchModule   = "orch"
 	overviewTokensSuffix = "k"
@@ -112,11 +112,21 @@ func loadOverviewThresholds(location *lyxcwd.Location) overviewThresholds {
 	return overviewThresholds{Soft: cfg.SoftThreshold(), Hard: cfg.Threshold(), Known: true}
 }
 
-// overviewOrchLine renders the orch line for orch against thresholds; false when there is no orch state file to show.
+// overviewOrchLine renders the prime's orch line for orch against thresholds; false when there is no orch state file to show.
 // The line reads `orch  <tokens> / soft <soft> / hard <hard>  <phase>  cycles <n>`, with `  watcher down` appended once the watcher has exited.
 func overviewOrchLine(orch orchStatePoll, thresholds overviewThresholds) (string, bool) {
+	return overviewLabeledOrchLine("", orch, thresholds)
+}
+
+// overviewLabeledOrchLine renders the orch line of the orch that label names, the beam's slug, and the prime's orch line when label is empty.
+// A beam's line reads `orch <label>  ...` where the prime's reads `orch  ...`.
+func overviewLabeledOrchLine(label string, orch orchStatePoll, thresholds overviewThresholds) (string, bool) {
+	prefix := overviewOrchModule
+	if label != "" {
+		prefix += " " + label
+	}
 	if orch.Unreadable {
-		return overviewOrchBroken, true
+		return prefix + overviewColumnGap + overviewOrchBroken, true
 	}
 	if !orch.Found {
 		return "", false
@@ -130,7 +140,7 @@ func overviewOrchLine(orch orchStatePoll, thresholds overviewThresholds) (string
 		soft, hard = overviewTokens(thresholds.Soft), overviewTokens(thresholds.Hard)
 	}
 	var line strings.Builder
-	fmt.Fprintf(&line, "orch  %s / soft %s / hard %s  %s  cycles %d", tokens, soft, hard, orch.State.Phase, orch.State.CycleCount)
+	fmt.Fprintf(&line, "%s  %s / soft %s / hard %s  %s  cycles %d", prefix, tokens, soft, hard, orch.State.Phase, orch.State.CycleCount)
 	if orch.State.WatcherExit != "" {
 		line.WriteString(overviewColumnGap + overviewWatcherDown)
 	}

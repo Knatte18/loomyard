@@ -46,6 +46,8 @@ type BriefTask struct {
 	HasProposal bool      `json:"has_proposal"`
 	// OwnerMachine is the entry's effective owner: the recorded one, else the owner it reads as through its parent; empty for a note and where the owner cannot be resolved.
 	OwnerMachine string `json:"owner_machine,omitempty"`
+	// ParentBeam is the slug of the beam the entry belongs to, as the parent resolver answers it; empty for the prime and where the beam cannot be resolved.
+	ParentBeam string `json:"parent_beam,omitempty"`
 }
 
 const (
@@ -139,6 +141,9 @@ type Store struct {
 	// parentOf names the slug of an entry's parent pair for the effective owner, "" for the prime; nil reads every parent as the prime.
 	// Board sets it on every store it builds from Config.ParentOf.
 	parentOf func(slug string) (string, error)
+	// pairExists reports whether an entry's pair exists on this machine; nil reads every pair as absent.
+	// Board sets it on every store it builds from Config.PairExists.
+	pairExists func(slug string) bool
 }
 
 // NewStore creates an empty, unloaded Store over boardDir.
@@ -438,9 +443,9 @@ type MergeStatusUpdate struct {
 
 // UpsertPayloadKeys returns the keys a task payload carries on every upsert path: the required keys and the optional ones.
 // "id" and "handle" are assigned by the board and never accepted; "phase" and "group" are retired.
-// "owner_machine" is accepted only as the entry's effective owner, a no-op.
+// "owner_machine" is accepted only as the entry's effective owner, a no-op, and "beam" only as the entry's stored flag.
 func UpsertPayloadKeys() (required, optional []string) {
-	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "owner_machine"}
+	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "owner_machine", "project", "order", "beam"}
 }
 
 // upsertAllowedKeys is the set of field names every upsert path accepts, enforced at the store boundary.
@@ -486,6 +491,9 @@ func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
 		return Task{}, err
 	}
 	if err := checkOwnerPayload(s, fields); err != nil {
+		return Task{}, err
+	}
+	if err := checkBeamPayload(s, fields); err != nil {
 		return Task{}, err
 	}
 
@@ -662,9 +670,18 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 			continue
 		}
 		owner := t.OwnerMachine
-		if owner == "" && t.Kind == KindTask {
+		if owner == "" && (t.Kind == KindTask || t.Kind == KindProject) {
 			// A resolver error leaves the cell empty: a list never fails on a parent it cannot read.
 			owner, _ = owners.Effective(t.Slug, parentOf)
+		}
+		// A resolver error leaves the cell empty, as for the owner.
+		parentBeam := ParentBeam(s.tasks, t.Slug)
+		if s.parentOf != nil {
+			resolved, err := s.parentOf(t.Slug)
+			parentBeam = resolved
+			if err != nil {
+				parentBeam = ""
+			}
 		}
 		brief := BriefTask{
 			ID:           t.ID,
@@ -683,6 +700,7 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 			Layer:        layerMap[t.Slug],
 			HasProposal:  t.Body != "",
 			OwnerMachine: owner,
+			ParentBeam:   parentBeam,
 		}
 		result = append(result, brief)
 	}
@@ -691,11 +709,15 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 
 // Promote makes the entry identified by idOrSlug a task and clears its priority, which only a note carries.
 // A task is returned unchanged with changed false, so the caller knows nothing was written.
+// A project is refused, since only a task is claimable bar a beam's landing.
 // The promoted entry passes validateWrite, so a missing type label refuses it.
 func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
 	current, ok := s.GetTask(idOrSlug)
 	if !ok {
 		return Task{}, false, fmt.Errorf("task not found: %v", idOrSlug)
+	}
+	if current.Kind == KindProject {
+		return Task{}, false, fmt.Errorf("entry %q is a project, and a project is never made a task: make it a beam with `lyx beam create %s`", current.Slug, current.Slug)
 	}
 	if current.Kind == KindTask {
 		return current, false, nil
@@ -717,16 +739,31 @@ func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
 	return incoming, true, nil
 }
 
-// Prune removes every done entry, strips the removed slugs from the survivors' depends_on, and returns the removed slugs in store order.
-// An abandoned entry survives.
+// Prune removes every done entry, strips the removed slugs from the survivors' depends_on and order, and returns the removed slugs in store order.
+// An abandoned entry survives, and so does a done project while an entry the same prune does not remove names it in project.
 func (s *Store) Prune() []string {
-	removed := []string{}
 	gone := make(map[string]bool)
-	kept := make([]Task, 0, len(s.tasks))
 	for _, t := range s.tasks {
 		if isDone(t) {
-			removed = append(removed, t.Slug)
 			gone[t.Slug] = true
+		}
+	}
+	// A done project stays while a surviving entry names it, which can in turn keep the done project that entry is a member of.
+	for changed := true; changed; {
+		changed = false
+		for _, t := range s.tasks {
+			if !gone[t.Slug] && t.Project != "" && gone[t.Project] {
+				delete(gone, t.Project)
+				changed = true
+			}
+		}
+	}
+
+	removed := []string{}
+	kept := make([]Task, 0, len(s.tasks))
+	for _, t := range s.tasks {
+		if gone[t.Slug] {
+			removed = append(removed, t.Slug)
 			continue
 		}
 		kept = append(kept, t)
@@ -740,6 +777,9 @@ func (s *Store) Prune() []string {
 			}
 		}
 		kept[i].DependsOn = deps
+		if len(kept[i].Order) > 0 {
+			kept[i].Order = slices.DeleteFunc(slices.Clone(kept[i].Order), func(slug string) bool { return gone[slug] })
+		}
 	}
 
 	s.tasks = kept
@@ -785,6 +825,9 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 			return err
 		}
 		if err := checkOwnerPayload(s, fields); err != nil {
+			return err
+		}
+		if err := checkBeamPayload(s, fields); err != nil {
 			return err
 		}
 	}
@@ -876,10 +919,69 @@ func (s *Store) oldestCreated(own time.Time, removeSlugs []string) time.Time {
 	return oldest
 }
 
+// firstRemovedProject returns the project of the first entry in removeSlugs the store holds, "" when that entry names none or the store holds none.
+func (s *Store) firstRemovedProject(removeSlugs []string) string {
+	for _, slug := range removeSlugs {
+		if removed, held := s.GetTask(slug); held {
+			return removed.Project
+		}
+	}
+	return ""
+}
+
+// checkRemovedProjectsUnnamed refuses a merge that removes a project an entry that survives it still names in project, naming those entries as the ones to move first.
+// projected is the entries without the removed ones, and incoming is the upserted entry, which survives under its own slug.
+func (s *Store) checkRemovedProjectsUnnamed(projected []Task, incoming Task, removeSlugs []string) error {
+	for _, slug := range removeSlugs {
+		removed, held := s.GetTask(slug)
+		if !held || removed.Kind != KindProject || slug == incoming.Slug {
+			continue
+		}
+		var members []string
+		for _, t := range projected {
+			if t.Slug != incoming.Slug && t.Project == slug {
+				members = append(members, t.Slug)
+			}
+		}
+		if incoming.Project == slug {
+			members = append(members, incoming.Slug)
+		}
+		if len(members) > 0 {
+			return fmt.Errorf("cannot remove project %q: %s still name it in project: move them to another project, or drop their project, with `lyx board upsert` first", slug, strings.Join(members, ", "))
+		}
+	}
+	return nil
+}
+
+// mergeOrders rewrites every order that names a removed slug to name into once, in the place of the first removed slug it names.
+// The upserted slug is never a removed one, so an order naming it keeps it.
+func (s *Store) mergeOrders(removeSlugs []string, into string) {
+	removed := slices.DeleteFunc(slices.Clone(removeSlugs), func(slug string) bool { return slug == into })
+	for i := range s.tasks {
+		if !slices.ContainsFunc(s.tasks[i].Order, func(slug string) bool { return slices.Contains(removed, slug) }) {
+			continue
+		}
+		placed := slices.Contains(s.tasks[i].Order, into)
+		var order []string
+		for _, slug := range s.tasks[i].Order {
+			switch {
+			case !slices.Contains(removed, slug):
+				order = append(order, slug)
+			case !placed:
+				order = append(order, into)
+				placed = true
+			}
+		}
+		s.tasks[i].Order = order
+	}
+}
+
 // MergeTasks removes slugs, upserts one task, and optionally sets a status — all atomically.
 // The upserted entry's issues are its own followed by those of each removed entry,
 // so a merge never loses a recorded issue,
 // and its creation time is the oldest known among them.
+// An upserted entry with no project of its own takes the first removed entry's, every order naming a removed slug names the upserted slug once in its place,
+// and a merge that removes a project another surviving entry names in project is refused.
 // setStatus is the resolved status-update step,
 // or nil to skip it.
 // When setStatus targets a missing task, SetStatus returns an error and boardCriticalSection discards the in-memory mutation without saving, leaving the on-disk state unchanged.
@@ -902,6 +1004,9 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 		return Task{}, err
 	}
 	if err := checkOwnerPayload(s, upsert); err != nil {
+		return Task{}, err
+	}
+	if err := checkBeamPayload(s, upsert); err != nil {
 		return Task{}, err
 	}
 
@@ -942,6 +1047,15 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	if !incoming.Created.IsZero() {
 		upsert["created"] = incoming.Created
 	}
+	if incoming.Project == "" {
+		if carried := s.firstRemovedProject(removeSlugs); carried != "" {
+			incoming.Project = carried
+			upsert["project"] = carried
+		}
+	}
+	if err := s.checkRemovedProjectsUnnamed(projected, incoming, removeSlugs); err != nil {
+		return Task{}, err
+	}
 
 	if err := s.validateWrite(projected, incoming); err != nil {
 		return Task{}, err
@@ -955,6 +1069,7 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	if err != nil {
 		return Task{}, err
 	}
+	s.mergeOrders(removeSlugs, upserted.Slug)
 
 	if setStatus != nil {
 		if err := s.SetStatus(setStatus.Selector, setStatus.Status); err != nil {

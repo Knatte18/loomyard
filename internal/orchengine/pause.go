@@ -33,6 +33,24 @@ func (w *Watcher) WatchPause(p PauseWatch) {
 	w.pause = &p
 }
 
+// SetOrchName tells the watcher the agent name of the orch it watches, which the pause checks match an orch caller or a network operation marker against.
+// A watcher never told one reads the prime's orch: any orch name with an empty slug.
+func (w *Watcher) SetOrchName(name string) {
+	w.ownOrchName = name
+}
+
+// isOwnOrch reports whether strand names the orch this watcher watches.
+func (w *Watcher) isOwnOrch(strand string) bool {
+	name, err := agentname.Parse(strand)
+	if err != nil || name.Role != agentname.RoleOrch {
+		return false
+	}
+	if w.ownOrchName == "" {
+		return name.Slug == ""
+	}
+	return strand == w.ownOrchName
+}
+
 // pauseTick reads the pause record and acts on it for this tick.
 // held is true while a live hub entry stands, and the caller then runs nothing else this tick.
 // Under a live hub entry a busy orch gets the first guarded key at the entry's grace end, and a second only on a tick at least the provider's settle time later that still reads it busy;
@@ -146,7 +164,7 @@ func (w *Watcher) pauseInterrupt(st State) (sent bool) {
 
 // settledWithoutInterrupt reports whether entry needs no interrupt and no record of the orch: the orch ran the pause, the entry already owns the orch, the orch started under it, or the watcher was not running at its grace end.
 func (w *Watcher) settledWithoutInterrupt(entry pauserecord.Entry, st State) bool {
-	if name, err := agentname.Parse(entry.Caller); err == nil && name.Role == agentname.RoleOrch && name.Slug == "" {
+	if w.isOwnOrch(entry.Caller) {
 		return true
 	}
 	for _, session := range entry.Sessions {
@@ -187,7 +205,7 @@ func (w *Watcher) orchNetworkOperationInFlight() bool {
 	}
 	w.netOpsFailures.Recover("orch: the pause's network operation markers are readable again")
 	for _, op := range ops {
-		if name, err := agentname.Parse(op.Strand); err == nil && name.Role == agentname.RoleOrch && name.Slug == "" {
+		if w.isOwnOrch(op.Strand) {
 			return true
 		}
 	}

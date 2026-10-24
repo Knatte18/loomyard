@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// TestRefuseStartOwnedElsewhere covers the owner check of a start: an owner elsewhere refuses, an owner here, an absent entry and a receiver with no seams pass, a pull that fails refuses with its way forward, an unreadable hostname refuses, and a hub with no prime owner has this machine claim it first.
+// TestRefuseStartOwnedElsewhere covers the owner check of a start: an owner elsewhere refuses, so does an unspawned member of a beam whose beam another machine owns, an owner here, an absent entry and a receiver with no seams pass, a pull that fails refuses with its way forward, an unreadable hostname refuses, and a hub with no prime owner has this machine claim it first.
 func TestRefuseStartOwnedElsewhere(t *testing.T) {
 	t.Parallel()
 
@@ -27,7 +27,22 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 		wantSets   []string
 		// markerAfterPull makes the cancel marker read absent before the pull and present once it ran.
 		markerAfterPull bool
+		// parent is the slug the owner seams' ParentOf answers for every entry, "" keeping the fake's prime.
+		parent string
 	}{
+		{
+			name: "UnspawnedBeamMemberReadsItsBeamsOwnerElsewhere",
+			fake: fakeOwners{machine: "here", owners: boardengine.Owners{
+				Prime: "here",
+				Entries: map[string]boardengine.OwnerEntry{
+					slug: {IsTask: true},
+					"b":  {Owner: "there", IsProject: true, Beam: true},
+				},
+			}},
+			parent:     "b",
+			wantErrors: []string{`"there"`, "lyx adopt " + slug},
+			wantPulls:  1,
+		},
 		{
 			name:            "CancelMarkerAppearingDuringThePullRefusesBeforeTheClaim",
 			fake:            fakeOwners{machine: "here", owners: ownedBy("", "here", false)},
@@ -87,7 +102,11 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 			t.Parallel()
 
 			fake := tt.fake
-			c := &battenCLI{slug: slug, owner: fake.seams()}
+			seams := fake.seams()
+			if tt.parent != "" {
+				seams.ParentOf = func(string) (string, error) { return tt.parent, nil }
+			}
+			c := &battenCLI{slug: slug, owner: seams}
 			if tt.markerAfterPull {
 				c.guard.Marker = func() (cancelMarkerReading, error) {
 					return cancelMarkerReading{Present: fake.pulls > 0, WriterAlive: true, Marker: cancelMarker{PID: 4242}}, nil

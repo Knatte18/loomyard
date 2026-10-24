@@ -387,12 +387,14 @@ type ReviveReport struct {
 	Skipped []SessionNote `json:"skipped"`
 	// Refused holds the sessions whose state reading or guarded send was refused, each with the reason.
 	Refused []SessionNote `json:"refused"`
-	// Orch is what became of the orch, nil for a pair revive and when the hub has no orch strand or no prime.
-	Orch *OrchRevive `json:"orch,omitempty"`
+	// Orchs is what became of each orch of the hub, one per orch recording a strand; empty for a pair revive and when the hub has none.
+	Orchs []OrchRevive `json:"orchs,omitempty"`
 }
 
-// OrchRevive says what became of the orch's carry-on line.
+// OrchRevive says what became of one orch's carry-on line.
 type OrchRevive struct {
+	// Strand is the orch strand the result is about.
+	Strand string `json:"strand"`
 	// Result is injected, pending, paused or skipped.
 	Result string `json:"result"`
 	// InjectID is the id of the creel inject an injected result made.
@@ -402,7 +404,7 @@ type OrchRevive struct {
 }
 
 // Revive gives ReviveLine to each live session stalled on an API error, in the hub for an empty slug and in one pair for a slug.
-// The hub scope also injects the line into the orch through creel when the orch is stalled the same way, no hub entry is live and no earlier revive inject of tender's still waits for its outcome.
+// The hub scope also injects the line into each orch of the hub through creel when that orch is stalled the same way, no hub entry is live and no earlier revive inject of tender's to it still waits for its outcome.
 // A session a live entry covers is left to resume, and no send is retried.
 func Revive(deps Deps, req ReviveRequest) (ReviveReport, error) {
 	report := ReviveReport{
@@ -424,7 +426,7 @@ func Revive(deps Deps, req ReviveRequest) (ReviveReport, error) {
 	if scope != pauserecord.ScopeHub {
 		return report, nil
 	}
-	report.Orch, err = reviveOrch(deps)
+	report.Orchs, err = reviveOrch(deps)
 	return report, err
 }
 
@@ -476,55 +478,69 @@ func reviveSession(deps Deps, s session, report *ReviveReport) error {
 	return nil
 }
 
-// reviveOrch reports what became of the orch's carry-on line and injects it through creel when the orch reads stalled on an API error, no hub entry is live and no revive inject of tender's still waits for its outcome.
-// The pending check and the inject run inside one `pauserecord.Update` that changes no entry, the lock that serialises tender's revive sends, so two concurrent revives inject at most once.
-// It returns nil for a hub with no orch strand or no prime, and reads no other prime session.
-func reviveOrch(deps Deps) (*OrchRevive, error) {
-	if deps.Prime == nil || deps.OrchStrand == nil {
+// reviveOrch reports what became of each orch's carry-on line and injects it through creel for each orch that reads stalled on an API error, with no hub entry live and no revive inject of tender's to it still waiting for its outcome.
+// Each orch's pending check and inject run inside one `pauserecord.Update` that changes no entry, the lock that serialises tender's revive sends, so two concurrent revives inject at most once per orch.
+// It returns nothing for a hub with no orch recording a strand, and reads no other prime session.
+// An orch whose result is an error stops the walk, and the results of the orchs before it are returned with that error.
+func reviveOrch(deps Deps) ([]OrchRevive, error) {
+	if deps.Orchs == nil {
 		return nil, nil
 	}
-	strand, err := deps.OrchStrand()
+	orchs, err := deps.Orchs()
 	if err != nil {
-		return nil, fmt.Errorf("revive: read the orch strand: %w", err)
+		return nil, fmt.Errorf("revive: list the orchs: %w", err)
 	}
-	if strand == "" {
-		return nil, nil
+	var revives []OrchRevive
+	for _, orch := range orchs {
+		if orch.Pair == nil || orch.Strand == "" {
+			continue
+		}
+		revive, err := reviveOneOrch(deps, orch)
+		if err != nil {
+			return revives, err
+		}
+		revives = append(revives, revive)
 	}
-	state, err := deps.Prime.State(strand)
+	return revives, nil
+}
+
+// reviveOneOrch is reviveOrch's step for one orch: what became of its carry-on line, or the failure that kept a result from being reached.
+func reviveOneOrch(deps Deps, orch Orch) (OrchRevive, error) {
+	state, err := orch.Pair.State(orch.Strand)
 	if err != nil {
-		return nil, fmt.Errorf("revive: read the orch's state: %w", err)
+		return OrchRevive{}, fmt.Errorf("revive: read the orch's state (%s): %w", orch.Name, err)
 	}
 	if !stalledOnAPIError(state) {
-		return &OrchRevive{Result: orchSkipped, Reason: describeState(state)}, nil
+		return OrchRevive{Strand: orch.Name, Result: orchSkipped, Reason: describeState(state)}, nil
 	}
 	var (
-		revive    *OrchRevive
+		revive    OrchRevive
 		reviveErr error
 	)
 	_, err = pauserecord.Update(deps.RecordPath, deps.Now(), func(record *pauserecord.Record) error {
 		if slices.ContainsFunc(record.Live, func(entry pauserecord.Entry) bool { return entry.Scope == pauserecord.ScopeHub }) {
-			revive = &OrchRevive{Result: orchPaused}
+			revive = OrchRevive{Strand: orch.Name, Result: orchPaused}
 			return nil
 		}
-		pending, err := deps.OrchRevivePending()
+		pending, err := orch.RevivePending()
 		if err != nil {
-			reviveErr = fmt.Errorf("revive: look up the orch's revive inject: %w", err)
+			reviveErr = fmt.Errorf("revive: look up the orch's revive inject (%s): %w", orch.Name, err)
 			return nil
 		}
 		if pending {
-			revive = &OrchRevive{Result: orchPending}
+			revive = OrchRevive{Strand: orch.Name, Result: orchPending}
 			return nil
 		}
-		id, err := deps.InjectOrchRevive(ReviveLine)
+		id, err := orch.InjectRevive(ReviveLine)
 		if err != nil {
-			reviveErr = fmt.Errorf("revive: inject the orch's carry-on line: %w", err)
+			reviveErr = fmt.Errorf("revive: inject the orch's carry-on line (%s): %w", orch.Name, err)
 			return nil
 		}
-		revive = &OrchRevive{Result: orchInjected, InjectID: id}
+		revive = OrchRevive{Strand: orch.Name, Result: orchInjected, InjectID: id}
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return OrchRevive{}, err
 	}
 	return revive, reviveErr
 }

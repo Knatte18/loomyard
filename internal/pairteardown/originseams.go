@@ -36,13 +36,13 @@ type SeamOptions struct {
 
 // HubSeamOptions returns the options a call site with only the prime's location needs.
 // HubPaused reads the hub's pause record at each call, and PrimeParentLockFree lists the parent lock store once for the prime's branch.
-// Machine reads the machine's name, and ParentOf resolves a pair's parent slug from its origin record over the prime's location.
+// Machine reads the machine's name, and ParentOf resolves an entry's parent slug through hubgeom.ParentOf over the prime's location.
 // WakeHeld and LiftWakeHold are left nil, which read as no wake hold, for the call site that knows one to fill.
 func HubSeamOptions(prime *lyxcwd.Location) SeamOptions {
 	return SeamOptions{
 		Machine: machinename.Name,
 		ParentOf: func(slug string) (string, error) {
-			return fabricengine.ParentSlug(prime, slug)
+			return hubgeom.ParentOf(prime, slug)
 		},
 		HubPaused: func(slug string) (bool, error) {
 			geometry, err := hubgeom.PauseGeometry(prime)

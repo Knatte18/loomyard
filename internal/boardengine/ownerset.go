@@ -41,6 +41,10 @@ type OwnerRequest struct {
 	Takeover bool
 	// Claim is a run status written on the request's one slug in the same commit; it needs exactly one slug.
 	Claim string
+	// Beam sets the beam flag on each named project the write records, in the same commit as the owner; only the beam verbs ask for it.
+	Beam bool
+	// ToProject turns each named task the write records into a project in the same commit, clearing its depends_on, recipe, profile, run_settings and priority and giving it a project handle; it needs Beam.
+	ToProject bool
 	// ParentOf names the slug of an entry's parent pair, "" for the prime, so the effective owner is judged as a read judges it; nil reads every parent as the prime.
 	ParentOf func(slug string) (string, error)
 	// Sleep waits out the retry delay after a held lock deferred the push; nil sleeps.
@@ -69,6 +73,10 @@ func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 	}
 	if req.Claim != "" && len(req.Slugs) != 1 {
 		return OwnerWrite{}, fmt.Errorf("board: a claim status goes with exactly one slug, and the owner write names %d", len(req.Slugs))
+	}
+
+	if req.ToProject && !req.Beam {
+		return OwnerWrite{}, errors.New("board: an owner write that turns a task into a project asks for the beam flag too, and only `lyx beam promote` asks for either: use `lyx beam promote <slug>` to make a task a beam")
 	}
 
 	cfg := ApplySkipEnv(Config{Path: boardDir})
@@ -161,7 +169,7 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 	}
 	for _, slug := range req.Slugs {
 		index := slices.IndexFunc(store.tasks, func(task Task) bool { return task.Slug == slug })
-		if index < 0 || isDone(store.tasks[index]) || store.tasks[index].Kind != KindTask {
+		if index < 0 || isDone(store.tasks[index]) || (store.tasks[index].Kind != KindTask && store.tasks[index].Kind != KindProject) {
 			continue
 		}
 		effective, err := store.effectiveOwner(slug)
@@ -173,7 +181,14 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 			continue
 		}
 		store.tasks[index].OwnerMachine = req.Machine
-		if req.Claim != "" {
+		if req.ToProject && store.tasks[index].Kind == KindTask {
+			turnIntoProject(&store.tasks[index])
+		}
+		if req.Beam && store.tasks[index].Kind == KindProject {
+			store.tasks[index].Beam = true
+		}
+		// Only a task, or a project that is a beam, is claimable; any other project keeps its status.
+		if req.Claim != "" && (store.tasks[index].Kind == KindTask || store.tasks[index].Beam) {
 			claim := req.Claim
 			store.tasks[index].Status = &claim
 		}
@@ -181,6 +196,9 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 	}
 	if len(written) == 0 {
 		return nil, nil, nil
+	}
+	if req.ToProject {
+		assignHandles(store.tasks, store.vocab)
 	}
 
 	if err := store.Save(); err != nil {
@@ -191,6 +209,16 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 		return nil, nil, err
 	}
 	return written, append([]string{boardFile}, rendered...), nil
+}
+
+// turnIntoProject makes the task t a project, clearing the fields only a task carries.
+func turnIntoProject(t *Task) {
+	t.Kind = KindProject
+	t.DependsOn = []string{}
+	t.Recipe = ""
+	t.Profile = ""
+	t.RunSettings = nil
+	t.Priority = ""
 }
 
 // renderOwnerWrite renders the board's output files when its config loads, and returns the paths the render wrote or removed.

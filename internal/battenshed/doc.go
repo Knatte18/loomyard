@@ -56,7 +56,7 @@
 // Bound: the report wait delays a notice by at most three minutes, the relay wait by at most ten minutes after the report, and an arbiter hold by at most the arbiter's deadline plus the report wait; none loses it, and there is one notice per episode.
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the quiet window, or by an API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
 //
-// A batten run starts with "lyx batten run <slug>" in a terminal, or with "--window" in its own tmux window of the orch's reed session, which returns at once.
+// A batten run starts with "lyx batten run <slug>" in a terminal, or with "--window" in its own tmux window of the reed session of the run's parent worktree, the prime's or a beam's, which returns at once.
 // The tmux window lives as long as the reed session, and a second batten for the slug is refused by the run's own driver lock inside the window, in batten's own log.
 // "lyx batten run" steps the lifecycle through the Go driver, so an unexpected stop meets the driver's rule table and a cold tackler before the orch, and the driver lock refuses a second run for the slug.
 //
@@ -184,6 +184,11 @@
 // outside the prime lock it runs the landing config's hub-wide `deploy` command in the prime, for a parent branch in `deploy_branches` only, with a thirty-minute timeout and its output in the row's deploy log;
 // it writes the ready snapshot before pruning the board, so the tasks the prune made ready are named exactly once across a restart; and it posts one landing notice per batten run, naming the tasks the prune made ready when there are any.
 // The two locks differ in what they hold: the land lock serialises whole landings, the prime lock only the pull.
+// The landing notice takes the walk up the run's beam chain and names a newly ready task only when the walked orch may start it:
+// `LandDeps.ReadyRoutes` splits the newly ready tasks into routes, each with its own destination key and notify seam.
+// A route the landing line already reaches rides that line.
+// Every other route posts one `landed; newly ready:` line of its own to its orch, once per batten run under its own marker line.
+// A task in no route is named in no notice, and a nil `ReadyRoutes` names every newly ready task on the landing line.
 // A failed step is Stuck naming it, with one failure notice per episode.
 // A pause seen during the land-lock or dirty-prime wait halts the row blocked with no notice, rather than paused, since the row has no on_stuck route to yield through;
 // shed's blocked persist leaves the pause flag set, so the way back is `lyx batten goto <slug> --to Land`, which clears it, then `lyx batten run <slug>`.
