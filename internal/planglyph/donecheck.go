@@ -62,6 +62,7 @@ func resolveKeyFor(ref string) string {
 // A Create target under the worktree root's .scratch/ is a transient draft and is neither resolved nor judged.
 // A target still path-shaped is a path canonicalization could not spell as a glyph, such as one whose directory holds a space.
 // Quarry rejects it before resolution, so its worktree-relative path is checked on disk instead, existing for the Create direction and absent for the Delete direction.
+// Under a go plan, a Create target or Rename new side quarry answers not_found is done when its member is declared in its directory's other package, `<dir>_test` for `<dir>` and the reverse, since a plan cannot tell which package a new test file declares.
 // A Create target or Rename new side quarry answers not_found also names, in its detail, the files declaring the looked-up unit and every declaration elsewhere in the worktree carrying the looked-up name, so a missing declaration reads apart from one written somewhere the card did not say.
 // An answer outside quarry's four-value status vocabulary — a pre-resolution rejection, or a status
 // this policy has not been taught — is the blocking finding glyph-rejected for that entry, failing
@@ -167,6 +168,15 @@ func anyMemberMissing(entries []doneCheckEntry, index map[string]quarry.ResolveR
 		}
 	}
 	return false
+}
+
+// declaredInCounterpartPackage reports whether declarations hold key's member in the other Go package of key's directory, `<dir>_test` for `<dir>` and the reverse.
+func declaredInCounterpartPackage(plan *planparser.Plan, key string, declarations []quarry.Symbol) bool {
+	counterpart, ok := planparser.GoPackageCounterpart(plan, key)
+	if !ok {
+		return false
+	}
+	return slices.ContainsFunc(declarations, func(s quarry.Symbol) bool { return s.ID == counterpart })
 }
 
 // searchedDescription names, for a key quarry answered not_found, the files among declarations that declare the key's unit and every declaration elsewhere whose own name is the key's member name, with its glyph and file.
@@ -309,6 +319,10 @@ func doneCheckVerdicts(plan *planparser.Plan, worktreeRoot string, entries []don
 			lookup = fmt.Sprintf("looked up %q, quarry answered ambiguous: %s", e.key, crossDetail)
 		}
 		if r.Status == quarry.StatusNotFound && (e.checkID == "create-not-done" || e.checkID == "rename-not-done-new") {
+			// A Go test written into the external test package, or the reverse, is the card's work done in its directory's other package.
+			if declaredInCounterpartPackage(plan, e.key, declarations) {
+				continue
+			}
 			if searched := searchedDescription(plan, e.key, declarations); searched != "" {
 				lookup += "; " + searched
 			}

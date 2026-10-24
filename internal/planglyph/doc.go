@@ -113,6 +113,7 @@
 //   - bind-count-mismatch (blocking) — BindHandles (handle.go), a card whose own handles (its
 //     Create declarations AND any Rename pair's still-handle-shaped New side, per planparser.OwnedHandles)
 //     the record-batch delta matched fewer of than it owns.
+//     Under a go plan, a handle the delta matches only in its directory's other package, `<dir>_test` for `<dir>` and the reverse, binds to that glyph (planparser.GoPackageCounterpart).
 //   - plan-references-deleted-symbol (blocking), rename-candidate (informational) — DetectDrift
 //     (drift.go), the exact-tier and evidence-tier halves of drift detection.
 //   - scope-outside-plan (informational) — ScopeGuard (scope.go), a symbol a completed batch's
@@ -130,6 +131,7 @@
 //     A target still path-shaped after canonicalization, one no glyph spells such as a path whose directory holds a space, is judged on disk instead of resolved.
 //     Its path must exist for a Create or Rename new side and must not for a Delete or Rename old side (planparser.IsDiskCheckedTarget).
 //     Each detail carries the lookup: the resolve key looked up beside the card's own spelling, quarry's status, for not_found whether the unit exists, and for ambiguous each candidate's file and build constraint.
+//     Under a go plan, a Create or Rename new side answered not_found is done when the worktree's glyphs listing holds its member in its directory's other package, since a plan cannot tell which package a new test file declares.
 //     A Create or Rename new side answered not_found also names the files declaring its unit and every declaration of its name elsewhere in the worktree, from one glyphs listing taken only when such a finding is due.
 //     An ambiguous answer whose candidates sit in files no single build environment selects together counts as resolved, so a Create or a Rename new side over such a member lands;
 //     the Delete direction and a Rename old side keep blocking on any surviving declaration.

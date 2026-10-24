@@ -410,6 +410,8 @@ func nameDeclarations(decls []quarry.Declaration) ([]quarry.NameResult, error) {
 // — is matched against delta's Created symbols by Symbol.ID for a Create declaration, or against
 // delta's Renamed pairs' own To.ID for a Rename pair's New side; the two sources are checked
 // against different delta fields because a rename is not a create.
+// Under a go plan, an expected glyph matching neither binds to its member in the directory's other package, `<dir>_test` for `<dir>` and the reverse, when the delta holds that.
+// A delta symbol binds at most one handle of a card; a further handle reaching it counts as unmatched.
 //
 // A card's whole set of handles binds together or not at all: a count mismatch — a card owning N
 // handles whose delta matches fewer — is the blocking finding bind-count-mismatch, and suppresses
@@ -424,7 +426,7 @@ func nameDeclarations(decls []quarry.Declaration) ([]quarry.NameResult, error) {
 // card, not only its declaring one.
 //
 // Next to the findings it returns one planindex.BindOutcome per handle of each card in cards, in card then handle order:
-// a handle of a card that bound cleanly carries its glyph, a handle that matched nothing carries planindex.BindNoDeltaMatch,
+// a handle of a card that bound cleanly carries its glyph, a handle that matched no unclaimed delta symbol carries planindex.BindNoDeltaMatch,
 // and a matched handle of a card that did not bind carries planindex.BindSiblingUnmatched.
 // A RewriteRefs error comes back beside the findings and outcomes computed so far.
 //
@@ -454,6 +456,16 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 	bound := func(expected string) bool {
 		return created[expected] || renamedTo[expected]
 	}
+	// A Go test written into its directory's other package, the external test package or the reverse, binds to the glyph the card created there.
+	boundGlyph := func(expected string) (string, bool) {
+		if bound(expected) {
+			return expected, true
+		}
+		if counterpart, ok := planparser.GoPackageCounterpart(plan, expected); ok && bound(counterpart) {
+			return counterpart, true
+		}
+		return "", false
+	}
 
 	var findings []Finding
 	var outcomes []planindex.BindOutcome
@@ -467,11 +479,13 @@ func BindHandles(plan *planparser.Plan, planDir string, delta quarry.GitDeltaAns
 
 		cardSubs := make(map[string]string, len(handles))
 		matched := 0
+		// A delta symbol binds one handle of the card: a second handle reaching the same glyph, through the other package's spelling, counts as unmatched.
+		claimed := make(map[string]bool, len(handles))
 		for _, h := range handles {
-			expected := resolveKeyFor(h)
-			if bound(expected) {
+			if id, ok := boundGlyph(resolveKeyFor(h)); ok && !claimed[id] {
+				claimed[id] = true
 				matched++
-				cardSubs[h] = expected
+				cardSubs[h] = id
 			}
 		}
 

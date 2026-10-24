@@ -17,8 +17,9 @@
 // package uses. No `strings.TrimSuffix(s, "#")`, no reading Glyph.Unit as a disk path, and
 // no local regex over a glyph string anywhere in this package or its callers --
 // cmd/lyx/constraintchokepoint_test.go guards this mechanically.
-// goPackageDir (targetdirs.go) is the one sanctioned adjustment beside Glyph.UnitPath:
-// it maps quarry's external-test pseudo-unit `<dir>_test` to its package directory.
+// goPackageDir and GoPackageCounterpart (targetdirs.go) are the sanctioned adjustments beside Glyph.UnitPath:
+// goPackageDir maps quarry's external-test pseudo-unit `<dir>_test` to its package directory.
+// GoPackageCounterpart maps a member glyph between `<dir>` and `<dir>_test`.
 // ParseRef (glyphref.go) is the one alphabet choice for a plan ref and for a `plan:` handle's body, so nothing outside this package passes a glyph.Language to a parse;
 // PATTERN-glyph-conversion-chokepoint states the rule.
 //
@@ -79,8 +80,8 @@
 // — never `go doc`, never a process spawn.
 // planparser itself spawns no process and stays tier1-pure per the Test Tier Purity Invariant.
 // glyphref.go holds the sole path->glyph call (glyph.Self), and Glyph.UnitPath is the sole glyph->path call, per the glyph-conversion-chokepoint Shared Decision.
-// goPackageDir (targetdirs.go) stands beside Glyph.UnitPath as the external-test unit mapping.
-// CardTargetDirs and RefScope call it.
+// goPackageDir and GoPackageCounterpart (targetdirs.go) stand beside Glyph.UnitPath as the external-test unit mappings.
+// CardTargetDirs and RefScope call goPackageDir.
 //
 // # The root:/// resolution rule
 //
