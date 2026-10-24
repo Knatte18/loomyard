@@ -8,6 +8,9 @@
 // It returns Targets{Whole, Fallback, Base, Modules, Guards, BinaryTests}: each ModuleTargets names a module directory, `.` for the root, and its module-relative package arguments in the order the graph lists them, every impacted package kept, test-less ones included.
 // Targets also names the base it diffed from whenever that base was usable.
 //
+// The two diff reads DeriveTargets starts with are exported for other scopers:
+// ChangedPaths returns the paths that differ between a base and the working tree, and AncestorBase resolves a base to a commit and reports whether it is an ancestor of HEAD.
+//
 // DeriveTargets falls back to Whole, with the reason, when any of these holds:
 // there is no `go.mod` at the worktree root;
 // the base is empty, or is not an ancestor of HEAD;

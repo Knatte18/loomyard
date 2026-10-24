@@ -39,6 +39,8 @@ type tierResult struct {
 	refusal string
 	// trimpathNote is the line saying the tier built with `-trimpath`, empty when it did not or ran no command.
 	trimpathNote string
+	// buildFailed is set instead of an outcome when the build step that precedes the tier failed or timed out, so the tier ran no command and is reported blocked.
+	buildFailed bool
 }
 
 // runTier runs the tier of run in ctx with its slots held: it prebuilds `lyx` when the tier asks, then runs each invocation's command through the platform shell as a tied child, stopping at the first non-zero exit.
@@ -133,7 +135,7 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 
 	shellName, shellFlag := verifyrun.ShellFor(runtime.GOOS)
 	for _, invocation := range run.invocations {
-		command, err := renderTierCommand(run.tier, invocation.targets, run.args)
+		command, err := renderTierCommand(run.number, run.tier, invocation.targets, invocation.terms, run.args)
 		if err != nil {
 			return 0, commands, err.Error()
 		}

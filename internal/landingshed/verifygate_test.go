@@ -263,6 +263,16 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			},
 		},
 		{
+			name: "build timed out names the build key and the hanging build", command: "true", site: "Publish",
+			result: verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, TimedOut: true, Detail: "gate build exceeded timeout_min 5m0s and was killed", Log: failedLog},
+			wantReasonExact: func(logPath string) string {
+				return `landing gate timed out after merging parent branch "main": gate build exceeded timeout_min 5m0s and was killed; output: ` + logPath +
+					`; fix the hanging build, such as a stalled restore or compile, on the task branch, or, for a build that is slow but healthy, rewrite the build whole from the prime with ` +
+					"`lyx config gate --set 'build={...}'`" +
+					`, carrying every key of the build and the raised timeout_min, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it; then resume`
+			},
+		},
+		{
 			name: "dirty result names the paths", command: "true", site: "Publish",
 			result:        verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"a.txt", "b.txt"}},
 			wantReasonHas: []string{"a.txt", "b.txt"},

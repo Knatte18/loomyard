@@ -43,6 +43,7 @@ func TestWatchdogLine(t *testing.T) {
 		wantOK   bool
 	}{
 		{"the timeout line amid test output", "=== RUN   TestX\n" + timeoutLine + "\nSIGQUIT: quit\n", "tier2", true},
+		{"the build timeout line", "restoring\n" + BuildTimeoutLine(5*time.Minute) + "\n", "build", true},
 		{"test output with no timeout line", "=== RUN   TestX\n--- PASS: TestX (0.00s)\nPASS\n", "", false},
 	}
 	for _, tt := range timeoutTests {
@@ -57,5 +58,8 @@ func TestWatchdogLine(t *testing.T) {
 	}
 	if want := "--set 'tiers.tier2={...}'"; !strings.Contains(timeoutLine, want) {
 		t.Errorf("TierTimeoutLine() = %q; want it to name the whole-tier step %q", timeoutLine, want)
+	}
+	if line, want := BuildTimeoutLine(5*time.Minute), "--set 'build={...}'"; !strings.Contains(line, want) {
+		t.Errorf("BuildTimeoutLine() = %q; want it to name the whole-build step %q", line, want)
 	}
 }

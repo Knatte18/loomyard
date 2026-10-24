@@ -22,6 +22,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/verifytree"
@@ -60,8 +61,10 @@ type greenRecord struct {
 	Entries []greenEntry `json:"entries"`
 }
 
-// tierFingerprint hashes tier's declaration without its parallel, timeout and slots, so a changed command, env, targets or counter never carries a pass over.
-func tierFingerprint(tier gateslot.Tier) string {
+// tierFingerprint hashes tier's declaration without its parallel, timeout and slots, so a changed command, env, targets, counter, filter or carry setting never carries a pass over.
+// build is hashed only for a tier with shared_build, and inert only when non-empty;
+// every key added after the original fields is hashed at a non-default value alone, so a tier that sets none of them keeps its fingerprint.
+func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []string) string {
 	declaration := struct {
 		About       string
 		Command     string
@@ -72,7 +75,18 @@ func tierFingerprint(tier gateslot.Tier) string {
 		Covers      []int
 		PrebuiltLyx bool
 		Manual      bool
-	}{tier.About, tier.Command, tier.Dir, tier.Env, tier.AllTargets, tier.Counter, tier.Covers, tier.PrebuiltLyx, tier.Manual}
+		Filter      string              `json:",omitempty"`
+		SharedBuild bool                `json:",omitempty"`
+		NoCarry     bool                `json:",omitempty"`
+		Build       *gateslot.BuildStep `json:",omitempty"`
+		Inert       []string            `json:",omitempty"`
+	}{
+		About: tier.About, Command: tier.Command, Dir: tier.Dir, Env: tier.Env, AllTargets: tier.AllTargets, Counter: tier.Counter, Covers: tier.Covers, PrebuiltLyx: tier.PrebuiltLyx, Manual: tier.Manual,
+		Filter: tier.Filter, SharedBuild: tier.SharedBuild, NoCarry: tier.NoCarry, Inert: inert,
+	}
+	if tier.SharedBuild {
+		declaration.Build = &build
+	}
 	data, err := json.Marshal(declaration)
 	if err != nil {
 		panic(fmt.Sprintf("gate test: encode a tier declaration: %v", err))
@@ -223,11 +237,18 @@ type greenRun struct {
 	record   greenRecord
 	scoperGo bool
 	goBinary string
+	// cfg is the call's gate config, whose build step and inert_paths join a tier's fingerprint and whose inert_paths decide an inert carry.
+	cfg gateslot.Config
+}
+
+// fingerprint returns the fingerprint a pass of tier is recorded and looked up under in this call.
+func (g *greenRun) fingerprint(tier gateslot.Tier) string {
+	return tierFingerprint(tier, g.cfg.Build, g.cfg.InertPaths)
 }
 
 // openGreen reads the green record for a call at root when the worktree is clean, and returns nil when no record applies.
 // A failed status or HEAD read is logged and also returns nil, so the call runs every tier.
-func openGreen(gateDir, root, goBinary string, scoperGo bool) *greenRun {
+func openGreen(gateDir, root, goBinary string, cfg gateslot.Config) *greenRun {
 	dirty, err := verifytree.DirtyPaths(root)
 	if err != nil {
 		logger.Warn("gate test: could not check the worktree for the green record; running every tier", "cause", err)
@@ -243,7 +264,7 @@ func openGreen(gateDir, root, goBinary string, scoperGo bool) *greenRun {
 		return nil
 	}
 	recordPath := filepath.Join(gateDir, greenFileName)
-	return &greenRun{path: recordPath, root: root, tree: tree, commit: commit, record: readGreen(recordPath), scoperGo: scoperGo, goBinary: goBinary}
+	return &greenRun{path: recordPath, root: root, tree: tree, commit: commit, record: readGreen(recordPath), scoperGo: cfg.Scoper == "go", goBinary: goBinary, cfg: cfg}
 }
 
 // headIdentity returns HEAD's tree and commit in root.
@@ -275,19 +296,31 @@ type greenPlan struct {
 	invocations []invocation
 	// carried maps a module key to the packages of its invocation the record held green.
 	carried map[string][]string
+	// inertCarried lists the module keys whose whole invocation is carried from an ancestor's whole entry over an inert-only diff; each needs a whole entry for the current tree.
+	inertCarried []string
 }
 
 // subtract returns run with what the record holds green for the current tree taken out.
 // A whole entry drops its module's invocation, and under the go scoper a package entry drops the packages it names from the invocation's targets.
 // A command that renders into more than greenCommandBudget bytes of targets, or whose packages cannot be listed, keeps the whole invocation.
+// A tier with carry: false keeps every invocation.
+// Under inert_paths, a whole invocation the record holds nothing for is also carried when a whole entry of an ancestor stands for it over an inert-only diff, and its module key joins the plan's inertCarried.
 func (g *greenRun) subtract(ctx context.Context, run tierRun, env []string) greenPlan {
 	plan := greenPlan{carried: map[string][]string{}}
-	fingerprint := tierFingerprint(run.tier)
+	if run.tier.NoCarry {
+		plan.invocations = run.invocations
+		return plan
+	}
+	fingerprint := g.fingerprint(run.tier)
 	hasTargets := strings.Contains(run.tier.Command, "{targets}")
 	for _, inv := range run.invocations {
 		key := moduleKey(g.root, inv.dir)
 		whole, packages := g.record.covered(fingerprint, g.tree, key, run.args)
 		if whole {
+			continue
+		}
+		if len(packages) == 0 && g.carriesOverInert(ctx, run, inv, key, fingerprint) {
+			plan.inertCarried = append(plan.inertCarried, key)
 			continue
 		}
 		if len(packages) == 0 || !g.scoperGo || !hasTargets || len(inv.targets) == 0 {
@@ -316,6 +349,36 @@ func (g *greenRun) subtract(ctx context.Context, run tierRun, env []string) gree
 	return plan
 }
 
+// carriesOverInert reports whether the whole invocation inv of run, which the record holds no entry for on the current tree, is carried over an inert-only diff:
+// the record holds a whole entry under the same fingerprint, empty args and module key for an ancestor whose diff to the working tree is inert.
+// Only a whole invocation of a tier's own run qualifies, never the guard or vet step, a run with args or a partial invocation, and a hub with no inert_paths carries nothing this way.
+func (g *greenRun) carriesOverInert(ctx context.Context, run tierRun, inv invocation, key, fingerprint string) bool {
+	if len(g.cfg.InertPaths) == 0 || len(run.args) > 0 || run.guardStep || run.vetStep || inv.partial {
+		return false
+	}
+	if strings.Contains(run.tier.Command, "{targets}") && (key != moduleKey(g.root, run.tier.Dir) || !slices.Equal(inv.targets, strings.Fields(run.tier.AllTargets))) {
+		return false
+	}
+	isAncestor := func(commit, of string) bool {
+		held, err := gitrepo.New(g.root).IsAncestor(commit, of)
+		return err == nil && held
+	}
+	base, found := g.record.newestWholeAncestor(fingerprint, key, isAncestor)
+	return found && allInertSince(ctx, g.cfg, g.root, base)
+}
+
+// recordInertCarried writes a whole entry for the current tree for each module key plan carried over an inert-only diff, so a later gate carries it directly.
+// A failed write is logged and decides nothing.
+func (g *greenRun) recordInertCarried(run tierRun, plan greenPlan, now time.Time) {
+	fingerprint := g.fingerprint(run.tier)
+	for _, key := range plan.inertCarried {
+		entry := greenEntry{Fingerprint: fingerprint, Tree: g.tree, Commit: g.commit, ModuleDir: key, Whole: true}
+		if err := recordGreen(g.path, entry, now); err != nil {
+			logger.Warn("gate test: could not write the green record", "tier", tierName(run.number), "cause", err)
+		}
+	}
+}
+
 // subtractPackages returns the packages of listed that green does not name, in listed's order.
 func subtractPackages(listed, green []string) []string {
 	return slices.DeleteFunc(slices.Clone(listed), func(pkg string) bool { return slices.Contains(green, pkg) })
@@ -333,17 +396,24 @@ func (g *greenRun) stillGreen() bool {
 
 // recordPass records the invocations of run that just passed, with the carried packages plan names beside them, when the tree is still the one the call started on.
 // An invocation is recorded whole when it ran every target of its tier, or when the packages it ran and the packages carried cover every package the tier's all_targets expand to; otherwise, under the go scoper, it records the packages it ran.
+// A partial invocation, one narrowed to a selected project and its classes, is never recorded, so a filtered pass never stands in for a whole run.
+// A tier with carry: false records nothing.
 // A failed write is logged and decides nothing.
 func (g *greenRun) recordPass(ctx context.Context, run tierRun, ran []invocation, plan greenPlan, env []string, now time.Time) {
 	if !g.stillGreen() {
 		logger.Info("gate test: the tree changed during the run, so the pass is not recorded", "tier", tierName(run.number))
 		return
 	}
-	fingerprint := tierFingerprint(run.tier)
+	if run.tier.NoCarry {
+		return
+	}
+	fingerprint := g.fingerprint(run.tier)
 	for _, inv := range ran {
 		key := moduleKey(g.root, inv.dir)
 		entry := greenEntry{Fingerprint: fingerprint, Tree: g.tree, Commit: g.commit, ModuleDir: key, Args: run.args}
 		switch {
+		case inv.partial:
+			continue
 		case run.guardStep:
 			entry.Packages = inv.targets
 		case !strings.Contains(run.tier.Command, "{targets}"):

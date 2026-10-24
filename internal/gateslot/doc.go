@@ -53,17 +53,24 @@
 // An absent hub file is ErrConfigAbsent with the way forward `lyx fabric reconcile`; outside every hub, where the dirs tell no board, the file is the worktree's own and the way forward is `lyx config gate`, after creating the worktree's `_lyx` directory.
 // TemplateConfig decodes the template alone, for a run outside every hub.
 //
-// The tier keys are `tiers`, `gates`, `scoper`, `refuse_raw` and `tier_parallel`.
+// The tier keys are `tiers`, `gates`, `scoper`, `refuse_raw`, `tier_parallel`, `build` and `inert_paths`.
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lyx config gate --set 'tiers.tierN={...}'` flow mapping;
 // `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`, so a hub file that sets one key keeps the template's value for every other, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
 // The keys lyx reads are `card` and `batch` (scope `card`), `webster`, `merge-in` and `finalize` (scope `all`), and `webster-fix`, `darn-write` and `code-burler-fix` (scope `diff`).
-// `tiers` is an executable key, since a tier command runs any shell command in a task worktree, and `gates`, `scoper` and `refuse_raw` are guard keys, so all of them are hub-file only.
+// `tiers` and `build` are executable keys, since a tier or build command runs any shell command in a task worktree, and `gates`, `scoper`, `refuse_raw` and `inert_paths` are guard keys, so all of them are hub-file only.
+// `build` is an open map, so its sub-keys travel whole through the layer stack and reconcile never prunes a hub's build.
+// A tier may also hold `filter`, its own test-filter expression, `shared_build: true`, which makes the tier depend on the build step, and `carry: false`, which keeps a green run from being carried over an unchanged tree; Tier.NoCarry is the negative form, so a zero Tier carries.
+// `build` holds `about`, `command`, `dir` (default `.`), `env` and `timeout_min`; the template's `build: {}` is no build step, and a declared step has a non-empty Config.Build.Command.
+// `inert_paths` lists glob patterns of files no test reads: Config.Inert matches a worktree-relative slash path through `path.Match`, a pattern without a slash against the path's base name and one with a slash against the whole path, and a pattern `path.Match` rejects matches nothing.
+// Config.AllInert is true only when the list and the paths are both non-empty and every path is inert.
+// The `dotnet` scoper derives the impacted C# test projects and classes from the type-name closure over test classes.
 // The machine override is a sibling map rather than a path under `tiers`, because an open map is one unit in the layer merge, so a machine layer holding part of `tiers` would replace the hub's tiers whole.
 // A tier's `manual: true` keeps it out of a `lyx gate test --upto` range, so it runs only when named by number.
 // A declared tier's effective Parallel is its `tier_parallel` entry when one is set, from whichever layer sets it, and 1 when neither sets one; a standalone worktree has no machine layer and sets the key in its own file.
 //
 // LoadConfig refuses at load, naming the key and `lyx config gate`: a tier lacking `command`, `timeout_min` or `counter`, or `all_targets` when its command holds `{targets}`;
-// `manual: true` on `tier0`, the tier a call with no tier flag runs; `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1, a counter other than `go-json` or `vstest`, a scoper other than `go` or `none`;
+// `manual: true` on `tier0`, the tier a call with no tier flag runs; `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1, a counter other than `go-json` or `vstest`, a scoper other than `go`, `none` or `dotnet`;
+// a tier `filter` whose command holds no `{filter}`, a non-empty `build` lacking `command` or `timeout_min`, a build `timeout_min` below 1, and a tier with `shared_build: true` while the hub declares no build step;
 // a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`, a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces, and a `tier_parallel` entry that is no integer of at least 1;
 // a gate key whose scope is not `card`, `diff` or `all`, and a `card` scope on any key but `card` and `batch`.
 // A `gates` entry still in the retired list shape, such as `card: [0]`, is refused naming `lyx fabric reconcile` as the way forward, since the reconcile runs MigrateConfig.
@@ -104,16 +111,19 @@
 // BusyQuitWayForward is the way forward after one.
 // The line the gate prints when a tier outlives its `timeout_min` is rendered by TierTimeoutLine and found by FindTierTimeout;
 // it names the tier, the timeout and the whole-tier `lyx config gate --set` rewrite that raises it.
+// The build step's timeout line is rendered by BuildTimeoutLine, names `lyx config gate --set 'build={...}'` as the rewrite, and FindTierTimeout finds it too and returns `build` as the tier.
 //
 // # Run log
 //
 // RunLogDir is `<gateDir>/runs`, under the board's never-tracked `.lyx` inside a hub and under the worktree's own outside one, so the records outlive the worktree.
-// WriteRunRecord writes one RunRecord per tier run as `<stamp>-tier<N>-<pid>.json` with the run's full output beside it as a `.log`, and prunes files older than 14 days first.
+// WriteRunRecord writes one RunRecord per tier run as `<stamp>-tier<N>-<pid>.json`, and the build step's record, whose `build` field is set, as `<stamp>-build-<pid>.json`, with the run's full output beside it as a `.log`, and prunes files older than 14 days first.
 // ReadRunRecords reads a directory's records tolerantly, skipping a file that does not decode, for the reports that total them.
 // The record is a domain log that no run reads to proceed.
 // A tier the gate carried forward over an unchanged tree writes its record with `carried` set.
 // A go-json tier's record lists a PackageLaunch per package whose test binary ran; a record written without the list reads with none.
-// TierSummaryLine renders the one stderr line the gate prints after each tier run, marking a carried tier with `carried` after the scope form, and FailedTier finds the first failing one in a log, so a site that keeps the gate's output can name the failing tier.
+// A tier the build step blocked by failing writes its record with `blocked_by` set to the failed build's log path.
+// TierSummaryLine renders the one stderr line the gate prints after each tier run, marking a carried tier with `carried` after the scope form, and BuildSummaryLine renders the build step's line, `gate test: build before tier<N> wall <s>s exit <code> log <path>`, which no tier summary reader matches.
+// FailedTier finds the first failing tier or build line in a log, with `build` true for a build line, so a site that keeps the gate's output can name the failing tier and tell a compile break from a test failure.
 //
 // # Wait records
 //

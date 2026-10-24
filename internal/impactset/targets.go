@@ -50,12 +50,12 @@ func DeriveTargets(ctx context.Context, worktree, base string) (Targets, error) 
 	if err := ctx.Err(); err != nil {
 		return Targets{}, err
 	}
-	resolvedBase, ancestor := resolveAncestorBase(worktree, base)
+	resolvedBase, ancestor := AncestorBase(worktree, base)
 	if !ancestor {
 		return wholeTargets("", fmt.Sprintf("base %s is not an ancestor of HEAD", base)), nil
 	}
 
-	changedPaths, err := changedPathsInTree(ctx, worktree, resolvedBase)
+	changedPaths, err := ChangedPaths(ctx, worktree, resolvedBase)
 	if err != nil {
 		return Targets{}, err
 	}
@@ -85,8 +85,9 @@ func wholeTargets(base, fallback string) Targets {
 	return Targets{Whole: true, Fallback: fallback, Base: base}
 }
 
-// changedPathsInTree returns every path that differs between base and the working tree: tracked changes, staged or not, a renamed file by both its old and new path, and untracked files that are not ignored.
-func changedPathsInTree(ctx context.Context, worktree, base string) ([]string, error) {
+// ChangedPaths returns every path that differs between base and the working tree: tracked changes, staged or not, a renamed file by both its old and new path, and untracked files that are not ignored.
+// ctx is checked before each git read.
+func ChangedPaths(ctx context.Context, worktree, base string) ([]string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

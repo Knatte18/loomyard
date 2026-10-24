@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -545,6 +546,27 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 		}
 		if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
 			t.Error("a merge record was written after a failed verify")
+		}
+	})
+
+	t.Run("a build failure line writes a build record with the blocked tier and no tests", func(t *testing.T) {
+		t.Parallel()
+		fx := newMergeInFixture(t)
+		fx.mergeHead = "m1"
+		fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
+		writeVerifyLog(t, fx.gate, gateslot.BuildSummaryLine(gateslot.RunRecord{Tier: 1, Build: true, ExitCode: 1}, "/runs/b.log")+"\n")
+		fx.m.gate.recorder.failingTests = func(string) []verifytree.FailedTest {
+			return []verifytree.FailedTest{{Package: "example.com/p", Test: "TestX"}}
+		}
+
+		fx.call(t)
+
+		failure, found, err := verifytree.ReadLandingFailure(fx.gate.paths)
+		if err != nil || !found {
+			t.Fatalf("ReadLandingFailure() = %v, %v; want a record", found, err)
+		}
+		if !failure.Build || failure.Tier != 1 || len(failure.Tests) != 0 {
+			t.Errorf("failure record = %+v; want build true, tier 1 and no tests", failure)
 		}
 	})
 

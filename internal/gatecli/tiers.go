@@ -3,6 +3,7 @@
 package gatecli
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
@@ -30,6 +32,10 @@ type invocation struct {
 	// dir is the run directory, relative to the worktree root unless absolute.
 	dir     string
 	targets []string
+	// terms are the class filter terms of an invocation the dotnet scoper narrowed to one selected project; nil for every other invocation.
+	terms []string
+	// partial marks an invocation narrowed to one selected project of a dotnet share, which runs part of its tier and so is never recorded as a whole pass.
+	partial bool
 }
 
 // tierRun is one tier a call runs: the tier, the label of its scope and the invocations of its command.
@@ -48,6 +54,8 @@ type tierRun struct {
 	guardStep bool
 	// vetStep marks the run of `go vet` under a tier's build tag over a --card scope's packages.
 	vetStep bool
+	// buildOnly marks a shared_build tier whose share selected no test class and so has no invocation: it takes its slots to run the build step and runs no test command.
+	buildOnly bool
 }
 
 // tierName returns the gate.yaml key and the label of tier number.
@@ -59,7 +67,9 @@ func tierName(number int) string {
 // the listed tiers ascending with the tiers another listed tier covers dropped, each over its own share of the scope, which a diff scope derives per base, then, for a --card scope under the go scoper, one vet run per tier of sc.tagTiers that no listed tier is or covers, ascending, then one guard run per tier that sc.guards holds guard tests for, when --guards or the scope's form asks for the guard step, ascending and leaving out a tier the listed tiers already ran whole.
 // A guard run is a placeholder whose packages and names the run fills from sc.guards.
 // A covered tier is named on request.stderr when it has one.
+// A tier a no-test-class scope runs whole is named on request.stderr when it has one.
 // It refuses, naming `lyx config gate`, a hub with no tier0, an undeclared tier, a dangling covers entry, words after `--` for a tier whose command lacks {args}, a guard group whose tier is undeclared or whose command lacks {targets} or {args}, and --guards under the none scoper.
+// It refuses --guards under the dotnet scoper too, naming only dropping --guards, since no config change gives a C# hub the guard tests.
 func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun, error) {
 	if _, err := cfg.Tier(0); err != nil {
 		return nil, fmt.Errorf("gate test: %w", err)
@@ -87,7 +97,11 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 		if len(request.args) > 0 && !strings.Contains(tier.Command, "{args}") {
 			return nil, configRefusal("words after \"--\" were given, but the command of %s holds no {args}", tierName(number))
 		}
-		invocations, ignoresTargets := scopeInvocations(tier, request, sc.forTier(number))
+		share := sc.forTier(number)
+		if share.noTests && !tier.SharedBuild {
+			printLine(request.stderr, fmt.Sprintf("gate test: the scope selected no test class, so %s runs whole", tierName(number)))
+		}
+		invocations, ignoresTargets := scopeInvocations(tier, request, share)
 		runs = append(runs, tierRun{
 			number:         number,
 			tier:           tier,
@@ -95,6 +109,7 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 			invocations:    invocations,
 			args:           request.args,
 			ignoresTargets: ignoresTargets,
+			buildOnly:      tier.SharedBuild && share.noTests && len(invocations) == 0,
 		})
 	}
 
@@ -113,6 +128,9 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 
 	if !request.guards && !sc.guardStep {
 		return runs, nil
+	}
+	if cfg.Scoper == "dotnet" {
+		return nil, errors.New("gate test: --guards needs the go scoper to find the guard tests, but gate.yaml's scoper is \"dotnet\"; way forward: drop --guards, then re-run the same command")
 	}
 	if cfg.Scoper != "go" {
 		return nil, configRefusal("--guards needs the go scoper to find the guard tests, but gate.yaml's scoper is %q; drop --guards, or set scoper to go", cfg.Scoper)
@@ -156,7 +174,9 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 
 // scopeInvocations returns the invocations one tier makes over sc, and whether its command ignores the scope's narrowing.
 // Explicit targets run in the -C directory, else the tier's dir; a whole scope runs the tier's all_targets, split at spaces, in the tier's dir.
-// A narrower scope runs the tier once per module in that module's directory, and the empty scope makes none.
+// A narrower scope runs the tier once per module in that module's directory, and the empty scope makes none; a dotnet share's module is a selected project, whose invocation carries its class filter terms and is partial.
+// A scope that selected no test class makes no invocation for a tier with shared_build, and runs any other tier whole.
+// A tier with carry: false runs whole under every scope form but explicit targets, the empty scope included.
 // A command without {targets} runs once, whole, under explicit targets and under a non-empty narrower scope.
 func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invocations []invocation, ignoresTargets bool) {
 	runsWhole := []invocation{{dir: tier.Dir, targets: strings.Fields(tier.AllTargets)}}
@@ -167,7 +187,11 @@ func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invoca
 			dir = request.dir
 		}
 		return []invocation{{dir: dir, targets: request.targets}}, !strings.Contains(tier.Command, "{targets}")
-	case sc.whole:
+	case sc.whole, tier.NoCarry:
+		return runsWhole, false
+	case sc.noTests && tier.SharedBuild:
+		return nil, false
+	case sc.noTests:
 		return runsWhole, false
 	case len(sc.modules) == 0:
 		return nil, false
@@ -175,7 +199,7 @@ func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invoca
 		return runsWhole, true
 	}
 	for _, module := range sc.modules {
-		invocations = append(invocations, invocation{dir: module.dir, targets: module.targets})
+		invocations = append(invocations, invocation{dir: module.dir, targets: module.targets, terms: module.terms, partial: len(module.terms) > 0})
 	}
 	return invocations, false
 }
@@ -275,9 +299,10 @@ func ranWhole(runs []tierRun, number int, sc scope) bool {
 	})
 }
 
-// renderTierCommand fills {targets}, {args} and {parallel} in the tier's command, each target and each arg quoted for the platform shell.
-// A placeholder the command does not hold is not added.
-func renderTierCommand(tier gateslot.Tier, targets, args []string) (string, error) {
+// renderTierCommand fills {targets}, {args}, {parallel} and {filter} in the tier's command, each target and each arg quoted for the platform shell.
+// number is the tier's number and terms are the class filter terms of the invocation; {filter} renders as filterArgument says.
+// A placeholder the command does not hold is not added, so terms given to a command without {filter} filter nothing.
+func renderTierCommand(number int, tier gateslot.Tier, targets, terms, args []string) (string, error) {
 	quotedTargets, err := quoteAll(targets)
 	if err != nil {
 		return "", err
@@ -286,11 +311,46 @@ func renderTierCommand(tier gateslot.Tier, targets, args []string) (string, erro
 	if err != nil {
 		return "", err
 	}
+	filter := ""
+	if strings.Contains(tier.Command, "{filter}") {
+		if filter, err = filterArgument(runtime.GOOS, number, tier, terms); err != nil {
+			return "", err
+		}
+	}
 	return strings.NewReplacer(
 		"{targets}", strings.Join(quotedTargets, " "),
 		"{args}", strings.Join(quotedArgs, " "),
 		"{parallel}", strconv.Itoa(tier.Parallel),
+		"{filter}", filter,
 	).Replace(tier.Command), nil
+}
+
+// filterArgument returns the `--filter` argument for the shell of goos that a tier's {filter} placeholder renders to, or "" when there is no expression.
+// With no terms the expression is the tier's filter.
+// With terms it is the tier's filter, when it has one, ANDed with the terms ORed together.
+// Terms that push the expression past greenCommandBudget are dropped, and the tier's filter stands alone, so the project runs whole within itself.
+func filterArgument(goos string, number int, tier gateslot.Tier, terms []string) (string, error) {
+	expression := tier.Filter
+	if len(terms) > 0 {
+		alternatives := strings.Join(terms, "|")
+		composed := alternatives
+		if tier.Filter != "" {
+			composed = "(" + tier.Filter + ")&(" + alternatives + ")"
+		}
+		if len(composed) > greenCommandBudget {
+			logger.Info("gate test: the class filter exceeds the command budget; the project runs without it", "tier", tierName(number), "terms", len(terms))
+		} else {
+			expression = composed
+		}
+	}
+	if expression == "" {
+		return "", nil
+	}
+	quoted, err := verifyrun.QuoteArg(goos, expression)
+	if err != nil {
+		return "", fmt.Errorf("gate test: the filter of %s cannot be quoted for the shell: %w; way forward: fix the tier's filter with \"lyx config gate\" from the prime%s", tierName(number), err, roleClause)
+	}
+	return "--filter " + quoted, nil
 }
 
 // quoteAll quotes each word as one literal shell argument.

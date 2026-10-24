@@ -20,10 +20,13 @@ func TestGreenRunRecordPass(t *testing.T) {
 	tests := []struct {
 		name string
 		// moveHead commits a change after the call started, so HEAD's tree is no longer the one the pass ran on.
-		moveHead    bool
+		moveHead bool
+		// noCarry declares the tier with carry: false.
+		noCarry     bool
 		wantEntries int
 	}{
 		{name: "a pass on the tree the call started on is recorded", wantEntries: 1},
+		{name: "a carry: false tier's pass is not recorded", noCarry: true, wantEntries: 0},
 		{name: "a tree that changed during the run records nothing", moveHead: true, wantEntries: 0},
 	}
 	for _, tt := range tests {
@@ -42,7 +45,7 @@ func TestGreenRunRecordPass(t *testing.T) {
 			if tt.moveHead {
 				gitkit.CommitFile(t, root, "b.txt", "two\n", "second")
 			}
-			tier := gateslot.Tier{Command: "go test {args}", Dir: ".", Counter: "go-json", TimeoutMin: 1, Parallel: 1, Slots: 1}
+			tier := gateslot.Tier{Command: "go test {args}", Dir: ".", Counter: "go-json", TimeoutMin: 1, Parallel: 1, Slots: 1, NoCarry: tt.noCarry}
 			run := tierRun{number: 1, tier: tier}
 			green.recordPass(context.Background(), run, []invocation{{dir: "."}}, greenPlan{}, nil, time.Now())
 

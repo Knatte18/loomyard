@@ -28,6 +28,7 @@ func TestGateReport(t *testing.T) {
 		{Slug: "s1", TierList: []int{0, 1}, ScopeForm: "all", Start: at, WallSec: 3},
 		{Slug: "s2", GateKey: "finalize", TierList: []int{0}, ScopeForm: "all", WaitStart: at.Add(-time.Second), Start: at, WallSec: 5},
 		{Slug: "s2", GateKey: "finalize", TierList: []int{0}, ScopeForm: "all", Start: at.Add(-72 * time.Hour), WallSec: 7},
+		{Slug: "s3", GateKey: "batch", TierList: []int{0}, ScopeForm: "build", Build: true, WaitStart: at.Add(-time.Second), Start: at, WallSec: 4},
 	}
 	ptr := func(value float64) *float64 { return &value }
 	type row struct {
@@ -39,10 +40,14 @@ func TestGateReport(t *testing.T) {
 		WallSeconds   float64  `json:"wall_seconds"`
 		LaunchSeconds *float64 `json:"launch_seconds"`
 		LaunchShare   *float64 `json:"launch_share"`
+		BuildRuns     int      `json:"build_runs"`
+		BuildSeconds  float64  `json:"build_seconds"`
 	}
 	keyed := row{Slug: "s1", GateKey: "webster-fix", TierRuns: 1, Carried: 1, WaitSeconds: 2, WallSeconds: 10, LaunchSeconds: ptr(1), LaunchShare: ptr(0.25)}
 	unkeyed := row{Slug: "s1", GateKey: "tiers 0,1 all", TierRuns: 1, WallSeconds: 3}
 	finalize := row{Slug: "s2", GateKey: "finalize", TierRuns: 2, WaitSeconds: 1, WallSeconds: 12}
+	// A build record counts in build_runs and build_seconds alone.
+	build := row{Slug: "s3", GateKey: "batch", BuildRuns: 1, BuildSeconds: 4}
 
 	tests := []struct {
 		name  string
@@ -50,9 +55,9 @@ func TestGateReport(t *testing.T) {
 		since time.Time
 		want  []row
 	}{
-		{"every group in slug then key order", "", time.Time{}, []row{unkeyed, keyed, finalize}},
+		{"every group in slug then key order", "", time.Time{}, []row{unkeyed, keyed, finalize, build}},
 		{"a slug keeps only that slug's groups", "s2", time.Time{}, []row{finalize}},
-		{"a since drops a record started before it", "", at.Add(-24 * time.Hour), []row{unkeyed, keyed, {Slug: "s2", GateKey: "finalize", TierRuns: 1, WaitSeconds: 1, WallSeconds: 5}}},
+		{"a since drops a record started before it", "", at.Add(-24 * time.Hour), []row{unkeyed, keyed, {Slug: "s2", GateKey: "finalize", TierRuns: 1, WaitSeconds: 1, WallSeconds: 5}, build}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

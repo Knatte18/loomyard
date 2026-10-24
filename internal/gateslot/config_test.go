@@ -145,7 +145,25 @@ func TestLoadConfig(t *testing.T) {
 		{"tier key whose number overflows int", baseKeys + `tiers: {tier99999999999999999999: {command: x, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tier99999999999999999999" under "tiers": want a tier number that fits an int, such as tier0` + fixIt},
 		{"covers a tier that is not lower", baseKeys + `tiers: {tier1: {command: x, timeout_min: 5, counter: vstest, covers: [1]}}`, Config{}, `gate config key "tiers.tier1.covers": 1; want tier numbers lower than 1` + fixIt},
 		{"tier key not spelled tier<N>", baseKeys + `tiers: {fast: {command: x, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "fast" under "tiers": want a name spelled tier<N>, such as tier0` + fixIt},
-		{"unknown scoper", baseKeys + "scoper: rust\n", Config{}, `gate config key "scoper": "rust"; want go or none` + fixIt},
+		{"unknown scoper", baseKeys + "scoper: rust\n", Config{}, `gate config key "scoper": "rust"; want go, none or dotnet` + fixIt},
+		{"scoper dotnet", baseKeys + "scoper: dotnet\n", hubWith(func(c *Config) { c.Scoper = "dotnet" }), ""},
+		{
+			"filter, shared_build and carry false beside a build and inert_paths", baseKeys + `tiers: {tier0: {command: "dotnet test {filter}", filter: "Category!=Slow", shared_build: true, carry: false, timeout_min: 5, counter: vstest}, tier1: {command: x, timeout_min: 5, counter: vstest, carry: true}}
+build: {command: "dotnet build", timeout_min: 10}
+inert_paths: ["*.md", "docs/*"]
+`,
+			hubWith(func(c *Config) {
+				c.Tiers["tier0"] = Tier{Command: "dotnet test {filter}", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1, Filter: "Category!=Slow", SharedBuild: true, NoCarry: true}
+				c.Tiers["tier1"] = Tier{Command: "x", Dir: ".", Parallel: 1, TimeoutMin: 5, Counter: "vstest", Slots: 1}
+				c.Build = BuildStep{Command: "dotnet build", Dir: ".", TimeoutMin: 10}
+				c.InertPaths = []string{"*.md", "docs/*"}
+			}), "",
+		},
+		{"filter on a command with no {filter}", baseKeys + `tiers: {tier0: {command: x, filter: "A", timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.filter": set, but the command holds no {filter}; want {filter} in the command or no filter` + fixIt},
+		{"build without command", baseKeys + "build: {dir: x, timeout_min: 5}\n", Config{}, `gate config key "build.command": missing; want the shell command the build runs` + fixIt},
+		{"build without timeout_min", baseKeys + "build: {command: b}\n", Config{}, `gate config key "build.timeout_min": missing; want at least 1` + fixIt},
+		{"build with timeout_min 0", baseKeys + "build: {command: b, timeout_min: 0}\n", Config{}, `gate config key "build.timeout_min": 0; want at least 1` + fixIt},
+		{"shared_build with no build step", baseKeys + `tiers: {tier0: {command: x, shared_build: true, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.shared_build": true, but the hub declares no build step; want a build step or shared_build false` + fixIt},
 		{"refuse_raw entry with a double space", baseKeys + `refuse_raw: ["go  test"]`, Config{}, `gate config key "refuse_raw": "go  test"; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces` + fixIt},
 		{"covers a negative tier", baseKeys + `tiers: {tier1: {command: x, timeout_min: 5, counter: vstest, covers: [-1]}}`, Config{}, `gate config key "tiers.tier1.covers": -1; want tier numbers lower than 1` + fixIt},
 		{"refuse_raw entry with a shell character", baseKeys + `refuse_raw: ["go;test"]`, Config{}, `gate config key "refuse_raw": "go;test"; want one or more words of letters, digits, '.', '_' and '-' separated by single spaces` + fixIt},
@@ -467,6 +485,40 @@ func TestLoadConfig_DropsTierParallelOfUndeclaredTier(t *testing.T) {
 			}
 			if got := strings.Contains(warning, machineStep); got != tc.wantMachineStep {
 				t.Errorf("warning = %q; names %q = %v, want %v", warning, machineStep, got, tc.wantMachineStep)
+			}
+		})
+	}
+}
+
+func TestConfig_Inert(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		patterns  []string
+		paths     []string
+		wantInert []bool
+		wantAll   bool
+	}{
+		{"a base-name pattern matches at any depth", []string{"*.md"}, []string{"docs/a.md", "a.md", "a.cs"}, []bool{true, true, false}, false},
+		{"a slash pattern matches the whole path", []string{"docs/*"}, []string{"docs/a.md", "src/docs/a.md"}, []bool{true, false}, false},
+		{"a malformed pattern matches nothing", []string{"[", "*.md"}, []string{"a.cs", "a.md"}, []bool{false, true}, false},
+		{"every path inert", []string{"*.md", "docs/*"}, []string{"a.md", "docs/b.png"}, []bool{true, true}, true},
+		{"one non-inert path among inert ones", []string{"*.md"}, []string{"a.md", "b.cs"}, []bool{true, false}, false},
+		{"an empty list is never all inert", nil, []string{"a.md"}, []bool{false}, false},
+		{"an empty path set is never all inert", []string{"*.md"}, nil, nil, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := Config{InertPaths: tc.patterns}
+			for i, rel := range tc.paths {
+				if got := cfg.Inert(rel); got != tc.wantInert[i] {
+					t.Errorf("Inert(%q) = %v; want %v", rel, got, tc.wantInert[i])
+				}
+			}
+			if got := cfg.AllInert(tc.paths); got != tc.wantAll {
+				t.Errorf("AllInert(%q) = %v; want %v", tc.paths, got, tc.wantAll)
 			}
 		})
 	}
