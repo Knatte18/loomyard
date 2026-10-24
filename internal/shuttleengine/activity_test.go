@@ -5,6 +5,7 @@
 package shuttleengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -47,6 +48,19 @@ func (e signalActivityEngine) ParseSessionSignals(data []byte) ([]SessionSignal,
 		}
 	}
 	return signals, len(data)
+}
+
+// failingPartEngine is a fakeEngine whose ParseEvents fails on any bytes containing failOn.
+type failingPartEngine struct {
+	*fakeEngine
+	failOn string
+}
+
+func (e *failingPartEngine) ParseEvents(data []byte) ([]Event, error) {
+	if strings.Contains(string(data), e.failOn) {
+		return nil, errors.New("failingPartEngine: scripted parse failure")
+	}
+	return e.fakeEngine.ParseEvents(data)
 }
 
 // activityRun describes one run directory under the run-directory root.
@@ -155,6 +169,28 @@ func TestReadAgentActivity(t *testing.T) {
 			want: []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten}},
 		},
 		{
+			name: "a first turn not yet ended reads the session's activity through the turn end before the prompt offset, without its API error",
+			runs: map[string]activityRun{"run-a": {
+				outcome: runOutcomeRunning, pid: livePID, strandName: "hub:task:driver",
+				events: "STOP:skill\n", promptOffset: int64(len("STOP:skill\n")),
+			}},
+			transcript: map[string]TurnEndActivity{
+				"skill": {TranscriptModTime: transcriptWritten, APIError: true, APIErrorText: "from the skill load"},
+			},
+			want: []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten}},
+		},
+		{
+			name: "a prompt offset past the end of the file reads the whole file as the session's earlier activity",
+			runs: map[string]activityRun{"run-a": {
+				outcome: runOutcomeRunning, pid: livePID, strandName: "hub:task:driver",
+				events: "STOP:skill\n", promptOffset: 1000,
+			}},
+			transcript: map[string]TurnEndActivity{
+				"skill": {TranscriptModTime: transcriptWritten, APIError: true, APIErrorText: "from the skill load"},
+			},
+			want: []AgentActivity{{StrandName: "hub:task:driver", LastActivity: transcriptWritten}},
+		},
+		{
 			name: "a record without a strand name reports the strand guid",
 			runs: map[string]activityRun{"run-a": {outcome: runOutcomeRunning, pid: livePID, events: "STOP:turn\n"}},
 			want: []AgentActivity{{StrandName: "guid-run-a", LastActivity: eventsWritten}},
@@ -221,6 +257,33 @@ func TestReadAgentActivity(t *testing.T) {
 		}
 
 		requireFailureEpisode(t, buf.String(), "could not parse a run's events", 2, "run events parse again")
+	})
+
+	// It captures the process-global logger at Debug, so it runs serially like the test.
+	t.Run("a pre-offset part that fails to parse after the own part parsed logs one episode", func(t *testing.T) {
+		buf := logcapture.CaptureVerbose(t)
+		logger.SetVerbosity(2)
+		root := t.TempDir()
+		run := activityRun{
+			outcome: runOutcomeRunning, pid: livePID, strandName: "hub:task:driver",
+			events: "BAD\nnoise\n", promptOffset: int64(len("BAD\n")),
+		}
+		writeActivityRun(t, root, "run-a", run, created, eventsWritten)
+		engine := &failingPartEngine{fakeEngine: &fakeEngine{}, failOn: "BAD"}
+
+		for range 4 {
+			if _, err := ReadAgentActivity(Config{RunDir: root}, t.TempDir(), singleEngineSet(engine)); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		failure := "could not parse a run's events"
+		if got := countLevelLines(buf.String(), "WARN", failure); got != 1 {
+			t.Errorf("WARN lines of %q = %d, want 1; log: %s", failure, got, buf.String())
+		}
+		if got := countLevelLines(buf.String(), "INFO", "run events parse again"); got != 0 {
+			t.Errorf("INFO recovery lines = %d, want 0; log: %s", got, buf.String())
+		}
 	})
 
 	// It captures the process-global logger at Debug, so it runs serially like the test.

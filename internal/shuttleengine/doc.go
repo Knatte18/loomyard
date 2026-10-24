@@ -427,8 +427,10 @@
 // the run's strand name, its last activity, and whether its newest turn end is an API error with the error's text.
 // The last activity is the newer of the session's last activity, its forks included, and the time of the events file's newest Stop or ask line, the run's creation time when neither is readable.
 // A Stop or ask line carrying no time, an engine without the optional SessionSignalParser capability, and a file yielding no signals count the events file's last write instead, so an idle notice, a prompt submission or a stamp line never moves it.
-// The events past the prompt offset are parsed through the Engine, and the newest turn end goes to the optional ActivityReader capability for the session part;
-// an engine without it, and a run with no turn end yet, are judged by the events file alone.
+// The events past the prompt offset are parsed through the Engine, and the newest turn end goes to the optional ActivityReader capability for the session part.
+// With no turn end past the offset, the newest one before it, a skill-load turn end of the same session, goes instead, for the session's last activity only and never its API error,
+// so a first turn spent in a fork reads active before it ends.
+// An engine without the capability, and a run with no turn end at all, are judged by the events file alone.
 // Like ReadWaitMarker it reads files only, so a process that runs no shuttle may call it.
 //
 // Session state has two consumers: Runner.SessionIdle and the verified send's idle wait, which gate on the readiness reading built from it.
