@@ -1,5 +1,5 @@
 // patternchanges.go implements the decision record's optional `## PATTERN changes` section:
-// ParsePatternChanges reads and checks its bullets, and DeclaredPatternChanges hands the rendered bullets to the callers that put them in front of an agent.
+// ParsePatternChanges reads and checks its bullets, patternOverCapFindings measures the entry lines they prescribe, and DeclaredPatternChanges hands the rendered bullets to the callers that put them in front of an agent.
 
 package discussionparser
 
@@ -144,6 +144,38 @@ func parsePatternBullet(line string) (PatternChange, string) {
 	change.Action = action
 	change.Text = text
 	return change, ""
+}
+
+// checkPatternChangeOverCap names a Finding produced when an `adds` or `changes` bullet prescribes an overview line longer than a PATTERN.md entry line may be.
+const checkPatternChangeOverCap = "pattern-change-over-cap"
+
+// patternEntryLineCap is the longest a PATTERN.md entry line may be, in runes.
+// It equals the PATTERN format checker's cap, which this stdlib-only package may not import.
+const patternEntryLineCap = 360
+
+// patternOverCapFindings returns one pattern-change-over-cap finding per `adds` or `changes` change in changes whose overview line, "- `<ID>` — <text>", runs past patternEntryLineCap runes, in order.
+// A bullet `lyx loom decision add` appended is measured like any other, since the overview line it prescribes is the same.
+// A finding's Path is left empty for the caller to set.
+func patternOverCapFindings(changes []PatternChange) []Finding {
+	var findings []Finding
+	for _, c := range changes {
+		if c.Action == patternActionRemoves {
+			continue
+		}
+		length := len([]rune("- `" + c.ID + "` — " + c.Text))
+		if length <= patternEntryLineCap {
+			continue
+		}
+		wayForward := "shorten the text or move its detail to the entry's background file"
+		if c.By != "" {
+			wayForward = "the bullet was appended after the Discussion, so ask the parent to re-record the entry with a shorter `--pattern-text` through `lyx loom decision add`, which replaces the bullet"
+		}
+		findings = append(findings, Finding{
+			Check:  checkPatternChangeOverCap,
+			Detail: fmt.Sprintf("`%s` %s an overview line of %d characters, over the %d cap of a PATTERN.md entry line; way forward: %s", c.ID, c.Action, length, patternEntryLineCap, wayForward),
+		})
+	}
+	return findings
 }
 
 // notesHeading is the optional H2 heading a new PATTERN changes section is placed before.
