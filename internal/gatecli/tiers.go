@@ -19,6 +19,7 @@ const (
 	scopeTargets = "targets"
 	scopeAll     = "all"
 	scopeGuard   = "guard"
+	scopeVet     = "vet"
 )
 
 // roleClause closes every refusal that sends the caller to `lyx config gate`: the steps need the prime, so any other session reports and the orch takes them.
@@ -45,6 +46,8 @@ type tierRun struct {
 	ignoresTargets bool
 	// guardStep marks the run of a tier's command over the guard tests of the files that belong to that tier.
 	guardStep bool
+	// vetStep marks the run of `go vet` under a tier's build tag over a --card scope's packages.
+	vetStep bool
 }
 
 // tierName returns the gate.yaml key and the label of tier number.
@@ -53,7 +56,7 @@ func tierName(number int) string {
 }
 
 // planTierRuns builds the run list of request over cfg and the scope sc without touching the disk:
-// the listed tiers ascending with the tiers another listed tier covers dropped, each over its own share of the scope, which a diff scope derives per base, then one guard run per tier that sc.guards holds guard tests for, when --guards or the scope's form asks for the guard step, ascending and leaving out a tier the listed tiers already ran whole.
+// the listed tiers ascending with the tiers another listed tier covers dropped, each over its own share of the scope, which a diff scope derives per base, then, for a --card scope under the go scoper, one vet run per tier of sc.tagTiers that no listed tier is or covers, ascending, then one guard run per tier that sc.guards holds guard tests for, when --guards or the scope's form asks for the guard step, ascending and leaving out a tier the listed tiers already ran whole.
 // A guard run is a placeholder whose packages and names the run fills from sc.guards.
 // A covered tier is named on request.stderr when it has one.
 // It refuses, naming `lyx config gate`, a hub with no tier0, an undeclared tier, a dangling covers entry, words after `--` for a tier whose command lacks {args}, a guard group whose tier is undeclared or whose command lacks {targets} or {args}, and --guards under the none scoper.
@@ -93,6 +96,19 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 			args:           request.args,
 			ignoresTargets: ignoresTargets,
 		})
+	}
+
+	if sc.form == scopeCard && cfg.Scoper == "go" {
+		for _, number := range sc.tagTiers {
+			if slices.Contains(numbers, number) || slices.ContainsFunc(kept, func(listed int) bool { return slices.Contains(tiers[listed].Covers, number) }) {
+				continue
+			}
+			run, err := vetStepRun(cfg, number, request.goBinary, sc.modules)
+			if err != nil {
+				return nil, err
+			}
+			runs = append(runs, run)
+		}
 	}
 
 	if !request.guards && !sc.guardStep {
@@ -162,6 +178,37 @@ func scopeInvocations(tier gateslot.Tier, request testRequest, sc scope) (invoca
 		invocations = append(invocations, invocation{dir: module.dir, targets: module.targets})
 	}
 	return invocations, false
+}
+
+// vetStepRun returns the vet run of the tier numbered number over modules: `<goBinary> vet -tags tierN` over each module's packages in that module's directory, under the tier's env, parallel and timeout_min, holding one slot.
+// A goBinary the platform shell cannot quote is refused.
+func vetStepRun(cfg gateslot.Config, number int, goBinary string, modules []moduleTargets) (tierRun, error) {
+	tier, err := cfg.Tier(number)
+	if err != nil {
+		return tierRun{}, fmt.Errorf("gate test: %w", err)
+	}
+	quoted, err := quoteAll([]string{goBinary})
+	if err != nil {
+		return tierRun{}, err
+	}
+	invocations := make([]invocation, len(modules))
+	for i, module := range modules {
+		invocations[i] = invocation{dir: module.dir, targets: module.targets}
+	}
+	return tierRun{
+		number: number,
+		tier: gateslot.Tier{
+			Command:    quoted[0] + " vet -tags " + tierName(number) + " {targets}",
+			Env:        tier.Env,
+			Parallel:   tier.Parallel,
+			TimeoutMin: tier.TimeoutMin,
+			Counter:    counterGoJSON,
+			Slots:      1,
+		},
+		scopeForm:   scopeVet,
+		invocations: invocations,
+		vetStep:     true,
+	}, nil
 }
 
 // configRefusal returns a refusal that sends the caller to `lyx config gate` and closes with the role clause.

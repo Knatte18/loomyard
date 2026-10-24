@@ -195,10 +195,13 @@ type runEnd struct {
 	ran bool
 }
 
-// runLabel names run in the closing line of failed runs: its tier, prefixed `guard` for a guard run.
+// runLabel names run in the closing line of failed runs: its tier, prefixed `guard` for a guard run and `vet` for a vet run.
 func runLabel(run tierRun) string {
-	if run.guardStep {
+	switch {
+	case run.guardStep:
 		return "guard " + tierName(run.number)
+	case run.vetStep:
+		return "vet " + tierName(run.number)
 	}
 	return tierName(run.number)
 }
@@ -293,11 +296,11 @@ func preTierExpiry(preCtx, runCtx context.Context, request testRequest, step str
 	return fmt.Sprintf("gate test: the work before the first tier outlived its %s ceiling while %s; way forward: run the same command again, which a transient hang such as a stalled \"go list\" passes", request.preTierCeiling, step)
 }
 
-// tierNumbers returns the tier numbers of the listed runs of plan, leaving out the guard step.
+// tierNumbers returns the tier numbers of the listed runs of plan, leaving out the vet and guard steps.
 func tierNumbers(plan []tierRun) []int {
 	var numbers []int
 	for _, run := range plan {
-		if !run.guardStep {
+		if !run.guardStep && !run.vetStep {
 			numbers = append(numbers, run.number)
 		}
 	}
