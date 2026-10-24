@@ -8,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
+	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -45,14 +46,15 @@ func twillLenses(dirs configengine.Dirs, fan, key string) ([]twilldirective.Lens
 }
 
 // planLensDirective returns the twill directive for the Plan-Write lead's prompt, filled with the plan host's values and the lenses of the named fan, resolved through lenses.yaml's layer stack under dirs.
-// The forks review the overview and every card file its Card Index names, and the writer records the lens review in the plan directory's lens review file.
+// The forks review the overview and every card file its Card Index names, and the writer records the lens review in the plan directory's lens review file and saves each fork's report beside it, in the format of the spec deployed under specsDir.
 // A fan that does not resolve is refused naming the plan_lenses key.
-func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, fan string) (string, error) {
+func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, fan string) (string, error) {
 	fanLenses, err := twillLenses(dirs, fan, planLensesKey)
 	if err != nil {
 		return "", err
 	}
 	anchorPath := layout.AnchorPath()
+	lensReviewPath := filepath.Join(planparser.PlanDir(anchorPath), planparser.LensReviewFileName)
 	return twilldirective.Directive(stencilsDir, twilldirective.Values{
 		ReviewedFiles:         "`" + planparser.PlanOverview(anchorPath) + "` and every card file its Card Index names",
 		SpawnPoint:            planTwillSpawnPoint,
@@ -63,7 +65,9 @@ func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencils
 		SelfCheckStep:         "Step 5",
 		SelfCheckCommand:      "lyx loom validate-plan",
 		FinalSelfCheckCommand: "lyx loom validate-plan --lens-review",
-		DispositionPlace:      "`" + filepath.Join(planparser.PlanDir(anchorPath), planparser.LensReviewFileName) + "`",
+		DispositionPlace:      "`" + lensReviewPath + "`",
+		LensReportPath:        lensreport.PathPattern(lensReviewPath),
+		LensReportSpecPath:    stencilstore.Path(specsDir, lensreport.SpecName),
 		CriticalJudge: &twilldirective.CriticalJudge{
 			GoverningInput:  "the decision record",
 			DisputeEvidence: "a `path:line` or glyph, a `PATTERN` entry, a test or caller the change would break, or the `lyx loom validate-plan` output",
@@ -79,8 +83,9 @@ func planLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencils
 
 // discussionLensDirective returns the twill directive for the Discussion-Write prompt.
 // The lenses come from the named fan, resolved against lenses.yaml's layer stack under dirs.
+// The writer saves each fork's report beside the support log, in the format of the spec deployed under specsDir.
 // An unreadable lenses.yaml, or a fan that does not resolve, is refused naming the discussion_lenses key and the way forward.
-func discussionLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, fan string) (string, error) {
+func discussionLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir, fan string) (string, error) {
 	fanLenses, err := twillLenses(dirs, fan, discussionLensesKey)
 	if err != nil {
 		return "", err
@@ -98,5 +103,7 @@ func discussionLensDirective(layout *lyxcwd.Location, dirs configengine.Dirs, st
 		SelfCheckCommand:      "lyx loom validate-discussion",
 		FinalSelfCheckCommand: "lyx loom validate-discussion",
 		DispositionPlace:      "the last turn of the support log's `## Interview` section",
+		LensReportPath:        lensreport.PathPattern(DiscussionSupportLog(layout)),
+		LensReportSpecPath:    stencilstore.Path(specsDir, lensreport.SpecName),
 	})
 }

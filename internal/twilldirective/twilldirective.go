@@ -60,6 +60,10 @@ type Values struct {
 	FinalSelfCheckCommand string
 	// DispositionPlace names where the writer records the lens review.
 	DispositionPlace string
+	// LensReportPath is the path the writer saves each fork's report at, with `<lens>` standing for the lens name.
+	LensReportPath string
+	// LensReportSpecPath is the deployed spec that defines a saved report's format.
+	LensReportSpecPath string
 	// RelaunchFiles is the phrase naming the files a relaunched writer finishes writing, rendered verbatim with the host's own backticks; read only when WriterFork is nil.
 	RelaunchFiles string
 	// WriterFork, when set, has one fork write the reviewed files and replaces the relaunch paragraphs; nil asks for no writer fork.
@@ -106,6 +110,8 @@ func Directive(stencilsDir string, v Values) (string, error) {
 		"self_check_command":       v.SelfCheckCommand,
 		"final_self_check_command": v.FinalSelfCheckCommand,
 		"disposition_place":        v.DispositionPlace,
+		"lens_report_path":         v.LensReportPath,
+		"lens_report_spec_path":    v.LensReportSpecPath,
 	}
 	if v.WriterFork != nil {
 		part, err := fillPart(stencilsDir, writerForkStencil, mergedValues(values, map[string]string{

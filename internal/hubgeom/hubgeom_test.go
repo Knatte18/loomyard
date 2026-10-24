@@ -161,6 +161,9 @@ func TestBurlerGeometry(t *testing.T) {
 	if got.RepoRoot != worktreeRoot {
 		t.Errorf("BurlerGeometry(l).RepoRoot = %q; want %q (l.WorktreePath(), not the anchor path)", got.RepoRoot, worktreeRoot)
 	}
+	if want := fabricengine.SpecsDir(hub); got.SpecsDir != want {
+		t.Errorf("BurlerGeometry(l).SpecsDir = %q; want %q", got.SpecsDir, want)
+	}
 	if got.WorktreeRoot == worktreeRoot {
 		// The subpath-anchored fixture must catch a later "simplification" that repoints BurlerGeometry's WorktreeRoot fill at l.WorktreePath(): the two only coincide when AnchorRel is ".", which this fixture deliberately is not.
 		t.Errorf("BurlerGeometry(l).WorktreeRoot = %q; want != WorktreeRoot %q", got.WorktreeRoot, worktreeRoot)

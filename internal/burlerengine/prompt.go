@@ -18,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/lenses"
+	"github.com/Knatte18/loomyard/internal/lensreport"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -99,8 +100,9 @@ func renderReviewFormat(stencilsDir string) (string, error) {
 
 // composeReviewPrompt builds the review half's prompt for p: the explore step, the review step and the review-file format.
 // patternDirective is the caller-resolved PATTERN directive for the explore step.
+// specsDir holds the deployed lens report spec a fanned round's reviewer saves its fork reports in the format of.
 // The reviewer's files hold no fixer-side text; p is assumed already validated by validateReview.
-func composeReviewPrompt(stencilsDir string, p *Profile, patternDirective string, paths reviewFilePaths) (halfPrompt, error) {
+func composeReviewPrompt(stencilsDir, specsDir string, p *Profile, patternDirective string, paths reviewFilePaths) (halfPrompt, error) {
 	exploreTemplate, err := stencilstore.Read(stencilsDir, "burler-step-1-explore")
 	if err != nil {
 		return halfPrompt{}, err
@@ -131,7 +133,7 @@ func composeReviewPrompt(stencilsDir string, p *Profile, patternDirective string
 	if err != nil {
 		return halfPrompt{}, err
 	}
-	clusterRules, err := clusterRulesBlock(stencilsDir, p)
+	clusterRules, err := clusterRulesBlock(stencilsDir, specsDir, p)
 	if err != nil {
 		return halfPrompt{}, err
 	}
@@ -161,14 +163,15 @@ func composeReviewPrompt(stencilsDir string, p *Profile, patternDirective string
 
 // composeFixPrompt builds the fix half's prompt for p: the review-file format and the fix step.
 // frictionDirective is the caller-resolved Tier 2 note directive, empty when Tier 2 is off, and work is the fix step's statement of what to fix (see fixWork).
+// specsDir holds the deployed lens report spec a fixer fan's fixer saves its fork reports in the format of.
 // The fixer's files hold no rubric, fasit, PATTERN directive, focus file, prior rounds or explore step; p is assumed already validated by validateFix.
-func composeFixPrompt(stencilsDir string, p *Profile, frictionDirective, work string, paths fixFilePaths) (halfPrompt, error) {
+func composeFixPrompt(stencilsDir, specsDir string, p *Profile, frictionDirective, work string, paths fixFilePaths) (halfPrompt, error) {
 	fixTemplate, err := stencilstore.Read(stencilsDir, "burler-step-fix")
 	if err != nil {
 		return halfPrompt{}, err
 	}
 	friction.WarnIfMarkerAbsent(fixTemplate, "burler-step-fix", frictionDirective)
-	selfCheck, err := selfCheckBlock(stencilsDir, p)
+	selfCheck, err := selfCheckBlock(stencilsDir, specsDir, p)
 	if err != nil {
 		return halfPrompt{}, err
 	}
@@ -294,11 +297,15 @@ func fixScopeRules(p *Profile) string {
 			"Commit message format: `<module-or-target>: fix <finding-id> — <one-line " +
 			"what/why>`. Never push."
 	case FixScopeOverlay:
+		var lensReports string
+		if p.FixFan != "" {
+			lensReports = " and the self-check's lens reports"
+		}
 		return fmt.Sprintf(
-			"Write surface: exactly the target paths%s plus the fixer-report (`%s`) — "+
+			"Write surface: exactly the target paths%s plus the fixer-report (`%s`)%s — "+
 				"nothing else — and you run no git commands at all; the loop owner commits "+
 				"these files at the round boundary.",
-			namedTargetPaths(p.Target.Paths), p.FixerReportPath)
+			namedTargetPaths(p.Target.Paths), p.FixerReportPath, lensReports)
 	default:
 		// validateReview rejects every other value before composeReviewPrompt is ever
 		// called; this branch is unreachable in practice and exists only so
@@ -361,13 +368,17 @@ func priorRoundsBlock(p *Profile) string {
 }
 
 // clusterRulesBlock renders the review step's cluster-rules value from the cluster stencils:
-// the solo part's body when p carries no ClusterFan, or the fanned part filled with p's lens list when it does.
+// the solo part's body when p carries no ClusterFan, or the fanned part filled with p's lens list, the lens report path beside p's review and the lens report spec under specsDir when it does.
 // The value carries no trailing newline, since the review step's marker sits on a line of its own.
 // p.clusterLenses is assumed already resolved by (*Profile).validateReview — composeReviewPrompt never calls lenses.ResolveFan itself.
-func clusterRulesBlock(stencilsDir string, p *Profile) (string, error) {
+func clusterRulesBlock(stencilsDir, specsDir string, p *Profile) (string, error) {
 	name, values := "burler-cluster-solo", map[string]string(nil)
 	if p.ClusterFan != "" {
-		name, values = "burler-cluster-fan", map[string]string{"lens_list": lensList(p.clusterLenses)}
+		name, values = "burler-cluster-fan", map[string]string{
+			"lens_list":             lensList(p.clusterLenses),
+			"lens_report_path":      lensreport.PathPattern(p.ReviewPath),
+			"lens_report_spec_path": stencilstore.Path(specsDir, lensreport.SpecName),
+		}
 	}
 	template, err := stencilstore.Read(stencilsDir, name)
 	if err != nil {
@@ -400,10 +411,10 @@ func forkReadingBlock(stencilsDir string, p *Profile) (string, error) {
 
 // selfCheckBlock renders the fix self-check stencil for the fix step's optional self_check marker.
 // A profile with no FixFan returns "" without reading anything.
-// Otherwise the part is filled with the path of the deployed fix-check rubric and p's fixer lenses;
+// Otherwise the part is filled with the path of the deployed fix-check rubric, p's fixer lenses, the lens report path beside p's fixer-report and the lens report spec under specsDir;
 // it ends in a blank line, which the fix step relies on to set off the heading that follows its marker.
 // p.fixLenses is assumed already resolved by (*Profile).validateFix.
-func selfCheckBlock(stencilsDir string, p *Profile) (string, error) {
+func selfCheckBlock(stencilsDir, specsDir string, p *Profile) (string, error) {
 	if p.FixFan == "" {
 		return "", nil
 	}
@@ -412,8 +423,10 @@ func selfCheckBlock(stencilsDir string, p *Profile) (string, error) {
 		return "", err
 	}
 	block, err := stencil.Fill(template, map[string]string{
-		"rubric_path": stencilstore.Path(stencilsDir, "burler-fix-check-rubric"),
-		"lens_list":   lensList(p.fixLenses),
+		"rubric_path":           stencilstore.Path(stencilsDir, "burler-fix-check-rubric"),
+		"lens_list":             lensList(p.fixLenses),
+		"lens_report_path":      lensreport.PathPattern(p.FixerReportPath),
+		"lens_report_spec_path": stencilstore.Path(specsDir, lensreport.SpecName),
 	})
 	if err != nil {
 		return "", fmt.Errorf("burler: compose prompt: %w", err)

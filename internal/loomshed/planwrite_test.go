@@ -291,7 +291,8 @@ func TestNewPlanDirRotator(t *testing.T) {
 	})
 
 	t.Run("LensReviewMovesWithThePlanButIsNeverAnnounced", func(t *testing.T) {
-		anchorPath, planDir := setupPlanDir(t, "00-overview.md", "01-card-one.md", planparser.LensReviewFileName)
+		const lensReport = "lens-review.lens-generic.md"
+		anchorPath, planDir := setupPlanDir(t, "00-overview.md", "01-card-one.md", planparser.LensReviewFileName, lensReport)
 
 		amendment, err := NewPlanDirRotator(anchorPath, seedPriorPlanStencils(t), noWebsterArchive, fixedPlanClock)()
 		if err != nil {
@@ -299,7 +300,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 		}
 
 		archiveDir := filepath.Join(planDir, planparser.ArchiveDirName(fixedPlanClock().UTC().Format(archiveTimestampFormat), ""))
-		for _, name := range []string{"00-overview.md", "01-card-one.md", planparser.LensReviewFileName} {
+		for _, name := range []string{"00-overview.md", "01-card-one.md", planparser.LensReviewFileName, lensReport} {
 			if _, err := os.Stat(filepath.Join(archiveDir, name)); err != nil {
 				t.Errorf("Stat(archived %s) error = %v; want it moved into the archive", name, err)
 			}
@@ -309,8 +310,10 @@ func TestNewPlanDirRotator(t *testing.T) {
 				t.Errorf("rotate() amendment = %q; want it to name %q", amendment, want)
 			}
 		}
-		if strings.Contains(amendment, planparser.LensReviewFileName) {
-			t.Errorf("rotate() amendment = %q; want it not to name %q", amendment, planparser.LensReviewFileName)
+		for _, unannounced := range []string{planparser.LensReviewFileName, lensReport} {
+			if strings.Contains(amendment, unannounced) {
+				t.Errorf("rotate() amendment = %q; want it not to name %q", amendment, unannounced)
+			}
 		}
 	})
 

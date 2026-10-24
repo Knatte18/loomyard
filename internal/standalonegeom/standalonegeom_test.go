@@ -44,6 +44,9 @@ func TestBurlerGeometry(t *testing.T) {
 	if got.RepoRoot != target {
 		t.Errorf("BurlerGeometry().RepoRoot = %q; want %q (target)", got.RepoRoot, target)
 	}
+	if want := SpecsDir(stateDir); got.SpecsDir != want {
+		t.Errorf("BurlerGeometry().SpecsDir = %q; want %q", got.SpecsDir, want)
+	}
 	// WorktreeRoot and AnchorPath asserted in the same case: the whole reason the two-root
 	// split exists is that they differ here, with a fixture target not under stateDir.
 	if got.WorktreeRoot == got.AnchorPath {

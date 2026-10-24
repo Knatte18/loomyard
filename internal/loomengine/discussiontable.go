@@ -101,7 +101,7 @@ func DiscussionTable(layout *lyxcwd.Location, dirs configengine.Dirs, stencilsDi
 	forks := cfg.DiscussionLenses != ""
 	var leadValues map[string]string
 	if forks {
-		lensDirective, err := discussionLensDirective(layout, dirs, stencilsDir, cfg.DiscussionLenses)
+		lensDirective, err := discussionLensDirective(layout, dirs, stencilsDir, specsDir, cfg.DiscussionLenses)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %w", err)
 		}

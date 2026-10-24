@@ -297,11 +297,13 @@ func TestValidate_IndexFileMismatch(t *testing.T) {
 		}
 	})
 
-	t.Run("a plan directory containing lens-review.md produces no finding", func(t *testing.T) {
+	t.Run("a plan directory containing lens-review.md and its lens reports produces no finding", func(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(dir, planparser.LensReviewFileName), []byte("# Lens review\n"), 0o644); err != nil {
-			t.Fatalf("write lens review file: %v", err)
+		for _, name := range []string{planparser.LensReviewFileName, "lens-review.lens-pattern-fit.md"} {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("# Lens review\n"), 0o644); err != nil {
+				t.Fatalf("write %s: %v", name, err)
+			}
 		}
 		plan := &planparser.Plan{
 			Dir: dir, Format: 5, Approved: true,
@@ -309,7 +311,7 @@ func TestValidate_IndexFileMismatch(t *testing.T) {
 		}
 		findings := planparser.Validate(plan, t.TempDir())
 		if got := countFor(findings, "index-file-mismatch"); got != 0 {
-			t.Errorf("countFor(findings, index-file-mismatch) = %d; want 0 (lens-review.md is a known non-card file)", got)
+			t.Errorf("countFor(findings, index-file-mismatch) = %d; want 0 (lens-review.md and its lens reports are known non-card files)", got)
 		}
 	})
 }

@@ -575,6 +575,7 @@ User-facing modules each get one `lyx <module>` namespace:
   The row keeps its name, gates and routing whatever the two keys hold.
   The Planner producer, the same way (`contracts/stencils/loom/loom-template-plan.md`), composed by `internal/loomengine`'s `prompt.go` + `plan.go`.
   With `plan_lenses` naming a `lenses.yaml` fan, the plan writer explores, has one fork (fork0) write and self-check the plan, reads the plan in full and self-checks it, forks itself once per lens of that fan, judges each finding as a critical fixer, and records each disposition in `lens-review.md`.
+  Every lens fan's writer, this one, the Discussion-Write lead's and Burler's reviewer and fixer alike, saves each fork's final message verbatim in a lens report beside the file its lens review is recorded in, `<record stem>.lens-<lens>.md`, in the format `contracts/specs/twill-lens-report-spec.md` pins, so an audit reads every report from the run records.
   It runs `validate-plan --lens-review` as its last self-check, and its gate refuses Done until `lens-review.md` holds the lens review.
   The row keeps its name, `gates` key and routing while a fork-authorized run's plan gate also requires the lens review.
   Plan has no advisor key.

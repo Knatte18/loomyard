@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -151,6 +152,21 @@ func TestFingerprint(t *testing.T) {
 				fingerprintWriteFiles(t, dir, map[string]string{planparser.LensReviewFileName: "# Lens review\n"})
 			},
 		},
+		{
+			// A lens report saved beside the lens review is a record about the plan like the review itself.
+			name: "ignores a lens report",
+			mutate: func(t *testing.T, dir string) {
+				fingerprintWriteFiles(t, dir, map[string]string{"lens-review.lens-pattern-fit.md": "# Lens report\n"})
+			},
+		},
+		{
+			// Only a lens report is skipped: a file that merely starts with the lens review's name is plan content.
+			name: "changes on a lens-named neighbour that is not a lens report",
+			mutate: func(t *testing.T, dir string) {
+				fingerprintWriteFiles(t, dir, map[string]string{"lens-review-notes.md": "notes\n"})
+			},
+			wantChange: true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -165,8 +181,22 @@ func TestFingerprint(t *testing.T) {
 			if err != nil {
 				t.Fatalf("fingerprint(before) error = %v; want nil", err)
 			}
+			hashesBefore, err := planFileHashes(dir)
+			if err != nil {
+				t.Fatalf("planFileHashes(before) error = %v; want nil", err)
+			}
 
 			tt.mutate(t, dir)
+
+			if !tt.wantChange {
+				hashesAfter, err := planFileHashes(dir)
+				if err != nil {
+					t.Fatalf("planFileHashes(after) error = %v; want nil", err)
+				}
+				if !reflect.DeepEqual(hashesAfter, hashesBefore) {
+					t.Errorf("planFileHashes changed = %v -> %v; want unchanged", hashesBefore, hashesAfter)
+				}
+			}
 
 			after, err := fingerprint(dir)
 			if err != nil {

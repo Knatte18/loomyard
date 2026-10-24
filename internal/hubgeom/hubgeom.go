@@ -138,5 +138,6 @@ func burlerGeometry(l *lyxcwd.Location, prime bool) burlerengine.Geometry {
 		ParentName:   parentNameOrEmpty(l, "burler prompts"),
 		Shortname:    shortname,
 		Slug:         slug,
+		SpecsDir:     fabricengine.SpecsDir(l.HubPath),
 	}
 }

@@ -38,6 +38,12 @@ var LoomDiscussionSpec []byte
 //go:embed landing-fixer-report-spec.md
 var LandingFixerReportSpec []byte
 
+// TwillLensReportSpec is the lens report format contract's shipped-default content.
+// Every lens review's writer saves each lens fork's report against its format.
+//
+//go:embed twill-lens-report-spec.md
+var TwillLensReportSpec []byte
+
 // registryEntry pairs one spec's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -53,6 +59,7 @@ var entries = []registryEntry{
 	{"loom-final-summary-spec", &LoomFinalSummarySpec},
 	{"loom-discussion-spec", &LoomDiscussionSpec},
 	{"landing-fixer-report-spec", &LandingFixerReportSpec},
+	{"twill-lens-report-spec", &TwillLensReportSpec},
 }
 
 // registry implements stencilstore.Registry over entries.

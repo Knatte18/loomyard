@@ -225,6 +225,7 @@ func checkApproved(plan *Plan) []ValidationError {
 // AmendmentsFileName (AppendAmendment).
 // LensReviewFileName, the twill writer's lens review record, has no owner here, since no parser reads it.
 // Named as an allowlist entry per file, not a heuristic over the filename's shape, so a future non-card file only needs one line added here.
+// The lens reports saved beside the lens review are the one family of names the scan skips by shape, through IsLensReportFileName, since their names carry the lens.
 var knownNonCardFiles = map[string]bool{
 	overviewFileName:   true,
 	AmendmentsFileName: true,
@@ -267,7 +268,7 @@ func checkIndexFileConsistency(plan *Plan) []ValidationError {
 	default:
 		var onDisk []string
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || knownNonCardFiles[e.Name()] {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") || knownNonCardFiles[e.Name()] || IsLensReportFileName(e.Name()) {
 				continue
 			}
 			if !indexed[e.Name()] {

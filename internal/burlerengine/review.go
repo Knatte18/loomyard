@@ -96,7 +96,7 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 	if err != nil {
 		return ReviewResult{}, err
 	}
-	prompt, err := composeReviewPrompt(e.stencilsDir, &p, directive, reviewFilesIn(dir))
+	prompt, err := composeReviewPrompt(e.stencilsDir, e.geom.SpecsDir, &p, directive, reviewFilesIn(dir))
 	if err != nil {
 		return ReviewResult{}, err
 	}

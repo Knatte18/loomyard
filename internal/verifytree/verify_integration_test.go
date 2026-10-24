@@ -551,9 +551,11 @@ func (e *pauseEnv) holdOpenCommand() string {
 	return "echo ran >> " + e.counter + "; while [ ! -f " + e.release + " ]; do sleep 0.05; done"
 }
 
-// stoppableCommand appends a line to the counter file and, on its first run only, sleeps until a SIGTERM makes its trap write a line to the term file and exit.
+// stoppableCommand appends a line to the counter file and, on its first run only, loops until a SIGTERM makes its trap write a line to the term file and exit.
+// The loop's children are short sleeps.
+// One forked as the group SIGTERM lands and missing it ends within 50 ms, instead of holding the process group until the SIGKILL after the wait delay.
 func (e *pauseEnv) stoppableCommand() string {
-	return "trap 'echo term >> " + e.term + "; exit 0' TERM; echo ran >> " + e.counter + `; [ "$(wc -l < ` + e.counter + `)" -ge 2 ] && exit 0; sleep 60 & wait`
+	return "trap 'echo term >> " + e.term + "; exit 0' TERM; echo ran >> " + e.counter + `; [ "$(wc -l < ` + e.counter + `)" -ge 2 ] && exit 0; while :; do sleep 0.05; done`
 }
 
 // TestVerify_PauseHold table-drives Verify under a pause hold over a scratch repo and a temp pause record:

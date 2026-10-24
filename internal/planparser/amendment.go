@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/Knatte18/loomyard/internal/lensreport"
 )
 
 // AmendmentsFileName is the fixed filename of a plan's append-only amendment log, joined onto a
@@ -22,6 +24,12 @@ const AmendmentsFileName = "amendments.md"
 // LensReviewFileName is the fixed filename of the plan-directory file the twill plan writer records its lens review in.
 // It is tracked with the plan's generation and never parsed or validated.
 const LensReviewFileName = "lens-review.md"
+
+// IsLensReportFileName reports whether name is the file name of a lens report the twill plan writer saves beside LensReviewFileName.
+// Like the lens review, a lens report is tracked with the plan's generation and never parsed or validated.
+func IsLensReportFileName(name string) bool {
+	return lensreport.IsReportName(LensReviewFileName, name)
+}
 
 // amendmentsFileHeading is the fixed heading AppendAmendment writes when it creates the amendments
 // file for the first time.
