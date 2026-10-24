@@ -46,21 +46,27 @@ func TestValidateWorktreeSlug(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := validateWorktreeSlug(tt.slug, tt.junctionNames)
-			if tt.wantErrSubstr == "" {
-				if err != nil {
-					t.Errorf("validateWorktreeSlug(%q) = %v; want nil", tt.slug, err)
+			for name, validate := range map[string]func(string, []string) error{
+				"validateWorktreeSlug": validateWorktreeSlug,
+				"ValidatePairSlug":     ValidatePairSlug,
+			} {
+				err := validate(tt.slug, tt.junctionNames)
+				if tt.wantErrSubstr == "" {
+					if err != nil {
+						t.Errorf("%s(%q) = %v; want nil", name, tt.slug, err)
+					}
+					continue
 				}
-				return
-			}
-			if err == nil {
-				t.Fatalf("validateWorktreeSlug(%q) = nil; want error containing %q", tt.slug, tt.wantErrSubstr)
-			}
-			if !strings.Contains(err.Error(), tt.wantErrSubstr) {
-				t.Errorf("validateWorktreeSlug(%q) = %v; want error containing %q", tt.slug, err, tt.wantErrSubstr)
-			}
-			if !errors.Is(err, ErrInvalidSlug) {
-				t.Errorf("validateWorktreeSlug(%q) = %v; want errors.Is ErrInvalidSlug", tt.slug, err)
+				if err == nil {
+					t.Errorf("%s(%q) = nil; want error containing %q", name, tt.slug, tt.wantErrSubstr)
+					continue
+				}
+				if !strings.Contains(err.Error(), tt.wantErrSubstr) {
+					t.Errorf("%s(%q) = %v; want error containing %q", name, tt.slug, err, tt.wantErrSubstr)
+				}
+				if !errors.Is(err, ErrInvalidSlug) {
+					t.Errorf("%s(%q) = %v; want errors.Is ErrInvalidSlug", name, tt.slug, err)
+				}
 			}
 		})
 	}

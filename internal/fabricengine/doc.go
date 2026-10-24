@@ -644,6 +644,8 @@
 // `MergeInOnly(since, parentTip)` reports whether every first-parent commit from HEAD back to `since` is a Merge-In: a merge commit whose second parent is an ancestor of `parentTip`, or a commit that is itself such an ancestor, as a fast-forward Merge-In leaves it.
 // `RecordsHeadSHA` returns the commit the weft checkout's HEAD stands at.
 //
+// `ValidatePairSlug` is the one pair slug rule, the one `Add` and `Remove` apply, exported so the board applies it through its seam and refuses a slug with the same reason text, matching `ErrInvalidSlug`.
+//
 // `Add` also drops the parent's shed run records from a pair it forks (forkrecords.go).
 // A weft branch forked from its parent would otherwise carry every committed run directory, including one for the child's own slug, and the child's `Seed-Child` would refuse a disagreeing seed.
 // The fork is `worktree add --no-checkout`, followed by a write-out of the index without the `shedrun.RunsRootRel()` tree, so no run record ever reaches the new worktree's disk and nothing is deleted (an index-only removal after a full checkout would leave the files `shedrun` reads).
