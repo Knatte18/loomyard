@@ -32,7 +32,8 @@
 // The notes are the loom halt note, which names its anomaly kind and recent history and whose format internal/haltnote owns, the loom crash-resume note written at a run or step entry, and the webster refusal note.
 // The reflection decides from them whether a lyx problem is worth an issue.
 //
-// With Tier 2 on, a loom halt (blocked or failed, under run or step), a loom crash-resume and every `lyx webster` refusal but validate's leave one such note.
+// With Tier 2 on, a loom halt (blocked or failed, under run or step), a loom crash-resume and every `lyx webster` refusal but validate's leave one such note (PATTERN-friction-capture).
+// `lyx loom start` vouches for the resume it spawns, so a deliberate resume never leaves a crash-resume note.
 // A webster refusal cobra raises before the verb's RunE fires before the friction directory is resolved and is not noted.
 // A halt spawns no reflection at the stop: the run's Friction-Reflect row covers every note in the friction directory.
 // A note-write failure never changes the verb's exit or envelope.

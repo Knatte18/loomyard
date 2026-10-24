@@ -2,7 +2,7 @@
 //
 // A full name is "<shortname>:<role>" in the prime and in a standalone run, and "<shortname>:<slug>:<role>" in a task worktree.
 // The shortname is 2-6 characters of [a-z][a-z0-9]; the slug and the role are [a-z][a-z0-9-]*.
-// Every other package forms, parses, validates and matches names through this one,
+// Every other package forms, parses, validates and matches names through this one (PATTERN-agent-name),
 // and the package imports the standard library only.
 //
 // # Where names are formed
