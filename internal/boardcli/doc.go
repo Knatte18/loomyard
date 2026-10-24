@@ -52,6 +52,7 @@
 // A payload's `run_settings` is checked before the store write by `upsert`, each task of `upsert-batch` and `merge`'s upsert.
 // It must be an object of module name to keys, and `configreg.PrepareRunSettings` migrates and validates it; a refusal names the module and the key, and the board stores the migrated result.
 // A payload's `profile` is checked on the same paths: it must be a string, and a non-empty one must name a run profile in the hub's `profiles.yaml` (`runprofile.Load` over the board dir), else the refusal names the known profiles and the way forward; `""` clears it.
+// Whether the profile holds a block for the task's recipe is checked at Seed-Child, which resolves the recipe.
 // A change to either stored value is refused from a session whose `LYX_STRAND_NAME` carries a task slug (`agentname.TaskSlug`), the same guard as a hub-wide config write, and names the operator or the hub orch as the way forward.
 // The guard reads outside the write lock and stops a mistaken write, not a determined one.
 // A change on an entry held by a run past `Worktree-Create` and `Seed-Child` still succeeds and adds a `notice` field to the envelope:
@@ -62,7 +63,8 @@
 // `set-deps` prints `notice` only then.
 // `promote` and `intake import` write no `depends_on` and stay unchanged.
 //
-// `profiles` prints `{"profiles":[{"name":…,"settings":{…}}]}`, every run profile in the hub's `profiles.yaml` in name order with its settings, and `[]` when there is none.
+// `profiles` prints `{"ok":true,"defaults":{…},"profiles":[{"name":…,"settings":{recipe:{module:{…}}}}]}`, every run profile in the hub's `profiles.yaml` in name order with its settings per recipe, and `"profiles":[]` when there is none.
+// `defaults` maps each recipe to the profile a task of that recipe takes when it names none.
 //
 // `get` takes `--body` to write the entry's body alone, verbatim, with no envelope;
 // an empty body writes nothing,

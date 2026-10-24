@@ -332,13 +332,15 @@ func TestSeedChild_CancelledContext(t *testing.T) {
 }
 
 // TestSeedChild_RunSettings pins how Seed-Child settles the task worktree's local config layer from the board task's run settings:
-// the named modules are written and the others removed before the seed, an invalid key or an unreadable board is Stuck with no seed written, a write failure is a hard error, and a Call run again after an interruption leaves the layer equal to the board's current settings.
+// the settings are prepared for the recipe the board type resolves, the named modules are written and the others removed before the seed, an invalid key or an unreadable board is Stuck with no seed written, a write failure is a hard error, and a Call run again after an interruption leaves the layer equal to the board's current settings.
 func TestSeedChild_RunSettings(t *testing.T) {
 	t.Parallel()
 
 	invalid := fmt.Errorf("%w: run_settings for module %q: key %q is execute-closed", ErrInvalidRunSettings, "darn", "verify")
 	tests := []struct {
 		name         string
+		boardType    string
+		wantRecipe   string
 		settings     map[string]any
 		readErr      error
 		prepareErr   error
@@ -351,6 +353,8 @@ func TestSeedChild_RunSettings(t *testing.T) {
 	}{
 		{
 			name:        "NamedModulesWrittenAndOthersRemovedThenTheDriverIsReadBeforeTheSeed",
+			boardType:   "darn",
+			wantRecipe:  "darn",
 			settings:    map[string]any{"loom": map[string]any{"a": 1}, "darn": map[string]any{"b": 2}},
 			wantOutcome: shedengine.Done,
 			wantEvents:  []string{"write darn", "write loom", "remove", "driver", "seed"},
@@ -358,6 +362,7 @@ func TestSeedChild_RunSettings(t *testing.T) {
 		},
 		{
 			name:        "AbsentSettingsRemoveEveryLocalFile",
+			wantRecipe:  "loom",
 			wantOutcome: shedengine.Done,
 			wantEvents:  []string{"remove", "driver", "seed"},
 			wantKeep:    []string{},
@@ -394,10 +399,12 @@ func TestSeedChild_RunSettings(t *testing.T) {
 			t.Parallel()
 
 			scratchDir := t.TempDir()
-			calls, deps := newSeedChildDeps("loom", nil, "claude", nil, nil, nil, nil)
+			calls, deps := newSeedChildDeps(tt.boardType, nil, "claude", nil, nil, nil, nil)
 			var keep []string
+			var preparedRecipe string
 			deps.ReadRunSettings = func(context.Context) (RunSettings, error) { return RunSettings{Settings: tt.settings}, tt.readErr }
 			deps.PrepareRunSettings = func(settings RunSettings) (map[string][]byte, error) {
+				preparedRecipe = settings.Recipe
 				if tt.prepareErr != nil {
 					return nil, tt.prepareErr
 				}
@@ -430,6 +437,9 @@ func TestSeedChild_RunSettings(t *testing.T) {
 			}
 			if tt.wantKeep != nil && !slices.Equal(keep, tt.wantKeep) {
 				t.Errorf("RemoveLocalOverrides keep = %v; want %v", keep, tt.wantKeep)
+			}
+			if tt.wantRecipe != "" && preparedRecipe != tt.wantRecipe {
+				t.Errorf("PrepareRunSettings recipe = %q; want %q", preparedRecipe, tt.wantRecipe)
 			}
 			if tt.wantOutcome == shedengine.Stuck {
 				reason := readStuckFile(t, scratchDir, "seedchild", ptr)

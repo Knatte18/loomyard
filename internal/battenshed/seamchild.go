@@ -80,7 +80,7 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		recipe = defaultChildRecipe
 	}
 
-	if reason, err := p.writeRunSettings(ctx); err != nil || reason != "" {
+	if reason, err := p.writeRunSettings(ctx, recipe); err != nil || reason != "" {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
 		}
@@ -136,16 +136,17 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// writeRunSettings makes the task worktree's local config layer equal the Board task's run settings laid over its run profile's:
+// writeRunSettings makes the task worktree's local config layer equal the Board task's run settings laid over its run profile's block for recipe:
 // it writes the local file of each module the settings name, then removes every other module's, logging one Warn per removed file.
-// A non-empty reason means the row stands Stuck: the board is unreadable, the profile is unknown, or a key no longer validates.
+// A non-empty reason means the row stands Stuck: the board is unreadable, the profile is unknown or holds no block for recipe, or a key no longer validates.
 // Any other failure is returned as an error.
 // The whole write is redone on every Call, so a Call interrupted between its writes and its removals leaves nothing the next one does not settle.
-func (p *seedChildProducer) writeRunSettings(ctx context.Context) (reason string, err error) {
+func (p *seedChildProducer) writeRunSettings(ctx context.Context, recipe string) (reason string, err error) {
 	settings, err := p.deps.ReadRunSettings(ctx)
 	if err != nil {
 		return fmt.Sprintf("read Board task run settings failed: %s", err.Error()), nil
 	}
+	settings.Recipe = recipe
 	documents, err := p.deps.PrepareRunSettings(settings)
 	if err != nil {
 		if errors.Is(err, ErrInvalidRunSettings) {

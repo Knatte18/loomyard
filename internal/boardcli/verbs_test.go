@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -567,7 +568,7 @@ func stepLabelsListShapedPrintsNamesWithEmptyDescriptions(t *testing.T, f *cliFi
 	}
 }
 
-// stepProfiles pins the profiles verb: with no profiles.yaml it prints the template's starting profiles with their settings in name order, and a hub file without profiles prints an empty list.
+// stepProfiles pins the profiles verb: with no profiles.yaml it prints the template's starting profiles with their settings in name order and its defaults, and a hub file without profiles prints an empty list.
 func stepProfiles(t *testing.T, f *cliFixture) {
 	result := runJSON(t, 0, "profiles")
 	list, _ := result["profiles"].([]any)
@@ -580,8 +581,11 @@ func stepProfiles(t *testing.T, f *cliFixture) {
 			t.Errorf("profile %q has no settings; got %v", name, profile)
 		}
 	}
-	if want := []string{"budget", "docs", "light"}; !slices.Equal(names, want) {
+	if want := []string{"docs", "light", "solid", "speed", "wide"}; !slices.Equal(names, want) {
 		t.Errorf("profile names = %v, want %v", names, want)
+	}
+	if want := map[string]any{"loom": "solid", "darn": "light"}; !reflect.DeepEqual(result["defaults"], want) {
+		t.Errorf("defaults = %v, want %v", result["defaults"], want)
 	}
 
 	boardDir := fabricengine.BoardDir(filepath.Dir(f.cwd))
@@ -619,7 +623,7 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		{name: "a shape mismatch", payload: `{"slug":"bad","run_settings":{"loom":{"review_max_bounces":{"a":1}}}}`, wantErr: []string{"loom", "review_max_bounces"}},
 		{name: "a closed key", payload: `{"slug":"bad","run_settings":{"loom":{"discussion_advisors":[{"name":"critic","model":"sonnet[low]"}]}}}`, wantErr: []string{"loom", "discussion_advisors"}},
 		{name: "a profile that is not a string", payload: `{"slug":"bad","profile":3}`, wantErr: []string{"profile must be a string"}},
-		{name: "an unknown profile", payload: `{"slug":"bad","profile":"heavy"}`, wantErr: []string{`"heavy"`, "known: budget, docs, light", "lyx config profiles --set heavy="}},
+		{name: "an unknown profile", payload: `{"slug":"bad","profile":"heavy"}`, wantErr: []string{`"heavy"`, "known: docs, light, solid, speed, wide", "lyx config profiles --set heavy="}},
 	}
 	for _, tt := range refusals {
 		t.Run("refuses "+tt.name, func(t *testing.T) {
@@ -645,7 +649,7 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		t.Run(tt.name+" refuses an unknown profile", func(t *testing.T) {
 			result := runJSON(t, 1, tt.verb, tt.payload)
 			message, _ := result["error"].(string)
-			for _, want := range []string{`"heavy"`, "known: budget, docs, light"} {
+			for _, want := range []string{`"heavy"`, "known: docs, light, solid, speed, wide"} {
 				if !strings.Contains(message, want) {
 					t.Errorf("error %q lacks %q", message, want)
 				}
@@ -711,11 +715,11 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		f.reset(t)
 		mustUpsert(t, `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"profile":"light"}`)
 		runJSON(t, 0, "set-status", `{"slug":"rs","status":"running · Discussion-Write"}`)
-		result := runJSON(t, 0, "upsert", `{"slug":"rs","profile":"budget"}`)
+		result := runJSON(t, 0, "upsert", `{"slug":"rs","profile":"solid"}`)
 		if notice, _ := result["notice"].(string); !strings.Contains(notice, "--layer local") {
 			t.Errorf("notice = %q, want it to name --layer local", notice)
 		}
-		result = runJSON(t, 0, "upsert", `{"slug":"rs","profile":"budget"}`)
+		result = runJSON(t, 0, "upsert", `{"slug":"rs","profile":"solid"}`)
 		if notice, has := result["notice"]; has {
 			t.Errorf("unchanged profile returned notice %v, want none", notice)
 		}

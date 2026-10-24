@@ -517,7 +517,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err := os.WriteFile(gateFile, []byte("gates:\n  round: [0, 1]\n  publish: [0]\n"), 0o644); err != nil {
 			t.Fatalf("plant a publish gate in the board gate.yaml: %v", err)
 		}
-		appendPlanted("profiles", "retired-keys:\n  loom: {webster_max_bounces: 3, merge_max_bounces: 1}\n")
+		appendPlanted("profiles", "retired-keys:\n  loom:\n    loom: {webster_max_bounces: 3, merge_max_bounces: 1}\n")
 		profilesFile := configengine.ConfigFile(boardDir, "profiles")
 		profilesBefore, err := os.ReadFile(profilesFile)
 		if err != nil {
@@ -560,9 +560,9 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("runprofile.Load: %v", err)
 		}
-		profile, err := profiles.Lookup("retired-keys")
+		profile, err := profiles.Settings("retired-keys", "loom")
 		if err != nil {
-			t.Fatalf("Lookup(retired-keys): %v", err)
+			t.Fatalf("Settings(retired-keys, loom): %v", err)
 		}
 		documents, err := configreg.LayerRunSettings("retired-keys", profile, nil)
 		if err != nil {
