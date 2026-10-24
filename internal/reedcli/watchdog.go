@@ -4,7 +4,7 @@
 //
 // internal/reedcli still owns the daemon's verb, its discovery loop, and its idle-exit rule, per
 // the discussion's told-geometry-keeps-the-daemon-out-of-reedengine decision:
-// PATTERN-told-geometry bars internal/reedengine from importing internal/lyxcwd, and reedcli
+// PATTERN-cwd-resolution bars internal/reedengine from importing internal/lyxcwd, and reedcli
 // already holds the *lyxcwd.Location and already imports internal/hubgeom, so it may import
 // internal/fabricengine directly as hubgeom does. That decision was revisited, not dropped, for one
 // piece of the daemon alone: the detached spawn itself moved to internal/reedengine

@@ -7,6 +7,16 @@
 // geometry from raw os.Getwd or git --show-toplevel calls.
 // WithCwd/CwdFrom are the per-call cwd-injection seam that carries this working directory through a
 // context.Context instead of the process cwd, and the value they carry is always absolute.
+//
+// # The hub suffix
+//
+// `-LYXHUB` is the sole hub container suffix, and no code parses, trims or recognises the retired `-HUB`.
+// The suffix is declared twice by sanction: this package's private hubSuffix, for RepoName derivation, and internal/fabricengine's exported HubSuffix, used by HubPath.
+// Both move together, with TestEnforcement_GeometryLiterals's geometryTokenOwners row as the third site.
+// Hub discovery is name-independent: the hub is the worktree root's parent and looksLikeHub is structural,
+// so a hub still carrying the retired suffix resolves, and only the display-only RepoName degrades.
+// Such a hub is never renamed in place, because launcher scripts and the tmux socket key are bound to the hub's absolute path;
+// the operator removes the old container by hand and re-clones, and `clone --reset` resolves the new suffix only.
 package lyxcwd
 
 import (

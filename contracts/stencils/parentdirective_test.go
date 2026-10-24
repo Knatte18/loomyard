@@ -3,7 +3,7 @@
 // parentdirective_test.go pins PATTERN-parent-directive: every spawned role's opening stencil
 // renders the parent directive, and no stencil outside the orch family tells an agent to ask the
 // operator in its pane.
-// It also pins PATTERN-edit-directive: every opening stencil renders the edit directive, and no other stencil restates the rule.
+// It also pins the entry's edit-directive clause: every opening stencil renders the edit directive, and no other stencil restates the rule.
 // The scans read stencil text only; the discussion role's interactive questions come from the
 // `{{.mode_rules}}` marker, whose text is Go, never from a stencil.
 
@@ -126,7 +126,7 @@ func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
 
 // TestStencils_OpeningStencilsRenderEditDirective fails when a role's opening stencil is unregistered or lacks the edit directive marker.
 //
-//testtiming:keep pins PATTERN-edit-directive's marker on every role's opening stencil, a guard that fires which no other test asserts
+//testtiming:keep pins PATTERN-parent-directive's marker on every role's opening stencil, a guard that fires which no other test asserts
 //lyx:guard
 func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
 	t.Parallel()
@@ -138,7 +138,7 @@ func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
 
 // TestStencils_NoEditRuleRestatement fails for any registered stencil other than edit-directive with a sentence that restates the no-script edit rule.
 //
-//testtiming:keep pins PATTERN-edit-directive's rule that the edit-directive stencil is the only statement of the edit rule, a guard that fires which no other test asserts
+//testtiming:keep pins PATTERN-parent-directive's rule that the edit-directive stencil is the only statement of the edit rule, a guard that fires which no other test asserts
 //lyx:guard
 func TestStencils_NoEditRuleRestatement(t *testing.T) {
 	t.Parallel()

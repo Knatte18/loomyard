@@ -1,6 +1,6 @@
 //go:build tier0
 
-// constraintchokepoint_test.go enforces `PATTERN-glyph-conversion-chokepoint`:
+// constraintchokepoint_test.go enforces the Glyph Conversion Chokepoint Invariant in planparser's package doc:
 // loomyard performs no glyph<->path conversion of its own outside quarry's glyph package.
 // glyph.Self is the only path->glyph call, Glyph.UnitPath is the only glyph->path call, and
 // glyph.Parse plus Glyph.String are the only glyph grammar.
@@ -95,7 +95,7 @@ func TestGlyphConversionChokepoint_NoLocalConversion(t *testing.T) {
 	scankit.RequireFloor(t, scanned, 20, "glyph conversion chokepoint guard")
 
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-glyph-conversion-chokepoint` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("glyph conversion chokepoint violated (see planparser's package doc):\n%s", strings.Join(failures, "\n"))
 	}
 }
 

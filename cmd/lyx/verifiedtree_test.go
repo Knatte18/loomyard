@@ -1,6 +1,6 @@
 //go:build tier0
 
-// verifiedtree_test.go enforces `PATTERN-verified-tree`:
+// verifiedtree_test.go enforces `PATTERN-gate-slot`:
 // every plan-verify site goes through verifytree.Verify, so none verifies a dirty tree and none skips without the record.
 // It is a tripwire over production source, like constraintchokepoint_test.go: a same-line substring scan that skips comment-only lines.
 // It catches a site that bypasses verifytree.Verify or brings back the retired verify-pending marker, not every way a verify could be spelled.
@@ -64,10 +64,10 @@ func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
 				seen[site] = true
 				// Without the paren: the landing gate holds the function as a seam value, not a direct call.
 				if !callsAny(f.Data, "verifytree.Verify") {
-					t.Errorf("`PATTERN-verified-tree` violated: %s is a plan-verify site and does not call verifytree.Verify", site)
+					t.Errorf("`PATTERN-gate-slot` violated: %s is a plan-verify site and does not call verifytree.Verify", site)
 				}
 				if !callsAny(f.Data, "Hold:") && !callsAny(f.Data, ".Hold =") {
-					t.Errorf("`PATTERN-verified-tree` violated: %s is a plan-verify site and does not pass a Hold to verifytree.Verify", site)
+					t.Errorf("`PATTERN-gate-slot` violated: %s is a plan-verify site and does not pass a Hold to verifytree.Verify", site)
 				}
 			}
 		}
@@ -92,7 +92,7 @@ func TestVerifiedTree_NoOtherVerifyRunCaller(t *testing.T) {
 			allowedSeen[f.Rel] = true
 			return
 		}
-		t.Errorf("`PATTERN-verified-tree` violated: %s calls verifyrun.Run; a plan verify goes through verifytree.Verify", f.Rel)
+		t.Errorf("`PATTERN-gate-slot` violated: %s calls verifyrun.Run; a plan verify goes through verifytree.Verify", f.Rel)
 	})
 	scankit.RequireFloor(t, scanned, 20, "verified-tree verifyrun scan")
 	for rel := range verifyRunAllowed {
@@ -108,7 +108,7 @@ func TestVerifiedTree_NoOtherVerifyRunCaller(t *testing.T) {
 func TestVerifiedTree_NoRetiredMarker(t *testing.T) {
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}}, func(f *scankit.File) {
 		if callsAny(f.Data, retiredMarkerName) {
-			t.Errorf("`PATTERN-verified-tree` violated: %s names the retired %s marker", f.Rel, retiredMarkerName)
+			t.Errorf("`PATTERN-gate-slot` violated: %s names the retired %s marker", f.Rel, retiredMarkerName)
 		}
 	})
 	scankit.RequireFloor(t, scanned, 20, "verified-tree retired-marker scan")

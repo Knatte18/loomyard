@@ -1,6 +1,6 @@
 //go:build tier0
 
-// removestrand_test.go enforces `PATTERN-shuttle-stop`: a strand is removed from Go only inside the packages that own the removal.
+// removestrand_test.go enforces `PATTERN-shuttle-provider-seam`: a strand is removed from Go only inside the packages that own the removal.
 // The scan matches the selector, so a method value handed to a wrapper is caught as well as a call.
 
 package main
@@ -86,7 +86,7 @@ func TestShuttleStop_RemoveStrandOnlyInAllowedPackages(t *testing.T) {
 		found := removeStrandSelectors(t, scankit.Root(t), allow)
 		allow.RequireNoStale(t)
 		if len(found) > 0 {
-			t.Errorf("`PATTERN-shuttle-stop` violated: RemoveStrand is selected outside the allowlist; stop the strand through shuttle's stop verb:\n%s", strings.Join(found, "\n"))
+			t.Errorf("`PATTERN-shuttle-provider-seam` violated: RemoveStrand is selected outside the allowlist; stop the strand through shuttle's stop verb:\n%s", strings.Join(found, "\n"))
 		}
 	})
 }

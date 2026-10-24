@@ -12,5 +12,5 @@
 // Its exclusion of internal/lyxcwd is machine-enforced by
 // internal/buildinfo/leaf_enforcement_test.go's TestLeafInvariant_AllowlistOnly, whose allowlist is
 // empty.
-// See PATTERN-told-geometry.
+// See PATTERN-cwd-resolution.
 package buildinfo

@@ -35,7 +35,7 @@
 //
 // # Told geometry
 //
-// The package is told the absolute paths it works on through Geometry and derives none of its own, so it imports neither internal/lyxcwd nor a geometry constructor and runs in a directory that is not a git repository (PATTERN-told-geometry).
+// The package is told the absolute paths it works on through Geometry and derives none of its own, so it imports neither internal/lyxcwd nor a geometry constructor and runs in a directory that is not a git repository (PATTERN-cwd-resolution).
 //
 // # The shuttle seam
 //
@@ -85,7 +85,7 @@
 // SeatResult then also carries the advisor's terminal Result, its WaitErr and its AcceptErr.
 // A required advisor that was accepted stays kept until the chair ends, as every done advisor does, and the chair's end decides the step.
 // Only a required advisor can end the step before the chair, and only through its own end or its own Accept.
-// The result carries the chair's outcome, gate and NotStarted as shuttle reported them: the engine judges nothing about finishing itself (PATTERN-completion-signal).
+// The result carries the chair's outcome, gate and NotStarted as shuttle reported them: the engine judges nothing about finishing itself (PATTERN-shuttle-provider-seam).
 //
 // # Probe before archive
 //

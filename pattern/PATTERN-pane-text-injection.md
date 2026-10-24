@@ -25,4 +25,72 @@ The bounded exception is a lone stray character in an idle box: the guard clears
   A guard reading that fails sends nothing, and the text stays as a draft the next send holds on.
 - Explicit key deliveries stay outside the rule: `Runner.Interrupt`, `Runner.InterruptRestoring`, `Runner.Inject`, `InterruptSequence`, the trust-prompt dismissal, the clear sent into a box holding exactly one stray-character candidate the guard reading found and the restored-prompt clear.
   Each names its keys itself and is not text for a draft box.
-  `Runner.Interrupt` and `Runner.Inject` stay outside this rule as explicit key deliveries, but their interrupt key follows `PATTERN-guarded-interrupt`.
+  `Runner.Interrupt` and `Runner.Inject` stay outside this rule as explicit key deliveries, but their interrupt key follows the guarded interrupt below.
+
+## Guarded interrupt
+
+An interrupt key reaches an agent pane only through shuttle's two pane guards, and every other path refuses it.
+
+- The guarded interrupt (`Runner.Interrupt`, `Run.Interrupt`) sends the provider's interrupt sequence only after the ready-agent-pane check and a fresh capture the provider reads as a running turn.
+  A pane with no running turn gets nothing and `ErrNoRunningTurn`, and a capture that fails sends nothing.
+- A caller that retries an interrupt waits at least the provider's settle time (`Runner.InterruptSettle`) after its first key before it reads again, and sends the retry through the guarded interrupt.
+  So lyx's own keys land at least the settle apart and never open the rewind picker.
+- The guarded picker close is the one exception: before every interrupt and every verified send it sends exactly one key of the interrupt sequence, only into a capture the provider reads as the rewind picker.
+  It then re-captures after the settle, never selects an entry, never sends a second key, and fails the operation with `ErrRewindPickerOpen`.
+- `Runner.Inject` skips the ready-pane check, so it refuses any input list holding a key of the engine's interrupt sequence (case-insensitive, `C-[` read as `Escape`) or a `Text` with a control character, whatever its `SettleMS` and neighbours, and names `lyx shuttle interrupt`.
+  A tmux spelling of the interrupt key beyond those still passes, bounded by Inject having no production caller.
+- The orch watcher's hub-pause interrupt is the one key the watcher still sends: it reaches the orch pane through the guarded interrupt, under the exemption the orch pane section below keeps for it.
+- `Runner.InterruptRestoring` is a second entry point: its key goes only through the guarded interrupt, and its clear is the engine's restored-prompt clear of the box, never an interrupt key.
+- The tests that pin it: `TestRun_Interrupt_PlaysEscape`, `TestRunner_InterruptRestoring`, `TestGuardedPickerClose` and `TestRunner_Inject_RefusesAnyInterruptKey` in `internal/shuttleengine`.
+
+## A pause holds prompts
+
+Typing a line into a session a pause covers: shuttle's send refuses with `ErrPaused` by the target's own slug, read after the idle wait, and a conditioned send's caller reads coverage itself; of the production runners that type a line, only the orch runner is told no pause geometry and reads uncovered, so `lyx orch start`'s start lines are never held; the caller holds it until the resume or claims the session.
+
+- The refusal is a `*PausedError` wrapping `ErrPaused`, a sentinel of its own that never wraps `ErrSessionBusy`; it carries the judged slug and the covering entry, so a caller waits on the slug the refusal judged.
+- A refused send types nothing, records nothing and never waits.
+  Keys stay outside it: an interrupt, an inject and the pause's own Esc are key deliveries under the rule above.
+- The tender and creel runners are told the hub's pause geometry with an empty slug, so each send judges its target by the target's own strand name; a prime name reads the empty slug, which only a hub entry covers.
+
+### What each caller does with `ErrPaused`
+
+- The gate loop holds its boundary and its re-prompt.
+- The run start and the deferred prompt wait out the pause and resend.
+- The seat notice sender retries.
+- Creel holds the inject and its queued commands.
+- Tender resume claims the session into the refusing pause.
+- Tender revive's conditioned send reports the refusal as a send error.
+- The start's segment-color line is logged and dropped.
+- `lyx loom resume` and `lyx shuttle send` refuse with the pause's way forward.
+
+### Enforcement
+
+Review discipline and the shuttle send tests; no scan enforces it.
+
+## The orch pane
+
+Only creel types into the orch session from Go, through its `Delivery` seam.
+
+- The orch watcher keeps only a hub pause's guarded interrupt.
+- Reed's `/rename` repair keeps its own guard.
+- Every other module posts a notice or injects text through creel.
+
+## The creel store
+
+Only the creel daemon in `internal/creelengine` writes the creel journal, and that engine reaches an agent's pane only through its `Delivery` seam.
+
+### Journal
+
+- The journal writer is unexported in `internal/creelengine`, and the daemon's `Run` is its only caller.
+- Checked by review.
+
+### Panes
+
+- Every keystroke goes through the `Delivery` seam, which `internal/creelcli` implements over shuttle.
+- `internal/creelengine` imports neither `internal/reedengine` nor `internal/shuttleengine` or any package under it, checked by `TestCreelStore_DeliverySeamImports`.
+- `internal/creelengine` names no tmux command, checked by review like the journal writer.
+
+### Layering
+
+Creel decides what is delivered and when, shuttle knows the provider, and reed does the keystrokes.
+Reed never imports creel.

@@ -255,7 +255,7 @@ func TestValidate_CleanRecords(t *testing.T) {
 		{name: "extra unexpected heading", content: allSectionsContent() + "## Some Extra Heading\n\nextra body.\n"},
 		{name: "PATTERN changes section of every action", content: allSectionsContent() + patternChangesSection(
 			"- `PATTERN-cwd-resolution` — adds: Resolve a cwd only in `internal/lyxcwd`.",
-			"- `PATTERN-hub-suffix` — changes: `-LYXHUB` is the sole suffix.",
+			"- `PATTERN-old-hub-rule` — changes: `-LYXHUB` is the sole suffix.",
 			"- `PATTERN-old-rule` — removes",
 			"- `PATTERN-late-rule` — changes: Reworded. — added after Discussion (parent, 2026-10-16)",
 			"- `PATTERN-late-gone` — removes — added after Discussion (arbiter, 2026-10-16)",

@@ -75,7 +75,7 @@ the most recent prior round is whichever `<module>-review-*` file is newest), EX
   you do NOT invoke its `sandbox-<module>-suite.cmd` launcher (that spawns a SEPARATE, context-free interactive `claude` session for a human operator's own dogfooding — meaningless for you to spawn on top of yourself;
   see "Live driving" in "What to TEST" below).
   No such file needs to exist for you to do this module's live driving — the "High-yield focus" list above is your primary script.
-- Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `PATTERN.md` (`PATTERN-hub-containment`, `PATTERN-cli-cobra`, `PATTERN-leaf-packages`, `PATTERN-hubforge-fixtures`, `PATTERN-sandbox-coverage`, `PATTERN-documentation-lifecycle`).
+- Repo rules you MUST follow: `CLAUDE.md` (root + `~/.claude/CLAUDE.md`) and `PATTERN.md` (`PATTERN-cwd-resolution`, `PATTERN-cli-cobra`, `PATTERN-leaf-packages`, `PATTERN-test-isolation`), and sandbox suite coverage from `tools/sandbox`'s command doc.
   A change that ships behaviour without updating the module doc / invariants in the SAME change is incomplete.
 - Design intent (SPEC, not a review): `<where the intended scope lives — e.g. _mill/discussion.md + _mill/plan/* recovered from git history at sha <SHA>>`.
   Use it as the authoritative source of intended v1 scope/behavior.

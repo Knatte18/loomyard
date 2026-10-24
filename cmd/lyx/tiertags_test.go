@@ -134,7 +134,7 @@ func TestTierTags_OneTagPerTestFile(t *testing.T) {
 	scankit.RequireFloor(t, scanned, 1000, "tier tag guard")
 	sort.Strings(failures)
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-tier-tags` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-test-speed` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

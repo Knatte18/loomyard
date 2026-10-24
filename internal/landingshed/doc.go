@@ -4,6 +4,8 @@
 // Its call is Done every time: with its flag off it logs nothing, and with its flag on it logs one Info line that the PR review is not built.
 // It opens no pull request, calls no GitHub API, reads no file and takes no lock, and a cancelled context is an error.
 //
+// A merge or test failure at Merge-In or Finalize is owned by the recipe: it ends in the row's fixer, a reroute or a halt to the orch.
+//
 // Finalize holds the parent lock, which it takes through the shared guard; the guard grants a run that already holds it, so a re-call after a resume takes back a record handed to batten.
 // A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
 // Finalize's constructor refuses a nil Deps.Lock.Store, a nil Deps.Lock.Owner and a nil Deps.ReadParentTips, and a row built without its guard, as a struct-literal test builds it, takes no lock.

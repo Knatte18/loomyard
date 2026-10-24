@@ -44,7 +44,7 @@
 // containment, ownership, dirtiness — because force never fails: it is consulted only to make the
 // dirtiness check pass, never to cause a refusal of its own.
 //
-// See PATTERN-fabric-destruction-chokepoint (added once this slice's guard test
+// See PATTERN-fabric-git (added once this slice's guard test
 // lands) for the machine-enforced half of this rule.
 //
 // Recording contract: every executor below takes a leading `rec *Mutations` parameter and appends its own primitive's entry itself, after the primitive observably changed state — never before, and never for a no-op.

@@ -155,6 +155,16 @@
 // The caller is responsible for supplying paths that already obey
 // PATTERN-durable-vs-ephemeral-state -- the status file durable, both locks never-tracked transients --
 // because Shed cannot and does not choose either location.
+// The package imports only the standard library, internal/state and internal/lock, so every path and every recipe behaviour reaches it told.
+//
+// # The transient mark
+//
+// The transient mark is declared only here (transient.go), and its class set is closed at that declaration.
+// A lower-level package exposes its own classification, and internal/shedtransient alone translates it into the mark.
+// The mark is set only at a producer boundary, the Shed.Transient classifier shedbuild.NewShed tells, or at a step bootstrap boundary, a PreStep hook.
+// A producer returns a failure shedtransient classifies as a hard error rather than a verdict, so it reaches that classifier,
+// and a gate verdict (blocked, awaiting, paused) never carries the mark.
+// A mark added at a new site changes what an automated driver re-steps without a human deciding.
 //
 // # The ShedProducer contract's two caller-side obligations
 //

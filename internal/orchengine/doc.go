@@ -357,7 +357,7 @@
 // The engine imports no creel package: `CreelMessage`, `CreelStep`, `CreelOutcome`, `CreelSent` and `CreelWithdrawn` carry the values it needs, and every call addresses a receiver by its full strand name.
 // The watcher reads that name from reed through `Session.StrandName` at each call, so a strand renamed or rebound never leaves it addressing a stale name.
 //
-//   - Another module tells the orchestrator about a change by posting creel mail to its strand, never by typing into its pane (PATTERN-orch-pane-single-writer); there is no notice queue.
+//   - Another module tells the orchestrator about a change by posting creel mail to its strand, never by typing into its pane (PATTERN-pane-text-injection); there is no notice queue.
 //   - `Watcher.Run` reads the watcher's mailbox once before its first tick, so creel knows the program as a receiver before a reply can arrive.
 //     It uses the handler every tick's read uses, which declines until the watcher has set its events cursor for the recorded strand, so every message stays unread for the first tick; a failed read is logged and is not a tick error.
 //   - The retired notice queue is only cleaned up: `CleanupRetiredNotices` lists and removes `Paths.NoticesDir` and `Paths.RetiredNoticeLogPath`.

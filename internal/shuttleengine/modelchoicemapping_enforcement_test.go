@@ -1,6 +1,6 @@
 //go:build tier0
 
-// modelchoicemapping_enforcement_test.go enforces PATTERN-model-choice-mapping:
+// modelchoicemapping_enforcement_test.go enforces PATTERN-shuttle-provider-seam:
 // only NewModelChoice reads a modelspec.Resolved field outside internal/modelspec,
 // so every resolved model key reaches a spawn as a ModelChoice.
 
@@ -233,7 +233,7 @@ func TestModelChoiceMappingRule(t *testing.T) {
 		got, scanned := modelChoiceMappingViolations(t, scankit.Root(t))
 		scankit.RequireFloor(t, scanned, 1, "module-wide model-choice mapping scan")
 		if len(got) > 0 {
-			t.Errorf("PATTERN-model-choice-mapping violated: only NewModelChoice reads a modelspec.Resolved field, but one is read at: %v", got)
+			t.Errorf("PATTERN-shuttle-provider-seam violated: only NewModelChoice reads a modelspec.Resolved field, but one is read at: %v", got)
 		}
 	})
 }

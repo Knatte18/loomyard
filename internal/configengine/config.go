@@ -1,7 +1,7 @@
 // config.go implements two loading policies over one shared body for layered YAML configuration backed by yamlengine and envsource.
 // Load is strict and used by hub-scoped modules where an absent base config means a broken hub.
 // LoadOrTemplate resolves the caller's embedded template on proven absence of the base layer and is used by modules with a standalone entry point.
-// PATTERN-config-strictness is the rule that decides which policy a new caller adopts.
+// PATTERN-config-layers is the rule that decides which policy a new caller adopts.
 
 package configengine
 

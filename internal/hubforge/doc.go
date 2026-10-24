@@ -55,6 +55,6 @@
 // No package inside internal/fabriccli's dependency set may import hubforge — such tests use an
 // external *_test package or gitkit instead.
 // This is self-enforcing: the import would close a dependency cycle and fail to compile.
-// See PATTERN-hubforge-fixtures for the machine-checked half of this
+// See PATTERN-test-isolation for the machine-checked half of this
 // contract.
 package hubforge

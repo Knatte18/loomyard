@@ -67,3 +67,39 @@ A test package never reaches the operator's global gitconfig or default tmux soc
   The kit's server differs from reed's own only by `exit-empty off` and the `@lyx_test_server` marker, which reed's boots never set.
   Reed's server is started by a test that registers its key after reed's boot, and by every boot after a test's own `down` or `kill-server` on its key, as those tests pin reed's own server start, teardown or recovery, which a pre-started server would bypass.
   The pre-started server runs without reed's `-v` debug flags and with the kit's directory as its cwd, so it writes no `tmux-server-<pid>.log` into the hub logs dir; a test that asserts on those artefacts registers its key after reed's boot.
+
+## Testkit
+
+Shared test support — fakes, builders, fixtures and the scan harness — used by two or more packages is shared through one kit package under `internal/testkit/<kit>/`, never duplicated per package and never placed under the package it fakes.
+
+- No non-test file outside `internal/testkit/` imports a path under it, so every kit is reachable only from tests.
+  Files under `internal/testkit/` are exempt, so a kit may build on another kit.
+- No non-test file under `internal/testkit/` imports an `internal/*cli` package.
+- No non-test file under `internal/testkit/` imports `os/exec`, `internal/gitexec`, `internal/gitkit`, `internal/hubforge`, `internal/testkit/lyxbin`, `internal/testkit/tmuxkit` or `internal/testkit/llmkit`.
+  - `internal/testkit/lyxbin` is exempt from the `os/exec` ban alone, bounded to `go build` of `./cmd/lyx` and running that binary under group kill.
+    It builds at most once per test binary and per ldflags, or returns the binary `gateslot.PrebuiltLyxEnv` names, which a gate run builds once for every package of a tagged run.
+    Banning its import keeps the kit-on-kit exemption from handing another kit a transitive `go build`.
+  - `internal/testkit/tmuxkit` is the second exemption from the `os/exec` ban alone, bounded to running the `tmux` binary against sockets under its own directory or its own fixture keys, to starting servers under the kit's own config, and to the post-run `/proc` scan that kills a leftover process.
+    No other kit imports it, for the same reason.
+  - `internal/testkit/llmkit` is the third exemption from the `os/exec` ban alone, bounded to `exec.LookPath` for the `claude` binary; it starts nothing.
+    Only `tier3`-tagged test files import it, and no other kit does, for the same reason.
+- A kit imports only the lowest packages defining the types it fakes.
+  A package an import cycle bars from a kit keeps exactly one local copy, and a fixture used by one package stays in that package's `_test.go` files.
+- `internal/testkit/scankit` imports the standard library only, so every package's tests can import it.
+
+### Enforcement
+
+`internal/testkit/enforcement_test.go` enforces the import rules.
+Review discipline covers the rest: a kit starts no process, tmux server or agent beyond what its imports allow.
+A kit asserts nothing beyond `t.Fatalf` on its own setup, the `shedfake` `Call` and `RequireOutcome` outcome check, and the `envelope` `RequireOK` and `RequireErr` shape check.
+`scankit` additionally asserts scan results, while `plankit` and `stencilkit` assert nothing beyond `t.Fatalf` on their own setup.
+
+## Hub fixtures
+
+Every hub fixture is built by `internal/hubforge` through `fabriccli.CloneAndWire`.
+No hub is hand-assembled.
+
+- No package in `fabriccli`'s dependency set may import `hubforge`.
+- A copy from `hubforge.CopyHub` is a relocation of a hub `fabriccli.CloneAndWire` built into a per-binary template, never a hub assembled another way; `SharedHub` hands out that template itself to a test that only reads.
+- No test package wraps `hubforge` in its own fixture type; a test takes a `*hubforge.Hub` and reads `h.Topology`, `AddPairWith` and `OpenFabric` directly.
+  Enforcement of this clause is review discipline, not a scan.

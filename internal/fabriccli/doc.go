@@ -38,7 +38,7 @@
 // Pending run records in the weft worktree are committed before the archive tag is pushed, so only changes outside the record paths need `--force`.
 // `ended_processes` lists the `{pid, role}` of each registered process the session end ended, and is empty when none.
 //
-// The removal first runs the run-scope origin reconcile of the slug, which `PATTERN-origin-reconcile` requires before acting on a run after an absence, and turns its report into a verdict on the slug's entry.
+// The removal first runs the run-scope origin reconcile of the slug, which `PATTERN-owner-machine` requires before acting on a run after an absence, and turns its report into a verdict on the slug's entry.
 // A stopped entry is refused naming the first branch that stops it, its way forward and the re-run of the removal, with nothing ended.
 // The way forward is the branch's own, never the entry's, since the entry can carry the text of a gone branch, which names the refused verb.
 // A stop made only by gone branches of the slug is no refusal: the removal is what clears a gone branch, so it runs the ordinary request.

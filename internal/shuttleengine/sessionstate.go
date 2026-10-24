@@ -105,7 +105,7 @@ type SessionFacts struct {
 // Signals are ordered by file order only: At is read for a state's Since and never compared.
 // The output files are consulted before the output-derived states, no-output and an interactive run's asking.
 // Dead and unknown outrank idle-done, so a finished run can read dead.
-// The first consumer that acts on dead must apply PATTERN-completion-signal's output check before acting.
+// The first consumer that acts on dead must apply PATTERN-shuttle-provider-seam's output check before acting.
 type SessionFold struct {
 	newest    SessionSignal
 	hasNewest bool

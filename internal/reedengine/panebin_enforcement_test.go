@@ -1,6 +1,6 @@
 //go:build tier0
 
-// panebin_enforcement_test.go enforces PATTERN-pane-binary-resolution's two-sided
+// panebin_enforcement_test.go enforces the pane-binary rule's two-sided
 // guarantee: no pane-creation site exists outside the named allowlist, and the one allowlisted
 // chokepoint still composes the prelude rather than silently becoming a plain pass-through.
 // It is modelled directly on selvagepane_enforcement_test.go: scankit walks every non-_test.go .go file directly inside internal/reedengine -- never internal/reedengine/render/, and never a sibling package.
@@ -88,7 +88,7 @@ func TestPaneCreationSitesRouteThroughThePreludeChokepoint(t *testing.T) {
 		allow.RequireNoStale(t)
 
 		if len(failures) > 0 {
-			t.Errorf("pane-creation chokepoint violated (see PATTERN-pane-binary-resolution): %v carries a %s literal outside the named allowlist -- %s", failures, scan.literal, scan.advice)
+			t.Errorf("pane-creation chokepoint violated (see reedengine's package doc): %v carries a %s literal outside the named allowlist -- %s", failures, scan.literal, scan.advice)
 		}
 	}
 }

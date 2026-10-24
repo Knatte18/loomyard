@@ -1,9 +1,7 @@
 //go:build tier0
 
-// docslink_test.go guards markdown link and anchor integrity under docs/: every
-// inline markdown link's file part and #anchor must resolve somewhere in the repo. Its placement in
-// internal/lyxcwd is a file-layout convenience, not an ownership claim on markdown links by that
-// package — see PATTERN-markdown-link-integrity.
+// docslink_test.go guards markdown link and anchor integrity under docs/: every inline markdown link's file part and #anchor must resolve somewhere in the repo.
+// Its placement in internal/lyxcwd is a file-layout convenience, not an ownership claim on markdown links by that package.
 
 package lyxcwd
 

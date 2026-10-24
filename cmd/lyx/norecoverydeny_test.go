@@ -1,6 +1,6 @@
 //go:build tier0
 
-// norecoverydeny_test.go enforces `PATTERN-no-denied-recovery`: no refusal, stencil, spec or skill names a command the agents' settings deny as a way forward.
+// norecoverydeny_test.go enforces `PATTERN-refusal-way-forward`: no refusal, stencil, spec or skill names a command the agents' settings deny as a way forward.
 // The scan reads files only, so it stays in the untagged tier.
 // The scanned surface is `contracts/specs/`, `contracts/stencils/`, `plugins/ly/skills/` and the string literals of the non-test Go files under the webster, shed and loom modules.
 // `pattern/` background files and test files are outside it.
@@ -137,7 +137,7 @@ func scanDeniedRecoveryGoFile(t *testing.T, root, path string) []deniedRecoveryH
 
 // TestNoDeniedRecovery_ScannedSurfaceHasNone fails, naming file and line, for every denied form the scanned surface offers.
 //
-//testtiming:keep pins that no refusal, stencil or spec names a denied recovery command, the guard itself of PATTERN-no-denied-recovery
+//testtiming:keep pins that no refusal, stencil or spec names a denied recovery command, the guard itself of PATTERN-refusal-way-forward
 //lyx:guard
 func TestNoDeniedRecovery_ScannedSurfaceHasNone(t *testing.T) {
 	root := scankit.Root(t)
@@ -201,7 +201,7 @@ func TestNoDeniedRecovery_ScannedSurfaceHasNone(t *testing.T) {
 		for i, h := range hits {
 			lines[i] = fmt.Sprintf("%s:%d: offers denied command %q; lyx performs that step itself, name its verb or a non-denied command", h.file, h.line, h.form)
 		}
-		t.Errorf("`PATTERN-no-denied-recovery` violated:\n%s", strings.Join(lines, "\n"))
+		t.Errorf("`PATTERN-refusal-way-forward` violated:\n%s", strings.Join(lines, "\n"))
 	}
 }
 

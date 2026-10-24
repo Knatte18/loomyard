@@ -8,3 +8,7 @@ Every producer prompt and every deployed normative spec is read at call time fro
 - Seed and refresh run once per process pre-run for both, never lazily inside `Read`.
 - A command that reads no stencils reads no specs either, and may decline the pass entirely by carrying the skip annotation.
   Declining is all-or-nothing per command and never defers seeding to a later or lazier point.
+
+## Producer pointers
+
+An instruction file that needs another producer's format points at that producer's format contract, and never restates it.

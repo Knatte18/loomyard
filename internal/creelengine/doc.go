@@ -5,7 +5,7 @@
 // # Layering
 //
 // Creel decides what is delivered and when, shuttle knows the provider and its idle check and safe send, and reed knows the pane and does the keystrokes: creel → shuttle → reed → tmux.
-// The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-creel-store` pins that with an import scan.
+// The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-pane-text-injection` pins that with an import scan.
 // Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, claims a covered strand into its pause for the interrupt, types one line into its pane, runs one command of a closed set in its session and sends the guarded interrupt.
 // Its idle answer carries a stall reason when a not-idle pane waits on something the operator can act on, a pane too short for the input box, a draft in it or a pane showing no input box, and the engine journals each change of that reason as a `stalled` record.
 // `internal/creelcli` implements it over the hub's worktrees, reed's persisted state and status, the pause record, and a shuttle runner built per worktree at each call.
@@ -196,7 +196,7 @@
 //
 // # Unbuilt: the stage 3 remainder
 //
-// `PATTERN-orch-pane-single-writer` is scoped to the orch session: typing into it from Go is only creel's, through its `Delivery` seam; the orch watcher keeps only a hub pause's guarded interrupt, reed's `/rename` repair keeps its own guard, and other modules post or inject through creel.
+// `PATTERN-pane-text-injection` is scoped to the orch session: typing into it from Go is only creel's, through its `Delivery` seam; the orch watcher keeps only a hub pause's guarded interrupt, reed's `/rename` repair keeps its own guard, and other modules post or inject through creel.
 // Stage 3 widens it to every agent's pane.
 //
 // Stage 3, the task `creel-agents`: the parent-review gate posts to the parent itself, drivers' stop reports post instead of duplicating batten's notices, and `lyx shuttle send` and `lyx shuttle interrupt` move behind creel.

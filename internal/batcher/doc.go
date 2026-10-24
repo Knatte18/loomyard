@@ -77,4 +77,8 @@
 // The rules only add boundaries: they never merge batches, reorder cards or move a card across a dependency, and every grouping batchifier applies them.
 // Its bound is that a file-level old side over-splits from a package-unit target in that file's directory.
 // A recorded partition in state.json is never regrouped, since only a derivation applies the rule.
+//
+// Webster's execution unit is always the batch the active profile derives, and this package's registry is the one place a batchifier kind is chosen.
+// The partition is recorded in state.json at first init;
+// a later run reads the recorded partition and does not derive it again, and only a rebaseline replaces it.
 package batcher

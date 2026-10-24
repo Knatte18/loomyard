@@ -32,7 +32,7 @@
 // Told-geometry tier: preflight is the tier-2 layer, and it legitimately resolves geometry rather
 // than being told it — it imports internal/lyxcwd in production and calls lyxcwd.Resolve through
 // ResolveMode, which is exactly its job as the precondition layer above the engines.
-// See PATTERN-told-geometry.
+// See PATTERN-cwd-resolution.
 //
 // # Why there are three functions
 //

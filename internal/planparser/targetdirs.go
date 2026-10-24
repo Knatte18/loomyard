@@ -323,7 +323,7 @@ func targetDir(plan *Plan, raw string) (dir string, namesGo, ok bool) {
 }
 
 // goPackageDir maps a Go unit string, a glyph's UnitPath result or a handle's package half, to the directory its package lives in.
-// It is one of the two sanctioned adjustments of a Go unit string under PATTERN-glyph-conversion-chokepoint:
+// It is one of the two sanctioned adjustments of a Go unit string under the package doc's Glyph Conversion Chokepoint Invariant:
 // quarry names an external test package's unit `<dir>_test`, a pseudo-unit with no directory of its own, so a last path segment ending in `_test` with no file extension comes back without that suffix.
 // Any other unit is returned unchanged.
 // It reads no disk, so a real package directory whose own name ends in `_test` maps to its sibling.
@@ -335,7 +335,7 @@ func goPackageDir(unit string) string {
 }
 
 // GoPackageCounterpart returns ref's member glyph in the other Go package of the same directory: `<dir>_test` for a member of `<dir>`, and `<dir>` for a member of `<dir>_test`.
-// It is the other sanctioned adjustment of a Go unit string under PATTERN-glyph-conversion-chokepoint, so a caller can find a member written into the package its plan did not name.
+// It is the other sanctioned adjustment of a Go unit string under the package doc's Glyph Conversion Chokepoint Invariant, so a caller can find a member written into the package its plan did not name.
 // It reports false under a plan that is not go, and for a ref that is no member glyph or whose unit is a file.
 // It reads no disk, so a real package directory whose own name ends in `_test` maps to its sibling.
 func GoPackageCounterpart(plan *Plan, ref string) (string, bool) {
