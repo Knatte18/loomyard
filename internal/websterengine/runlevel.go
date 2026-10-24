@@ -371,6 +371,7 @@ func countBegunForkBatches(st *State, sessionID string) int {
 // and an undispositioned correctness finding demotes the outcome to stuck, the same way a done whose verify gate did not pass does.
 // Run hands Merriam's spawn the plan-level verify as a must-pass gate entry named `verify` (NewVerifyGate), so a red tree re-prompts Merriam's live session and a gate that never passes ends the run stuck.
 // Every recorded audit warning is appended to summary.md's "Audit warnings" section when that file exists.
+// A recorded batch at a dead end refuses the run with ErrBatchDeadEnd before Master is spawned, since Master would only end the run stuck on it.
 // With RunOptions.AutoRebaseline, a changed plan is rebaselined and saved before anything else acts on the run, and the warning naming the accepted cards joins RunResult.Warnings, summary.md's "Plan rebaselined" section and a stuck outcome's reason;
 // every error Run returns after the accepted rebaseline opens with that warning, and each plan refusal that follows it names re-stepping the row and wraps ErrAutoRebaseline.
 func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
@@ -612,6 +613,9 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 
 	if len(st.PendingAuditFindings) > 0 {
 		return RunResult{}, pendingAuditFindingsError(deps.Engines, st, deps.Geom, deps.reentryStep())
+	}
+	if err := deadEndBatchError(deps.Geom, st, batches, deps.reentryStep()); err != nil {
+		return RunResult{}, err
 	}
 
 	// Validation runs HERE — after the state phase settles — rather than at entry, because its
@@ -1013,6 +1017,8 @@ func verifyEveryBatchDone(websterDir, scratchDir string, batches []batcher.Batch
 		switch {
 		case !ok || bs == nil:
 			offenders = append(offenders, fmt.Sprintf("%02d-%s (never recorded)", number, slug))
+		case waitsOnParent(bs):
+			offenders = append(offenders, fmt.Sprintf("%02d-%s (waits on its parent: %s)", number, slug, waitingNeed(bs)))
 		case !bs.Terminal:
 			offenders = append(offenders, fmt.Sprintf("%02d-%s (begun, not recorded terminal)", number, slug))
 		case bs.Status != DigestStatusDone:
@@ -1160,6 +1166,43 @@ func hasPendingFinding(st *State, id string) bool {
 		}
 	}
 	return false
+}
+
+// ErrBatchDeadEnd is the sentinel Run returns while a recorded batch is at a dead end, one Master's failure ladder would only end the run stuck on.
+var ErrBatchDeadEnd = errors.New("webster: a batch of this run is at a dead end")
+
+// deadEndBatchError returns ErrBatchDeadEnd wrapped with the first batch, in execution order, whose record is a dead end, or nil when none is.
+// A dead end is a terminal batch not done whose recoveries are spent and that holds no amendment a spawn has not rendered,
+// or a dead recovery that earns no retry (RecoveryRetry) and holds no such amendment.
+// The text depends only on the batch's record and the tree, so a re-entry over an unchanged run refuses with the same text.
+// A git read that fails while judging a dead recovery returns a plain error naming a re-run, never a dead end.
+func deadEndBatchError(geom Geometry, st *State, batches []batcher.Batch, reentry string) error {
+	for _, b := range batches {
+		number, slug := batchIdentity(b)
+		bs := st.Batches[number]
+		if bs == nil || !bs.Terminal || bs.Status == DigestStatusDone {
+			continue
+		}
+		var why string
+		switch {
+		case bs.Recoveries >= maxRecoveries && !rendersNewAmendment(bs):
+			why = fmt.Sprintf("is %s and has had its %d recoveries", bs.Status, bs.Recoveries)
+		case bs.Status == DigestStatusDead && !rendersNewAmendment(bs):
+			retry, _, err := recoveryRetryRead(geom, st, number)
+			if err != nil {
+				return fmt.Errorf("%w; way forward: re-run %s, and if the read keeps failing, %s", err, reentry, wayForwardSteps(resetVerb(ResetToBatchStart, number), reentry))
+			}
+			if !retry {
+				why = "is dead and its recovery earns no retry"
+			}
+		}
+		if why == "" {
+			continue
+		}
+		return fmt.Errorf("%w: batch %02d-%s %s, so a Master would only end the run stuck on it; %s; or %s",
+			ErrBatchDeadEnd, number, slug, why, wayForwardSteps(resetVerb(ResetToBatchStart, number), reentry), freshRestartSteps(reentry))
+	}
+	return nil
 }
 
 // ErrPendingAuditFindings is the sentinel Run returns while run-exit correctness findings are pending.

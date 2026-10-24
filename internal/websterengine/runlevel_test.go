@@ -214,6 +214,28 @@ type runRefusalCase struct {
 	check func(t *testing.T, fx *runFixture, err error)
 }
 
+// deadEndRefusalCase returns a row over a run whose batch 1 is recorded as bs, a dead end, refused with ErrBatchDeadEnd and the text want.
+// Its way forward does what `lyx webster reset --to batch-start` does to the record, clearing the recovery count and start, after which the run reaches Master.
+func deadEndRefusalCase(name string, bs *websterengine.BatchState, want string) runRefusalCase {
+	return runRefusalCase{
+		name:  name,
+		cards: 1,
+		setup: func(t *testing.T, fx *runFixture) func() {
+			seedMatchingState(t, fx, &websterengine.State{Batches: map[int]*websterengine.BatchState{1: bs}})
+			return func() {
+				st := loadRunState(t, fx)
+				st.Batches[1].Recoveries, st.Batches[1].RecoveryStartSHA = 0, ""
+				if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+					t.Fatalf("save the reset record: %v", err)
+				}
+			}
+		},
+		errIs:       websterengine.ErrBatchDeadEnd,
+		msgContains: []string{want, "so a Master would only end the run stuck on it"},
+		wayForward:  []string{"1) lyx webster reset --to batch-start --batch 01; 2) lyx webster run", "or 1) lyx webster reset --to start; 2) lyx webster run"},
+	}
+}
+
 // enginesWithHiddenX returns an engine set whose engine "x" hides its fork audit and whose other engine is the fake that audits, with defaultName as the default.
 func enginesWithHiddenX(defaultName string) shuttleengine.EngineSet {
 	fake := &shuttlefake.Engine{}
@@ -522,6 +544,25 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			errIs:      websterengine.ErrFingerprintMismatch,
 			wayForward: []string{"lyx webster rebaseline", "2) lyx webster run"},
 		},
+		deadEndRefusalCase("a dead recovery that earns no retry", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1},
+			"batch 01-batch1 is dead and its recovery earns no retry"),
+		deadEndRefusalCase("a stuck batch whose recoveries are spent", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusStuck, Recoveries: 2},
+			"batch 01-batch1 is stuck and has had its 2 recoveries"),
+		{
+			name:  "a dead recovery whose start commit cannot be read is no dead end",
+			cards: 1,
+			setup: func(t *testing.T, fx *runFixture) func() {
+				seedMatchingState(t, fx, &websterengine.State{Batches: map[int]*websterengine.BatchState{1: {Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1, RecoveryStartSHA: "unknown-sha"}}})
+				return nil
+			},
+			msgContains: []string{"unknown commit"},
+			wayForward:  []string{"re-run", "lyx webster reset --to batch-start --batch 01"},
+			check: func(t *testing.T, fx *runFixture, err error) {
+				if errors.Is(err, websterengine.ErrBatchDeadEnd) {
+					t.Errorf("Run() error = %v; want no ErrBatchDeadEnd for a failed git read", err)
+				}
+			},
+		},
 		{
 			name:  "an edited card names the card to rebaseline",
 			cards: 2,
@@ -646,6 +687,36 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 				_, err = websterengine.Run(fx.Deps, websterengine.RunOptions{})
 				requireReachedMaster(t, fx, err)
 			}
+		})
+	}
+}
+
+// TestRun_DeadEndRefusalSparesRecoverableBatches asserts Run reaches Master, with no ErrBatchDeadEnd, over each recorded batch a Master or a recovery can still take.
+func TestRun_DeadEndRefusalSparesRecoverableBatches(t *testing.T) {
+	t.Parallel()
+
+	unrendered := []websterengine.AmendedCard{{Card: "01-batch1", Rendered: false}}
+	tests := []struct {
+		name string
+		bs   *websterengine.BatchState
+	}{
+		{"a dead recovery with no counted recovery", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead}},
+		{"a stuck batch at the cap holding an unrendered amendment", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusStuck, Recoveries: 2, AmendedCards: unrendered}},
+		{"a dead recovery at the cap holding an unrendered amendment", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 2, AmendedCards: unrendered}},
+		{"a done batch", doneBatch("batch1", "master-session-old")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newRunFixture(t, 1)
+			seedMatchingState(t, fx, &websterengine.State{Batches: map[int]*websterengine.BatchState{1: tt.bs}})
+			diedMaster(t, fx, "spared")
+
+			_, err := websterengine.Run(fx.Deps, websterengine.RunOptions{})
+			if errors.Is(err, websterengine.ErrBatchDeadEnd) {
+				t.Fatalf("Run() error = %v; want no ErrBatchDeadEnd", err)
+			}
+			requireReachedMaster(t, fx, err)
 		})
 	}
 }

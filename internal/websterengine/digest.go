@@ -10,14 +10,16 @@ package websterengine
 
 import "fmt"
 
-// The five legal Digest.Status values.
+// The six legal Digest.Status values.
 // failed is a batch whose report webster rejected on its merits.
+// waiting is a batch stopped on a step only the run's parent can take; it is in flight, never terminal.
 const (
 	DigestStatusRunning = "running"
 	DigestStatusDone    = "done"
 	DigestStatusStuck   = "stuck"
 	DigestStatusDead    = "dead"
 	DigestStatusFailed  = "failed"
+	DigestStatusWaiting = "waiting"
 )
 
 // The three legal Digest.DeadReason values, set only when Status is DigestStatusDead.
@@ -32,12 +34,13 @@ const (
 // other fields populate at terminal.
 type Digest struct {
 	Batch      string   `json:"batch"`
-	Status     string   `json:"status"` // DigestStatusRunning, Done, Stuck, Dead, or Failed
+	Status     string   `json:"status"` // DigestStatusRunning, Done, Stuck, Dead, Failed, or Waiting
 	HeadSHA    string   `json:"head_sha,omitempty"`
 	Deviations []string `json:"deviations,omitempty"`  // The scope guard's files changed outside the batch's targets; informational only, never affects Status
 	Departures []string `json:"departures,omitempty"`  // The Pattern-Departure trailers of the batch's commits as "<subject>: <value>"; informational only, never affects Status
 	DeadReason string   `json:"dead_reason,omitempty"` // Set only when Status is Dead
 	Reasons    []string `json:"reasons,omitempty"`     // Set only when Status is Failed
+	Need       string   `json:"need,omitempty"`        // The step only the parent can take; set only when Status is Waiting
 	ElapsedS   int      `json:"elapsed_s,omitempty"`   // Seconds since spawn, running snapshots only
 }
 
@@ -60,18 +63,17 @@ func batchDepartures(geom Geometry, startSHA, headSHA string) ([]string, error) 
 	return lines, nil
 }
 
-// distill computes the terminal digest for a fork-return report:
-// OK → Done, FAILED → Stuck. HeadSHA carries through.
+// distill computes the digest for a fork-return report:
+// OK → Done, FAILED → Stuck, NEEDS_PARENT → Waiting with its Need. HeadSHA carries through.
 // Batch is not set; the caller (Classify) assigns it.
 // Deviations is not set either: record-batch fills it from the scope guard.
 func distill(r *Report) Digest {
-	status := DigestStatusStuck
-	if r.Status == ReportStatusOK {
-		status = DigestStatusDone
-	}
-
-	return Digest{
-		Status:  status,
-		HeadSHA: r.HeadSHA,
+	switch r.Status {
+	case ReportStatusOK:
+		return Digest{Status: DigestStatusDone, HeadSHA: r.HeadSHA}
+	case ReportStatusNeedsParent:
+		return Digest{Status: DigestStatusWaiting, HeadSHA: r.HeadSHA, Need: r.Need}
+	default:
+		return Digest{Status: DigestStatusStuck, HeadSHA: r.HeadSHA}
 	}
 }

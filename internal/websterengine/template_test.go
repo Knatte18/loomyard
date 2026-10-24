@@ -430,7 +430,7 @@ func TestMasterTemplate_QuotesBulletLists(t *testing.T) {
 		heading string
 		want    []string
 	}{
-		{"digest fields", digestSectionHeading, []string{"batch", "status", "head_sha", "deviations", "departures", "dead_reason", "elapsed_s"}},
+		{"digest fields", digestSectionHeading, []string{"batch", "status", "head_sha", "deviations", "departures", "dead_reason", "need", "elapsed_s"}},
 		{"outcome schema keys", outcomeKeysHeadingSub, []string{"outcome", "stuck_reason", "batches_done"}},
 	}
 	for _, tc := range cases {
@@ -1071,6 +1071,11 @@ func TestRenderBatchLists(t *testing.T) {
 			3: {Slug: "webster-audit-policy", Terminal: false},
 		}}), "01-seam-extensions: done\n02-webster-foundation: stuck"},
 		{"progress follows slice order", websterengine.RenderProgress(reordered, allDone), "03-third: done\n01-first: done\n02-second: done"},
+		{"progress lists a waiting batch with its need and the verb that resumes it", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
+			1: {Slug: "seam-extensions", Terminal: true, Status: "done"},
+			2: {Slug: "webster-foundation", Kind: "fork", Status: websterengine.DigestStatusWaiting, Digest: &websterengine.Digest{Status: websterengine.DigestStatusWaiting, Need: "set the tier commands"}},
+			3: {Slug: "webster-audit-policy", Kind: "recovery", Status: websterengine.DigestStatusWaiting, Digest: &websterengine.Digest{Status: websterengine.DigestStatusWaiting, Need: "run lyx fabric reconcile"}},
+		}}), "01-seam-extensions: done\n02-webster-foundation: waiting (need: set the tier commands; resume: lyx webster begin-batch 2)\n03-webster-audit-policy: waiting (need: run lyx fabric reconcile; resume: lyx webster recover-batch 3)"},
 		// A state.json carrying an explicit null for a batch key parses to a present-but-nil entry.
 		{"progress skips a nil batch record", websterengine.RenderProgress(inOrder, &websterengine.State{Batches: map[int]*websterengine.BatchState{
 			1: nil,

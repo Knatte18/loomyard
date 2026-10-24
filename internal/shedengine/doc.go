@@ -97,6 +97,8 @@
 //
 // A Stuck verdict whose OutputPointer.Halt is set blocks the run at its own row with the producer's Reason whatever the row's OnStuck, and is budget-exempt.
 // It can only stop a run, never advance or route it, so a row with an OnStuck route can still halt for a human.
+// A Stuck that blocks at a row with no OnStuck is budget-exempt as well, since no budget applies there,
+// so a re-step that halts the same way again folds into the halt's entry instead of appending one.
 // OutcomeGoto stays the goto verb's alone.
 //
 // # Entry gates

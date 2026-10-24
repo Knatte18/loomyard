@@ -142,6 +142,30 @@ func TestStep_CountedAndExemptStucksDoNotFold(t *testing.T) {
 	}
 }
 
+// TestStep_RepeatedBlockingHaltFolds proves a re-step of a row with no OnStuck that blocks again the same way keeps one history entry, its repeat counted, rather than appending a second.
+func TestStep_RepeatedBlockingHaltFolds(t *testing.T) {
+	shed, statusPath, _, statusLockPath := newTestShed(t)
+	shed.Producers = []ProducerDef{{
+		Name:     "Webster",
+		Producer: fixedOutcomeProducer(Stuck, ""),
+	}}
+	seedStatus(t, statusPath, statusLockPath, commonSeed("Webster"))
+
+	for range 2 {
+		if res := mustStep(t, shed); res.State != StateBlocked {
+			t.Fatalf("Step() state = %q; want %q", res.State, StateBlocked)
+		}
+	}
+
+	got := readStatus(t, statusPath, statusLockPath)
+	if len(got.History) != 1 {
+		t.Fatalf("history has %d entries; want 1: %+v", len(got.History), got.History)
+	}
+	if e := got.History[0]; e.Outcome != Stuck || !e.BudgetExempt || e.Repeats != 1 || e.LastAt == "" {
+		t.Errorf("entry = %+v; want a budget-exempt Stuck with Repeats 1 and a LastAt", e)
+	}
+}
+
 func TestStep_AwaitingEndsAFold(t *testing.T) {
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	script := []Outcome{Stuck, Stuck, Awaiting, Stuck}

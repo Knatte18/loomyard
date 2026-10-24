@@ -301,6 +301,7 @@ func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 		{name: "NilBatcher", err: websterengine.ErrNilBatcher},
 		{name: "PlainUnmatchedError", err: errors.New("webster: plan validation refused this run")},
 		{name: "AutoRebaselineWrap", err: autoRebaselineErr, wantStuck: true},
+		{name: "BatchDeadEnd", err: fmt.Errorf("%w: batch 01-a is dead and its recovery earns no retry; way forward: 1) lyx webster reset --to batch-start --batch 01; 2) re-step the loom row", websterengine.ErrBatchDeadEnd), wantStuck: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -323,7 +324,7 @@ func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
 				t.Fatal("Call() error = nil; want non-nil")
 			}
 			if outcome == shedengine.Stuck {
-				t.Errorf("Call() outcome = %q; want the error, not %q (only the pending-audit-findings and auto-rebaseline sentinels map to Stuck)", outcome, shedengine.Stuck)
+				t.Errorf("Call() outcome = %q; want the error, not %q (only the pending-audit-findings, auto-rebaseline and batch-dead-end sentinels map to Stuck)", outcome, shedengine.Stuck)
 			}
 		})
 	}

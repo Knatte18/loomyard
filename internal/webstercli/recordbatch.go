@@ -71,6 +71,10 @@ verbatim (the pinned terse field set Master reads) plus any non-fatal
 warnings. If the report has not landed yet, record-batch returns
 {"no_report": true, "batch": "NN-<slug>"} and exits 0 -- a ladder signal,
 not an error; Master re-forks once and calls record-batch again.
+A NEEDS_PARENT report records the batch waiting on its parent: the envelope
+carries "status": "waiting" and the report's "need", the report is archived,
+and no recovery is spent. A call on a waiting batch refuses, naming
+"lyx webster begin-batch NN", which resumes it once the parent has acted.
 A batch rejected on its merits exits non-zero with {"batch_failed": true,
 "batch": "NN-<slug>", "warnings": [...]} after its terminal failed state
 and archived report are saved and committed; the error names
