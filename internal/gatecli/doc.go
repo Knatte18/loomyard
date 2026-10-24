@@ -198,7 +198,7 @@
 //	    timeout_min: 10
 //	  tier1:
 //	    about: integration tests, with build and vet under each tag first
-//	    command: go build ./... && go vet -tags tier1,integration {targets} && go vet -tags tier2,tmux {targets} && go vet -tags tier3,llm {targets} && go test -json -tags tier1,integration {targets} {args}
+//	    command: go build ./... && go vet -tags tier1 {targets} && go vet -tags tier2 {targets} && go vet -tags tier3 {targets} && go test -json -tags tier1 {targets} {args}
 //	    all_targets: ./...
 //	    env: {GOFLAGS: "-trimpath -p={parallel}"}
 //	    counter: go-json
@@ -208,7 +208,7 @@
 //	    prebuilt_lyx: true
 //	  tier2:
 //	    about: tmux tests
-//	    command: go test -json -tags tier2,tmux {targets} {args}
+//	    command: go test -json -tags tier2 {targets} {args}
 //	    all_targets: ./...
 //	    env: {GOFLAGS: "-trimpath -p={parallel}"}
 //	    counter: go-json

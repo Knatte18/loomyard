@@ -16,7 +16,7 @@
 // A test binary re-executed as a helper inherits that environment, and its own run directory is made beside the inherited one, never inside it, so its socket paths do not grow past the limit.
 // A socket on a reed capability-probe key is no finding in a package with either tag.
 // A reed watchdog daemon is killed without failing the package, because it idles out on its own schedule after the test that spawned it.
-// Before the sweep it also fails the package for a socket it finds: any socket in a test binary built without the `tmux` and `llm` tags, and in one built with either only a socket whose key no test registered.
+// Before the sweep it also fails the package for a socket it finds: any socket in a test binary built without the `tier2` and `tier3` tags, and in one built with either only a socket whose key no test registered.
 // Pids, ProcArgv, ProcCwd, ProcExe, ProcPPID, ProcState, ProcComm and IsWatchdog are the read-only `/proc` probes behind that scan, exported for tests that look for processes themselves.
 // BindStaleSocket leaves a socket file that refuses every stream connection, for tests of the code that removes dead sockets.
 //
@@ -134,7 +134,7 @@ func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func
 
 // checkSockets returns one finding per tmux server socket under dir's per-user socket directory that its package's tests may not leave.
 // With allowed false every socket is a finding; with it true only a socket whose key no test registered is.
-// A finding names the key and the way forward: tag the test file `tmux`, or register the key through Socket, KillOnCleanup or PackageServer.
+// A finding names the key and the way forward: tag the test file `tier2`, or register the key through Socket, KillOnCleanup or PackageServer.
 func checkSockets(dir string, allowed bool) []string {
 	registryMu.Lock()
 	defer registryMu.Unlock()
@@ -143,10 +143,10 @@ func checkSockets(dir string, allowed bool) []string {
 		key := filepath.Base(sock)
 		switch {
 		case !allowed:
-			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on key %q outlived the run in a package without a tmux or llm test tag; tag the test file that starts it `tmux`", key))
+			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on key %q outlived the run in a package without a tier2 or tier3 test tag; tag the test file that starts it `tier2`", key))
 		case isReedProbeKey(key):
 		case !registeredKeys[key]:
-			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on unregistered key %q outlived the run; register the key through Socket, KillOnCleanup or PackageServer, or tag the file `tmux`", key))
+			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on unregistered key %q outlived the run; register the key through Socket, KillOnCleanup or PackageServer, or tag the file `tier2`", key))
 		}
 	}
 	return findings

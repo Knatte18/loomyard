@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // constraintchokepoint_test.go enforces `PATTERN-glyph-conversion-chokepoint`:
 // loomyard performs no glyph<->path conversion of its own outside quarry's glyph package.

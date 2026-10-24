@@ -1,4 +1,4 @@
-//go:build tier1 || integration
+//go:build tier1
 
 // treesitterlink_integration_test.go runs `go list` over the module under every test tag and holds the allowed list of the tree-sitter link guard.
 // The chain search and the comparison live in treesitterlink_test.go.

@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // websterretiredsteps_test.go pins that no webster way forward names `git reset --keep`, or a `lyx webster reset` followed by `lyx webster run --fresh`.
 // `reset --to start` archives the run record and performs the keep form itself, so a plain `lyx webster run` follows every reset.

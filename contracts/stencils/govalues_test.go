@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // govalues_test.go pins the Go-declared values the stencils name and the host-neutral ban on the twill stencils.
 // Both tests carry the repository-scan marker, so a card that renames a value outside this package still fails its own card gate.

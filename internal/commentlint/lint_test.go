@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // lint_test.go drives the break classification over base and new text pairs.
 

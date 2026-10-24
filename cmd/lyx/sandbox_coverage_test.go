@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // sandbox_coverage_test.go enforces the "Sandbox Suite Coverage" invariant: every registered lyx
 // module must either be exercised by a scenario in one of the tools/sandbox/*SUITE.md suite files

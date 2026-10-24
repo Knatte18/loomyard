@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // uncontainedwrite_test.go is the write-side twin of destructiveguard_test.go: it machine-checks that
 // internal/fabricengine's production source contains no raw filesystem-WRITE primitive

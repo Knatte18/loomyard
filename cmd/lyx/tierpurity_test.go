@@ -1,6 +1,6 @@
-//go:build tier0 || integration
+//go:build tier0
 
-// tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones that run in every plain `go test`, without `-tags integration`, `tmux` or `llm`) perform no expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit spawn (every gitkit export but the hermetic-environment helper), and no hubforge.NewHub real-hub fixture build.
+// tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones that run in `tier0`, without `-tags tier1`, `tier2` or `tier3`) perform no expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit spawn (every gitkit export but the hermetic-environment helper), and no hubforge.NewHub real-hub fixture build.
 // This is the repo-wide grep-guard that keeps the offline Tier 1 loop's premise from rotting
 // silently again, machine-enforcing what was previously review discipline only.
 // See `PATTERN-test-speed`.
@@ -49,11 +49,11 @@ var allowedTmuxkitOutsideTmuxTier = []scankit.Entry{
 }
 
 // knownTierTags are the build tags that mark a *_test.go file as tagged (i.e. not run in `tier0`) for Test Tier Purity purposes:
-// the tier tags `tier1`, `tier2` and `tier3`, and the old spellings `integration`, `tmux` and `llm` until they are dropped.
-// A `tier0` tag is no entry: a file tagged `tier0`, or `tier0 || integration`, runs in `tier0` and is held to the untagged rules.
+// the tier tags `tier1`, `tier2` and `tier3`.
+// A `tier0` tag is no entry: a file tagged `tier0` runs in `tier0` and is held to the untagged rules.
 // isTierTagged reads a file as tagged when its constraint can hold only with one of these tags, so adding a new tier tag here is the single place
 // that both the purity guard and its doc comments need to stay in sync with.
-var knownTierTags = []string{"tier1", "tier2", "tier3", "integration", "tmux", "llm"}
+var knownTierTags = []string{"tier1", "tier2", "tier3"}
 
 // bannedTokens are the raw substrings an untagged *_test.go file may not contain.
 // Matching is deliberately raw-substring, not whole-token or AST: exec.Command also matches exec.CommandContext.
@@ -88,7 +88,7 @@ var bannedTokens = []string{
 // TestTierPurity_UntaggedTestsSpawnNothing walks every *_test.go file under the module root.
 // It fails if any untagged file contains a banned spawn token as a raw substring, unless the file (or its containing directory) is on the allowedSpawners allowlist.
 // An untagged file is one whose `//go:build` constraint, if it has one, can hold without any of knownTierTags.
-// Platform-only constraints (e.g. `//go:build windows`) count as untagged: they still run in `tier0` on that platform, and so do `tier0` and `tier0 || integration`.
+// Platform-only constraints (e.g. `//go:build windows`) count as untagged: they still run in `tier0` on that platform, and so does `tier0`.
 //
 //lyx:guard
 func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
@@ -101,7 +101,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 		if isTierTagged(f.Data) {
 			if ref, found := tmuxkitSpawnReference(string(f.Data)); found && !isTmuxTier(f.Data) && !tmuxless.Allowed(f.Rel) {
 				failures = append(failures, fmt.Sprintf(
-					"%s: references tmuxkit spawn %q in a file that compiles in the untagged or integration build — constrain the file to `tier2` and `tier3` (or the old `tmux` and `llm`) only, or split the reed-starting half into a `tier2` file",
+					"%s: references tmuxkit spawn %q in a file that compiles in the `tier0` or `tier1` build — constrain the file to `tier2` and `tier3` only, or split the reed-starting half into a `tier2` file",
 					f.Rel, ref,
 				))
 			}
@@ -117,7 +117,7 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 		}
 		if bad && !spawners.Allowed(f.Rel) {
 			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (tier1, tier2 or tier3, or the old integration, tmux or llm), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
+				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (tier1, tier2 or tier3), or add an allowedSpawners entry in cmd/lyx/tierpurity_test.go with a reason",
 				f.Rel, bannedTok,
 			))
 		}
@@ -143,15 +143,15 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 }
 
 // isTierTagged reports whether data's `//go:build` constraint can hold only with one of knownTierTags.
-// A file tagged `tier0`, `tier0 || integration` or not at all is untagged here.
+// A file tagged `tier0` or not at all is untagged here.
 func isTierTagged(data []byte) bool {
 	return holdsOnlyWithOneOf(data, knownTierTags)
 }
 
-// isTmuxTier reports whether data's `//go:build` constraint is false in every build that lacks the `tier2`, `tier3`, `tmux` and `llm` tags.
+// isTmuxTier reports whether data's `//go:build` constraint is false in every build that lacks the `tier2` and `tier3` tags.
 // A file with no constraint line compiles everywhere and is never tmux-tier.
 func isTmuxTier(data []byte) bool {
-	return holdsOnlyWithOneOf(data, []string{"tier2", "tier3", "tmux", "llm"})
+	return holdsOnlyWithOneOf(data, []string{"tier2", "tier3"})
 }
 
 // holdsOnlyWithOneOf reports whether data's `//go:build` constraint is false in every build that lacks all of tags.
@@ -216,15 +216,9 @@ func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
 		line string
 		want bool
 	}{
-		{"//go:build integration", false},
-		{"//go:build integration || tmux", false},
-		{"//go:build integration && windows", false},
-		{"//go:build tmux", true},
-		{"//go:build llm", true},
-		{"//go:build tmux || llm", true},
-		{"//go:build tmux && !windows", true},
+		{"//go:build tier1 || tier2", false},
+		{"//go:build tier1 && windows", false},
 		{"//go:build tier0", false},
-		{"//go:build tier0 || integration", false},
 		{"//go:build tier1", false},
 		{"//go:build tier2", true},
 		{"//go:build tier3", true},
@@ -242,12 +236,9 @@ func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
 		line string
 		want bool
 	}{
-		{"integration", "//go:build integration", true},
-		{"tmux", "//go:build tmux", true},
-		{"llm", "//go:build llm", true},
-		{"shared_helper_disjunction", "//go:build tmux || llm", true},
+		{"shared_helper_disjunction", "//go:build tier2 || tier3", true},
 		{"tier0_untagged", "//go:build tier0", false},
-		{"tier0_or_integration_untagged", "//go:build tier0 || integration", false},
+		{"tier0_or_tier1_untagged", "//go:build tier0 || tier1", false},
 		{"tier1", "//go:build tier1", true},
 		{"tier2", "//go:build tier2", true},
 		{"tier3", "//go:build tier3", true},

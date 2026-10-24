@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	defaultRedundancyTags = "tier0,tier1,tier2,integration,tmux"
+	defaultRedundancyTags = "tier0,tier1,tier2"
 	defaultRedundancyOut  = "docs/benchmarks/test-redundancy.md"
 	defaultRedundancyPkg  = "./..."
 )
@@ -65,7 +65,7 @@ type pkgReport struct {
 	verdicts []verdict
 }
 
-// redundancyTags resolves the build tags of the redundancy mode: every tier but llm unless named.
+// redundancyTags resolves the build tags of the redundancy mode: every tier but tier3 unless named.
 func redundancyTags(full bool, tags string) (string, error) {
 	resolved, err := resolveTags(full, tags)
 	if err != nil {

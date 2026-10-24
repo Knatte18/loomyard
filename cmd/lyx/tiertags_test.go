@@ -1,12 +1,11 @@
-//go:build tier0 || integration
+//go:build tier0
 
-// tiertags_test.go enforces the tier-tag half of `PATTERN-test-speed`: every test file holding a test function carries exactly one `tierN` build tag, and the transitional `|| integration` term appears only on a `//lyx:guard` file.
+// tiertags_test.go enforces the tier-tag half of `PATTERN-test-speed`: every test file holding a test function carries exactly one `tierN` build tag, and no test file names a retired tier spelling.
 // The scan parses each file, so a function inside a string literal is no function of the file.
 
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"go/ast"
 	"go/build/constraint"
@@ -25,8 +24,9 @@ import (
 // tierTagNames are the build tags that name a test tier, one per tier.
 var tierTagNames = []string{"tier0", "tier1", "tier2", "tier3"}
 
-// oldTierSpellings are the tier tags a file may still carry before the tier tags replace them; each is false when the scan asks which tiers a constraint admits.
-var oldTierSpellings = []string{"integration", "tmux", "llm"}
+// retiredTierSpellings are the tags that named tiers before the `tierN` tags, each paired with the tier tag that replaced it.
+// No tier command sets them, so a constraint naming one selects its file for no tier.
+var retiredTierSpellings = map[string]string{"integration": "tier1", "tmux": "tier2", "llm": "tier3"}
 
 // holdsTestFunction reports whether the name is a `Test`, `Benchmark`, `Fuzz` or `Example` function that go test runs, which `TestMain` is not.
 func holdsTestFunction(name string) bool {
@@ -56,7 +56,7 @@ func admittedTiers(expr constraint.Expr) []string {
 				switch {
 				case tag == tier:
 					return true
-				case slices.Contains(tierTagNames, tag), slices.Contains(oldTierSpellings, tag):
+				case slices.Contains(tierTagNames, tag):
 					return false
 				}
 				return platformTerms
@@ -70,25 +70,28 @@ func admittedTiers(expr constraint.Expr) []string {
 	return admitted
 }
 
-// mentionsIntegrationTag reports whether the constraint queries the `integration` tag.
-func mentionsIntegrationTag(expr constraint.Expr) bool {
-	if expr == nil {
-		return false
-	}
-	mentioned := false
-	expr.Eval(func(tag string) bool {
-		if tag == "integration" {
-			mentioned = true
+// firstRetiredTierSpelling returns the first retired tier spelling the constraint names, left to right, or "" when it names none.
+// It walks the expression tree because Eval short-circuits, which would skip an operand to the right of a false term.
+func firstRetiredTierSpelling(expr constraint.Expr) string {
+	switch e := expr.(type) {
+	case *constraint.TagExpr:
+		if _, retired := retiredTierSpellings[e.Tag]; retired {
+			return e.Tag
 		}
-		return false
-	})
-	return mentioned
-}
-
-// hasGuardMarker reports whether the source holds the `//lyx:guard` marker text.
-// It reads the text rather than the comments, as the guard step does, so a file quoting the marker in a string literal counts.
-func hasGuardMarker(data []byte) bool {
-	return bytes.Contains(data, []byte("//lyx:guard"))
+	case *constraint.NotExpr:
+		return firstRetiredTierSpelling(e.X)
+	case *constraint.AndExpr:
+		if found := firstRetiredTierSpelling(e.X); found != "" {
+			return found
+		}
+		return firstRetiredTierSpelling(e.Y)
+	case *constraint.OrExpr:
+		if found := firstRetiredTierSpelling(e.X); found != "" {
+			return found
+		}
+		return firstRetiredTierSpelling(e.Y)
+	}
+	return ""
 }
 
 // tierTagFailure returns the failure line for a test file whose tags break the one-tier-tag rule, or "" when the file passes.
@@ -106,18 +109,19 @@ func tierTagFailure(rel string, data []byte) string {
 			break
 		}
 	}
+	retired := firstRetiredTierSpelling(expr)
 	switch {
+	case retired != "":
+		return fmt.Sprintf("%s: its constraint names the retired tier tag `%s`, which no tier command sets; use `%s`", rel, retired, retiredTierSpellings[retired])
 	case holdsTest && len(tiers) == 0:
 		return fmt.Sprintf("%s: holds a test function but its constraint names no tier tag; give it one `tierN` tag", rel)
 	case holdsTest && len(tiers) > 1:
 		return fmt.Sprintf("%s: holds a test function but its constraint admits %s; give it the one `tierN` tag of the tier that runs it", rel, strings.Join(tiers, " and "))
-	case mentionsIntegrationTag(expr) && !hasGuardMarker(data):
-		return fmt.Sprintf("%s: its constraint carries the transitional `integration` term but the file holds no `//lyx:guard` marker; give it one `tierN` tag", rel)
 	}
 	return ""
 }
 
-// TestTierTags_OneTagPerTestFile fails for a test file that holds a test function without exactly one tier tag, and for an unmarked file still carrying the `integration` term.
+// TestTierTags_OneTagPerTestFile fails for a test file that holds a test function without exactly one tier tag, and for a test file naming a retired tier spelling.
 //
 //lyx:guard
 func TestTierTags_OneTagPerTestFile(t *testing.T) {
@@ -151,9 +155,9 @@ func TestTierTagFailure_FixtureSources(t *testing.T) {
 		{"TwoTierTestFunction", "//go:build tier2 || tier3\n\n" + testFunc, true},
 		{"OldSpellingOnlyTestFunction", "//go:build tmux && !windows\n\n" + testFunc, true},
 		{"IntegrationOnlyTestFunction", "//go:build integration\n\n" + testFunc, true},
-		{"GuardWithIntegrationTerm", "//go:build tier0 || integration\n\n" + guardFunc, false},
-		{"UnmarkedWithIntegrationTerm", "//go:build tier0 || integration\n\n" + testFunc, true},
-		{"MarkerQuotedInStringWithIntegrationTerm", "//go:build tier0 || integration\n\n" + testFunc + "\nconst quoted = \"//lyx:guard\"\n", false},
+		{"RetiredSpellingRightOfTierTerm", "//go:build tier1 && integration\n\n" + testFunc, true},
+		{"GuardWithIntegrationTerm", "//go:build tier0 || integration\n\n" + guardFunc, true},
+		{"NegatedRetiredSpellingWithoutTest", "//go:build !tmux\n\n" + mainOnly, true},
 		{"UntaggedMainAndHelpers", mainOnly, false},
 		{"NegatedTierCompanion", "//go:build !tier1\n\n" + mainOnly, false},
 		{"Tier2WithPlatformTerm", "//go:build tier2 && !windows\n\n" + testFunc, false},

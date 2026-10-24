@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // hermeticenv_test.go enforces the Hermetic Git Test Environment Invariant: every test package
 // whose tests spawn git — directly or via the fixture helpers now living in gitkit and hubforge —

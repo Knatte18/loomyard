@@ -11,7 +11,7 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 ## tmux isolation
 
 - Every test package runs its tests through `tmuxkit.Main`, so no test touches the operator's default tmux socket directory and its `t.TempDir` trees live in the process run directory.
-- Under every tag set (untagged, each of `integration`, `tmux` and `llm` alone, and the three together) and on every platform that compile any of the package's test files, a file declaring `TestMain` compiles, and every `TestMain` in the package calls `tmuxkit.Main`.
+- Under every tag set (untagged, each of `tier0` through `tier3` alone, and all four together) and on every platform that compile any of the package's test files, a file declaring `TestMain` compiles, and every `TestMain` in the package calls `tmuxkit.Main`.
 - The rule covers every test package, not only those that start tmux: starting tmux has no static shape, so every package carries the one call, which costs one run directory per test binary.
 - In an untagged run the entry point spawns nothing.
 - A package whose `TestMain` cannot call the entry point is admitted by an allowlist entry whose reason names that obstacle; "does not start tmux" is not a reason.
@@ -24,8 +24,8 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 - A test that starts a tmux server takes its `-L` key from `tmuxkit`: `Socket` mints one, and `KillOnCleanup` covers a key the test did not mint, such as a `reedengine.ServerName` key of a fixture hub.
 - `PackageServer` returns one key per test binary, with a hermetic server started on first use and no cleanup of its own, because `Main`'s sweep kills every server under the kit's directory.
   A test takes it only when it names its own sessions, kills no server and asserts nothing about the server's whole session set; a test that drives reed through a hub keeps the hub's `reedengine.ServerName` key, and a test that runs `Down` or `kill-server`, or compares `list-sessions` to an exact set, keeps `Socket`.
-- A `tmux`- or `llm`-tier test that boots reed registers its key through `KillOnCleanup` where the key is known and before the first `Up`, `EnsureSession`, `Resume` or `lyx` run that arms reed, so reed's boot finds the hermetic server.
-  The registration sits in the `tmux`- or `llm`-constrained file or a helper only such files compile, never in a helper an `integration` build shares, since that would start a server in tier 2.
+- A `tier2` or `tier3` test that boots reed registers its key through `KillOnCleanup` where the key is known and before the first `Up`, `EnsureSession`, `Resume` or `lyx` run that arms reed, so reed's boot finds the hermetic server.
+  The registration sits in the `tier2`- or `tier3`-constrained file or a helper only such files compile, never in a helper a `tier1` build shares, since that would start a server in tier 1.
   A test that asserts on the log files of a server reed starts itself registers its key after its first boot instead.
 - Both `Socket` and `KillOnCleanup` run `kill-server` at cleanup and then remove that key's socket file, so a run leaves none behind.
   Every kit kill of a server, at cleanup or in `Main`'s sweep, then kills each process still in a session one of its panes led, because the hangup `kill-server` sends misses a pane child that ignores SIGHUP or sits outside the terminal's foreground.
@@ -44,8 +44,8 @@ A test package never reaches the operator's global gitconfig or default tmux soc
   A leftover is killed and fails the package with exit 1, naming its pid, cwd and argv on stderr; a `lyx reed watchdog` daemon is killed without failing the package, because it idles out on its own schedule.
   Off Linux the scan is skipped.
 - The probes behind the scan are kit exports, `Pids`, `ProcArgv`, `ProcCwd`, `ProcExe` and `IsWatchdog`; they read files only and start nothing.
-- Before the sweep, `Main` checks the sockets under its directory's per-user directory: in a test binary built without the `tmux` and `llm` tags every socket is a finding, and in one built with either only a socket whose key no test registered through `Socket`, `KillOnCleanup` or `PackageServer` is.
-  A finding fails the package with exit 1, naming the key and the way forward: tag the file `tmux`, or register the key.
+- Before the sweep, `Main` checks the sockets under its directory's per-user directory: in a test binary built without the `tier2` and `tier3` tags every socket is a finding, and in one built with either only a socket whose key no test registered through `Socket`, `KillOnCleanup` or `PackageServer` is.
+  A finding fails the package with exit 1, naming the key and the way forward: tag the file `tier2`, or register the key.
   The check runs before the sweep because the sweep removes the socket files it reads.
 - The per-user directory `tmux-<uid>` is no finding by itself: tmux creates it on any invocation that names a `-L` key, a client probe of a server that never started included, and a client probe starts no server.
 - Bound: the check misses a test that points `TMUX_TMPDIR` elsewhere and a server started by a binary other than tmux.

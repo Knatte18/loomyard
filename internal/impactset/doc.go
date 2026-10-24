@@ -15,7 +15,7 @@
 // a changed file, by its new or its old path, is neither `.md` nor under a Go package directory, so a deleted file whose directory is no longer a package counts, and so does a file of a nested module, because the root `go list` does not list it;
 // or `go list` fails.
 //
-// Otherwise the set is the packages the diff changed, plus every package whose dependencies, test imports included, reach one of them, under the tier tags `tier0` through `tier3` and the older `integration`, `tmux` and `llm` spellings.
+// Otherwise the set is the packages the diff changed, plus every package whose dependencies, test imports included, reach one of them, under the tier tags `tier0` through `tier3`.
 // A rename or deletion maps through its old path as well as its new one.
 // When the diff changes the `cmd/lyx` main package, which no test imports and so the graph cannot see, every package whose tests import `internal/testkit/lyxbin`, which builds the binary, joins the set;
 // any other change reaches those packages through the import graph only.
@@ -26,11 +26,11 @@
 // Every top-level test marked `//lyx:guard` runs by name in its own package, even when that package is outside the set.
 // A repository-scanning test can fail on a change far from its package.
 // Guards holds, per directory, the `//lyx:guard` tests of the packages outside the set, sorted by name, so the gate's guard step runs them by name.
-// Each GuardTest carries the tier of its file, which FileTier reads from the `//go:build` line: the N of the `tierN` tag it names, and 0 for a file naming none, so an untagged file and a transitional `tierN || integration` file both read right.
+// Each GuardTest carries the tier of its file, which FileTier reads from the `//go:build` line: the N of the `tierN` tag it names, and 0 for a file naming none.
 // The guard step runs each tier's guard tests under that tier's command.
 // A marker is found by a static parse of every `_test.go` file under every tag.
 // The marker scan is exported as FindGuardTests, and webster's card gate runs it over its own walk of the root module.
-// ModuleGuardTests runs the same scan over every package directory a `go list -e ./...` of a module names, under every tier tag and the older `integration`, `tmux` and `llm` spellings.
+// ModuleGuardTests runs the same scan over every package directory a `go list -e ./...` of a module names, under every tier tag.
 // A package whose test file cannot be read stays listed, so the scan reports that file; an unreadable package directory or a failed `go list` is a plain error naming the module and the enumeration's error.
 // A marker not directly above a top-level `func Test…` line, or in a `tier2` or `tier3` file, is an error naming the file and line.
 // That error is a *GuardScanError whose Kind is GuardMisplaced, GuardWrongTier or GuardParse, and whose Line is the marker's line, or the parser's for GuardParse when it reports one.

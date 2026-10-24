@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // norecoverydeny_test.go enforces `PATTERN-no-denied-recovery`: no refusal, stencil, spec or skill names a command the agents' settings deny as a way forward.
 // The scan reads files only, so it stays in the untagged tier.

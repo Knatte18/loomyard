@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // registration_test.go is a repo-wide guard that verifies every internal package exposing func
 // Command() *cobra.Command is wired into newRoot() in cmd/lyx/main.go.

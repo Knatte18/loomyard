@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // registration_test.go — membership oracle for the module registry.
 

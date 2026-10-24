@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // callerset_enforcement_test.go enforces half of the Cliwire Sole-Wiring Invariant: internal/cliwire
 // is the only PRODUCTION caller of internal/standalonestate's Derive, since every standalone-capable

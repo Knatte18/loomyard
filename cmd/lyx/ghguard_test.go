@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // ghguard_test.go enforces the GitHub Auth Invariant's shell-out half: no production (non-test)
 // package outside internal/githubclient may shell out to the `gh` CLI.

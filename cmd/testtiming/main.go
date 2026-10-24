@@ -41,7 +41,7 @@
 //	go run ./cmd/testtiming -redundancy [-pkg ./internal/x,./internal/y] [-out report.md] [-tags t]
 //
 // -pkg takes comma-separated package patterns, each passed to `go` as its own argument.
-// -tags defaults to tier0,tier1,tier2,integration,tmux in this mode, every tier but llm under both spellings.
+// -tags defaults to tier0,tier1,tier2 in this mode, every tier but tier3.
 // A run over every package of the module, or with no report at -out yet, writes the whole report.
 // Any other run splices into the existing report: only the measured packages' sections change, a package with no section yet is inserted in import-path order, and a package that lists no tests loses its section.
 // The header and every unmeasured section stay byte-identical, and a run whose tags differ from the report's header refuses and writes nothing.

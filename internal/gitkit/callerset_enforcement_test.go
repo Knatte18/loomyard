@@ -1,4 +1,4 @@
-//go:build tier0 || integration
+//go:build tier0
 
 // callerset_enforcement_test.go enforces the gitkit Leaf Invariant's CopyRepo pin: internal/lyxcwd
 // is the only caller of this package's CopyRepo, since every other package takes a real hub from

@@ -1968,7 +1968,7 @@ func TestValidate_RenameNamespacePair(t *testing.T) {
 	}
 }
 
-// TestValidate_VerifyModuleWide covers verify-module-wide: a card's Verify: must not hold a module-wide go build, test or vet, or a go test selecting the tmux or llm tier; the overview's verify chain is never read.
+// TestValidate_VerifyModuleWide covers verify-module-wide: a card's Verify: must not hold a module-wide go build, test or vet, or a go test selecting the tier2 or tier3 tier; the overview's verify chain is never read.
 func TestValidate_VerifyModuleWide(t *testing.T) {
 	t.Parallel()
 
@@ -1989,8 +1989,7 @@ func TestValidate_VerifyModuleWide(t *testing.T) {
 		{name: "go build dot-dot-dot after -C fires", verify: "go -C sub build ./...", want: []string{"1-a"}},
 		{name: "go vet all fires", verify: "go vet all", want: []string{"1-a"}},
 		{name: "subtree pattern fires", verify: "go test ./internal/...", want: []string{"1-a"}},
-		{name: "tmux tag fires", verify: "go test -tags tmux ./internal/x", want: []string{"1-a"}},
-		{name: "llm tag in a list fires", verify: "go test -tags=integration,llm ./internal/x", want: []string{"1-a"}},
+		{name: "tier3 tag in a list fires", verify: "go test -tags=tier1,tier3 ./internal/x", want: []string{"1-a"}},
 		{name: "tier2 tag fires", verify: "go test -tags tier2 ./internal/x", want: []string{"1-a"}},
 		{name: "tier3 tag fires", verify: "go test -tags tier3 ./internal/x", want: []string{"1-a"}},
 		{name: "one finding per command", verify: "go test ./... && go vet all", want: []string{"1-a", "1-a"}},
@@ -1999,8 +1998,7 @@ func TestValidate_VerifyModuleWide(t *testing.T) {
 		{name: "separator inside quotes is text", verify: `echo "x || go test ./..."`},
 		{name: "line continuation joins one command", verify: "go test \\\n./...", want: []string{"1-a"}},
 		{name: "package-scoped test is silent", verify: "go test ./internal/x"},
-		{name: "integration tag is silent", verify: "go test -tags integration ./internal/x"},
-		{name: "tmux tag on vet is silent", verify: "go vet -tags tmux ./internal/x"},
+		{name: "tier1 tag is silent", verify: "go test -tags tier1 ./internal/x"},
 		{name: "tier2 tag on vet is silent", verify: "go vet -tags tier2 ./internal/x"},
 		{name: "fields after -args are not package arguments", verify: "go test ./internal/x -args ./..."},
 		{name: "overview chain is never read", overview: "go test ./...\ngo vet all"},

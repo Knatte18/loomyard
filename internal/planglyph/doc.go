@@ -83,7 +83,7 @@
 //   - caller-uncovered (blocking for a resolved reference, informational for a name-only method match) — callerCoverageFindings (callercoverage.go), reached through planGatePass: a deleted or re-signed member that Go code still references with no admissible card's target covering that code.
 //     A partitioned member's candidates are its declarations, so each is a subject's span and a target's span alike.
 //     It runs only when a subject exists and at the plan gates only.
-//     A typesLoader (typesload.go) loads the root module's packages through go/packages, offline, with test variants and the tier0 through tier3 tags and the older integration, tmux and llm spellings, under a timeout, and logged; an identifier whose used object is the member is a resolved reference.
+//     A typesLoader (typesload.go) loads the root module's packages through go/packages, offline, with test variants and the tier0 through tier3 tags, under a timeout, and logged; an identifier whose used object is the member is a resolved reference.
 //     An index built by NewSlottedIndex with a pool slots the load: it writes a wait record into the told wait directory, acquires a hub gate slot, drops the record once the acquire returns, starts the timeout only once the slot is held, runs go list under the slot's `-p` cap and releases the slot when the load returns.
 //     NewIndex, standalone runs and a nil pool load unslotted.
 //     The load is skipped when the worktree root holds no go.mod, and a failed or timed-out load is logged and leaves every file to the scan, never an error.

@@ -43,7 +43,7 @@ type goListLoader struct {
 // defaultTypesLoader is the loader the exported plan gate entry points use.
 var defaultTypesLoader typesLoader = goListLoader{timeout: typesLoadTimeout}
 
-// load runs packages.Load over dirs from root, test variants and the tier0 through tier3 build tags and the older integration, tmux and llm spellings included.
+// load runs packages.Load over dirs from root, test variants and the tier0 through tier3 build tags included.
 // Imports come from compiler export data, so only the packages of dirs are type-checked from source.
 // It returns an error when no slot is acquired, or when the load fails or outlives the loader's timeout, which starts once the slot is held.
 func (l goListLoader) load(root string, dirs []string) ([]*packages.Package, error) {
@@ -79,7 +79,7 @@ func (l goListLoader) load(root string, dirs []string) ([]*packages.Package, err
 		Dir:        root,
 		Env:        env,
 		Tests:      true,
-		BuildFlags: []string{"-tags=tier0,tier1,tier2,tier3,integration,tmux,llm"},
+		BuildFlags: []string{"-tags=tier0,tier1,tier2,tier3"},
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedCompiledGoFiles | packages.NeedImports |
 			packages.NeedTypes | packages.NeedSyntax | packages.NeedTypesInfo,
 	}
