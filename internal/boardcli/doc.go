@@ -43,6 +43,8 @@
 // `set-status` and `prune` never refuse on it.
 // `rename` refuses to rename a held entry, and renames an entry a held task depends on.
 //
+// Every verb's board carries the caller's `LYX_STRAND_NAME` as `boardengine.Config.StrandName`, so `upsert`, `upsert-batch`, `merge` and `promote` refuse a write that creates or promotes a task from a run agent's session, naming a note as the way forward.
+//
 // `rename {slug|id, to}` changes one entry's slug in one write and prints `{"task":{…},"mentions":[…]}`: the renamed entry, and the slugs of the entries whose body or brief still name the old slug as a whole word, `[]` when none does.
 //
 // `merge` carries the removed entries' issues onto the upserted entry, whether or not the payload names `issues`.

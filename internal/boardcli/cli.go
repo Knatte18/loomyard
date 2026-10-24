@@ -142,6 +142,7 @@ available subcommands without requiring a git repo.
 		}
 
 		cfg = boardengine.ApplySkipEnv(cfg)
+		cfg.StrandName = strandNameFromEnv()
 		config = cfg
 		b = boardengine.New(cfg)
 		return nil

@@ -44,6 +44,7 @@ The route admits a drop of an own-entry step only: no other decided step is drop
 
 No card changes this task's own board entry's body or scope, because the run's board lock refuses such a change.
 The landing's status write, a `run_settings` write, a card that writes another board entry and a card that changes the board module's code stay allowed.
+A follow-up a card files goes on the board as a note, never as a task, and no card promotes a note: only the operator decides what becomes a task, and the board refuses a run's agent that creates or promotes one.
 
 ## Step 2 — Explore the codebase
 

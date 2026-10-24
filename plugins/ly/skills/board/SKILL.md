@@ -128,6 +128,11 @@ Record a new finding as a note of its own with `lyx board upsert` and `"kind":"n
 The refusal names the way to unlock an abandoned run's entry.
 A claimed entry's owner machine changes only through `lyx adopt`; an upsert naming another owner is refused.
 
+## Tasks from a run session
+
+A session whose `LYX_STRAND_NAME` carries a task slug under a role other than `orch` or a numbered orch role such as `orch-2` cannot create or promote a task: only the operator decides what becomes a task.
+File the follow-up with `lyx board upsert` and `"kind":"note"`; the operator may promote it.
+
 ## Intake
 
 Intake takes the GitHub issues of the hub's own repository onto the board, the one list: the repository the hub's recorded binding names, else its origin remote.

@@ -77,6 +77,7 @@ You never run `lyx loom decision add` yourself; the verb refuses a task session.
 
 No step changes this task's own board entry's body or scope, because the run's board lock refuses such a change.
 The landing's status write, a `run_settings` write, a step that writes another board entry and a step that changes the board module's code stay allowed.
+A follow-up you file goes on the board as a note, never as a task, and you never promote a note: only the operator decides what becomes a task, and the board refuses a run's agent that creates or promotes one.
 When the board entry or the decision record asks for such a step, leave it out from the start and ask your parent to record the drop with `lyx loom decision add`.
 Until the record carries that `Added after Discussion` entry, name the omission in the change description's design decisions as an unrecorded parent correction.
 Once the entry exists, the omission is no deviation from the amended board entry.

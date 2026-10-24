@@ -149,6 +149,16 @@
 // The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
 // Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run is ended with `lyx batten cancel <slug>` from the prime, which clears the status.
 //
+// # Run agents file notes, never tasks
+//
+// Only the operator decides what becomes a task, so a run's agent may file a follow-up as a note and never as a task.
+// Config.StrandName names the writing session, and a name carrying a task slug under any role but the orch's is a run agent's;
+// an empty name, the hub orch's slug-free name and an orch thread's name write as before.
+// For a run agent, the write critical section refuses, before the save, a net change that leaves a task whose slug held no task in the loaded entries:
+// a new task, a promote, a note upserted to kind task and a merge upserting a new task, while a rename is judged with the loaded slug renamed and creates none.
+// The refusal names the session, the entry and the way forward, a note with "kind":"note".
+// The guard trusts the name its caller passes, so it stops a mistaken write, not a determined one, and the replay of a local commit never runs it.
+//
 // # Rename
 //
 // Rename changes one entry's slug in one write: the entry keeps its id, its handle, its position in board.json and every other field, kept keys included, and every other entry's depends_on names the new slug in place of the old one.

@@ -83,6 +83,7 @@ Apply YAGNI: do not design for a hypothetical requirement nobody asked for.
 **Leave this task's own board entry alone.**
 No decision asks the run to change this task's own board entry's body or scope, through `lyx board` or otherwise, because the run's board lock refuses such a change.
 The landing's status write, a `run_settings` write, a decision to file or change another board entry and a change to the board module's code are outside this rule.
+A follow-up a decision files goes on the board as a note, never as a task, and no decision promotes a note: only the operator decides what becomes a task, and the board refuses a run's agent that creates or promotes one.
 
 ## Step 4 — How to get answers
 
