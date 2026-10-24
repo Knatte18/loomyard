@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/pattern"
 )
 
 // allSectionsContent returns a decision record body carrying every heading in
@@ -80,6 +82,70 @@ func TestValidate_PatternChanges(t *testing.T) {
 				t.Errorf("Detail = %q; want it to name the line and contain %q", f.Detail, tt.wantLn)
 			}
 		})
+	}
+}
+
+// TestValidate_PatternChangeOverCap asserts an `adds` or `changes` bullet whose overview line runs past the PATTERN entry line cap in runes yields one pattern-change-over-cap finding with its way forward, and a line at the cap yields none.
+func TestValidate_PatternChangeOverCap(t *testing.T) {
+	t.Parallel()
+
+	// textFor returns a text of filler runes that makes id's overview line extra runes longer than the cap.
+	textFor := func(id, filler string, extra int) string {
+		head := len([]rune("- `" + id + "` — "))
+		return strings.Repeat(filler, patternEntryLineCap-head+extra)
+	}
+	const appended = " — added after Discussion (parent, 2026-10-24)"
+
+	tests := []struct {
+		name       string
+		bullet     string
+		wantDetail []string
+	}{
+		{"AddsOverCap", "- `PATTERN-a` — adds: " + textFor("PATTERN-a", "x", 1), []string{"`PATTERN-a` adds", "361 characters", "360 cap", "background file"}},
+		{"ChangesOverCap", "- `PATTERN-a` — changes: " + textFor("PATTERN-a", "x", 1), []string{"`PATTERN-a` changes", "361 characters"}},
+		{"AppendedOverCap", "- `PATTERN-a` — changes: " + textFor("PATTERN-a", "x", 1) + appended, []string{"361 characters", "`lyx loom decision add`"}},
+		{"MultiByteOverCap", "- `PATTERN-a` — adds: " + textFor("PATTERN-a", "é", 1), []string{"361 characters"}},
+		{"AtCap", "- `PATTERN-a` — adds: " + textFor("PATTERN-a", "x", 0), nil},
+		{"MultiByteAtCap", "- `PATTERN-a` — adds: " + textFor("PATTERN-a", "é", 0), nil},
+		{"AppendedAtCap", "- `PATTERN-a` — adds: " + textFor("PATTERN-a", "x", 0) + appended, nil},
+		{"RemovesNeverMeasured", "- `PATTERN-" + strings.Repeat("a", patternEntryLineCap) + "` — removes", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			decisionPath, supportPath := writeFixture(t, t.TempDir(), allSectionsContent()+patternChangesSection(tt.bullet), "log")
+
+			findings, err := Validate(decisionPath, supportPath)
+			if err != nil {
+				t.Fatalf("Validate() error = %v; want nil", err)
+			}
+			if tt.wantDetail == nil {
+				if len(findings) != 0 {
+					t.Errorf("Validate() findings = %v; want none", findings)
+				}
+				return
+			}
+			if len(findings) != 1 {
+				t.Fatalf("Validate() findings = %v; want exactly one", findings)
+			}
+			f := findings[0]
+			if f.Check != checkPatternChangeOverCap || f.Path != decisionPath {
+				t.Errorf("finding = %+v; want check %q at %q", f, checkPatternChangeOverCap, decisionPath)
+			}
+			for _, want := range append(tt.wantDetail, "way forward:") {
+				if !strings.Contains(f.Detail, want) {
+					t.Errorf("Detail = %q; want it to contain %q", f.Detail, want)
+				}
+			}
+		})
+	}
+}
+
+// TestPatternEntryLineCap_EqualsThePatternCap asserts the package's cap is the PATTERN format checker's, so the discussion check and the plan gate refuse the same lines.
+func TestPatternEntryLineCap_EqualsThePatternCap(t *testing.T) {
+	t.Parallel()
+	if patternEntryLineCap != pattern.MaxEntryLineChars {
+		t.Errorf("patternEntryLineCap = %d; want pattern.MaxEntryLineChars = %d", patternEntryLineCap, pattern.MaxEntryLineChars)
 	}
 }
 
