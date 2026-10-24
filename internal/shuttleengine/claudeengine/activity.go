@@ -1,4 +1,5 @@
 // activity.go implements shuttleengine.ActivityReader for Claude: the session's last activity, its forks included, and whether the newest main-chain turn end of the transcript a Stop payload names through transcript_path is an API error.
+// It also implements shuttleengine.UsageLimitReader: whether Claude Code's usage-limit classification stopped that turn end or a fork during its turn.
 // The session's last activity is the newest of the main transcript's last write and its fork transcripts' activity;
 // a fork's pending tool call reads active up to bashMaxTimeout past its last write, and the API-error part reads the main transcript only.
 // The marker Claude Code writes on a synthetic API-error assistant entry stays in this file, per the Shuttle Provider-Seam Invariant.
@@ -16,12 +17,24 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-var _ shuttleengine.ActivityReader = (*Claude)(nil)
+var (
+	_ shuttleengine.ActivityReader   = (*Claude)(nil)
+	_ shuttleengine.UsageLimitReader = (*Claude)(nil)
+)
 
-// apiErrorEntry is a transcript entry with the marker Claude Code sets on the synthetic assistant entry it writes for an API error.
+// usageLimitError is the classification Claude Code sets in the error field of the synthetic API-error entry it writes when the account's usage limit refuses a request.
+const usageLimitError = "rate_limit"
+
+// apiErrorEntry is a transcript entry with the marker Claude Code sets on the synthetic assistant entry it writes for an API error, and that entry's error classification.
 type apiErrorEntry struct {
 	transcriptEntry
-	IsAPIErrorMessage bool `json:"isApiErrorMessage"`
+	IsAPIErrorMessage bool   `json:"isApiErrorMessage"`
+	Error             string `json:"error"`
+}
+
+// isUsageLimit reports whether e is a synthetic API-error entry the usage limit caused.
+func (e apiErrorEntry) isUsageLimit() bool {
+	return e.Type == "assistant" && e.IsAPIErrorMessage && e.Error == usageLimitError
 }
 
 // TurnEndActivity reads the transcript turnEnd's transcript_path names.
@@ -174,4 +187,122 @@ func newestTurnEndError(data []byte) (apiError bool, text string, found bool) {
 		return false, "", true
 	}
 	return false, "", false
+}
+
+// TurnEndUsageLimited reads the transcript turnEnd's transcript_path names.
+// The usage limit stopped the turn end when the newest main-chain assistant entry that ends a turn or carries the API-error marker is a usage-limit entry.
+// It stopped a fork during the turn when a fork transcript beside it, last written after the main chain's previous turn end, has a usage-limit entry as its newest assistant entry.
+// A transcript with no previous turn end counts every fork.
+// A missing transcript_path and an unreadable transcript read as no limit.
+func (c *Claude) TurnEndUsageLimited(turnEnd shuttleengine.Event) bool {
+	var payload struct {
+		TranscriptPath string `json:"transcript_path"`
+	}
+	if err := json.Unmarshal(turnEnd.Raw, &payload); err != nil || payload.TranscriptPath == "" {
+		return false
+	}
+	f, err := os.Open(payload.TranscriptPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	var reading turnLimitReading
+	readBackward(f, info.Size(), initialReadChunk, func(data []byte) bool {
+		var settled bool
+		reading, settled = readTurnLimit(data)
+		return settled
+	})
+	return reading.limited || forkStoppedOnUsageLimit(payload.TranscriptPath, reading.previousTurnEndAt)
+}
+
+// turnLimitReading is what the main transcript's tail says about the usage limit at its newest turn end.
+type turnLimitReading struct {
+	// limited is true when the newest main-chain turn end is a usage-limit entry.
+	limited bool
+	// previousTurnEndAt is the time of the main-chain turn end before the newest one; zero when there is none or its time does not parse.
+	previousTurnEndAt time.Time
+}
+
+// readTurnLimit scans the complete lines of data from the last to the first for the two newest main-chain assistant entries that end a turn or carry the API-error marker.
+// settled is true once the reading cannot change: the newest is a usage-limit entry, or the one before it turned up.
+func readTurnLimit(data []byte) (reading turnLimitReading, settled bool) {
+	foundNewest := false
+	for end := len(data); end > 0; {
+		start := bytes.LastIndexByte(data[:end], '\n') + 1
+		line := bytes.TrimSpace(data[start:end])
+		end = start - 1
+		if len(line) == 0 {
+			continue
+		}
+		var e apiErrorEntry
+		if err := json.Unmarshal(line, &e); err != nil {
+			continue
+		}
+		if e.IsSidechain || e.Type != "assistant" || !(e.isTurnEnd() || e.IsAPIErrorMessage) {
+			continue
+		}
+		if !foundNewest {
+			if e.isUsageLimit() {
+				return turnLimitReading{limited: true}, true
+			}
+			foundNewest = true
+			continue
+		}
+		reading.previousTurnEndAt, _ = time.Parse(time.RFC3339, e.Timestamp)
+		return reading, true
+	}
+	return reading, false
+}
+
+// forkStoppedOnUsageLimit reports whether a fork transcript under the subagents directory beside transcriptPath, last written after since, has a usage-limit entry as its newest assistant entry.
+// A fork transcript that cannot be read is skipped.
+func forkStoppedOnUsageLimit(transcriptPath string, since time.Time) bool {
+	dir := filepath.Join(strings.TrimSuffix(transcriptPath, ".jsonl"), "subagents")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || filepath.Ext(entry.Name()) != ".jsonl" {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || !info.ModTime().After(since) {
+			continue
+		}
+		if newestAssistantIsUsageLimit(filepath.Join(dir, entry.Name()), info.Size()) {
+			return true
+		}
+	}
+	return false
+}
+
+// newestAssistantIsUsageLimit reports whether the newest assistant entry of the size bytes of the transcript at path is a usage-limit entry.
+// A read error and a transcript with no assistant entry report false.
+func newestAssistantIsUsageLimit(path string, size int64) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	limited := false
+	readBackward(f, size, initialReadChunk, func(data []byte) bool {
+		for end := len(data); end > 0; {
+			start := bytes.LastIndexByte(data[:end], '\n') + 1
+			line := bytes.TrimSpace(data[start:end])
+			end = start - 1
+			var e apiErrorEntry
+			if len(line) == 0 || json.Unmarshal(line, &e) != nil || e.Type != "assistant" {
+				continue
+			}
+			limited = e.isUsageLimit()
+			return true
+		}
+		return false
+	})
+	return limited
 }
