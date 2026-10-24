@@ -46,6 +46,8 @@ type BriefTask struct {
 	HasProposal bool      `json:"has_proposal"`
 	// OwnerMachine is the entry's effective owner: the recorded one, else the owner it reads as through its parent; empty for a note and where the owner cannot be resolved.
 	OwnerMachine string `json:"owner_machine,omitempty"`
+	// ParentBeam is the slug of the beam the entry belongs to, as the parent resolver answers it; empty for the prime and where the beam cannot be resolved.
+	ParentBeam string `json:"parent_beam,omitempty"`
 }
 
 const (
@@ -672,6 +674,15 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 			// A resolver error leaves the cell empty: a list never fails on a parent it cannot read.
 			owner, _ = owners.Effective(t.Slug, parentOf)
 		}
+		// A resolver error leaves the cell empty, as for the owner.
+		parentBeam := ParentBeam(s.tasks, t.Slug)
+		if s.parentOf != nil {
+			resolved, err := s.parentOf(t.Slug)
+			parentBeam = resolved
+			if err != nil {
+				parentBeam = ""
+			}
+		}
 		brief := BriefTask{
 			ID:           t.ID,
 			Handle:       t.Handle,
@@ -689,6 +700,7 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 			Layer:        layerMap[t.Slug],
 			HasProposal:  t.Body != "",
 			OwnerMachine: owner,
+			ParentBeam:   parentBeam,
 		}
 		result = append(result, brief)
 	}

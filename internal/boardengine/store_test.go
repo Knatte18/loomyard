@@ -977,6 +977,27 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 		t.Errorf("listed layers = %v; want %v", layers, want)
 	}
 
+	// With no parent seam, the parent beam a list carries is ParentBeam over the store's own entries.
+	beamDir := t.TempDir()
+	beamBoard := `{"version":1,"entries":[` +
+		`{"id":0,"slug":"beamer","title":"B","kind":"project","labels":["bug"],"beam":true},` +
+		`{"id":1,"slug":"member","title":"M","kind":"task","labels":["bug"],"project":"beamer"},` +
+		`{"id":2,"slug":"loose","title":"L","kind":"task","labels":["bug"]}]}`
+	if err := os.WriteFile(filepath.Join(beamDir, "board.json"), []byte(beamBoard), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+	beamStore := boardengine.NewStore(beamDir)
+	if err := beamStore.Load(); err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	parentBeams := map[string]string{}
+	for _, b := range beamStore.ListTasksBrief(nil) {
+		parentBeams[b.Slug] = b.ParentBeam
+	}
+	if want := map[string]string{"beamer": "", "member": "beamer", "loose": ""}; !maps.Equal(parentBeams, want) {
+		t.Errorf("listed parent beams = %v; want %v", parentBeams, want)
+	}
+
 	// The owner a task lists is its recorded one, else the prime's; a note lists none, and a parent resolver that fails empties the cell without failing the list.
 	dir := t.TempDir()
 	owned := `{"version":1,"prime_owner":"neve","entries":[` +

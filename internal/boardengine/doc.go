@@ -96,6 +96,9 @@
 // The effective owner of an entry is what Owners.Effective resolves: the recorded owner, else for a run-held entry none, else its parent's owner, the parent pair resolved through Config.ParentOf and the prime's owner when it has none;
 // a board with no prime owner, and a slug the board does not hold, read as owned by no other machine.
 // Board copies Config.ParentOf onto every store it builds, so reads and writes resolve parents alike, and nil reads every parent as the prime.
+// ParentBeam is the board half of the one parent resolver: it walks an entry's project links upward and returns the nearest open project that is a beam, "" meaning the prime.
+// The list view carries it as parent_beam, from Config.ParentOf when that seam is set and from ParentBeam over the board's own entries otherwise, empty when the seam fails;
+// Board.ParentBeamOf answers it for one slug, and ReadTasks reads the entries of a local board.json for a reader outside a Board.
 // An owner change is never a scope change, so the run lock lets a run-held entry take it.
 //
 // SetOwners is the only writer of an owner or the prime owner.
