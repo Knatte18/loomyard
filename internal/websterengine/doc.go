@@ -319,8 +319,8 @@
 // and end in one ordered list: the restores, then `lyx webster accept-audit`, then exactly one re-entry step, RunDeps.ReentryStep (`lyx webster run` when empty);
 // the reset route ends in that same re-entry step, since the reset archives the run record and a plain run starts over.
 // A suspect path that is one of the run's two contract files, outcome.yaml or summary.md, is the exception, since it lies outside the tracked tree and has no blob to compare:
-// contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write and every recovery write to it;
-// an uncleared path is one a fork or a recovery session wrote last, and the refusal names which.
+// contractFileStatus clears it on evidence, when the file is absent or the latest successful Master write to it (from RunWrites) is later than every fork write and every recovery or verify-fixer write to it;
+// an uncleared path is one a fork, recovery or verify-fixer session wrote last, and the refusal names which.
 // A Master write whose result failed is not evidence, and an acknowledgement never clears it.
 // Every other path under `_lyx`, `.lyx` or the scratch directory stays uncheckable.
 // Four sites consult it before checkSuspectPaths: AcceptPendingAudit, RecoverSpawnOrAttach, the way forward of a pending finding (pendingPathsWayForward) and `run --fresh`.
@@ -373,19 +373,14 @@
 //
 // Forks always inherit Master's current model — there is no per-fork model
 // override, so webster carries no implementer/implementer_oversized fork
-// roles at all; RoleMaster and RoleRecovery are its only two roles.
+// roles at all; RoleMaster and RoleRecovery are its only two roles, and the cold strands, recovery and verify-gate fixer alike, run at RoleRecovery.
 // run launches Master with RoleMaster's model, and nothing in begin-batch reads or changes it afterwards; a Master pane an operator moves with /model stays there for the rest of the run.
 //
-// # cold recovery is the only real model escalation
+// # cold strands are the only real model escalation
 //
-// The one place webster spawns a genuinely separate process is
-// recover-batch: a blocking, re-entrant verb that spawns a fresh
-// implementer as its own shuttle/reed strand at the recovery role when a
-// fork reports stuck or writes no report, rendering the SEPARATE, full
-// cold-start recovery prompt (RenderRecoveryPrompt) — deliberately distinct
-// from a fork's own thin RenderForkPrompt, since the recovery strand
-// inherits no session context (see the fork-context-hygiene Shared
-// Decision).
+// Webster spawns a genuinely separate process in two places, the cold verify-gate fixer (see The cold verify-gate fixer below) and recover-batch.
+// recover-batch is a blocking, re-entrant verb that spawns a fresh implementer as its own shuttle/reed strand at the recovery role when a fork reports stuck or writes no report.
+// It renders the SEPARATE, full cold-start recovery prompt (RenderRecoveryPrompt) — deliberately distinct from a fork's own thin RenderForkPrompt, since the recovery strand inherits no session context (see the fork-context-hygiene Shared Decision).
 // The master and the recovery strand both load `scribe:prose`, `scribe:code-quality` and `scribe:testing` through their spawn spec's skills (`roleSkills`), followed by the hub's language skills from the `RunDeps.LanguageSkills` and `RecoverDeps.LanguageSkills` their wiring loads.
 // The fork and recovery prompts render the hub's tiers and gate lists from `BeginDeps.GateTiers` and `RecoverDeps.GateTiers`, the rendered `gate.yaml` lines their wiring loads, `none` when the hub declares no tier.
 // They also fill the implementer body's required `rename_tools` marker from `BeginDeps.RenameTools` and `RecoverDeps.RenameTools`, which the hub's `language.yaml` supplies and a standalone run leaves empty; both render `none` when empty.
@@ -394,7 +389,7 @@
 // The master and recovery prompts also render the task's declared PATTERN changes, read from Geometry.DecisionRecordPath; standalone mode leaves it empty and renders none.
 // Forks get no skills and no directive: they inherit the master's context.
 // The recovery prompt also carries a block of the worktree's uncommitted paths (the optional uncommitted_paths marker, `none` on a clean tree), taken from UncommittedPaths when the strand is spawned.
-// Each path is grouped by the run's write evidence (loadRunWrites), which covers Master, every fork and every recovery session: "Written by this run" is the earlier attempt's unfinished work, which the strand keeps as its starting point after checking it against the card, and "Not written by this run", which includes every path the evidence cannot attribute, the strand leaves untouched and never stages or commits.
+// Each path is grouped by the run's write evidence (loadRunWrites), which covers Master, every fork, every recovery session and every cold verify-gate fixer session: "Written by this run" is the earlier attempt's unfinished work, which the strand keeps as its starting point after checking it against the card, and "Not written by this run", which includes every path the evidence cannot attribute, the strand leaves untouched and never stages or commits.
 // The call that spawns the recovery strand first waits for its provider to come up (normally seconds, bounded by startup_timeout_s),
 // and every call then blocks for RecoveryWaitBudget (recovery_timeout_min plus one poll tick) and returns a terminal digest:
 // the budget outlasts the timeout measured from spawn, so a strand that never reports classifies dead on its timeout and the call returns.
@@ -523,14 +518,33 @@
 // # The verify-gate fixer fork
 //
 // A gate failure reaches Merriam as a `Gate findings recorded at …` message naming the verify-gate report (VerifyGateReportPath).
-// Merriam spawns one fixer fork in the background with the prompt Run rendered at entry (RenderVerifyFixPrompt, into the prompts dir as verify-fix.md), ends its turn, and on the fork's notification rewrites its outcome and summary files, which re-arrives at the gate.
-// The gate's re-prompt line and its findings both open with the way forward, naming the fixer-fork step and the prompt file's path, so the rule stands where Merriam reads the failure.
+// The gate routes each failure to one of two fixers and records it as the report's `fixer`, FixerFork or FixerCold (see The verify gate below).
+// For a fork failure, Merriam spawns one fixer fork in the background with the prompt Run rendered at entry (RenderVerifyFixPrompt, into the prompts dir as verify-fix.md), ends its turn, and on the fork's notification rewrites its outcome and summary files, which re-arrives at the gate.
+// The gate's re-prompt line and its findings both open with the way forward to the routed fixer, naming the fixer-fork step and the prompt file's path, or the backgrounded `lyx webster fix-verify` call, so the rule stands where Merriam reads the failure.
 // The waiting turn end in between is no arrival.
+// Both fixers' prompts share one body, webster-body-verify-fix, behind a prefix of their own.
 // The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lyx`, commits each fix as `fix: <summary>` and does not run the plan-level verify; before it reports it runs the hub's `round` gate call over the computed scope, which Run renders from the told Geometry.GateConfig into the prompt's `fix_gate` marker.
 // Its commits skip record-batch's done-checks, drift detection and glyph scope guard.
 // They are bounded by the gate's commit check, the run-exit fork audit, the gate's own verify and the Code-Review perch after Merge-In, which reviews the committed range.
 // The plan directory and `_lyx` sit outside every code commit, so the run-exit fork audit is what catches a fixer write there:
 // forkOwnReport maps a fork transcript outside every batch bracket to the verify-gate report, and CheckFork audits the fixer fork as it audits a batch fork.
+//
+// # The cold verify-gate fixer
+//
+// For a cold failure, Merriam runs `lyx webster fix-verify` as a backgrounded Bash command, which Master's spawn declares an awaited shell prefix beside recover-batch, ends its turn, and on its completion notification, whatever its exit, rewrites its outcome and summary files as after a fork.
+// FixVerifySpawnOrAttach spawns the cold fixer as its own strand, role `verify-fixer`, at RoleRecovery's model choice, with RenderVerifyFixColdPrompt's prompt: the shared body behind a cold prefix carrying the parent, edit, PATTERN and friction directives and its own orientation steps.
+// It refuses, spawning nothing, with no verify-gate report on disk, a recovery role whose engine cannot audit forks, or a gate config with no `round` list.
+// The fixer's final action is its reply file in the scratch dir (VerifyFixReplyPath), the strand's shuttle output file; a stale one is removed at spawn.
+// Each spawn appends a VerifyFixerState to State.VerifyFixers, which the verb saves and fabric-commits at once;
+// a call that finds the last record not terminal attaches to it instead of spawning a second.
+// FixVerifyAwait blocks for RecoveryWaitBudget and classifies the fixer done on its reply file, or dead when its newest turn ended without one, recovery_timeout_min passed or its strand is gone;
+// every terminal stops the strand through the stopper, and only done reads the reply and removes the run dir.
+// The verb records the terminal status in a reloaded state, fabric-commits it and returns the status, with the reply on done and the dead reason on dead, exiting non-zero on dead.
+// The gate, not the verb, judges the fix: a dead fixer leaves the failure for the next evaluation to count.
+// Bound: the verb spawns whenever a verify-gate report exists, a fork-routed failure's included, and counts no spawn;
+// the gate messages, which the attempt budget caps, and the Master template's rule to run it only when a message names it bound how many cold fixers a run gets.
+// The run-exit audit reads the forks of Master's session only, so a cold fixer's own writes are checked only through the contract-file evidence loadRunWrites collects, as a recovery strand's are.
+// Each fixer session joins the run's write evidence (loadRunWrites) beside the recovery sessions, run entry stops a fixer recorded not terminal and saves its record dead/died, so the next fix-verify spawns a fresh fixer instead of attaching to the stopped strand, and `reset --to start` stops every recorded fixer strand.
 //
 // # The verify gate
 //
@@ -548,6 +562,9 @@
 // A config that cannot be loaded, or a `final` list the config refuses, is the gate's returned error naming `lyx config gate`, never a pass.
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
 // A failure that survives the rerun returns findings.
+// Each failure goes to a fixer: the cold fixer for the failure that reaches the attempt budget, for one whose previous fixer added no commit above the pre-fix head, and for every failure after one that went cold; the fixer fork otherwise.
+// The routing lives in the closure for one shuttle run, like the count, and VerifyGateNotes carries it to the re-prompt line.
+// Bound: a re-prompt shuttle could not deliver is evaluated again, which counts one more failure, so the routing can go cold one attempt early.
 // A run that outlives the verify timeout is never rerun, since a hang is not flakiness: it fails the gate at once,
 // and the report names the timeout, the log path and the log tail, and says the step was not re-run.
 // A failed run that hung is not re-run either: classifyHang reads the log and exit code, and the first failure and the rerun's failure are both checked.
@@ -574,10 +591,10 @@
 //
 // # Background shells in Master's wait
 //
-// Master's spawn declares one awaited shell prefix, `masterAwaitedShellPrefix` (the backgrounded recovery verb of the failure ladder);
-// recovery_timeout_min already bounds that verb, so the prefix keeps it out of the background-shell wait marker and is what keeps it holding a gated turn end.
+// Master's spawn declares two awaited shell prefixes, `masterAwaitedShellPrefixes`: the backgrounded recovery verb of the failure ladder and the backgrounded cold fixer verb of the gate-failure section;
+// recovery_timeout_min already bounds both verbs, so the prefixes keep them out of the background-shell wait marker and are what keeps them holding a gated turn end.
 // A gated turn end waiting only on non-awaited shells is judged as a plain turn end: done when Master's output files exist, held when one is missing.
-// A gated turn end waiting on the awaited recovery verb or on a fork is never an arrival, and neither expires.
+// A gated turn end waiting on an awaited verb or on a fork is never an arrival, and neither expires.
 // The run ends on the next turn end with nothing outstanding, the run deadline, the liveness check or a stop;
 // a deadline still ends it done through shuttle's satisfied file contract with the gate run once at finalize, and the shell's result is then never read.
 // `background_shell_wait_min` sets when a long-running shell is logged and shown in the wait marker, and expires an ungated wait on non-awaited shells into a held turn end.
@@ -608,7 +625,7 @@
 // `--batch` is required for `report-head` and `batch-start` and refused for the other three, before any git read.
 // The refusals run in order: the `--batch` pairing, run lock held (transient, except for `report-head`), no state, a merge in progress, a checked-out branch that is not the task branch,
 // no recorded target, a recorded commit missing from the repository, a target that is not an ancestor of HEAD, and a dirty tracked path outside the run's own writes.
-// The own paths are the tracked paths that loadRunWrites records a successful write to, Master's, every fork's and every recovery session's; a failed write is not evidence.
+// The own paths are the tracked paths that loadRunWrites records a successful write to, Master's, every fork's, every recovery session's and every cold verify-gate fixer session's; a failed write is not evidence.
 // Each refusal ends in wayForwardSteps' numbered list.
 // The plan carries the SHA and the own paths, and reads no force flag.
 // `start` is the one start-over verb, so it does not refuse where the start cannot be moved to:

@@ -1,5 +1,5 @@
 // verifygate.go implements NewVerifyGate, the must-pass gate on Merriam's strand that holds a webster run's done until the hub's `final` gate passes on the committed tree.
-// A failure goes back to Merriam's live session as findings, and Merriam fixes it through one fixer fork.
+// A failure goes back to Merriam's live session as findings, and Merriam fixes it through one fixer fork or, escalated, the cold fixer strand.
 
 package websterengine
 
@@ -29,12 +29,31 @@ const verifyGateSite = "webster gate"
 
 // VerifyGateNotes collects what a gate's evaluations observed that is not a failure: the identities that failed once and passed on rerun, and the commits made above the pre-fix head.
 // Run applies it after the wait, so a flaky pass reaches the warnings, summary.md and a friction note, and the fixer's commits reach summary.md.
+// It also holds the fixer the latest failure went to, which the re-prompt line names.
 type VerifyGateNotes struct {
 	frictionDir string
 
 	mu      sync.Mutex
 	flaky   []string
 	commits []CommitLogEntry
+	fixer   string
+}
+
+// setFixer records fixer as the one the latest failure went to.
+func (n *VerifyGateNotes) setFixer(fixer string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.fixer = fixer
+}
+
+// Fixer returns the fixer the latest failure went to, FixerFork before any failure.
+func (n *VerifyGateNotes) Fixer() string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.fixer == "" {
+		return FixerFork
+	}
+	return n.fixer
 }
 
 // addCommits records entries, keeping each commit once by SHA in first-seen order.
@@ -128,7 +147,7 @@ func AppendVerifyGateFixCommits(websterDir string, commits []CommitLogEntry) err
 	for _, line := range departures {
 		fmt.Fprintf(&b, "- %s\n", line)
 	}
-	section := "\n\n## Verify gate fix commits\n\nThe verify-fix fork's commits above the pre-fix head, and the PATTERN departures their messages declare.\n\n" + b.String()
+	section := "\n\n## Verify gate fix commits\n\nThe verify-gate fixers' commits above the pre-fix head, and the PATTERN departures their messages declare.\n\n" + b.String()
 	return appendToSummary(websterDir, "verify gate fix commits", section)
 }
 
@@ -180,8 +199,11 @@ type verifyGateSeams struct {
 // otherwise it runs that call through verifytree.Verify, told geom.VerifyHold on the first run and the rerun alike, reruns it once on a failure, and passes a flaky failure whose rerun passed.
 // A run that timed out or hung, as classifyHang reads its log and exit code, is not re-run: it fails at once.
 // A failure that survives returns findings, and the first failure of any kind records HEAD as the pre-fix head.
+// Each failure goes to a fixer, which the report, the findings and the re-prompt line name:
+// the cold fixer for the failure that reaches attempts, for one after a fixer that added no commit above the pre-fix head, and for every failure after one that went cold;
+// the fixer fork otherwise.
 // Every failed evaluation writes the verify-gate report.
-// Attempt counts and the pre-fix head live in the closure for one shuttle run;
+// Attempt and failure counts, the routing and the pre-fix head live in the closure for one shuttle run;
 // the pre-fix head is also persisted as state.json's PreFixHead when it is recorded, overwriting an earlier run's, and cleared on a passing evaluation.
 func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentBranch ParentBranchFunc, frictionDir, fixPromptPath string) (shuttleengine.Gate, *VerifyGateNotes) {
 	paths := verifytree.NewPaths(geom.WorktreeRoot, geom.VerifyDir)
@@ -263,9 +285,13 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 	attempt := 0
 	preFix := ""
 	reportPath := VerifyGateReportPath(reportsDir)
+	failures := 0
+	cold := false
+	lastFixCommits := 0
 
-	// fail records the pre-fix head on the first failure, then writes the report and returns its findings.
+	// fail records the pre-fix head on the first failure, routes the failure to a fixer, then writes the report and returns its findings.
 	fail := func(report VerifyGateReport) (shuttleengine.GateResult, error) {
+		failures++
 		if preFix == "" {
 			head, err := s.head()
 			if err != nil {
@@ -280,6 +306,15 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
+		// The last failure the budget re-prompts, and one after a fixer that added no commit, go to the cold fixer;
+		// once a failure went cold, every later one does.
+		cold = cold || failures >= attempts || (failures > 1 && len(fixCommits) == lastFixCommits)
+		lastFixCommits = len(fixCommits)
+		report.Fixer = FixerFork
+		if cold {
+			report.Fixer = FixerCold
+		}
+		notes.setFixer(report.Fixer)
 		report.Attempt = attempt
 		report.Cap = attempts
 		report.FixCommits = fixCommits

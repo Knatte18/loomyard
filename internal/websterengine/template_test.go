@@ -381,6 +381,15 @@ func renderVerifyFix(reportPath, anchorRoot, stencilsDir, notePath string) (stri
 	return string(got), err
 }
 
+// testReplyPath is the placeholder reply path passed as RenderVerifyFixColdPrompt's replyPath parameter.
+const testReplyPath = "/lyx/webster/verify-fix-reply.md"
+
+// renderVerifyFixCold renders the cold fixer prompt for reportPath with the shared placeholder paths, testReplyPath and testFixGate.
+func renderVerifyFixCold(reportPath, repoRoot, anchorRoot, stencilsDir, notePath, parent string, patternChanges []string) (string, error) {
+	got, err := websterengine.RenderVerifyFixColdPrompt(reportPath, testReplyPath, anchorRoot, repoRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, testOutcomePath, testSummaryPath, notePath, testFixGate, patternChanges, parent)
+	return string(got), err
+}
+
 // promptCheck is one rendered prompt and the assertions its case makes on it: wantErr expects the
 // render to fail, otherwise every contains needle is present, every notContains needle is absent,
 // and the inOrder needles appear in that order.
@@ -878,11 +887,29 @@ func TestRenderPrompts(t *testing.T) {
 			text, err := renderVerifyFix(reportPath, root, stencilsDir, "")
 			return promptCheck{text: text, err: err,
 				contains:    []string{reportPath, testOutcomePath, testSummaryPath, "_lyx/plan", "run `" + testFixGate + "` as a foreground Bash call"},
-				notContains: []string{"{{"}}
+				notContains: []string{"{{", testReplyPath}}
 		}},
 		{"fixer prompt refuses an empty report path", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
 			_, err := renderVerifyFix("", root, stencilsDir, "")
+			return promptCheck{err: err, wantErr: true}
+		}},
+		{"cold fixer prompt names the gate report, the reply file and the contract files", func(t *testing.T) promptCheck {
+			const reportPath = "/lyx/webster/reports/verify-gate.yaml"
+			root, stencilsDir := testLayout(t)
+			text, err := renderVerifyFixCold(reportPath, root, root, stencilsDir, "", "", nil)
+			return promptCheck{text: text, err: err,
+				contains:    []string{reportPath, testReplyPath, testOutcomePath, testSummaryPath, "_lyx/plan", testFixGate},
+				notContains: []string{"{{", "## Constraints"}}
+		}},
+		{"cold fixer prompt carries a declared PATTERN change when PATTERN is active", func(t *testing.T) promptCheck {
+			root, stencilsDir := patternActiveLayout(t)
+			text, err := renderVerifyFixCold("/reports/verify-gate.yaml", root, root, stencilsDir, "", "", []string{"- `PATTERN-x` adds: a rule"})
+			return promptCheck{text: text, err: err, contains: []string{"some constraints"}, inOrder: []string{"### Declared PATTERN changes", "- `PATTERN-x` adds: a rule"}}
+		}},
+		{"cold fixer prompt refuses an empty reply path", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			_, err := websterengine.RenderVerifyFixColdPrompt("/reports/verify-gate.yaml", "", root, root, filepath.Join(root, "_lyx", "plan"), stencilsDir, testOutcomePath, testSummaryPath, "", testFixGate, nil, "")
 			return promptCheck{err: err, wantErr: true}
 		}},
 	}
@@ -919,8 +946,11 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 		{"master", "webster-template-master", "webster-master.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
 			return renderMaster(seamBatches, anchorRoot, anchorRoot, stencilsDir, notePath, "", nil)
 		}},
-		{"verify-fix", "webster-body-verify-fix", "webster-verify-fix.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
+		{"verify-fix", "webster-prefix-verify-fix-fork", "webster-verify-fix.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
 			return renderVerifyFix("/reports/verify-gate.yaml", anchorRoot, stencilsDir, notePath)
+		}},
+		{"verify-fix-cold", "webster-prefix-verify-fix-cold", "webster-verify-fix-cold.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
+			return renderVerifyFixCold("/reports/verify-gate.yaml", anchorRoot, anchorRoot, stencilsDir, notePath, "", nil)
 		}},
 	}
 	for _, tc := range cases {
@@ -957,7 +987,7 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 	}
 }
 
-// TestRenderPrompts_ParentDirective asserts the master and recovery prompts render the parent variant for a told name and the no-parent variant for an empty one, and that the fork prompt carries neither.
+// TestRenderPrompts_ParentDirective asserts the master, recovery and cold fixer prompts render the parent variant for a told name and the no-parent variant for an empty one, and that the fork prompt carries neither.
 func TestRenderPrompts_ParentDirective(t *testing.T) {
 	t.Parallel()
 	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "alpha", "add the flag")}}}
@@ -977,8 +1007,16 @@ func TestRenderPrompts_ParentDirective(t *testing.T) {
 		return got
 	}
 
+	coldFixer := func(parent string) string {
+		got, err := renderVerifyFixCold("/reports/verify-gate.yaml", anchorRoot, anchorRoot, stencilsDir, "", parent, nil)
+		if err != nil {
+			t.Fatalf("RenderVerifyFixColdPrompt() = _, %v; want nil error", err)
+		}
+		return got
+	}
+
 	const parent = "ab:orch"
-	for name, render := range map[string]func(string) string{"master": master, "recovery": recovery} {
+	for name, render := range map[string]func(string) string{"master": master, "recovery": recovery, "cold fixer": coldFixer} {
 		withParent, without := render(parent), render("")
 		if !strings.Contains(withParent, "`"+parent+"`") {
 			t.Errorf("%s prompt with a parent does not name %q", name, parent)

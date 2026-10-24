@@ -86,7 +86,7 @@ func TestCreelSeam_MapsEachCallOntoTheClient(t *testing.T) {
 	}
 }
 
-// TestCreelSeam_FoldsTheJournal drives InjectOutcome and Sent over scripted journal entries.
+// TestCreelSeam_FoldsTheJournal drives InjectOutcome, MailReadAt and Sent over scripted journal entries.
 func TestCreelSeam_FoldsTheJournal(t *testing.T) {
 	t.Parallel()
 
@@ -141,6 +141,36 @@ func TestCreelSeam_FoldsTheJournal(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("InjectOutcome(7) = %+v; want %+v", got, tt.want)
+			}
+			if want := []creelengine.LogFilter{{ID: 7}}; !reflect.DeepEqual(client.filters, want) {
+				t.Errorf("Log filters = %+v; want %+v", client.filters, want)
+			}
+		})
+	}
+
+	reads := []struct {
+		name    string
+		entries []creelengine.LogEntry
+		want    time.Time
+	}{
+		{"an unread mail answers zero", []creelengine.LogEntry{{Event: "posted", ID: 7, At: at(0), Kind: "mail"}, {Event: "reminded", At: at(1), Unread: []int64{7}}}, time.Time{}},
+		{
+			"a read mail answers its first read",
+			[]creelengine.LogEntry{{Event: "posted", ID: 7, At: at(0), Kind: "mail"}, {Event: "read", ID: 7, At: at(3)}, {Event: "read", ID: 7, At: at(5)}},
+			at(3),
+		},
+		{"another mail's read is ignored", []creelengine.LogEntry{{Event: "read", ID: 8, At: at(2)}}, time.Time{}},
+	}
+	for _, tt := range reads {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			client := &fakeCreelClient{entries: tt.entries}
+			got, err := creelSeam{client: client}.MailReadAt(7)
+			if err != nil {
+				t.Fatalf("MailReadAt(7) error = %v; want nil", err)
+			}
+			if !got.Equal(tt.want) {
+				t.Errorf("MailReadAt(7) = %v; want %v", got, tt.want)
 			}
 			if want := []creelengine.LogFilter{{ID: 7}}; !reflect.DeepEqual(client.filters, want) {
 				t.Errorf("Log filters = %+v; want %+v", client.filters, want)

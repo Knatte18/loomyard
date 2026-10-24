@@ -96,6 +96,9 @@ type State struct {
 	// RequestID is the id creel gave the posted note request; zero while none was posted.
 	// Only a reply to this id passes the note gate.
 	RequestID int64 `json:"request_id"`
+	// RequestReadAt is when the orch read the note request RequestID names; zero while it is unread or none was posted.
+	// The handoff timeout counts from it.
+	RequestReadAt time.Time `json:"request_read_at"`
 
 	PendingHandoff string `json:"pending_handoff"` // Handoff path the handoff-requested phase asked for.
 	PendingResume  string `json:"pending_resume"`  // Resume prompt rendered for PendingHandoff, sent verbatim by resuming.
@@ -445,7 +448,7 @@ func ResetForFreshLaunch(s State, strand string, launchedAt time.Time) State {
 	s.PhaseInjected = false
 	s.PendingHandoff = ""
 	s.PendingResume = ""
-	s.Pending, s.RequestID = nil, 0
+	s.Pending, s.RequestID, s.RequestReadAt = nil, 0, time.Time{}
 	s.Stuck, s.StuckByCreel = "", false
 	s.FreshLaunchFailure, s.ResumeLineWithdrawn = "", false
 	s.WatcherExit = ""
