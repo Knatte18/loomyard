@@ -40,6 +40,11 @@ type AddOptions struct {
 	SkipPush bool
 	// BackoffSleep sleeps one delay of the backoff a push waits out before it records a branch gone from origin or an unreachable origin; nil sleeps for the delay.
 	BackoffSleep func(time.Duration)
+	// Parent is the slug of the hub pair the new pair forks from, its last commit and its records branch.
+	// Empty forks from the acting worktree's HEAD and refuses its tracked dirt.
+	Parent string
+	// Beam writes the beam mark into the new pair's origin record.
+	Beam bool
 }
 
 // syncOptions returns the options the records helpers take.
@@ -175,6 +180,8 @@ func (e *ErrLocalAddOverOrdinary) Error() string {
 // A warp branch that exists locally and carries the local-only mark is adopted rather than refused;
 // as its last step Add clears the mark of each adopted branch and lists it in AddResult.LocalMarkCleared, so the adopted pair is ordinary.
 // An unmarked existing warp branch is refused with ErrBranchExists.
+// With opts.Parent naming a pair of the hub, the warp branch forks from that pair's last commit and the weft branch from its records branch, the origin record names the parent's branch and slug,
+// and no tracked dirt is checked in either worktree; a parent that cannot be forked from is refused before any mutation.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddResult, error) {
 	return t.add(l, slug, opts, false)
 }
@@ -197,12 +204,28 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		return AddResult{}, err
 	}
 
-	dirtyPaths, err := SourceDirtyPaths(l)
-	if err != nil {
-		return AddResult{}, fmt.Errorf("read warp worktree status: %w", err)
-	}
-	if len(dirtyPaths) > 0 {
-		return AddResult{}, &ErrSourceDirty{Paths: dirtyPaths}
+	// A named parent replaces the acting worktree as the fork point, and the fork takes its last commit only, so neither worktree's tracked dirt is checked.
+	var parent addParent
+	if opts.Parent != "" {
+		parent, err = resolveAddParent(l, t.cfg, opts.Parent)
+		if err != nil {
+			return AddResult{}, err
+		}
+		parentDirty, err := SourceDirtyPaths(parent.location)
+		if err != nil {
+			return AddResult{}, fmt.Errorf("read the status of parent %q: %w", opts.Parent, err)
+		}
+		if len(parentDirty) > 0 {
+			logger.Info("fabricengine: forking from a parent with uncommitted changes, which the new pair does not carry", "verb", "add", "slug", slug, "parent", opts.Parent, "dirty", parentDirty)
+		}
+	} else {
+		dirtyPaths, err := SourceDirtyPaths(l)
+		if err != nil {
+			return AddResult{}, fmt.Errorf("read warp worktree status: %w", err)
+		}
+		if len(dirtyPaths) > 0 {
+			return AddResult{}, &ErrSourceDirty{Paths: dirtyPaths}
+		}
 	}
 
 	warpBranch := t.cfg.BranchPrefix + slug
@@ -271,15 +294,21 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 
 	// Resolve parent warp branch before worktree creation to avoid partial state on failure.
 	// A detached HEAD and an unborn branch are both refusals, and neither is a read error.
-	warpRepo := gitrepo.New(l.WorktreePath())
-	parentBranch, detached, headErr := warpRepo.HeadRef()
-	if headErr != nil {
-		return AddResult{}, fmt.Errorf("read warp HEAD: %w", headErr)
+	// A named parent was resolved above; its branch, records branch and worktree name stand in for the acting worktree's.
+	parentBranch, parentWeftBranch, parentWorktree := parent.branch, parent.recordsBranch, opts.Parent
+	if opts.Parent == "" {
+		warpRepo := gitrepo.New(l.WorktreePath())
+		var detached bool
+		var headErr error
+		parentBranch, detached, headErr = warpRepo.HeadRef()
+		if headErr != nil {
+			return AddResult{}, fmt.Errorf("read warp HEAD: %w", headErr)
+		}
+		if _, shaErr := warpRepo.CurrentSHA(); detached || errors.Is(shaErr, gitrepo.ErrNoCommits) {
+			return AddResult{}, fmt.Errorf("cannot spawn weft branch: warp worktree is on a detached HEAD or unborn branch")
+		}
+		parentWeftBranch, parentWorktree = RecordsBranchName(parentBranch), l.WorktreeName
 	}
-	if _, shaErr := warpRepo.CurrentSHA(); detached || errors.Is(shaErr, gitrepo.ErrNoCommits) {
-		return AddResult{}, fmt.Errorf("cannot spawn weft branch: warp worktree is on a detached HEAD or unborn branch")
-	}
-	parentWeftBranch := RecordsBranchName(parentBranch)
 
 	// Probe both origins before the first mutation: decide whether the pair is live, and refuse an unreplaceable leftover here rather than at the caller's later push.
 	// The weft answer is carried on: its fastForwardTo advances a behind local weft branch,
@@ -323,6 +352,9 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		}
 		if warpStart != "" {
 			return []string{"worktree", "add", "--track", "-b", warpBranch, worktreePath, warpStart}
+		}
+		if parent.headSHA != "" {
+			return []string{"worktree", "add", "-b", warpBranch, worktreePath, parent.headSHA}
 		}
 		return []string{"worktree", "add", "-b", warpBranch, worktreePath}
 	})
@@ -450,7 +482,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 	// so a task moved between machines keeps its recorded parent.
 	// A forked weft always gets its own record, though it may carry the parent's.
 	if _, statErr := os.Stat(OriginRecordPathFor(l, slug)); !weftAdopted || statErr != nil {
-		if err := WriteOrigin(rec, l, slug, Origin{ParentBranch: parentBranch, ParentWorktree: l.WorktreeName}); err != nil {
+		if err := WriteOrigin(rec, l, slug, Origin{ParentBranch: parentBranch, ParentWorktree: parentWorktree, Beam: opts.Beam}); err != nil {
 			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("record parent branch: %w", err)
 		}

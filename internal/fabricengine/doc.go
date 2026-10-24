@@ -656,6 +656,16 @@
 // The record holds two write-once fields: `parent_branch`, the warp branch the pair was forked from, and `parent_worktree`, the `WorktreeName` of the worktree `Add` ran from.
 // The parent worktree is what a run's parent agent name is resolved from.
 // A record written before `parent_worktree` existed, or by a legacy-worktree repair that cannot know the creator, decodes with it empty.
+// A third field, `beam` (omitted when false), marks the pair as a beam; a record written before it decodes as no beam.
+// `AddOptions.Beam` writes it at creation, and `MarkBeam` writes it into an existing pair's record and commits that one path, reporting false when the mark is already there.
+//
+// With `AddOptions.Parent` naming a pair of the hub, `Add` forks the new pair from that pair instead of from the acting worktree.
+// The warp branch forks from the parent worktree's HEAD (`git worktree add -b <branch> <path> <sha>`) and the weft branch from the parent's records branch,
+// and the origin record carries the parent's branch as `parent_branch` and the parent's slug as `parent_worktree`.
+// The acting worktree keeps every other role, so a caller in any worktree that passes the prime's location forks from the named parent.
+// `resolveAddParent` refuses, before any mutation and naming the way forward, a parent that is no live pair of the hub (`lyx fabric pairs`), the prime itself, a parent on a detached HEAD or unborn branch and a parent whose checked-out branch is not its own pair branch (`lyx fabric checkout <branch>` in the parent).
+// A named parent checks no tracked dirt in either worktree and logs the parent's dirty paths at Info: the fork takes the parent's last commit, never its uncommitted edits.
+// Without `Parent`, `Add` forks from the acting worktree's HEAD and refuses its tracked dirt with `ErrSourceDirty`.
 //
 // # The one-repo illusion at the public API boundary
 //
