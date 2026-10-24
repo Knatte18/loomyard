@@ -1,4 +1,4 @@
-// keybindings_test.go covers the keybindings block merge, the seeding of the user file and the per-platform path.
+// keybindings_test.go covers the keybindings block's entries and merge, the seeding of the user file and the per-platform path.
 
 package vscode
 
@@ -8,6 +8,24 @@ import (
 	"strings"
 	"testing"
 )
+
+// TestKeybindingsBlock pins the block's entries: the Alt-arrow sendSequence keys in the terminal, and ctrl+alt+a running the reed attach task.
+func TestKeybindingsBlock(t *testing.T) {
+	t.Parallel()
+
+	want := strings.Join([]string{
+		`// lyx:begin`,
+		`  { "key": "alt+up", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3A" }, "when": "terminalFocus" },`,
+		`  { "key": "alt+down", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3B" }, "when": "terminalFocus" },`,
+		`  { "key": "alt+right", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3C" }, "when": "terminalFocus" },`,
+		`  { "key": "alt+left", "command": "workbench.action.terminal.sendSequence", "args": { "text": "\u001b[1;3D" }, "when": "terminalFocus" },`,
+		`  { "key": "ctrl+alt+a", "command": "workbench.action.tasks.runTask", "args": "reed attach" },`,
+		`// lyx:end`,
+	}, "\r\n")
+	if got := keybindingsBlock("\r\n"); got != want {
+		t.Errorf("keybindingsBlock(CRLF) =\n%s\nwant\n%s", got, want)
+	}
+}
 
 func TestMergeKeybindings(t *testing.T) {
 	t.Parallel()

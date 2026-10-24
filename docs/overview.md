@@ -387,12 +387,12 @@ User-facing modules each get one `lyx <module>` namespace:
   `lyx ide spawn <prime>` opens the hub workspace `<hub>/<RepoName>.code-workspace` (the prime, `Bolt` and every task pair) whose `settings` carry the prime's `.vscode/settings.json`.
   The file is lyx-owned and regenerated on each prime spawn, overwriting any edit made in it;
   a task slug still opens its bare folder.
-  The generated `tasks.json` holds one on-demand `reed attach` task, with the `lyx` path stamped absolute at generation time, reached through "Tasks: Run Task";
+  The generated `tasks.json` holds one on-demand `reed attach` task, with the `lyx` path stamped absolute at generation time, reached through "Tasks: Run Task" or the seeded `ctrl+alt+a` key binding;
   no task runs on folder open, so opening a worktree in VS Code starts no session and no `claude`.
   `lyx ide spawn` and batten's Seed-IDE row write this config through one shared path.
   `lyx ide spawn` regenerates `tasks.json` on every spawn, overwriting an untracked one, and keeps `settings.json` when present.
   It keeps `.vscode/` out of git through the repository's shared `info/exclude` at the anchor subpath rather than `.gitignore`, and leaves a tracked `tasks.json` alone with a warning.
-  `lyx ide spawn` also seeds a `// lyx:begin` … `// lyx:end` block into the user's VS Code `keybindings.json`, forwarding the four Alt keys of reed's tmux bindings to the integrated terminal, and reports the outcome in its JSON result.
+  `lyx ide spawn` also seeds a `// lyx:begin` … `// lyx:end` block into the user's VS Code `keybindings.json`, forwarding the four Alt keys of reed's tmux bindings to the integrated terminal and binding `ctrl+alt+a` to run the `reed attach` task, and reports the outcome in its JSON result.
   It writes only between its own markers, and a file it cannot merge safely is skipped with a reason and never fails the spawn.
   Batten does not open it: VS Code opens only when the operator runs `lyx ide`. ✅ Implemented.
 - **selfreport** — file bugs and enhancements against `Knatte18/loomyard` via go-github through `internal/githubclient`, filed by `lyx selfreport create <title>`, run by the operator or by an agent; the friction reflection is its only automatic caller, and no Go code files an issue itself.
