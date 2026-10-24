@@ -29,7 +29,7 @@ var transportPhrases = []string{
 	"operation too slow",
 }
 
-// IsTransportFailure reports whether err's chain holds a *GitError for a remote operation (push, fetch, pull, ls-remote or clone) that failed to reach the remote, or that outlived its deadline and was killed.
+// IsTransportFailure reports whether err's chain holds a *GitError for a remote operation (push, fetch, pull, ls-remote or clone) that failed to reach the remote, or that outlived its deadline or stalled twice and was killed.
 // A rejected push, an authentication failure, a missing ref, a local command and an error with no *GitError in its chain are not transport failures.
 // A stderr message in a format not listed in transportPhrases falls back to "not transient", which is today's behaviour.
 func IsTransportFailure(err error) bool {

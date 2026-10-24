@@ -23,6 +23,18 @@
 // Before the deadline starts, a remote subcommand waits while a pause covers the process, through the process's network gate: the wait counts against no deadline, and with no gate installed there is none.
 // The hold only delays the call's start and never fails it.
 //
+// # Stall bound
+//
+// The low-speed limit covers a transfer, never the connection's setup, so a TLS handshake the remote never answers would run to curl's connect timeout or the deadline.
+// A remote subcommand therefore runs with GIT_TRACE_PACKET pointed at a file in lyxtemp's run directory, removed after the call.
+// git writes the file's first line only once the remote's first packet arrives, so a file still empty 30 s into the call is a remote that never answered:
+// the call is killed as at the deadline and run once more, with fresh bounds.
+// A stalled call received no ref advertisement and so changed nothing on the remote, which is what makes the retry safe for a push.
+// A second stall returns a *GitError whose Stalled is set and whose Timeout is the stall bound, which IsTransportFailure reports as a transport failure.
+// Bound: the stall bound covers only the wait for the remote's first answer; a connection that stalls after it is held by the low-speed limit and the deadline alone.
+// A deadline at or under the stall bound, as RunWithin may pass, leaves the stall check unarmed.
+// An operator's own GIT_TRACE_PACKET is overridden for a remote subcommand.
+//
 // # Environment
 //
 // Every git child inherits the process environment except GIT_DIR and GIT_WORK_TREE, which are dropped so the child follows the directory it is run in, as the in-process reads do, and one command never reads one repository and writes another.
