@@ -136,30 +136,6 @@ func ReadOriginFor(l *lyxcwd.Location, slug string) (Origin, bool, error) {
 	return state.ReadJSON[Origin](path, filepath.Join(lockDir, originRecordLockFileName))
 }
 
-// ParentSlug returns the slug of the pair slug was forked from: the hub's pair worktree whose branch slug's origin record names as its parent branch.
-// It returns "" when the parent branch is the prime's, when slug has no local pair or no origin record, and when no live pair holds the parent branch.
-// A read error is returned as ReadOriginFor and the worktree listing report it.
-func ParentSlug(l *lyxcwd.Location, slug string) (string, error) {
-	origin, found, err := ReadOriginFor(l, slug)
-	if err != nil || !found {
-		return "", err
-	}
-	entries, err := List(l.AnchorPath())
-	if err != nil {
-		return "", err
-	}
-	for _, entry := range entries {
-		if entry.Prunable || entry.Branch != origin.ParentBranch {
-			continue
-		}
-		if entry.Main {
-			return "", nil
-		}
-		return filepath.Base(filepath.Clean(filepath.FromSlash(entry.Path))), nil
-	}
-	return "", nil
-}
-
 // WriteOrigin writes the origin record o for slug's worktree pair, then records KindFileWritten in
 // rec.
 //
