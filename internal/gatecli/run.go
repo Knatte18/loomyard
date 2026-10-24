@@ -32,7 +32,7 @@ import (
 // siteLabelPrefix starts every holder and wait record this verb writes, so `lyx loom status` names the command that holds or waits for a slot.
 const siteLabelPrefix = "lyx gate test"
 
-// runTest runs request and returns the verb's exit code: the failing tier's own, SlotBusyExit for a hub whose slots stay held past request.slotWait, 128 plus the signal number after a terminating signal, and 1 for a refusal or a timed-out tier.
+// runTest runs request and returns the verb's exit code: the first failing run's own, SlotBusyExit for a hub whose slots stay held past request.slotWait when no earlier run failed, 128 plus the signal number after a terminating signal, and 1 for a refusal or a timed-out tier.
 func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if refusal := flagShapeRefusal(request); refusal != "" {
 		return output.Err(out, refusal)
@@ -132,23 +132,75 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	// A nested `lyx gate test` reads the variable to learn this run's watchdog already sees its test binaries.
 	exe.env = append(slices.DeleteFunc(env, func(entry string) bool { return strings.HasPrefix(entry, enclosingGateEnv+"=") }), enclosingGateEnv+"="+strconv.Itoa(os.Getpid()))
 
-	code := 0
+	// A failed run does not stop the call, so a failure the change under test did not cause leaves every later tier and guard run checked.
+	var failures []string
+	code, firstFailed := 0, ""
 	for _, run := range plan {
+		var end runEnd
 		if run.guardStep {
-			break
+			end = exe.runGuard(run)
+		} else {
+			end = exe.runListed(run)
 		}
-		if code = exe.runListed(run); code != 0 {
-			break
-		}
-	}
-	if code == 0 {
-		for _, run := range guardRunOf(plan) {
-			if code = exe.runGuard(run); code != 0 {
-				break
+		if end.ran && end.code != 0 {
+			failures = append(failures, fmt.Sprintf("%s (exit %d)", runLabel(run), end.code))
+			if code == 0 {
+				code, firstFailed = end.code, runLabel(run)
 			}
 		}
+		if end.halt {
+			if end.ran && code == 0 {
+				printLine(request.stderr, "gate test: the call was cancelled while its last run ended without a failure, so it exits 1; way forward: re-run the same command")
+			}
+			printFailedRuns(request.stderr, failures, firstFailed, true)
+			return exitAfterSignal(caught, haltExitCode(end, code))
+		}
 	}
+	printFailedRuns(request.stderr, failures, firstFailed, false)
 	return exitAfterSignal(caught, code)
+}
+
+// haltExitCode returns the exit code of a call the run end halted, given the code of the first earlier or halting failed run, 0 when none failed.
+// A run that ran and halted the call exits with that first failure's code, or 1 when none failed, since a halt is never green.
+// A busy hub after a failed run exits with that failure's code, since SlotBusyExit reads as no failure; any other halt keeps its own code.
+func haltExitCode(end runEnd, firstFailureCode int) int {
+	switch {
+	case end.ran && firstFailureCode == 0:
+		return 1
+	case end.ran || end.code == SlotBusyExit && firstFailureCode != 0:
+		return firstFailureCode
+	}
+	return end.code
+}
+
+// printFailedRuns writes the closing line naming every failed run to stderr, and nothing when failures is empty.
+// A line written because a run halted the call says the later runs did not run.
+func printFailedRuns(stderr io.Writer, failures []string, firstFailed string, halted bool) {
+	if len(failures) == 0 {
+		return
+	}
+	suffix := ""
+	if halted {
+		suffix = "; the call stopped there, so later runs did not run"
+	}
+	printLine(stderr, fmt.Sprintf("gate test: failed runs: %s; the exit code is %s's%s", strings.Join(failures, ", "), firstFailed, suffix))
+}
+
+// runEnd is how one run of the plan ended: its exit code, and whether the call stops there instead of going on to the next run.
+// A run halts the call on a refusal, a slot wait that did not end with the slots held and a cancelled context; a run whose command failed does not.
+type runEnd struct {
+	code int
+	halt bool
+	// ran is whether the run's command ran to an outcome, as opposed to a refusal or a slot wait that ended the call before it.
+	ran bool
+}
+
+// runLabel names run in the closing line of failed runs: its tier, prefixed `guard` for a guard run.
+func runLabel(run tierRun) string {
+	if run.guardStep {
+		return "guard " + tierName(run.number)
+	}
+	return tierName(run.number)
 }
 
 // flagShapeRefusal returns the refusal for a malformed combination of flags, which needs no config and runs before hub resolution, or "" when the call is well-formed.
@@ -241,17 +293,6 @@ func preTierExpiry(preCtx, runCtx context.Context, request testRequest, step str
 	return fmt.Sprintf("gate test: the work before the first tier outlived its %s ceiling while %s; way forward: run the same command again, which a transient hang such as a stalled \"go list\" passes", request.preTierCeiling, step)
 }
 
-// guardRunOf returns every guard run of plan, in tier order, which are its last runs; nil when plan has none.
-func guardRunOf(plan []tierRun) []tierRun {
-	var guards []tierRun
-	for _, run := range plan {
-		if run.guardStep {
-			guards = append(guards, run)
-		}
-	}
-	return guards
-}
-
 // tierNumbers returns the tier numbers of the listed runs of plan, leaving out the guard step.
 func tierNumbers(plan []tierRun) []int {
 	var numbers []int
@@ -299,10 +340,10 @@ type execution struct {
 	lastStamp time.Time
 }
 
-// runListed runs one listed tier with its slots held, and returns the exit code to stop on, or 0.
+// runListed runs one listed tier with its slots held, and returns how it ended.
 // A tier with no invocation takes no slot, and neither does a tier the green record holds green for the current tree: it is reported as carried.
 // A tier the record holds green in part runs only the rest, and a pass is recorded.
-func (e *execution) runListed(run tierRun) int {
+func (e *execution) runListed(run tierRun) runEnd {
 	if run.ignoresTargets {
 		printLine(e.request.stderr, fmt.Sprintf("gate test: the command of %s holds no {targets}, so it runs whole", tierName(run.number)))
 	}
@@ -315,18 +356,18 @@ func (e *execution) runListed(run tierRun) int {
 	return e.runGreenAware(run)
 }
 
-// runGuard runs one guard group with its tier's slots held, unless the green record holds the group green.
-func (e *execution) runGuard(planned tierRun) int {
+// runGuard runs one guard group with its tier's slots held, unless the green record holds the group green, and returns how it ended.
+func (e *execution) runGuard(planned tierRun) runEnd {
 	moduleDir := resolveRunDir(e.request.root, planned.invocations[0].dir)
 	run, err := guardStepRun(e.cfg, moduleDir, planned.number, e.guards[planned.number], e.request)
 	if err != nil {
-		return output.Err(e.out, err.Error())
+		return runEnd{code: output.Err(e.out, err.Error()), halt: true}
 	}
 	return e.runGreenAware(run)
 }
 
 // runGreenAware subtracts what the green record holds green from run, then reports run carried when nothing is left, else runs the rest inside the tier's slots and records a pass.
-func (e *execution) runGreenAware(run tierRun) int {
+func (e *execution) runGreenAware(run tierRun) runEnd {
 	var plan greenPlan
 	if e.green != nil {
 		plan = e.green.subtract(e.ctx, run, e.env)
@@ -335,30 +376,31 @@ func (e *execution) runGreenAware(run tierRun) int {
 		}
 		run.invocations = plan.invocations
 	}
-	code := e.runWithSlots(run, false, func(env []string) tierResult {
+	end := e.runWithSlots(run, false, func(env []string) tierResult {
 		return runTier(e.ctx, e.out, run, env, e.request)
 	})
-	if code == 0 && e.green != nil {
+	if end.code == 0 && !end.halt && e.green != nil {
 		e.green.recordPass(e.ctx, run, run.invocations, plan, e.env, time.Now())
 	}
-	return code
+	return end
 }
 
-// reportCarried writes the run record and summary line of a tier the green record held green, which took no slot and ran no command, and returns its exit code 0.
-func (e *execution) reportCarried(run tierRun) int {
+// reportCarried writes the run record and summary line of a tier the green record held green, which took no slot and ran no command, and returns its pass.
+func (e *execution) reportCarried(run tierRun) runEnd {
 	now := time.Now()
 	record := gateslot.RunRecord{Tier: run.number, ScopeForm: run.scopeForm, Slots: run.tier.Slots, GuardStep: run.guardStep, Start: now, End: now, Outcome: "passed", Carried: true}
 	return e.report(run, tierResult{record: record}, now)
 }
 
 // runWithSlots takes the slots of run's tier unless the call is unslotted, inherited or the run empty, runs body inside them with the environment the slots give, releases the slots and reports the tier's outcome.
-func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string) tierResult) int {
+// A wait that does not end with the slots held halts the call.
+func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string) tierResult) runEnd {
 	waitStart := time.Now()
 	env := e.env
 	if e.pool != nil && !e.inherited && !empty {
 		lease, code := acquireSlot(e.ctx, e.out, e.pool, e.location, e.request, tierName(run.number), run.tier.Slots)
 		if lease == nil {
-			return code
+			return runEnd{code: code, halt: true}
 		}
 		defer releaseSlot(lease, e.request.root)
 		env = lease.InheritEnv(env)
@@ -366,11 +408,12 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 	return e.report(run, body(env), waitStart)
 }
 
-// report writes the tier's run record and log, prints its `-trimpath` line, when it has one, and its summary line to stderr and returns its exit code; a refusal is answered instead, so its stdout stays one JSON envelope.
+// report writes the tier's run record and log, prints its `-trimpath` line, when it has one, and its summary line to stderr and returns the tier's exit code.
+// A refusal is answered instead, so its stdout stays one JSON envelope, and halts the call, as does a run a terminating signal cancelled.
 // A record that cannot be written is logged and decides nothing.
-func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) int {
+func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) runEnd {
 	if result.refusal != "" {
-		return output.Err(e.out, result.refusal)
+		return runEnd{code: output.Err(e.out, result.refusal), halt: true}
 	}
 	record := result.record
 	record.Worktree = e.request.root
@@ -395,7 +438,7 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 		printLine(e.request.stderr, result.trimpathNote)
 	}
 	printLine(e.request.stderr, gateslot.TierSummaryLine(record, logPath))
-	return record.ExitCode
+	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true}
 }
 
 // resolveHub returns the location of the hub worktree that contains dir, and whether dir is inside a hub at all.

@@ -220,10 +220,15 @@ func TestGateTest_Scopes(t *testing.T) {
 		edit(t, "docs/note.md", "a dirtying note\n")
 		g := gate(t, pair, []string{helperHoldEnv + "=1", helperUnitEnv + "=1s"}, "--card", "1")
 		records := g.tierRecords(t)
-		if len(records) != 1 {
-			t.Fatalf("tier invocations = %d; want the first module's run alone, killed before the second starts", len(records))
+		t.Cleanup(func() {
+			for _, record := range records {
+				_ = (&os.Process{Pid: record.Grandchild}).Kill()
+			}
+		})
+		// The timed-out tier stops its own invocations, but not the guard step after it.
+		if got, want := g.tierArgs(t), [][]string{{"./lib"}, guardInvocation}; !reflect.DeepEqual(got, want) {
+			t.Errorf("tier invocations = %q; want the first module's run alone, killed before the second starts, then the guard step: %q", got, want)
 		}
-		t.Cleanup(func() { _ = (&os.Process{Pid: records[0].Grandchild}).Kill() })
 		if tier, ok := gateslot.FindTierTimeout(g.stdout.String()); g.exit != 1 || !ok || tier != "tier0" {
 			t.Errorf("gate = exit %d, FindTierTimeout = (%q, %v), stdout %q; want exit 1 and the tier0 timeout line", g.exit, tier, ok, g.stdout.String())
 		}

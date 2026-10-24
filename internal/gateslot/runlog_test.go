@@ -131,7 +131,8 @@ func testFailedTier(t *testing.T) {
 		wantTier int
 		wantOK   bool
 	}{
-		{"last failing line after a passing one", line(0, 0) + "\n" + line(2, 1) + "\n", 2, true},
+		{"failing line after a passing one", line(0, 0) + "\n" + line(2, 1) + "\n", 2, true},
+		{"first of two failing lines", line(0, 3) + "\n" + line(6, 1) + "\n", 0, true},
 		{"failing line followed by a passing one", line(1, 2) + "\n" + line(2, 0) + "\n", 1, true},
 		{"a carried line beside a failing one is read as exit 0", carried(0) + "\n" + line(1, 3) + "\n" + carried(2) + "\n", 1, true},
 		{"a carried line alone is no failure", carried(0) + "\n", 0, false},

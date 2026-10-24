@@ -52,7 +52,7 @@ func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeout
 		Use:         "test [<targets>...]",
 		Short:       "run the hub's test tiers once their gate slots are free",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: fmt.Sprintf(`test runs the tiers the hub declares in gate.yaml, in ascending tier number, stopping at the first tier that fails.
+		Long: fmt.Sprintf(`test runs the tiers the hub declares in gate.yaml, in ascending tier number, going on past a failed one.
 --gate K runs the tiers and the scope the gate key K of gate.yaml names, and goes with none of --tier, --upto, --all and --base.
 A key of scope card needs --card <id> per card, scope all runs every tier whole, and scope diff runs the diff from the merge base with the pair's parent branch.
 Explicit <targets> beside --gate replace the key's scope.
@@ -65,7 +65,7 @@ run the same command again in a turn that does nothing else, so the prompt cache
 With --wait it blocks until the slots free.
 Inside a slot already held by an enclosing gate run it runs without acquiring another.
 Each tier prints a summary line to stderr and writes its record and log under the gate directory.
-The exit code is the failing tier's own, or 0.
+The exit code is the first failing run's own, or 0.
 Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <rev>, or the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
 --guards, and a narrower scope under the go scoper, also run the //lyx:guard tests outside the scope.
@@ -105,7 +105,7 @@ Examples:
 	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages are the scope; repeatable")
 	testCmd.Flags().StringVar(&base, "base", "", "revision whose diff to the working tree is the scope")
 	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")
-	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers pass, run every //lyx:guard test of the module under the tier its file belongs to")
+	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers, run every //lyx:guard test of the module under the tier its file belongs to")
 	testCmd.Flags().BoolVar(&wait, "wait", false, "block until the tiers' slots free instead of answering slot_free false after the keep-cache-warm cap")
 	cmd.AddCommand(testCmd)
 	cmd.AddCommand(statusCmd())

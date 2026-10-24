@@ -4,7 +4,10 @@
 //
 // # Verb
 //
-// `lyx gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and stops at the first tier that fails.
+// `lyx gate test [-C <dir>] [--gate <key>] [--tier N]... [--upto N] [--card <id>]... [--base <rev>] [--all] [--guards] [--wait] [<targets>...] [-- <args>]` runs the tiers the hub declares in gate.yaml, in ascending tier number, and then the guard step below when one is planned.
+// A run that fails does not stop the call: every later tier and guard run still runs, so a failure the change under test did not cause, such as one present at the base, hides no later check.
+// When a run failed, the verb closes with one stderr line naming each failed run, a guard run as `guard tierN`, with its exit code.
+// A refusal, a slot wait that does not end with the slots held and a terminating signal still end the call at once.
 // `--gate <key>` runs the tiers and the scope the `gates` key of that name holds, and `listedTiers` takes the key's tiers as the listed tiers.
 // It goes with none of `--tier`, `--upto`, `--all` and `--base`, which is refused before hub resolution naming the key and the flag to drop, since the key's tiers and scope come from gate.yaml.
 // Once the config is loaded, a key the config does not hold, an empty tier list and an undeclared tier are refused with `gateslot.Config.Gate`'s way forward naming `lyx config gate`.
@@ -60,12 +63,12 @@
 //
 // # Guard step
 //
-// With `--guards`, and under the `go` scoper after any computed, `--base` or `--card` scope, the verb runs, after the listed tiers pass, the step `guardStepRun` builds over the module's `//lyx:guard` tests outside the scope.
+// With `--guards`, and under the `go` scoper after any computed, `--base` or `--card` scope, the verb runs, after the listed tiers, the step `guardStepRun` builds over the module's `//lyx:guard` tests outside the scope.
 // `impactset.DeriveTargets` names those packages for a narrower computed or `--base` scope, and an `impactset.ModuleGuardTests` scan of the module at the run directory, which is `tier0`'s dir or the `-C` directory of explicit targets, names them for a `--card` scope, a scope fallen back to whole, and `--guards` over explicit targets.
 // So the round and darn writer gates, which run `--base`, keep the guard coverage they have had, where every guard package counts as outside a tier that does not compile it.
 // The scan reads each guard test's tier from its file's `tierN` build tag, a file naming none counting as `tier0`, and the step plans one guard run per tier holding guard tests, ascending.
 // A guard run is one run of that tier's command with the group's guard packages as `{targets}` and `-run '^(<names>)$'` after any words from `--` as `{args}`, so the guard's own pattern is the last `-run` and wins over one among those words.
-// It acquires that tier's slots after the last listed tier released its own, runs under that tier's `timeout_min` and `prebuilt_lyx`, and is logged as a guard step; the runs stop at the first failure.
+// It acquires that tier's slots after the last listed tier released its own, runs under that tier's `timeout_min` and `prebuilt_lyx`, and is logged as a guard step; a failed guard run, like a failed listed tier, stops no later run.
 // A group is skipped when the call ran its tier, or a tier covering it, whole, and a group whose tier the green record holds green carries.
 // A group whose tier is undeclared, or whose command lacks `{targets}` or `{args}`, is refused before any slot, naming `lyx config gate`.
 // A scan error refuses the call before any slot with the file, the line when there is one and a way forward for its kind:
@@ -247,5 +250,5 @@
 //
 // # Exit codes
 //
-// The failing tier's own code, which for a test binary the watchdog quit is the test run's failure code; 1 for a tier that timed out; SlotBusyExit (75) for a busy hub; 128 plus the signal number after a terminating signal; 1 for a refusal, with a JSON error envelope on stdout.
+// The first failing run's own code, in plan order, which for a test binary the watchdog quit is the test run's failure code; 1 for a tier that timed out; SlotBusyExit (75) for a busy hub when no earlier run failed, and the first failed run's code when one did; 1 for a run that ended without a failure while the call was cancelled; 128 plus the signal number after a terminating signal; 1 for a refusal, with a JSON error envelope on stdout.
 package gatecli

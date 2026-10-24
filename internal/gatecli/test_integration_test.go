@@ -47,10 +47,12 @@ const (
 	// helperRoleSleeper sleeps until killed.
 	helperRoleSleeper = "sleeper"
 
-	helperCwdEnv          = "GATECLI_TEST_CWD"
-	helperGoEnv           = "GATECLI_TEST_GO"
-	helperRecordEnv       = "GATECLI_TEST_RECORD"
-	helperExitEnv         = "GATECLI_TEST_EXIT"
+	helperCwdEnv    = "GATECLI_TEST_CWD"
+	helperGoEnv     = "GATECLI_TEST_GO"
+	helperRecordEnv = "GATECLI_TEST_RECORD"
+	helperExitEnv   = "GATECLI_TEST_EXIT"
+	// helperGuardExitEnv is the exit code of an invocation whose arguments hold a guard group's -run filter, in place of helperExitEnv.
+	helperGuardExitEnv    = "GATECLI_TEST_GUARD_EXIT"
 	helperBuildExitEnv    = "GATECLI_TEST_BUILD_EXIT"
 	helperBuildContentEnv = "GATECLI_TEST_BUILD_CONTENT"
 	helperHoldEnv         = "GATECLI_TEST_HOLD"
@@ -153,7 +155,11 @@ func runStandIn() int {
 	if hold {
 		select {}
 	}
-	code, _ := strconv.Atoi(os.Getenv(helperExitEnv))
+	exitEnv := helperExitEnv
+	if slices.ContainsFunc(os.Args, func(arg string) bool { return strings.HasPrefix(arg, "^(TestGuard") }) && os.Getenv(helperGuardExitEnv) != "" {
+		exitEnv = helperGuardExitEnv
+	}
+	code, _ := strconv.Atoi(os.Getenv(exitEnv))
 	return code
 }
 
@@ -926,6 +932,9 @@ func TestGateTest_Scenario(t *testing.T) {
 		if got := g.tierArgs(t); !reflect.DeepEqual(got, [][]string{{"./pkg"}, {"./pkg"}}) {
 			t.Errorf("tier invocations = %q; want one per tier", got)
 		}
+		if strings.Contains(g.stdout.String(), "failed runs") {
+			t.Errorf("stdout = %q; want no closing line of failed runs when every tier passed", g.stdout.String())
+		}
 		for _, tier := range []int{0, 6} {
 			if run, _ := runRecordOf(t, g.stdout.String(), tier); !slices.Equal(run.TierList, []int{0, 6}) {
 				t.Errorf("tier%d run record tier list = %v; want [0 6]", tier, run.TierList)
@@ -933,13 +942,38 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 	})
 
-	t.Run("a two-tier call stops at the first failing tier", func(t *testing.T) {
+	t.Run("a failing tier stops no later tier and the call exits with the first failure's code", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["tiers"].(map[string]any)["tier6"].(map[string]any)["command"] = "exit 9"
+		}))
+		defer writeConfig(t, gateConfig)
+
 		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "6", "./pkg"}, env: []string{helperExitEnv + "=7"}})
 		if code := g.wait(t); code != 7 {
-			t.Errorf("exit code = %d; want the failing tier's 7", code)
+			t.Errorf("exit code = %d, stdout %q; want the first failing tier's 7", code, g.stdout.String())
 		}
-		if got := g.tierArgs(t); len(got) != 1 {
-			t.Errorf("tier invocations = %q; want tier6 not run after tier0 failed", got)
+		if run, _ := runRecordOf(t, g.stdout.String(), 6); run.ExitCode != 9 || run.Outcome != "failed" {
+			t.Errorf("tier6 run record = %+v; want tier6 run after tier0 failed, failing with its own 9", run)
+		}
+		want := "gate test: failed runs: tier0 (exit 7), tier6 (exit 9); the exit code is tier0's"
+		if !strings.Contains(g.stdout.String(), want+"\n") {
+			t.Errorf("stdout = %q; want the closing line %q", g.stdout.String(), want)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a refusal after a failed tier ends the call with the closing line and the refusal's code", func(t *testing.T) {
+		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lyx"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(prime, "cmd")) })
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "3", "./pkg"}, env: []string{helperExitEnv + "=7", helperBuildExitEnv + "=1"}})
+		if code := g.wait(t); code != 1 {
+			t.Errorf("exit code = %d, stdout %q; want the refusal's 1", code, g.stdout.String())
+		}
+		want := "gate test: failed runs: tier0 (exit 7); the exit code is tier0's; the call stopped there, so later runs did not run"
+		if !strings.Contains(g.stdout.String(), want+"\n") {
+			t.Errorf("stdout = %q; want the closing line %q", g.stdout.String(), want)
 		}
 		requireFree(t)
 	})
@@ -1317,6 +1351,8 @@ func TestGateTest_Scenario(t *testing.T) {
 		env      []string
 		wantExit int
 		want     [][]string
+		// wantClosing is the closing line of failed runs the output must hold; empty when no run fails.
+		wantClosing string
 	}{
 		{
 			name: "named targets run before the guard group runs over the guard packages by name",
@@ -1329,11 +1365,12 @@ func TestGateTest_Scenario(t *testing.T) {
 			want: [][]string{{"./pkg", "-run", "X"}, {"./g", "./h", "-run", "X", "-run", "^(TestGuard|TestGuardH)$"}},
 		},
 		{
-			name:     "a failing tier stops before the guards and returns its code",
-			args:     []string{"--guards", "./pkg"},
-			env:      []string{helperExitEnv + "=3"},
-			wantExit: 3,
-			want:     [][]string{{"./pkg"}},
+			name:        "a failing tier still runs the guards, a failing guard run is named in the closing line, and the exit is the tier's code",
+			args:        []string{"--guards", "./pkg"},
+			env:         []string{helperExitEnv + "=3", helperGuardExitEnv + "=5"},
+			wantExit:    3,
+			want:        [][]string{{"./pkg"}, guardRun},
+			wantClosing: "gate test: failed runs: tier0 (exit 3), guard tier0 (exit 5); the exit code is tier0's",
 		},
 	}
 	for _, tc := range guardTests {
@@ -1344,6 +1381,9 @@ func TestGateTest_Scenario(t *testing.T) {
 			}
 			if got := g.tierArgs(t); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("tier invocations = %q; want %q", got, tc.want)
+			}
+			if tc.wantClosing != "" && !strings.Contains(g.stdout.String(), tc.wantClosing+"\n") {
+				t.Errorf("stdout = %q; want the closing line %q", g.stdout.String(), tc.wantClosing)
 			}
 			trimpath := trimpathLine("tier0", []string{"GOFLAGS=-trimpath -p=3"})
 			if count := strings.Count(g.stdout.String(), trimpath); count != len(tc.want) {

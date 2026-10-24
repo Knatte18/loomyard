@@ -185,11 +185,11 @@ func TierSummaryLine(record RunRecord, logPath string) string {
 		record.Tier, scope, record.Discovered, record.Passed, record.Failed, record.Skipped, record.WallSec, record.ExitCode, logPath)
 }
 
-// FailedTier returns the tier number of the last tier summary line in log whose exit code is not 0, and false when the log holds none.
+// FailedTier returns the tier number of the first tier summary line in log whose exit code is not 0, and false when the log holds none.
+// A gate call that ran several failed runs exits with the first one's code, so the first line names the tier that code belongs to.
 func FailedTier(log string) (tier int, ok bool) {
-	lines := strings.Split(log, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		match := tierSummaryPattern.FindStringSubmatch(strings.TrimRight(lines[i], "\r"))
+	for _, line := range strings.Split(log, "\n") {
+		match := tierSummaryPattern.FindStringSubmatch(strings.TrimRight(line, "\r"))
 		if match == nil || match[2] == "0" {
 			continue
 		}
