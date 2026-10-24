@@ -11,12 +11,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
 
-// refuseCaller refuses an agent: any strand but the orch's.
+// refuseCaller refuses an agent: any strand but an orch's, the prime's or a beam's.
 // An empty strand is an external caller, and a name that does not parse is an agent.
 func refuseCaller(strand string) error {
 	if strand != "" {
 		name, err := agentname.Parse(strand)
-		if err != nil || name.Role != agentname.RoleOrch || name.Slug != "" {
+		if err != nil || name.Role != agentname.RoleOrch {
 			return errors.New(`hibernate: an agent may not request or cancel a hibernate; way forward: ask your parent session, which runs "lyx hibernate request" or "lyx hibernate cancel" for you`)
 		}
 	}

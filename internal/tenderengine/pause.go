@@ -191,7 +191,9 @@ func Pause(deps Deps, req PauseRequest) (PauseReport, error) {
 		return report, err
 	}
 	if scope == pauserecord.ScopeHub {
-		report.Orch = orchCase(deps)
+		if report.Orch, err = orchCase(deps); err != nil {
+			return report, err
+		}
 	}
 	return report, nil
 }
@@ -427,12 +429,22 @@ func goProducers(deps Deps, scope string, sessions []session) ([]GoProducer, err
 }
 
 // orchCase says what becomes of the orch under a hub entry.
-func orchCase(deps Deps) OrchCase {
-	switch {
-	case isOrchStrand(deps.Caller):
-		return OrchRanPause
-	case deps.OrchWatcherLive != nil && deps.OrchWatcherLive():
-		return OrchDelegated
+// An orch caller ran the pause itself, and otherwise any orch of the hub with a live watcher reads the pause as delegated.
+func orchCase(deps Deps) (OrchCase, error) {
+	if isOrchStrand(deps.Caller) {
+		return OrchRanPause, nil
 	}
-	return OrchNotInterrupted
+	if deps.Orchs == nil {
+		return OrchNotInterrupted, nil
+	}
+	orchs, err := deps.Orchs()
+	if err != nil {
+		return "", fmt.Errorf("pause: list the orchs: %w", err)
+	}
+	for _, orch := range orchs {
+		if orch.WatcherLive != nil && orch.WatcherLive() {
+			return OrchDelegated, nil
+		}
+	}
+	return OrchNotInterrupted, nil
 }

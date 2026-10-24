@@ -138,6 +138,8 @@
 // `NotifyParent` resolves it from the pair's recorded parent worktree at each call, `NotifyFrom` starts the walk at the given worktree itself, for a run whose pair is absent,
 // and `ParentOrchRecorded` answers whether that destination records a strand, the watched-or-silent decision a driver reads.
 // Callers that act on no run's pair, hibernate's notice and fabric's push notifier, keep `NotifyPrime`.
+// `HubOrchs` lists the worktrees an orch may run in, the prime's location and each local pair whose origin record carries the beam mark, for the readers that must cover every orch of the hub.
+// A beam's `watch` tells its watcher the orch's own agent name, so the pause checks match an orch caller or network operation marker against that name, and the prime's watcher keeps matching an orch name with no slug.
 // `InstallPushNotifier` routes fabric's failed-push notice to the prime orch as mail signed `FABRIC`, for every lyx process from the root pre-run.
 // It resolves the hub from the working directory as the network gate does, so a detached push child starting in the board worktree is covered, and installs nothing outside a hub.
 package orchcli

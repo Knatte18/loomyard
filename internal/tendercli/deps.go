@@ -4,7 +4,6 @@ package tendercli
 
 import (
 	"cmp"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,6 +53,8 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		prime *lyxcwd.Location
 		// pairLocations holds each task pair's location by slug, for the push a lift spawns.
 		pairLocations = map[string]*lyxcwd.Location{}
+		// pairByWorktree holds the shuttle-backed Pair of each wired worktree, the prime's included, by worktree path, for the orch that runs there.
+		pairByWorktree = map[string]tenderengine.Pair{}
 	)
 	worktreePaths := make([]string, 0, len(worktrees))
 	for _, worktree := range worktrees {
@@ -77,6 +78,7 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 			return tenderengine.Deps{}, nil, fmt.Errorf("pause: wire the pair %s: %w", pairLocation.WorktreeName, err)
 		}
 		pairs = append(pairs, pair)
+		pairByWorktree[pairLocation.WorktreePath()] = pair
 		slugs = append(slugs, pairLocation.WorktreeName)
 		pairLocations[pairLocation.WorktreeName] = pairLocation
 	}
@@ -88,6 +90,7 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 			logger.Warn("tendercli: the prime does not wire, so its sessions are not listed", "worktree", prime.WorktreePath(), "error", err)
 		} else {
 			primePair = wired
+			pairByWorktree[prime.WorktreePath()] = wired
 		}
 	}
 	// An unreadable executable path is empty, which keeps no stale process.
@@ -114,31 +117,8 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 		},
 		HubPath:    location.HubPath,
 		Executable: executable,
-		OrchStrand: func() (string, error) {
-			if prime == nil {
-				return "", nil
-			}
-			orchState, err := orchengine.LoadState(orchcli.PrimePaths(prime))
-			return orchState.Strand, err
-		},
-		OrchRevivePending: func() (bool, error) {
-			client, orch, err := orchReviveTarget(prime)
-			if err != nil {
-				return false, err
-			}
-			from, err := agentname.FormatProgram(client.Shortname(), tenderProgram)
-			if err != nil {
-				return false, err
-			}
-			entries, err := client.Log(creelengine.LogFilter{From: from, To: orch})
-			return revivePending(entries), err
-		},
-		InjectOrchRevive: func(line string) (int64, error) {
-			client, orch, err := orchReviveTarget(prime)
-			if err != nil {
-				return 0, err
-			}
-			return client.Inject(orch, line, orchReviveTTL)
+		Orchs: func() ([]tenderengine.Orch, error) {
+			return hubOrchs(location, pairByWorktree)
 		},
 		NetOps: func() ([]pauserecord.NetOp, error) {
 			return pauserecord.ListNetOps(geometry.RecordPath, parentlock.ProcessAlive)
@@ -171,16 +151,6 @@ func HubDeps(location *lyxcwd.Location, strand string) (tenderengine.Deps, []str
 			boardDir := fabricengine.BoardDir(location.HubPath)
 			bolt := fabricengine.NewBolt(boardDir)
 			return syncBoardIfOwed(bolt.HasUnpushed, bolt.HasUncommitted, func() error { return boardengine.SpawnSync(boardDir) })
-		},
-		OrchWatcherLive: func() bool {
-			if prime == nil {
-				return false
-			}
-			live, err := orchengine.WatcherLive(orchcli.PrimePaths(prime))
-			if err != nil {
-				logger.Warn("tendercli: the orch watcher probe failed, reading it as not live", "error", err)
-			}
-			return live
 		},
 		Caller: strand,
 		Now:    time.Now,
@@ -373,20 +343,75 @@ const orchReviveTTL = time.Minute
 // postedEvent is the log event of a message or inject being left in creel.
 const postedEvent = "posted"
 
-// orchReviveTarget returns a creel client signing as tender and the name of the prime's orch strand the revive injects into.
-func orchReviveTarget(prime *lyxcwd.Location) (*creelcli.GoClient, string, error) {
-	orch, recorded, err := orchcli.PrimeOrchStrand(prime)
+// orchReviveTarget returns a creel client signing as tender and the name of the orch strand of worktree the revive injects into.
+func orchReviveTarget(worktree *lyxcwd.Location) (*creelcli.GoClient, string, error) {
+	orch, recorded, err := orchcli.OrchStrandOf(worktree)
 	if err != nil {
 		return nil, "", err
 	}
 	if !recorded {
-		return nil, "", errors.New("the prime records no orch strand")
+		return nil, "", fmt.Errorf("the orch of %s records no orch strand", worktree.WorktreeName)
 	}
-	client, err := creelcli.NewProgramClient(prime, tenderProgram)
+	client, err := creelcli.NewProgramClient(worktree, tenderProgram)
 	if err != nil {
 		return nil, "", err
 	}
 	return client, orch, nil
+}
+
+// hubOrchs lists the orchs of the hub location belongs to that record a strand, the prime's and each beam's.
+// An orch is listed with the Pair in pairByWorktree for its worktree, nil when that worktree did not wire, which leaves its sessions unread.
+func hubOrchs(location *lyxcwd.Location, pairByWorktree map[string]tenderengine.Pair) ([]tenderengine.Orch, error) {
+	worktrees, err := orchcli.HubOrchs(location)
+	if err != nil {
+		return nil, err
+	}
+	var orchs []tenderengine.Orch
+	for _, worktree := range worktrees {
+		orchState, err := orchengine.LoadState(orchcli.PrimePaths(worktree))
+		if err != nil {
+			return nil, fmt.Errorf("read the orch state of %s: %w", worktree.WorktreeName, err)
+		}
+		if orchState.Strand == "" {
+			continue
+		}
+		name, _, err := orchcli.OrchStrandOf(worktree)
+		if err != nil {
+			return nil, err
+		}
+		orchs = append(orchs, tenderengine.Orch{
+			Strand: orchState.Strand,
+			Name:   name,
+			Pair:   pairByWorktree[worktree.WorktreePath()],
+			WatcherLive: func() bool {
+				live, err := orchengine.WatcherLive(orchcli.PrimePaths(worktree))
+				if err != nil {
+					logger.Warn("tendercli: the orch watcher probe failed, reading it as not live", "worktree", worktree.WorktreeName, "error", err)
+				}
+				return live
+			},
+			RevivePending: func() (bool, error) {
+				client, orch, err := orchReviveTarget(worktree)
+				if err != nil {
+					return false, err
+				}
+				from, err := agentname.FormatProgram(client.Shortname(), tenderProgram)
+				if err != nil {
+					return false, err
+				}
+				entries, err := client.Log(creelengine.LogFilter{From: from, To: orch})
+				return revivePending(entries), err
+			},
+			InjectRevive: func(line string) (int64, error) {
+				client, orch, err := orchReviveTarget(worktree)
+				if err != nil {
+					return 0, err
+				}
+				return client.Inject(orch, line, orchReviveTTL)
+			},
+		})
+	}
+	return orchs, nil
 }
 
 // revivePending reports whether entries, tender's log to the orch strand, hold an inject whose posted event has no injected, unconfirmed or expired event for its id after it.

@@ -1,15 +1,49 @@
-// live.go declares OrchLive, the liveness predicate of a worktree's orch that other modules call: the same reading `lyx orch status` makes of the strand.
+// live.go declares what other modules read of the hub's orchs: HubOrchs, the worktrees an orch may run in, and OrchLive, the liveness predicate of one worktree's orch, the same reading `lyx orch status` makes of the strand.
 
 package orchcli
 
 import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
+
+// HubOrchs lists the worktrees of the hub that location belongs to in which an orch may run: the prime's location first, then each local pair whose origin record carries the beam mark.
+// A pair whose origin record cannot be read is skipped with a warning, since a reader that must keep working under a pause cannot stop on one half-present pair.
+func HubOrchs(location *lyxcwd.Location) ([]*lyxcwd.Location, error) {
+	prime, err := resolvePrime(location)
+	if err != nil {
+		return nil, err
+	}
+	worktrees, err := fabricengine.List(prime.WorktreePath())
+	if err != nil {
+		return nil, err
+	}
+	orchs := []*lyxcwd.Location{prime}
+	for _, worktree := range worktrees {
+		if worktree.Main || worktree.Prunable {
+			continue
+		}
+		pair, err := lyxcwd.ResolveWorktree(worktree.Path)
+		if err != nil {
+			logger.Warn("orch: skipping a worktree that does not resolve while listing the hub's orchs", "worktree", worktree.Path, "error", err)
+			continue
+		}
+		origin, found, err := fabricengine.ReadOrigin(pair)
+		if err != nil {
+			logger.Warn("orch: skipping a pair whose origin record cannot be read while listing the hub's orchs", "worktree", pair.WorktreeName, "error", err)
+			continue
+		}
+		if found && origin.Beam {
+			orchs = append(orchs, pair)
+		}
+	}
+	return orchs, nil
+}
 
 // OrchLive reports whether the orch of worktree is live: its orch state records a strand that reed tracks and reports live.
 // A worktree whose orch never started, or whose recorded strand reed no longer tracks, is not live.
