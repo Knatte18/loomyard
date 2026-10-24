@@ -1,3 +1,5 @@
+//go:build tier0
+
 // interruptpolicy_test.go covers InterruptPolicyFor's own contract and the table's closed value
 // vocabulary. It does not check the table against loom's assembled rows -- that agreement is
 // internal/loomrecipe's interruptpolicy_meta_test.go, the only place that can see both the table and

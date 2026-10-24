@@ -1,8 +1,9 @@
+//go:build tier0
+
 // prompt_test.go covers the half prompts' marker composition.
 // The happy path fills every marker across the review half's three rendered assets and the fix half's two.
 // Each switched block (fix-scope, tool-use, prior-rounds, cluster-rules) renders the branch its Profile field selects and not the other branch's exclusive phrasing.
 // Each block helper's content lands in its intended instruction file rather than leaking into a seat stencil or a sibling instruction file.
-// It also declares newTestStencilsDir, the package-local test helper every burlerengine test uses to seed a hermetic stencils directory through `stencilkit`.
 
 package burlerengine
 
@@ -20,13 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
-	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
-
-func newTestStencilsDir(t *testing.T) string {
-	t.Helper()
-	return stencilkit.Seed(t)
-}
 
 // Placeholder absolute instruction paths every compose call in this file passes.
 // The compose functions do no filesystem access on these beyond baking them into the seat stencils' marker values, so they need not exist on disk (the halves, not the compose functions, write the files there).

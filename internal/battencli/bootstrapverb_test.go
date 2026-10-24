@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bootstrapverb_test.go covers BootstrapVerb: it asserts batten's capability declaration explicitly
 // against the empty string, so a future edit filling the constant in must break this test and force a
 // human to confirm batten really did grow a bootstrap verb.

@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // baretemp_test.go enforces the Lyx Temp Root Invariant: no Go file outside internal/lyxtemp creates a temp file or directory directly in the bare system temp directory.
 // A creation goes through lyxtemp.MkdirTemp or lyxtemp.CreateTemp, so it lands in the process run directory and is removed with it.
 // Modelled on hermeticenv_test.go and tmuxisolation_test.go; see `PATTERN-lyx-temp-root`.

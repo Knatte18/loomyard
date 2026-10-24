@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cleanup_integration_test.go drives "lyx cleanup" through RunCLIIn over a hubforge hub seeded with one leftover for every segment: the prime-only refusal, the dry run that lists them all and the apply that removes them.
 

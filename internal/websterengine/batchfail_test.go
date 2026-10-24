@@ -1,3 +1,5 @@
+//go:build tier0
+
 package websterengine
 
 import (
@@ -6,30 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
-
-func failBatchFixture(t *testing.T, withReport bool) (failBatchInput, string) {
-	t.Helper()
-	dir := t.TempDir()
-	live := filepath.Join(dir, ReportFileName(3, "alpha"))
-	if withReport {
-		if err := os.WriteFile(live, []byte("status: OK\nhead_sha: abc\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	st := &State{CurrentBatch: 3}
-	return failBatchInput{
-		State:      st,
-		Batch:      &BatchState{},
-		Number:     3,
-		Slug:       "alpha",
-		ReportsDir: dir,
-		HeadSHA:    "abc",
-		Reasons:    []string{"correctness finding"},
-		Now:        func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) },
-	}, live
-}
 
 //testtiming:keep pins the archive stamp name, each transcript appended once, every suspect path in the way forward and the terminal failed digest; the covering record and recover tests observe each only in part
 func TestFailBatch(t *testing.T) {

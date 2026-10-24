@@ -1,3 +1,5 @@
+//go:build tier0
+
 // buildinfo_test.go pins the exact-match semantics of IsDev and IsProduction:
 // only the literal Channel value classifies, never a prefix or case-insensitive match.
 

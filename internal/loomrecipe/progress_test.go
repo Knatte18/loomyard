@@ -1,3 +1,5 @@
+//go:build tier0
+
 // progress_test.go runs shedengine.Routing.ProgressAt over loom's real recipe: every row maps to a
 // step, a review segment's three rows share one step, Friction-Reflect is the last step, and a
 // Burler current producer reports its segment's step.

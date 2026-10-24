@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // teardownlock_integration_test.go covers the per-slug teardown lock between Remove and the pair's detached pushes:
 // Remove's refusal while a push of the pair holds the lock, the shared hold of a push child for its whole run, a child that meets the lock held or the worktrees gone, and the respawn of the pair's push after a Remove that fails and leaves a worktree behind.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_test.go drives the help module through a small root with the help command mounted the way cmd/lyx's newRoot mounts it.
 
 package helpcli

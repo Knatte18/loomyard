@@ -1,3 +1,5 @@
+//go:build tier0
+
 // friction_test.go covers the Tier 2 friction wiring this batch's runCmd/startCmd call sites own:
 // the once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, run's own unconditional ensure, and the reflection call reflectFriction implements (the reflection runs only inside the Friction-Reflect row; a halt's note without a reflection is covered by halt_test.go).
 // Every test here is untagged Tier 1: it spawns no subprocess, drives no real git operation, builds no real hub fixture, and contains no time.Sleep at or above one second.

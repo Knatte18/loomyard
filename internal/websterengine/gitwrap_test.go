@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // gitwrap_test.go exercises headSHA, dirty, otherWorktrees, reconcileReportHead and refuseMidMerge against real scratch git repositories built fresh under t.TempDir() for each test,
 // reusing the package's existing hermetic TestMain (testmain_test.go) so these git spawns never inherit the operator's global gitconfig.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // pause_test.go covers the generic pause body: PauseRequested is set on the persisted status,
 // both told absent-file wordings are reported, the bare success envelope carries exactly the one
 // key status_file, and the --before, --after and --clear conditions.

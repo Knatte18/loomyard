@@ -3,6 +3,7 @@
 package gatecli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -36,6 +38,14 @@ type moduleTargets struct {
 	targets []string
 }
 
+// tierScope is the narrowing one tier runs under when a diff scope takes its base per tier.
+type tierScope struct {
+	// whole means the tier runs over its all_targets.
+	whole bool
+	// modules are the tier's per-module targets; empty for the empty set.
+	modules []moduleTargets
+}
+
 // scope is what a call's tiers run over.
 type scope struct {
 	// form labels the scope in each tier's summary line and run record.
@@ -44,24 +54,55 @@ type scope struct {
 	whole bool
 	// modules are the per-module targets of a narrower scope; empty with whole, and empty for the empty set, which runs no listed tier's command.
 	modules []moduleTargets
+	// tiers holds the share of each listed tier of a diff scope, which derives one impacted set per base; a tier it does not name takes whole and modules.
+	tiers map[int]tierScope
 	// guardStep means the scope form plans a guard step: a computed, --base or --card scope under the go scoper.
 	guardStep bool
-	// guardDir is the run directory of that guard step, relative to the worktree root; empty means the guard tier's own dir.
+	// guardDir is the run directory of that guard step, relative to the worktree root; empty means the dir of each guard group's own tier.
 	guardDir string
-	// guards maps the directory of each package outside the scope to the names of its guard tests, keyed relative to guardDir; nil when no scan has run.
-	guards map[string][]string
+	// guards maps a tier number to the directory of each package outside the scope that holds guard tests of that tier, and to their names, keyed relative to guardDir; nil when no scan has run.
+	guards map[int]map[string][]string
+}
+
+// forTier returns s with the narrowing of tier number in place of its own whole and modules.
+func (s scope) forTier(number int) scope {
+	if share, ok := s.tiers[number]; ok {
+		s.whole, s.modules = share.whole, share.modules
+	}
+	return s
+}
+
+// withGateScope returns request with the scope form its --gate key names in place of the scope flags.
+// A key of scope all is the --all form, a key of scope diff is the computed form, and a key of scope card keeps the --card ids, so the --card ids beside the other two scopes are dropped.
+// Explicit targets replace the key's scope and a call with no key is returned unchanged.
+func withGateScope(cfg gateslot.Config, request testRequest) testRequest {
+	if request.gate == "" || len(request.targets) > 0 {
+		return request
+	}
+	switch cfg.Gates[request.gate].Scope {
+	case "all":
+		request.all = true
+		request.cards = nil
+	case "diff":
+		request.cards = nil
+	}
+	return request
 }
 
 // computeScope returns the scope of request over the worktree at root, for the config cfg.
 // Explicit targets and --all take no computation.
-// Otherwise the form is --card when a card is named, else --base, else the computed form, whose base is the merge base of HEAD with the parent branch the pair's fabric origin record names.
+// Otherwise the form is --card when a card is named, else --base, else the computed form, whose base is taken per listed tier.
+// A computed tier's base is the newest commit that is an ancestor of HEAD and that green holds whole-green for the tier, else the merge base of HEAD with the parent branch the pair's fabric origin record names, and a tier with neither runs whole.
+// green is nil for a dirty worktree, which so takes the merge base.
 // A --card is read from the plan first, under either scoper, and an unknown id or a worktree with no plan is refused before any slot.
 // Under the none scoper each of the three forms is whole.
-// Under the go scoper a computed or --base scope is the impacted set of the diff from its base to the working tree, and falls back to whole, naming the reason on request.stderr, wherever the set cannot be narrowed;
+// Under the go scoper a computed or --base scope is the impacted set of the diff from its base to the working tree, derived once per base and shared by the tiers that land on it, each derivation named on request.stderr.
+// A set that cannot be narrowed falls back to whole, naming the reason on request.stderr;
 // a --card scope is the cards' packages per module.
 // A guard scan error refuses with its file, line and way forward.
 // ctx bounds the derivation, so a stalled `go list` is killed when it ends.
-func computeScope(ctx context.Context, cfg gateslot.Config, location *lyxcwd.Location, root string, request testRequest) (scope, error) {
+func computeScope(ctx context.Context, cfg gateslot.Config, location *lyxcwd.Location, root string, request testRequest, green *greenRun) (scope, error) {
+	request = withGateScope(cfg, request)
 	switch {
 	case len(request.targets) > 0:
 		return scope{form: scopeTargets}, nil
@@ -84,48 +125,193 @@ func computeScope(ctx context.Context, cfg gateslot.Config, location *lyxcwd.Loc
 		return scope{form: form, whole: true}, nil
 	}
 
-	guardTier, err := cfg.Tier(cfg.GuardTier)
+	tier0, err := cfg.Tier(0)
 	if err != nil {
-		return scope{}, fmt.Errorf("gate test: guard_tier: %w", err)
+		return scope{}, fmt.Errorf("gate test: %w", err)
 	}
 	if form == scopeCard {
 		modules := make([]moduleTargets, len(cardModules))
 		for i, module := range cardModules {
 			modules[i] = moduleTargets{dir: module.Dir, targets: module.Packages}
 		}
-		return scope{form: form, modules: modules, guardStep: true, guardDir: guardTier.Dir}, nil
+		return scope{form: form, modules: modules, guardStep: true, guardDir: tier0.Dir}, nil
 	}
 
-	base := request.base
-	if form == scopeComputed {
-		var found bool
-		if base, found, err = parentMergeBase(location); err != nil {
-			printLine(request.stderr, fmt.Sprintf("gate test: the computed scope falls back to whole: cannot read the merge base with the parent branch: %v", err))
-			return scope{form: form, whole: true, guardStep: true, guardDir: guardTier.Dir}, nil
+	groups, wholeTiers := diffBaseGroups(cfg, location, root, request, form, green)
+	shares := map[int]tierScope{}
+	var guards map[string][]impactset.GuardTest
+	narrowed := false
+	anyWhole := len(wholeTiers) > 0
+	for _, group := range groups {
+		targets, err := impactset.DeriveTargets(ctx, root, group.base)
+		if err != nil {
+			if impactset.IsGuardScanError(err) {
+				return scope{}, errors.New(guardScanRefusal(root, err))
+			}
+			return scope{}, fmt.Errorf("gate test: cannot derive the impacted set of the diff from %s: %w; way forward: re-run the same command", group.base, err)
 		}
-		if !found {
-			return scope{form: form, whole: true, guardStep: true, guardDir: guardTier.Dir}, nil
+		printLine(request.stderr, fmt.Sprintf("gate test: diff scope from %s for %s", group.base, tierNames(group.tiers)))
+		share := tierScope{whole: true}
+		if targets.Whole {
+			anyWhole = true
+			printLine(request.stderr, "gate test: the scope falls back to whole: "+targets.Fallback)
+		} else {
+			narrowed = true
+			share = tierScope{modules: make([]moduleTargets, len(targets.Modules))}
+			for i, module := range targets.Modules {
+				share.modules[i] = moduleTargets{dir: module.Dir, targets: module.Packages}
+			}
+			guards = mergeGuards(guards, targets.Guards)
+		}
+		for _, number := range group.tiers {
+			shares[number] = share
 		}
 	}
-	targets, err := impactset.DeriveTargets(ctx, root, base)
-	if err != nil {
-		if impactset.IsGuardScanError(err) {
-			return scope{}, errors.New(guardScanRefusal(root, err))
-		}
-		return scope{}, fmt.Errorf("gate test: cannot derive the impacted set of the diff from %s: %w; way forward: re-run the same command", base, err)
+	for _, number := range wholeTiers {
+		shares[number] = tierScope{whole: true}
 	}
-	if targets.Whole {
-		printLine(request.stderr, "gate test: the scope falls back to whole: "+targets.Fallback)
-		return scope{form: form, whole: true, guardStep: true, guardDir: guardTier.Dir}, nil
+	switch {
+	case !narrowed:
+		return scope{form: form, whole: true, guardStep: true, guardDir: tier0.Dir}, nil
+	case anyWhole:
+		// A tier that runs whole leaves the guard tests outside the scope to the module scan.
+		return scope{form: form, tiers: shares, guardStep: true, guardDir: tier0.Dir}, nil
 	}
-	modules := make([]moduleTargets, len(targets.Modules))
-	for i, module := range targets.Modules {
-		modules[i] = moduleTargets{dir: module.Dir, targets: module.Packages}
-	}
-	return scope{form: form, modules: modules, guardStep: true, guardDir: ".", guards: targets.Guards}, nil
+	return scope{form: form, tiers: shares, guardStep: true, guardDir: ".", guards: guardsByTier(guards)}, nil
 }
 
-// scanGuards fills sc.guards with the guard tests of the module at sc.guardDir outside the scope's packages, by a scan of that module.
+// baseGroup is the tiers of a call that diff from one base.
+type baseGroup struct {
+	base  string
+	tiers []int
+}
+
+// diffBaseGroups returns the tiers request lists, grouped by the base their diff starts from in the order each base first appears, and the tiers with no base, which run whole.
+// A --base call gives every tier its one base.
+// Under the computed form a tier's base is the newest commit the green record holds whole-green for it that is an ancestor of HEAD, else the merge base with the parent branch, and a tier with neither runs whole.
+// A dirty worktree holds no green record, so every tier takes the merge base.
+func diffBaseGroups(cfg gateslot.Config, location *lyxcwd.Location, root string, request testRequest, form string, green *greenRun) (groups []baseGroup, wholeTiers []int) {
+	silent := request
+	silent.stderr = nil
+	listed := listedTiers(cfg, silent)
+	declared := make(map[int]gateslot.Tier, len(listed))
+	for _, number := range listed {
+		if tier, err := cfg.Tier(number); err == nil {
+			declared[number] = tier
+		}
+	}
+	numbers := dropCovered(listed, declared, silent)
+
+	if form == scopeBase {
+		return []baseGroup{{base: request.base, tiers: numbers}}, nil
+	}
+
+	var (
+		parent     string
+		parentRead bool
+		parentOK   bool
+	)
+	parentMerge := func() (string, bool) {
+		if parentRead {
+			return parent, parentOK
+		}
+		parentRead = true
+		var err error
+		if parent, parentOK, err = parentMergeBase(location); err != nil {
+			printLine(request.stderr, fmt.Sprintf("gate test: the computed scope falls back to whole: cannot read the merge base with the parent branch: %v", err))
+			parentOK = false
+		}
+		return parent, parentOK
+	}
+	isAncestor := func(commit, of string) bool {
+		held, err := gitrepo.New(root).IsAncestor(commit, of)
+		return err == nil && held
+	}
+
+	if len(numbers) == 0 {
+		if base, ok := parentMerge(); ok {
+			groups = append(groups, baseGroup{base: base})
+		}
+		return groups, nil
+	}
+	for _, number := range numbers {
+		var base string
+		ok := false
+		if tier, err := cfg.Tier(number); err == nil && green != nil {
+			base, ok = green.record.newestWholeAncestor(tierFingerprint(tier), moduleKey(root, tier.Dir), isAncestor)
+		}
+		if !ok {
+			base, ok = parentMerge()
+		}
+		if !ok {
+			wholeTiers = append(wholeTiers, number)
+			continue
+		}
+		if index := slices.IndexFunc(groups, func(group baseGroup) bool { return group.base == base }); index >= 0 {
+			groups[index].tiers = append(groups[index].tiers, number)
+		} else {
+			groups = append(groups, baseGroup{base: base, tiers: []int{number}})
+		}
+	}
+	return groups, wholeTiers
+}
+
+// tierNames returns the names of the tiers numbers, joined by commas.
+func tierNames(numbers []int) string {
+	names := make([]string, len(numbers))
+	for i, number := range numbers {
+		names[i] = tierName(number)
+	}
+	return strings.Join(names, ", ")
+}
+
+// mergeGuards returns the union of the guard tests per directory of a and b, sorted by name.
+func mergeGuards(a, b map[string][]impactset.GuardTest) map[string][]impactset.GuardTest {
+	merged := map[string][]impactset.GuardTest{}
+	for _, source := range []map[string][]impactset.GuardTest{a, b} {
+		for dir, tests := range source {
+			combined := slices.Concat(merged[dir], tests)
+			slices.SortFunc(combined, func(x, y impactset.GuardTest) int {
+				return cmp.Or(strings.Compare(x.Name, y.Name), x.Tier-y.Tier)
+			})
+			merged[dir] = slices.Compact(combined)
+		}
+	}
+	return merged
+}
+
+// guardsByTier groups guard tests by their file's tier, each group keyed by package directory with the test names.
+// The result is never nil, so a scope holding it counts as scanned.
+func guardsByTier(guards map[string][]impactset.GuardTest) map[int]map[string][]string {
+	byTier := map[int]map[string][]string{}
+	for dir, tests := range guards {
+		for _, test := range tests {
+			if byTier[test.Tier] == nil {
+				byTier[test.Tier] = map[string][]string{}
+			}
+			byTier[test.Tier][dir] = append(byTier[test.Tier][dir], test.Name)
+		}
+	}
+	return byTier
+}
+
+// guardScanDir returns the directory of the module the guard scan lists, relative to the worktree root unless absolute:
+// the scope's own guard directory, else the -C directory of explicit targets, else tier0's dir.
+func guardScanDir(cfg gateslot.Config, request testRequest, sc scope) (string, error) {
+	switch {
+	case sc.guardDir != "":
+		return sc.guardDir, nil
+	case request.dir != "":
+		return request.dir, nil
+	}
+	tier0, err := cfg.Tier(0)
+	if err != nil {
+		return "", fmt.Errorf("gate test: %w", err)
+	}
+	return tier0.Dir, nil
+}
+
+// scanGuards fills sc.guards with the guard tests of the module at sc.guardDir outside the scope's packages, grouped by their file's tier, by a scan of that module.
 // A whole scope and an explicit-targets scope hold no package of the scan, so every guard test counts as outside.
 // A scan error is returned as the refusal for it.
 func scanGuards(sc scope, root string) (scope, error) {
@@ -143,12 +329,13 @@ func scanGuards(sc scope, root string) (scope, error) {
 			inside[strings.TrimPrefix(path.Clean(target), "./")] = true
 		}
 	}
-	sc.guards = map[string][]string{}
-	for dir, names := range all {
-		if len(names) > 0 && !inside[path.Clean(dir)] {
-			sc.guards[dir] = names
+	outside := map[string][]impactset.GuardTest{}
+	for dir, tests := range all {
+		if len(tests) > 0 && !inside[path.Clean(dir)] {
+			outside[dir] = tests
 		}
 	}
+	sc.guards = guardsByTier(outside)
 	return sc, nil
 }
 

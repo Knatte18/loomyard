@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // bench_cli_test.go — integration-tier benchmarks for the board CLI commands.
 //

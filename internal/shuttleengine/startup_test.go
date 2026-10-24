@@ -1,3 +1,5 @@
+//go:build tier0
+
 // startup_test.go covers the startup step (awaitStartup, abandonStartup) that Start, StartGated and RunGated run before ever issuing a run handle.
 // It covers the pending-to-ready path with a trust-gate dismissal recorded, the already-ready and already-satisfied-file-contract fast paths, the not-ready teardown (pane-died and never-clearing-gate refusal, both wrapping ErrNotStarted with the strand removed and the run dir kept), the status-retry-cap paths (transient recovery, exhaustion with and without a satisfied file contract, and the untracked-strand mechanism failure), the tick-count cap, the run-deadline-shorter-than-the-startup-window interaction, RunGated's own not-ready and mechanism-failure mappings, startupTickCap's own boundary arithmetic, and the probe backoff and gate-dismissal spacing.
 // Every case runs on a fake clock; none sleeps on the real one.

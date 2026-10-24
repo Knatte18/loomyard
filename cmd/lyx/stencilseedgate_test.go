@@ -1,3 +1,5 @@
+//go:build tier0
+
 // stencilseedgate_test.go pins two things about the stencil-seed skip gate this batch adds:
 // skipStencilSeed's predicate against synthetic *cobra.Command values,
 // and that "lyx reed switch", "lyx reed follow" and every creel command actually carry the annotation the predicate reads. It deliberately does NOT pin any ordering

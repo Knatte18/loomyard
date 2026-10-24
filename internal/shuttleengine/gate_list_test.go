@@ -1,3 +1,5 @@
+//go:build tier0
+
 // gate_list_test.go covers the ordered gate list: per-entry consecutive-failure counts, PassOnCap, off entries, and the per-entry GateOutcome report, driven through the same fake engine and scripted gate closures gate_test.go uses.
 
 package shuttleengine

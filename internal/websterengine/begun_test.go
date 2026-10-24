@@ -1,3 +1,5 @@
+//go:build tier0
+
 // begun_test.go pins DispatchScope, the one dispatch scoping begin-batch, run entry and validate share:
 // a batch begin-batch recorded counts as begun whether or not it reached a terminal record, only a non-terminal one is forthcoming, and a batch never begun is neither.
 

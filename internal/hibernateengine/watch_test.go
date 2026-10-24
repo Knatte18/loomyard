@@ -1,3 +1,5 @@
+//go:build tier0
+
 // watch_test.go drives the daemon's sequence over fakeWorld.
 
 package hibernateengine

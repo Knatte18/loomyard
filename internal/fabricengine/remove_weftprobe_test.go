@@ -1,3 +1,5 @@
+//go:build tier0
+
 // remove_weftprobe_test.go pins refuseDirtyWeftWorktree's three answers.
 // It is untagged Tier 1 for the absent-worktree case only — the case that needs no git spawn — since
 // that is the one an empty if-branch used to conflate with "clean".

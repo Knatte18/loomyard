@@ -1,3 +1,5 @@
+//go:build tier0
+
 // modefor_test.go pins ModeFor's truth table: it is the only place a build's channel and stamp become a Mode.
 
 package stencilstore

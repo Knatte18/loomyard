@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_guardrail_test.go is the live proof of the deny-and-steer guardrail path the hooks research flagged as unprobed
 // (docs/research/reed-hooks-exploration.md: "the deny-and-steer path itself is not yet probed"):

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // committed_test.go table-drives CommitResult.Committed() over its four WarpCommitted/WeftCommitted
 // combinations. No fixture: CommitResult is a plain value type.
 

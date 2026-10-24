@@ -1,4 +1,6 @@
-// Every test here is untagged Tier 1: it reads a seeded temporary stencils directory and spawns nothing.
+//go:build tier0
+
+// Every test here reads a seeded temporary stencils directory and spawns nothing.
 
 package twilldirective
 

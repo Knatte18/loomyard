@@ -1,3 +1,5 @@
+//go:build tier0
+
 // repo_test.go covers the four exported query wrappers (TOC, Glyphs, Resolve, Expand), which run openRepo and resolveTargets, and declares writeFixtureRepo, the small on-disk Go fixture builder every test file in this package shares.
 
 package planglyph

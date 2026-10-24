@@ -1,5 +1,7 @@
+//go:build tier0
+
 // friction_test.go covers Directive's four roles and WarnIfMarkerAbsent.
-// Every test here is untagged Tier 1: it uses only t.TempDir (via newTestStencilsDir, seeding a hermetic stencils directory) and spawns nothing.
+// Every test here is in tier 0: it uses only t.TempDir (via newTestStencilsDir, seeding a hermetic stencils directory) and spawns nothing.
 
 package friction
 

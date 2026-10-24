@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_round_test.go is burlerengine's opt-in live-integration smoke test:
 // TestSmokeBurlerRoundToyFixture drives one full burler round — A-review then

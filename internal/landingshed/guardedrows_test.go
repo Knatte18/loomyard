@@ -1,3 +1,5 @@
+//go:build tier0
+
 // guardedrows_test.go drives Finalize, the row that holds the parent lock, against fake tip reads and a real temporary lock store:
 // the lock's release at the edges that end the row's hold, and the halt of a paused lock wait.
 

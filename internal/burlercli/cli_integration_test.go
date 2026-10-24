@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cli_integration_test.go drives RunCLIIn against a temporary directory outside any git repository,
 // proving the standalone pre-run reaches a verb's own RunE rather than failing with a

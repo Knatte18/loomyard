@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // destroy_landedwork_integration_test.go drives the pair-warp ownership kind and the unlanded-work
 // dirtiness kind against real throwaway git repositories (hermetic git via testmain_test.go, empty

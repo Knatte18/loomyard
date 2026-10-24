@@ -1,3 +1,5 @@
+//go:build tier0
+
 // failedstop_test.go covers WriteFailedStop: the failed write on a running file and every case that leaves the file alone.
 
 package shedengine

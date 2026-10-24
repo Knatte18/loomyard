@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // parentmerge_test.go pins the observed wedge end to end (Tier 2 — see docs/benchmarks/running-tests.md):
 // a parent merge-in lands between a fork's commit and record-batch, and the run must still record the batch and open the next one.

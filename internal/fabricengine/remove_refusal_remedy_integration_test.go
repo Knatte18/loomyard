@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remove_refusal_remedy_integration_test.go pins that a no-force Remove refusal — a dirty worktree or a failed status probe — leaves the pair and the weft origin untouched: no portal or launcher is torn down, no mutation is recorded, and no archive tag is pushed.
 //

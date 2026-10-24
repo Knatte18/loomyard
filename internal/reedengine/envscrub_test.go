@@ -1,3 +1,5 @@
+//go:build tier0
+
 // envscrub_test.go verifies EnvScrub strips exactly the keys it is told and reports them in environ order.
 
 package reedengine
@@ -6,9 +8,6 @@ import (
 	"slices"
 	"testing"
 )
-
-// testScrub is Claude's declared scrub, spelled out because this package's tests cannot import the registry that owns it.
-var testScrub = EnvScrub{Names: []string{"CLAUDECODE"}, Prefixes: []string{"CLAUDE_CODE_"}}
 
 //testtiming:keep pins EnvScrub.Apply stripping exactly the told names and prefixes, reporting them in environ order and leaving other keys and an unaffected environ as they were; its covering tests run this code without asserting it
 func TestEnvScrub_Apply(t *testing.T) {

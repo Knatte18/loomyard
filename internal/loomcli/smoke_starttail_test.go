@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_starttail_test.go covers the two live-substrate properties of `lyx loom start`'s tail against a real wired hub and a real tmux session:
 // that the verb never attaches or switches a tmux client, and that the strand set it leaves -- on the unseeded fixture, which resolveSeedDriver seeds llm, exactly one status strand and no loom-operator strand -- is unchanged by that.

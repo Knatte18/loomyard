@@ -1,3 +1,5 @@
+//go:build tier0
+
 // dialog_test.go covers the notice Wait sends a parent for a permission or input dialog an autonomous run's pane shows past a bound:
 // when it is sent, how often, and the offset it persists.
 

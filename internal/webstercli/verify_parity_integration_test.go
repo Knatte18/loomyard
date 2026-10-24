@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // verify_parity_integration_test.go asserts the Gate Self-Check Parity Invariant for the verify gates:
 // `lyx webster verify`, loomshed.NewVerifyGate and websterengine.NewVerifyGate must reach the same three-way verdict over one fixture.
@@ -80,22 +80,18 @@ func TestGateParity_VerifyGate(t *testing.T) {
 
 			burlerFx := prepare()
 			geom := burlerFx.CLI.geom
-			// The fixture records no pass, so the gate runs the told list's whole-tree call; the round seam tells the `final` list over the same seeded config, so that call is the one the Webster side runs.
+			// The told command is the `webster` key's call over the same seeded config, so it is the call the Webster side runs.
 			finalCall := func() (string, error) {
 				cfg, err := geom.GateConfig()
 				if err != nil {
 					return "", err
 				}
-				return cfg.GateCall("final", "--all")
+				return cfg.GateCall("webster")
 			}
-			round := func() (loomshed.RoundGate, error) {
-				call, err := finalCall()
-				if err != nil {
-					return loomshed.RoundGate{}, err
-				}
-				return loomshed.RoundGate{Render: func(...string) string { return call }}, nil
+			if got, err := finalCall(); err != nil || got != "lyx gate test --wait --gate webster" {
+				t.Fatalf("webster verify call = (%q, %v); want (%q, nil)", got, err, "lyx gate test --wait --gate webster")
 			}
-			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", finalCall, nil, nil, round, nil)())
+			burler := gateVerdict(loomshed.NewVerifyGate(geom.WorktreeRoot, geom.VerifyDir, "Webster-Burler gate", finalCall, nil, nil, nil)())
 
 			websterFx := prepare()
 			wgeom := websterFx.CLI.geom

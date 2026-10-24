@@ -1,3 +1,5 @@
+//go:build tier0
+
 // subjects_test.go drives the document and merge-in subjects and the review input seams over plain directories, with no git.
 
 package loomcli

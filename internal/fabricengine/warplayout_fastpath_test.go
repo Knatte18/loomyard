@@ -1,3 +1,5 @@
+//go:build tier0
+
 // warplayout_fastpath_test.go pins warpLayoutFor's spawn-free hub-sibling branch in Tier 1: every
 // Location field must be carried over from the caller's layout or derived from the sibling path —
 // the integration-tagged warplayout_test.go proves equivalence against the spawning resolver, but

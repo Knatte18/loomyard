@@ -1,3 +1,5 @@
+//go:build tier0
+
 // server_test.go verifies ServerName's determinism, socket-safety, and per-hub uniqueness,
 // SessionName's worktree-slug derivation, and validateToldTmuxIdentity's refusal of a told identity
 // tmux could not spend verbatim.

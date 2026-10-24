@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seedownership_test.go covers VerifySeedOwnership, F-B7's (round fable5-high-r3) guard: a status
 // file recording a different task's slug — the state a worktree inherits when forked from a task
 // worktree — must refuse loudly instead of letting the driver resume the inherited run.

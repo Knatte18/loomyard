@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_interrupt_test.go proves the run loop's core interrupt use case
 // against a REAL claude in a REAL tmux pane: Runner.Start's returned *Run

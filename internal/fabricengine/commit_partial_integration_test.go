@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // commit_partial_integration_test.go — integration coverage for
 // Fabric.Commit's three partial-failure outcomes (see the

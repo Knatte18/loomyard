@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fixerreport_test.go pins ParseFixerReport's verdicts, sections and refusals.
 
 package landingshed

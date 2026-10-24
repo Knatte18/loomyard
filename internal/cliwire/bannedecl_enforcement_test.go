@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // bannedecl_enforcement_test.go enforces the other half of the Cliwire Sole-Wiring Invariant: neither
 // internal/webstercli nor internal/burlercli may re-declare any of the helper names that used to carry
 // the two CLIs' own copy of cliwire's wiring prologue. A package re-declaring one of these names is

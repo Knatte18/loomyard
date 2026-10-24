@@ -676,12 +676,12 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// No second re-baseline: the one above already ran immediately after the rewriting call, ahead
 	// of both refusals, and persisted itself.
 
-	// The fixer's gate call renders before the first archive, so a hub whose `round` list the config lacks refuses with nothing changed.
+	// The fixer's gate call renders before the first archive, so a hub whose `webster-fix` key the config lacks refuses with nothing changed.
 	gateConfig, err := deps.Geom.GateConfig()
 	if err != nil {
 		return RunResult{}, err
 	}
-	verifyFixGate, err := gateConfig.GateCall("round")
+	verifyFixGate, err := gateConfig.GateCall("webster-fix")
 	if err != nil {
 		return RunResult{}, err
 	}

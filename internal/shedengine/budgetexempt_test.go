@@ -1,3 +1,5 @@
+//go:build tier0
+
 // budgetexempt_test.go covers the budget-exempt Stuck verdict: an exempt Stuck routes like any Stuck but is neither counted toward, nor blocked by, its row's bounce budget.
 
 package shedengine

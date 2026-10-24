@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pushretry_integration_test.go pins, against a real bare remote that refuses every pushed ref with a remote "cannot lock ref", what the fake push in pushretry_test.go cannot reach:
 // the retry exhausts before the rebase-retry or the ErrPushRejected mapping is consulted,

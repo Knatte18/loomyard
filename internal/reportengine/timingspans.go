@@ -195,6 +195,7 @@ func statusFileOf(slug string) string {
 
 // mergeRows merges the loom history and the batten record's history in stamp order, each history keeping its own order.
 // A row with no usable stamp is placed at its history's head and gets a finding naming the row and the file.
+// A skipped entry is left out: the row it passed through was never called, so its time counts under the row before it.
 func mergeRows(row RunRow) ([]timedRow, []Finding) {
 	var findings []Finding
 	file := statusFileOf(row.Slug)
@@ -203,10 +204,13 @@ func mergeRows(row RunRow) ([]timedRow, []Finding) {
 		if batten {
 			label = "batten"
 		}
-		rows := make([]timedRow, len(history))
+		rows := make([]timedRow, 0, len(history))
 		for i, entry := range history {
+			if entry.Outcome == shedengine.OutcomeSkipped {
+				continue
+			}
 			stamp, ok := entryStamp(entry)
-			rows[i] = timedRow{batten: batten, position: i, producer: entry.Producer, outcome: entry.Outcome, output: entry.Output, stamp: stamp, stamped: ok}
+			rows = append(rows, timedRow{batten: batten, position: i, producer: entry.Producer, outcome: entry.Outcome, output: entry.Output, stamp: stamp, stamped: ok})
 			if !ok {
 				findings = append(findings, Finding{Tag: row.Tag, File: file, Error: fmt.Sprintf("%s history row %d (%s) has no stamp: its time is empty or not RFC 3339", label, i+1, entry.Producer)})
 			}

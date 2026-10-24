@@ -17,11 +17,11 @@ import (
 // prebuildLyx returns the environment every `go test` child of a run takes, base less an inherited gateslot.PrebuiltLyxEnv, and the cleanup that removes what the build left.
 // A tagged run builds `<root>/cmd/lyx` with goBinary under base and the `-p` cap parallel, and exports the binary through gateslot.PrebuiltLyxEnv.
 // The build inherits the slot base names, if any, and acquires none of its own.
-// An untagged run, or a tagged one whose root has no `cmd/lyx`, builds nothing.
+// An untagged run, a `tier0` run, whose tests spawn no `lyx`, or a tagged one whose root has no `cmd/lyx`, builds nothing.
 // A build failure returns an error carrying the build's output.
 func prebuildLyx(goBinary, tags, root string, base []string, parallel int) (env []string, cleanup func(), err error) {
 	env = gateslot.StripPrebuilt(base)
-	if tags == "" {
+	if isOfflineRun(tags) {
 		return env, func() {}, nil
 	}
 	if info, statErr := os.Stat(filepath.Join(root, "cmd", "lyx")); statErr != nil || !info.IsDir() {

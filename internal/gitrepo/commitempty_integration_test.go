@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // commitempty_integration_test.go covers Repo.CommitEmpty against a real git repository, reusing gitrepo_test.go's fixture helpers (newRepo, headFilesOf, requireCurrentSHA, runGit) rather than inventing a new harness.
 

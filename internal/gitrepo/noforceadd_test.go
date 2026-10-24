@@ -1,3 +1,5 @@
+//go:build tier0
+
 // noforceadd_test.go machine-checks PATTERN-never-force-add: internal/gitrepo's
 // own non-test source may never reintroduce a `git add -f` branch or the deleted hasPathspecMagic
 // helper that used to decide when to take it.

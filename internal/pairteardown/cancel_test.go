@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cancel_test.go pins the cancel phase: its call order over the fake substrates, the records write lock hold, and the live-strand pick.
 
 package pairteardown

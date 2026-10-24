@@ -1,6 +1,8 @@
+//go:build tier0
+
 // configcli_test.go — unit and integration tests for configcli.
 //
-// Unit tests (untagged): dispatch/editOne/printModule/printAll with fake editor+sync over temp baseDirs seeded via the paths helpers.
+// Unit tests (tier 0): dispatch/editOne/printModule/printAll with fake editor+sync over temp baseDirs seeded via the paths helpers.
 // Integration test (//go:build integration): e2e test with real fabriccli.RunCLI over a real hub built by the hubforge package.
 // The git-init-backed reconcile scenario lives in reconcile_integration_test.go per the Test Tier Purity Invariant.
 
@@ -16,7 +18,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -39,20 +40,6 @@ func fakeEditor(validYAML string, returnErr error) configengine.EditorFunc {
 			return returnErr
 		}
 		return os.WriteFile(path, []byte(validYAML), 0o644)
-	}
-}
-
-// fakeSyncTracker is a wrapper for a fake syncFunc that records whether it was called.
-type fakeSyncTracker struct {
-	called   bool
-	exitCode int
-}
-
-// syncFunc returns a fake syncFunc that records the call and returns the tracked exit code.
-func (t *fakeSyncTracker) syncFunc() syncFunc {
-	return func(w io.Writer) int {
-		t.called = true
-		return t.exitCode
 	}
 }
 
@@ -400,53 +387,6 @@ func TestMenu(t *testing.T) {
 	}
 }
 
-// makeNeverCalledEditor returns an EditorFunc that fails the test if called.
-// Passed to dispatch in --print tests to prove the print path never opens an editor.
-func makeNeverCalledEditor(t *testing.T) configengine.EditorFunc {
-	t.Helper()
-	return func(path string) error {
-		t.Helper()
-		t.Errorf("editor was called on path %q; --print must never launch the editor", path)
-		return nil
-	}
-}
-
-// makeLayoutAt returns a minimal *lyxcwd.Location with WorktreeRoot at baseDir and RelPath ".".
-func makeLayoutAt(baseDir string) *lyxcwd.Location {
-	return &lyxcwd.Location{HubPath: filepath.Dir(baseDir), WorktreeName: filepath.Base(baseDir), AnchorRel: "."}
-}
-
-// seedModuleConfig writes YAML content to the config file for the named module under baseDir.
-func seedModuleConfig(t *testing.T, baseDir, module, content string) {
-	t.Helper()
-	dir := configengine.ConfigDir(baseDir)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("failed to create config dir: %v", err)
-	}
-	if err := os.WriteFile(configengine.ConfigFile(baseDir, module), []byte(content), 0o644); err != nil {
-		t.Fatalf("failed to seed config for module %s: %v", module, err)
-	}
-}
-
-// assertJSONErrContains verifies that output is a well-formed JSON error envelope
-// with ok:false and an error field containing wantSubstr.
-func assertJSONErrContains(t *testing.T, output, wantSubstr string) {
-	t.Helper()
-	var env map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &env); err != nil {
-		t.Fatalf("output is not valid JSON: %v; got %q", err, output)
-	}
-	if ok, _ := env["ok"].(bool); ok {
-		t.Errorf("JSON envelope ok = true; want false")
-	}
-	if wantSubstr != "" {
-		msg, _ := env["error"].(string)
-		if !strings.Contains(msg, wantSubstr) {
-			t.Errorf("JSON error field missing %q; got %q", wantSubstr, msg)
-		}
-	}
-}
-
 // assertJSONOkContains verifies that output is a well-formed JSON success envelope
 // with ok:true and, for each key in wantFields, an equal value. Callers that need to
 // assert a field's absence (e.g. "preserved" on a clean write) should decode env
@@ -689,9 +629,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	const listShaped = "types:\n  bug: a defect\nlabels:\n  - old\n"
 	loomRival := configengine.SparseBaseHeader + "review_max_bounces: 3\n"
 
-	// darnTreeVerify is the tree-scoped command the darn rows seed and save; it is one waiting gate call holding the {targets} marker the loader requires.
-	const darnTreeVerify = "lyx gate test --wait --tier 1 {targets}"
-	darnSeeded := darnWithTreeScope("\n  tools: ./tools/...", darnTreeVerify)
+	darnSeeded := darnWithTreeScope("\n  tools: ./tools/...")
 
 	rows := []struct {
 		name string
@@ -980,17 +918,15 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			},
 		},
 		{
-			name:   "darn editor save emptying tree_scope while tree_scope_verify stays set is refused with the clear-first way forward",
+			name:   "darn editor save emptying tree_scope is written",
 			module: "darn",
 			seed:   darnSeeded,
 			editor: func(fx hubFixture) configengine.EditorFunc {
-				return fakeEditor(darnWithTreeScope(" {}", darnTreeVerify), nil)
+				return fakeEditor(darnWithTreeScope(" {}"), nil)
 			},
-			wantCode:    1,
 			wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				assertDarnSaveRefused(t, fx, hubFile, out, darnSeeded, darnWithTreeScope(" {}", darnTreeVerify),
-					[]string{"holds no tree", `run "lyx config darn --set tree_scope_verify=" first, then remove the trees in "lyx config darn" again`}, nil)
+				assertDarnSaveWritten(t, fx, hubFile, darnWithTreeScope(" {}"))
 			},
 		},
 		{
@@ -998,25 +934,13 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			module: "darn",
 			seed:   darnSeeded,
 			editor: func(fx hubFixture) configengine.EditorFunc {
-				return fakeEditor(darnWithTreeScope("\n  tools: ./tools/...\n  tools/: ./tools/...", darnTreeVerify), nil)
+				return fakeEditor(darnWithTreeScope("\n  tools: ./tools/...\n  tools/: ./tools/..."), nil)
 			},
 			wantCode:    1,
 			wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				assertDarnSaveRefused(t, fx, hubFile, out, darnSeeded, darnWithTreeScope("\n  tools: ./tools/...\n  tools/: ./tools/...", darnTreeVerify),
-					[]string{`"tools" and "tools/"`, `copy it out of that path, re-open "lyx config darn"`}, []string{"first, then remove the trees"})
-			},
-		},
-		{
-			name:   "darn editor save emptying tree_scope and clearing tree_scope_verify together is written",
-			module: "darn",
-			seed:   darnSeeded,
-			editor: func(fx hubFixture) configengine.EditorFunc {
-				return fakeEditor(darnWithTreeScope(" {}", ""), nil)
-			},
-			wantCommits: 1,
-			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				assertDarnSaveWritten(t, fx, hubFile, darnWithTreeScope(" {}", ""))
+				assertDarnSaveRefused(t, fx, hubFile, out, darnSeeded, darnWithTreeScope("\n  tools: ./tools/...\n  tools/: ./tools/..."),
+					[]string{`"tools" and "tools/"`, `copy it out of that path, re-open "lyx config darn"`}, nil)
 			},
 		},
 		{
@@ -1024,37 +948,23 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			module: "darn",
 			seed:   darnSeeded,
 			editor: func(fx hubFixture) configengine.EditorFunc {
-				return fakeEditor(darnWithTreeScope("\n  tools: ./tools/...\n  docs: \"\"", darnTreeVerify), nil)
+				return fakeEditor(darnWithTreeScope("\n  tools: ./tools/...\n  docs: \"\""), nil)
 			},
 			wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				assertDarnSaveWritten(t, fx, hubFile, darnWithTreeScope("\n  tools: ./tools/...\n  docs: \"\"", darnTreeVerify))
+				assertDarnSaveWritten(t, fx, hubFile, darnWithTreeScope("\n  tools: ./tools/...\n  docs: \"\""))
 			},
 		},
 		{
 			name:   "darn editor save over a file already failing keeps the same failure and is written",
 			module: "darn",
-			seed:   darnWithTreeScope("\n  ./tools: x", ""),
+			seed:   darnWithTreeScope("\n  ./tools: x"),
 			editor: func(fx hubFixture) configengine.EditorFunc {
-				return fakeEditor(strings.Replace(darnWithTreeScope("\n  ./tools: x", ""), "writer: opus[medium]", "writer: sonnet[high]", 1), nil)
+				return fakeEditor(strings.Replace(darnWithTreeScope("\n  ./tools: x"), "writer: opus[medium]", "writer: sonnet[high]", 1), nil)
 			},
 			wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				assertDarnSaveWritten(t, fx, hubFile, strings.Replace(darnWithTreeScope("\n  ./tools: x", ""), "writer: opus[medium]", "writer: sonnet[high]", 1))
-			},
-		},
-		{
-			name:   "darn editor save setting tree_scope_verify with no tree over a file with no tree is refused with the copy-out way forward",
-			module: "darn",
-			seed:   darnengine.ConfigTemplate(),
-			editor: func(fx hubFixture) configengine.EditorFunc {
-				return fakeEditor(darnWithTreeScope(" {}", darnTreeVerify), nil)
-			},
-			wantCode:    1,
-			wantCommits: 1,
-			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				assertDarnSaveRefused(t, fx, hubFile, out, darnengine.ConfigTemplate(), darnWithTreeScope(" {}", darnTreeVerify),
-					[]string{"holds no tree", `copy it out of that path, re-open "lyx config darn"`}, []string{"first, then remove the trees"})
+				assertDarnSaveWritten(t, fx, hubFile, strings.Replace(darnWithTreeScope("\n  ./tools: x"), "writer: opus[medium]", "writer: sonnet[high]", 1))
 			},
 		},
 	}
@@ -1106,9 +1016,9 @@ func TestDispatchHubWideBoard(t *testing.T) {
 	}
 }
 
-// darnWithTreeScope returns darn's template with its tree_scope replaced by the given text after the key and its tree_scope_verify by verify.
-func darnWithTreeScope(trees, verify string) string {
-	return strings.NewReplacer("tree_scope: {}", "tree_scope:"+trees, `tree_scope_verify: ""`, "tree_scope_verify: "+strconv.Quote(verify)).Replace(darnengine.ConfigTemplate())
+// darnWithTreeScope returns darn's template with its tree_scope replaced by the given text after the key.
+func darnWithTreeScope(trees string) string {
+	return strings.Replace(darnengine.ConfigTemplate(), "tree_scope: {}", "tree_scope:"+trees, 1)
 }
 
 // assertDarnSaveRefused checks a refused darn editor save: the board file still holds seeded, the staging copy holds saved, and the error names each of wantErr, none of notErr, and the staging path.
@@ -1476,22 +1386,12 @@ func TestDispatchLayers(t *testing.T) {
 			},
 		},
 		{
-			name: "default layer accepts an empty tree_scope_verify with no tree", module: "darn", layer: "default",
-			setFlags: []string{"tree_scope_verify="}, seedBoard: darnengine.ConfigTemplate(), wantCommits: 1,
-			check: func(t *testing.T, fx hubFixture, out string) {
-				cfg, err := darnengine.LoadConfig(configengine.Dirs{Board: fx.board}, "darn")
-				if err != nil || cfg.TreeScopeVerify != "" {
-					t.Errorf("LoadConfig().TreeScopeVerify = %q, %v; want empty", cfg.TreeScopeVerify, err)
-				}
-			},
-		},
-		{
 			name: "default layer refuses a tree written twice with the set way forward and leaves the file", module: "darn", layer: "default",
-			setFlags: []string{"tree_scope.tools/=x"}, seedBoard: darnWithTreeScope("\n  tools: ./tools/...", ""), wantCode: 1, wantCommits: 1,
+			setFlags: []string{"tree_scope.tools/=x"}, seedBoard: darnWithTreeScope("\n  tools: ./tools/..."), wantCode: 1, wantCommits: 1,
 			wantErr: `"tools" and "tools/"`,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				assertJSONErrContains(t, out, "way forward: --set the key to a value it takes")
-				if data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "darn")); string(data) != darnWithTreeScope("\n  tools: ./tools/...", "") {
+				if data, _ := os.ReadFile(configengine.ConfigFile(fx.board, "darn")); string(data) != darnWithTreeScope("\n  tools: ./tools/...") {
 					t.Errorf("board darn.yaml = %q; want it unchanged", data)
 				}
 			},
@@ -1662,18 +1562,18 @@ func TestDispatchLayers(t *testing.T) {
 			},
 		},
 		{
-			name: "default layer sets one gate and every other gate keeps the template list", module: "gate", layer: "default",
-			setFlags: []string{"gates.landing=[0,1]"}, seedBoard: gateTemplate(), wantCommits: 1,
+			name: "default layer sets one gate and every other gate keeps the template key", module: "gate", layer: "default",
+			setFlags: []string{"gates.finalize={tiers: [0, 1], scope: all}"}, seedBoard: gateTemplate(), wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, out string) {
 				cfg, err := gateslot.LoadConfig(configengine.Dirs{Anchor: fx.worktree, Board: fx.board})
 				if err != nil {
 					t.Fatalf("gateslot.LoadConfig() error = %v; want the hub file read", err)
 				}
-				if got, want := cfg.Gates["landing"], []int{0, 1}; !slices.Equal(got, want) {
-					t.Errorf("Gates[landing] = %v; want %v", got, want)
+				if got, want := cfg.Gates["finalize"].Tiers, []int{0, 1}; !slices.Equal(got, want) {
+					t.Errorf("Gates[finalize].Tiers = %v; want %v", got, want)
 				}
-				if got, want := cfg.Gates["card"], []int{0}; !slices.Equal(got, want) {
-					t.Errorf("Gates[card] = %v; want the template list %v", got, want)
+				if got, want := cfg.Gates["card"].Tiers, []int{0}; !slices.Equal(got, want) {
+					t.Errorf("Gates[card].Tiers = %v; want the template tiers %v", got, want)
 				}
 			},
 		},

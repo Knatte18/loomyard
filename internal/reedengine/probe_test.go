@@ -1,3 +1,5 @@
+//go:build tier0
+
 // probe_test.go drives probeCapability's pure decidable core (probe.go) with a fake run closure,
 // covering the healthy path plus each of its two failure modes (version below the pinned floor, a
 // missing required subcommand) without ever shelling out to a real multiplexer binary.

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remove_local_integration_test.go covers Remove of a local-only pair and the two origin-write checks that guard a marked branch.
 // Every hub here has an origin URL pointing at a path that does not exist, so any origin step fails the call.

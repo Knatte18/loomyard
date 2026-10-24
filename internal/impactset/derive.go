@@ -56,7 +56,7 @@ func listPackages(ctx context.Context, worktree string) ([]pkg, error) {
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.CommandContext(ctx, "go", "list", "-tags", "integration,tmux,llm", "-f", goListFormat, "./...")
+	cmd := exec.CommandContext(ctx, "go", "list", "-tags", "tier0,tier1,tier2,tier3,integration,tmux,llm", "-f", goListFormat, "./...")
 	cmd.Dir = worktree
 	logger.Info("impactset: spawning go list", "dir", worktree)
 	output, err := cmd.Output()

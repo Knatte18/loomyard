@@ -1,3 +1,5 @@
+//go:build tier0
+
 // capabilities_test.go verifies Claude's optional capability answers: instruction files, requirement support and resume-context rendering.
 
 package claudeengine

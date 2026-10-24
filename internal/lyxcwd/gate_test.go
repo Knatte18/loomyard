@@ -1,4 +1,6 @@
-// gate_test.go covers the strict cwd anchor gate (checkCwdAnchorGate) and its path comparator (samePath) as pure path-math tables — no git spawning, no fixture trees — so this file stays untagged.
+//go:build tier0
+
+// gate_test.go covers the strict cwd anchor gate (checkCwdAnchorGate) and its path comparator (samePath) as pure path-math tables — no git spawning, no fixture trees.
 // It also pins ResolveWithAnchor and ResolveWorktree as permanently ungated at each of the gate's own rejection triples, so a later "consistency" change cannot quietly gate either bypass and break clone/gitkit.
 // Every test here is parallel: none touches process-global state.
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // step_test.go covers (*Shed).Step's routing arms (one test per arm stepLocked's switch takes),
 // its shared preamble (preflight's parent-dir creation and validate-before-lock ordering), and its
 // per-call lock window (the ErrShedBusy refusal and the release-between-calls property that makes

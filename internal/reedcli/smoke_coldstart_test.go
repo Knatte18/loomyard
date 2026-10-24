@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_coldstart_test.go pins the headline scenario this task adds: `lyx reed add` and `lyx reed attach`, run against a worktree that was never brought up and carries no persisted state file at all, boot the substrate themselves rather than refusing with the friendly no-session error.
 // The scenario drives a real multiplexer against one forged hub, giving each step its own never-brought-up sibling worktree, using the package's existing fixture vocabulary (see smoke_test.go) rather than any new fixture machinery.

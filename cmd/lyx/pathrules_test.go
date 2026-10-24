@@ -1,3 +1,5 @@
+//go:build tier0
+
 // pathrules_test.go is the machine half of two invariants over every module's exported path constructor: "every never-tracked file lives under .lyx, at the mirrored subpath of the _lyx content it relates to" and the anchoring rule that puts every worktree-level path under AnchorPath() rather than WorktreePath().
 // Each row of pathRules names a constructor, a closure calling it on a *lyxcwd.Location, and its class;
 // the expectations come from the class rule, never from a path literal on the row.

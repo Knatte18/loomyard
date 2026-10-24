@@ -1,3 +1,5 @@
+//go:build tier0
+
 // junctionnames_test.go — unit tests for junctionNames, filterHubReserved, and the hub-structural
 // name constructors BoardDir, HubPath and IsReservedHubName relocated from internal/lyxcwd in this
 // batch.

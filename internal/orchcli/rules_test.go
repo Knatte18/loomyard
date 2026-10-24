@@ -1,3 +1,5 @@
+//go:build tier0
+
 // rules_test.go covers writeHubRules over a fake Bolt: every refusal branch, the success envelope and the file left behind.
 
 package orchcli

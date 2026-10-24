@@ -15,7 +15,7 @@ import (
 // cardGateCommand returns the gate for card as its ordered steps: the hub's `card` gate call over the card's own scope, then the comment line-break lint and the PATTERN headroom lint.
 // It refuses, with the config's way forward, a hub whose `card` list the config does not hold.
 func cardGateCommand(card planparser.Card, gate gateslot.Config) ([]string, error) {
-	call, err := gate.GateCall("card", "--card", card.ID())
+	call, err := gate.GateCall("card", card.ID())
 	if err != nil {
 		return nil, err
 	}
@@ -43,11 +43,11 @@ func renderCardGates(cards []planparser.Card, planDirDisplay string, gate gatesl
 // renderBatchGate renders the batch's gate as one line: the hub's `batch` gate call over every card of the batch.
 // It refuses, with the config's way forward, a hub whose `batch` list the config does not hold.
 func renderBatchGate(cards []planparser.Card, gate gateslot.Config) (string, error) {
-	scope := make([]string, 0, 2*len(cards))
+	ids := make([]string, 0, len(cards))
 	for _, c := range cards {
-		scope = append(scope, "--card", c.ID())
+		ids = append(ids, c.ID())
 	}
-	call, err := gate.GateCall("batch", scope...)
+	call, err := gate.GateCall("batch", ids...)
 	if err != nil {
 		return "", err
 	}

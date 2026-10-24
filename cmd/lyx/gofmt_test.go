@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // gofmt_test.go enforces that every Go file in the module is gofmt-formatted, whatever its build tags.
 // It compares each source with go/format.Source of itself, so no gofmt binary is needed.
 

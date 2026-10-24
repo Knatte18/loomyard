@@ -1,5 +1,7 @@
+//go:build tier0
+
 // cli_test.go covers armFromSeed's seed-driven arming: the run-id positional defaulting to "self", the pinned refusal precedence (run-id listing, unknown recipe, verb gate, the recipe's own refusal), and run's positional-argument arity.
-// It stays untagged Tier 1 throughout: armFromSeed performs no lyxcwd.Resolve of its own (cli.go's own doc comment), so every case here drives it directly against a hand-built *lyxcwd.Location, with no real git repository behind it -- matching the repo's own convention that a real lyxcwd.Resolve spawn belongs only in an integration-tagged file (internal/lyxcwd/lyxcwd_test.go is the precedent).
+// It stays in tier 0 throughout: armFromSeed performs no lyxcwd.Resolve of its own (cli.go's own doc comment), so every case here drives it directly against a hand-built *lyxcwd.Location, with no real git repository behind it -- matching the repo's own convention that a real lyxcwd.Resolve spawn belongs only in an integration-tagged file (internal/lyxcwd/lyxcwd_test.go is the precedent).
 package shedcli
 
 import (

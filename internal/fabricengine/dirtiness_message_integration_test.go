@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // dirtiness_message_integration_test.go pins the composed shape of worktreeDirty's error against
 // real git, rather than its wording.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // modelspec_test.go pins the containment invariant between the two closed vocabularies declared in
 // modelspec.go: every bracket key spelling in bracketKeys must normalize to a canonical key that
 // knownParams also recognizes.

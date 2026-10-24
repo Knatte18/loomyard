@@ -32,8 +32,10 @@ var tierSummaryPattern = regexp.MustCompile(`^gate test: tier(\d+) .* discovered
 type RunRecord struct {
 	Worktree string `json:"worktree"`
 	// Slug is the task slug of the worktree, empty when it has none.
-	Slug      string    `json:"slug"`
-	TierList  []int     `json:"tier_list"`
+	Slug     string `json:"slug"`
+	TierList []int  `json:"tier_list"`
+	// GateKey is the gate key a --gate call ran, empty for a run with manual flags.
+	GateKey   string    `json:"gate_key,omitempty"`
 	Tier      int       `json:"tier"`
 	Command   string    `json:"command"`
 	RunDir    string    `json:"run_dir"`
@@ -46,12 +48,26 @@ type RunRecord struct {
 	ExitCode  int       `json:"exit_code"`
 	TimedOut  bool      `json:"timed_out"`
 	// Outcome is "passed" or "failed".
-	Outcome    string `json:"outcome"`
-	GuardStep  bool   `json:"guard_step"`
-	Discovered int    `json:"discovered"`
-	Passed     int    `json:"passed"`
-	Failed     int    `json:"failed"`
-	Skipped    int    `json:"skipped"`
+	Outcome   string `json:"outcome"`
+	GuardStep bool   `json:"guard_step"`
+	// Carried is set for a tier the green record held green over an unchanged tree, which took no slot and ran no command.
+	Carried    bool `json:"carried,omitempty"`
+	Discovered int  `json:"discovered"`
+	Passed     int  `json:"passed"`
+	Failed     int  `json:"failed"`
+	Skipped    int  `json:"skipped"`
+	// Launches lists, per package whose test binary ran, how long the binary took to launch; empty for a record written before the list existed, a tier that reads no packages and a run that launched none.
+	Launches []PackageLaunch `json:"launches,omitempty"`
+}
+
+// PackageLaunch is one package's launch timing in a go-json tier run.
+// LaunchSeconds is the gap from the package's `start` event, which `go doc cmd/test2json` defines as the test binary about to be executed, to its next event:
+// the binary's exec, any host-scanner hold on it, its init and its `TestMain` setup.
+// ElapsedSeconds is the package's own elapsed time from its closing event.
+type PackageLaunch struct {
+	Package        string  `json:"package"`
+	LaunchSeconds  float64 `json:"launch_seconds"`
+	ElapsedSeconds float64 `json:"elapsed_seconds"`
 }
 
 // RunLogDir returns the directory under gateDir that keeps the run records and logs.
@@ -81,6 +97,36 @@ func WriteRunRecord(dir string, record RunRecord, output []byte, now time.Time) 
 		return "", fmt.Errorf("write gate run record: %w", err)
 	}
 	return path, nil
+}
+
+// ReadRunRecords reads every `.json` record in dir in file-name order, which is start order.
+// A file that does not decode is logged and skipped, and a directory that does not exist, as on a machine that has run no gate, reads as no records.
+func ReadRunRecords(dir string) ([]RunRecord, error) {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list gate run records: %w", err)
+	}
+	var records []RunRecord
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			logger.Warn("read gate run record", "file", entry.Name(), "error", err.Error())
+			continue
+		}
+		var record RunRecord
+		if err := json.Unmarshal(data, &record); err != nil {
+			logger.Warn("decode gate run record", "file", entry.Name(), "error", err.Error())
+			continue
+		}
+		records = append(records, record)
+	}
+	return records, nil
 }
 
 func pruneRunLog(dir string, now time.Time) {
@@ -129,9 +175,14 @@ func FindTierTimeout(log string) (tier string, ok bool) {
 }
 
 // TierSummaryLine renders the one stderr line the gate prints after each tier run.
+// A carried tier is marked with `carried` after its scope form.
 func TierSummaryLine(record RunRecord, logPath string) string {
+	scope := record.ScopeForm
+	if record.Carried {
+		scope += " carried"
+	}
 	return fmt.Sprintf("gate test: tier%d %s discovered %d passed %d failed %d skipped %d wall %.1fs exit %d log %s",
-		record.Tier, record.ScopeForm, record.Discovered, record.Passed, record.Failed, record.Skipped, record.WallSec, record.ExitCode, logPath)
+		record.Tier, scope, record.Discovered, record.Passed, record.Failed, record.Skipped, record.WallSec, record.ExitCode, logPath)
 }
 
 // FailedTier returns the tier number of the last tier summary line in log whose exit code is not 0, and false when the log holds none.

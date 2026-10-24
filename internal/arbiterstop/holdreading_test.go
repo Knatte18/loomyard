@@ -1,3 +1,5 @@
+//go:build tier0
+
 // holdreading_test.go pins HoldReading over a synthetic task worktree on disk.
 
 package arbiterstop

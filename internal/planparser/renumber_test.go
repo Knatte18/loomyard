@@ -1,3 +1,5 @@
+//go:build tier0
+
 // renumber_test.go pins InsertCard and RemoveCard: the renumbered plan, the refusals that leave the plan directory untouched, and the reversal of an apply that fails at each step.
 
 package planparser_test

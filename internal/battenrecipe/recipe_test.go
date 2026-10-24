@@ -1,3 +1,5 @@
+//go:build tier0
+
 // recipe_test.go builds through New and asserts the shape the batten recipe's rows must
 // carry: their names, the OnDone chain, the load-bearing empty/self-route OnStuck edges and empty
 // terminal OnDone edge, Run-Shed's in-call wait configuration, the absence of any Segment, and that the
@@ -41,7 +43,7 @@ func TestNew_RowNamesMatchTheDurableIdentityConstants(t *testing.T) {
 }
 
 // TestNew_OnDoneChainAndLoadBearingEdges asserts the Worktree-Create -> Seed-Child -> Open-Window -> Seed-IDE -> Open-IDE -> Run-Shed -> Land -> Worktree-Teardown OnDone chain.
-// It also asserts Run-Shed's OnStuck self-route, Land's empty OnStuck, Worktree-Teardown's empty OnDone, and that no row declares a Segment.
+// It also asserts Run-Shed's OnStuck self-route, Land's empty OnStuck, Worktree-Teardown's empty OnDone, that no row declares a Segment, and that the Open-Window, Seed-IDE and Open-IDE entry gates follow their batten setting.
 func TestNew_OnDoneChainAndLoadBearingEdges(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
@@ -94,6 +96,33 @@ func TestNew_OnDoneChainAndLoadBearingEdges(t *testing.T) {
 	for _, p := range shed.Producers {
 		if p.Segment != "" {
 			t.Errorf("row %q Segment = %q; want empty", p.Name, p.Segment)
+		}
+	}
+
+	for row, setting := range map[string]string{
+		NameOpenWindow: "open_window",
+		NameSeedIDE:    "seed_ide",
+		NameOpenIDE:    "open_ide",
+	} {
+		for _, answer := range []bool{false, true} {
+			gatedEnv := env
+			gatedEnv.Setting = func(module, key string) (any, error) {
+				if module != "batten" || key != setting {
+					t.Errorf("%s gate read %s.%s; want batten.%s", row, module, key, setting)
+				}
+				return answer, nil
+			}
+			gated, err := New(gatedEnv, paths)
+			if err != nil {
+				t.Fatalf("New() with %s answering %v error = %v, want nil", setting, answer, err)
+			}
+			def := gated.Producers[byName[row]]
+			if def.EntryGate == nil {
+				t.Fatalf("%s EntryGate = nil; want a gate on batten.%s", row, setting)
+			}
+			if holds, _, err := def.EntryGate(); err != nil || holds != answer {
+				t.Errorf("%s EntryGate() with batten.%s = %v is (%v, %v); want (%v, nil)", row, setting, answer, holds, err, answer)
+			}
 		}
 	}
 }

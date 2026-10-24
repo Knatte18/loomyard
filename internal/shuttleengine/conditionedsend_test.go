@@ -1,3 +1,5 @@
+//go:build tier0
+
 // conditionedsend_test.go covers Runner.SendConditioned through a fake pane and a session-signal fake engine, with a fake clock so no row waits.
 
 package shuttleengine

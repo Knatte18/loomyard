@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build tier0 && !windows
 
 // tmuxfloor_test.go pins the tmux floor check: the runner's refusal, the per-path cache, the retry of a probe that could not run, the allow-set-title answer and the server spawn's refusal.
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // arbiter_test.go — untagged Tier-1 tests for the arbiter's record readers and writers, over temp directories.
 
 package loomengine

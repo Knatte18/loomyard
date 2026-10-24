@@ -1,3 +1,5 @@
+//go:build tier0
+
 // lock_test.go runs the lock verbs through the command tree against a temporary parent lock store.
 
 package battencli

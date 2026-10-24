@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // warpbinding_reconcile_integration_test.go proves Topology.Reconcile's once-per-hub warp-URL
 // binding backfill (reconcile.go's reconcileWarpBinding): the recorded/present/diverged/skipped/

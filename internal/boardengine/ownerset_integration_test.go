@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // ownerset_integration_test.go covers SetOwners against a real board repository, a bare origin and a second clone of it:
 // the outcomes of an owner write, the ways it refuses, a competing write that wins at origin, a deferred push and the BOARD_SKIP_GIT bypass.

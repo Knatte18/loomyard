@@ -1,3 +1,5 @@
+//go:build tier0
+
 // portals_test.go covers the retired-artifact sweep where it needs no git: a hub whose prime cannot be resolved.
 
 package fabricengine

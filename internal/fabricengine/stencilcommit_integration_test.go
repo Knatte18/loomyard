@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // stencilcommit_integration_test.go covers CommitSeededStencils against a real hubforge hub: the
 // no-op empty-input case, the scoped-pathspec commit (including the seeded .gitattributes), the

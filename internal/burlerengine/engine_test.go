@@ -16,7 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
+
+// newTestStencilsDir seeds a hermetic stencils directory through stencilkit and returns its path.
+func newTestStencilsDir(t *testing.T) string {
+	t.Helper()
+	return stencilkit.Seed(t)
+}
 
 // halfScript scripts one seat of a fake half.
 type halfScript struct {

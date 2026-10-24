@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // runner_test.go exercises Runner against real shell lines and a temp gate-slot pool.
 

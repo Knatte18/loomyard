@@ -1,4 +1,6 @@
-// cliwire_test.go pins the shared wiring prologue's behaviour at tier 1: every case is untagged, spawns no process, and resolves no cwd.
+//go:build tier0
+
+// cliwire_test.go pins the shared wiring prologue's behaviour at tier 0: every case is in tier 0, spawns no process, and resolves no cwd.
 //
 // The ResolveStandalone tests stay serial: each redirects XDG_STATE_HOME and LOCALAPPDATA, and the logger's durable sink, which are process-global state.
 //

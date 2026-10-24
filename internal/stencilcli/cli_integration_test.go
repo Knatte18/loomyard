@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cli_integration_test.go drives the stencil module through RunCLIIn against one real fabric hub built by internal/hubforge, exercising list, validate, diff (both modes), sync, and the promote round trip end to end as the serial steps of TestStencilCLI_Scenario.
 // It is Tier 2: it builds a real hub and spawns git, so it needs gitkit.HermeticGitEnv() (see testmain_test.go) and the integration build tag.

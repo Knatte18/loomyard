@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // parity_test.go carries the differential-parity harness lifted from internal/gitnativepoc/harness_test.go into package gitrepo_test: fixture builders beyond newRepo/writeFile/commitAll (already defined in gitrepo_test.go and reused directly here), repo-shaping helpers the parity cases need, and comparison helpers that report an oracle-vs-implementation divergence with both values so a failing case is diagnosable without re-running it under a debugger.
 // The parity cases built on this scaffolding follow the helpers; the linked-worktree parity cases live in gogit_test.go.

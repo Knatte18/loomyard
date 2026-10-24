@@ -1,3 +1,5 @@
+//go:build tier0
+
 // identity_test.go tests IdentityText: the overview's identity ignores the approval line and nothing else.
 
 package planparser

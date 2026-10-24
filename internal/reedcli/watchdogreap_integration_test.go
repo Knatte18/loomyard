@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // watchdogreap_integration_test.go carries the orphan-reap tier's live assertions as one TestWatchdogReap scenario: the end-to-end reap and healthy-sibling non-interference, the never-entered orphan, the empty-shell degradation, the reap's process half, and loop liveness under a reap in flight.
 //

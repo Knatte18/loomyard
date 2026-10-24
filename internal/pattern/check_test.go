@@ -1,3 +1,5 @@
+//go:build tier0
+
 // check_test.go covers Check, one case per finding kind plus the clean overviews.
 
 package pattern

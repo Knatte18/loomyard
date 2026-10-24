@@ -1,3 +1,5 @@
+//go:build tier0
+
 // classify_test.go — Tier-1 (untagged, no git spawn) table test for classifyPaths, the pure
 // warp-vs-weft-vs-never-committed path classifier.
 

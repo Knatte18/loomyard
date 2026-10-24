@@ -1,4 +1,6 @@
-// fixcap_test.go — untagged unit tests for FixCap.Exceeded.
+//go:build tier0
+
+// fixcap_test.go — tier0 unit tests for FixCap.Exceeded.
 
 package landingshed
 

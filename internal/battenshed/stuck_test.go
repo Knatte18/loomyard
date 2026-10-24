@@ -1,3 +1,5 @@
+//go:build tier0
+
 // stuck_test.go pins that a stuck verdict's log line takes its level from its cause:
 // a failed producer step logs at Warn, and an ordinary wait or move logs at Info and leaves its reason in the reason file.
 

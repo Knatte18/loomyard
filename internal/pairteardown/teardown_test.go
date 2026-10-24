@@ -1,3 +1,5 @@
+//go:build tier0
+
 // teardown_test.go drives the teardown sequence through fakes, so it spawns nothing.
 
 package pairteardown
@@ -6,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -885,20 +885,6 @@ func TestSettleBoardClaim_RunningBattenRecordWayForward(t *testing.T) {
 	}
 }
 
-// writeInflight writes a step's in-flight record into stepsDir, and its envelope beside it when finished.
-func writeInflight(t *testing.T, stepsDir, traceID string, pid int, started time.Time, finished bool) {
-	t.Helper()
-	record := fmt.Sprintf(`{"trace_id":%q,"pid":%d,"started_at":%q}`, traceID, pid, started.Format(time.RFC3339))
-	if err := os.WriteFile(filepath.Join(stepsDir, traceID+".inflight.json"), []byte(record), 0o644); err != nil {
-		t.Fatalf("write the in-flight record: %v", err)
-	}
-	if finished {
-		if err := os.WriteFile(filepath.Join(stepsDir, traceID+".json"), []byte("{}"), 0o644); err != nil {
-			t.Fatalf("write the envelope: %v", err)
-		}
-	}
-}
-
 // TestLoopTeardown_LockMarkAndRunLockWait drives the loop-ending helpers over real lock and pid files in a temporary steps directory, with a fake kill and sleep.
 func TestLoopTeardown_LockMarkAndRunLockWait(t *testing.T) {
 	t.Parallel()
@@ -1087,16 +1073,6 @@ func TestLoopTeardown_LockMarkAndRunLockWait(t *testing.T) {
 			t.Errorf("sleeps = %d; want none for a free lock", sleeps-before)
 		}
 	})
-}
-
-// mustHoldLock takes the exclusive lock at lockPath and fails the test when it cannot.
-func mustHoldLock(t *testing.T, lockPath string) *lock.FileLock {
-	t.Helper()
-	held, ok, err := lock.TryAcquireWriteLock(lockPath)
-	if err != nil || !ok {
-		t.Fatalf("TryAcquireWriteLock(%s) = %v, %v; want the lock", lockPath, ok, err)
-	}
-	return held
 }
 
 // mustRunLockFree reports whether the lock at lockPath is free.

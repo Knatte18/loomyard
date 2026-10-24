@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the Buildinfo Leaf Invariant: production code in
 // internal/buildinfo imports nothing at all -- not even the standard library.
 // Like modelspec's leaf_enforcement_test.go, this check is an ALLOWLIST: any import found fails

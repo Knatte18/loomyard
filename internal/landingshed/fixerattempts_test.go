@@ -1,4 +1,6 @@
-// fixerattempts_test.go — untagged unit tests for the fixer attempt record.
+//go:build tier0
+
+// fixerattempts_test.go — tier0 unit tests for the fixer attempt record.
 
 package landingshed
 

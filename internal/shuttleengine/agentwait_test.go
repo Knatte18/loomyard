@@ -1,3 +1,5 @@
+//go:build tier0
+
 // agentwait_test.go covers ReadAgentWaits over run directories written by the test, with the liveness seam replaced and an engine double that parses session signals.
 // Replacing the seam is process-global state,
 // so these tests do not run in parallel.

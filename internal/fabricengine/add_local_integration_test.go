@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // add_local_integration_test.go covers AddLocal, the local-only pair, and a plain Add's adoption of a local pair's marked branches.
 // Every hub here has an origin URL pointing at a path that does not exist, in both repos, so any network call fails the add.

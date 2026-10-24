@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // warplayout_test.go pins warpLayoutFor's two branches against each other: the hub-sibling
 // fast path and the lyxcwd.ResolveWorktree fallback are documented as equivalent, so this

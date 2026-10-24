@@ -1,3 +1,5 @@
+//go:build tier0
+
 // resume_test.go drives the resume sequence, the revive sequence and the status read over the fakes pause_test.go declares.
 
 package tenderengine

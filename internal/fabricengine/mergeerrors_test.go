@@ -1,3 +1,5 @@
+//go:build tier0
+
 // mergeerrors_test.go asserts the pinned Error() strings, newMergeGuardError's sort/dedup
 // behaviour, and that no closed-set constant or Error() output leaks warp/weft/host vocabulary
 // across the merge error surface's public boundary.

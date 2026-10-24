@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_cluster_test.go is burlerengine's opt-in live-integration smoke test for fork-based cluster review:
 // TestSmokeBurlerClusterCleanFan and TestSmokeBurlerClusterRogueFork each drive one full cluster round with a REAL claude handler spawning REAL fork subagents in a REAL tmux pane.

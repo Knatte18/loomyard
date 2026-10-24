@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_test.go covers the shuttlecli cobra seam through RunCLI: run's flag-shape validation, and interrupt/send's exact-args validation.
 // It also pins, over a fake reed and engine, the message tail `send` appends.
 // No live tmux/claude session is required by any test in this file;

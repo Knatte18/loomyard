@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // weftgit_exclude_test.go proves fabric's own lock artifacts (.weft/ from
 // Fabric.Commit's write lock, .gitrepo-push.lock from PushCoalesced) never

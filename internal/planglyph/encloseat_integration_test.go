@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // encloseat_integration_test.go covers EncloseAt against a real git fixture repository, reading files committed at a revision through quarry's git layer.
 

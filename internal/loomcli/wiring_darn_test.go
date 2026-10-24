@@ -1,3 +1,5 @@
+//go:build tier0
+
 // wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the perch's settings taken from loom.yaml's Code-Review keys, the board entry snapshot its discussion commit writes, the early refusals of a malformed or absent darn.yaml, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
 // Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
@@ -25,23 +27,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
-// wantDarnLandingCall is the landing call gateConfigWithTwoTiers renders over the whole tree.
-const wantDarnLandingCall = "lyx gate test --wait --tier 0 --tier 1 --all"
-
-// seedDarnHubConfig writes the hub-wide darn.yaml into hub's board directory with verifyAttempts substituted into the template.
-// Each old, new pair of replacements is applied after it.
-func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ...string) {
-	t.Helper()
-	configDir := filepath.Join(fabricengine.BoardDir(hub), "_lyx", "config")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
-	}
-	contents := strings.Replace(darnengine.ConfigTemplate(), "verify_attempts: 3", "verify_attempts: "+verifyAttempts, 1)
-	contents = strings.NewReplacer(replacements...).Replace(contents)
-	if err := os.WriteFile(filepath.Join(configDir, "darn.yaml"), []byte(contents), 0o644); err != nil {
-		t.Fatalf("WriteFile darn.yaml = %v; want nil", err)
-	}
-}
+// wantDarnLandingCall is the landing call gateConfigWithTwoTiers renders for the `finalize` key.
+const wantDarnLandingCall = "lyx gate test --wait --gate finalize"
 
 func TestWire_DarnRecipe(t *testing.T) {
 	t.Parallel()
@@ -101,16 +88,8 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if _, ok := c.env.Segments["Darn-Review"]; ok {
 			t.Error("a darn seed filled a Darn-Review segment; want the perch to be loom's Code-Review")
 		}
-		if command, err := c.env.VerifyCommand(); err != nil || command != wantDarnLandingCall {
-			t.Errorf("c.env.VerifyCommand() = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
-		}
-		// gateConfigWithTwoTiers lists tiers 0 and 1 for `landing` and tier 0 for `round`, so the landing call tells the told list apart.
-		round, err := c.env.Round()
-		if err != nil {
-			t.Fatalf("c.env.Round() error = %v; want nil", err)
-		}
-		if call := round.Render("--all"); call != wantDarnLandingCall {
-			t.Errorf("c.env.Round().Render(--all) = %q; want the landing call %q", call, wantDarnLandingCall)
+		if command, err := c.env.VerifyCommand("finalize"); err != nil || command != wantDarnLandingCall {
+			t.Errorf("c.env.VerifyCommand(finalize) = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
 		}
 	})
 
@@ -129,17 +108,17 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 	})
 
-	t.Run("with tree scope on the verify gate's told command stays the hub's whole verify", func(t *testing.T) {
+	t.Run("with a tree listed the verify gate's told command stays the row key's whole call", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
-		seedDarnHubConfig(t, loc.HubPath, "3", "tree_scope: {}", `tree_scope: {"docs": ""}`, `tree_scope_verify: ""`, `tree_scope_verify: "lyx gate test --wait --tier 1 {targets}"`)
+		seedDarnHubConfig(t, loc.HubPath, "3", "tree_scope: {}", `tree_scope: {"docs": ""}`)
 		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		if command, err := c.env.VerifyCommand(); err != nil || command != wantDarnLandingCall {
-			t.Errorf("c.env.VerifyCommand() = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
+		if command, err := c.env.VerifyCommand("finalize"); err != nil || command != wantDarnLandingCall {
+			t.Errorf("c.env.VerifyCommand(finalize) = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
 		}
 	})
 

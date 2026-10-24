@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // hook_test.go covers InstallPostCheckoutHook: idempotent install, non-clobbering
 // chain of an existing user hook, and correct weft-sibling branch resolution for

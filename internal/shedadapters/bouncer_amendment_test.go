@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bouncer_amendment_test.go covers the Bouncer's new review generation over a changed subject: the archive, the generation record, the amendment allowance and the note that scopes an amendment's review.
 
 package shedadapters

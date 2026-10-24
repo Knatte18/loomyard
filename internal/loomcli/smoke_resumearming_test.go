@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_resumearming_test.go pins the half of `loom resume` past the reed config load after a hub reconcile, on a hub whose reed config is good and whose tmux key is registered with the kit.
 // The reconcile half, which refuses at reed's config load before any server could start, is TestLoomResumeReconcilesTheHubConfigBeforeArming in the integration tier.

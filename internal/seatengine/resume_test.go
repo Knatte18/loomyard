@@ -1,3 +1,5 @@
+//go:build tier0
+
 // resume_test.go covers Engine.Probe and Engine.Resume: probing before anything is archived, attaching to a live chair, and telling it of the advisors the probe lost.
 
 package seatengine

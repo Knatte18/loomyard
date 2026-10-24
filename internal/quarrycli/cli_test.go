@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_test.go covers quarrycli's cobra seam: Command()'s exact child set.
 // Per-verb answer coverage lives in verbs_test.go.
 

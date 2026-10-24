@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // smoke_prebootstrap_integration_test.go drives the built lyx binary and the production seed primitives against real hub pairs in the states before a run bootstraps, and when the reed config is bad.
 // None of these behaviors reaches a tmux server: the refusals come before reed comes up, and the seed commit is plain git.

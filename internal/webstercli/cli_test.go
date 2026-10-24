@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_test.go covers the webstercli cobra seam through RunCLI: the PersistentPreRunE group-command guard and the help-tree stale-language check.
 // It also covers the spawn-free verbs (validate, status, await-batch, rebaseline, restore-plan, and the no-run refusals of accept-audit and restore-plan) and fabricSync's SkipGit-before-Open guard ordering directly, since none of those need a live tmux/claude substrate or even a git repository beyond a plain t.TempDir().
 // Pathspec-shape coverage now lives in sync_integration_test.go, which proves the exclude-file transients stay uncommitted through a real git repo rather than asserting a pathspec string shape against a since-deleted helper.
@@ -7,8 +9,6 @@ package webstercli
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
-	"sort"
 	"strings"
 	"testing"
 
@@ -24,10 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planglyph"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/indexkit"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -63,16 +60,6 @@ func TestCommand_LongStringsHaveNoStaleBatchLanguage(t *testing.T) {
 		}
 	}
 	walk(Command())
-}
-
-// containsString reports whether haystack contains needle.
-func containsString(haystack []string, needle string) bool {
-	for _, s := range haystack {
-		if s == needle {
-			return true
-		}
-	}
-	return false
 }
 
 // TestFabricSync_GuardOrdering verifies the FABRIC_SKIP_GIT bypass short-circuits before path validation, and that without it fabricSync validates the pair's paths before any git work.
@@ -142,34 +129,6 @@ func claudeInstructionFiles() ([]string, error) {
 	return []string{"CLAUDE.md", "CLAUDE.local.md"}, nil
 }
 
-// failingInstructionFiles is a lister that fails as for a master engine the engine set does not hold.
-func failingInstructionFiles() ([]string, error) {
-	return nil, fmt.Errorf("webster: the master role's engine %q is not held by this lyx: %w; way forward: set master in webster.yaml to an alias whose engine the set holds with lyx config webster, then re-run the verb", "gone", shuttleengine.ErrEngineNotRegistered)
-}
-
-// hubGeometryWithIndex returns the hub geometry of layout with the real code index the CLI layer wires.
-func hubGeometryWithIndex(layout *lyxcwd.Location) websterengine.Geometry {
-	geom := hubgeom.WebsterGeometry(layout)
-	geom.Index = planglyph.NewIndex(fabricengine.NewReferenceRule())
-	return geom
-}
-
-// onlyCreatePlan returns a one-card plan whose card Creates target.
-func onlyCreatePlan(language, target string) plankit.Plan {
-	return plankit.Plan{
-		Approved: true,
-		Language: language,
-		Framing:  "Framing.",
-		Cards: []plankit.Card{{
-			Number:  1,
-			Slug:    "only",
-			Summary: "placeholder card",
-			Groups:  []plankit.Group{{Label: "Create", Targets: []string{target}}},
-			Intent:  "placeholder card.",
-		}},
-	}
-}
-
 // twoCardUsesPlan returns a two-card plan in which the "consumer" card Uses the file the "producer" card Creates;
 // consumerNumber and producerNumber place the two cards, so the plan is in executable order only when the producer's number is lower.
 func twoCardUsesPlan(consumerNumber, producerNumber int) plankit.Plan {
@@ -229,12 +188,6 @@ func deleteOrderPlan(deleterNumber, editorNumber int) plankit.Plan {
 		cards[0], cards[1] = cards[1], cards[0]
 	}
 	return plankit.Plan{Approved: true, Framing: "Framing.", Cards: cards}
-}
-
-// seedValidPlanDir writes a valid plan with one card into dir.
-func seedValidPlanDir(t *testing.T, dir string) {
-	t.Helper()
-	plankit.Write(t, dir, onlyCreatePlan("", "internal/only/new.go"))
 }
 
 // TestValidateCmd_Envelopes drives validate over one plan state per row and checks its exit code and envelope:
@@ -468,26 +421,6 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 				t.Errorf("envelope = %v; want %v", got, tc.want)
 			}
 		})
-	}
-}
-
-// seedMissingIntentPlanDir writes a plan with a card missing the **Intent:** label.
-func seedMissingIntentPlanDir(t *testing.T, dir string) {
-	t.Helper()
-	files := plankit.Render(onlyCreatePlan("", "internal/only/new.go"))
-	card := files["01-only.md"]
-	cut := bytes.Index(card, []byte("\n**Intent:**"))
-	if cut < 0 {
-		t.Fatalf("rendered card has no Intent label to remove: %q", card)
-	}
-	files["01-only.md"] = card[:cut]
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("mkdir plan dir: %v", err)
-	}
-	for name, data := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
 	}
 }
 
@@ -934,37 +867,6 @@ func TestStatusCmd(t *testing.T) {
 
 var fakeDigest = websterengine.Digest{Batch: "01-first", Status: websterengine.DigestStatusDone}
 
-// testPlanFingerprint recomputes the plan-identity hash websterengine's own unexported fingerprint computes -- duplicated here since this test lives in webstercli, an external package, and that algorithm is deliberately not exported.
-// It must stay in lock-step with websterengine's own implementation: a SHA-256 digest over every "*.md" file's sorted name and contents in planDir.
-func testPlanFingerprint(t *testing.T, planDir string) string {
-	t.Helper()
-	entries, err := os.ReadDir(planDir)
-	if err != nil {
-		t.Fatalf("ReadDir(%q): %v", planDir, err)
-	}
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		names = append(names, e.Name())
-	}
-	sort.Strings(names)
-
-	h := sha256.New()
-	for _, name := range names {
-		data, err := os.ReadFile(filepath.Join(planDir, name))
-		if err != nil {
-			t.Fatalf("ReadFile(%q): %v", name, err)
-		}
-		h.Write([]byte(name))
-		h.Write([]byte{0})
-		h.Write(data)
-		h.Write([]byte{0})
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
-
 // newRunTestCLI returns newTestCLI's CLI with the identity batcher selected -- what PersistentPreRunE resolves for an empty active: -- and the one-card plan seeded.
 func newRunTestCLI(t *testing.T) *websterCLI {
 	t.Helper()
@@ -973,40 +875,6 @@ func newRunTestCLI(t *testing.T) *websterCLI {
 	c.batcher = identity
 	seedValidPlanDir(t, c.geom.PlanDir)
 	return c
-}
-
-// seedRunState writes a minimal state.json, fingerprint-matched to c's on-disk plan, standing in for the state the run verb would have already created before Master ever calls a bracket verb.
-func seedRunState(t *testing.T, c *websterCLI) *websterengine.State {
-	t.Helper()
-	st := &websterengine.State{
-		RunGUID:         "guid-1",
-		PlanFingerprint: testPlanFingerprint(t, c.geom.PlanDir),
-		MasterStrand:    "master-strand-1",
-		MasterSessionID: "master-session-1",
-		Batches:         map[int]*websterengine.BatchState{},
-	}
-	if err := websterengine.RestampPlanBaseline(st, c.geom.PlanDir, c.geom.WebsterDir); err != nil {
-		t.Fatalf("RestampPlanBaseline() error = %v", err)
-	}
-	if err := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st); err != nil {
-		t.Fatalf("SaveState() error = %v", err)
-	}
-	return st
-}
-
-// writeBatchReport seeds reportsDir with a batch-report YAML file for batch 1 ("01-only") at its plan-format-pinned filename, status OK, using websterengine's own WriteReport so the on-disk shape always matches ParseReport's contract.
-// headSHA must equal the worktree's actual current HEAD when the caller drives record-batch's terminal path;
-// any non-empty placeholder is fine for await-batch (presence-only) and recover-batch (no such cross-check).
-func writeBatchReport(t *testing.T, reportsDir, headSHA string) {
-	t.Helper()
-	if err := os.MkdirAll(reportsDir, 0o755); err != nil {
-		t.Fatalf("mkdir reports dir: %v", err)
-	}
-	path := filepath.Join(reportsDir, websterengine.ReportFileName(1, "only"))
-	report := &websterengine.Report{Status: websterengine.ReportStatusOK, HeadSHA: headSHA}
-	if err := websterengine.WriteReport(path, report); err != nil {
-		t.Fatalf("write batch report: %v", err)
-	}
 }
 
 // seedTwoCardPlan rewrites the plan in planDir as two cards: card 1 "only" and card 2 "second" with the given intent text, so a later edit to card 2 changes the plan fingerprint without touching card 1.
@@ -1032,33 +900,6 @@ func seedTwoCardPlan(t *testing.T, planDir, secondIntent string) {
 			},
 		},
 	})
-}
-
-// failingFabricOpen is an openFabric that cannot reach the fabric repo, so fabricSync errors exactly where a failed fabric commit would.
-func failingFabricOpen() (*fabricengine.Fabric, error) {
-	return nil, fmt.Errorf("fabric commit failed (injected)")
-}
-
-// wantWayForward fails unless got carries the trailing way-forward clause and names substr in it.
-func wantWayForward(t *testing.T, got, substr string) {
-	t.Helper()
-	i := strings.Index(got, "way forward:")
-	if i < 0 {
-		t.Fatalf("output has no way forward clause; got %q", got)
-	}
-	if !strings.Contains(got[i:], substr) {
-		t.Errorf("way forward clause missing %q; got %q", substr, got[i:])
-	}
-}
-
-// refusedVerbClause is the clause every way forward that names a fabric verb a sandboxed session cannot run carries.
-const refusedVerbClause = "a session lyx refuses the verb from reports status: FAILED and the orch runs it"
-
-// wantFabricSyncWayForward fails unless got carries a way forward that names the fabric commit and the refused-verb clause.
-func wantFabricSyncWayForward(t *testing.T, got string) {
-	t.Helper()
-	wantWayForward(t, got, "lyx fabric commit")
-	wantWayForward(t, got, refusedVerbClause)
 }
 
 // TestAwaitBatchCmd_ReportPresenceEnvelope proves await-batch's two envelopes: {"report": true} the moment the batch's report file exists, and {"report": false} once the bounded wait elapses with no report -- the first step passes --wait 1ns explicitly to keep the window near-instant, versus the production default (websterengine.DefaultAwaitWaitS) used whenever --wait is omitted -- with no state.json ever read or written, since the verb is deliberately stateless.

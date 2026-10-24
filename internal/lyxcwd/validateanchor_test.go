@@ -1,3 +1,5 @@
+//go:build tier0
+
 // validateanchor_test.go covers ValidateAnchorRel, the single validator both sides of the
 // .lyx-anchor marker run values through.
 // It spawns nothing — the function is pure string/path math — so this file stays untagged, in

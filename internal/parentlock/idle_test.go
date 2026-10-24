@@ -1,3 +1,5 @@
+//go:build tier0
+
 // idle_test.go covers the idle rule's reading of agent states against a bound.
 
 package parentlock

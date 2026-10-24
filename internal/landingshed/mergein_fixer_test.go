@@ -1,3 +1,5 @@
+//go:build tier0
+
 // mergein_fixer_test.go drives Merge-In's alignment through the merge fixer loop over the Merge-In fixture's fake seat runner, tips, gate and line-change reads.
 
 package landingshed
@@ -7,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -148,6 +151,10 @@ func TestMergeIn_Fixer(t *testing.T) {
 		}
 		if got := fx.seats.tables[0].Gate[0].Attempts; got != 2 {
 			t.Errorf("gate attempts = %d; want the 2 turns the entry has", got)
+		}
+		// One call for the row's own gate and one per fixer turn, all with the spawning row's key.
+		if want := []string{"merge-in", "merge-in", "merge-in"}; !slices.Equal(fx.gate.closureKeys, want) {
+			t.Errorf("VerifyCommand keys = %v; want %v", fx.gate.closureKeys, want)
 		}
 
 		spent := newMergeInFixture(t)

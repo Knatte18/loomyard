@@ -1,3 +1,5 @@
+//go:build tier0
+
 // engine_test.go drives Engine.Run against a scripted fakeRunner (RoundRunner) and a scripted
 // queuedShuttle (judge/targeting), adapted to the attempt-level RoundRunner seam.
 // Deliberately scoped to the seam contract itself: that the generalized loop works against a

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // worktree_test.go covers WorktreeChangedFiles against a real git repository built under t.TempDir(), reusing gitrepo_test.go's newRepo/writeFile/ commitAll fixture helpers rather than redeclaring them — this file lives in the same external package (gitrepo_test) as gitrepo_test.go, so a same-named helper here would collide at compile time.
 

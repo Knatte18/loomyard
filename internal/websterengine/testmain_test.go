@@ -2,8 +2,8 @@
 // gitkit.HermeticGitEnv() runs once before any test, so websterengine's git-spawning fixtures
 // (begin-batch's HeadSHA capture, record-batch's ChangedFiles/Dirty, chain rollback's ResetHard)
 // never inherit the operator's global gitconfig (see PATTERN-test-isolation).
-// Every untagged test in this package still spawns nothing;
-// only the //go:build integration-tagged files ever reach git,
+// Every tier0 test in this package still spawns nothing;
+// only the //go:build tier1 files ever reach git,
 // but TestMain must run for the whole test binary regardless of which tests are compiled in.
 
 package websterengine

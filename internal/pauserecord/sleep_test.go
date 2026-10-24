@@ -1,3 +1,5 @@
+//go:build tier0
+
 // sleep_test.go pins sleep detection and the awake-time measure over sleeps and pauses.
 
 package pauserecord

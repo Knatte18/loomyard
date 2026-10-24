@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // hub_test.go proves the bare-pair template builder and the CloneAndWire-backed hub factory each do what their doc comments claim: the template carries the symbolic-ref gotcha's fix and a genuinely empty weft bare, and NewHub produces a real, fully-wired fabric hub rather than a hand-assembled stand-in — the whole reason NewHub calls CloneAndWire instead of CloneHub alone.
 // It also proves the helpers a built hub offers — the config seeders, AddPair, AddPairWith and OpenFabric — and that hub teardown is safe.

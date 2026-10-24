@@ -1,3 +1,5 @@
+//go:build tier0
+
 // deliver_test.go pins delivery into panes through the fake seam: reminders, injects, the probe and sweep intervals, and the removed-holder sweep.
 
 package creelengine_test

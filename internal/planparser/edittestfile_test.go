@@ -1,3 +1,5 @@
+//go:build tier0
+
 // edittestfile_test.go covers CheckEditTestFile over in-memory plans.
 
 package planparser_test

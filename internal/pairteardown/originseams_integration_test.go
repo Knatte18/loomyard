@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // originseams_integration_test.go pins HubSeamOptions' reads of the pause record and the parent lock store on a real git repository, which the untagged tests cannot create.
 

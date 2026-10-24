@@ -1,4 +1,4 @@
-//go:build integration || tmux
+//go:build tier1 || tier2
 
 // smoke_helpers_test.go holds the fixtures and subprocess helpers shared by the integration-tier and tmux-tier smoke files:
 // a real wired hub with one pair, the runner of the built cmd/lyx binary, the run seeds, and the bad-reed-config fixture.

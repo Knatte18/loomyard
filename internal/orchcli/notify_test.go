@@ -1,3 +1,5 @@
+//go:build tier0
+
 // notify_test.go proves notifyPrime over fake creel clients: which identity posts the notice, when it falls back to the program, and what a refusal returns.
 
 package orchcli

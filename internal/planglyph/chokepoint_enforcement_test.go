@@ -1,3 +1,5 @@
+//go:build tier0
+
 // chokepoint_enforcement_test.go pins planglyph's two batched-boundary chokepoints per the overview's Decision: ast-enforcement-idiom:
 // every (*quarry.Repo).Resolve call site must sit inside resolveTargets (repo.go), which owns the ensureResolveCoverage length guard,
 // and every quarry.Name call site must sit inside nameDeclarations (handle.go), which owns the length guard.

@@ -1,4 +1,6 @@
-// tacklerconsume_test.go — untagged Tier-1 tests for consuming a tackler's resume verdict, over a real status file in a temp dir.
+//go:build tier0
+
+// tacklerconsume_test.go — tier 0 tests for consuming a tackler's resume verdict, over a real status file in a temp dir.
 
 package sheddriver
 

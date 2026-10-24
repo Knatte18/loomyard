@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // add_rollback_adopt_test.go proves Add's rollback never deletes a
 // pre-existing (adopted) weft branch: when Add merely adopted an existing

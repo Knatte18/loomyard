@@ -1,3 +1,5 @@
+//go:build tier0
+
 // directory_test.go pins the name directory on a fake tmux: which strands map to which rows, that a retiring strand's row carries the flag, and that a cold session reports every row dormant.
 
 package reedengine

@@ -70,7 +70,7 @@ type Geometry struct {
 	// GateWaitDir is the told per-worktree directory a slotted card-verify rerun writes its wait record into.
 	// Empty in standalone mode, where no pool means no wait.
 	GateWaitDir string
-	// GateConfig is the told reader of the gate config the verify gate renders its `final` gate call from, read at each call so an edit between two arrivals takes effect.
+	// GateConfig is the told reader of the gate config the verify gate renders its `webster` gate call from, read at each call so an edit between two arrivals takes effect.
 	// A refusal it returns names `lyx config gate`.
 	GateConfig func() (gateslot.Config, error)
 	// ParentName is the told parent agent name the master and recovery prompts render their parent directive from.

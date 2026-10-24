@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // reconcile_integration_test.go holds the reconcile scenario that spawns gitexec.RunGit(["init"], …) to seed a real git repo: the dry-run and --apply round trips and the --set-then-reconcile drift check.
 // This file is integration-tagged per the Test Tier Purity Invariant; the spawn-free not-a-git-repo assertion lives in TestRunCLIIn_FromNonGitDirectory.

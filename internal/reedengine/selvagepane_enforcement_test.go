@@ -1,3 +1,5 @@
+//go:build tier0
+
 // selvagepane_enforcement_test.go enforces the Selvage-confinement rule this batch's extraction exists to satisfy: every identifier naming Selvage lives in selvagepane.go, with one narrow carve-out elsewhere.
 // selvagepane.go owns the whole Selvage seam;
 // state.go is allowed only for the SelvagePaneID field declaration ReedState carries (state.go's subject is the persisted record in general, not Selvage specifically).

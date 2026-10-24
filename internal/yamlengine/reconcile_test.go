@@ -1,3 +1,5 @@
+//go:build tier0
+
 // reconcile_test.go contains table-driven tests for Reconcile and MissingKeys.
 
 package yamlengine

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // porcelain_test.go covers parsePorcelainZ over literal `git status --porcelain -z` output, without spawning git.
 
 package verifytree

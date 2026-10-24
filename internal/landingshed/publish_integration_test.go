@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // publish_integration_test.go drives Merge-In against a real pair built by the
 // standard hub fixture (internal/hubforge), with only the conflict-resolution session faked.

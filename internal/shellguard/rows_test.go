@@ -1,3 +1,5 @@
+//go:build tier0
+
 // rows_test.go pins the package's import set and the refusal of forbidden characters in a row's steer and notice.
 
 package shellguard

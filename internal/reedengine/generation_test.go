@@ -1,3 +1,5 @@
+//go:build tier0
+
 // generation_test.go covers the pane-generation stamp: parsing a display-message answer, the two
 // comparison predicates, and adoptPaneGenerationLocked's three outcomes (adopt, clear, refuse)
 // driven through TmuxCmd's execHook seam so no live server is required.

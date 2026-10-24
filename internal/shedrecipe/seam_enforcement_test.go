@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces this package's half of the Shed Recipe Registry Invariant's
 // told-geometry rule: production code in internal/shedrecipe takes every absolute path it operates
 // on from its caller and has no direct production import of internal/lyxcwd.

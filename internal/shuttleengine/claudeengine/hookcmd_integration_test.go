@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // hookcmd_integration_test.go runs the recording hook commands settings.go builds under `sh` against payloads on standard input, pinning what they append to the events file.
 // It runs rendered shell guard commands the same way, pinning that the rendering greps each pattern as written.

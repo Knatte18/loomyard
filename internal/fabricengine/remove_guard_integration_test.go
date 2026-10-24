@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remove_guard_integration_test.go pins the two guards that keep `lyx fabric remove` from deleting a
 // directory git itself declined to remove.

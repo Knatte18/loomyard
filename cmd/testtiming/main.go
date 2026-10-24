@@ -5,13 +5,14 @@
 // It is the runnable companion to docs/benchmarks/test-suite-timing.md and
 // produces the tiers documented there:
 //
-//	go run ./cmd/testtiming                        # Tier 1 — offline, fast (no git subprocesses)
-//	go run ./cmd/testtiming -full                  # Tier 2 — integration, slow (real git; ~a minute)
-//	go run ./cmd/testtiming -tags integration,tmux # any tag set; -full means -tags integration
+//	go run ./cmd/testtiming                  # tier0 — offline, fast (no git subprocesses); runs -tags tier0
+//	go run ./cmd/testtiming -full            # tier1 — slow (real git; ~a minute); runs -tags tier1
+//	go run ./cmd/testtiming -tags tier1,tier2 # any tag set; -full means -tags tier1
 //
+// The tiers are disjoint: -tags tier1 runs none of tier0's tests, so a run that wants several tiers names every tag.
 // Passing both -full and -tags is refused.
 //
-// It shells out to `go test ./... -json -count=1` (adding `-tags <tags>` when tags are given), parses the JSON event stream, and prints per-package times, the measured wall-clock, and the slowest top-level tests.
+// It shells out to `go test ./... -json -count=1 -tags <tags>` (tier0 when no tags are given), parses the JSON event stream, and prints per-package times, the measured wall-clock, and the slowest top-level tests.
 // Each package row carries its top-level test count (TESTS) and serial time (SERIAL), the sum of those tests' elapsed seconds; subtests count in neither.
 // The header line shows the exact command run, tags included.
 // Exit code mirrors the underlying `go test`: 0 on success, 1 if any package failed to build or any test failed.
@@ -23,7 +24,7 @@
 // It runs the selected packages one at a time, each as its own `go test -json -count=1` child over one package, inside the one gate slot the run holds when the working directory is in a hub, and under the CPU count otherwise.
 // Every mode, the timing table and -redundancy included, holds one slot for its whole run in a hub, its `lyx` prebuild inheriting it, and sets its go commands' GOFLAGS through gateslot.HolderEnv.
 // It measures outside `lyx gate test`, since its modes measure what a tier run hides.
-// -pkg takes comma-separated package patterns and defaults to every package; -tags and -full pick the tier as in the timing mode.
+// -pkg takes comma-separated package patterns and defaults to every package; -tags and -full pick the tier as in the timing mode, tier0 when neither is given.
 // The columns are PACKAGE, WALL (child start to exit), CPU, PEAK_MEM, PROCS and LEFTOVER, plus a FAIL mark.
 // CPU and PEAK_MEM come from the child's cgroup when `systemd-run --user --scope` works, read from cpu.stat's usage_usec and memory.peak while the scope lives, and from the child's rusage otherwise, where PEAK_MEM is the largest single process's max RSS and the row carries a rusage mark.
 // PROCS is the delta of the `processes` line of /proc/stat across the child, so it is system-wide and blank where /proc/stat is unreadable.
@@ -40,7 +41,7 @@
 //	go run ./cmd/testtiming -redundancy [-pkg ./internal/x,./internal/y] [-out report.md] [-tags t]
 //
 // -pkg takes comma-separated package patterns, each passed to `go` as its own argument.
-// -tags defaults to integration,tmux in this mode, every tier but llm.
+// -tags defaults to tier0,tier1,tier2,integration,tmux in this mode, every tier but llm under both spellings.
 // A run over every package of the module, or with no report at -out yet, writes the whole report.
 // Any other run splices into the existing report: only the measured packages' sections change, a package with no section yet is inserted in import-path order, and a package that lists no tests loses its section.
 // The header and every unmeasured section stay byte-identical, and a run whose tags differ from the report's header refuses and writes nothing.
@@ -102,8 +103,8 @@ type testResult struct {
 }
 
 func main() {
-	full := flag.Bool("full", false, "run the integration tier (same as -tags integration): real git, slow (~a minute)")
-	tagFlag := flag.String("tags", "", "build tags to run under, comma-separated (e.g. integration,tmux); excludes -full")
+	full := flag.Bool("full", false, "run the tier1 tier (same as -tags tier1): real git, slow (~a minute)")
+	tagFlag := flag.String("tags", "", "build tags to run under, comma-separated (e.g. tier1,tier2); excludes -full")
 	top := flag.Int("top", 15, "how many of the slowest top-level tests to list")
 	redundancy := flag.Bool("redundancy", false, "per-test coverage redundancy mode: write a markdown report instead of the timing table")
 	out := flag.String("out", defaultRedundancyOut, "with -redundancy: the markdown report to write")
@@ -150,25 +151,40 @@ func modeConflict(redundancy, resources bool) error {
 	return nil
 }
 
-// resolveTags turns the -full and -tags flags into the build-tag string, empty for the untagged tier.
+// offlineTier is the tag of the tier that is offline and spawns nothing, the one a run with no tags of its own measures.
+const offlineTier = "tier0"
+
+// resolveTags turns the -full and -tags flags into the build-tag string, empty for a run with no tags of its own.
 func resolveTags(full bool, tags string) (string, error) {
 	if full && tags != "" {
-		return "", errors.New("-full and -tags are mutually exclusive: -full means -tags integration")
+		return "", errors.New("-full and -tags are mutually exclusive: -full means -tags tier1")
 	}
 	if full {
-		return "integration", nil
+		return "tier1", nil
 	}
 	return tags, nil
 }
 
+// isOfflineRun reports whether tags select the offline tier: none, or tier0 alone.
+func isOfflineRun(tags string) bool {
+	return tags == "" || tags == offlineTier
+}
+
+// goTestTags returns the tags a `go` command runs under: tags, or the offline tier when a run has none of its own.
+func goTestTags(tags string) string {
+	if tags == "" {
+		return offlineTier
+	}
+	return tags
+}
+
 func run(tags string, top int) error {
-	args := []string{"test"}
-	cmdline := "go test"
-	tier := "Tier 1 (offline)"
-	if tags != "" {
-		args = append(args, "-tags", tags)
-		cmdline += " -tags " + tags
-		tier = "Tags: " + tags
+	goTags := goTestTags(tags)
+	args := []string{"test", "-tags", goTags}
+	cmdline := "go test -tags " + goTags
+	tier := "Tags: " + goTags
+	if isOfflineRun(tags) {
+		tier = "Tier 0 (offline)"
 	}
 	args = append(args, "./...", "-json", "-count=1")
 	cmdline += " ./... -count=1"
@@ -193,7 +209,7 @@ func run(tags string, top int) error {
 		cmd.Stderr = os.Stderr
 
 		fmt.Printf("Running %s  —  %s\n", tier, cmdline)
-		if tags != "" {
+		if !isOfflineRun(tags) {
 			fmt.Println("(real local git; this can take ~a minute)")
 		}
 		fmt.Println()

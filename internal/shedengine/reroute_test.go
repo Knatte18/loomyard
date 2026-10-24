@@ -1,3 +1,5 @@
+//go:build tier0
+
 // reroute_test.go covers the reroute edge and the halting Stuck: a reroute's routing and episode effect, the three-reroute cap, the wiring fault and OnReroute validation.
 
 package shedengine

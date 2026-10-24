@@ -1,4 +1,4 @@
-//go:build tmux && linux
+//go:build tier2 && linux
 
 // follow_integration_test.go proves the follow state against a real tmux with real attached clients.
 // A run start turns follow on and moves every client to the relevant window, a second attach moves the clients only while follow is on, and a resume or a failed option write changes nothing it should not.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // mergerecord_test.go covers the merge record codec and the overlap computation.
 
 package landingshed

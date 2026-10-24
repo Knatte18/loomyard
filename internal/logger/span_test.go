@@ -1,3 +1,5 @@
+//go:build tier0
+
 // span_test.go covers Span's explicit-parent dotted-path construction, sibling independence (no global to leak between spans), End's record levels, and the durable sink's visibility of span= records versus open/close records.
 // Every sink-touching case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one call across cases, per sink.go's SetDurableSinkDir doc.
 // No test in this file calls t.Parallel: each mutates process-global logger state (verbosity, the output writer, the durable sink).

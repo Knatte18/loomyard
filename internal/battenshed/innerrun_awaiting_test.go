@@ -1,3 +1,5 @@
+//go:build tier0
+
 // innerrun_awaiting_test.go covers the inner-run watch's awaiting hand-off, the resume once per decision, and the done arm's wait for the driver strand.
 
 package battenshed

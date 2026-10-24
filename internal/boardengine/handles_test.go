@@ -1,3 +1,5 @@
+//go:build tier0
+
 // handles_test.go — tests of entry handles: their assignment on write and load, and the Handle selector.
 
 package boardengine_test

@@ -1,4 +1,6 @@
-// isalive_test.go covers IsAlive, defined identically-named on both platforms, so this file needs no //go:build tag.
+//go:build tier0
+
+// isalive_test.go covers IsAlive, defined identically-named on both platforms, so this file carries no platform constraint.
 // It is allowed under this package's Test Tier Purity Invariant allowlist entry ("process control is the package's subject — its tests must spawn"): the "exited child" row spawns a short-lived exec.Command child to obtain a confirmed-dead PID fixture.
 
 package proc

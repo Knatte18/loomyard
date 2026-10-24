@@ -1,3 +1,5 @@
+//go:build tier0
+
 // childdriverkind_test.go pins childDriverKind's resolution of a child run's driver over temp config layers.
 
 package battencli

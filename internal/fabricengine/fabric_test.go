@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fabric_test.go — unit tests for the Fabric handle, sync options, and ScopedPathspec.
 // No git spawn: newPaired only stat-checks paths, and Open needs nothing beyond a hand-built
 // *lyxcwd.Location for that same stat-only contract to hold.

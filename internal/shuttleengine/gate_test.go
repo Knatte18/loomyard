@@ -1,3 +1,5 @@
+//go:build tier0
+
 // gate_test.go covers the gate attempt loop end to end, driven over the package's existing
 // fakeReed/fakeEngine fakes, newFixture, and the fakeClock/multiStepClock
 // seams — hermetic, untagged: it spawns no external process, builds no real fixture hub, and never

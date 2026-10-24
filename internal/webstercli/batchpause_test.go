@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // batchpause_test.go covers the pause refusal begin-batch, recover-batch and fix-verify make before they read or change any state, and the lookup of Master's strand it claims.
 

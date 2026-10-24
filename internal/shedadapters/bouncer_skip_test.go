@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bouncer_skip_test.go covers BouncerConfig.Skip -- the optional seam that settles a segment as approved without a seed or judge spawn when the caller says the artifact needs no review.
 
 package shedadapters

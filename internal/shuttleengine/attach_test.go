@@ -1,3 +1,5 @@
+//go:build tier0
+
 // attach_test.go covers Runner.Attach's scan, disposition, combine, and reconstruction, driven over
 // a temp run-dir root with hand-written run.json fixtures and the existing fakeReed/fakeEngine/
 // fakeClock doubles. Reed's own state file is seeded through the exported reedengine.SaveState so

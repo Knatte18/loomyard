@@ -1,11 +1,12 @@
-// roundgate_test.go covers the told gate-list source the verify gate reads at each arrival.
+//go:build tier0
+
+// roundgate_test.go covers the told gate-key call source the verify gate and the landing producers read at each arrival.
 
 package loomcli
 
 import (
 	"errors"
 	"os"
-	"slices"
 	"strings"
 	"testing"
 
@@ -14,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-func TestGateListSource(t *testing.T) {
+func TestGateCallSource(t *testing.T) {
 	t.Parallel()
 
 	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
@@ -23,40 +24,26 @@ func TestGateListSource(t *testing.T) {
 	if err := os.MkdirAll(fabricengine.BoardDir(hub), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	dirs := fabricengine.ConfigDirs(loc)
+	source := gateCallSource(fabricengine.ConfigDirs(loc))
 
-	if _, err := gateListSource(dirs, "landing")(); !errors.Is(err, gateslot.ErrConfigAbsent) {
-		t.Errorf("gateListSource before any gate.yaml exists = %v; want an error wrapping gateslot.ErrConfigAbsent", err)
+	if _, err := source("code-burler-fix"); !errors.Is(err, gateslot.ErrConfigAbsent) {
+		t.Errorf("gateCallSource(dirs)(code-burler-fix) before any gate.yaml exists = %v; want an error wrapping gateslot.ErrConfigAbsent", err)
 	}
 
 	writeHubGateConfig(t, hub, gateConfigWithTwoTiers())
-	tests := []struct {
-		name      string
-		gate      string
-		wantTiers []int
-		wantCall  string
-	}{
-		{"Landing", "landing", []int{0, 1}, "lyx gate test --wait --tier 0 --tier 1 --base abc"},
-		{"Round", "round", []int{0}, "lyx gate test --wait --tier 0 --base abc"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got, err := gateListSource(dirs, tt.gate)()
-			if err != nil {
-				t.Fatalf("gateListSource(%q)() error = %v; want nil", tt.gate, err)
-			}
-			if !slices.Equal(got.Tiers, tt.wantTiers) {
-				t.Errorf("gateListSource(%q)().Tiers = %v; want %v", tt.gate, got.Tiers, tt.wantTiers)
-			}
-			if call := got.Render("--base", "abc"); call != tt.wantCall {
-				t.Errorf("gateListSource(%q)().Render(--base abc) = %q; want %q", tt.gate, call, tt.wantCall)
-			}
-		})
+	const wantCall = "lyx gate test --wait --gate code-burler-fix"
+	if got, err := source("code-burler-fix"); err != nil || got != wantCall {
+		t.Errorf("gateCallSource(dirs)(code-burler-fix) = %q, %v; want %q, nil", got, err, wantCall)
 	}
 
-	_, err := gateListSource(dirs, "nosuch")()
-	if err == nil || !strings.Contains(err.Error(), "lyx config gate") {
-		t.Errorf("gateListSource(nosuch)() error = %v; want a refusal naming lyx config gate", err)
+	// An edit between two calls is seen: listing a tier the hub does not declare turns the key into a refusal.
+	edited := strings.NewReplacer("  code-burler-fix: {tiers: [0, 1]", "  code-burler-fix: {tiers: [0, 7]").Replace(gateConfigWithTwoTiers())
+	writeHubGateConfig(t, hub, edited)
+	if got, err := source("code-burler-fix"); err == nil || !strings.Contains(err.Error(), "lyx config gate") {
+		t.Errorf("gateCallSource(dirs)(code-burler-fix) after the edit = %q, %v; want a refusal naming lyx config gate", got, err)
+	}
+
+	if got, err := source("nosuch"); err == nil || !strings.Contains(err.Error(), "lyx config gate") {
+		t.Errorf("gateCallSource(dirs)(nosuch) = %q, %v; want a refusal naming lyx config gate", got, err)
 	}
 }

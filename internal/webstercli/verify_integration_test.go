@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // verify_integration_test.go drives the `verify` verb against a real scratch repo and real shell processes, so it carries the integration tag.
 // The plan, the verify directory and the webster directories all lie outside the repo, so a verify run never dirties the tree it checks.
@@ -35,7 +35,7 @@ type verifyFixture struct {
 	Anchor   string
 }
 
-// verifyGateConfig returns the gate.yaml a fixture worktree commits: tier0 runs command as a shell stand-in, every gate lists it, and the `final` gate lists finalTier instead.
+// verifyGateConfig returns the gate.yaml a fixture worktree commits: tier0 runs command as a shell stand-in, every key lists it, and the `webster` key lists finalTier instead.
 func verifyGateConfig(t *testing.T, command string, finalTier int) []byte {
 	t.Helper()
 	data, err := yaml.Marshal(map[string]any{
@@ -45,7 +45,14 @@ func verifyGateConfig(t *testing.T, command string, finalTier int) []byte {
 			"tier0": map[string]any{"about": "shell stand-in", "command": command, "timeout_min": 1, "counter": "go-json"},
 		},
 		"gates": map[string]any{
-			"card": []int{0}, "batch": []int{0}, "round": []int{0}, "final": []int{finalTier}, "landing": []int{0}, "publish": []int{0},
+			"card":            map[string]any{"tiers": []int{0}, "scope": "card"},
+			"batch":           map[string]any{"tiers": []int{0}, "scope": "card"},
+			"webster":         map[string]any{"tiers": []int{finalTier}, "scope": "all"},
+			"merge-in":        map[string]any{"tiers": []int{0}, "scope": "all"},
+			"finalize":        map[string]any{"tiers": []int{0}, "scope": "all"},
+			"webster-fix":     map[string]any{"tiers": []int{0}, "scope": "diff"},
+			"darn-write":      map[string]any{"tiers": []int{0}, "scope": "diff"},
+			"code-burler-fix": map[string]any{"tiers": []int{0}, "scope": "diff"},
 		},
 	})
 	if err != nil {

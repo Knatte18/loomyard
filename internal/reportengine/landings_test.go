@@ -1,3 +1,5 @@
+//go:build tier0
+
 // landings_test.go tests the landing joins, kinds and the fresh-code rule over fake parent, records and board repositories.
 
 package reportengine

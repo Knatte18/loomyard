@@ -1,3 +1,5 @@
+//go:build tier0
+
 // resume_test.go pins `lyx loom resume` outcome by outcome over fakes for the driver directory, the merge probe and the driver sender, with real status, run-lock and park-marker files in a temp directory.
 // It also pins that the verb takes the bootstrap lock before reading anything.
 

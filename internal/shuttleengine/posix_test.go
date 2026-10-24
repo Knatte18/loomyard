@@ -1,3 +1,5 @@
+//go:build tier0
+
 // posix_test.go tables PosixPath's conversion and rejection cases: drive root, spaces,
 // forward-slash input, UNC rejection, and relative rejection.
 

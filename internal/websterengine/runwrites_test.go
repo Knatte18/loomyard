@@ -1,3 +1,5 @@
+//go:build tier0
+
 // runwrites_test.go covers loadRunWrites: every recorded Master session is audited and its events merged,
 // a session id recorded twice is audited once, an audit error surfaces naming the session,
 // and writtenWorktreePaths turns the events into worktree-relative paths.

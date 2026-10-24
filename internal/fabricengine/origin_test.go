@@ -1,3 +1,5 @@
+//go:build tier0
+
 // origin_test.go — unit tests for the Origin provenance record type and its three path accessors.
 // Every Location here comes from locationkit.Location, per the Test
 // Tier Purity Invariant: no git spawn, no resolution.

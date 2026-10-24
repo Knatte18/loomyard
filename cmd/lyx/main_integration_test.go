@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // main_integration_test.go holds the module-dispatcher tests that spawn
 // gitkit.Git(t, cwd, "init") to seed a real git repo so lyxcwd.Resolve

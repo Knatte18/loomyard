@@ -727,9 +727,8 @@ func dirtyPathsOutsideRunRecords(taskLocation *lyxcwd.Location) ([]string, error
 // commandDeps returns the Env.Command facts and runner of the Open-Window, Seed-IDE and Open-IDE rows.
 // The commands run in the prime, and {task_dir} is the task worktree's anchor path, located when a command holds it.
 // Each command's output goes to a command-<row>.log under the run's scratch directory.
-// --open-terminal forces Open-Window's switch on whatever the task's batten.yaml says.
 func (c *battenCLI) commandDeps(location *lyxcwd.Location, slug, executable string, locateTask func() (*lyxcwd.Location, error)) shedadapters.CommandDeps {
-	deps := shedadapters.CommandDeps{
+	return shedadapters.CommandDeps{
 		Lyx:  executable,
 		Slug: slug,
 		TaskDir: func() (string, error) {
@@ -746,10 +745,6 @@ func (c *battenCLI) commandDeps(location *lyxcwd.Location, slug, executable stri
 		Run:   runRowCommand,
 		Rerun: fmt.Sprintf("lyx batten run %s", slug),
 	}
-	if c.openTerminalFlag {
-		deps.Forced = []string{battenrecipe.NameOpenWindow}
-	}
-	return deps
 }
 
 // wire builds and stores the shedrecipe.Env and shedbuild.ShedPaths the run and status verbs
@@ -1348,7 +1343,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	}
 
 	// Each setting is read when its row is reached, over the task worktree located then, so a task's run_settings in that worktree's local layer switch a row per task.
+	// --open-terminal answers Open-Window's own setting true for its own run, whatever the task's config says.
 	env.Setting = func(module, key string) (any, error) {
+		if c.openTerminalFlag && module == "batten" && key == "open_window" {
+			return true, nil
+		}
 		taskLocation, err := locateTask()
 		if err != nil {
 			return nil, err
@@ -1357,6 +1356,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	}
 	// A Command row's command is read from the template and the board default layer only, the layers deploy and darn's verify are read from.
 	env.ExecutableSetting = configreg.SettingLookup(configengine.Dirs{Board: fabricengine.ConfigDirs(location).Board})
+	// A recipe row's entry gate checks its setting operands at build, which needs no task worktree, and names the resume command in its evaluation errors.
+	env.SettingKnown = configreg.CheckSettingKey
+	env.Resume = fmt.Sprintf("lyx batten run %s", slug)
 	env.Command = c.commandDeps(location, slug, executable, locateTask)
 
 	c.clientAttached = func() (bool, error) {

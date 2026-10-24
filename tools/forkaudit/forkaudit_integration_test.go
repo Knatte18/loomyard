@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // forkaudit_integration_test.go runs forkaudit.sh against temporary directories and checks its exit codes, refusals and report.
 

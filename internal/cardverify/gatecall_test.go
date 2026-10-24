@@ -1,3 +1,5 @@
+//go:build tier0
+
 // gatecall_test.go covers IsGateCall, the check that picks a line the runner leaves unslotted and unbounded.
 
 package cardverify

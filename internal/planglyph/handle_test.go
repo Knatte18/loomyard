@@ -1,3 +1,5 @@
+//go:build tier0
+
 // handle_test.go covers CanonicalizeHandles: the batched Name call, positional matching, the
 // Rename-derived source, failure and collision handling, and the on-disk rewrite.
 
@@ -5,66 +7,15 @@ package planglyph
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
-	"sort"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
-
-// writePlanFixture writes a minimal, valid on-disk plan directory from cards (keyed by card
-// number, valued by the card body markdown following the "# Card N — cardN" heading), then parses
-// it, returning both the directory and the parsed *planparser.Plan.
-func writePlanFixture(t *testing.T, cards map[int]string) (string, *planparser.Plan) {
-	t.Helper()
-	dir := t.TempDir()
-
-	numbers := make([]int, 0, len(cards))
-	for n := range cards {
-		numbers = append(numbers, n)
-	}
-	sort.Ints(numbers)
-
-	// plankit renders the overview and the Card Index; each card file is then replaced by its raw body, which is the part under test.
-	spec := plankit.Plan{Approved: true, Language: "go", Framing: "framing"}
-	for _, n := range numbers {
-		spec.Cards = append(spec.Cards, plankit.Card{Number: n, Slug: fmt.Sprintf("card%d", n), Summary: "summary"})
-	}
-	files := plankit.Render(spec)
-	for _, n := range numbers {
-		slug := fmt.Sprintf("card%d", n)
-		files[fmt.Sprintf("%02d-%s.md", n, slug)] = []byte(fmt.Sprintf("# Card %d — %s\n\n%s\n", n, slug, cards[n]))
-	}
-	for name, data := range files {
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, data, 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) failed: %v", path, err)
-		}
-	}
-
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan(%q) returned error: %v", dir, err)
-	}
-	return dir, plan
-}
-
-// readCardFile returns card n's own file content from dir.
-func readCardFile(t *testing.T, dir string, n int, slug string) string {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(dir, fmt.Sprintf("%02d-%s.md", n, slug)))
-	if err != nil {
-		t.Fatalf("ReadFile(card %d) failed: %v", n, err)
-	}
-	return string(data)
-}
 
 // TestCanonicalizeHandles_Rewrites covers CanonicalizeHandles rewriting the draft handles of a plan into their canonical spelling without a finding.
 // Create declarations and a Rename-derived declaration ride one batched call; each declaration is matched back to its own handle by position, so a handle sorting after another's whose declared identifier differs from its member name must not be cross-wired; the rewrite lands on every card referencing the handle; a Rename's unit comes from the old side's resolved glyph, never from the draft, so a misspelled unit does not survive; and a method rename derives a method declaration, where the receiver clause once produced "func (c *Counter.Tallyer) Count() int", which quarry rejected as member_too_deep, so no method could be renamed through the glyph alphabet at all.

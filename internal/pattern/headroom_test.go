@@ -1,3 +1,5 @@
+//go:build tier0
+
 // headroom_test.go covers Headroom, one row per growth outcome against the headroom line.
 
 package pattern

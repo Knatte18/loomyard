@@ -1,3 +1,5 @@
+//go:build tier0
+
 // labels_test.go — unit tests for label validation (labels.go).
 
 package boardengine

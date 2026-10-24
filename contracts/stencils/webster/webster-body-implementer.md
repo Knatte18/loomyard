@@ -113,9 +113,9 @@ The card caused a failure when either holds:
 - a repo scan or enforcement test flags a file the card wrote.
 
 You fix such a failure under the same `{{.self_fix_cap}}`-attempt bound as any gate failure, and report `status: FAILED` when the bound runs out.
-A failure the card did not cause is never yours to fix, and it is left to the plan-level `final` gate.
+A failure the card did not cause is never yours to fix, and it is left to the plan-level `webster` gate.
 That gate runs after every batch and catches what the card gates do not, so a batch gate step that fails only on failures the batch's cards did not cause, by the two-pronged test above, does not make the report `FAILED`.
-A misjudged failure passes the batch and is caught by the `final` gate, which spawns a fixer when it fails.
+A misjudged failure passes the batch and is caught by the `webster` gate, which spawns a fixer when it fails.
 
 ## Your final action: the minimal batch-report
 

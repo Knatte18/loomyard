@@ -1,3 +1,5 @@
+//go:build tier0
+
 // removefields_test.go covers removeFields, the pure mapping from a RemoveResult and the composite's SessionResult to the `lyx fabric remove` envelope fields:
 // the warp-branch keys, the teardown keys, the conditional keys absent when empty, and the unchanged existing ones.
 

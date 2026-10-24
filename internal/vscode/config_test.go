@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go covers config generation and its non-clobbering behavior when .vscode files
 // already exist.
 

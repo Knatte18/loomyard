@@ -1,17 +1,15 @@
-//go:build !integration
+//go:build !tier1
 
 // testmain_test.go wires the package's test binary into the hermetic git test environment:
 // gitkit.HermeticGitEnv() runs once before any test, so this package's tests never inherit the
 // operator's global gitconfig (see PATTERN-test-isolation).
 // The binary also runs under tmux isolation through tmuxkit.Main.
 //
-// The `!integration` constraint is load-bearing, not decorative: testmain_integration_test.go
+// The `!tier1` constraint is load-bearing, not decorative: testmain_integration_test.go
 // declares its own TestMain for the same package, and without this negation both files would
-// compile together under `go test -tags integration` (an untagged file always compiles regardless
-// of which tags are set) and collide as two definitions of TestMain in one package. This file's
-// own suite stays untagged and Tier 1 in every other respect -- none of its sibling test files call
-// the resolver, run git, or spawn a process -- only the TestMain wiring itself needs this one file
-// excluded once the integration-tagged sibling supplies its own.
+// compile together under `go test -tags tier1` and collide as two definitions of TestMain in one package.
+// None of this package's tier0 test files call the resolver, run git, or spawn a process.
+// Only the TestMain wiring itself needs this one file excluded once the tier1 sibling supplies its own.
 
 package battencli
 

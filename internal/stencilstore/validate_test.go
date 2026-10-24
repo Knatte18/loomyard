@@ -1,3 +1,5 @@
+//go:build tier0
+
 // validate_test.go covers Validate against a bare t.TempDir(), reusing fakeRegistry from
 // reconcile_test.go.
 

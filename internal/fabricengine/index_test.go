@@ -1,3 +1,5 @@
+//go:build tier0
+
 // index_test.go — Tier-1 unit coverage for parseTrailerScanRecord, the pure per-record parser
 // scanWarpSHATrailers's git-log scan loop calls.
 // No git spawn: every case here operates on hand-built record strings, never a real commit history,

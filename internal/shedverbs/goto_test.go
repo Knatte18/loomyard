@@ -1,3 +1,5 @@
+//go:build tier0
+
 // goto_test.go covers the generic goto body: a blocked run moves onto the named row paused,
 // and each refusal names its way forward, listing the valid producers where the target is at fault.
 

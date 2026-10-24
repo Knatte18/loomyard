@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces that production code in internal/lensreport imports the standard library and nothing else.
 
 package lensreport_test

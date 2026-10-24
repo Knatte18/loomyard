@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces this package's told-geometry rule, mirroring
 // internal/shedrecipe/seam_enforcement_test.go's shape exactly: production code in
 // internal/shedbuild takes every absolute path it operates on from its caller and has no direct

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fabricref_test.go covers CheckCardFabricReference through the real location-free rule from internal/fabricengine, over plans parsed from a temp directory.
 
 package planparser_test

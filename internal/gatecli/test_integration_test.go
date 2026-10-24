@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // test_integration_test.go drives `lyx gate test` over one hubforge hub and a stand-in tier command, each run in a process of its own so a test can signal the gate it started:
 // the tier run, its slots, the wait bound, inheritance, hub resolution from -C, the unslotted run outside every hub, the child's lifetime under a catchable signal, a SIGKILL and a timeout, the prebuild, the run record, and the refusals that need a hub.
@@ -319,30 +319,51 @@ func processGone(pid int) bool {
 	return state == "Z"
 }
 
-// summaryLogPath returns the log path the last summary line of tier in output names.
+// summaryLogPath returns the log path the last summary line of tier in output names, a guard group's line apart.
 // The gate helper hands the verb's stdout as its error stream, so the summary lines are in stdout.
 func summaryLogPath(t *testing.T, output string, tier int) string {
+	t.Helper()
+
+	return summaryLogPathOf(t, output, tier, false)
+}
+
+// summaryLogPathOf returns the log path the last summary line of tier in output names that is a guard group's line when guard is set and any other tier line otherwise.
+func summaryLogPathOf(t *testing.T, output string, tier int, guard bool) string {
 	t.Helper()
 
 	prefix := "gate test: tier" + strconv.Itoa(tier) + " "
 	var summary string
 	for _, line := range strings.Split(output, "\n") {
-		if strings.HasPrefix(line, prefix) {
+		// A tier's `-trimpath` line shares the prefix but names no log.
+		if strings.HasPrefix(line, prefix) && strings.Contains(line, " log ") && strings.HasPrefix(line[len(prefix):], "guard ") == guard {
 			summary = line
 		}
 	}
 	_, logPath, found := strings.Cut(summary, " log ")
 	if !found {
-		t.Fatalf("output %q holds no summary line of tier%d", output, tier)
+		t.Fatalf("output %q holds no summary line of tier%d (guard group: %v)", output, tier, guard)
 	}
 	return logPath
 }
 
-// runRecordOf reads the run record and log that the last summary line of tier in output names.
+// runRecordOf reads the run record and log that the last summary line of tier in output names, a guard group's line apart.
 func runRecordOf(t *testing.T, output string, tier int) (record gateslot.RunRecord, log string) {
 	t.Helper()
 
-	logPath := summaryLogPath(t, output, tier)
+	return runRecordAt(t, summaryLogPath(t, output, tier), tier)
+}
+
+// guardRunRecordOf reads the run record and log that the last guard group summary line of tier in output names.
+func guardRunRecordOf(t *testing.T, output string, tier int) (record gateslot.RunRecord, log string) {
+	t.Helper()
+
+	return runRecordAt(t, summaryLogPathOf(t, output, tier, true), tier)
+}
+
+// runRecordAt reads the run record and log that logPath names; tier names the run in a failure.
+func runRecordAt(t *testing.T, logPath string, tier int) (record gateslot.RunRecord, log string) {
+	t.Helper()
+
 	data, err := os.ReadFile(strings.TrimSuffix(logPath, ".log") + ".json")
 	if err != nil {
 		t.Fatalf("read the run record of tier%d: %v", tier, err)
@@ -358,7 +379,7 @@ func runRecordOf(t *testing.T, output string, tier int) (record gateslot.RunReco
 }
 
 // scenarioConfig returns the gate.yaml the scenario's hub holds, after mutate has changed it.
-// tier0 runs the stand-in over targets and args with a GOFLAGS of its own, tier1 holds every slot, tier2 holds no placeholder, tier3 prebuilds lyx, tier5 runs a real go test, tier6 is the guard tier and tier7 replaces its shell with the stand-in.
+// tier0 runs the stand-in over targets and args with a GOFLAGS of its own, tier1 holds every slot, tier2 holds no placeholder, tier3 prebuilds lyx, tier5 runs a real go test, tier6 runs the stand-in over targets and args and tier7 replaces its shell with the stand-in.
 func scenarioConfig(t *testing.T, mutate func(cfg map[string]any)) []byte {
 	t.Helper()
 
@@ -371,9 +392,8 @@ func scenarioConfig(t *testing.T, mutate func(cfg map[string]any)) []byte {
 		return tier
 	}
 	cfg := map[string]any{
-		"slots":      2,
-		"scoper":     "go",
-		"guard_tier": 6,
+		"slots":  2,
+		"scoper": "go",
 		"tiers": map[string]any{
 			"tier0": tier(standIn+" {targets} {args}", map[string]any{"parallel": 3, "env": map[string]string{"GOFLAGS": "-trimpath -p={parallel}"}}),
 			"tier1": tier(standIn+" {targets} {args}", map[string]any{"slots": "all"}),
@@ -446,6 +466,124 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		return root
 	}
+
+	// The prime starts dirty, so the green record neither carries nor records in the rows below that repeat a command; the carry rows clean it for their own length.
+	dirt := filepath.Join(prime, "dirt.txt")
+	writeDirt := func(t *testing.T) {
+		t.Helper()
+		if err := os.WriteFile(dirt, []byte("dirt\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeDirt(t)
+	clean := func(t *testing.T) {
+		t.Helper()
+		if err := os.Remove(dirt); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { writeDirt(t) })
+	}
+	greenPath := filepath.Join(waitDir, greenFileName)
+
+	t.Run("a second --gate run over the same clean tree carries every tier, taking no slot and running no command", func(t *testing.T) {
+		clean(t)
+		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+			cfg["gates"] = map[string]any{"finalize": map[string]any{"tiers": []int{0, 2}, "scope": "all"}}
+		}))
+		defer writeConfig(t, gateConfig)
+
+		first := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "finalize"}})
+		if code := first.wait(t); code != 0 || !reflect.DeepEqual(first.tierArgs(t), [][]string{{"./pkg"}, {"whole"}}) {
+			t.Fatalf("first run = exit %d, tier invocations %q; want exit 0 and both tiers run", code, first.tierArgs(t))
+		}
+
+		// Both slots held: a carried tier takes none, so a call that took one would block here.
+		firstLease, secondLease := acquire(t, "holder one"), acquire(t, "holder two")
+		second := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", "finalize"}})
+		if code := second.wait(t); code != 0 || len(second.tierArgs(t)) != 0 {
+			t.Fatalf("second run = exit %d, tier invocations %q, stdout %q; want exit 0 and no command run", code, second.tierArgs(t), second.stdout.String())
+		}
+		for _, tier := range []int{0, 2} {
+			if run, _ := runRecordOf(t, second.stdout.String(), tier); !run.Carried || run.ExitCode != 0 || run.Outcome != "passed" || run.GateKey != "finalize" {
+				t.Errorf("tier%d run record = %+v; want a carried pass of gate key finalize", tier, run)
+			}
+			if !strings.Contains(second.stdout.String(), "gate test: tier"+strconv.Itoa(tier)+" all carried discovered 0 passed 0 failed 0 skipped 0") {
+				t.Errorf("stdout = %q; want tier%d's summary line marked carried", second.stdout.String(), tier)
+			}
+		}
+		_ = firstLease.Release()
+		_ = secondLease.Release()
+	})
+
+	t.Run("--guards plans a group per tier of the guard tests' files, a repeat carries both groups, and a plain run of their packages runs them", func(t *testing.T) {
+		clean(t)
+		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		before := gitkit.RevParse(t, prime, "HEAD")
+		t.Cleanup(func() { gitkit.Git(t, prime, "reset", "-q", "--hard", before) })
+		for rel, content := range map[string]string{
+			"guardtiers/go.mod":            "module example.com/guardtiers\n\ngo 1.21\n",
+			"guardtiers/pkg/pkg.go":        "package pkg\n",
+			"guardtiers/g/g.go":            "package g\n",
+			"guardtiers/g/g_test.go":       "package g\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuardZero(t *testing.T) {}\n",
+			"guardtiers/h/h.go":            "package h\n",
+			"guardtiers/h/h_tier1_test.go": "//go:build tier1\n\npackage h\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestGuardOne(t *testing.T) {}\n",
+		} {
+			full := filepath.Join(prime, filepath.FromSlash(rel))
+			if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		gitkit.Git(t, prime, "add", "guardtiers")
+		gitkit.Git(t, prime, "commit", "-q", "-m", "add the guard tiers module")
+
+		module := filepath.Join(prime, "guardtiers")
+		run := func(args ...string) *runningGate {
+			g := startGate(t, gateRun{cwd: t.TempDir(), args: append([]string{"test", "-C", module}, args...)})
+			if code := g.wait(t); code != 0 {
+				t.Fatalf("gate %q = exit %d, stdout %q; want 0", args, code, g.stdout.String())
+			}
+			return g
+		}
+
+		both := run("--guards", "./pkg")
+		wantBoth := [][]string{{"./pkg"}, {"./g", "-run", "^(TestGuardZero)$"}, {"./h", "-run", "^(TestGuardOne)$"}}
+		if got := both.tierArgs(t); !reflect.DeepEqual(got, wantBoth) {
+			t.Errorf("first call tier invocations = %q; want the listed tier, then one guard group per tier: %q", got, wantBoth)
+		}
+
+		repeat := run("--guards", "./pkg")
+		if got := repeat.tierArgs(t); len(got) != 0 || strings.Count(repeat.stdout.String(), " carried ") != 3 {
+			t.Errorf("repeat tier invocations = %q, stdout %q; want the listed tier and both guard groups carried", got, repeat.stdout.String())
+		}
+
+		packages := run("./g", "./h")
+		if got, want := packages.tierArgs(t), [][]string{{"./g", "./h"}}; !reflect.DeepEqual(got, want) {
+			t.Errorf("plain run tier invocations = %q; want %q, since a guard entry never covers an empty-args request", got, want)
+		}
+	})
+
+	t.Run("a dirty worktree carries nothing and writes nothing", func(t *testing.T) {
+		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		for attempt := 1; attempt <= 2; attempt++ {
+			g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--all"}})
+			if code := g.wait(t); code != 0 || !reflect.DeepEqual(g.tierArgs(t), [][]string{{"./pkg"}}) {
+				t.Errorf("run %d on the dirty prime = exit %d, tier invocations %q; want the tier to run", attempt, code, g.tierArgs(t))
+			}
+		}
+		if _, err := os.Stat(greenPath); !os.IsNotExist(err) {
+			t.Errorf("green record after dirty runs: stat error = %v; want it unwritten", err)
+		}
+	})
 
 	t.Run("a free slot runs the tier under its env, exits with its code and records the run", func(t *testing.T) {
 		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg", "--", "-run", "X"}, env: []string{helperExitEnv + "=7", strandEnvEntry, logger.TraceIDEnv + "=0123456789abcdef"}})
@@ -726,6 +864,28 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		if run, _ := runRecordOf(t, stdout, 5); run.Discovered != 0 || run.Outcome != "passed" {
 			t.Errorf("run record = %+v; want a pass with nothing discovered", run)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a real go test tier whose command lacks its tag fails on a package holding a test file under it", func(t *testing.T) {
+		module := writeModule(t, "emptytier", map[string]string{
+			"p/p.go":           "package p\n",
+			"p/main_test.go":   "package p\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestMain(m *testing.M) { os.Exit(m.Run()) }\n",
+			"p/tagged_test.go": "//go:build tier5\n\npackage p\n\nimport \"testing\"\n\nfunc TestTagged(t *testing.T) {}\n",
+		})
+		code, stdout := runGate(t, gateRun{cwd: t.TempDir(), realGo: true, args: []string{"test", "--tier", "5", "-C", module, "./..."}})
+		if code != 1 {
+			t.Errorf("exit code = %d, stdout %q; want 1", code, stdout)
+		}
+		for _, want := range []string{"tier5", "example.com/emptytier/p", "lyx config gate"} {
+			if !strings.Contains(stdout, want) {
+				t.Errorf("stdout %q lacks %q", stdout, want)
+			}
+		}
+		run, log := runRecordOf(t, stdout, 5)
+		if run.Outcome != "failed" || run.ExitCode != 1 || !strings.Contains(log, "example.com/emptytier/p") {
+			t.Errorf("run record = %+v, log %q; want a failure whose log names the package", run, log)
 		}
 		requireFree(t)
 	})
@@ -1159,7 +1319,7 @@ func TestGateTest_Scenario(t *testing.T) {
 		want     [][]string
 	}{
 		{
-			name: "named targets run before the guard tier runs over the guard packages by name",
+			name: "named targets run before the guard group runs over the guard packages by name",
 			args: []string{"--guards", "./pkg"},
 			want: [][]string{{"./pkg"}, guardRun},
 		},
@@ -1186,8 +1346,8 @@ func TestGateTest_Scenario(t *testing.T) {
 				t.Errorf("tier invocations = %q; want %q", got, tc.want)
 			}
 			trimpath := trimpathLine("tier0", []string{"GOFLAGS=-trimpath -p=3"})
-			if count := strings.Count(g.stdout.String(), trimpath); count != 1 {
-				t.Errorf("gate output = %q; want the -trimpath line %q once, for the listed tier alone", g.stdout.String(), trimpath)
+			if count := strings.Count(g.stdout.String(), trimpath); count != len(tc.want) {
+				t.Errorf("gate output = %q; want the -trimpath line %q once per run, listed tier and guard group alike, which all run under tier0", g.stdout.String(), trimpath)
 			}
 			requireFree(t)
 		})
@@ -1252,9 +1412,9 @@ func TestGateTest_Scenario(t *testing.T) {
 			wantError: []string{"p/p_test.go:3", "move the marker directly above its func Test line"},
 		},
 		{
-			name:      "a marker in a tmux file names its file and line and says to compile it under integration",
-			files:     map[string]string{"p/p.go": "package p\n", "p/p_test.go": "//go:build tmux\n\npackage p\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n"},
-			wantError: []string{"p/p_test.go:7", "compile the marked test's file under the integration tag"},
+			name:      "a marker in a tier2 file names its file and line and says to move it into a tier0 or tier1 file",
+			files:     map[string]string{"p/p.go": "package p\n", "p/p_test.go": "//go:build tier2\n\npackage p\n\nimport \"testing\"\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n"},
+			wantError: []string{"p/p_test.go:7", "move the marked test into a tier0 or tier1 file"},
 		},
 		{
 			name:       "an unreadable test file names it and says to make it readable or fix it",

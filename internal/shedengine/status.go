@@ -115,15 +115,19 @@ type HistoryEntry struct {
 	// By is the caller label of the goto or resume that wrote this entry, empty on every other entry.
 	// A status file written before the field existed decodes as empty.
 	By string `json:"by,omitempty"`
+	// Reason is the entry gate's text on a skipped entry, empty on every other entry.
+	// A status file written before the field existed decodes as empty.
+	Reason string `json:"reason,omitempty"`
 }
 
 // Status is the whole status file.
 //
-// Field ownership is split four ways.
+// Field ownership is split by who writes the field.
 // CurrentProducer, State, PauseReason, Error, Activity, and History are Shed-owned and rewritten on every persist.
 // PauseRequested is shared write-to-clear, set true only by an outside actor and written false only by Shed, exactly once, in the persist that records StatePaused.
 // PauseBefore and PauseAfter are outside-set and cleared by Shed together, only in the persist that records StatePaused for a fired condition and in Goto's persist.
 // PauseRequestedBy, PauseBeforeBy and PauseAfterBy are outside-set beside the request they accompany and cleared in the same write as it.
+// EnteredRow is Shed-owned and written only by the entry evaluation, the routed writes, Goto, Relaunch and RenameProducers.
 // Product is external-writer-owned and only ever carried through.
 type Status struct {
 	CurrentProducer string `json:"current_producer"`
@@ -137,7 +141,10 @@ type Status struct {
 	ParentNotice string `json:"parent_notice,omitempty"`
 	// PendingBy is the caller label of a step that resumed a halted run, waiting for the next appended history entry to carry it.
 	// A status file written before the field existed decodes as empty.
-	PendingBy      string `json:"pending_by,omitempty"`
+	PendingBy string `json:"pending_by,omitempty"`
+	// EnteredRow names the row the run entered, whose entry gate held or was bypassed by a goto, so the row is called again without evaluating its gate.
+	// A status without the field, or naming another row, reads as not entered.
+	EnteredRow     string `json:"entered_row,omitempty"`
 	PauseRequested bool   `json:"pause_requested"`
 	// PauseRequestedBy is the caller label of the outside actor that set PauseRequested, cleared in the write that consumes the request.
 	// A status file written before the field existed decodes as empty.

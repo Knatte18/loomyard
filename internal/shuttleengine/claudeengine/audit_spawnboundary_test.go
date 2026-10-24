@@ -1,3 +1,5 @@
+//go:build tier0
+
 // audit_spawnboundary_test.go covers the fork-transcript spawn-boundary exclusion: on Claude Code
 // 2.1.205 a fork transcript's first assistant line replays the PARENT's own spawning Agent tool_use
 // (observed live in webster's hardening round fable-r1),

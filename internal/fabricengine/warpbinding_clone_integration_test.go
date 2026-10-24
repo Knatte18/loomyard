@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // warpbinding_clone_integration_test.go proves CloneHub's warp-binding conflict rule and the pre-hub
 // probe's three-way failure taxonomy (absent, found, hard error) end to end against real local

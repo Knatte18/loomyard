@@ -1,3 +1,5 @@
+//go:build tier0
+
 // snapshot_test.go covers BoardEntrySnapshot's rendering of a board entry.
 
 package darnengine

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // spawnwatchdog_test.go pins SpawnWatchdog's two no-spawn early returns, spawning no subprocess and
 // driving no live tmux at all — per the Test Tier Purity Invariant an untagged test file spawns
 // nothing. Reaching the end of each case below is the assertion: either call would re-exec

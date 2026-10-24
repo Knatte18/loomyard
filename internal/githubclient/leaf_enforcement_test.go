@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the GitHub Auth Invariant's leaf half: production code in
 // internal/githubclient imports ONLY the standard library, go-github, golang.org/x/sys, internal/proc, and internal/pauserecord.
 // It never imports internal/output, cobra, internal/gitexec, internal/gitrepo, or golang.org/x/oauth2.

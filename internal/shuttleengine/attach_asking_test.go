@@ -1,3 +1,5 @@
+//go:build tier0
+
 // attach_asking_test.go covers how Attach treats a run that halted at a turn end:
 // a legacy record an older binary left at outcome asking is attached when its strand is live,
 // and a held run, whose record stays running, is attached without a second notice for a turn end the parent already saw.

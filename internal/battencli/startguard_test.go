@@ -1,3 +1,5 @@
+//go:build tier0
+
 // startguard_test.go pins the pre-run guard's refusals over fake seams, and the seed write's re-read of the cancel marker.
 
 package battencli

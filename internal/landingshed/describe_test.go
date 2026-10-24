@@ -1,4 +1,6 @@
-// describe_test.go — untagged Tier-1 unit tests for DescribeTable and DarnDescribeTable.
+//go:build tier0
+
+// describe_test.go — tier0 unit tests for DescribeTable and DarnDescribeTable.
 // The stencil is a fixture written into a t.TempDir() stencils dir, so no shipped default is read;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // triage_test.go drives the verify gate's flaky-failure helpers: the warning and the friction note.
 
 package websterengine

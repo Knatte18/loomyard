@@ -1,3 +1,5 @@
+//go:build tier0
+
 // tmuxconf_test.go — tests for the operator tmux config feature's path validation.
 
 package reedengine

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // rounds_test.go tests the repair split, review rounds and parent decisions of a run over a fake records repository.
 
 package reportengine
@@ -75,6 +77,17 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 						{Producer: "Plan-Review", Outcome: shedengine.OutcomeReroute, At: hourAt(31)},
 					}, nil)
 				return map[string]roundFigures{"a": {llm: map[string]int{"loom": 2, "batten": 1, "landing": 0}, segments: map[string]*SegmentRounds{}}}
+			},
+		},
+		{
+			name: "a skipped entry is no step a hand took",
+			setup: func(w *world) map[string]roundFigures {
+				w.fullRun("a", "ta", 100, nil,
+					[]shedengine.HistoryEntry{
+						{Producer: "Describe", Outcome: shedengine.OutcomeSkipped, Reason: "review budget is 0", At: hourAt(2)},
+						{Producer: "Plan-Write", Outcome: shedengine.OutcomeGoto, At: hourAt(30)},
+					}, nil)
+				return map[string]roundFigures{"a": {llm: map[string]int{"loom": 1, "landing": 0}, segments: map[string]*SegmentRounds{}}}
 			},
 		},
 		{

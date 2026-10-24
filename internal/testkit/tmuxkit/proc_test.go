@@ -1,3 +1,5 @@
+//go:build tier0
+
 // proc_test.go checks the kit's stat and comm probes against the test's own process.
 
 package tmuxkit

@@ -1,3 +1,5 @@
+//go:build tier0
+
 package main
 
 import (
@@ -107,6 +109,11 @@ func TestPlain(t *testing.T) { t.Helper() }
 
 	fixtureTmuxLinuxTests = "//go:build tmux && linux\n\npackage p\n\nimport \"testing\"\n\nfunc TestTmuxLinuxTier(t *testing.T) { t.Helper() }\n"
 
+	fixtureTier2Tests = "//go:build tier2\n\npackage p\n\nimport \"testing\"\n\nfunc TestTier2Tier(t *testing.T) { t.Helper() }\n"
+
+	// A tier0 file counts as untagged: its tests are judged whatever they reference.
+	fixtureTier0Tests = "//go:build tier0\n\npackage p\n\nimport \"os\"\nimport \"testing\"\n\nfunc TestTier0Tier(t *testing.T) { _, _ = os.Executable() }\n"
+
 	fixtureGitOnlyKit = "package gitonlykit\n\nimport \"os/exec\"\n\nfunc Do() { _ = exec.Command(\"git\", \"init\") }\n"
 	fixtureGoKit      = "package gokit\n\nimport \"os/exec\"\n\nfunc Do() { _ = exec.Command(\"go\", \"build\") }\n"
 	fixtureQuietKit   = "package quietkit\n\nfunc Do() {}\n"
@@ -133,6 +140,8 @@ func TestScanSpawns(t *testing.T) {
 	writeFixture(t, pkgDir, "integration_test.go", fixtureIntegrationTests)
 	writeFixture(t, pkgDir, "tmux_test.go", fixtureTmuxTests)
 	writeFixture(t, pkgDir, "tmuxlinux_test.go", fixtureTmuxLinuxTests)
+	writeFixture(t, pkgDir, "tier2_test.go", fixtureTier2Tests)
+	writeFixture(t, pkgDir, "tier0_test.go", fixtureTier0Tests)
 	writeFixture(t, filepath.Join(kitRoot, "gitonlykit"), "gitonlykit.go", fixtureGitOnlyKit)
 	writeFixture(t, filepath.Join(kitRoot, "gokit"), "gokit.go", fixtureGoKit)
 	writeFixture(t, filepath.Join(kitRoot, "quietkit"), "quietkit.go", fixtureQuietKit)
@@ -168,6 +177,8 @@ func TestScanSpawns(t *testing.T) {
 		"TestPlain":              {},
 		"TestTmuxTier":           outOfProcess,
 		"TestTmuxLinuxTier":      outOfProcess,
+		"TestTier2Tier":          outOfProcess,
+		"TestTier0Tier":          {},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("scanSpawns =\n%+v\nwant\n%+v", got, want)

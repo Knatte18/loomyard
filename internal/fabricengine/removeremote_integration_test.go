@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // removeremote_integration_test.go covers Remove's remote branch deletion under --remote: the
 // opt-in deletion of the pair's weft branch on the remote, its default-off regression guard, the

@@ -1,3 +1,5 @@
+//go:build tier0
+
 package websterengine
 
 import (
@@ -12,11 +14,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
-// gateTestConfig declares tier0 and tier1 and lists them in the `card` and `batch` gates, tier0 alone in `round`.
+// gateTestConfig declares tier0 and tier1 and lists them in the `card` and `batch` keys, tier0 alone in `webster-fix`.
 func gateTestConfig() gateslot.Config {
 	return gateslot.Config{
 		Tiers: map[string]gateslot.Tier{"tier0": {About: "unit"}, "tier1": {About: "integration"}},
-		Gates: map[string][]int{"card": {0}, "batch": {0, 1}, "round": {0}},
+		Gates: map[string]gateslot.GateKey{
+			"card":        {Tiers: []int{0}, Scope: "card"},
+			"batch":       {Tiers: []int{0, 1}, Scope: "card"},
+			"webster-fix": {Tiers: []int{0}, Scope: "diff"},
+		},
 	}
 }
 
@@ -38,7 +44,7 @@ func TestCardGateCommand(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cardGateCommand() error = %v; want nil", err)
 		}
-		want := []string{"lyx gate test --wait --tier 0 --card 1-gate", lintComments, lintPattern}
+		want := []string{"lyx gate test --wait --gate card --card 1-gate", lintComments, lintPattern}
 		if !slices.Equal(got, want) {
 			t.Errorf("cardGateCommand() = %q; want %q", got, want)
 		}
@@ -47,7 +53,7 @@ func TestCardGateCommand(t *testing.T) {
 	t.Run("a dangling card list is refused naming lyx config gate", func(t *testing.T) {
 		t.Parallel()
 		config := gateTestConfig()
-		config.Gates["card"] = []int{7}
+		config.Gates["card"] = gateslot.GateKey{Tiers: []int{7}, Scope: "card"}
 		if _, err := cardGateCommand(gateCard(), config); err == nil || !strings.Contains(err.Error(), "lyx config gate") {
 			t.Errorf("cardGateCommand() error = %v; want a refusal naming lyx config gate", err)
 		}
@@ -70,11 +76,11 @@ func TestRenderCardGates_OneBulletPerCardWithAStepSubBulletEach(t *testing.T) {
 		t.Fatalf("renderCardGates() error = %v; want nil", err)
 	}
 	want := "- `_lyx/plan/01-gate.md`:\n" +
-		"  - `lyx gate test --wait --tier 0 --card 1-gate`\n" +
+		"  - `lyx gate test --wait --gate card --card 1-gate`\n" +
 		"  - `lyx loom lint-comments`\n" +
 		"  - `lyx loom lint-pattern`\n" +
 		"- `_lyx/plan/02-docs.md`:\n" +
-		"  - `lyx gate test --wait --tier 0 --card 2-docs`\n" +
+		"  - `lyx gate test --wait --gate card --card 2-docs`\n" +
 		"  - `lyx loom lint-comments`\n" +
 		"  - `lyx loom lint-pattern`"
 	if got != want {
@@ -92,7 +98,7 @@ func TestRenderBatchGate(t *testing.T) {
 		if err != nil {
 			t.Fatalf("renderBatchGate() error = %v; want nil", err)
 		}
-		want := "- `lyx gate test --wait --tier 0 --tier 1 --card 1-gate --card 2-gate`"
+		want := "- `lyx gate test --wait --gate batch --card 1-gate --card 2-gate`"
 		if got != want {
 			t.Errorf("renderBatchGate() =\n%s\nwant\n%s", got, want)
 		}
@@ -138,8 +144,8 @@ func TestRenameBoundary_BatchesCheckAndGateTheirOwnTree(t *testing.T) {
 	}
 
 	for i, tree := range []struct{ root, wantGate string }{
-		{firstTree, "- `lyx gate test --wait --tier 0 --tier 1 --card 1-gate --card 2-gate`"},
-		{secondTree, "- `lyx gate test --wait --tier 0 --tier 1 --card 3-gate`"},
+		{firstTree, "- `lyx gate test --wait --gate batch --card 1-gate --card 2-gate`"},
+		{secondTree, "- `lyx gate test --wait --gate batch --card 3-gate`"},
 	} {
 		findings, err := planglyph.DoneChecks(plan, batches[i].Cards, tree.root)
 		if err != nil {

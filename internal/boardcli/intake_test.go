@@ -1,3 +1,5 @@
+//go:build tier0
+
 // intake_test.go covers the intake handlers against an httptest server standing in for the hub's repository, reached through a hubissues.Repo, and a Board over a temp dir with SkipGit.
 // No test reaches real token resolution or the network, and every refusal asserts that board.json is unchanged.
 

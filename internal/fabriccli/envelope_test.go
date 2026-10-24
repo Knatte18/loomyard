@@ -1,3 +1,5 @@
+//go:build tier0
+
 // envelope_test.go covers okWithRecord/errWithRecord/errConflictsWithRecord's shape directly against an io.Writer buffer: the fixed mutations/partial key pair on both the success and the failure path, the never-null "mutations" array, and each helper's own reserved-key override set.
 // It is a pure-data test with no git spawn and no hub fixture, per the Test Tier Purity Shared Decision — the end-to-end per-verb assertions that need a real hub live in the integration-tagged scenario files instead.
 

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cli_integration_test.go drives RunCLIIn against a temporary directory outside any git repository, proving the standalone pre-run leaves the target untouched and a wrongly entered hub refuses -- properties no untagged test in this package can observe, since they require the real standalonestate.Derive, the real standalone stencil seed, and an end-to-end pre-run.
 // The test that boots a real reed session lives in cli_tmux_test.go.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // weeks_test.go tests the per-week aggregates, the absent counts, the JSON envelope and the markdown rendering over fake sources.
 
 package reportengine

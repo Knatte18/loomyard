@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // ownercheck_integration_test.go drives the run owner verdict over a hub forged by hubforge whose Bolt origin records the owners.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,

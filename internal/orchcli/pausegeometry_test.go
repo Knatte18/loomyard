@@ -1,3 +1,5 @@
+//go:build tier0
+
 // pausegeometry_test.go pins that the orch module wires its shuttle runner with no pause geometry.
 
 package orchcli

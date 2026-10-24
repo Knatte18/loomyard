@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // replay_integration_test.go proves the records replay and the ended-set rule on hubforge hubs.
 // The other machine is a second clone of the hub's records bare repository.

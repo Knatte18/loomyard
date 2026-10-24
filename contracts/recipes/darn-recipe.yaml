@@ -24,8 +24,9 @@
 # names the review row, the review row's on_stuck names the fix row, the fix row's on_stuck names the
 # Bouncer, and each Burler row's on_done names the same row as its on_stuck, since neither ever
 # returns Done. The segment's rows declare no max_bounces: their budget is loom.yaml's
-# code_max_bounces, applied by internal/loomrecipe, and a budget of 0 turns the perch off by routing
-# Darn-Write's Done straight to PR-Review, past Describe, so the writer's own description stands.
+# code_max_bounces, applied by internal/loomrecipe, and a budget of 0 turns the perch off: the
+# Bouncer settles approved at once and Describe's entry gate skips it, so the writer's own
+# description stands.
 #
 # The perch's answer key is the task's board entry, which the discussion gate's commit snapshots into
 # _lyx/discussion/board-entry.md, as amended by the decision record's `Added after Discussion`
@@ -34,13 +35,14 @@
 # Finalize declares on_reroute: Code-Bouncer, the row a conflict or a merge too large to land sends
 # the run back to, so the perch reviews the code the writer changed in answer.
 # Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
-# A budget of 0 reroutes Finalize to PR-Review instead, since no perch is reached.
+# With a budget of 0 the Bouncer settles approved at once on that reroute too.
 #
 # An in-flight run parked on a row this recipe removed -- Merge-In, Publish, PR-Align, PR-Gate -- or
 # on a row whose edges changed with them, or on the retired Darn-Burler, Darn-Bouncer,
 # Darn-Burler-Review or Darn-Burler-Fix row, is restarted, not migrated.
 #
 # Describe follows the perch because Code-Burler-Fix can change the code after the writer described it.
+# Its entry gate budget.Code-Review skips it when the perch is off.
 
 version: 1
 entry: Preflight
@@ -54,11 +56,14 @@ producers:
 
   - name: Darn-Write
     engine: DarnWrite
-    # internal/loomrecipe rewrites this edge to PR-Review when loom.yaml's code_max_bounces is 0.
+    # With loom.yaml's code_max_bounces at 0 the Bouncer settles approved at once, so this edge is kept.
     on_done: Code-Bouncer
     config:
       # gates holds this row's handoff until it is mechanically valid: each entry names a gate and
-      # re-prompts the live session up to its attempts times. The verify gate's attempts here is a
+      # re-prompts the live session up to its attempts times. The verify gate runs the hub's
+      # `darn-write` key, or the tree-scoped command for a diff wholly under the configured trees,
+      # and lints the comments from the merge base on every attempt; gate_key names another key of
+      # the hub's gate.yaml. The verify gate's attempts here is a
       # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
       gates:
         # On a darn run the discussion gate is the darn gate: it also refuses a record missing an
@@ -148,10 +153,11 @@ producers:
       role_prefix: code
       fixer_fan_setting: loom.code_fixer_fan
       review_row: Code-Burler-Review
-      # The verify gate runs the tree-scoped command, or the hub's `landing` call narrowed to the diff
-      # from the merge base, on the committed tree after each round,
-      # and re-prompts the fix session with the findings until it passes. Its attempts here is a
-      # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
+      # The verify gate runs the tree-scoped command, or the hub's `code-burler-fix` key, on the
+      # committed tree after each round, lints the comments from the merge base on every attempt,
+      # and re-prompts the fix session with the findings until it passes. The row runs its own key
+      # and shares no pass with the writer's; gate_key names another key of the hub's gate.yaml.
+      # Its attempts here is a placeholder: the builder stamps darn.yaml's verify_attempts at every build.
       gates:
         - name: verify
           attempts: 3
@@ -165,6 +171,7 @@ producers:
   # Describe writes the change description from the final diff, replacing the writer's own.
   - name: Describe
     engine: Describe
+    entry_gate: budget.Code-Review
     on_done: PR-Review
     config:
       gates:

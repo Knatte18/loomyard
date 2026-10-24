@@ -1,3 +1,5 @@
+//go:build tier0
+
 // spawn_test.go covers primeResolveLogLevel, the pure decision behind the prime-name failure log level.
 
 package ideengine

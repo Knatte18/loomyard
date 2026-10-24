@@ -1,3 +1,5 @@
+//go:build tier0
+
 // newshed_test.go covers NewShed's field-complete assembly of a *shedengine.Shed from a ShedPaths
 // value, and the single-prefix rule card 1's own doc comment states: NewShed adds no prefix of its
 // own on top of whatever Parse or Build already returned.

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // refusal_test.go proves RefusedByGate and RefusedBefore pin the correct layer against real errors
 // driven from real verbs against real hubs — one gate refusal per reachable Check member, the two

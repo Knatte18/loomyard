@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remove_records_integration_test.go covers Remove's pre-archive record commit and its read-only refusal probe.
 // An uncommitted run record inside the record pathspec is committed and reaches the pushed archive tag;

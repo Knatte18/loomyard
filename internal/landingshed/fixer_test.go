@@ -1,4 +1,6 @@
-// fixer_test.go — untagged unit tests for FixerTable.
+//go:build tier0
+
+// fixer_test.go — tier0 unit tests for FixerTable.
 // The stencils are the shipped defaults seeded into a t.TempDir() stencils dir;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
 

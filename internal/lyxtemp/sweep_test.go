@@ -1,3 +1,5 @@
+//go:build tier0
+
 // sweep_test.go — tests for the dead-owner sweep (sweep.go).
 //
 // A dead owner is a run directory whose lock nobody holds, which is what a killed test binary leaves behind.

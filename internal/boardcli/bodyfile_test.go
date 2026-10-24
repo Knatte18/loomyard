@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bodyfile_test.go covers applyBodyFile with temp files and in-memory stdin only.
 
 package boardcli

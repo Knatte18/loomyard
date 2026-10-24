@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // unwire_test.go ports initengine/undo_test.go's coverage to
 // fabricengine.Unwire, the new per-worktree teardown verb: full on-disk

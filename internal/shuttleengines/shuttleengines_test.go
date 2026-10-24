@@ -1,3 +1,5 @@
+//go:build tier0
+
 // shuttleengines_test.go verifies the registry builds a set from a shuttle config, refuses an unregistered engine from any layer, and stays equal to modelspec's closed engine names.
 
 package shuttleengines

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cli_test.go covers the fabric CLI's clone and reconcile-backfill verbs against local bare remotes, and holds the helpers the package's other integration files share: the cwd-fallback subprocess entry point, runFabric and gitOutputCLI.
 

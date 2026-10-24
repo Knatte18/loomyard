@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the Discussionparser Sole-Parser Invariant's stdlib-only half:
 // production code in internal/discussionparser imports the standard library and nothing else --
 // never internal/lyxcwd, never any feature package.

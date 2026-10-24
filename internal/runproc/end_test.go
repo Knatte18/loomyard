@@ -1,3 +1,5 @@
+//go:build tier0
+
 // end_test.go tests the end sequence over a scripted process table and a fake clock, so no row spawns a process or waits.
 
 package runproc

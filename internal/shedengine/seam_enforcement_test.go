@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces the Shed Producer-Seam Invariant: production code in
 // internal/shedengine imports ONLY the standard library, internal/state, and internal/lock — never
 // internal/loomengine, never any adapter package, never internal/lyxcwd, and never internal/logger.

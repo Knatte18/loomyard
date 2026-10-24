@@ -1,4 +1,6 @@
-// tackler_test.go — untagged Tier-1 tests for the shed driver's tackler call, over a scripted agent shuttle, a fixed clock and a fake pause reader.
+//go:build tier0
+
+// tackler_test.go — tier 0 tests for the shed driver's tackler call, over a scripted agent shuttle, a fixed clock and a fake pause reader.
 
 package sheddriver
 

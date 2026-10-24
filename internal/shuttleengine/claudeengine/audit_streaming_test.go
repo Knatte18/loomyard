@@ -1,3 +1,5 @@
+//go:build tier0
+
 // audit_streaming_test.go is R2-F5's regression guard: it pins that forEachTranscriptLine walks a
 // session transcript as a STREAM rather than materialising it, and that the two edge cases a naive
 // streaming port breaks — a final line with no trailing newline, and a single line larger than

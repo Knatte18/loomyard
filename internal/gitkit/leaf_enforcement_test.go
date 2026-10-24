@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the gitkit Leaf Invariant.
 // Production code in internal/gitkit imports only the standard library and internal/configengine, internal/lyxcwd, internal/weftname, internal/lyxdirs and internal/lyxtemp.
 // It never imports internal/configreg or any feature package (boardengine/boardcli, ideengine/idecli, selfreportengine/selfreportcli, fabricengine/fabriccli).

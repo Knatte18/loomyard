@@ -1,3 +1,5 @@
+//go:build tier0
+
 // layers_test.go — tests for the layer stack: the layered loaders, the local-layer rule, the layer reader and the unexpanded stack merge.
 
 package configengine_test

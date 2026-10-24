@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_darnwrite_test.go covers darnWriteEntry: its construction-time validation over Config, the injected DarnTable and Seats and every Env.Darn seam, plus the happy path that runs one table through the seat runner.
 
 package shedrecipe

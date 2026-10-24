@@ -1,4 +1,6 @@
-// session_test.go — untagged Tier-1 tests for the agent's lifecycle over a fake shuttle and an injected clock.
+//go:build tier0
+
+// session_test.go — tier 0 tests for the agent's lifecycle over a fake shuttle and an injected clock.
 
 package alignment
 

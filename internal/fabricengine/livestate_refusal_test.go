@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // refusal.go gives a cell a way to assert WHICH layer of fabric refused a destructive request,
 // rather than merely that some error came back.

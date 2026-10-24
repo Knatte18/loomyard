@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fansettings_test.go pins that the shipped recipes name fan and auto-accept settings consistently within each review segment, and that each row names the setting its perch's wiring has always read.
 
 package loomrecipe

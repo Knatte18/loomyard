@@ -1,3 +1,5 @@
+//go:build tier0
+
 // prompt_test.go covers the seat value maps, the include-filled prompts and the shuttle specs a table composes.
 
 package seatengine

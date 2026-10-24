@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // weftgit_unborn_warp_test.go — integration coverage for the O4 fix: a warp
 // repo with zero commits (a fresh `git init` -> `lyx init` -> `lyx config`

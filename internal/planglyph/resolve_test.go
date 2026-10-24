@@ -1,3 +1,5 @@
+//go:build tier0
+
 // resolve_test.go covers statusFindings, table-driven against a small fixture repository built
 // under t.TempDir().
 

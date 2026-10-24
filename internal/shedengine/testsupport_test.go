@@ -1,3 +1,5 @@
+//go:build tier0
+
 // testsupport_test.go holds the fakes and helpers every test file in this package shares: a
 // closure-backed ShedProducer fake, a temp-dir-wired Shed builder, and status-file seed/read
 // helpers. It declares no Test function of its own; batches 3 and 4 consume these helpers and

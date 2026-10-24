@@ -1,3 +1,5 @@
+//go:build tier0
+
 // multillm_fixture_test.go proves the recipe path end to end against fakes:
 // the fixture recipe is parsed and built through shedbuild, its one MultiLLM row is called, and the seat table the fake seat runner records is checked.
 // It lives in the external test package because shedbuild imports shedrecipe.

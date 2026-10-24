@@ -1,3 +1,5 @@
+//go:build tier0
+
 // checklist_test.go pins the checklist frame renderChecklist draws for a status and a recipe, and the verb's refusal outside a git worktree.
 
 package loomcli
@@ -305,6 +307,19 @@ func TestRenderChecklist(t *testing.T) {
 				"[x] 1. Plan 10m00s x2", "  10:00 5m00s done", "  10:40 5m00s done",
 				"[x] 2. Review 25m00s x2", "  10:05 25m00s stuck x2",
 				"[ ] 3. Build",
+				"loom done | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a skipped row is passed through: no visit, no time, and the next visit starts at the skip",
+			rows: recipe,
+			poll: checklistStatus(shedengine.StateDone, "",
+				doneEntry("Plan", 5), shedengine.HistoryEntry{Producer: "Review", Outcome: shedengine.OutcomeSkipped, At: minuteMark(5), Reason: "review budget is 0"}, doneEntry("Build", 12)),
+			nowMin: 20,
+			want: []string{
+				"[x] 1. Plan 5m00s", "  10:00 5m00s done",
+				"[ ] 2. Review",
+				"[x] 3. Build 7m00s", "  10:05 7m00s done",
 				"loom done | now working", "waiting on nothing",
 			},
 		},

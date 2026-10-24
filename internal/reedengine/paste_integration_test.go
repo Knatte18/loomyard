@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // paste_integration_test.go drives PasteSubmit against a real tmux pane running cat:
 // the text and the Enter arrive, a long line pastes whole, no lyx-inject buffer outlives the paste, and the operator's own paste buffer stays on top of the default stack.

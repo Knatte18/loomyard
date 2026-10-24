@@ -1,3 +1,5 @@
+//go:build tier0
+
 // verifyfixer_test.go exercises the cold verify-gate fixer's spawn-or-attach and bounded wait over the recover-batch fixture: a real *shuttleengine.Runner over the shuttlefake Reed and Engine, and a fake Clock.
 
 package websterengine_test
@@ -90,14 +92,14 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 				wantText: []string{"cannot audit forks", "way forward: set recovery in webster.yaml"},
 			},
 			{
-				name: "gate config with no round list",
+				name: "gate config with no webster-fix key",
 				arrange: func(deps *websterengine.FixVerifyDeps) {
 					deps.Gate = gateslot.Config{
 						Tiers: map[string]gateslot.Tier{"tier0": {About: "unit"}},
-						Gates: map[string][]int{"card": {0}},
+						Gates: map[string]gateslot.GateKey{"card": {Tiers: []int{0}, Scope: "card"}},
 					}
 				},
-				wantText: []string{`gates holds no list for "round"`, `fix it with "lyx config gate"`},
+				wantText: []string{`gates holds no key "webster-fix"`, `fix it with "lyx config gate"`},
 			},
 		}
 		for _, tt := range tests {
@@ -163,7 +165,7 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 		if !slices.Contains(spec.Skills, "scribe:prose") {
 			t.Errorf("spec skills = %v; want the role skills", spec.Skills)
 		}
-		for _, want := range []string{websterengine.VerifyGateReportPath(fx.ReportsDir), replyPath} {
+		for _, want := range []string{websterengine.VerifyGateReportPath(fx.ReportsDir), replyPath, "lyx gate test --wait --gate webster-fix"} {
 			if !strings.Contains(fx.Engine.LastPrompt, want) {
 				t.Errorf("prompt lacks %q", want)
 			}

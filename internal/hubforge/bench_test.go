@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // bench_test.go holds the permanent probes behind the numbers in
 // docs/benchmarks/fixture-copy.md, re-established on the real hub this batch introduces. Run them

@@ -1,4 +1,6 @@
-// wiring_test.go pins wire's mode truth table at tier 1: every case drives c.wire directly with a
+//go:build tier0
+
+// wiring_test.go pins wire's mode truth table at tier 0: every case drives c.wire directly with a
 // told preflight.Mode -- never through the real pre-run -- so no case spawns a process or resolves
 // cwd. websterCLI itself carries no *lyxcwd.Location field (see cli.go's struct): that is a
 // compile-time property of this package, not something a test can additionally assert at runtime.
@@ -38,7 +40,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/cliwire"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -47,21 +48,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// seedHubGateConfig writes the hub-wide gate.yaml into hubPath's board directory: the shipped template with tier0 declared, so every gate lists it.
-// hubgeom.WebsterGeometry's GateConfig reads it there.
-func seedHubGateConfig(t *testing.T, hubPath string) {
-	t.Helper()
-	configDir := filepath.Join(fabricengine.BoardDir(hubPath), "_lyx", "config")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
-	}
-	contents := strings.Replace(gateslot.ConfigTemplate(), "tiers: {}", `tiers:
-  tier0: {command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}`, 1)
-	if err := os.WriteFile(filepath.Join(configDir, "gate.yaml"), []byte(contents), 0o644); err != nil {
-		t.Fatalf("WriteFile(gate.yaml) = %v; want nil", err)
-	}
-}
 
 // hubLocation returns a *lyxcwd.Location standing in for a real hub's prime.
 // Its only filesystem preparation is the worktree's .git directory -- see the file header for why wire's hub branch tolerates the rest being absent.

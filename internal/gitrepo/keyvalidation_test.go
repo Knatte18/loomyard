@@ -1,3 +1,5 @@
+//go:build tier0
+
 // keyvalidation_test.go covers validSHA — pure string-matching logic with no git spawn, no
 // filesystem I/O, and no gitkit fixture.
 // It is deliberately untagged (no //go:build constraint) and in the internal package so it reaches

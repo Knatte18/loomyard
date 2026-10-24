@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cancelcmd_test.go pins the cancel verb's pre-resolution refusals and the helpers that wire its seams: the pause readings, the claim clear, the tackler stop and batten's two locks.
 
 package battencli

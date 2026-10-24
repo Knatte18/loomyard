@@ -1,4 +1,6 @@
-// spec_test.go — untagged Tier-1 unit tests for DarnTable.
+//go:build tier0
+
+// spec_test.go — tier 0 unit tests for DarnTable.
 // Pure Go over an in-memory Config, a temp-dir modelspec registry and seeded stencils;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
 

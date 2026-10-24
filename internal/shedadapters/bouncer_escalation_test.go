@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bouncer_escalation_test.go covers the Bouncer's escalation of a CIRCLING ruling or a spent bounce budget to the run's parent: the record it writes, the Awaiting it returns, and the way it acts on the recorded decision.
 
 package shedadapters

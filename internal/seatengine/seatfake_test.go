@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seatfake_test.go holds the handle-shaped fake shuttle the engine tests drive, and the helpers that run an engine beside it.
 
 package seatengine

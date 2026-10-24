@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 package reedcli
 

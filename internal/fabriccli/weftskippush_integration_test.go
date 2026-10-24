@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // weftskippush_integration_test.go covers the fabric CLI's content-sync verbs ("push", "sync") against one real hub with FABRIC_SKIP_PUSH set, so the detached push child does no network work:
 // the env-to-SyncOptions mapping at the CLI edge, and the sync pathspec still covering _lyx when the repo-wide config names only another path.

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // status_pollution_integration_test.go pins the anchor scoping of Topology.Status's warp-pollution
 // scan.

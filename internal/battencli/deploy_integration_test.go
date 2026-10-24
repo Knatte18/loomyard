@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // deploy_integration_test.go covers runDeploy against a real shell, which is why it sits in the integration tier.
 

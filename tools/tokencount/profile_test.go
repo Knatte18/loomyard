@@ -1,3 +1,5 @@
+//go:build tier0
+
 // profile_test.go drives the per-profile cost and quality report over an in-memory history of webster records and review files: the per-batch attribution, the marked runs, the findings rule and the printed tables.
 // Tier-1 (no git, no spawn).
 
@@ -6,7 +8,6 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"path"
 	"strings"
 	"testing"
@@ -16,33 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// fakeRecords is an in-memory RunRecords: the plan history plus the files directly in a directory at a revision.
-type fakeRecords struct{ fakeHistory }
-
-func (f fakeRecords) FilesInDirAtRevision(rev, dir string) ([]string, error) {
-	var names []string
-	for key := range f.files {
-		if rest, ok := strings.CutPrefix(key, rev+":"+dir+"/"); ok && !strings.Contains(rest, "/") {
-			names = append(names, rest)
-		}
-	}
-	return names, nil
-}
-
-// reviewFile renders a review file that parses and holds the given number of findings.
-func reviewFile(findings int) string {
-	if findings == 0 {
-		return "---\nverdict: APPROVED\nfindings: []\n---\n"
-	}
-	var b strings.Builder
-	b.WriteString("---\nverdict: APPROVED\nfindings:\n")
-	for i := 1; i <= findings; i++ {
-		fmt.Fprintf(&b, "  - id: f%d\n    severity: MEDIUM\n    class: scope\n    location: internal/a/a.go\n    summary: a finding\n", i)
-	}
-	b.WriteString("---\n")
-	return b.String()
-}
 
 func TestBuildProfileReport(t *testing.T) {
 	t.Parallel()

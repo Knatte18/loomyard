@@ -1,3 +1,5 @@
+//go:build tier0
+
 // export_test.go covers the exported StripLeadingComment, TopLevelMarkers and IncludeNames helpers.
 
 package stencil

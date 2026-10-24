@@ -93,19 +93,16 @@ type Env struct {
 	GateFindingsFile func(row string) string
 	// VerifyDir is the told verify directory, read by the gate resolver's "verify" gate.
 	VerifyDir string
-	// VerifyCommand is the told verify-command source, read at each arrival by the gate resolver's "verify" gate, which requires it.
-	VerifyCommand func() (string, error)
-	// Round is the told source of the hub's gate list the "verify" gate narrows to a diff, read at each arrival by the gate resolver's "verify" gate, which requires it.
-	// It tells the `landing` list at the fix rows of loom and darn.
+	// VerifyCommand is the told verify-command source, a recipe-wide lookup of the call of the gate key a row names, read at each arrival by the gate resolver's "verify" gate, which requires it.
 	// Its error is the gate's returned error.
-	Round func() (loomshed.RoundGate, error)
+	VerifyCommand func(gateKey string) (string, error)
 	// VerifyMergeBase is the told reader of the task branch's merge base with the parent branch, read by the gate resolver's "verify" gate.
 	// It is the base of the headroom lint, or of both lints when VerifyTreeScope is set; nil skips the headroom lint.
 	VerifyMergeBase func() (string, error)
-	// VerifyTreeScope is the told reader of the task diff's tree classification, read by the gate resolver's "verify" gate at each arrival.
+	// VerifyTreeScope is the told lookup, keyed by a row's gate key, of the task diff's tree classification, read by the gate resolver's "verify" gate at each arrival.
 	// It answers the tree-scoped command and true for a diff wholly under the configured trees, and false otherwise.
 	// Set, it alone selects the gate's darn form and requires VerifyMergeBase; nil, which a loom run leaves, keeps the round form.
-	VerifyTreeScope func() (string, bool, error)
+	VerifyTreeScope func(gateKey string) (string, bool, error)
 	// VerifyHold is the told pause hold of the worktree's verify sites, read by the gate resolver's "verify" gate.
 	// Nil holds nothing.
 	VerifyHold *verifytree.PauseHold
@@ -158,6 +155,11 @@ type Env struct {
 	// Setting is the told setting lookup a row reaches by naming module and key, returning the module's resolved value from the pair's config stack.
 	// Nil is legal for a caller whose recipe names no setting.
 	Setting func(module, key string) (any, error)
+	// SettingKnown is the told known-key check a recipe-wide entry gate's `module.key` operand is built against, refusing an unregistered module and a key its template lacks.
+	// Nil is legal for a caller whose recipe holds no entry gate naming a setting.
+	SettingKnown func(module, key string) error
+	// Resume is the command that resumes the run, named in an entry gate's evaluation errors.
+	Resume string
 	// ExecutableSetting is the owner's told executable-key lookup over the template and the board default layer only, read by the Command entry for its command.
 	// Nil is legal for a caller whose recipe holds no Command row.
 	ExecutableSetting func(module, key string) (any, error)

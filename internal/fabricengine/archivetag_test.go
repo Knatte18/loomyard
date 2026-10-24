@@ -1,3 +1,5 @@
+//go:build tier0
+
 // archivetag_test.go — unit test for ArchiveTagSlug, the reader of the archive tag namespace.
 
 package fabricengine

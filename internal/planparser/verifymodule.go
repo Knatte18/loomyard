@@ -142,10 +142,10 @@ func isModuleWideGoCommand(fields []string) bool {
 	return false
 }
 
-// namesGateOnlyTier reports whether a -tags value lists the tmux or llm build tag.
+// namesGateOnlyTier reports whether a -tags value lists the tmux, llm, tier2 or tier3 build tag.
 func namesGateOnlyTier(tags string) bool {
 	return slices.ContainsFunc(strings.FieldsFunc(strings.Trim(tags, `"'`), func(r rune) bool { return r == ',' || r == ' ' }), func(tag string) bool {
-		return tag == "tmux" || tag == "llm"
+		return tag == "tmux" || tag == "llm" || tag == "tier2" || tag == "tier3"
 	})
 }
 

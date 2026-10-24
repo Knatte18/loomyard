@@ -1,3 +1,5 @@
+//go:build tier0
+
 // rownotice_test.go covers the row notifier's delivery bound and the per-run marker reset.
 
 package battenshed

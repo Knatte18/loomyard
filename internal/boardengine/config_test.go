@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go — unit tests for boardengine.LoadConfig.
 //
 // Covers: scalar keys with template defaults, ignored path: keys, label maps and lists, label refusals, the not-initialized error path, Outputs and Vocabulary.

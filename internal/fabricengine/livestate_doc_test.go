@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // livestate_doc_test.go documents the live-state integration harness for internal/fabricengine: a set
 // of package fabricengine_test files (the livestate_ prefix) that build a hub through internal/hubforge

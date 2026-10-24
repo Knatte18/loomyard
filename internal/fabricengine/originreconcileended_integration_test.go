@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // originreconcileended_integration_test.go proves what the origin reconcile does with the runs origin has ended, on hubforge hubs.
 // The teardown seam is a recording fake, since the local removal's own effects belong to the removal.

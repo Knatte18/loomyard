@@ -1,3 +1,5 @@
+//go:build tier0
+
 // main_test.go covers the production deploy's pieces — the dirty-tree refusal, the marketplace
 // parse, the plugin mirror, and the stray-binary report — plus -dev's destination and a
 // source-level guard that the -ldflags -X path in run() still names a variable that actually exists

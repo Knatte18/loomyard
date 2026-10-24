@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // verify_integration_test.go exercises Verify against a real scratch repo and real shell processes, so it carries the integration tag.
 

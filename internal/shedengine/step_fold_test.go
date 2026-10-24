@@ -1,3 +1,5 @@
+//go:build tier0
+
 // step_fold_test.go covers the fold of consecutive identical budget-exempt Stucks through a real Shed.Step: the fold lands inside the step's single persist, recomposes activity.last, and is ended by any interleaved entry.
 
 package shedengine

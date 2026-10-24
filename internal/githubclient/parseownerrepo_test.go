@@ -1,3 +1,5 @@
+//go:build tier0
+
 // parseownerrepo_test.go is the table-driven test suite for ParseOwnerRepo, covering every accepted
 // shape and every rejected one.
 // This file carries no build tag -- it spawns nothing, so the Test Tier Purity Invariant leaves it in

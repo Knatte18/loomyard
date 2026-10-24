@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // spawn_status_integration_test.go covers SpawnStatusPush, the one entry point for a status push, over a hubforge hub: the prime rule, the slug roles, the board working directory and the local-branch check.
 //

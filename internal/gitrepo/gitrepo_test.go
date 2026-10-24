@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // gitrepo_test.go covers the read/commit primitives (CurrentSHA, StageAndCommit, StageAllAndCommit, ChangedFilesSince, SHAExists, CurrentBranch) against real git repositories built under t.TempDir().
 // Every test spawns real git, so this file requires the hermetic TestMain in testmain_test.go.

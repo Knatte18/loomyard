@@ -1,3 +1,5 @@
+//go:build tier0
+
 // add_test.go pins `lyx reed add`'s --anchor vocabulary refusal, which runs before the engine is called.
 
 package reedcli

@@ -1,4 +1,4 @@
-//go:build integration && !windows
+//go:build tier1 && !windows
 
 // termwindow_integration_test.go runs the window's shell line under bash, with a stub executable standing in for lyx, to pin when the window ends and when it keeps its shell.
 

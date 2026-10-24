@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // circling_integration_test.go drives the circling group through the real cobra tree against a real hub pair.
 // It pins what circling_test.go's fakes cannot: the group's pre-run resolves a task worktree with and without a slug,

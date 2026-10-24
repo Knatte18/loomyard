@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // parenttips_integration_test.go proves the code-side reads a parent merge needs — ReadParentTips, ChangedPaths and HoldsWork — and FastForwardPair's fast-forward-only move and refusals.
 // Package fabricengine_test; it reuses pull_integration_test.go's buildReconcileFixture and rewriteWarpRemoteHistory.

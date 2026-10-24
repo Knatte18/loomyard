@@ -1,3 +1,5 @@
+//go:build tier0
+
 // runprofile_test.go table-drives Load and Lookup against hub files under t.TempDir.
 
 package runprofile_test

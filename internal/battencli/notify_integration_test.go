@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // notify_integration_test.go proves the wired Notify seam over a real hub, whose prime NotifyPrime resolves through git.
 

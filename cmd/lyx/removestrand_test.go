@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // removestrand_test.go enforces `PATTERN-shuttle-stop`: a strand is removed from Go only inside the packages that own the removal.
 // The scan matches the selector, so a method value handed to a wrapper is caught as well as a call.
 

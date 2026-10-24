@@ -1,3 +1,5 @@
+//go:build tier0
+
 // anomaly_test.go is the TDD driver for DetectCrashResume and ClassifyHalt: table tests over
 // hand-built observations and hand-built states and reasons. It is untagged (Tier 1): no spawn,
 // no git, no filesystem I/O -- the classifier is pure.

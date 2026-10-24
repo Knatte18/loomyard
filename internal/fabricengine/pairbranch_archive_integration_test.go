@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pairbranch_archive_integration_test.go covers the archive step of the verb that deletes an existing pair's weft branch besides Remove: Cleanup's apply loop tags the branch tip under archive/<slug>/ and pushes the tag to the weft origin before deleting the branch.
 //

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // launchscript_cleanup_test.go proves every path that forgets a strand also deletes its launch script, and that no path deletes a script whose strand survives.
 
 package reedengine

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // derive_integration_test.go drives DeriveTargets over a real repository holding a small Go module.
 
@@ -99,7 +99,7 @@ func TestDerive_OverARepository(t *testing.T) {
 	commitAll(t, dir, "change a")
 	t.Run("a one-package change derives that package's set and the outside guard", func(t *testing.T) {
 		got := deriveTargets(t, dir, base)
-		if got.Whole || got.Base != base || packagesOf(got) != "./a ./b" || !reflect.DeepEqual(got.Guards, map[string][]string{"g": {"TestGuard"}}) {
+		if got.Whole || got.Base != base || packagesOf(got) != "./a ./b" || !reflect.DeepEqual(got.Guards, map[string][]GuardTest{"g": {{Name: "TestGuard", Tier: 0}}}) {
 			t.Errorf("DeriveTargets() = %+v; want packages ./a ./b on base %s and the guard of g", got, base)
 		}
 	})
@@ -147,6 +147,20 @@ func TestDerive_OverARepository(t *testing.T) {
 		}
 	})
 
+	t.Run("a package reached only through a tier0 test file joins the set of the imported package's change", func(t *testing.T) {
+		tiered := t.TempDir()
+		gitkit.Git(t, tiered, "init", "-q")
+		writeRepoFile(t, tiered, "go.mod", "module example.com/m\n\ngo 1.26\n")
+		writeRepoFile(t, tiered, "a/a.go", "package a\n")
+		writeRepoFile(t, tiered, "d/d.go", "package d\n")
+		writeRepoFile(t, tiered, "d/d_test.go", "//go:build tier0\n\npackage d\n\nimport _ \"example.com/m/a\"\n")
+		tierBase := commitAll(t, tiered, "base")
+		writeRepoFile(t, tiered, "a/a.go", "package a\n\nfunc H() {}\n")
+		if got := deriveTargets(t, tiered, tierBase); got.Whole || packagesOf(got) != "./a ./d" {
+			t.Errorf("DeriveTargets() = %+v; want packages ./a ./d, the importer through its tier0 test file included", got)
+		}
+	})
+
 	t.Run("an untracked new file selects its package", func(t *testing.T) {
 		writeRepoFile(t, dir, "n/n.go", "package n\n")
 		defer remove(t, "n")
@@ -159,7 +173,7 @@ func TestDerive_OverARepository(t *testing.T) {
 		writeRepoFile(t, dir, "notes.txt", "x\n")
 		defer remove(t, "notes.txt")
 		got := targetsOf(t)
-		if got.Whole || len(got.Modules) != 0 || !reflect.DeepEqual(got.Guards, map[string][]string{"g": {"TestGuard"}}) {
+		if got.Whole || len(got.Modules) != 0 || !reflect.DeepEqual(got.Guards, map[string][]GuardTest{"g": {{Name: "TestGuard", Tier: 0}}}) {
 			t.Errorf("DeriveTargets() = %+v; want no module and the guard of g", got)
 		}
 	})

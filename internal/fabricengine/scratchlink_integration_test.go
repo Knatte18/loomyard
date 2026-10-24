@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // scratchlink_integration_test.go covers the scratch step of fabric wiring against real hubs.
 // It pins the root `.scratch` becoming a link into the weft-side `.lyx`, the adoption of a real directory, and the shapes the step leaves as found.

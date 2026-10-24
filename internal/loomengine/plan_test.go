@@ -1,3 +1,5 @@
+//go:build tier0
+
 // plan_test.go — untagged Tier-1 unit tests for PlanTable.
 // Pure Go over an in-memory Config, a temp-dir modelspec registry and a seeded stencils directory;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.

@@ -21,7 +21,7 @@ func ConfigTemplate() string {
 }
 
 // Config is the resolved batten.yaml's tackler keys, which a batten run passes through.
-// The Command rows' switch and command keys are read one at a time through the setting lookups, so Config holds none of them.
+// The Command rows' entry-gate and command keys are read one at a time through the setting lookups, so Config holds none of them.
 type Config struct {
 	// Tackler, TacklerTimeoutMin and TacklerMaxSpawns override shed.yaml's keys of the same names for a batten run;
 	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns of 0 turns the tackler off.
@@ -46,7 +46,7 @@ func ValidateLocalValues(document []byte) error {
 	return sheddriver.CheckLocalOverride("batten", document)
 }
 
-// ConfigSpec returns batten's layered-load spec: a per-worktree module whose switch and tackler keys a local override, and so a task's run settings, may set.
+// ConfigSpec returns batten's layered-load spec: a per-worktree module whose Command-row entry-gate and tackler keys a local override, and so a task's run settings, may set.
 // The Command rows' command keys are executable, so the local layer, and so a task's run settings, refuses them.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{

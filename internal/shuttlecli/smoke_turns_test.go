@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_turns_test.go provokes the hard turn-end cases against a REAL claude in a REAL tmux pane:
 // a long background shell, a background shell finishing mid-turn, a Monitor, a fork, a fork's permission dialog, a message sent mid-turn, a skill load and a compact.

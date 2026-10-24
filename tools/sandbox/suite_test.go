@@ -1,3 +1,5 @@
+//go:build tier0
+
 // suite_test.go contains unit tests for the suite launcher functions: binary fingerprinting, scheme rendering, git-exclude management, and the runSuite orchestration.
 // All tests use seam stubs and temp directories -- no real lyx, claude, or network calls are made.
 // The runSuite and launchAgent tests rewrite package-level seams (devBinPath, lookPath, launchAgent, reedDown, interactiveStdio) or os.Stderr, so they do not call t.Parallel; the pure tests run in parallel, which Go starts only after every serial test has restored its seams.

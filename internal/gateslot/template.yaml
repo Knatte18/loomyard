@@ -8,20 +8,22 @@ busy_quit_sec: 120  # seconds a Go test binary under lyx gate test may keep a CP
 # Inside the mapping a value holding a brace, comma or bracket is a double-quoted string.
 tiers: {}
 
-# Gate name to the list of tier numbers that site runs; card, batch, round, final and landing are read by lyx.
-# No list may be empty, and a tier a list names must be declared above when the gate runs.
+# Gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|all}.
+# The keys lyx reads: card and batch (scope card, the card's own packages), webster, merge-in and finalize (scope all, the whole tree), and webster-fix, darn-write and code-burler-fix (scope diff, the diff from the merge base).
+# The scope card is only for the card and batch keys.
+# No tier list may be empty, and a tier a key names must be declared above when the gate runs.
 gates:
-  card: [0]
-  batch: [0]
-  round: [0]
-  final: [0]
-  landing: [0]
+  card: {tiers: [0], scope: card}
+  batch: {tiers: [0], scope: card}
+  webster: {tiers: [0], scope: all}
+  merge-in: {tiers: [0], scope: all}
+  finalize: {tiers: [0], scope: all}
+  webster-fix: {tiers: [0], scope: diff}
+  darn-write: {tiers: [0], scope: diff}
+  code-burler-fix: {tiers: [0], scope: diff}
 
 # How a computed, base or card scope maps to {targets}: go derives the impacted Go packages per module, none runs every tier whole.
 scoper: none
-
-# The tier whose command runs the //lyx:guard tests outside a narrowed scope; read only under the go scoper.
-guard_tier: 0
 
 # Command prefixes the shell guard refuses, each one or more words of letters, digits, dot, underscore and dash separated by single spaces, such as "go test".
 refuse_raw: []

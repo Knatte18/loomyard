@@ -1,3 +1,5 @@
+//go:build tier0
+
 // clitree_test.go derives the CLI / Cobra Invariant's per-command obligations from one walk of newRoot(), so no hand-kept list of modules or verbs exists to drift.
 
 package main

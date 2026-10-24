@@ -1,3 +1,5 @@
+//go:build tier0
+
 // summary_test.go exercises the Append* helpers that add sections to the final summary.
 
 package websterengine_test

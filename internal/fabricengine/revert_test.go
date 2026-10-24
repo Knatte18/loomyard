@@ -1,3 +1,5 @@
+//go:build tier0
+
 // revert_test.go — untagged unit tests for classifyCorrespondence, the pure gap-classification core
 // resolveRevertTarget's resolution step builds on.
 // No git spawn: every case works against a hand-built *corrIndex.

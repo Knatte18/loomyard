@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pull_test.go covers Repo.Pull against a real bare remote and clones, reusing push_test.go's bare-remote/clone fixtures (newBareRemote, newRepoWithRemote, cloneFromBare) since a fast-forward pull needs the same bare-remote-plus-clones shape the push rebase-retry tests already build.
 

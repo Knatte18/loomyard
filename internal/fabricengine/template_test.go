@@ -1,3 +1,5 @@
+//go:build tier0
+
 // template_test.go — tests for the fabric ConfigTemplate generator.
 //
 // Covers: ConfigTemplate returns valid YAML with both expected keys and resolves to the correct

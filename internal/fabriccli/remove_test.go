@@ -1,3 +1,5 @@
+//go:build tier0
+
 // remove_test.go covers the verdict `lyx fabric remove` takes from an origin reconcile report, and the remover's choice between the local removal and the ordinary one over fake seams.
 
 package fabriccli

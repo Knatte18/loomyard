@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // window_integration_test.go proves OpenWindow against a real tmux.
 // The window opens detached without moving the current window, carries @lyx_hidden, reads remain-on-exit off while the strands' window still reads on, closes when its command exits (also when it exits at once), and a second call while it is live starts nothing.

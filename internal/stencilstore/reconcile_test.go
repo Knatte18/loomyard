@@ -1,3 +1,5 @@
+//go:build tier0
+
 // reconcile_test.go covers Read, Reconcile, and ForceRefresh against a bare t.TempDir(), with no git and no hub fixture -- see fakeRegistry below for the Registry stand-in every test here uses.
 //
 // The tests that capture the logger's output swap process-global state, so they stay serial and run before the parallel ones resume.

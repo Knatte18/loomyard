@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mergesiblings_integration_test.go asserts the sibling-verb disposition table card 13 wires: every
 // mutating verb whose write would corrupt or be corrupted by a live merge refuses with the single

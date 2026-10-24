@@ -1,3 +1,5 @@
+//go:build tier0
+
 // buildenv_test.go covers classifyAmbiguity and the constraint text it describes each candidate
 // with, table-driven over Go files written to a temp root.
 

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // runlevel_git_test.go exercises Run's plan-level verify gate over a real scratch git repository and real shell commands:
 // the gate asks git for the tree's dirty paths and for the commits since the first failure, and runs the `final` gate call through the built `lyx` in a subprocess.
@@ -64,7 +64,14 @@ func (s *gateScenario) restart(t *testing.T, verify string) (*runFixture, string
 			"tier0": map[string]any{"about": "verify stand-in", "command": verify, "timeout_min": 1, "counter": "go-json"},
 		},
 		"gates": map[string]any{
-			"card": []int{0}, "batch": []int{0}, "round": []int{0}, "final": []int{0}, "landing": []int{0}, "publish": []int{0},
+			"card":            map[string]any{"tiers": []int{0}, "scope": "card"},
+			"batch":           map[string]any{"tiers": []int{0}, "scope": "card"},
+			"webster":         map[string]any{"tiers": []int{0}, "scope": "all"},
+			"merge-in":        map[string]any{"tiers": []int{0}, "scope": "all"},
+			"finalize":        map[string]any{"tiers": []int{0}, "scope": "all"},
+			"webster-fix":     map[string]any{"tiers": []int{0}, "scope": "diff"},
+			"darn-write":      map[string]any{"tiers": []int{0}, "scope": "diff"},
+			"code-burler-fix": map[string]any{"tiers": []int{0}, "scope": "diff"},
 		},
 	})
 	if err != nil {

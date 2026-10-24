@@ -1,3 +1,5 @@
+//go:build tier0
+
 // start_watchdog_test.go pins the watchdog seam's call site: that the verb reaches c.spawnWatchdog
 // with the hub path, tmux path, and shell path the receiver carries, driven with a recording stub
 // substituted for the seam so the assertion needs no real process.

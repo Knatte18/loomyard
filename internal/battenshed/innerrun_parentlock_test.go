@@ -1,3 +1,5 @@
+//go:build tier0
+
 // innerrun_parentlock_test.go covers the inner-run watch's parent lock duties over a fake clock and fake seams:
 // keeping or releasing the lock of the child's run on every probe check.
 

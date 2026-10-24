@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // constraintchokepoint_test.go enforces `PATTERN-glyph-conversion-chokepoint`:
 // loomyard performs no glyph<->path conversion of its own outside quarry's glyph package.
 // glyph.Self is the only path->glyph call, Glyph.UnitPath is the only glyph->path call, and

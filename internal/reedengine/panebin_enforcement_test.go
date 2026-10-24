@@ -1,3 +1,5 @@
+//go:build tier0
+
 // panebin_enforcement_test.go enforces PATTERN-pane-binary-resolution's two-sided
 // guarantee: no pane-creation site exists outside the named allowlist, and the one allowlisted
 // chokepoint still composes the prelude rather than silently becoming a plain pass-through.

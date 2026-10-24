@@ -1,3 +1,5 @@
+//go:build tier0
+
 // window_test.go pins the `window` reed verb against a recording launcher seam; it opens no window.
 
 package reedcli

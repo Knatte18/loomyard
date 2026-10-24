@@ -1,5 +1,7 @@
+//go:build tier0
+
 // pattern_test.go exercises Directive's active check and its three directive variants.
-// Every test here is untagged Tier 1: it uses only os.Stat (via the package's statFile seam),
+// Every test here uses only os.Stat (via the package's statFile seam),
 // os.MkdirAll/os.WriteFile inside a t.TempDir() (via newTestStencilsDir, seeding a hermetic stencils
 // directory), and t.TempDir itself, and spawns nothing.
 

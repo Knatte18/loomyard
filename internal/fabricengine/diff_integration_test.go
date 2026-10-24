@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // diff_integration_test.go — integration coverage for the unified
 // Fabric.Diff and Fabric.Status added in diff.go: the exact-correspondence

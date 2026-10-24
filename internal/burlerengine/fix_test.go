@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fix_test.go tables the fix half (Engine.Fix, ProbeFix, ResumeFix) against the same-package fakeShuttle.
 // It covers the one-seat table's shape, a spawn for a review holding only a NIT finding, the empty-review skip, routed decision findings, a failing gate spawning the fixer with the gate findings as its work, a gate closure error spawning nothing, ErrReviewChanged before and after the fixer, a failed fixer gate passing through, probe and resume, and what the fixer's files hold.
 

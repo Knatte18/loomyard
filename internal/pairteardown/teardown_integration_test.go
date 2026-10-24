@@ -1,4 +1,4 @@
-//go:build tmux && !windows
+//go:build tier2 && !windows
 
 // teardown_integration_test.go drives the composite on real hub pairs with real reed sessions and a stub driver strand, as one ordered scenario over one hub and its tmux server.
 

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // run_integration_test.go exercises Run against real shell processes, so it carries the integration tag.
 

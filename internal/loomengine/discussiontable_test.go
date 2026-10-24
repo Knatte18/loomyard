@@ -1,3 +1,5 @@
+//go:build tier0
+
 // discussiontable_test.go — untagged Tier-1 unit tests for DiscussionTable.
 // Pure Go over an in-memory Config, a temp-dir modelspec registry and a seeded stencils directory;
 // the seat prompts are composed through seatengine.Prompts, which starts nothing.

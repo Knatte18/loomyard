@@ -261,7 +261,7 @@ func codeReviewOff(l *lyxcwd.Location, recipe string) func() (bool, error) {
 }
 
 // rerouteReviewed returns the seam that reports whether a review follows Finalize's reroute: whether the Code-Perch's effective budget is above 0.
-// A loom Finalize reroutes through Merge-In to the Code-Perch, and a darn Finalize to Code-Bouncer, which the budget-0 rewrite replaces with PR-Review.
+// A loom Finalize reroutes through Merge-In to the Code-Perch, and a darn Finalize to Code-Bouncer, which settles approved at once on a budget of 0.
 func rerouteReviewed(l *lyxcwd.Location) func() (bool, error) {
 	budgetZero := codeBudgetZero(l)
 	return func() (bool, error) {
@@ -431,25 +431,26 @@ func loopLockOwner(l *lyxcwd.Location, runID string) func() (parentlock.Owner, e
 
 // verifySource pairs the readers of the gate calls one recipe tells its verify gate and landing producers.
 type verifySource struct {
-	// command returns the call the landing sites run, read each time it is called.
-	command func() (string, error)
+	// command returns the call of the gate key a landing row runs, read each time it is called.
+	command func(gateKey string) (string, error)
 	// publishCommand returns the call of the `publish` gate, "" for an empty list.
 	publishCommand func() (string, error)
-	// baseCommand returns the call whose verified-tree entry every landing pass keeps, and the round gate's told command.
+	// baseCommand returns the call whose verified-tree entry every landing pass keeps.
 	baseCommand func() (string, error)
 	// gateTiers lists the tier numbers of a named gate, read from the hub's gate config at each call.
 	gateTiers func(gate string) ([]int, error)
 }
 
-// planVerifySource returns loom's verify source: the hub's `landing` and `final` gate calls.
+// planVerifySource returns loom's verify source: the call of any gate key a landing row names, and the fix rows' `code-burler-fix` call as the base command.
 // Each reader loads the hub's gate config over the pair's config dirs each time it is called, never at construction:
 // landingDeps runs at bootstrap, so a gate.yaml edit between two steps must take effect.
-// A config or gate-list refusal is returned with its own way forward, not mapped to an empty command.
+// A config or gate-key refusal is returned with its own way forward, not mapped to an empty command.
 func planVerifySource(l *lyxcwd.Location) verifySource {
 	dirs := fabricengine.ConfigDirs(l)
+	call := gateCallSource(dirs)
 	return verifySource{
-		command:     gateCallSource(dirs, "landing"),
-		baseCommand: gateCallSource(dirs, "final"),
+		command:     call,
+		baseCommand: func() (string, error) { return call("code-burler-fix") },
 		gateTiers:   gateTiersLookup(dirs),
 	}
 }

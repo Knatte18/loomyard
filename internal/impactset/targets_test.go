@@ -1,3 +1,5 @@
+//go:build tier0
+
 // targets_test.go drives the pure core of DeriveTargets over a hand-built package graph and changed-path list.
 
 package impactset
@@ -10,7 +12,8 @@ import (
 func TestTargetsFor(t *testing.T) {
 	t.Parallel()
 
-	guards := map[string][]string{"internal/d": {"TestGuardD", "TestGuardD2"}, "internal/a": {"TestGuardA"}}
+	guardsD := []GuardTest{{Name: "TestGuardD", Tier: 0}, {Name: "TestGuardD2", Tier: 1}}
+	guards := map[string][]GuardTest{"internal/d": guardsD, "internal/a": {{Name: "TestGuardA", Tier: 1}}}
 	root := func(packages ...string) []ModuleTargets {
 		return []ModuleTargets{{Dir: ".", Packages: packages}}
 	}
@@ -28,7 +31,7 @@ func TestTargetsFor(t *testing.T) {
 		name    string
 		graph   *moduleGraph
 		changed []string
-		guards  map[string][]string
+		guards  map[string][]GuardTest
 		want    Targets
 	}{
 		{
@@ -37,44 +40,44 @@ func TestTargetsFor(t *testing.T) {
 			guards:  guards,
 			want: Targets{
 				Modules:     root("./cmd/lyx", "./internal/a", "./internal/b", "./internal/c", "./internal/tmuxonly"),
-				Guards:      map[string][]string{"internal/d": {"TestGuardD", "TestGuardD2"}},
+				Guards:      map[string][]GuardTest{"internal/d": guardsD},
 				BinaryTests: binaryTests,
 			},
 		},
 		{
 			name:    "a change to a dependency of cmd/lyx leaves out a package that reaches it only through the binary",
 			changed: []string{"internal/b/b.go"},
-			want:    Targets{Modules: root("./cmd/lyx", "./internal/b", "./internal/c"), Guards: map[string][]string{}, BinaryTests: binaryTests},
+			want:    Targets{Modules: root("./cmd/lyx", "./internal/b", "./internal/c"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
 		},
 		{
 			name:    "a change to the cmd/lyx main package pulls in every package that builds the binary",
 			changed: []string{"cmd/lyx/main.go"},
-			want:    Targets{Modules: root("./cmd/lyx", "./internal/e"), Guards: map[string][]string{}, BinaryTests: binaryTests},
+			want:    Targets{Modules: root("./cmd/lyx", "./internal/e"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
 		},
 		{
 			name:    "a change to the cmd/lyx main package over a module without the binary builder adds nothing",
 			graph:   &graphWithoutLyxbin,
 			changed: []string{"cmd/lyx/main.go"},
-			want:    Targets{Modules: root("./cmd/lyx"), Guards: map[string][]string{}},
+			want:    Targets{Modules: root("./cmd/lyx"), Guards: map[string][]GuardTest{}},
 		},
 		{
 			name:    "a change outside cmd/lyx's dependencies leaves the binary-building packages out and keeps a test-less package",
 			changed: []string{"internal/d/d.go"},
-			want:    Targets{Modules: root("./internal/d"), Guards: map[string][]string{}, BinaryTests: binaryTests},
+			want:    Targets{Modules: root("./internal/d"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
 		},
 		{
 			name:    "a rename between package directories puts both in the set",
 			changed: []string{"internal/c/x.go", "internal/d/x.go"},
-			want:    Targets{Modules: root("./internal/c", "./internal/d"), Guards: map[string][]string{}, BinaryTests: binaryTests},
+			want:    Targets{Modules: root("./internal/c", "./internal/d"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
 		},
 		{
 			name:    "a Markdown-only diff outside any package yields no module and every guard",
 			changed: []string{"docs/overview.md"},
 			guards:  guards,
 			want: Targets{
-				Guards: map[string][]string{
-					"internal/a": {"TestGuardA"},
-					"internal/d": {"TestGuardD", "TestGuardD2"},
+				Guards: map[string][]GuardTest{
+					"internal/a": {{Name: "TestGuardA", Tier: 1}},
+					"internal/d": guardsD,
 				},
 				BinaryTests: binaryTests,
 			},
@@ -82,13 +85,13 @@ func TestTargetsFor(t *testing.T) {
 		{
 			name:    "a guard name held by two outside packages is listed under each, once",
 			changed: []string{"docs/overview.md"},
-			guards:  map[string][]string{"internal/a": {"TestGuardX"}, "internal/d": {"TestGuardX"}},
-			want:    Targets{Guards: map[string][]string{"internal/a": {"TestGuardX"}, "internal/d": {"TestGuardX"}}, BinaryTests: binaryTests},
+			guards:  map[string][]GuardTest{"internal/a": {{Name: "TestGuardX", Tier: 0}}, "internal/d": {{Name: "TestGuardX", Tier: 1}}},
+			want:    Targets{Guards: map[string][]GuardTest{"internal/a": {{Name: "TestGuardX", Tier: 0}}, "internal/d": {{Name: "TestGuardX", Tier: 1}}}, BinaryTests: binaryTests},
 		},
 		{
 			name:    "a non-Go file maps to its nearest enclosing package",
 			changed: []string{"internal/d/testdata/x.yaml"},
-			want:    Targets{Modules: root("./internal/d"), Guards: map[string][]string{}, BinaryTests: binaryTests},
+			want:    Targets{Modules: root("./internal/d"), Guards: map[string][]GuardTest{}, BinaryTests: binaryTests},
 		},
 		{
 			name:    "a file outside any package that is not Markdown falls back",

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // retiredkeys_test.go pins that a reed.json still carrying the retired display keys fixedRows, shrinkWhenWaitingOnChild and size, the retired strand key contentRows and the retired anchors below-parent and top, keeps loading with all ignored.
 // It decodes exactly like one without them, and a rewrite of it writes own-window.
 

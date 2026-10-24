@@ -43,7 +43,7 @@ type tierRun struct {
 	args []string
 	// ignoresTargets is set when explicit targets were given and the command holds no {targets}, so it runs whole.
 	ignoresTargets bool
-	// guardStep marks the run of guard_tier over the guard tests.
+	// guardStep marks the run of a tier's command over the guard tests of the files that belong to that tier.
 	guardStep bool
 }
 
@@ -53,9 +53,10 @@ func tierName(number int) string {
 }
 
 // planTierRuns builds the run list of request over cfg and the scope sc without touching the disk:
-// the listed tiers ascending with the tiers another listed tier covers dropped, each over its share of the scope, then the guard step when --guards or the scope's form asks for one the listed tiers did not already run whole.
+// the listed tiers ascending with the tiers another listed tier covers dropped, each over its own share of the scope, which a diff scope derives per base, then one guard run per tier that sc.guards holds guard tests for, when --guards or the scope's form asks for the guard step, ascending and leaving out a tier the listed tiers already ran whole.
+// A guard run is a placeholder whose packages and names the run fills from sc.guards.
 // A covered tier is named on request.stderr when it has one.
-// It refuses, naming `lyx config gate`, a hub with no tier0, an undeclared tier, a dangling covers entry or guard_tier, words after `--` for a tier whose command lacks {args}, a guard tier whose command lacks {targets} or {args}, and --guards under the none scoper.
+// It refuses, naming `lyx config gate`, a hub with no tier0, an undeclared tier, a dangling covers entry, words after `--` for a tier whose command lacks {args}, a guard group whose tier is undeclared or whose command lacks {targets} or {args}, and --guards under the none scoper.
 func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun, error) {
 	if _, err := cfg.Tier(0); err != nil {
 		return nil, fmt.Errorf("gate test: %w", err)
@@ -83,7 +84,7 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 		if len(request.args) > 0 && !strings.Contains(tier.Command, "{args}") {
 			return nil, configRefusal("words after \"--\" were given, but the command of %s holds no {args}", tierName(number))
 		}
-		invocations, ignoresTargets := scopeInvocations(tier, request, sc)
+		invocations, ignoresTargets := scopeInvocations(tier, request, sc.forTier(number))
 		runs = append(runs, tierRun{
 			number:         number,
 			tier:           tier,
@@ -100,30 +101,41 @@ func planTierRuns(cfg gateslot.Config, request testRequest, sc scope) ([]tierRun
 	if cfg.Scoper != "go" {
 		return nil, configRefusal("--guards needs the go scoper to find the guard tests, but gate.yaml's scoper is %q; drop --guards, or set scoper to go", cfg.Scoper)
 	}
-	guardTier, err := cfg.Tier(cfg.GuardTier)
-	if err != nil {
-		return nil, fmt.Errorf("gate test: guard_tier: %w", err)
+
+	groupTiers := make([]int, 0, len(sc.guards))
+	for number, dirs := range sc.guards {
+		if len(dirs) > 0 {
+			groupTiers = append(groupTiers, number)
+		}
 	}
-	if sc.whole && ranWhole(runs, cfg.GuardTier) {
-		return runs, nil
+	sort.Ints(groupTiers)
+	for _, number := range groupTiers {
+		if ranWhole(runs, number, sc) {
+			continue
+		}
+		tier, declared := cfg.Tiers[tierName(number)]
+		if !declared {
+			return nil, configRefusal("the guard tests of %s run under its command, but the hub declares no %s", tierName(number), tierName(number))
+		}
+		if !strings.Contains(tier.Command, "{targets}") || !strings.Contains(tier.Command, "{args}") {
+			return nil, configRefusal("the guard step runs the command of %s, which must hold {targets} and {args}", tierName(number))
+		}
+		dir := tier.Dir
+		switch {
+		case sc.guardDir != "":
+			dir = sc.guardDir
+		case request.dir != "":
+			dir = request.dir
+		}
+		runs = append(runs, tierRun{
+			number:      number,
+			tier:        tier,
+			scopeForm:   scopeGuard,
+			invocations: []invocation{{dir: dir}},
+			guardStep:   true,
+		})
 	}
-	if !strings.Contains(guardTier.Command, "{targets}") || !strings.Contains(guardTier.Command, "{args}") {
-		return nil, configRefusal("the guard step runs the command of %s, which must hold {targets} and {args}", tierName(cfg.GuardTier))
-	}
-	dir := guardTier.Dir
-	switch {
-	case sc.guardDir != "":
-		dir = sc.guardDir
-	case request.dir != "":
-		dir = request.dir
-	}
-	return append(runs, tierRun{
-		number:      cfg.GuardTier,
-		tier:        guardTier,
-		scopeForm:   scopeGuard,
-		invocations: []invocation{{dir: dir}},
-		guardStep:   true,
-	}), nil
+	return runs, nil
 }
 
 // scopeInvocations returns the invocations one tier makes over sc, and whether its command ignores the scope's narrowing.
@@ -159,8 +171,13 @@ func configRefusal(format string, args ...any) error {
 
 // listedTiers returns the tier numbers request names, ascending and without repeats: the --tier values and, with --upto N, every tier cfg declares numbered 0 through N that is not manual.
 // Each manual tier --upto skips and --tier does not name is named on request.stderr when it has one.
-// With neither flag it returns tier0.
+// With --gate it returns the tiers of that key, ascending and without repeats, and with neither flag it returns tier0.
 func listedTiers(cfg gateslot.Config, request testRequest) []int {
+	if request.gate != "" {
+		numbers := slices.Clone(cfg.Gates[request.gate].Tiers)
+		sort.Ints(numbers)
+		return slices.Compact(numbers)
+	}
 	if len(request.tiers) == 0 && !request.uptoGiven {
 		return []int{0}
 	}
@@ -204,10 +221,10 @@ func dropCovered(numbers []int, tiers map[int]gateslot.Tier, request testRequest
 	return kept
 }
 
-// ranWhole reports whether a run of runs is the tier number or a tier that covers it.
-func ranWhole(runs []tierRun, number int) bool {
+// ranWhole reports whether a run of runs is the tier number or a tier that covers it, over a whole share of sc.
+func ranWhole(runs []tierRun, number int, sc scope) bool {
 	return slices.ContainsFunc(runs, func(run tierRun) bool {
-		return run.number == number || slices.Contains(run.tier.Covers, number)
+		return (run.number == number || slices.Contains(run.tier.Covers, number)) && sc.forTier(run.number).whole
 	})
 }
 

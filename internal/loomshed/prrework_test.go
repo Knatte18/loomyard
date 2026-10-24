@@ -1,3 +1,5 @@
+//go:build tier0
+
 // prrework_test.go holds the committed-plan fixture the Plan-Review skip seam tests share, and exercises the plan reads over it at Tier 1: temp directories and an in-memory ReadCommitted over a map.
 
 package loomshed

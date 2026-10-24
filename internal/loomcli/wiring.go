@@ -681,8 +681,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			return shedrun.GateFindingsFile(location, c.runID, row)
 		},
 		VerifyDir:     verifytree.Dir(anchorPath),
-		VerifyCommand: planVerifySource(location).baseCommand,
-		Round:         gateListSource(fabricengine.ConfigDirs(location), "landing"),
+		VerifyCommand: gateCallSource(fabricengine.ConfigDirs(location)),
 		// VerifyMergeBase and ReviewBase are nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
 		ReviewBase:      verifyMergeBase,
@@ -886,6 +885,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		Segments: loomSegmentSettings(loomCfg, reviewSettings, judgeSettings),
 		// Setting is one lookup per wiring, so every row of a recipe build reads one snapshot of each module's stack.
 		Setting: configreg.SettingLookup(fabricengine.ConfigDirs(location)),
+		// SettingKnown and Resume serve a recipe row's entry gate: its operands are checked at build and its evaluation errors name the resume command.
+		SettingKnown: configreg.CheckSettingKey,
+		Resume:       "lyx loom resume",
 
 		ReviewCirclingCheckpoint: loomCfg.ReviewCirclingCheckpoint,
 		ReviewTimeout:            reviewSettings.Timeout,

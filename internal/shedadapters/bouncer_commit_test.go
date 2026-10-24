@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bouncer_commit_test.go covers BouncerConfig.Commit and BouncerConfig.Approve -- the two seams
 // that let a segment whose round producer runs no git of its own still have its reviewed artifacts
 // approved and committed by the loop owner. Every case below builds on the harvest vehicle:

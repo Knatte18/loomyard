@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fsx_test.go — unit tests for filesystem-safety primitives (fsx.go).
 //
 // PathGuard rejection, AtomicWrite and AtomicWriteBytes behavior.

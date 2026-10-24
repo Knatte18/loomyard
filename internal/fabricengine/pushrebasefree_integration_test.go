@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pushrebasefree_integration_test.go covers PushWarpRebaseFreeAt against a real warp checkout with a
 // bare origin: a commit ahead of its upstream pushes successfully and the returned record reports

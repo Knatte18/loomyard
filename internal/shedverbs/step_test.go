@@ -1,3 +1,5 @@
+//go:build tier0
+
 // step_test.go covers the generic step body's closed envelope key set, the six-kind closed vocabulary, PreStep's kind threading, PostStep's success-only, before-the-envelope ordering, and AfterStep's every-Step-return placement and friction key.
 
 package shedverbs
@@ -17,10 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
-
-func stepTexts() VerbTexts {
-	return VerbTexts{Step: VerbText{Use: "step", Short: "step the fake shed"}}
-}
 
 //testtiming:keep pins the step envelope's closed key set, which its covering tests do not
 func TestStepEnvelope_KeySetIsClosed(t *testing.T) {

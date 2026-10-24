@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // midmerge_integration_test.go covers MidMerge against a real hubforge pair, one row per state: clean, fabric-parked with and without remaining conflicts, each foreign shape on each side, and a pair that cannot be opened at all.
 

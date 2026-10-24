@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // resetpairwarp_integration_test.go covers Fabric.ResetPairCode, the gated reset of a task pair's warp checkout: a reset past later commits and own-path dirt that keeps untracked files, moves the remote task branch and records remote_branch_updated then worktree_reset, a refusal on dirt outside the own paths that precedes any fetch, the four ownership refusals, and the remote half's refusals, skips, stale lease and failed checkout rewrite.
 //

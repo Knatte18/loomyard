@@ -1,3 +1,5 @@
+//go:build tier0
+
 // finalize_owner_test.go covers Finalize's owner checks against scripted reconcile reports and owner seams.
 
 package landingshed

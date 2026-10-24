@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // states_test.go proves every hostile state in States establishes exactly what its own doc comment
 // claims, by applying each state directly against a real hub and asserting on the resulting condition —

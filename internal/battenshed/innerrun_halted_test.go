@@ -1,3 +1,5 @@
+//go:build tier0
+
 // innerrun_halted_test.go covers the inner-run watch's halted arm: a blocked, paused or failed child is a budget-exempt wait that never spawns or resumes it, logs one Info line per halt episode and revives a dead driver strand once per episode.
 // The tests that capture log output replace the process-global logger output,
 // so they do not run in parallel.

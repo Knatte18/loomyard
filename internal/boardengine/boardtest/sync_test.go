@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // sync_test.go — unit tests for the background pusher (sync.go).
 //

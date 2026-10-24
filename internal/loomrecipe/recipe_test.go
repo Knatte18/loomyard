@@ -1,3 +1,5 @@
+//go:build tier0
+
 // recipe_test.go carries the tests whose subject is the recipe itself rather than New's built
 // list: the shape assertion against the recipe-built list, the structural check over the parsed
 // recipe, the two split-argument coherence failures New itself performs, the construction-failure

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // listreconcile_test.go covers the reconcile listing that breaks strand panes left in the shell window out into windows of their own, against the scripted multiplexer fake.
 
 package reedengine

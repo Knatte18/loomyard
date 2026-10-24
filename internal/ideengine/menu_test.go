@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // menu_test.go covers worktree discovery (excludes main, requires _lyx/),
 // board-facade titles, numeric selection, the zero-worktree path, and the

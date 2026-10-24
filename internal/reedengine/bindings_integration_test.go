@@ -1,4 +1,4 @@
-//go:build tmux && linux
+//go:build tier2 && linux
 
 // bindings_integration_test.go drives the Alt-key and status-bar bindings against a real tmux server and an attached client.
 // The terminal's own byte sequences are written into the client's pty (ESC [1;3A..D, SGR mouse clicks at the bar's cells), so the whole key path is exercised.

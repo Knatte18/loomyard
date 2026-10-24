@@ -20,15 +20,17 @@ import (
 // dirtyPathsShown caps how many dirty paths a Stuck reason names.
 const dirtyPathsShown = 10
 
-// verifyGate holds the told landing and base command closures, the told gate tier lookup, the told wait-mark callback, the verify paths and the two verifytree seams.
+// verifyGate holds the row's gate key, the told command and base command closures, the told gate tier lookup, the told wait-mark callback, the verify paths and the two verifytree seams.
 // The dirty, verify and now fields are in-package seams tests replace with fakes,
 // so unit tests never spawn git or a shell and the mark's start time is fixed.
 // A zero dirty seam skips the clean-tree check, a nil command skips the landing verify, a nil baseCommand names no base command and a nil waitMark marks nothing.
 type verifyGate struct {
-	// command renders the `landing` gate's call, and baseCommand the call whose record entry every pass keeps.
-	command     func() (string, error)
+	// key is the gate key of the row the gate belongs to: the key command renders and the kind a failure record carries.
+	key string
+	// command renders the call of a gate key, and baseCommand the call whose record entry every pass keeps.
+	command     func(gateKey string) (string, error)
 	baseCommand func() (string, error)
-	// tiers lists the tier numbers of a named gate; recordFailure reads it for a log that names no failing tier.
+	// tiers lists the tier numbers of a named gate key; recordFailure reads it for a log that names no failing tier.
 	tiers    func(gate string) ([]int, error)
 	waitMark func(label string, start time.Time) error
 	// hold is the told pause hold both verifies run under; nil holds nothing.
@@ -51,12 +53,13 @@ type failureRecorder struct {
 	mergeCommit  string
 }
 
-// recordFailure writes the landing failure record for a verify of the given kind that ended in result.
-// The kind is the name of the gate that failed, and the record's tier is the last failing tier the log's summary lines name;
-// a log without one, such as a refusal before the first tier, takes the highest tier of the gate's list.
+// recordFailure writes the landing failure record for a verify of the row's gate key that ended in result.
+// The record's kind is that key, and its tier is the last failing tier the log's summary lines name;
+// a log without one, such as a refusal before the first tier, takes the highest tier of the key.
 // A result that is not a failed run, a timeout and a shell that could not start write none, since none of them names a failing test.
 // It returns whether it wrote the record: a write failure is logged, reported as false and changes nothing else.
-func (g verifyGate) recordFailure(kind verifytree.FailureKind, result verifytree.Result) bool {
+func (g verifyGate) recordFailure(result verifytree.Result) bool {
+	kind := verifytree.FailureKind(g.key)
 	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.ExitCode < 0 {
 		return false
 	}
@@ -93,9 +96,9 @@ func (g verifyGate) recordFailure(kind verifytree.FailureKind, result verifytree
 	if tier, found := gateslot.FailedTier(log); found {
 		failure.Tier = tier
 	} else {
-		list, err := g.tiers(string(kind))
+		list, err := g.tiers(g.key)
 		if err != nil || len(list) == 0 {
-			logger.Warn("landingshed: could not read the gate's tiers for the landing failure record", "gate", kind, "tiers", len(list), "cause", err)
+			logger.Warn("landingshed: could not read the gate's tiers for the landing failure record", "gate", g.key, "tiers", len(list), "cause", err)
 			return false
 		}
 		failure.Tier = slices.Max(list)
@@ -121,6 +124,7 @@ func (g verifyGate) clearFailure() {
 // newVerifyGate copies the gate's told values from deps and wires the real verifytree functions.
 func newVerifyGate(deps Deps) verifyGate {
 	return verifyGate{
+		key:         deps.GateKey,
 		command:     deps.VerifyCommand,
 		baseCommand: deps.BaseCommand,
 		tiers:       deps.GateTiers,
@@ -194,13 +198,13 @@ func (g verifyGate) readBase(producer string) (string, error) {
 	return base, nil
 }
 
-// check runs the `landing` gate's call for producer after a merge of parentBranch.
+// check runs the call of the row's gate key for producer after a merge of parentBranch.
 // verifytree skips the run when its record already names the tree and the command,
 // so the verify runs exactly when the tree differs from the last verified one:
 // after a resolved conflict, after new parent commits and after a crash between a merge and its verify.
 // The base command is the site's BaseCommand, so a pass keeps the entry the next round diffs from.
 //
-// It returns a non-empty Stuck reason naming the `landing` gate when the call fails or the tree is dirty,
+// It returns a non-empty Stuck reason naming the gate when the call fails or the tree is dirty,
 // a non-nil error for an infrastructure fault or a cancellation, and ("", nil) when the producer may proceed.
 // A pass, and a skip over a tree already recorded as passed, remove a landing failure record an earlier failed call left.
 func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (string, error) {
@@ -208,9 +212,9 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 		return "", nil
 	}
 
-	command, err := g.command()
+	command, err := g.command(g.key)
 	if err != nil {
-		return "", fmt.Errorf("landingshed: %s: read landing command: %w", producer, err)
+		return "", fmt.Errorf("landingshed: %s: read gate command: %w", producer, err)
 	}
 	if command == "" {
 		logger.Warn("landingshed: post-merge verify skipped because no verify command is configured", "producer", producer, "parentBranch", parentBranch)
@@ -228,7 +232,7 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 	if err != nil {
 		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
-	g.recordFailure(verifytree.FailureKindLanding, result)
+	g.recordFailure(result)
 	reason, err := g.verdict(result, "landing gate", producer, parentBranch)
 	if reason == "" && err == nil {
 		g.clearFailure()

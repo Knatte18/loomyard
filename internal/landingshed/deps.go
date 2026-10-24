@@ -196,7 +196,10 @@ type Deps struct {
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	Notify func(line string) error
 
-	// VerifyCommand returns the call of the hub's `landing` gate, which Merge-In and Finalize run in the task worktree after a merge-in.
+	// GateKey is the key of the hub's gate.yaml the row runs after a merge-in: `merge-in` for Merge-In, `finalize` for Finalize.
+	// The row's registry entry sets it on its own copy of Deps, and the producer reads it as set, with no default for an empty one.
+	GateKey string
+	// VerifyCommand returns the call of the named gate key, which Merge-In and Finalize run in the task worktree after a merge-in, each with its own GateKey.
 	// A darn run with a tree-scoped diff returns the tree-scoped command in its place.
 	// The clean-tree checks around the merge-in run whether or not a command is wired.
 	// It is read each time the gate runs rather than once at construction,
@@ -205,14 +208,14 @@ type Deps struct {
 	//
 	// Nil means "no verify wiring", following CommitStatus's nil-is-absent convention:
 	// the gate never runs and nothing is logged.
-	// An empty returned string means the source carries no landing command, which skips the gate with a warning.
-	VerifyCommand func() (string, error)
+	// An empty returned string means the source carries no command for the key, which skips the gate with a warning.
+	VerifyCommand func(gateKey string) (string, error)
 	// BaseCommand returns the command whose verified-tree entry every landing pass keeps, so a pass never prunes the entry the next review round diffs from.
 	// It is read at each gate call.
 	// Nil, or an empty answer, names none.
 	BaseCommand func() (string, error)
-	// GateTiers returns the tier numbers the named gate runs, in order.
-	// A failing call whose log names no failing tier records the highest tier of its gate, read through it.
+	// GateTiers returns the tier numbers the named gate key runs, in order.
+	// A failing call whose log names no failing tier records the highest tier of its row's key, read through it.
 	// Told, and required wherever a failure record is written: a nil lookup would panic on a failing log with no tier summary line.
 	GateTiers func(gate string) ([]int, error)
 	// VerifyWaitMark sets or clears the pane mark of the run's driver strand around the post-merge verify,

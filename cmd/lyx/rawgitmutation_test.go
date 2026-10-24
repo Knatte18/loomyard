@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // rawgitmutation_test.go closes the Fabric Git Invariant's tracked gap by machine-checking that
 // internal/websterengine's production source never constructs a raw
 // gitrepo handle or calls gitexec.Run directly, beyond the one grandfathered read-only exemption

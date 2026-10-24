@@ -1,3 +1,5 @@
+//go:build tier0
+
 // retention_test.go exercises Sweep's trace grouping, activity ranking, age bound, count bound, grammar-scoping, and delete-failure tolerance over a t.TempDir() — pure filesystem logic, no git/exec spawns, per the Test Tier Purity Invariant.
 
 package logger

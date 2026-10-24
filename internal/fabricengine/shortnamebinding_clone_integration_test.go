@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // shortnamebinding_clone_integration_test.go proves CloneHub's repo-shortname rule end to end against real local bare-repo fixtures:
 // a fresh bind needs --shortname, the record lands on weft:main beside .lyx-warp, a later clone derives it, a disagreeing shortname is refused,

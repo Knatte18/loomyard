@@ -1,3 +1,5 @@
+//go:build tier0
+
 // logger_test.go verifies how records route to stderr and the durable sink by level and verbosity, the LYX_LOG_LEVEL and LYX_LOG_FILE environment seams, and the SetOutput test seam.
 // Only TestDefaultOutput_DiscardsUnderGoTest calls t.Parallel; every other test mutates process-global logger state (verbosity, the output writer, the durable sink, LYX_* environment variables) that the tests share.
 

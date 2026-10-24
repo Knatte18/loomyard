@@ -1,3 +1,5 @@
+//go:build tier0
+
 // open_test.go covers Runner.Open: the strand it adds, the chain its pane runs, and the refusals made before anything is created.
 
 package shuttleengine

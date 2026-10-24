@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_test.go covers the segment runner over fake segments and the prime's segment list over a synthetic location.
 
 package cleanupcli

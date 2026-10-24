@@ -1,3 +1,5 @@
+//go:build tier0
+
 // spawn_test.go covers launchStrandLocked's reap-before-allocate ordering (TestLaunchStrandLocked_*,
 // invoking it directly through the e.tmux.execHook fake) and loadOrInitStateLocked's fresh-worktree
 // bootstrap. Both are pure/hermetic, no live tmux required. The composed live behavior against a real

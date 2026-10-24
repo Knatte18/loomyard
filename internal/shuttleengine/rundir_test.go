@@ -1,3 +1,5 @@
+//go:build tier0
+
 // rundir_test.go covers the run-dir lifecycle: runDirRoot's default vs. configured resolution,
 // createRunDir + saveRunState/loadRunState round-tripping, findRunByStrand's hit/miss paths, and
 // sweepOrphans' age guard (young orphan kept, old orphan removed, live-guid dir kept).

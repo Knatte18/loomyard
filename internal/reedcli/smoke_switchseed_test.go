@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_switchseed_test.go pins noise class 3's suppression directly:
 // TestSmokeSwitchDeclinesStencilSeedPass arranges both stencilstore Warn emitters cmd/lyx's root

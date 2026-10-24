@@ -1,3 +1,5 @@
+//go:build tier0
+
 // buildvcs_test.go covers the mapping from build settings onto an Identity, its Clean and Label forms, and OfFile's read of a binary on disk.
 
 package buildvcs

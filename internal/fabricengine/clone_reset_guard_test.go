@@ -1,3 +1,5 @@
+//go:build tier0
+
 // clone_reset_guard_test.go pins --reset's hub predicate.
 //
 // The hub name --reset acts on is DERIVED, never typed: from the warp URL in the two-argument form,

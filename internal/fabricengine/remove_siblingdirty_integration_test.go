@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remove_siblingdirty_integration_test.go pins that an uncommitted run record in a pair's other worktree is committed and archived rather than refused, and that a pair dirty only on the task side is refused without satisfying errors.Is(err, fabricengine.ErrPairSiblingDirty).
 //

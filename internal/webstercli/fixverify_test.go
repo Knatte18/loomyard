@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // fixverify_test.go covers the `fix-verify` verb's envelopes and state persistence over the verbs fixture: the no-run refusal, a running snapshot, a done reply and a dead fixer, each driven through clihelp.Execute.
 

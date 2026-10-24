@@ -1,3 +1,5 @@
+//go:build tier0
+
 // coverage_guard_test.go pins the registry's reason to exist for this package's own three rows: it
 // builds a real shedrecipe.Env/ShedPaths pair, calls this package's own New, and checks the
 // row-to-engine table below in both directions against New's real, current output rather than

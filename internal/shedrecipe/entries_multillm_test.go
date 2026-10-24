@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_multillm_test.go covers multiLLMEntry: its construction refusals over Config and Env,
 // and the seat table a valid row hands the seat runner.
 

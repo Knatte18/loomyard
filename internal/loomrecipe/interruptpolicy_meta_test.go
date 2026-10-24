@@ -1,3 +1,5 @@
+//go:build tier0
+
 // interruptpolicy_meta_test.go pins loomshed.InterruptPolicies against the production authority --
 // the rows New actually assembles -- rather than against a standalone literal that could drift
 // silently.

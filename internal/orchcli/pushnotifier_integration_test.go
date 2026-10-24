@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pushnotifier_integration_test.go proves the failed-push notice route over a real hub, with creel's daemon run in process on a fake delivery.
 

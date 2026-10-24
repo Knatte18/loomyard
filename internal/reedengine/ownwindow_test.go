@@ -1,3 +1,5 @@
+//go:build tier0
+
 // ownwindow_test.go pins the own-window group placement: the pure plan that chooses between a shared window and a window of its own, and the join of a pane into a group's shared window.
 // It also pins the rule deciding which window a viewer leaves for a new agent window.
 

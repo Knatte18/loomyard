@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // snapshot_integration_test.go — integration coverage for
 // Fabric.snapshotWarpSHA: newest-tagged-commit-wins, tag isolation, the

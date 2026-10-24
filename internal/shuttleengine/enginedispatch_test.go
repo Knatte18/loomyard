@@ -1,3 +1,5 @@
+//go:build tier0
+
 // enginedispatch_test.go covers how a Runner picks each run's engine from its EngineSet:
 // Start and Open resolve the spec's engine and record it, and every later operation resolves the engine the run's record names.
 // dispatchEngine records every seam method a call consults, so a call that reaches the wrong engine shows in that engine's own record.

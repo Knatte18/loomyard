@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // matrix_test.go is the cross-product driver: the one uniform loop over states, verbs and anchors that
 // runs every cell verbs.go and states.go describe, and the sole deliverable of batch 7.

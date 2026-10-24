@@ -1,3 +1,5 @@
+//go:build tier0
+
 // color_test.go pins ColorSequence's exact choreography: `/color <name>` typed and submitted for each palette color, and no inputs for a color outside it.
 
 package claudeengine

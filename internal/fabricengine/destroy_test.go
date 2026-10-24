@@ -1,3 +1,5 @@
+//go:build tier0
+
 // destroy_test.go covers the gate's hermetic logic: everything destroy.go's pipeline and ownership
 // resolvers do that needs no git, per the discussion's Hermetic tier split. isRegisteredLinkedWorktreeIn,
 // isAnyWorktreeOf, primaryWeftBranch, and every dirtiness probe all spawn git and belong to batch 7's
@@ -11,7 +13,6 @@
 package fabricengine
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1250,17 +1251,5 @@ func TestDirtyPathsOutside(t *testing.T) {
 				t.Errorf("dirtyPathsOutside(%q, %q) = %q; want %q", tc.porcelain, tc.own, got, tc.want)
 			}
 		})
-	}
-}
-
-// assertRefusalCheck fails the test unless err is a *destructiveRefusal carrying want as its Check.
-func assertRefusalCheck(t *testing.T, err error, want Check) {
-	t.Helper()
-	var refusal *destructiveRefusal
-	if !errors.As(err, &refusal) {
-		t.Fatalf("err = %v (%T); want a *destructiveRefusal", err, err)
-	}
-	if refusal.Check != want {
-		t.Errorf("refusal.Check = %s; want %s", refusal.Check, want)
 	}
 }

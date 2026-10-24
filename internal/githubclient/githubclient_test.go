@@ -1,3 +1,5 @@
+//go:build tier0
+
 // githubclient_test.go is the hermetic, table-driven test suite for the whole package: the token resolution chain (token.go), the on-disk cache (cache.go/cache_windows.go), and the authenticating RoundTripper (transport.go).
 // Every case redirects the cache to a t.TempDir() via t.Setenv and reaches the `gh auth token` shell-out only through its injected seam, so the suite runs correctly on a machine with no `gh` installed and no GitHub credentials, and never touches the operator's real credential file.
 // This file carries no build tag -- it is untagged Tier 1, spawning no process and needing no git fixture, so `go test -race -count=1 ./internal/githubclient/...` runs every case here on any platform.

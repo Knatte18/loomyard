@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mergein_integration_test.go covers MergeIn's scenario matrix against a real hubforge pair: both
 // sides clean, a warp-side conflict (the only side MergeIn can now conflict on), the already-up-to-date

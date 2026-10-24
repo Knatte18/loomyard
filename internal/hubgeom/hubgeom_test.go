@@ -1,3 +1,5 @@
+//go:build tier0
+
 // hubgeom_test.go is the load-bearing guard against this refactor's one silent failure mode: a
 // swapped anchor/worktree pair compiles cleanly and passes every test built on a fixture where the
 // two happen to coincide. The fixture below deliberately keeps hub, worktree root, and anchor path

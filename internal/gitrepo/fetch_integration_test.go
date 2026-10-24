@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // fetch_integration_test.go covers Repo.Fetch, and the remote-failure paths of Fetch and Pull, against real git repositories, reusing push_test.go's bare-remote/clone fixtures (newBareRemote, newRepoWithRemote, cloneFromBare) since Fetch needs the same bare-remote-plus-clones shape those tests already build.
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go verifies orch.yaml's template resolves through LoadConfig, a present file overrides it, an invalid file errors, and each accessor floors a non-positive value.
 
 package orchengine_test

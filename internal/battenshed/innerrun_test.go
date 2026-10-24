@@ -1,3 +1,5 @@
+//go:build tier0
+
 // innerrun_test.go covers NewInnerRun's full re-entrant disposition table over a fake ReadStatus
 // and a fake Sleep that never sleeps -- so the still-running case is provably a single
 // Stuck with a single sleep, never a bounded poll loop, in unmeasurable real time.

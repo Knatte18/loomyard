@@ -1,3 +1,5 @@
+//go:build tier0
+
 // run_test.go covers the generic run body's hook ordering, both busy treatments, and the
 // producer-hard-error path, driven against the fake Shed testsupport_test.go builds.
 

@@ -57,7 +57,7 @@ func (s *Shed) rerouteStuck(st Status, def ProducerDef, output OutputPointer) (S
 		if err != nil {
 			return StepResult{}, err
 		}
-		if err := s.persistTransient(def.OnReroute, next, "", nextHistory, false, next == StatePaused, "", "", "", reason); err != nil {
+		if err := s.persistRouted(def.OnReroute, next, nextHistory, next == StatePaused, "", reason); err != nil {
 			return StepResult{}, err
 		}
 		return StepResult{Producer: def.Name, Outcome: Stuck, Output: output.Path, Next: def.OnReroute, State: next, Reason: reason, History: nextHistory}, nil

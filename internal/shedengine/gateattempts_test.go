@@ -1,3 +1,5 @@
+//go:build tier0
+
 // gateattempts_test.go covers HistoryEntry.GateAttempts end to end: a producer's OutputPointer
 // reaches Step's persisted HistoryEntry, and the status file on disk actually shows the count, per
 // the producer-gate contract's "recorded in the row's envelope/history so the status file

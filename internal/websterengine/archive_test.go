@@ -1,3 +1,5 @@
+//go:build tier0
+
 // archive_test.go covers the shared run-file archive (absent no-op, rename/preserve and collision
 // suffixing over state.json, outcome.yaml and summary.md), archiveReportsDir's recreate-after-archive
 // and absent-dir-still-recreates behavior, and ArchiveRunRecord's move, idempotence and refusals.

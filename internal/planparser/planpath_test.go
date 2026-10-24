@@ -1,3 +1,5 @@
+//go:build tier0
+
 // planpath_test.go tests the told-anchor PlanDir/PlanOverview path constructors — pure filepath.Join
 // arithmetic, no spawning, no fixture tree, untagged (Tier 1). It is the ported successor of
 // internal/loomengine/planpath_test.go (deleted in batch 2).

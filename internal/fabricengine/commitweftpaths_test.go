@@ -1,3 +1,5 @@
+//go:build tier0
+
 // commitweftpaths_test.go — unit tests for weftCommitPathspec and CommitRecordsPaths' git-free early
 // return paths. Every test here builds inputs by hand and spawns no git, per the Test Tier Purity
 // Invariant.

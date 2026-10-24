@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pool_integration_test.go pins the one behavior that needs a second process: a holder that dies without releasing frees its slot.
 

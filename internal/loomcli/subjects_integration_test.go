@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // subjects_integration_test.go drives codeSubject and taskMergeBase against a real fabric pair and real git, since their identity is the task's diff against the merge base the pair's history leaves.
 

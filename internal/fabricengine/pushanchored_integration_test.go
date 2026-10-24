@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pushanchored_integration_test.go covers PushAnchored and PushPairAnchored against real hubforge pairs, the push lock both take, and PushAnchored against a hub's weft sibling:
 // SkipGit and SkipPush each short-circuit to an empty result and push nothing; a weft carrying an

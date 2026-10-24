@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // clone_adopt_test.go proves CloneHub's weft-primary-branch handling: the
 // adopt path (an existing remote main-weft branch is checked out as a

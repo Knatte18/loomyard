@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_bootstrapwiring_test.go covers bootstrap behaviours that are correct in their own helper
 // and were wrong in production anyway, which is the one shape a Tier 1 test over that helper can

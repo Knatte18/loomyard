@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fmtverb_test.go covers the `fmt` loom verb over a temporary worktree, with no git repository behind it.
 
 package loomcli

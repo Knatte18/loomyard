@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces internal/sleepjournal's import cap from PATTERN-leaf-packages:
 // production code in internal/sleepjournal imports the standard library alone.
 

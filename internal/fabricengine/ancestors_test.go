@@ -1,3 +1,5 @@
+//go:build tier0
+
 // ancestors_test.go tests the pruneEmptyAncestors helper.
 
 package fabricengine

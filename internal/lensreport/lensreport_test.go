@@ -1,3 +1,5 @@
+//go:build tier0
+
 // lensreport_test.go pins the lens report path pattern and the report file name test.
 
 package lensreport_test

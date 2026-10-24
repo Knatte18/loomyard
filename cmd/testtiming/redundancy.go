@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	defaultRedundancyTags = "integration,tmux"
+	defaultRedundancyTags = "tier0,tier1,tier2,integration,tmux"
 	defaultRedundancyOut  = "docs/benchmarks/test-redundancy.md"
 	defaultRedundancyPkg  = "./..."
 )

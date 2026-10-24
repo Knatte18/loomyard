@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cancel_integration_test.go drives "lyx batten cancel" through RunCLIIn over hubforge hubs: a blocked run with no pair, a kept pair whose reconcile only judges, and a pair removed with its task branch.
 // It stays a white-box "package battencli" test, like the other integration files here.

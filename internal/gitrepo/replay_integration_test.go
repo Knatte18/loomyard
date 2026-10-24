@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // replay_integration_test.go covers the primitives a caller needs to replay one commit onto another history: UpstreamSHA, CommitDetail, CherryPick and CherryPickAbort, against real git repositories built under t.TempDir(), reusing the package's newRepo, newBareRemote, writeFile and commitAll fixture helpers.
 

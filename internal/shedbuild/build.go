@@ -36,6 +36,14 @@ func Build(r Recipe, env shedrecipe.Env) ([]shedengine.ProducerDef, error) {
 
 	defs := make([]shedengine.ProducerDef, len(r.Producers))
 	for i, row := range r.Producers {
+		checks, err := parseEntryGate(row)
+		if err != nil {
+			return nil, fmt.Errorf("shedbuild: producer %d %q: %w", i, row.Name, err)
+		}
+		gate, err := entryGateOf(row, checks, env)
+		if err != nil {
+			return nil, fmt.Errorf("shedbuild: producer %d %q: %w", i, row.Name, err)
+		}
 		ctor, err := shedrecipe.Lookup(row.Engine)
 		if err != nil {
 			return nil, fmt.Errorf("shedbuild: producer %d %q: %w", i, row.Name, err)
@@ -52,6 +60,7 @@ func Build(r Recipe, env shedrecipe.Env) ([]shedengine.ProducerDef, error) {
 			OnReroute:  row.OnReroute,
 			Segment:    row.Segment,
 			MaxBounces: row.MaxBounces,
+			EntryGate:  gate,
 		}
 	}
 	return defs, nil

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // run_pause_test.go covers the clean-stop, resume, and idempotence scenarios: an explicit pause
 // request and the resume that must follow it, context cancellation arriving between and during a
 // producer call, crash recovery and resuming a halted run across two separate Shed values against

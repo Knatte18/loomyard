@@ -1,3 +1,5 @@
+//go:build tier0
+
 // envsource_test.go covers .env parsing, OS-environment overlay precedence, and the DotEnv path
 // constructor that pins envsource as the single declarer of the ".env" filename token.
 

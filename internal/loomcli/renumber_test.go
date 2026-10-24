@@ -1,3 +1,5 @@
+//go:build tier0
+
 // renumber_test.go pins what loomcli owns of the card verbs: the lease held around every apply step, the begun bound, and the wording of each refusal.
 // The renumber itself is pinned by internal/planparser's tests.
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_simple_test.go is table-driven over the value-only entries simpleEntryCases lists: a happy-path table and an under-filled-Env table, plus the entry-specific subtests entries_simple.go's own doc comments call out.
 
 package shedrecipe
@@ -5,12 +7,14 @@ package shedrecipe
 import (
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
@@ -183,6 +187,51 @@ func TestSimpleEntries_HappyPath(t *testing.T) {
 			}
 			if producer == nil {
 				t.Fatalf("%s() = nil producer; want non-nil", tt.registryKey)
+			}
+		})
+	}
+
+	// The landing rows run the gate key their config or row name picks, read from the producer's told Deps.
+	landingRows := []struct {
+		name    string
+		entry   func(RowIdentity, Config, Env) (shedengine.ShedProducer, error)
+		row     string
+		cfg     Config
+		wantKey string
+		wantErr []string
+	}{
+		{name: "MergeIn defaults to its row name", entry: mergeInEntry, row: "Merge-In", cfg: Config{}, wantKey: "merge-in"},
+		{name: "Finalize defaults to its row name", entry: finalizeEntry, row: "Finalize", cfg: Config{}, wantKey: "finalize"},
+		{name: "MergeIn takes gate_key", entry: mergeInEntry, row: "Merge-In", cfg: Config{"gate_key": "custom"}, wantKey: "custom"},
+		{name: "Finalize takes gate_key", entry: finalizeEntry, row: "Finalize", cfg: Config{"gate_key": "custom"}, wantKey: "custom"},
+		{name: "MergeIn refuses a non-string gate_key", entry: mergeInEntry, row: "Merge-In", cfg: Config{"gate_key": 3}, wantErr: []string{`"Merge-In"`, `"gate_key"`, "way forward"}},
+		{name: "Finalize refuses a non-string gate_key", entry: finalizeEntry, row: "Finalize", cfg: Config{"gate_key": 3}, wantErr: []string{`"Finalize"`, `"gate_key"`, "way forward"}},
+	}
+	for _, tt := range landingRows {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			env.Landing = validLandingDeps(t)
+			producer, err := tt.entry(RowIdentity{Name: tt.row}, tt.cfg, env)
+			if env.Landing.GateKey != "" {
+				t.Errorf("Env.Landing.GateKey = %q after the entry; want it untouched, since each row sets its key on its own copy", env.Landing.GateKey)
+			}
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatalf("entry error = nil; want one containing %q", tt.wantErr)
+				}
+				for _, want := range tt.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("entry error = %v; want it to contain %q", err, want)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("entry error = %v; want nil", err)
+			}
+			deps := reflect.ValueOf(producer).Elem().FieldByName("deps")
+			if got := deps.FieldByName("GateKey").String(); got != tt.wantKey {
+				t.Errorf("producer gate key = %q; want %q", got, tt.wantKey)
 			}
 		})
 	}

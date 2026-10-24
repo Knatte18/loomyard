@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // enforcement_test.go is a repo-wide guard: it walks every package and fails the build if any file
 // outside internal/lyxcwd reaches for raw cwd or top-level git geometry, keeps internal/lyxcwd
 // the sole geometry owner, and (via TestEnforcement_FabricVocabulary) keeps the fabric-vocabulary

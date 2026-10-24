@@ -1,3 +1,5 @@
+//go:build tier0
+
 // endsession_test.go drives endSessionByNameVia through the fake tmux seam.
 
 package reedengine

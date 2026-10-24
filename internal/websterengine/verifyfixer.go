@@ -52,7 +52,7 @@ type FixVerifyDeps struct {
 	// LanguageSkills are the hub's language skills the fixer loads after roleSkills; empty for none.
 	LanguageSkills []string
 
-	// Gate is the hub's gate config, from which the prompt renders the fixer's `round` gate call.
+	// Gate is the hub's gate config, from which the prompt renders the fixer's `webster-fix` gate call.
 	Gate gateslot.Config
 }
 
@@ -74,7 +74,7 @@ type FixVerifyResult struct {
 // A last record of st.VerifyFixers that is not terminal is attached to as it stands.
 // Otherwise it spawns a strand at the recovery role with the cold verify-fix prompt, whose shuttle output file is the reply file, and appends its record to st.VerifyFixers;
 // the caller saves st.
-// It refuses, spawning nothing, when no verify-gate report is on disk, when the recovery role's engine cannot audit forks, and when the gate config has no `round` list.
+// It refuses, spawning nothing, when no verify-gate report is on disk, when the recovery role's engine cannot audit forks, and when the gate config has no `webster-fix` key.
 // A stale reply file is removed before the spawn.
 // A spawned strand whose run cannot be resolved is stopped, since no record of it will be saved.
 func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFixerState, bool, error) {
@@ -100,7 +100,7 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 	if err := roleAuditEngine(deps.Engines, RoleRecovery, choice); err != nil {
 		return nil, false, err
 	}
-	fixGate, err := deps.Gate.GateCall("round")
+	fixGate, err := deps.Gate.GateCall("webster-fix")
 	if err != nil {
 		return nil, false, err
 	}

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // main_test.go checks tokencount's flag set: the retired history and projects flags and a foreign hub without a records repository are refused, and the hub flag resolves against the current directory.
 
 package main

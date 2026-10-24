@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // rules_integration_test.go proves `lyx orch rules` over a real hub: it commits only the hub-wide rules file on Bolt, pushes it, and commits nothing for unchanged content.
 

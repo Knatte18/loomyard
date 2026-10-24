@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_bouncer_test.go covers bouncerEntry: the happy path, the run-directory group (this
 // batch's load-bearing assertion, since a missing directory would fail every fresh segment's first
 // call), the pinned report-name behaviour, and every construction failure.

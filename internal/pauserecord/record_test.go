@@ -1,3 +1,5 @@
+//go:build tier0
+
 // record_test.go pins the pause record's read, locked update, coverage and interval behavior.
 
 package pauserecord

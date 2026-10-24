@@ -1,4 +1,4 @@
-//go:build tmux && linux
+//go:build tier2 && linux
 
 // attachgeometry_integration_test.go proves the attach handover works against a real tmux, real pty, and real attaching client.
 // It also holds the pty harness the other tmux-tier suites attach through.

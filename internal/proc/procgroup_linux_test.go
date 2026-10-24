@@ -1,3 +1,5 @@
+//go:build tier0
+
 // procgroup_linux_test.go covers the group-terminate branches that end without arming a SIGKILL timer.
 // It spawns real children, which this package's Test Tier Purity allowlist entry admits: process control is the package's subject.
 

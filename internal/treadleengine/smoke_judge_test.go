@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_judge_test.go is treadleengine's opt-in live-integration smoke
 // test: TestSmokeJudgeCirclingToyFixture drives one real per-round

@@ -1,4 +1,6 @@
-// beginbatch_test.go exercises BeginBatch end to end (Tier 1 — see docs/benchmarks/running-tests.md): a temp directory backs WorktreeRoot with a fakeGit answering the HeadSHA capture, while the strand-stop seam is a recordingStopper.
+//go:build tier0
+
+// beginbatch_test.go exercises BeginBatch end to end: a temp directory backs WorktreeRoot with a fakeGit answering the HeadSHA capture, while the strand-stop seam is a recordingStopper.
 // The plan itself is a minimal *planparser.Plan (Dir only — begin-batch never reads Plan.Cards, only deps.Batches, the already-derived execution batches), backed by a t.TempDir() seeded with a throwaway markdown file so the fingerprint gate has something real to hash.
 // There is no chain/restart path and no oversized role under the flat card-list model:
 // this file's own mustFingerprint helper duplicates fingerprint.go's pure hashing algorithm rather than importing anything, since this file deliberately stays in the external websterengine_test package (fingerprint itself is package-private).
@@ -6,189 +8,22 @@
 package websterengine_test
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/batcher"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// seedPlanDir creates a t.TempDir() seeded with one throwaway markdown file,
-// so the fingerprint gate has something real to hash — BeginBatch's
-// fingerprint gate reads planDir directly, never deps.Batches, so no actual
-// plan-format parsing is needed for these tests (per the card's own literal-
-// Batches-value requirement).
-func seedPlanDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	plankit.Write(t, dir, plankit.Plan{
-		Approved: true,
-		Language: "go",
-		Cards: []plankit.Card{
-			{Number: 1, Slug: "json-flag", Summary: "add the json flag", Intent: "placeholder card.", Groups: []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}},
-			{Number: 2, Slug: "list-tests", Summary: "list the tests", Intent: "placeholder card.", Groups: []plankit.Group{{Label: "Prosa", Targets: []string{"base.txt"}}}},
-		},
-	})
-	return dir
-}
-
-// csharpRendererSource is a C# file declaring one method, Draw, taking one parameter of paramType.
-func csharpRendererSource(paramType string) string {
-	return fmt.Sprintf("namespace Glyphchain.Sharp\n{\n    public class Renderer\n    {\n        public void Draw(%s count)\n        {\n        }\n    }\n}\n", paramType)
-}
-
-// csharpResignPlanDir writes a two-card csharp plan into a fresh directory and returns the directory with the parsed plan.
-// Card 1 re-signs Glyphchain.Sharp#Renderer.Draw(int) to take a long, and card 2 names the old glyph under Uses.
-func csharpResignPlanDir(t *testing.T) (string, *planparser.Plan) {
-	t.Helper()
-	dir := t.TempDir()
-	prosa := []plankit.Group{{Label: "Prosa", Targets: []string{"csharp/Renderer.cs"}}}
-	plankit.Write(t, dir, plankit.Plan{
-		Approved: true,
-		Language: "csharp",
-		Framing:  "A two-card fixture whose first card re-signs a member that its second card names.",
-		Cards: []plankit.Card{
-			{
-				Number:  1,
-				Slug:    "json-flag",
-				Summary: "re-sign Draw",
-				Groups:  []plankit.Group{{Label: "Edit", Targets: []string{"Glyphchain.Sharp#Renderer", "Glyphchain.Sharp#Renderer.Draw(int)` -> `public void Draw(long count)"}}},
-				Intent:  "Re-sign Draw to take a long, a change that modifies the Renderer type's body too.",
-			},
-			{
-				Number:  2,
-				Slug:    "pending",
-				Summary: "the not-yet-built card",
-				Groups:  prosa,
-				Uses:    []string{"Glyphchain.Sharp#Renderer.Draw(int)"},
-				Intent:  "The pending card that names Draw by its old glyph.",
-			},
-		},
-	})
-	plan, err := planparser.ParsePlan(dir)
-	if err != nil {
-		t.Fatalf("ParsePlan(%q) returned error: %v", dir, err)
-	}
-	return dir, plan
-}
-
-// mustFingerprint replicates fingerprint.go's own algorithm exactly
-// (SHA-256 over every "*.md" file's name and contents, sorted, NUL-
-// separated) so a test can seed a State.PlanFingerprint that matches what
-// BeginBatch will independently recompute — fingerprint itself is
-// package-private and this file's tests deliberately stay in the external
-// websterengine_test package (see the file's own doc comment).
-func mustFingerprint(t *testing.T, planDir string) string {
-	t.Helper()
-	entries, err := os.ReadDir(planDir)
-	if err != nil {
-		t.Fatalf("ReadDir(%q): %v", planDir, err)
-	}
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		names = append(names, e.Name())
-	}
-	sort.Strings(names)
-
-	h := sha256.New()
-	for _, name := range names {
-		data, err := os.ReadFile(filepath.Join(planDir, name))
-		if err != nil {
-			t.Fatalf("read %s: %v", name, err)
-		}
-		h.Write([]byte(name))
-		h.Write([]byte{0})
-		h.Write(data)
-		h.Write([]byte{0})
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
-
-// beginCard returns a minimal single-card batcher.Batch identifying number
-// and slug — begin-batch's batchIdentity assumption (batch ≡ card under the
-// identity batchifier).
-func beginCard(number int, slug string) batcher.Batch {
-	return batcher.Batch{Cards: []planparser.Card{{Number: number, Slug: slug, Title: slug, Intent: "placeholder card " + slug}}}
-}
-
-// beginFixture is a fully-wired set of BeginBatch dependencies: a temp directory holding base.txt as WorktreeRoot over a fakeGit at one commit, fresh webster/reports/prompts temp dirs, two literal single-card execution batches backed by a seeded plan dir for the fingerprint gate.
-type beginFixture struct {
-	Deps      websterengine.BeginDeps
-	Stopper   *recordingStopper
-	Git       *fakeGit
-	Worktree  string
-	PlanDir   string
-	PromptDir string
-}
-
-func newBeginFixture(t *testing.T) *beginFixture {
-	t.Helper()
-
-	planDir := seedPlanDir(t)
-	fp := mustFingerprint(t, planDir)
-
-	plan, err := planparser.ParsePlan(planDir)
-	if err != nil {
-		t.Fatalf("ParsePlan(%q): %v", planDir, err)
-	}
-	batches := []batcher.Batch{
-		beginCard(1, "json-flag"),
-		beginCard(2, "list-tests"),
-	}
-
-	worktree := t.TempDir()
-	writeWorktreeFile(t, worktree, "base.txt", "base")
-	git := newFakeGit()
-	index := newFakeIndex()
-
-	promptsDir := t.TempDir()
-	stopper := &recordingStopper{}
-
-	// webster's prompts are read from disk at call time now, so the fixture's
-	// hub must carry them before BeginBatch reaches RenderForkPrompt.
-	hubPath := filepath.Dir(worktree)
-	seedHubStencils(t, hubPath)
-
-	deps := websterengine.BeginDeps{
-		Plan:    plan,
-		Batches: batches,
-		State:   &websterengine.State{PlanFingerprint: fp, MasterStrand: "master-strand-1"},
-		Config:  websterengine.Config{SelfFixCap: 2},
-		Stopper: stopper,
-		Gate:    testGateConfig(),
-		Geom: websterengine.Geometry{
-			AnchorRoot:   worktree,
-			WorktreeRoot: worktree,
-			WebsterDir:   t.TempDir(),
-			ScratchDir:   t.TempDir(),
-			ReportsDir:   t.TempDir(),
-			PromptsDir:   promptsDir,
-			StencilsDir:  fabricengine.StencilsDir(hubPath),
-			SpecsDir:     fabricengine.SpecsDir(hubPath),
-			PlanDir:      planDir,
-			Git:          git,
-			Index:        index,
-		},
-	}
-
-	return &beginFixture{Deps: deps, Stopper: stopper, Git: git, Worktree: worktree, PlanDir: planDir, PromptDir: promptsDir}
-}
 
 // TestBeginBatch_Refusals proves each entry refusal names its way forward: a pause, a plan edited after run init, and a report already on disk for each recorded state (terminal done, stuck, failed or dead, and begun non-terminal fork or recovery), each message naming the record it saw and the one remedy that state calls for, and a geometry with no code index, whose message names the missing wiring.
 func TestBeginBatch_Refusals(t *testing.T) {
@@ -558,8 +393,8 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 			name:   "each card carries its gate call and the two lints, and the batch carries the batch gate call",
 			number: 1,
 			want: []string{
-				"  - `lyx gate test --wait --tier 0 --card 1-json-flag`\n  - `lyx loom lint-comments`\n  - `lyx loom lint-pattern`",
-				"- `lyx gate test --wait --tier 0 --tier 1 --card 1-json-flag`",
+				"  - `lyx gate test --wait --gate card --card 1-json-flag`\n  - `lyx loom lint-comments`\n  - `lyx loom lint-pattern`",
+				"- `lyx gate test --wait --gate batch --card 1-json-flag`",
 			},
 			wantNot: []string{"{{.", "## verify:", "-run '^("},
 		},
@@ -603,7 +438,7 @@ func TestBeginBatch_PromptFile(t *testing.T) {
 		t.Parallel()
 
 		fx := newBeginFixture(t)
-		fx.Deps.Gate.Gates["batch"] = []int{7}
+		fx.Deps.Gate.Gates["batch"] = gateslot.GateKey{Tiers: []int{7}, Scope: "card"}
 		_, err := websterengine.BeginBatch(fx.Deps, 1)
 		if err == nil || !strings.Contains(err.Error(), "lyx config gate") {
 			t.Fatalf("BeginBatch() error = %v; want a refusal naming lyx config gate", err)

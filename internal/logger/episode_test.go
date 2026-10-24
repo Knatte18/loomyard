@@ -1,3 +1,5 @@
+//go:build tier0
+
 // episode_test.go verifies Episode and EpisodeSet log Warn once per episode, Debug while it repeats and Info at recovery.
 // Its test is not parallel: it captures the process-global logger output and verbosity.
 

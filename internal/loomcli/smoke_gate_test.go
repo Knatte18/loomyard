@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_gate_test.go is the live-substrate regression guard for the gate re-prompt loop
 // (internal/shuttleengine's Wait, batch 1): the one mechanism no untagged test can exercise, because

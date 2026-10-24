@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // registration_test.go — membership oracle for the module registry.
 
 package configreg

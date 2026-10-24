@@ -1,3 +1,5 @@
+//go:build tier0
+
 // anchorread_test.go pins readRecordedAnchor's marker semantics in Tier 1: the stale pre-rename
 // marker hard-errors, the renamed marker wins when both exist, and an absent or empty marker is a
 // fallback — pure file reads, no git spawn, so the untagged suite stays sensitive to a removed

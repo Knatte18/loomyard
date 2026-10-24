@@ -1,4 +1,6 @@
-// config_test.go — untagged Tier-1 unit tests for landingshed.LoadConfig.
+//go:build tier0
+
+// config_test.go — tier0 unit tests for landingshed.LoadConfig.
 //
 // Seeds a bare t.TempDir() with just a _lyx/config/landing.yaml file (no real hub, no SeedConfig,
 // no git spawn), modelled on internal/loomengine's own config_test.go.

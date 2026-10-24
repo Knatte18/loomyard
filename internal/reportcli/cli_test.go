@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_test.go covers the flag refusals and defaults of both report verbs, which come before any cwd resolution or read, the prime-only refusal decision, and the sleep and its note of the timing verb, journal-read or standing in from the hub's pauses.
 
 package reportcli

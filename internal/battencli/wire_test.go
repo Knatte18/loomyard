@@ -1,3 +1,5 @@
+//go:build tier0
+
 // wire_test.go proves no seam wire (wire.go) builds is evaluated at wiring time: building the
 // wiring for a slug whose worktree does not exist must succeed, and none of the four seams that
 // resolve the managed task worktree's own Location -- the status-path resolver, the spawn

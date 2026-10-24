@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // destroyremote_integration_test.go pins the remote-branch gate against a real hub, since each case needs a real git spawn: the unset-declaration and naming-predicate refusals are hermetic and covered in destroy_test.go instead, per the Test Tier Purity Invariant.
 //

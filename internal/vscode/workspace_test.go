@@ -1,3 +1,5 @@
+//go:build tier0
+
 // workspace_test.go covers BuildWorkspace's exact output shape and its settings splicing.
 
 package vscode

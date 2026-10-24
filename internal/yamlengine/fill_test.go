@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fill_test.go covers FillMissing.
 
 package yamlengine

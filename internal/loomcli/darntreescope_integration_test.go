@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // darntreescope_integration_test.go drives darnTreeScope against a real fabric pair and real git, since its answer depends on the merge base the pair's history leaves and on git's rename detection.
 
@@ -29,17 +29,20 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	t.Parallel()
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	seed := func(t *testing.T, treeScope, treeScopeVerify string) {
+	seed := func(t *testing.T, treeScope string) {
 		t.Helper()
-		seedDarnHubConfig(t, hub.Path, "3", "tree_scope: {}", treeScope, `tree_scope_verify: ""`, treeScopeVerify)
+		seedDarnHubConfig(t, hub.Path, "3", "tree_scope: {}", treeScope)
 	}
 	const trees = `tree_scope: {"docs": "", "tools": "./tools/..."}`
-	const scopedVerify = `tree_scope_verify: "lyx gate test --wait --tier 1 {targets}"`
-	// The hub declares tier0 and lists it as the landing gate, so the non-scoped rows render the landing call over the whole tree.
-	const landingCall = "lyx gate test --wait --tier 0 --all"
+	// The non-scoped rows render their own key's call over the whole tree.
+	const landingCall = "lyx gate test --wait --gate finalize"
+	// scopedCall is the call a tree-scoped site runs: its row key's call followed by the touched trees' targets.
+	scopedCall := func(gateKey, targets string) string {
+		return "lyx gate test --wait --gate " + gateKey + " " + targets
+	}
 	writeHubGateConfig(t, hub.Path, strings.Replace(gateslot.ConfigTemplate(), "tiers: {}", `tiers:
   tier0: {command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}`, 1))
-	seed(t, trees, scopedVerify)
+	seed(t, trees)
 
 	prime := hub.PrimeWorktree()
 	resolve := func(t *testing.T, slug string) *lyxcwd.Location {
@@ -50,7 +53,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		}
 		return location
 	}
-	locate := func(t *testing.T, slug string) func() (string, bool, error) {
+	locate := func(t *testing.T, slug string) func(gateKey string) (string, bool, error) {
 		t.Helper()
 		return darnTreeScope(resolve(t, slug))
 	}
@@ -78,21 +81,26 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	}
 	assertLanding := func(t *testing.T, deps landingshed.Deps, wantCommand string) {
 		t.Helper()
-		command, err := deps.VerifyCommand()
+		command, err := deps.VerifyCommand("finalize")
 		if err != nil || command != wantCommand {
-			t.Errorf("VerifyCommand() = %q, %v; want %q, nil", command, err, wantCommand)
+			t.Errorf("VerifyCommand(finalize) = %q, %v; want %q, nil", command, err, wantCommand)
 		}
 	}
-	assertAnswer := func(t *testing.T, seam func() (string, bool, error), wantCommand string, wantScoped bool) {
+	// assertAnswer pins the seam's answer for the darn-write key: wantTargets is the targets its call holds, and an empty one means no call at all.
+	assertAnswer := func(t *testing.T, seam func(gateKey string) (string, bool, error), wantTargets string, wantScoped bool) {
 		t.Helper()
-		command, scoped, err := seam()
+		wantCommand := ""
+		if wantTargets != "" {
+			wantCommand = scopedCall("darn-write", wantTargets)
+		}
+		command, scoped, err := seam("darn-write")
 		if err != nil || command != wantCommand || scoped != wantScoped {
 			t.Errorf("darnTreeScope()() = %q, %v, %v; want %q, %v, nil", command, scoped, err, wantCommand, wantScoped)
 		}
 	}
-	assertRefusal := func(t *testing.T, seam func() (string, bool, error), wants ...string) {
+	assertRefusal := func(t *testing.T, seam func(gateKey string) (string, bool, error), wants ...string) {
 		t.Helper()
-		command, scoped, err := seam()
+		command, scoped, err := seam("darn-write")
 		if err == nil {
 			t.Fatalf("darnTreeScope()() = %q, %v, nil; want a refusal", command, scoped)
 		}
@@ -116,11 +124,23 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		return
 	}
 
-	if !t.Run("a diff wholly under the trees is tree-scoped over the touched trees' targets", func(t *testing.T) {
+	if !t.Run("a docs-only diff under a tree with an empty target is tree-scoped and runs nothing", func(t *testing.T) {
 		gitkit.CommitFile(t, worktree, "docs/ä.md", "docs\n", "docs change")
+		assertAnswer(t, seam, "", true)
+		assertLanding(t, deps, "")
+	}) {
+		return
+	}
+
+	if !t.Run("a diff wholly under the trees is tree-scoped over the touched trees' targets, each row key's call", func(t *testing.T) {
 		gitkit.CommitFile(t, worktree, "tools/a.go", "package tools\n", "tools change")
-		assertAnswer(t, seam, "lyx gate test --wait --tier 1 ./tools/...", true)
-		assertLanding(t, deps, "lyx gate test --wait --tier 1 ./tools/...")
+		for _, gateKey := range []string{"darn-write", "code-burler-fix", "finalize"} {
+			command, scoped, err := seam(gateKey)
+			if want := scopedCall(gateKey, "./tools/..."); err != nil || !scoped || command != want {
+				t.Errorf("darnTreeScope()(%s) = %q, %v, %v; want %q, true, nil", gateKey, command, scoped, err, want)
+			}
+		}
+		assertLanding(t, deps, scopedCall("finalize", "./tools/..."))
 	}) {
 		return
 	}
@@ -128,8 +148,8 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	if !t.Run("a merge that brings in only the parent's production change keeps the diff tree-scoped", func(t *testing.T) {
 		gitkit.CommitFile(t, prime, "internal/p.go", "package internal\n", "parent production change")
 		gitkit.Git(t, worktree, "merge", "--no-edit", gitkit.CurrentBranch(t, prime))
-		assertAnswer(t, seam, "lyx gate test --wait --tier 1 ./tools/...", true)
-		assertLanding(t, deps, "lyx gate test --wait --tier 1 ./tools/...")
+		assertAnswer(t, seam, "./tools/...", true)
+		assertLanding(t, deps, scopedCall("finalize", "./tools/..."))
 	}) {
 		return
 	}
@@ -165,16 +185,16 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	}
 
 	if !t.Run("a tree key with a leading dot is refused with the editor way forward", func(t *testing.T) {
-		seed(t, `tree_scope: {"./tools": ""}`, scopedVerify)
+		seed(t, `tree_scope: {"./tools": ""}`)
 		assertRefusal(t, seam, "./tools", "lyx config darn's editor")
 		wantRefusal := []string{"./tools", "lyx config darn's editor", "then re-run the lyx command that refused"}
-		_, commandErr := deps.VerifyCommand()
+		_, commandErr := deps.VerifyCommand("finalize")
 		if commandErr == nil {
-			t.Error("VerifyCommand() error = nil; want a refusal")
+			t.Error("VerifyCommand(finalize) error = nil; want a refusal")
 		} else {
 			for _, want := range wantRefusal {
 				if !strings.Contains(commandErr.Error(), want) {
-					t.Errorf("VerifyCommand() error = %q; want it to contain %q", commandErr, want)
+					t.Errorf("VerifyCommand(finalize) error = %q; want it to contain %q", commandErr, want)
 				}
 			}
 		}
@@ -183,7 +203,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	}
 
 	if !t.Run("a darn.yaml that does not unmarshal is refused with the hub config way forward", func(t *testing.T) {
-		seed(t, trees, scopedVerify)
+		seed(t, trees)
 		path := filepath.Join(fabricengine.BoardDir(hub.Path), "_lyx", "config", "darn.yaml")
 		if err := os.WriteFile(path, []byte("writer: [\n"), 0o644); err != nil {
 			t.Fatal(err)
@@ -193,8 +213,8 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		return
 	}
 
-	t.Run("an emptied tree_scope_verify turns tree scope off", func(t *testing.T) {
-		seed(t, trees, `tree_scope_verify: ""`)
+	t.Run("an emptied tree_scope turns tree scope off", func(t *testing.T) {
+		seed(t, `tree_scope: {}`)
 		assertAnswer(t, seam, "", false)
 		assertLanding(t, deps, landingCall)
 	})

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cancellation_test.go carries the one test whose subject is this package's own constructors under
 // an already-cancelled context, plus the reduced fixture it drives from. It stays in
 // internal/loomshed rather than moving to internal/loomrecipe alongside the rest of the sequence

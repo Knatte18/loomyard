@@ -1,3 +1,5 @@
+//go:build tier0
+
 // findingtext_test.go pins the findings clause and the way forward of the board-model findings and the zero-batch refusal as golden text, and the reason a path cannot be checked.
 // Untagged, with a shuttlefake.Engine: no git, no subprocess spawns, so the cases that need git (a git-ignored path, a tracked path) are covered by the integration tests of the sites.
 

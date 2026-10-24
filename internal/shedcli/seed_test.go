@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seed_test.go covers seed.go's two testable workers: writeSeed and parseSeedParams. Both perform
 // no lyxcwd.Resolve and no cwd read of their own (writeSeed's own doc comment), so this file drives
 // them directly against a hand-built *lyxcwd.Location, with no real git repository behind it, and

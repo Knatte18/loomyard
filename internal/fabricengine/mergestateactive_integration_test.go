@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mergestateactive_integration_test.go covers MergeStateActive against a real hubforge pair: a clean
 // weft reports false; a weft carrying a live MERGE_HEAD (no conflicts) reports true; a weft carrying

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // runsettings_test.go — tests for the run-settings migrate-then-validate step.
 
 package configreg

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // segmentcolor_test.go pins the palette, its tmux mapping, color parsing and the closed segment and palette sets.
 
 package segmentcolor

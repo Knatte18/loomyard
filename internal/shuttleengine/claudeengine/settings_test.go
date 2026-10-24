@@ -1,3 +1,5 @@
+//go:build tier0
+
 // settings_test.go covers buildSettings' JSON composition across the agent-deny/askuser-deny toggle matrix and the interactive/autonomous split, the fork-mode conditional Agent hook and Bash guard, asserts the events path is embedded in its POSIX form, checks the no-single-quote steer invariant, and exercises Prepare end to end against a real temp directory.
 
 package claudeengine
@@ -327,21 +329,6 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			}
 		})
 	}
-}
-
-// sampleRefuseRaw is the non-empty refuse list the deny tests render the shell guard rows with.
-var sampleRefuseRaw = []string{"go test", "dotnet test"}
-
-// shellRow returns the shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw) row named name, failing the test when none has it.
-func shellRow(t *testing.T, name string) shellguard.Row {
-	t.Helper()
-	for _, row := range shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw) {
-		if row.Name == name {
-			return row
-		}
-	}
-	t.Fatalf("shellguard.Rows has no row named %q", name)
-	return shellguard.Row{}
 }
 
 // TestStandingDenies_RenderEveryShellGuardRow pins that every shell guard row, the refuse-raw row of a non-empty list included, has exactly one standingDeniesFor entry with matcher Bash, its steer and notice and the command shape of its pattern count, in table order after the Claude rows.

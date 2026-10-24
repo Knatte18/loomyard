@@ -1,6 +1,8 @@
+//go:build tier0
+
 // verbs_test.go covers the four verbs' own answer-path behaviour against a fixture repository built under t.TempDir(): RunCLIIn's exit code and parseable-JSON contract on success, resolve's per-glyph answers (one document per glyph, exit 1 on any negative answer), and golden assertions that glyphs' JSON and --text output are each byte-identical to the facade's own rendering of the same answer.
 // All four reach quarry.TOC, Glyphs, Resolve and Expand -- file readers, none of which spawns a process --
-// so this file stays untagged and tier1-pure.
+// so this file stays in tier 0.
 
 package quarrycli
 

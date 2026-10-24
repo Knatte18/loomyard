@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // ensure_integration_test.go covers Ensure against real hubforge hubs: the stale-build walk, the stamp gate, the mid-merge and incomplete-pair skips, the lock, concurrent callers, a pair registered mid-walk and the single-pair call.
 

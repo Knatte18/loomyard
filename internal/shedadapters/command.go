@@ -1,4 +1,4 @@
-// command.go implements CommandProducer, the producer that runs one operator-configured shell command behind one config switch and never halts the run over the command's outcome.
+// command.go implements CommandProducer, the producer that runs one operator-configured shell command and never halts the run over the command's outcome.
 
 package shedadapters
 
@@ -18,10 +18,8 @@ import (
 // commandEngine is the engine label a Command row carries in logs and errors.
 const commandEngine = "Command"
 
-// CommandRow names the config settings one Command row reads and the time its command may run.
+// CommandRow names the config setting one Command row reads its command from and the time its command may run.
 type CommandRow struct {
-	// SwitchModule and SwitchKey name the bool setting that turns the row on.
-	SwitchModule, SwitchKey string
 	// CommandModule and CommandKey name the string setting that holds the command.
 	CommandModule, CommandKey string
 	// Timeout ends a command that hangs.
@@ -38,12 +36,10 @@ type CommandResult struct {
 
 // CommandDeps is what the recipe's owner tells a CommandProducer; the producer derives no path itself.
 type CommandDeps struct {
-	// Setting is the plain setting lookup the switch is read through, and through which the command key is read over the owner's ordinary stack to warn about an ignored value.
+	// Setting is the plain setting lookup through which the command key is read over the owner's ordinary stack to warn about an ignored value.
 	Setting func(module, key string) (any, error)
 	// ExecutableSetting is the owner's lookup over the template and the board default layer only; the command is read through it and nothing else.
 	ExecutableSetting func(module, key string) (any, error)
-	// Forced lists the row names whose switch the run forces on, read instead of the switch.
-	Forced []string
 	// Lyx and Slug are the values of the {lyx} and {slug} placeholders.
 	Lyx, Slug string
 	// TaskDir returns the value of the {task_dir} placeholder; it is called only when the command holds that placeholder.
@@ -60,7 +56,7 @@ type CommandDeps struct {
 	GOOS string
 }
 
-// CommandProducer runs its row's configured command once when the row's switch is on and is Done whatever the command did.
+// CommandProducer runs its row's configured command once and is Done whatever the command did.
 type CommandProducer struct {
 	name string
 	row  CommandRow
@@ -76,7 +72,7 @@ func NewCommandProducer(name string, row CommandRow, deps CommandDeps) *CommandP
 
 // Call implements shedengine.ShedProducer.
 // See the package documentation's Command section for the order it follows.
-// Only an unreadable setting or a missing executable-key lookup is an error; a command that fails, times out or cannot start is warned about and the row is Done.
+// Only an unreadable command setting or a missing executable-key lookup is an error; a command that fails, times out or cannot start is warned about and the row is Done.
 func (p *CommandProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name, commandEngine); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -87,22 +83,6 @@ func (p *CommandProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 	done := shedengine.Done
 	if p.deps.ExecutableSetting == nil {
 		return fail("the recipe's owner tells no executable-key lookup; way forward: wire an executable-key lookup over the template and the board default layer in the recipe's owner, then re-run the run on the rebuilt lyx (%s)", p.deps.Rerun)
-	}
-
-	forced := slices.Contains(p.deps.Forced, p.name)
-	if !forced {
-		value, err := p.deps.Setting(p.row.SwitchModule, p.row.SwitchKey)
-		if err != nil {
-			return fail("read the switch %s.%s: %v; way forward: correct it, then %s", p.row.SwitchModule, p.row.SwitchKey, err, p.deps.Rerun)
-		}
-		enabled, isBool := value.(bool)
-		if !isBool {
-			return fail("the switch %s.%s holds %v, not a bool; way forward: correct it, then %s", p.row.SwitchModule, p.row.SwitchKey, value, p.deps.Rerun)
-		}
-		if !enabled {
-			logger.Info("shedadapters: command row off; passing on", "producer", p.name, "engine", commandEngine)
-			return done, shedengine.OutputPointer{}, nil
-		}
 	}
 
 	setCommand := fmt.Sprintf("`lyx config %s --layer default --set %s=<value>` from the prime", p.row.CommandModule, p.row.CommandKey)
@@ -117,11 +97,7 @@ func (p *CommandProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 	p.warnOnIgnoredCommand(command, setCommand)
 
 	if strings.TrimSpace(command) == "" {
-		if forced {
-			logger.Warn("shedadapters: forced command row has an empty command; passing on", "producer", p.name, "engine", commandEngine, "setting", p.row.CommandModule+"."+p.row.CommandKey)
-		} else {
-			logger.Info("shedadapters: command row has an empty command; passing on", "producer", p.name, "engine", commandEngine)
-		}
+		logger.Info("shedadapters: command row has an empty command; passing on", "producer", p.name, "engine", commandEngine)
 		return done, shedengine.OutputPointer{}, nil
 	}
 

@@ -163,7 +163,7 @@ You never read raw fork output beyond its own turn, and you never open a file to
 ## After every batch: the verify gate
 
 Once every batch in your card list above has reached a terminal `done` (never reach this point over a `stuck`/`dead` batch — the failure ladder above already stopped your run before then), proceed to your final action below.
-You never run the plan-level gate yourself: when your turn ends with both contract files written, the `final` gate runs at the current HEAD and either accepts the run or sends you its findings.
+You never run the plan-level gate yourself: when your turn ends with both contract files written, the `webster` gate runs at the current HEAD and either accepts the run or sends you its findings.
 
 ## A gate failure: one fixer, a fork or the cold fixer
 

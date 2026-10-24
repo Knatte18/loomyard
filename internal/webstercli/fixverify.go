@@ -69,7 +69,7 @@ it returns {"status": "running", "elapsed_s": N}.
 
 It refuses, spawning nothing, when no verify-gate report is on disk, when
 the recovery role's engine cannot audit forks and when the gate config has
-no "round" list. A call that spawns fabric-commits state.json at once, so
+no "webster-fix" key. A call that spawns fabric-commits state.json at once, so
 the strand survives a crash. Under a pause that covers the pair it refuses
 first, claiming Master into it.
 

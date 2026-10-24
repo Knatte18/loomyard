@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the Modelspec Leaf Invariant: production code in
 // internal/modelspec imports ONLY the standard library, internal/configengine, and gopkg.in/yaml.v3
 // — never configreg, envsource, yamlengine, lyxcwd, or any feature package.

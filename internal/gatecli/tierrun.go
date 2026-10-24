@@ -7,7 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/build"
+	"go/parser"
+	"go/token"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -16,6 +21,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -24,7 +31,7 @@ import (
 
 // tierResult is how one tier run ended.
 type tierResult struct {
-	// record holds what the tier run itself knows; the caller adds the worktree, slug, tier list and wait start before it writes the record.
+	// record holds what the tier run itself knows, the per-package launch list of a go-json tier included; the caller adds the worktree, slug, tier list and wait start before it writes the record.
 	record gateslot.RunRecord
 	// log is the run's whole output as the counter passed it on, with the timeout line when the tier timed out.
 	log []byte
@@ -77,6 +84,14 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 		printLine(request.stderr, line)
 	}
 
+	if exit == 0 {
+		if line := emptyTierFailure(run, request.root, counter.TestsRun(), request.args); line != "" {
+			exit = 1
+			logBuffer.WriteString(line + "\n")
+			printLine(request.stderr, line)
+		}
+	}
+
 	counts := counter.Counts()
 	end := time.Now()
 	record.Command = strings.Join(commands, "; ")
@@ -92,6 +107,7 @@ func runTier(ctx context.Context, out io.Writer, run tierRun, env []string, requ
 		record.Outcome = "failed"
 	}
 	record.Discovered, record.Passed, record.Failed, record.Skipped = counts.discovered, counts.passed, counts.failed, counts.skipped
+	record.Launches = counter.Launches()
 	return tierResult{record: record, log: logBuffer.Bytes(), trimpathNote: trimpathNote}
 }
 
@@ -156,22 +172,134 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 	return 0, commands, ""
 }
 
-// runGuardStep runs the guard step of cfg over the guard tests guards names for the module at moduleDir, with its slots already held: one run of guard_tier's command with the guard packages as {targets}, and `-run '^(<names>)$'` after the call's own words as {args}.
-func runGuardStep(ctx context.Context, out io.Writer, cfg gateslot.Config, moduleDir string, guards map[string][]string, env []string, request testRequest) tierResult {
-	tier, err := cfg.Tier(cfg.GuardTier)
+// filterFlags are the go test flags whose filter may match nothing in a package, so a run that carries one cannot tell a missing tag from an empty match.
+var filterFlags = []string{"run", "skip", "list", "bench"}
+
+// emptyTierFailure returns the failure line of a passing go-json tier run in which a package ran no test although it holds a Test function in a file whose build constraint holds under the tier's tag, `tierN`, on the host's GOOS and GOARCH; it returns "" when no package does.
+// ran is the per-package count of tests that ran, keyed by import path, with root the worktree root that the run's invocation directories resolve against.
+// A package belongs to the module, among those the invocations run in, with the longest module path that prefixes it.
+// args are the call's own words after `--`: a filter among them exempts the run, since it may match nothing in a package; the run's args are not read, as the guard step appends its own `-run` filter there.
+// A run with no counts, such as a vstest one, has nothing to check.
+func emptyTierFailure(run tierRun, root string, ran map[string]int, args []string) string {
+	if len(ran) == 0 || slices.ContainsFunc(args, isFilterFlag) {
+		return ""
+	}
+	modules := map[string]string{}
+	for _, invocation := range run.invocations {
+		dir := resolveRunDir(root, invocation.dir)
+		if path := modulePathOf(dir); path != "" {
+			modules[path] = dir
+		}
+	}
+
+	tag := tierName(run.number)
+	tagged := build.Default
+	tagged.BuildTags = []string{tag}
+	var empty []string
+	for pkg, count := range ran {
+		if count > 0 {
+			continue
+		}
+		dir := packageDir(modules, pkg)
+		if dir != "" && holdsTierTest(tagged, dir) {
+			empty = append(empty, pkg)
+		}
+	}
+	if len(empty) == 0 {
+		return ""
+	}
+	sort.Strings(empty)
+	return fmt.Sprintf("gate test: %s ran no test in %s although it holds tests under the build tag %s; the tier's command lacks its tag; way forward: add -tags %s to the tier's command with \"lyx config gate\" from the prime%s", tag, strings.Join(empty, ", "), tag, tag, roleClause)
+}
+
+// isFilterFlag reports whether arg is one of filterFlags, spelled with one or two dashes, with or without the `test.` prefix and with or without an `=` value.
+func isFilterFlag(arg string) bool {
+	name := strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(arg, "-"), "-"), "test.")
+	name, _, _ = strings.Cut(name, "=")
+	return strings.HasPrefix(arg, "-") && slices.Contains(filterFlags, name)
+}
+
+// modulePathOf returns the module path that dir's go.mod declares, or "" when dir holds no readable go.mod.
+func modulePathOf(dir string) string {
+	data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 	if err != nil {
-		return tierResult{refusal: fmt.Sprintf("gate test: guard_tier: %v", err)}
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if fields := strings.Fields(line); len(fields) == 2 && fields[0] == "module" {
+			return strings.Trim(fields[1], `"`)
+		}
+	}
+	return ""
+}
+
+// packageDir returns the directory of the package with import path pkg inside the module of modules, a map from module path to directory, whose path is the longest prefix of pkg; it returns "" when no module holds pkg.
+func packageDir(modules map[string]string, pkg string) string {
+	best := ""
+	for path := range modules {
+		if (pkg == path || strings.HasPrefix(pkg, path+"/")) && len(path) > len(best) {
+			best = path
+		}
+	}
+	if best == "" {
+		return ""
+	}
+	return filepath.Join(modules[best], filepath.FromSlash(strings.TrimPrefix(strings.TrimPrefix(pkg, best), "/")))
+}
+
+// holdsTierTest reports whether a `_test.go` file in dir matches the build tags of tagged and declares a Test function.
+// A file that cannot be matched or parsed is left out: a build failure already failed the run.
+func holdsTierTest(tagged build.Context, dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if matches, err := tagged.MatchFile(dir, name); err != nil || !matches {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, parser.SkipObjectResolution)
+		if err != nil {
+			continue
+		}
+		for _, decl := range file.Decls {
+			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && isTestName(fn.Name.Name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// isTestName reports whether name is a Test function name go test runs: `Test` followed by no lowercase letter, `TestMain` apart.
+func isTestName(name string) bool {
+	rest, found := strings.CutPrefix(name, "Test")
+	if !found || name == "TestMain" {
+		return false
+	}
+	first, _ := utf8.DecodeRuneInString(rest)
+	return rest == "" || !unicode.IsLower(first)
+}
+
+// guardStepRun returns the guard step of one tier group over the guard tests guards names for the module at moduleDir: one run of the command of the tier numbered number with the guard packages as {targets}, and `-run '^(<names>)$'` after the call's own words as {args}.
+func guardStepRun(cfg gateslot.Config, moduleDir string, number int, guards map[string][]string, request testRequest) (tierRun, error) {
+	tier, err := cfg.Tier(number)
+	if err != nil {
+		return tierRun{}, fmt.Errorf("gate test: %w", err)
 	}
 	packages, names := guardPackages(guards)
-	run := tierRun{
-		number:      cfg.GuardTier,
+	return tierRun{
+		number:      number,
 		tier:        tier,
 		scopeForm:   scopeGuard,
 		invocations: []invocation{{dir: moduleDir, targets: packages}},
 		args:        append(slices.Clone(request.args), "-run", "^("+strings.Join(names, "|")+")$"),
 		guardStep:   true,
-	}
-	return runTier(ctx, out, run, env, request)
+	}, nil
 }
 
 // guardPackages returns the module-relative package arguments of the directories that hold a guard test, in directory order, and the sorted guard test names of them all.

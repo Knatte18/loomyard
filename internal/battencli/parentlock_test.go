@@ -1,3 +1,5 @@
+//go:build tier0
+
 // parentlock_test.go covers the seams of Run-Shed's parent lock backstop: the record lookup by run and the landing-in-flight read.
 
 package battencli

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // retiring_test.go pins MarkRetiring's persistence, its Status projection, and the ErrUnknownStrand sentinel the unknown-guid refusals wrap.
 
 package reedengine

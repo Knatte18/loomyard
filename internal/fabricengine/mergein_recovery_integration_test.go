@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mergein_recovery_integration_test.go covers MergeIn's crash-recovery, freshness, foreign-state,
 // and illusion-integrity matrix: a fresh Fabric handle recovering a mid-merge record (both the

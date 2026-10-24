@@ -1,3 +1,5 @@
+//go:build tier0
+
 // migrate_test.go — unit tests for the old-shape conversion (migrate.go).
 
 package boardengine

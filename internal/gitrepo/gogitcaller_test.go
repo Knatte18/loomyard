@@ -1,3 +1,5 @@
+//go:build tier0
+
 // gogitcaller_test.go machine-checks PATTERN-gogit-read-helper: in internal/gitrepo's own non-test source, readGoGit is the only function that calls goGit, so no go-git read can bypass its whole-read retry.
 // It is untagged and spawns nothing, a pure go/ast scan.
 

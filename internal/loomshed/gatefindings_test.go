@@ -1,3 +1,5 @@
+//go:build tier0
+
 // gatefindings_test.go asserts that this package's mechanical gates surface the determined findings
 // they used to discard.
 // The rule matters most exactly where it is cheapest to skip, but the reason has changed with the

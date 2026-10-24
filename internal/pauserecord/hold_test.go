@@ -1,3 +1,5 @@
+//go:build tier0
+
 // hold_test.go pins the shared wait at entry and the process network gate.
 // TestNetwork is not parallel: the gate is process-wide state.
 

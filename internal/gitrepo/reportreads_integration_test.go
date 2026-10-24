@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // reportreads_integration_test.go covers the reads a report over finished runs builds on — TagRefs, Log, SubdirsAtRevision, PreImageLines and BlameLines — against one real git repository whose commits carry fixed committer dates, reusing blobread_integration_test.go's commitAllAt and gitrepo_test.go's newRepo and writeFile fixture helpers.
 

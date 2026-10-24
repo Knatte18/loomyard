@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // delta_integration_test.go covers Delta, and DetectDrift's gate one, against a real git fixture repository, spawning git through (*quarry.Repo).DeltaGit — the reason this file carries the integration build tag rather than running in the untagged tier.
 

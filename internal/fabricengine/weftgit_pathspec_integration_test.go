@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // weftgit_pathspec_integration_test.go — integration coverage for
 // weftPathspecFilter, the pre-stage filter CommitWeft runs immediately

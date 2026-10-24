@@ -1,3 +1,5 @@
+//go:build tier0
+
 // runlog_test.go covers the run record and log a tier run leaves behind, and the summary line a site reads back from a log.
 
 package gateslot
@@ -22,11 +24,12 @@ func TestWriteRunRecord(t *testing.T) {
 
 		dir := RunLogDir(t.TempDir())
 		want := RunRecord{
-			Worktree: "/hub/slug", Slug: "slug", TierList: []int{0, 1}, Tier: 1,
+			Worktree: "/hub/slug", Slug: "slug", TierList: []int{0, 1}, GateKey: "merge-in", Tier: 1,
 			Command: "go test ./...", RunDir: "/hub/slug/internal/x", ScopeForm: "--all", Slots: 2,
 			WaitStart: now.Add(-time.Minute), Start: now.Add(-30 * time.Second), End: now, WallSec: 30,
-			ExitCode: 1, TimedOut: false, Outcome: "failed", GuardStep: true,
+			ExitCode: 1, TimedOut: false, Outcome: "failed", GuardStep: true, Carried: true,
 			Discovered: 9, Passed: 7, Failed: 1, Skipped: 1,
+			Launches: []PackageLaunch{{Package: "example.com/p", LaunchSeconds: 0.25, ElapsedSeconds: 1.5}},
 		}
 		path, err := WriteRunRecord(dir, want, []byte("FAIL\n"), now)
 		if err != nil {
@@ -52,6 +55,25 @@ func TestWriteRunRecord(t *testing.T) {
 		}
 		if string(logData) != "FAIL\n" {
 			t.Errorf("log = %q; want %q", logData, "FAIL\n")
+		}
+	})
+
+	t.Run("RecordWithoutLaunchesReadsWithNone", func(t *testing.T) {
+		t.Parallel()
+
+		var got RunRecord
+		if err := json.Unmarshal([]byte(`{"tier":0,"outcome":"passed","discovered":3}`), &got); err != nil {
+			t.Fatalf("decode record: %v", err)
+		}
+		if got.Launches != nil || got.Discovered != 3 {
+			t.Errorf("record read back = %+v; want no launches and the other fields kept", got)
+		}
+		data, err := json.Marshal(RunRecord{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "launches") {
+			t.Errorf("record without launches encodes as %s; want the key omitted", data)
 		}
 	})
 
@@ -100,6 +122,9 @@ func testFailedTier(t *testing.T) {
 	line := func(tier, exit int) string {
 		return TierSummaryLine(RunRecord{Tier: tier, ScopeForm: "--base main", Discovered: 4, Passed: 4, WallSec: 1.5, ExitCode: exit}, "/runs/x.log")
 	}
+	carried := func(tier int) string {
+		return TierSummaryLine(RunRecord{Tier: tier, ScopeForm: "all", Carried: true}, "/runs/y.log")
+	}
 	tests := []struct {
 		name     string
 		log      string
@@ -108,6 +133,8 @@ func testFailedTier(t *testing.T) {
 	}{
 		{"last failing line after a passing one", line(0, 0) + "\n" + line(2, 1) + "\n", 2, true},
 		{"failing line followed by a passing one", line(1, 2) + "\n" + line(2, 0) + "\n", 1, true},
+		{"a carried line beside a failing one is read as exit 0", carried(0) + "\n" + line(1, 3) + "\n" + carried(2) + "\n", 1, true},
+		{"a carried line alone is no failure", carried(0) + "\n", 0, false},
 		{"no failing summary line", line(0, 0) + "\nok example.com/x\n", 0, false},
 		{"no summary line", "FAIL\n", 0, false},
 	}

@@ -1,4 +1,4 @@
-//go:build tmux && !windows
+//go:build tier2 && !windows
 
 // naming_integration_test.go drives the reed verbs on a real hub to prove a strand's full name and parent reach its process, survive a server kill and `resume`, address the right strand on `remove`, and that `lyx reed list` shows strands of the prime and of a task worktree in one listing from the prime and flags a hand-retitled pane as drift.
 

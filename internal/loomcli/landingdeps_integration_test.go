@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // landingdeps_integration_test.go drives landingDeps' config-change seams over a real hub: ConfigChanges reads a pair's committed config files through real branches,
 // and Notify posts creel mail to the prime's orch.

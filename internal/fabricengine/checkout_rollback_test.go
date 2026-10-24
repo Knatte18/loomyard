@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // checkout_rollback_test.go proves Checkout's all-or-nothing contract holds even
 // when junction wiring (step 5) fails AFTER the weft branch was already switched

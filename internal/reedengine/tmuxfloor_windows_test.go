@@ -1,4 +1,4 @@
-//go:build windows
+//go:build tier0 && windows
 
 // tmuxfloor_windows_test.go pins that the tmux floor check admits on Windows without probing.
 

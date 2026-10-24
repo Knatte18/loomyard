@@ -1,3 +1,5 @@
+//go:build tier0
+
 // weftname_test.go exercises SiblingPath and BareSiblingPath over a range of container/base
 // combinations,
 // and locks in the relationship between them that gitkit's fixture builders rely on, so the two

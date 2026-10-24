@@ -1,3 +1,5 @@
+//go:build tier0
+
 // mergein_test.go drives Merge-In's Call against a real parentlock.Store in a temporary directory and fake tip reads, resolver and verify seams.
 
 package landingshed
@@ -99,7 +101,7 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 	dir := t.TempDir()
 	fx := &mergeInFixture{
 		store:        &parentlock.Store{Dir: filepath.Join(dir, "locks"), Alive: func(int, string) bool { return true }},
-		gate:         newGateFixture(t, "go test ./...", nil),
+		gate:         newGateFixture(t, "merge-in", "go test ./...", nil),
 		tips:         fabricengine.ParentTips{Local: "p1", Upstream: "p1", Relation: fabricengine.ParentEqual},
 		head:         "t1",
 		mergeHead:    "t2",
@@ -125,6 +127,7 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 	stencilsDir := t.TempDir()
 	stencilkit.SeedInto(t, stencilsDir)
 	deps := Deps{
+		GateKey:            "merge-in",
 		ParentBranch:       "main",
 		TaskBranch:         "task-branch",
 		Slug:               "my-slug",
@@ -535,10 +538,10 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 		if err != nil || !found {
 			t.Fatalf("ReadLandingFailure() = %v, %v; want a record", found, err)
 		}
-		// The log names no failing tier, so the record takes the highest tier of the landing list.
-		wantTier := slices.Max(fixedGateTierLists["landing"])
-		if failure.MergeCommit != "m1" || failure.Kind != verifytree.FailureKindLanding || failure.Tier != wantTier {
-			t.Errorf("failure record = %+v; want merge commit m1, kind landing, tier %d", failure, wantTier)
+		// The log names no failing tier, so the record takes the highest tier of the row's key.
+		wantTier := slices.Max(fixedGateTierLists["merge-in"])
+		if failure.MergeCommit != "m1" || failure.Kind != "merge-in" || failure.Tier != wantTier {
+			t.Errorf("failure record = %+v; want merge commit m1, kind merge-in, tier %d", failure, wantTier)
 		}
 		if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
 			t.Error("a merge record was written after a failed verify")
@@ -731,7 +734,7 @@ func TestMergeIn_VerifyGate(t *testing.T) {
 			{
 				name: "verify command closure error",
 				setup: func(fx *mergeInFixture) context.Context {
-					fx.m.gate.command = func() (string, error) { return "", errors.New("plan unreadable") }
+					fx.m.gate.command = func(string) (string, error) { return "", errors.New("plan unreadable") }
 					return context.Background()
 				},
 				wantErrHas: "plan unreadable",

@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // norecoverydeny_test.go enforces `PATTERN-no-denied-recovery`: no refusal, stencil, spec or skill names a command the agents' settings deny as a way forward.
 // The scan reads files only, so it stays in the untagged tier.
 // The scanned surface is `contracts/specs/`, `contracts/stencils/`, `plugins/ly/skills/` and the string literals of the non-test Go files under the webster, shed and loom modules.

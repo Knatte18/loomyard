@@ -1,3 +1,5 @@
+//go:build tier0
+
 // pathresolve_guard_test.go enforces the Dev/Prod Binary Separation Invariant: no non-test *.go
 // file in the tools/sandbox package, other than resolve.go, may perform a bare-PATH "lyx" lookup or
 // spawn -- lookPath("lyx"), or an exec.Command/ exec.CommandContext call whose line also names

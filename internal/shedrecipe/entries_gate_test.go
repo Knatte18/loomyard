@@ -1,3 +1,5 @@
+//go:build tier0
+
 package shedrecipe
 
 import (
@@ -100,6 +102,39 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 			}
 			if got := strings.Contains(result.Findings, "rename-tool-missing"); got != tt.want {
 				t.Errorf("Gate() = %+v; want rename-tool-missing: %v", result, tt.want)
+			}
+		})
+	}
+
+	// The "verify" gate reads the call of the row's own gate key: its name in lower case, else the "gate_key" the row names.
+	for _, tt := range []struct {
+		name    string
+		gateKey any
+		want    string
+	}{
+		{"verify of a row named for its key", nil, "code-burler-fix"},
+		{"verify of a row naming its key", "custom", "custom"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			var asked []string
+			env.VerifyCommand = func(gateKey string) (string, error) {
+				asked = append(asked, gateKey)
+				return "", nil
+			}
+			cfg := gatesCfg("verify", 3)
+			if tt.gateKey != nil {
+				cfg["gate_key"] = tt.gateKey
+			}
+			spec, err := resolveRowGateSpec("BurlerFix", "Code-Burler-Fix", cfg, env)
+			if err != nil {
+				t.Fatalf("resolveRowGateSpec() error = %v; want nil", err)
+			}
+			if _, err := spec[0].Gate(); err != nil {
+				t.Fatalf("Gate() error = %v; want nil", err)
+			}
+			if len(asked) != 1 || asked[0] != tt.want {
+				t.Errorf("VerifyCommand asked for %q; want one ask for %q", asked, tt.want)
 			}
 		})
 	}
@@ -218,13 +253,14 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 			map[string]any{"name": "discussion", "attempts": 1},
 		}}, `"parent-review" must be the last element`},
 		{"ParentReviewPassOnCapFalse", Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": false}}}, "pass_on_cap"},
+		{"GateKeyNotAString", Config{"gates": []any{map[string]any{"name": "verify", "attempts": 1}}, "gate_key": 3}, "gate_key"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := resolveGateSpec("TheRow", tt.cfg, parentReviewEnv(t))
 			assertErrContains(t, err, "TheRow")
 			assertErrContains(t, err, tt.want)
-			if strings.HasPrefix(tt.name, "ParentReview") {
+			if strings.HasPrefix(tt.name, "ParentReview") || tt.name == "GateKeyNotAString" {
 				assertErrContains(t, err, "way forward:")
 			}
 		})
@@ -386,14 +422,12 @@ func TestResolveGateSpec_UnknownNameListsFiveValues(t *testing.T) {
 }
 
 func TestResolveGateSpec_VerifyRequiresAbsoluteEnvRoots(t *testing.T) {
-	for _, field := range []string{"VerifyCommand", "Round", "WorktreeRoot", "VerifyDir"} {
+	for _, field := range []string{"VerifyCommand", "WorktreeRoot", "VerifyDir"} {
 		t.Run(field, func(t *testing.T) {
 			env := newTestEnv(t)
 			switch field {
 			case "VerifyCommand":
 				env.VerifyCommand = nil
-			case "Round":
-				env.Round = nil
 			case "WorktreeRoot":
 				env.WorktreeRoot = "relative/worktree"
 			case "VerifyDir":

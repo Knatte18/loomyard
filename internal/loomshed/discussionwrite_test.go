@@ -1,3 +1,5 @@
+//go:build tier0
+
 // discussionwrite_test.go exercises NewDiscussionWrite's own outcome mapping against a fake inner
 // shedengine.ShedProducer: commit fires exactly once, and only, when the inner producer reports
 // Done with a nil error, and every other outcome (Stuck, a non-nil error, or a commit failure)

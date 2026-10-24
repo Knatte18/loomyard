@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the Fswatch Leaf Invariant.
 // Production code in internal/fswatch imports only the standard library, fsnotify and internal/logger.
 

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // dotlyxjunction_integration_test.go covers the .lyx junction lifecycle this batch introduces: wiring
 // creates a real warp↔weft junction and seeds both sides' git-exclude, unwiring reverses only the

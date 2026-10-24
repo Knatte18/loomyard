@@ -1,4 +1,4 @@
-//go:build tmux || llm
+//go:build tier2 || tier3
 
 // smoke_test.go is the shared smoke-test harness: the helpers (binary discovery, live-tmux process/pane probes, transcript watching, fixture wiring) common to the smoke test files in this package.
 // Those files drive the composed live-tmux behaviors through RunCLIIn against a real server:

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cleanupremotewarp_integration_test.go covers Topology.CleanupRemoteWarp against hubforge bare origins:
 // a dry run classifies every branch on the warp origin, apply deletes only the candidate, and a tip that moves after it was observed keeps the branch.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // resolve_test.go contains unit tests for resolveLyx (dev/prod binary resolution) and prependPath
 // (child-process PATH construction).
 // All tests are Tier-1 pure: the devBinPath and lookPath seams are stubbed,

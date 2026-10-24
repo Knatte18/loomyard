@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // coalesce_integration_test.go — integration coverage for CoalescePushBothAt
 // against real warp+weft repos with bare origins: the two-sided-advance case

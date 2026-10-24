@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // revive_integration_test.go proves against a real tmux that a restarted server's sessions are revived in the told spawn order:
 // three worktrees on one private socket, a server kill, and the order the new server numbers their sessions in.

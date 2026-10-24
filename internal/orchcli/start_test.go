@@ -1,3 +1,5 @@
+//go:build tier0
+
 // start_test.go drives the start verb's RunE over a fake strandOps, session starter and watcher spawn, asserting the recorded calls and the saved state without a spawn.
 
 package orchcli

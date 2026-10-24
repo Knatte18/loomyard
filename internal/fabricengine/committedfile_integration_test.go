@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // committedfile_integration_test.go covers CommittedAnchoredFile and CommittedAnchoredFileHistory against a wired hub fixture:
 // the committed bytes come back despite a later working-tree edit, a path never committed reports found == false,

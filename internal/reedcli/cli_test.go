@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_test.go covers the reedcli cobra seam through RunCLI: watchdog's and switch's flag refusals and the not-a-git-repo error surface.
 // No live tmux session is required by any test in this file;
 // the real up/add/status/down round-trip lives in smoke_test.go behind //go:build tmux || llm.

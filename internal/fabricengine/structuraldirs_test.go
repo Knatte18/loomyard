@@ -1,3 +1,5 @@
+//go:build tier0
+
 // structuraldirs_test.go — pure set-arithmetic coverage over a hand-built Config for the structural
 // directory sets (structuralCommittedDirs, structuralNeverCommittedDirs) and the name-sets built on
 // top of them: the wired name-set, the pathspec/commit-routing set, and the slug-reservation set.

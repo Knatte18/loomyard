@@ -1,3 +1,5 @@
+//go:build tier0
+
 // add_test.go — unit test proving Add is wired to slug validation.
 // slug_test.go owns the rejection classes.
 // Validation runs before any git operation, so this needs no git fixture and stays untagged Tier-1.

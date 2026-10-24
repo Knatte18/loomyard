@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_llm_test.go proves creel's delivery into a real Claude session, which the fake provider of the tmux tier cannot reach.
 

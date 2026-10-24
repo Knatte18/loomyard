@@ -1,3 +1,5 @@
+//go:build tier0
+
 // pausehold_test.go pins that `lyx loom start` refuses a covered run before it seeds anything, and holds the fixture that covers a receiver's run for the resume test too.
 
 package loomcli

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_batten_test.go covers the batten entries: worktreeCreateEntry, innerRunEntry,
 // seedChildEntry, landEntry and worktreeTeardownEntry. It follows entries_simple_test.go's table shape for
 // the shared Slug/ScratchDir/seam validation, plus innerRunEntry's own poll_interval_s config

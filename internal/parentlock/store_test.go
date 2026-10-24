@@ -1,3 +1,5 @@
+//go:build tier0
+
 // store_test.go covers the record store, its ticket queue and the compare rules at the package surface, with a fake liveness check and clock.
 
 package parentlock

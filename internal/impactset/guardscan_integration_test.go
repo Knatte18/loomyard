@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // guardscan_integration_test.go drives ModuleGuardTests over a real module, whose package listing spawns `go list`.
 
@@ -31,8 +31,8 @@ func TestModuleGuardTests_OverAModule(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ModuleGuardTests() error = %v; want nil", err)
 		}
-		if !slices.Equal(got["g"], []string{"TestGuard"}) || len(got["p"]) != 0 {
-			t.Errorf("ModuleGuardTests() = %v; want {g: [TestGuard]}", got)
+		if !slices.Equal(got["g"], []GuardTest{{Name: "TestGuard", Tier: 0}}) || len(got["p"]) != 0 {
+			t.Errorf("ModuleGuardTests() = %v; want {g: [{TestGuard 0}]}", got)
 		}
 	})
 

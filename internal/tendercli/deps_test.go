@@ -1,3 +1,5 @@
+//go:build tier0
+
 // deps_test.go pins the readings shuttlePair derives from a run's session state: running turn, and background work left by an ended turn, and the pending reading of tender's orch revive injects.
 // It spawns nothing and touches neither reed nor the runner, so it stays out of the integration-tagged cli_test.go.
 

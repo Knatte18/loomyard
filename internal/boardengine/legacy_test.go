@@ -1,3 +1,5 @@
+//go:build tier0
+
 // legacy_test.go — unit tests for the legacy migration and done-mark fold (legacy.go).
 
 package boardengine

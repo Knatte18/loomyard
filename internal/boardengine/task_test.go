@@ -1,3 +1,5 @@
+//go:build tier0
+
 // task_test.go — unit tests for Task construction (task.go).
 //
 // NewTask defaults and kind validation;

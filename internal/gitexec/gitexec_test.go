@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // gitexec_test.go covers the git command helpers exposed by this package.
 

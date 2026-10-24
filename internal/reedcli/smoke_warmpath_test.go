@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_warmpath_test.go pins the other half of this task's hard boundary: a `reed add` or `reed attach` against a live session holding at least one pane performs no reconcile, no layout apply, no SaveState, and no config validation it did not already perform -- add gains one round trip (list-panes), attach gains two (has-session, list-panes), and nothing else.
 // The scenario boots the session explicitly first, so the self-healing pre-flight under test takes its early return rather than its delegate-to-boot branch.

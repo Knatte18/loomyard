@@ -1,3 +1,5 @@
+//go:build tier0
+
 // validate_test.go covers all seventeen of Validate's format-4 checks, each with at least one
 // triggering and one clean case, per contracts/specs/loom-plan-spec.md's distinct
 // ValidationError.Check IDs — sixteen of which ValidateFormat also emits, everything but
@@ -1989,6 +1991,8 @@ func TestValidate_VerifyModuleWide(t *testing.T) {
 		{name: "subtree pattern fires", verify: "go test ./internal/...", want: []string{"1-a"}},
 		{name: "tmux tag fires", verify: "go test -tags tmux ./internal/x", want: []string{"1-a"}},
 		{name: "llm tag in a list fires", verify: "go test -tags=integration,llm ./internal/x", want: []string{"1-a"}},
+		{name: "tier2 tag fires", verify: "go test -tags tier2 ./internal/x", want: []string{"1-a"}},
+		{name: "tier3 tag fires", verify: "go test -tags tier3 ./internal/x", want: []string{"1-a"}},
 		{name: "one finding per command", verify: "go test ./... && go vet all", want: []string{"1-a", "1-a"}},
 		{name: "go command after double pipe fires once", verify: "true || go test ./...", want: []string{"1-a"}},
 		{name: "go command after a pipe fires", verify: "echo x | go test ./...", want: []string{"1-a"}},
@@ -1997,6 +2001,7 @@ func TestValidate_VerifyModuleWide(t *testing.T) {
 		{name: "package-scoped test is silent", verify: "go test ./internal/x"},
 		{name: "integration tag is silent", verify: "go test -tags integration ./internal/x"},
 		{name: "tmux tag on vet is silent", verify: "go vet -tags tmux ./internal/x"},
+		{name: "tier2 tag on vet is silent", verify: "go vet -tags tier2 ./internal/x"},
 		{name: "fields after -args are not package arguments", verify: "go test ./internal/x -args ./..."},
 		{name: "overview chain is never read", overview: "go test ./...\ngo vet all"},
 	}

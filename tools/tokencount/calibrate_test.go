@@ -1,3 +1,5 @@
+//go:build tier0
+
 // calibrate_test.go drives the calibration over an in-memory plan history and base tree and a fixture batcher.yaml: the row arithmetic, the skip reasons and the fit summary.
 // Tier-1 (no git, no spawn).
 
@@ -7,175 +9,14 @@ import (
 	"bytes"
 	"fmt"
 	"math"
-	"os"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// fakeHistory is an in-memory PlanHistory: commits by subject and file contents by "<sha>:<path>".
-type fakeHistory struct {
-	commits map[string][]gitrepo.SubjectCommit
-	files   map[string]string
-}
-
-func (f fakeHistory) CommitsWithSubject(subject string) ([]gitrepo.SubjectCommit, error) {
-	return f.commits[subject], nil
-}
-
-func (f fakeHistory) FileAtRevision(rev, relPath string) ([]byte, error) {
-	data, ok := f.files[rev+":"+relPath]
-	if !ok {
-		return nil, gitrepo.ErrPathNotAtRevision
-	}
-	return []byte(data), nil
-}
-
-// fakeBase is an in-memory BaseTrees: file contents by "<sha>:<path>" for each known sha.
-type fakeBase struct {
-	shas  map[string]bool
-	files map[string]string
-}
-
-func (f fakeBase) SHAExists(sha string) bool { return f.shas[sha] }
-
-func (f fakeBase) FileAtRevision(rev, relPath string) ([]byte, error) {
-	data, ok := f.files[rev+":"+relPath]
-	if !ok {
-		return nil, gitrepo.ErrPathNotAtRevision
-	}
-	return []byte(data), nil
-}
-
-func (f fakeBase) FilesInDirAtRevision(rev, dir string) ([]string, error) {
-	var names []string
-	for key := range f.files {
-		prefix := rev + ":" + dir + "/"
-		if rest, ok := strings.CutPrefix(key, prefix); ok && !strings.Contains(rest, "/") {
-			names = append(names, rest)
-		}
-	}
-	return names, nil
-}
-
-// planWith renders a plan whose cards each edit one file, keyed by card number.
-func planWith(targets map[int]string) map[string]string {
-	p := plankit.Plan{Approved: true, Language: "go"}
-	for number := 1; number <= len(targets); number++ {
-		p.Cards = append(p.Cards, plankit.Card{
-			Number: number,
-			Slug:   fmt.Sprintf("c%d", number),
-			Groups: []plankit.Group{{Label: "Edit", Targets: []string{targets[number]}}},
-		})
-	}
-	files := map[string]string{}
-	for name, data := range plankit.Render(p) {
-		files[name] = string(data)
-	}
-	return files
-}
-
-// lines is content of n lines.
-func lines(n int) string { return strings.Repeat("x\n", n) }
-
-// The base files of a based run hold these many lines each.
-const (
-	instructionLines = 3
-	patternLines     = 4
-	templateLines    = 5
-)
-
-// directiveStencil is the orchestrator directive stencil of a based run: a banner, a line before and after the PATTERN overview marker.
-const directiveStencil = "<!-- banner -->\n\nhead\n{{.pattern_overview}}\ntail\n"
-
-// renderedDirective is directiveStencil filled with the PATTERN.md of a based run: the wrapper's lines around the overview.
-func renderedDirective() string { return "head\n" + lines(patternLines) + "\ntail\n" }
-
-// withBaseFiles adds the files a run's Merriam base is computed from to the base tree at sha:
-// INSTRUCTIONS.md, the fake engine's first instruction file, PATTERN.md, the orchestrator directive stencil and the Master template.
-// LOCAL.md, the fake engine's second instruction file, is untracked and so never at a base commit.
-func withBaseFiles(files map[string]string, sha string) {
-	files[sha+":INSTRUCTIONS.md"] = lines(instructionLines)
-	files[sha+":PATTERN.md"] = lines(patternLines)
-	files[sha+":"+directiveStencilPath] = directiveStencil
-	files[sha+":"+masterTemplatePath] = lines(templateLines)
-}
-
-// knownBaseContext is the context the seeded profiles (a context_per_line of 1) price for a based run whose plan renders overview:
-// the lines of the overview, INSTRUCTIONS.md, the rendered directive and the Master template, plus the fixed system-prompt context.
-func knownBaseContext(overview string) float64 {
-	base := websterengine.MerriamBaseOf(overview, lines(instructionLines), renderedDirective(), lines(templateLines))
-	return float64(base.Lines) + base.Fixed
-}
-
-// basedRunFixture returns a plan history and base tree in which run slug has a plan commit before the forks of the tests, a base commit sha-of-slug holding the base files, and the base context those give.
-func basedRunFixture(slug string, planTargets map[int]string, forksStarted time.Time) (fakeHistory, fakeBase, float64) {
-	plan := planWith(planTargets)
-	history := fakeHistory{
-		commits: map[string][]gitrepo.SubjectCommit{planCommitSubjectPrefix + slug: {{SHA: slug + "plan", Committed: forksStarted.Add(-time.Hour)}}},
-		files:   map[string]string{},
-	}
-	for name, data := range plan {
-		history.files[slug+"plan:_lyx/plan/"+name] = data
-	}
-	base := fakeBase{shas: map[string]bool{"base" + slug: true}, files: map[string]string{}}
-	withBaseFiles(base.files, "base"+slug)
-	return history, base, knownBaseContext(plan["00-overview.md"])
-}
-
-// seedProfile writes a batcher.yaml whose "fit" profile estimates one card's peak as orientation + the lines of its file, with every other coefficient 0;
-// its "grow" profile is "fit" with a batch_growth of 5.
-func seedProfile(t *testing.T, dir string) {
-	t.Helper()
-	if err := os.MkdirAll(configengine.ConfigDir(dir), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	const config = `profiles:
-  fit:
-    weights:
-      orientation: 10
-      batch_growth: 0
-      fork_messages: 0
-      message_context: 0
-      write_per_card_line: 0
-      target_messages: 1
-      test_file_messages: 0
-      uses_messages: 0
-      context_per_line: 1
-      package_context: 0
-  grow:
-    weights:
-      orientation: 10
-      batch_growth: 5
-      fork_messages: 0
-      message_context: 0
-      write_per_card_line: 0
-      target_messages: 1
-      test_file_messages: 0
-      uses_messages: 0
-      context_per_line: 1
-      package_context: 0
-`
-	if err := os.WriteFile(configengine.ConfigFile(dir, "batcher"), []byte(config), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// fork returns a fork in the session "" that ran cards, whose first message held start tokens of context and whose largest held peak.
-func fork(started time.Time, start, peak int, cards ...string) ForkTally {
-	return forkIn("", started, start, peak, cards...)
-}
-
-// forkIn is fork under the webster session transcript named session.
-func forkIn(session string, started time.Time, start, peak int, cards ...string) ForkTally {
-	return ForkTally{Cards: cards, Started: started, Session: session, Usage: Usage{Input: peak}, StartContext: start, PeakContext: peak}
-}
 
 // TestCalibrate asserts the per-fork peak rows with their positions and growth ratios, the skip reasons of runs, forks and cards, the start rows of runs left out for their plan or base, and the printed fit lines.
 func TestCalibrate(t *testing.T) {

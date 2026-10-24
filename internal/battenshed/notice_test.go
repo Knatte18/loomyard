@@ -1,3 +1,5 @@
+//go:build tier0
+
 // notice_test.go covers the notice step: the rendered line, each condition's one notice per episode, when a parked stop's notice may go, the awaiting relay rule, the arbiter hold, the quiet condition's guards, delivery and its retries, and a restart over the same scratch directory.
 // The tests that capture log output replace the process-global logger output, so they do not run in parallel.
 

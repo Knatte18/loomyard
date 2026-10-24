@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cwdcontext_test.go exercises the context-carried cwd seam: a context seeded via WithCwd hands its
 // value back through CwdFrom, a bare context falls back to Getwd, and WithCwd panics on an empty or
 // relative dir.

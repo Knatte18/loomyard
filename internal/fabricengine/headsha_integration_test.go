@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // headsha_integration_test.go proves Fabric.HeadSHA and Fabric.RecordsHeadSHA track their checkout's HEAD over a real pair.
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces this package's told-geometry membership: production code in internal/shuttleengines imports only the engine packages it registers and reed's name seam, and never internal/lyxcwd.
 
 package shuttleengines

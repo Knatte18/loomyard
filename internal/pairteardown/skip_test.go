@@ -1,3 +1,5 @@
+//go:build tier0
+
 // skip_test.go pins which run lock holders pass the pre-end wait and the wording of the refusal for those that do not.
 
 package pairteardown

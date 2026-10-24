@@ -1,3 +1,5 @@
+//go:build tier0
+
 // burlerfix_test.go pins BurlerFixProducer over shedfake.BurlerHalfRunner:
 // It covers the refusal of a round with no accepted review, the hand-on of an unjudged round, the fix a finished round carries and records, and the decision findings it sends to the parent.
 // It also covers the gate-failed and changed-review exits and their archive sets, every other failure exit, cancellation, and probe and resume.

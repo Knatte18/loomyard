@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // configcli_integration_test.go — e2e integration tests for configcli.
 // Tests real fabriccli.RunCLI over a hubforge.CopyHub fixture.
@@ -548,8 +548,8 @@ func TestConfigOverRealHub(t *testing.T) {
 		if landing := read("landing"); !strings.Contains(landing, "\ndeploy_branches: []") || strings.Contains(landing, "require_pr_to_base") {
 			t.Errorf("applied board landing.yaml = %q; want an empty deploy_branches and no require_pr_to_base", landing)
 		}
-		if gate := read("gate"); !strings.Contains(gate, "round: [0, 1]") || strings.Contains(gate, "publish") {
-			t.Errorf("applied board gate.yaml = %q; want the round list kept and no publish", gate)
+		if gate := read("gate"); !strings.Contains(gate, "webster-fix: {tiers: [0, 1], scope: diff}") || strings.Contains(gate, "round") || strings.Contains(gate, "publish") {
+			t.Errorf("applied board gate.yaml = %q; want the round list migrated to webster-fix and no publish", gate)
 		}
 		if profilesAfter := read("profiles"); profilesAfter != string(profilesBefore) {
 			t.Errorf("board profiles.yaml = %q after the apply; want %q, byte for byte", profilesAfter, profilesBefore)

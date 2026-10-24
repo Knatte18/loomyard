@@ -1,3 +1,5 @@
+//go:build tier0
+
 // overlay_seam_guard_test.go enforces the Fabric Git Invariant at the recipe-shape level:
 // every BurlerFix row whose target paths reach into the overlay tree (the durable _lyx directory) must run fix-scope: overlay,
 // and its partner Bouncer row must carry a commit_seam key matching the overlay subdirectory those target paths share.

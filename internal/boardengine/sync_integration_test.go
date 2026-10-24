@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // sync_integration_test.go covers boardengine.Sync's parity after delegating
 // its absorbing-lock coalescing loop to fabricengine.CoalescePush: a dirty

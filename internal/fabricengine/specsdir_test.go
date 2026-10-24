@@ -1,3 +1,5 @@
+//go:build tier0
+
 // specsdir_test.go covers SpecsDir's derivation from BoardDir and lyxdirs.LyxDirName, and its
 // sibling relationship to StencilsDir.
 

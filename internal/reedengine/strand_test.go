@@ -1,3 +1,5 @@
+//go:build tier0
+
 // strand_test.go drives the strand-mutation *Locked helpers directly against a fixture .lyx: guid
 // generation/uniqueness, unknown/cyclic parent rejection, the hidden-add no-launch path, the
 // launch-path decision seam (needsLaunchOnAdd/needsLaunchOnSurface — the actual real-tmux launch

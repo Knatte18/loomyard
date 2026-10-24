@@ -1,3 +1,5 @@
+//go:build tier0
+
 // pausehold_test.go pins that `lyx batten run` refuses a slug a live pause entry covers, with and without --window, before it seeds a status file or opens a window.
 
 package battencli

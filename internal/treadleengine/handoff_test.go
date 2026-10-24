@@ -1,3 +1,5 @@
+//go:build tier0
+
 // handoff_test.go table-drives ParseHandoff over the happy path (including prose extraction and an
 // empty ledger) and every fail-loud rule documented on it: missing/unclosed/empty frontmatter,
 // invalid YAML, empty covers_rounds, non-positive round numbers (in covers_rounds and in a ledger

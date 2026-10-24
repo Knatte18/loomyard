@@ -1,3 +1,5 @@
+//go:build tier0
+
 // reconcile_test.go table-tests planReconcile's pure decision logic against saved strand tables and
 // fake list-panes results (including pane_dead=1 rows and the Selvage exemption),
 // exercises reconcileLocked's real-record mutation for the no-dead-panes path, which never

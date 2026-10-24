@@ -1,3 +1,5 @@
+//go:build tier0
+
 // registry_test.go covers Lookup and Names.
 
 package shedrecipe

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go pins the shed config module: its load, the override checks and the two pure resolvers.
 
 package sheddriver

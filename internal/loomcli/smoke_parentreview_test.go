@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_parentreview_test.go is the live-substrate guard for the parent-review notice: the one hop no untagged or integration test reaches,
 // because the wait loop's send must type the delivery prompt into a real pane and the pane must read it back.

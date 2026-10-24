@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_test.go covers the battencli cobra seam: each verb's argument-count rejection and the bare-group invocation's git-free guard -- mirroring internal/loomcli/cli_test.go's shape.
 
 package battencli
@@ -19,28 +21,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/termwindow"
 	"github.com/spf13/cobra"
 )
-
-// battenVerbCommand builds the single shedverbs command named verb ("run", "step", "status", or
-// "pause"), armed against c.specFor(verb) assigned onto c.spec -- the tier-1 seam arm.go's
-// specFor/arm split exists for, letting this untagged suite fill a Spec with no resolution and no
-// git spawn. It sets Args: cobra.ExactArgs(1), a stricter arity than Command() itself sets on these
-// four verbs (cobra.MaximumNArgs(1)) but a harmless one for these tests: every caller in this file
-// supplies exactly one positional.
-func battenVerbCommand(c *battenCLI, verb string) *cobra.Command {
-	spec := c.specFor(verb)
-	c.spec = &spec
-	for _, cmd := range shedverbs.Verbs(battenVerbTexts, c.spec) {
-		if cmd.Name() == verb {
-			cmd.Args = cobra.ExactArgs(1)
-			return cmd
-		}
-	}
-	panic("battenVerbCommand: no shedverbs command named " + verb)
-}
 
 // battenCommandNamed returns the subcommand named verb from the built batten tree, or nil.
 func battenCommandNamed(parent *cobra.Command, verb string) *cobra.Command {

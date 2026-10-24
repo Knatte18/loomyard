@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces this package's half of the Told-Geometry Invariant: production
 // code in internal/cliwire takes every absolute path it operates on from its caller and has no
 // direct production import of internal/lyxcwd.

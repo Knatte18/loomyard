@@ -42,7 +42,7 @@
 // exhaustively rather than relying on Shed to catch a missing entry.
 // The bounce budget backing OnStuck is per-producer and episode-scoped: it is counted from the
 // persisted history[] rather than held in memory, as the number of Stuck entries a producer has
-// authored since its own most recent Done entry, a Done by any producer sharing its non-empty
+// authored since its own most recent Done or skipped entry, a Done by any producer sharing its non-empty
 // Segment, or a reroute into its segment (all of them, if none exists), so the count spans
 // invocations, crashes, and human resumes rather than resetting on every new Run call.
 // A goto does not end an episode: it keeps the spent budget.
@@ -99,10 +99,25 @@
 // It can only stop a run, never advance or route it, so a row with an OnStuck route can still halt for a human.
 // OutcomeGoto stays the goto verb's alone.
 //
+// # Entry gates
+//
+// A ProducerDef may carry an EntryGate, a function that answers whether the row runs, the check's text with the values it read, and an evaluation error; nil is an ungated row.
+// Shed evaluates a gated row when the run enters it, after the step's pause checks and before the resume write.
+// A holding gate records the row in the status file's entered_row and the row is called.
+// A gate that does not hold appends a history entry with outcome OutcomeSkipped and the gate's text in reason, and routes by the row's OnDone as a Done does; it spends no bounce budget and ends the row's episode as a Done does.
+// The step then enters the row the skip routes to, so consecutive skips chain within one step.
+// A pause_before naming a row the skip chain reaches pauses the run before that row's gate is evaluated, or before an ungated row is called, so a setting changed during the pause decides the gate.
+// A pause_after naming a skipped row pauses the run at the row the skip routes to, with the reason "paused after <row>, as requested", and clears both conditions as a fired condition does.
+// A skipped row with an empty OnDone finishes the run done.
+// A chain longer than the producer list is a wiring fault no shipped recipe reaches: the status is written failed naming the rows of the chain, with the way forward of fixing the settings the gates read or moving the run with `lyx shed goto`, then resuming.
+// An evaluation error leaves the row not entered and writes the status failed before the step returns, so a resume evaluates the gate again.
+// A resume or a halt re-calls the entered row without evaluating its gate.
+// A gate skips only its own row, and the shed goto verb is the one bypass: Goto names its target as entered, so the target runs without evaluation.
+//
 // # Row renames
 //
 // Row names are durable resume identities, so a product that renames a row carries in-flight runs across with RenameProducers.
-// It rewrites each retired name in current_producer, pause_before, pause_after and every history entry's producer, under the run lock, and leaves a file that names no retired row untouched.
+// It rewrites each retired name in current_producer, entered_row, pause_before, pause_after and every history entry's producer, under the run lock, and leaves a file that names no retired row untouched.
 //
 // # Field ownership and the stop conditions
 //
@@ -110,12 +125,14 @@
 // pause_reason is the why of a paused run: every write that records paused sets it, and every other write clears it.
 // A pause request reads "pause requested", a cancelled context "cancelled", a fired condition its condition reason, Goto "goto to <row>" and a Relaunch onto a row "re-launched onto <row>";
 // a Relaunch that moves nothing leaves the reason as it stands.
+// entered_row is Shed-owned and sits outside that list, as the entry gate defines it: the entry evaluation sets it, every routed write and skip clears it, Goto sets it to its target, a Relaunch onto a target clears it, and the resume and halt writes keep it.
+// A status without the field, or naming another row, reads as not entered.
 // pause_requested is shared write-to-clear: an outside actor sets it and Shed clears it, exactly once, in the persist that records paused.
 // pause_before and pause_after are outside-set, both-cleared: an outside actor records a producer name in either, and Shed clears both together only in the persist that records paused for a fired condition and in Goto's persist; every other write carries them through.
 // pause_requested_by, pause_before_by and pause_after_by are outside-set beside the request they accompany, and Shed clears each in the write that clears its request.
 // A reason names the label when its request or condition carries one, as "pause requested by <label>", and Goto's names its GotoRequest.By.
 // pause_before fires when current_producer equals its name, before that producer is called.
-// pause_after fires when the named producer returns a routed running outcome (done to OnDone, a bounced stuck to OnStuck), pausing at the routed row.
+// pause_after fires when the named producer returns a routed running outcome (done to OnDone, a bounced stuck to OnStuck), or its row is skipped by its entry gate, pausing at the routed row.
 // A halting outcome wins and leaves pause_after recorded, and so does a producer error.
 // The fired step's Reason reads "paused before <target>, as requested" or "paused after <target>, as requested".
 //
@@ -126,6 +143,7 @@
 // A step resuming a blocked, failed or awaiting run sets pending_by to Shed.ResumedBy, and RecordResumer does the same for a loop's waiter before its children step; a resume from paused records nothing.
 // The first label stands: nothing sets pending_by while one is pending, so the waiter's label survives its loop children, each with its own.
 // The next write that appends a history entry hands pending_by to that entry and clears it; a write that appends none carries it through.
+// A skip write appends an entry and carries the label through, so the label of a resumed run lands on the next verdict and never on a skipped entry.
 // CallerShed is the label of lyx's own automatic steps.
 // The labels are for reports only: no Go decision reads by, pending_by or ResumedBy, and the refusals of goto and step do not change.
 // Shed takes the label as a plain string and imports nothing to classify it.

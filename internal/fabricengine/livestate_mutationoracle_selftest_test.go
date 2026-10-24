@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mutationoracle_test.go proves AssertRecordMatchesDiff against hand-built Mutations and Change
 // values -- no hub, no git, no verb -- covering each rule mutationoracle.go's own doc comments state:

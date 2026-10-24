@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_prreview_test.go covers the PRReview entry: the setting read, its refusals with their way forward, and the unknown-key refusal.
 
 package shedrecipe

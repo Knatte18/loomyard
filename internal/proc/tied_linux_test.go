@@ -1,3 +1,5 @@
+//go:build tier0
+
 // tied_linux_test.go covers the Linux tree kill: Tied.Kill reaching a grandchild, KillTree's start-time gate and SelfRecord.
 // It spawns real children, which this package's Test Tier Purity allowlist entry admits: process control is the package's subject.
 

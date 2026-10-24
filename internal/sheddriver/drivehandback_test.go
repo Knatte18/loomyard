@@ -1,4 +1,6 @@
-// drivehandback_test.go — untagged Tier-1 tests for the shed driver's hand-back: the parent messages, the stop report and the park, over fake seams in a temp worktree.
+//go:build tier0
+
+// drivehandback_test.go — tier 0 tests for the shed driver's hand-back: the parent messages, the stop report and the park, over fake seams in a temp worktree.
 
 package sheddriver
 

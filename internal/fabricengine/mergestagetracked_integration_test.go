@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mergestagetracked_integration_test.go covers MergeStageTracked and MergeUntrackedFiles against a real conflicted pair: a tracked, non-conflicted edit staged by the verb lands in the merge commit MergeContinue writes, a file created mid-merge in the warp is listed as untracked, an untracked weft file is not, and the verb refuses with no merge in progress.
 

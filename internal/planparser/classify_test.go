@@ -1,3 +1,5 @@
+//go:build tier0
+
 // classify_test.go table-tests classifyRef's five-rule shape classification directly, pinning both
 // the documented cases and the documented shedrecipe.lookup misclassification-as-path.
 

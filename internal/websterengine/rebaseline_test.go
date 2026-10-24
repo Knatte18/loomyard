@@ -1,4 +1,6 @@
-// rebaseline_test.go exercises Rebaseline (Tier 1), reusing the begin fixture for the foreign-edit scenario and building bare RebaselineDeps for the card-set refusals.
+//go:build tier0
+
+// rebaseline_test.go exercises Rebaseline, reusing the begin fixture for the foreign-edit scenario and building bare RebaselineDeps for the card-set refusals.
 package websterengine_test
 
 import (
@@ -982,17 +984,6 @@ func checkInFlightCardAmended(t *testing.T, fx *beginFixture, before websterengi
 	if !slices.Equal(res.CardsAmended, []string{"01-json-flag"}) {
 		t.Errorf("CardsAmended = %v; want [01-json-flag]", res.CardsAmended)
 	}
-}
-
-// fileSHA is the hex SHA-256 of the file at path, the hash State.PlanFileHashes and BatchState.CardHashes record.
-func fileSHA(t *testing.T, path string) string {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
 }
 
 // handlePlan is a three-card plan whose card 2 declares a handle; with cardOneUsesHandle, card 1 Uses it in the given spelling,

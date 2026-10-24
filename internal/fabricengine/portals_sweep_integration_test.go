@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // portals_sweep_integration_test.go proves Reconcile sweeps the retired portal links and the old hub workspace file, keeps and reports everything else.
 // It also proves a regeneration warns while a retired artifact remains.

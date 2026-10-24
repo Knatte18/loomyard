@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the halt note's sole-parser invariant: production code in internal/haltnote imports the standard library and nothing else,
 // and no production file outside it spells the halt note's title.
 

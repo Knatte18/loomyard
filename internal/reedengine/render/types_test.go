@@ -1,3 +1,5 @@
+//go:build tier0
+
 // types_test.go pins the on-disk contract of Display's JSON keys, in particular that a record
 // still carrying the retired fixedRows, shrinkWhenWaitingOnChild and size keys decodes with all ignored,
 // and that the retired below-parent and top anchors decode as own-window.

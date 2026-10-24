@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mergecrucible_integration_test.go holds the regression scenarios the crucible review round
 // opus-medium-r1 found against real git repositories — the ones the hermetic and pre-existing

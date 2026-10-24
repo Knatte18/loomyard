@@ -1,3 +1,5 @@
+//go:build tier0
+
 // audit_test.go covers AuditForks end to end against a fake ~/.claude/projects layout built under
 // t.TempDir(): the parent-transcript spawn tally, one ForkReport per fork transcript with every
 // field asserted, the missing-subagents-dir zero-fork finding, the missing-parent-transcript error,

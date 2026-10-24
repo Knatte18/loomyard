@@ -1,3 +1,5 @@
+//go:build tier0
+
 // errorrender_test.go covers GitError.Error's rendering rules: the
 // trailing-stderr segment's presence and trimming, and per-arg quoting.
 // It spawns no git, so it carries no //go:build tag.

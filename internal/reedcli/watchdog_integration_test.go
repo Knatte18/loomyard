@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // watchdog_integration_test.go carries the watchdog daemon's live-behaviour assertions as one TestWatchdogDaemon scenario: discovery against a real hub with real tmux sessions, the single-instance lock's two outcomes, the stop a last down writes, departure teardown, and re-entry re-reading a flipped watchdog: config value.
 //

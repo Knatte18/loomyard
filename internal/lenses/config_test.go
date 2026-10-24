@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go table-drives Load, ResolveFan and CheckLoad, and pins the embedded template.yaml's self-consistency:
 // every fan entry names a defined lens, the seeded fan lengths and orders, each writer fan holding its reviewer fan's lenses, and the emphasis-never-exclusion posture (no lens text carries "ignore " phrasing).
 // Untagged unit tier: no process spawns, fixtures written directly via os.WriteFile under t.TempDir.

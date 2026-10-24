@@ -28,27 +28,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
-// darnVerifySource returns the darn recipe's verify source: the hub's `landing` gate call.
+// darnVerifySource returns the darn recipe's verify source: the call of the gate key a landing row names.
 // command resolves at each call, never at construction, so an edit between steps is seen:
-// the tree-scoped command when the task diff is wholly under the hub's configured trees, else the `landing` call;
+// the key's call over the touched trees' targets when the task diff is wholly under the hub's configured trees, else the key's call alone;
 // a gate config refusal and a malformed tree key are errors naming the way forward.
-// baseCommand is the `landing` call, since darn has no webster gate, and stays the base command of a tree-scoped site.
+// baseCommand is the fix rows' `code-burler-fix` call, as in a loom run, and stays the base command of a tree-scoped site.
 func darnVerifySource(l *lyxcwd.Location) verifySource {
 	dirs := fabricengine.ConfigDirs(l)
 	treeScope := darnTreeScope(l)
-	landing := gateCallSource(dirs, "landing")
+	call := gateCallSource(dirs)
 	return verifySource{
-		command: func() (string, error) {
-			command, scoped, err := treeScope()
+		command: func(gateKey string) (string, error) {
+			command, scoped, err := treeScope(gateKey)
 			if err != nil {
 				return "", err
 			}
 			if scoped {
 				return command, nil
 			}
-			return landing()
+			return call(gateKey)
 		},
-		baseCommand: landing,
+		baseCommand: func() (string, error) { return call("code-burler-fix") },
 		gateTiers:   gateTiersLookup(dirs),
 	}
 }
@@ -70,12 +70,14 @@ func pairMergeBase(l *lyxcwd.Location) func() (string, error) {
 }
 
 // darnTreeScope returns the darn recipe's tree scope reader: the tree-scoped command and true for a task diff wholly under the hub's configured trees, and ("", false, nil) otherwise.
+// The command is the call of the row's gate key followed by the touched trees' targets, so a tree-scoped site runs its own key's tiers over those targets in place of the key's scope.
 // Each call reads the hub-wide darn.yaml afresh, so an edit between steps is seen, and reads the diff from the pair's merge base to HEAD with a rename counted at both its paths.
 // A load error is returned with its way forward: the editor one for a malformed tree key, the hub reconcile one otherwise.
-// A scoped diff whose trees contribute no target answers an empty command.
-func darnTreeScope(l *lyxcwd.Location) func() (string, bool, error) {
+// A scoped diff whose trees contribute no target answers an empty command, which runs nothing.
+func darnTreeScope(l *lyxcwd.Location) func(gateKey string) (string, bool, error) {
 	mergeBase := taskMergeBase(l)
-	return func() (string, bool, error) {
+	call := gateCallSource(fabricengine.ConfigDirs(l))
+	return func(gateKey string) (string, bool, error) {
 		dirs := fabricengine.ConfigDirs(l)
 		cfg, err := darnengine.LoadConfig(dirs, "darn")
 		if err != nil {
@@ -84,7 +86,7 @@ func darnTreeScope(l *lyxcwd.Location) func() (string, bool, error) {
 			}
 			return "", false, fmt.Errorf("%w; %s", err, hubConfigWayForward)
 		}
-		if strings.TrimSpace(cfg.TreeScopeVerify) == "" {
+		if len(cfg.TreeScope) == 0 {
 			return "", false, nil
 		}
 		base, err := mergeBase()
@@ -99,8 +101,15 @@ func darnTreeScope(l *lyxcwd.Location) func() (string, bool, error) {
 		if err != nil {
 			return "", false, err
 		}
-		command, scoped := darnengine.TreeScopedCommand(cfg, paths)
-		return command, scoped, nil
+		targets, scoped := darnengine.TreeScopedTargets(cfg, paths)
+		if !scoped || len(targets) == 0 {
+			return "", scoped, nil
+		}
+		keyCall, err := call(gateKey)
+		if err != nil {
+			return "", false, err
+		}
+		return keyCall + " " + strings.Join(targets, " "), true, nil
 	}
 }
 
@@ -215,10 +224,9 @@ func (c *loomCLI) wireDarn(location *lyxcwd.Location, stencilsDir, specsDir, fri
 		return fmt.Errorf("%w; %s", err, hubConfigWayForward)
 	}
 
-	// The gate's told command is the hub's `landing` call, which stays its site's base command since darn has no webster gate;
-	// the tree-scoped command reaches the gate through VerifyTreeScope, never through this source.
-	c.env.VerifyCommand = darnVerifySource(location).baseCommand
-	c.env.Round = gateListSource(dirs, "landing")
+	// Each gate row's told command is the call of its own gate key;
+	// the row key's call over the touched trees' targets reaches the gate through VerifyTreeScope, never through this source.
+	c.env.VerifyCommand = gateCallSource(dirs)
 	c.env.VerifyMergeBase = taskMergeBase(location)
 	c.env.VerifyTreeScope = darnTreeScope(location)
 	c.env.DarnVerifyAttempts = cfg.VerifyAttempts

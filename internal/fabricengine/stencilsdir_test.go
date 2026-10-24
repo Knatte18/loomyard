@@ -1,3 +1,5 @@
+//go:build tier0
+
 // stencilsdir_test.go covers StencilsDir's derivation from BoardDir and lyxdirs.LyxDirName.
 
 package fabricengine

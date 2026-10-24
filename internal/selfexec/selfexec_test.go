@@ -1,3 +1,5 @@
+//go:build tier0
+
 // selfexec_test.go pins when a Watcher execs onto a changed binary and when it keeps running.
 
 package selfexec

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // looplock_test.go drives the loop's parent lock hooks over a temporary lock store.
 
 package loomcli

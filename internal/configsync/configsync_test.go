@@ -1,3 +1,5 @@
+//go:build tier0
+
 // configsync_test.go — tests for config reconciliation.
 
 package configsync

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // session_test.go covers Runner's session surface: ReadEvents' offset rules and the SessionCycler-backed ContextTokens, SessionIdle, ClearSession and CompactSession, including the plain-engine refusals.
 
 package shuttleengine

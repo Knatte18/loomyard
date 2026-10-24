@@ -1,3 +1,5 @@
+//go:build tier0
+
 // io_test.go drives resolveLivePaneID directly against fixture ReedState values: unknown guid,
 // hidden anchor, and empty-PaneID rejections, plus the happy path.
 // SendText, SendKey, AND CapturePane all resolve their target pane through this exact function

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // build_test.go pins the build identity and the sidecar the bootstrap keeps or replaces a status strand by.
 
 package statuspane

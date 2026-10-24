@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go pins claude.yaml's load: the template on an absent base, the stack of its layers, and the local-layer rule on its keys.
 
 package claudeengine

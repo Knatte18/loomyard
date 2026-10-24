@@ -1,3 +1,5 @@
+//go:build tier0
+
 // windoworder_test.go pins the window order's fallback placements and the shell window check, driven through OpenWindow and AttachArgv against the scripted multiplexer fake.
 // The placements a real tmux decides are pinned by windoworder_integration_test.go.
 

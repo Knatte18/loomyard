@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 package loomcli
 
 import (

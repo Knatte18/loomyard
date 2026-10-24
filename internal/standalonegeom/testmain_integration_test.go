@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // testmain_integration_test.go wires the integration-tagged tests into the hermetic git test environment,
 // so naming_integration_test.go's `git init` never inherits the operator's global gitconfig (see PATTERN-test-isolation).

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cli_test.go — tests for the board CLI (cli.go).
 //

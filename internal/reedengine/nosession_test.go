@@ -1,3 +1,5 @@
+//go:build tier0
+
 // nosession_test.go pins that Status on a worktree whose session was never started returns an error satisfying errors.Is(err, ErrNoSession), so a caller outside reed can read Status as a liveness probe.
 // tmux's exit-1 has-session answer is scripted through the fake seam, so no server runs.
 

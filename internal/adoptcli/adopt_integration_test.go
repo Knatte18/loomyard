@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // adopt_integration_test.go drives the takeover over two hubforge clones of one remote: the second clone adopts a task only the first holds, and the first adopts it back over local commits and a live pair.
 

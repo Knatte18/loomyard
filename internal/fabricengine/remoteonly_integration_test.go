@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remoteonly_integration_test.go proves Fabric.RemoteOnlyCommits reports the remote task branch's tip and the commits the warp HEAD lacks over a real hub with its origin.
 

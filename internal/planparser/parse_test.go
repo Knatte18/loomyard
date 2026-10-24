@@ -1,3 +1,5 @@
+//go:build tier0
+
 // parse_test.go covers ParsePlan's overview-parsing behavior (frontmatter decoding, Card Index
 // parsing, framing extraction), its per-card file-parsing behavior (the title heading, the
 // format-4 one-or-more type-label model and its per-label TargetGroups, Uses:/Intent:/

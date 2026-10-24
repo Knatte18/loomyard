@@ -1,3 +1,5 @@
+//go:build tier0
+
 // innerrun_owner_test.go covers the inner-run watch's owner check over a fake clock and fake seams:
 // when the check runs, what an owned-elsewhere verdict does to the parent lock, the pause and the notice, and how a spawn refused as owned elsewhere is held.
 

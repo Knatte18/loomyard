@@ -1,3 +1,5 @@
+//go:build tier0
+
 // portallauncher_test.go covers the launcher path accessors — launchersDir, LauncherDir, menuLauncherPath, launcherSpawnRel and menuLauncherRel — and the launcher teardown.
 // It pins the _launchers layout and the launcher relative-path math across root and subpath AnchorRel cases, the reason a wrong HubPath base or a broken filepath.Rel would be caught here rather than in a live hub.
 

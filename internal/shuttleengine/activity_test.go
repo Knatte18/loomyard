@@ -1,3 +1,5 @@
+//go:build tier0
+
 // activity_test.go covers ReadAgentActivity over run directories written by the test, with the liveness seam replaced so no process is spawned and an engine double that answers the transcript reading.
 // Replacing the seam is process-global state,
 // so these tests do not run in parallel.

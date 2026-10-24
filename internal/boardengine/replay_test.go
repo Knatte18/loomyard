@@ -1,3 +1,5 @@
+//go:build tier0
+
 // replay_test.go — FabricReplay, the by-entry merge of a local board commit onto origin's board.
 //
 // Every row builds origin's board directory, the merge base, the commit's parent and the commit, applies the commit and reads the board directory back.

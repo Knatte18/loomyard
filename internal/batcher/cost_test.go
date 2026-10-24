@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cost_test.go verifies the cost-model batchifier's hard limits, tie rule and optimality against a brute-force search over every contiguous split.
 // Tier-1 (pure logic, no git, no spawn).
 

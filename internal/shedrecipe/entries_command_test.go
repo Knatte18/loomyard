@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_command_test.go covers the Command entry: its build-time refusals, its defaults and the timeout it hands the producer's runner.
 
 package shedrecipe
@@ -15,13 +17,12 @@ const commandTestRow = "Open-Window"
 
 // commandTestConfig returns the valid Config of a Command row.
 func commandTestConfig(*testing.T, Env) Config {
-	return Config{"switch": "batten.open_window", "command": "batten.open_window_command"}
+	return Config{"command": "batten.open_window_command"}
 }
 
-// commandTestSettings returns the setting values the helper's lookups answer: the switch on and a command with no {task_dir} placeholder.
+// commandTestSettings returns the setting values the helper's lookups answer: a command with no {task_dir} placeholder.
 func commandTestSettings() map[string]any {
 	return map[string]any{
-		"batten.open_window":         true,
 		"batten.open_window_command": "echo hi",
 	}
 }
@@ -57,21 +58,19 @@ func newCommandTestEnv(t *testing.T) Env {
 func TestCommandEntry(t *testing.T) {
 	t.Parallel()
 
-	const refWayForward = "way forward: set switch and command to module.key setting references in the row's config"
+	const refWayForward = "way forward: set command to a module.key setting reference in the row's config"
 	const timeoutWayForward = "way forward: set timeout_s to a positive integer of seconds or remove it"
 	refusals := []struct {
 		name string
 		edit func(Config)
 		want []string
 	}{
-		{"MissingSwitch", func(c Config) { delete(c, "switch") }, []string{commandTestRow, "switch", refWayForward}},
-		{"NonStringSwitch", func(c Config) { c["switch"] = 3 }, []string{commandTestRow, "switch", "must be a string", refWayForward}},
 		{"MissingCommand", func(c Config) { delete(c, "command") }, []string{commandTestRow, "command", refWayForward}},
 		{"NonStringCommand", func(c Config) { c["command"] = 3 }, []string{commandTestRow, "command", "must be a string", refWayForward}},
-		{"ReferenceWithNoDot", func(c Config) { c["switch"] = "open_window" }, []string{commandTestRow, "switch", "way forward:"}},
+		{"ReferenceWithNoDot", func(c Config) { c["command"] = "open_window_command" }, []string{commandTestRow, "command", "way forward:"}},
 		{"ZeroTimeout", func(c Config) { c["timeout_s"] = 0 }, []string{commandTestRow, "timeout_s", timeoutWayForward}},
 		{"NonIntTimeout", func(c Config) { c["timeout_s"] = "5" }, []string{commandTestRow, "timeout_s", timeoutWayForward}},
-		{"UnknownKey", func(c Config) { c["bogus_key"] = "x" }, []string{commandTestRow, "bogus_key", "way forward: remove the key; a Command row takes switch, command and timeout_s"}},
+		{"UnknownKey", func(c Config) { c["bogus_key"] = "x" }, []string{commandTestRow, "bogus_key", "way forward: remove the key; a Command row takes command and timeout_s, and a switch moves to the row's entry_gate"}},
 	}
 	for _, tt := range refusals {
 		t.Run(tt.name, func(t *testing.T) {

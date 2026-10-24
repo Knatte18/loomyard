@@ -1,3 +1,5 @@
+//go:build tier0
+
 // loopwait_test.go drives step's --until-stop waiter through stepCmd.
 // The detached loop is the same stepCmd run in a goroutine with the fake runner of loop_test.go, started by a fake Spawn;
 // a fake Watch emits nothing and a fake Sleep records the waiter's waits.

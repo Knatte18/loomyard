@@ -1,21 +1,14 @@
-// openprheads_test.go covers the head filtering of the open pull request lookup over a stubbed PR list, and exports the lookup seam for the package's external integration tests.
+//go:build tier0
+
+// openprheads_test.go covers the head filtering of the open pull request lookup over a stubbed PR list.
 
 package fabriccli
 
 import (
-	"context"
 	"testing"
 
 	"github.com/google/go-github/v75/github"
 )
-
-// SetOpenPRHeadsForTest replaces the open-PR lookup with lookup for the test's lifetime.
-func SetOpenPRHeadsForTest(t *testing.T, lookup func(ctx context.Context, remoteURL string) (map[string]bool, error)) {
-	t.Helper()
-	prev := listOpenPRHeads
-	listOpenPRHeads = lookup
-	t.Cleanup(func() { listOpenPRHeads = prev })
-}
 
 // testPR builds a pull request whose head is ref in the repository fullName.
 func testPR(fullName, ref string) *github.PullRequest {

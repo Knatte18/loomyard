@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // spawnobservability_test.go enforces `PATTERN-spawn-observability`'s
 // mechanical half: a production (non-_test.go) .go file under internal/ or cmd/ that contains a real
 // exec.Command/exec.CommandContext call must either import internal/logger, or carry a written-reason

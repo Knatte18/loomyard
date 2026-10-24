@@ -1,3 +1,5 @@
+//go:build tier0
+
 // root_test.go — tests for how the temp root is located, created and checked (root.go).
 
 package lyxtemp

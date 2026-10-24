@@ -1,3 +1,5 @@
+//go:build tier0
+
 package shedengine
 
 import (
@@ -23,6 +25,7 @@ func TestRenameProducers(t *testing.T) {
 		shed, _, _, _ := newTestShed(t)
 		seed := commonSeed("Old")
 		seed.State = StateBlocked
+		seed.EnteredRow = "Old"
 		seed.PauseBefore = "Old"
 		seed.PauseAfter = "Other"
 		seed.History = []HistoryEntry{{Producer: "Other", Outcome: Done, At: "2026-10-11T00:00:00Z"}, {Producer: "Old", Outcome: Stuck, At: "2026-10-11T00:00:01Z"}}
@@ -33,8 +36,8 @@ func TestRenameProducers(t *testing.T) {
 			t.Fatalf("RenameProducers() = %v, %v; want true, nil", wrote, err)
 		}
 		got := readStatus(t, shed.StatusPath, shed.StatusLockPath)
-		if got.CurrentProducer != "New" || got.PauseBefore != "New" || got.PauseAfter != "Other" {
-			t.Errorf("CurrentProducer, PauseBefore, PauseAfter = %q, %q, %q; want New, New, Other", got.CurrentProducer, got.PauseBefore, got.PauseAfter)
+		if got.CurrentProducer != "New" || got.EnteredRow != "New" || got.PauseBefore != "New" || got.PauseAfter != "Other" {
+			t.Errorf("CurrentProducer, EnteredRow, PauseBefore, PauseAfter = %q, %q, %q, %q; want New, New, New, Other", got.CurrentProducer, got.EnteredRow, got.PauseBefore, got.PauseAfter)
 		}
 		if got.History[0].Producer != "Other" || got.History[1].Producer != "New" || got.History[1].Outcome != Stuck {
 			t.Errorf("History = %+v; want Other then New, outcomes kept", got.History)

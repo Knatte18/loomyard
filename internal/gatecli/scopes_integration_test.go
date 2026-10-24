@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // scopes_integration_test.go drives `lyx gate test` over a hubforge hub with a task pair, whose fabric origin record names the prime's branch as its parent, to reach the computed, --base and --card scope forms.
 // It is Tier 2: it builds a real hub and spawns git, `go list` and the stand-in tier command.
@@ -23,18 +23,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
-// scopesConfig returns the gate.yaml of the scopes hub: tier0 over ./..., tier1 covering it and serving as the guard tier, and the given scoper.
+// scopesConfig returns the gate.yaml of the scopes hub: tier0 over ./..., tier1 covering it, and the given scoper.
 func scopesConfig(t *testing.T, scoper string) []byte {
+	t.Helper()
+
+	return scopesConfigWith(t, scoper, nil)
+}
+
+// scopesConfigWith is scopesConfig after mutate has changed the config.
+func scopesConfigWith(t *testing.T, scoper string, mutate func(cfg map[string]any)) []byte {
 	t.Helper()
 
 	return scenarioConfig(t, func(cfg map[string]any) {
 		cfg["scoper"] = scoper
-		cfg["guard_tier"] = 1
 		tiers := cfg["tiers"].(map[string]any)
 		for _, name := range []string{"tier0", "tier1"} {
 			tiers[name].(map[string]any)["all_targets"] = "./..."
 		}
 		tiers["tier1"].(map[string]any)["covers"] = []int{0}
+		if mutate != nil {
+			mutate(cfg)
+		}
 	})
 }
 
@@ -137,25 +146,25 @@ func TestGateTest_Scopes(t *testing.T) {
 		requireFree(t)
 	}
 
-	t.Run("a computed scope under go runs the changed package and its importer, then the guard step through guard_tier's slots", func(t *testing.T) {
+	t.Run("a computed scope under go runs the changed package and its importer, then the guard step's group through its tier's slots", func(t *testing.T) {
 		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 2 }\n")
 		g := gate(t, pair, nil)
 		wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)
 		listed, _ := runRecordOf(t, g.stdout.String(), 0)
-		guard, _ := runRecordOf(t, g.stdout.String(), 1)
+		guard, _ := guardRunRecordOf(t, g.stdout.String(), 0)
 		if listed.ScopeForm != "computed" || listed.Slug != hubforge.TemplatePairSlug || !slices.Equal(listed.TierList, []int{0}) {
 			t.Errorf("tier0 run record = %+v; want the computed scope of the pair's slug and the tier list [0]", listed)
 		}
-		if !guard.GuardStep || guard.Slots != 0 || guard.ScopeForm != "guard" {
-			t.Errorf("guard step run record = %+v; want the guard step of tier1, which holds every slot", guard)
+		if !guard.GuardStep || guard.Tier != 0 || guard.Slots != 1 || guard.ScopeForm != "guard" {
+			t.Errorf("guard step run record = %+v; want the guard group of tier0, whose guard test sits in an untagged file, holding tier0's one slot", guard)
 		}
 		requireFree(t)
 	})
 
-	t.Run("a computed scope over a change to a nested module's file falls back to whole, naming the reason", func(t *testing.T) {
+	t.Run("a computed scope over a change to a nested module's file falls back to whole, naming the reason, and plans no guard group for the tier it ran whole", func(t *testing.T) {
 		edit(t, "nested/n.go", "package nested\n\nvar Changed = true\n")
 		g := gate(t, pair, nil)
-		wantArgs(t, g, []string{"./..."}, guardInvocation)
+		wantArgs(t, g, []string{"./..."})
 		if !strings.Contains(g.stdout.String(), "falls back to whole: nested/n.go is neither a Markdown file nor under a Go package directory") {
 			t.Errorf("stdout = %q; want the fallback and its reason", g.stdout.String())
 		}
@@ -168,8 +177,8 @@ func TestGateTest_Scopes(t *testing.T) {
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.Discovered != 0 || run.ExitCode != 0 || !strings.Contains(g.stdout.String(), "the scope is empty, so tier0 runs no command") {
 			t.Errorf("tier0 run record = %+v, stdout %q; want an empty-scope pass with nothing discovered", run, g.stdout.String())
 		}
-		if trimpath := trimpathLine("tier0", []string{"GOFLAGS=-trimpath -p=3"}); strings.Contains(g.stdout.String(), trimpath) {
-			t.Errorf("stdout = %q; want no -trimpath line for a tier that runs no command", g.stdout.String())
+		if trimpath := trimpathLine("tier0", []string{"GOFLAGS=-trimpath -p=3"}); strings.Count(g.stdout.String(), trimpath) != 1 {
+			t.Errorf("stdout = %q; want the -trimpath line once, for the guard group alone, since the listed tier runs no command", g.stdout.String())
 		}
 		requireFree(t)
 	})
@@ -207,6 +216,8 @@ func TestGateTest_Scopes(t *testing.T) {
 	})
 
 	t.Run("--card with a tier that outlives timeout_min across its invocations is killed with the timeout line", func(t *testing.T) {
+		// A dirty tree is never carried, so the packages the row before ran green run again.
+		edit(t, "docs/note.md", "a dirtying note\n")
 		g := gate(t, pair, []string{helperHoldEnv + "=1", helperUnitEnv + "=1s"}, "--card", "1")
 		records := g.tierRecords(t)
 		if len(records) != 1 {
@@ -231,6 +242,49 @@ func TestGateTest_Scopes(t *testing.T) {
 		wantRefusal(t, gate(t, prime, nil, "--card", "1"), "--all", "explicit targets")
 	})
 
+	t.Run("--gate with scope card and no --card is refused naming the key and the way forward", func(t *testing.T) {
+		wantRefusal(t, gate(t, pair, nil, "--gate", "card"), `"card"`, "--card <id>", "way forward")
+	})
+
+	t.Run("--gate with scope card runs the --card packages and records the key", func(t *testing.T) {
+		edit(t, "docs/note.md", "a dirtying note\n")
+		g := gate(t, pair, nil, "--gate", "card", "--card", "1")
+		wantArgs(t, g, []string{"./lib"}, []string{"."}, guardInvocation)
+		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" || run.GateKey != "card" {
+			t.Errorf("tier0 run record = %+v; want the card scope form and gate key card", run)
+		}
+	})
+
+	t.Run("--gate with scope all runs every tier whole, ignoring --card ids", func(t *testing.T) {
+		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 4 }\n")
+		g := gate(t, pair, nil, "--gate", "finalize", "--card", "1")
+		wantArgs(t, g, []string{"./..."})
+		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "all" || run.GateKey != "finalize" {
+			t.Errorf("tier0 run record = %+v; want the all scope form and gate key finalize", run)
+		}
+	})
+
+	t.Run("--gate with scope diff runs the computed scope", func(t *testing.T) {
+		edit(t, "lib/lib.go", "package lib\n\nfunc One() int { return 5 }\n")
+		g := gate(t, pair, nil, "--gate", "webster-fix")
+		wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)
+		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "computed" || run.GateKey != "webster-fix" {
+			t.Errorf("tier0 run record = %+v; want the computed scope form and gate key webster-fix", run)
+		}
+	})
+
+	t.Run("explicit targets beside --gate replace the key's scope", func(t *testing.T) {
+		g := gate(t, pair, nil, "--gate", "card", "./other")
+		wantArgs(t, g, []string{"./other"})
+		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "targets" || run.GateKey != "card" {
+			t.Errorf("tier0 run record = %+v; want the targets scope form and gate key card", run)
+		}
+	})
+
+	t.Run("--gate with an unknown key is refused with the config's way forward naming lyx config gate", func(t *testing.T) {
+		wantRefusal(t, gate(t, pair, nil, "--gate", "nosuch"), `"nosuch"`, "lyx config gate")
+	})
+
 	t.Run("a misplaced guard marker refuses a computed call before any slot with its file and line", func(t *testing.T) {
 		edit(t, "other/o_test.go", "package other\n\n//lyx:guard\nfunc helper() {}\n")
 		wantRefusal(t, gate(t, pair, nil), "other/o_test.go:3", "way forward")
@@ -238,9 +292,9 @@ func TestGateTest_Scopes(t *testing.T) {
 
 	t.Run("the prime with no parent runs whole", func(t *testing.T) {
 		g := gate(t, prime, nil)
-		wantArgs(t, g, []string{"./..."}, guardInvocation)
-		if strings.Contains(g.stdout.String(), "falls back") {
-			t.Errorf("stdout = %q; want no fallback notice, since there is no parent to diff from", g.stdout.String())
+		wantArgs(t, g, []string{"./..."})
+		if strings.Contains(g.stdout.String(), "falls back") || strings.Contains(g.stdout.String(), "diff scope from") {
+			t.Errorf("stdout = %q; want no fallback or derivation notice, since there is no parent to diff from", g.stdout.String())
 		}
 	})
 
@@ -253,6 +307,157 @@ func TestGateTest_Scopes(t *testing.T) {
 		wantArgs(t, gate(t, pair, nil), []string{"./..."})
 		wantArgs(t, gate(t, pair, nil, "--card", "1"), []string{"./..."})
 		wantArgs(t, gate(t, pair, nil, "--base", base), []string{"./..."})
+	})
+
+	// The rows from here commit to the pair's branch and run in order; the one row after them runs whole and reads no history.
+	// real runs `lyx gate test args...` from the pair with the real go command, which the green record lists packages with.
+	real := func(t *testing.T, args ...string) *runningGate {
+		t.Helper()
+		g := startGate(t, gateRun{cwd: pair, realGo: true, args: append([]string{"test"}, args...)})
+		g.exit = g.wait(t)
+		return g
+	}
+	wantCarried := func(t *testing.T, g *runningGate) {
+		t.Helper()
+		if g.exit != 0 || len(g.tierArgs(t)) != 0 || !strings.Contains(g.stdout.String(), " all carried ") {
+			t.Errorf("gate = exit %d, tier invocations %q, stdout %q; want every tier carried", g.exit, g.tierArgs(t), g.stdout.String())
+		}
+	}
+	greenPath := filepath.Join(gateslot.WaitDir(pair), greenFileName)
+
+	t.Run("an all run after a green diff run runs only the packages the diff run did not cover, and a third all run carries whole", func(t *testing.T) {
+		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		gitkit.CommitFile(t, pair, "lib/lib.go", "package lib\n\nfunc One() int { return 7 }\n", "change lib")
+		base := gitkit.RevParse(t, pair, "HEAD~1")
+
+		diff := real(t, "--base", base)
+		wantArgs(t, diff, []string{"./lib", "./user"}, guardInvocation)
+
+		second := real(t, "--all")
+		wantArgs(t, second, []string{"./guardpkg", "./other"})
+
+		wantCarried(t, real(t, "--all"))
+	})
+
+	t.Run("a changed tier command, a different tree and -- -count=1 each break the carry", func(t *testing.T) {
+		wantCarried(t, real(t, "--all"))
+
+		if withArgs := real(t, "--all", "--", "-count=1"); withArgs.exit != 0 || !reflect.DeepEqual(withArgs.tierArgs(t), [][]string{{"./...", "-count=1"}}) {
+			t.Errorf("--all -- -count=1 = exit %d, tier invocations %q; want the tier to run whole under the new args", withArgs.exit, withArgs.tierArgs(t))
+		}
+		wantCarried(t, real(t, "--all"))
+
+		gitkit.CommitFile(t, pair, "docs/note.md", "a committed note\n", "change the tree")
+		wantArgs(t, real(t, "--all"), []string{"./..."})
+
+		changed := scopesConfigWith(t, "go", func(cfg map[string]any) {
+			tier0 := cfg["tiers"].(map[string]any)["tier0"].(map[string]any)
+			tier0["command"] = tier0["command"].(string) + " extra"
+		})
+		if err := os.WriteFile(configPath, changed, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		defer writeScoper(t, "go")
+		wantArgs(t, real(t, "--all"), []string{"./...", "extra"})
+	})
+
+	t.Run("a tier whose command edits a tracked file and commits it before passing records nothing", func(t *testing.T) {
+		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		committing := scopesConfigWith(t, "go", func(cfg map[string]any) {
+			tier0 := cfg["tiers"].(map[string]any)["tier0"].(map[string]any)
+			tier0["command"] = tier0["command"].(string) + " && echo more >> docs/note.md && git commit -q -am more"
+		})
+		if err := os.WriteFile(configPath, committing, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		defer writeScoper(t, "go")
+		if g := real(t, "--all"); g.exit != 0 {
+			t.Fatalf("committing tier = exit %d, stdout %q; want a pass", g.exit, g.stdout.String())
+		}
+		if entries := readGreen(greenPath).Entries; len(entries) != 0 {
+			t.Errorf("green record = %+v; want nothing recorded for a tier that changed HEAD's tree", entries)
+		}
+	})
+
+	// The rows from here read the diff base each tier takes: the merge base is the commit the prime stands on, since the pair was fast-forwarded onto it.
+	mergeBase := gitkit.RevParse(t, prime, "HEAD")
+	wantDerivation := func(t *testing.T, g *runningGate, base, tiers string) {
+		t.Helper()
+		if line := "gate test: diff scope from " + base + " for " + tiers; !strings.Contains(g.stdout.String(), line) {
+			t.Errorf("stdout = %q; want it to hold %q", g.stdout.String(), line)
+		}
+	}
+	// commitChange commits content to rel on the pair and returns the new commit.
+	commitChange := func(t *testing.T, rel, content string) string {
+		t.Helper()
+		gitkit.CommitFile(t, pair, rel, content, "change "+rel)
+		return gitkit.RevParse(t, pair, "HEAD")
+	}
+	removeGreen := func(t *testing.T) {
+		t.Helper()
+		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("a diff run diffs from the newest whole-green ancestor, else from the parent merge base", func(t *testing.T) {
+		removeGreen(t)
+		commitChange(t, "other/other.go", "package other\n\nvar Seen = 1\n")
+		g := gate(t, pair, nil)
+		wantDerivation(t, g, mergeBase, "tier0")
+
+		green := commitChange(t, "other/other.go", "package other\n\nvar Seen = 2\n")
+		if whole := gate(t, pair, nil, "--all"); whole.exit != 0 {
+			t.Fatalf("--all = exit %d, stdout %q; want a pass that records tier0 whole-green", whole.exit, whole.stdout.String())
+		}
+		commitChange(t, "lib/lib.go", "package lib\n\nfunc One() int { return 8 }\n")
+		g = gate(t, pair, nil)
+		wantDerivation(t, g, green, "tier0")
+		wantArgs(t, g, []string{"./lib", "./user"}, guardInvocation)
+	})
+
+	t.Run("a dirty worktree diffs from the parent merge base although the record holds a whole-green ancestor", func(t *testing.T) {
+		removeGreen(t)
+		if whole := gate(t, pair, nil, "--all"); whole.exit != 0 {
+			t.Fatalf("--all = exit %d, stdout %q; want a pass that records tier0 whole-green", whole.exit, whole.stdout.String())
+		}
+		commitChange(t, "lib/lib.go", "package lib\n\nfunc One() int { return 9 }\n")
+		edit(t, "docs/note.md", "a dirtying note\n")
+		wantDerivation(t, gate(t, pair, nil), mergeBase, "tier0")
+	})
+
+	t.Run("tiers on one base share one derivation line and tiers on different bases print one each", func(t *testing.T) {
+		separate := scopesConfigWith(t, "go", func(cfg map[string]any) {
+			delete(cfg["tiers"].(map[string]any)["tier1"].(map[string]any), "covers")
+		})
+		if err := os.WriteFile(configPath, separate, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		defer writeScoper(t, "go")
+		removeGreen(t)
+
+		shared := gate(t, pair, nil, "--tier", "0", "--tier", "1")
+		wantDerivation(t, shared, mergeBase, "tier0, tier1")
+		if count := strings.Count(shared.stdout.String(), "gate test: diff scope from"); count != 1 {
+			t.Errorf("derivation lines = %d in stdout %q; want 1", count, shared.stdout.String())
+		}
+
+		removeGreen(t)
+		green := commitChange(t, "other/other.go", "package other\n\nvar Seen = 3\n")
+		if whole := gate(t, pair, nil, "--tier", "0", "--all"); whole.exit != 0 {
+			t.Fatalf("--tier 0 --all = exit %d, stdout %q; want a pass that records tier0 whole-green", whole.exit, whole.stdout.String())
+		}
+		commitChange(t, "other/other.go", "package other\n\nvar Seen = 4\n")
+		split := gate(t, pair, nil, "--tier", "0", "--tier", "1")
+		wantDerivation(t, split, green, "tier0")
+		wantDerivation(t, split, mergeBase, "tier1")
+		if count := strings.Count(split.stdout.String(), "gate test: diff scope from"); count != 2 {
+			t.Errorf("derivation lines = %d in stdout %q; want 2", count, split.stdout.String())
+		}
 	})
 
 	t.Run("under the none scoper a Markdown-only diff runs the listed tiers whole, skipping a covered one", func(t *testing.T) {

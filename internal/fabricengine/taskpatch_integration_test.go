@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // taskpatch_integration_test.go proves the code-identity reads of taskpatch.go over real git checkouts:
 // ReadTaskPatch's patch, hashes and skips, and MergeInOnly's verdict on each way a task's history can move.

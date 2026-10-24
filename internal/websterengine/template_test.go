@@ -1,3 +1,5 @@
+//go:build tier0
+
 // template_test.go pins the master template's digest-field and outcome-key lists against webster's Go definitions, the marker sets through stencil.Fill/FillOptional round-trips, the composition of the fork and recovery templates, and the rendered prompts' Go-filled values and Go-chosen fragments.
 // Every asset is read at call time via stencilstore.Read from a stencils directory this file seeds itself: newTestStencilsDir seeds a t.TempDir() through `stencilkit`, per the runtime-read-not-embed Shared Decision.
 // Every test here is untagged and spawn-free: no subprocess exec, no git, no fixture trees (beyond
@@ -20,7 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -38,15 +39,6 @@ const testCardGates = "- `_lyx/plan/01-gate.md`:\n  - `lyx gate test --wait --ti
 
 // testBatchGate is the placeholder batch gate passed as RenderForkPrompt's and RenderRecoveryPrompt's batchGate parameter.
 const testBatchGate = "- `lyx gate test --wait --tier 0 --tier 1 --card 1-gate`"
-
-// testGateConfig declares tier0 and tier1 and lists them in the `card` and `batch` gates, tier0 alone in `round`.
-// Each call returns a fresh config, so a test may edit its lists.
-func testGateConfig() gateslot.Config {
-	return gateslot.Config{
-		Tiers: map[string]gateslot.Tier{"tier0": {About: "unit"}, "tier1": {About: "integration"}},
-		Gates: map[string][]int{"card": {0}, "batch": {0, 1}, "round": {0}},
-	}
-}
 
 // testFixGate is the placeholder gate call passed as RenderVerifyFixPrompt's fixGate parameter.
 const testFixGate = "lyx gate test --wait --tier 0"
@@ -105,12 +97,6 @@ func mustImplementerBodyTemplate(t *testing.T, stencilsDir string) []byte {
 		t.Fatalf("ImplementerBodyTemplate(%q) = _, %v; want nil error", stencilsDir, err)
 	}
 	return got
-}
-
-// seedHubStencils seeds every registry stencil under hub's real fabricengine.StencilsDir(hub) location, the geometry the render functions derive internally before reading through stencilstore.Read.
-func seedHubStencils(t *testing.T, hub string) {
-	t.Helper()
-	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
 }
 
 // testLayout returns the told anchor root and stencils directory for a real t.TempDir() hub, seeded

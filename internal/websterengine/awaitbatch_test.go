@@ -1,3 +1,5 @@
+//go:build tier0
+
 // awaitbatch_test.go covers AwaitBatch's bounded report-file watch: an already-present report
 // returns immediately, a report appearing mid-wait returns the moment a tick sees it (never
 // sleeping out the rest of the window), an absent report returns ReportPresent: false only once the

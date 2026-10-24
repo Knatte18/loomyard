@@ -1,3 +1,5 @@
+//go:build tier0
+
 // status_enforcement_test.go is the resolve-status tripwire: it parses every production .go file
 // directly under internal/planglyph and flags any ast.SelectorExpr reading quarry's status
 // vocabulary -- a Sel named "Status", "Known" or "Rejected" (statusVocabularySelectors) -- that sits

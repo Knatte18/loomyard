@@ -1,3 +1,5 @@
+//go:build tier0
+
 // wait_test.go covers Run.Wait's poll loop against fakeReed/fakeEngine and a fake clock: all four
 // outcome classifications, KeepPane skipping cleanup, the startup probe's trust-dismiss and
 // fast-fail-on-timeout paths, multi-Stop offset tracking, events-offset resilience across a partial

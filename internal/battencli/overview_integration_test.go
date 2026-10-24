@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // overview_integration_test.go drives "lyx batten overview" through RunCLIIn over a hubforge hub: its refusals, which both end before any pane starts.
 // It stays a white-box "package battencli" test, like the other integration files here.

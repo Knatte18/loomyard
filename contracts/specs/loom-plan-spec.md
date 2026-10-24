@@ -313,35 +313,36 @@ A departure from an entry the task declares changed in the overview's `## PATTER
 ## verify model
 
 The hub's tests run through `lyx gate test`, which runs the numbered tiers `gate.yaml` declares over a scope lyx computes.
-A gate is a named list of tiers: the `card` gate runs per card, the `batch` gate per batch, the `round` gate between review rounds, the `final` gate once for the whole plan, and the `landing` gate at Merge-In and Finalize.
-The hub's tiers and gate lists reach the plan writer and the plan reviewer in their prompts, rendered from `gate.yaml`.
+A gate key names a site's tiers and its scope, `card`, `diff` or `all`, and every site runs `lyx gate test --wait --gate <key>`:
+the `card` key runs per card and the `batch` key per batch, both over the cards' packages, `webster-fix` in Webster's verify fixers, `webster` once for the whole plan, and `merge-in` and `finalize` at Merge-In and Finalize.
+The hub's tiers and gate keys reach the plan writer and the plan reviewer in their prompts, rendered from `gate.yaml`.
 A plan author names no gate, tier list or target list, because the Go-rendered prompts and the gates carry them.
 
 The per-card **`**Verify:**`** field stays the optional, rare escape hatch for what no gate expresses — a cheap, targeted check where it is useful.
-A `**Verify:**` line that tests is one `lyx gate test --wait` call with a tier list and a scope form, such as `lyx gate test --wait --tier 1 --card <card id>`, and never a raw test command or a target list.
-The plan-level `## verify:` body section in `00-overview.md` is accepted and ignored: the parser still reads it, and the plan gate reports an informational finding, because the `final` gate has replaced it.
+A `**Verify:**` line that tests is one `lyx gate test --wait` call with a gate key or a tier list and a scope form, such as `lyx gate test --wait --tier 1 --card <card id>`, and never a raw test command or a target list.
+The plan-level `## verify:` body section in `00-overview.md` is accepted and ignored: the parser still reads it, and the plan gate reports an informational finding, because the `webster` gate key has replaced it.
 
-Merge-In and Finalize run the `landing` gate in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
+Merge-In and Finalize run their own gate keys, `merge-in` and `finalize`, in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
 and, on a failure, run the merge fixer before anything is landed, halting only when the fixer's cap is spent or its change is over the caps.
 Both also halt Stuck on a dirty tree, so only committed content is ever verified or landed.
 
 The tiers below match this repo's own test-tier discipline:
 
 - **Tier 1 (per card, automatic, no author action).**
-  Implemented as the Go-rendered per-card gate: the hub's `card` gate call, `lyx gate test --wait --tier <n>... --card <card id>`, then the comment line-break lint and the PATTERN headroom lint.
+  Implemented as the Go-rendered per-card gate: the hub's `card` key call, `lyx gate test --wait --gate card --card <card id>`, then the comment line-break lint and the PATTERN headroom lint.
   The gate call computes the card's packages per module from the plan and runs the guard step over the `//lyx:guard` tests itself, so the prompt names no package.
-  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lyx:guard` test, and the batch gate or the `final` gate catches that.
+  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lyx:guard` test, and the batch gate or the `webster` gate catches that.
   Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
 - **Tier 2 (per batch for its own packages, plan-level for the whole suite).**
   Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower.
-  The batch gate is the hub's `batch` gate call, `lyx gate test --wait --tier <n>...` with one `--card <card id>` per card of the batch, run once per batch by the fork after its last card; Go never runs it, and the `final` gate catches a fork that skips it;
-  the `final` gate stays the once-per-plan run, a must-pass gate on Merriam that sends a failure back to Merriam to fix.
+  The batch gate is the hub's `batch` key call, `lyx gate test --wait --gate batch` with one `--card <card id>` per card of the batch, run once per batch by the fork after its last card; Go never runs it, and the `webster` gate catches a fork that skips it;
+  the `webster` gate stays the once-per-plan run, a must-pass gate on Merriam that sends a failure back to Merriam to fix.
   The Concurrency section's post-merge backstop assumes the same gate.
 - **Tier 3 (rare, explicit only, never automatic).**
-  Tests that drive a real LLM, gated by the `llm` build tag — expensive in both wall-clock and tokens.
-  Never swept into an automatic per-card or per-plan gate under any circumstance; a tier that compiles them (`go vet -tags llm`) never runs them.
-  The `tmux` tag is a separate, token-free tier that the `final` gate compiles (`go vet -tags tmux`); the `final` and `landing` gates run it when their lists name it.
+  Tests that drive a real LLM, gated by the `tier3` build tag — expensive in both wall-clock and tokens.
+  Never swept into an automatic per-card or per-plan gate under any circumstance; a tier that compiles them (`go vet -tags tier3`) never runs them.
+  The `tier2` tag is a separate, token-free tmux tier that a gate's vet steps compile (`go vet -tags tier2`); a gate key runs it when its tier list names it.
   A card that genuinely needs one is exactly what the optional `Verify:` field is for: an explicit, author-named exception, never something inferred.
 
 The optional per-card `Verify:` field exists for what tier 1's automatic gate cannot catch on its own — a specific CLI smoke test, a targeted tier 2 scenario, or, rarely, a tier 3 case.
@@ -502,7 +503,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
 34. `resign-interface-method` — an `Edit` re-sign arrow on a member glyph that resolves to a method whose signature does not open with `func`, which is how an interface method answers; its own spec is no declaration a head can re-sign.
     Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch`, because it reads the tree; the way forward is to drop the arrow and state the signature change in the card's `Intent`.
 35. `caller-uncovered` — a member a card deletes (a `Delete:` group's member glyph) or re-signs (an `Edit:` arrow's target) that Go code still references, where no admissible card's target covers the reference.
-    A reference is resolved by type where a load of the root module's packages answers: `go/packages` over the directories holding a file that names the member, run offline (`GOPROXY=off`, `-mod=readonly`) with test variants and the `integration`, `tmux` and `llm` tags, under a timeout, and logged.
+    A reference is resolved by type where a load of the root module's packages answers: `go/packages` over the directories holding a file that names the member, run offline (`GOPROXY=off`, `-mod=readonly`) with test variants and the `tier0` through `tier3` tags and the older `integration`, `tmux` and `llm` spellings, under a timeout, and logged.
     A typed reference is an identifier whose used object is the member, so a call on another type, through an interface or on a same-named function of another package is no reference, and a promoted call or a method value is.
     The load is skipped when the worktree root holds no `go.mod`, and covers no directory inside a nested module; a failed or timed-out load is logged and leaves every file to the scan below, never an error.
     In a hub the load first waits for a gate slot, and a slot that cannot be acquired, as over an absent or invalid `gate.yaml` or an invalid machine override of it, is a failed load.
@@ -529,7 +530,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Its way forward is to take the data from committed test data an earlier card creates, or to drop the command.
     The plan index runs it in its format validation, so both plan gates and `lyx loom validate-plan`'s default and `--rework` modes report it; `--require-approved`, webster's own `validate` verb and dispatch validation do not run it.
     It only refuses and removes no guard: it misses a spelling in `bash -c "…"` or built from a variable, the rest of a span after an unterminated quote, a spelling in an inline span or prose, and a fabric-repo path not spelled as a name ending in the suffix, and the implementer audit stays the guard for those.
-38. `verify-module-wide` — a raw Go test, build or vet command in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a raw Go test command whose `-tags` value names `tmux` or `llm`.
+38. `verify-module-wide` — a raw Go test, build or vet command in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a raw Go test command whose `-tags` value names `tmux`, `llm`, `tier2` or `tier3`.
     An agent's settings deny such a command, so it can never run under a fork.
     It splits a chain as `verify-nested-module` does, at `&&`, `||`, `;`, `|` and a newline after joining line continuations, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
     One finding per command, attributed to the card; the overview's `## verify:` section is never read.

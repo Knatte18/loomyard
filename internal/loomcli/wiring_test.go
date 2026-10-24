@@ -1,3 +1,5 @@
+//go:build tier0
+
 // wiring_test.go drives wire directly against a hand-built *lyxcwd.Location over a temporary
 // directory seeded with the one module config load that does not tolerate absence (loomengine's own
 // strict configengine.Load): every other config load this task's wire performs
@@ -39,40 +41,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
-	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
-
-// seedLoomConfig creates <anchorPath>/_lyx/config/loom.yaml with the embedded template's contents --
-// the one config load loomengine.LoadConfig performs strictly (see loomengine's own config_test.go).
-func seedLoomConfig(t *testing.T, anchorPath string) {
-	t.Helper()
-	configDir := filepath.Join(anchorPath, "_lyx", "config")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
-	}
-	cfgPath := filepath.Join(configDir, "loom.yaml")
-	if err := os.WriteFile(cfgPath, []byte(loomengine.ConfigTemplate()), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
-	}
-}
-
-// hubDeploy is the deploy value the hub's landing.yaml carries in hubLocation, so a wired config reading a pair's copy instead differs from it.
-const hubDeploy = "./deploy-hub.sh"
-
-// seedLandingConfig creates <baseDir>/_lyx/config/landing.yaml with the embedded template's contents, its deploy set to deploy.
-// landingshed.LoadConfig is strict (an absent file is an error), so wire() fails on every existing test in this file without the hub's seed.
-func seedLandingConfig(t *testing.T, baseDir, deploy string) {
-	t.Helper()
-	configDir := filepath.Join(baseDir, "_lyx", "config")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q) = %v; want nil", configDir, err)
-	}
-	cfgPath := filepath.Join(configDir, "landing.yaml")
-	contents := strings.Replace(landingshed.ConfigTemplate(), `deploy: ""`, fmt.Sprintf("deploy: %q", deploy), 1)
-	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
-	}
-}
 
 // seedLoomConfigWithInteractive overwrites <anchorPath>/_lyx/config/loom.yaml with a full
 // eleven-key literal, identical to the embedded template's own values except
@@ -129,25 +98,6 @@ parent_review_wait_min: 60
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
-}
-
-// hubLocation returns a *lyxcwd.Location standing in for a real hub location, with its anchor path
-// seeded on disk with loom.yaml and a pair landing.yaml that blanks deploy, and its hub seeded with loom's repo default and the hub-wide landing.yaml at the board dir and both loom stencils.
-func hubLocation(t *testing.T, worktreeName, anchorRel string) *lyxcwd.Location {
-	t.Helper()
-	hub := t.TempDir()
-	loc := &lyxcwd.Location{HubPath: hub, WorktreeName: worktreeName, AnchorRel: anchorRel}
-	// hubgeom.ReedGeometry stats the worktree's .git entry to tell the prime from a task worktree.
-	if err := os.MkdirAll(filepath.Join(loc.WorktreePath(), ".git"), 0o755); err != nil {
-		t.Fatalf("MkdirAll(.git) = %v; want nil", err)
-	}
-	seedLoomConfig(t, loc.AnchorPath())
-	seedLoomConfig(t, fabricengine.BoardDir(hub))
-	seedLandingConfig(t, fabricengine.BoardDir(hub), hubDeploy)
-	seedLandingConfig(t, loc.AnchorPath(), "")
-	// stencilstore.Read hard-errors on a missing file, so the stencils the Spec closures read are seeded into the hub's stencils directory.
-	stencilkit.SeedInto(t, fabricengine.StencilsDir(hub))
-	return loc
 }
 
 // TestWire_MissingHubLandingConfigNamesWayForward asserts a hub without the hub-wide landing config fails wire with an error ending in the way forward.
@@ -533,15 +483,12 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	// The fix rows' verify gate runs the `landing` list over a diff, which gateConfigWithTwoTiers lists as tiers 0 and 1 against the `round` list's tier 0.
-	t.Run("the verify gate's told list is the landing list", func(t *testing.T) {
+	// The fix rows' verify gate reads the call of the key its row names.
+	t.Run("the verify gate's told command is read per key", func(t *testing.T) {
 		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
-		got, err := c.env.Round()
-		if err != nil {
-			t.Fatalf("c.env.Round() error = %v; want nil", err)
-		}
-		if call := got.Render("--all"); call != wantDarnLandingCall {
-			t.Errorf("c.env.Round().Render(--all) = %q; want the landing call %q", call, wantDarnLandingCall)
+		const want = "lyx gate test --wait --gate code-burler-fix"
+		if got, err := c.env.VerifyCommand("code-burler-fix"); err != nil || got != want {
+			t.Errorf("c.env.VerifyCommand(code-burler-fix) = %q, %v; want %q, nil", got, err, want)
 		}
 	})
 }

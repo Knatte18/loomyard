@@ -1,4 +1,4 @@
-//go:build tmux && linux
+//go:build tier2 && linux
 
 // activity_integration_test.go pins that a client's #{pane_id} in list-clients is its active pane.
 // It runs against a real tmux server and a client attached in a pty, whose keystroke makes OperatorActive read the pane active.

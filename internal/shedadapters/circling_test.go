@@ -1,3 +1,5 @@
+//go:build tier0
+
 // circling_test.go covers the circling decision record over a temp run directory.
 
 package shedadapters

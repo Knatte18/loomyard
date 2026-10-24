@@ -1,3 +1,5 @@
+//go:build tier0
+
 // render_test.go — unit tests for rendering (render.go).
 //
 // README and design-doc goldens over the kind-and-label layout: tasks in layers, notes grouped by type with an Other group, done and abandoned entries, dependencies, bodies, and the omitted Done section and empty Notes subsections.

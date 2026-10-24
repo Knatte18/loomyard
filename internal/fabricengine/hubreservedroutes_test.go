@@ -1,3 +1,5 @@
+//go:build tier0
+
 // hubreservedroutes_test.go covers the filterHubReserved wiring guard's live surface: a hub-reserved
 // name (_board, _portals, _launchers) must never appear in the routes that drive junction wiring or
 // the weft commit pathspec, over the config a hub is seeded with (the fabric config template).

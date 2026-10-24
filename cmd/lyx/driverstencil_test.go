@@ -1,3 +1,5 @@
+//go:build tier0
+
 // driverstencil_test.go pins the shed driver stencil's recipe-blindness. It replaces the retired step-cap
 // pin: the design's claim is that which recipe runs is a property of the seed alone, so the stencil
 // must name no shipped recipe, no `.lyx/` path and no recipe-owned command.

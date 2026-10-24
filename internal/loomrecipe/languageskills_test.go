@@ -1,3 +1,5 @@
+//go:build tier0
+
 // languageskills_test.go pins which shipped recipe rows carry the Burler profile key language-skills: the code rounds only.
 
 package loomrecipe

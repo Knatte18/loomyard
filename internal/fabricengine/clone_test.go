@@ -1,3 +1,5 @@
+//go:build tier0
+
 // clone_test.go — unit tests for URL-derivation helpers and cloneRepo's error path.
 
 package fabricengine

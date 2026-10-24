@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bouncer_replay_test.go covers Bouncer.Call's replay mode, focus synthesis over a malformed file,
 // and cancellation.
 // The seed call, the re-bounce, the judge call's happy paths and degradations, harvest, and debris

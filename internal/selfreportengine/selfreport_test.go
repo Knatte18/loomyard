@@ -1,10 +1,12 @@
+//go:build tier0
+
 // selfreport_test.go is selfreportengine's own test suite, covering CreateIssue directly through
 // the NewGitHubClient seam.
 // The package had no tests of its own before this batch -- every case previously lived one layer up
 // in selfreportcli, driving the now-deleted RunGH seam.
 // Each case here injects a real go-github client pointed at an httptest server (or a dead address,
 // for the network-failure case) or a factory closure that itself fails, so no test ever reaches
-// real token resolution, a real git spawn, a real process, or a fixture tree -- untagged Tier 1.
+// real token resolution, a real git spawn, a real process, or a fixture tree.
 // The CreateIssue tests do not run in parallel: each swaps the package-level NewGitHubClient seam.
 
 package selfreportengine

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // archive_integration_test.go covers archiveWeftTip: the archive tag lands on the weft origin at the branch tip, the call is idempotent on an unchanged tip, and each degraded shape — no origin, an unreachable origin, a branch only on origin, a clashing tag — answers as the helper documents.
 //

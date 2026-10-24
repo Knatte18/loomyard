@@ -1,3 +1,5 @@
+//go:build tier0
+
 package battencli
 
 import (
@@ -11,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -34,7 +35,6 @@ import (
 // batten wires only its own producers, so every loom seam of shedrecipe.Env stays nil here.
 var intentionallyNil = map[string]string{
 	"VerifyCommand":               "loom-only seam, batten runs no verify gate",
-	"Round":                       "loom-only seam, batten runs no verify gate",
 	"VerifyHold":                  "loom-only seam, batten runs no verify gate",
 	"GateFindingsFile":            "loom-only seam, batten has no gated row that keeps findings",
 	"Shuttle":                     "loom-only seam, batten drives no agent itself",
@@ -251,16 +251,16 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	if value, err := c.env.Setting("batten", "open_window"); err == nil || value != nil || !strings.Contains(err.Error(), "a-slug") {
 		t.Errorf("Setting(batten, open_window) = %v, %v; want the absent-worktree refusal naming the slug", value, err)
 	}
-	// --open-terminal forces Open-Window's switch on, and the other runs force nothing.
-	if len(c.env.Command.Forced) != 0 {
-		t.Errorf("Command.Forced = %v; want none without --open-terminal", c.env.Command.Forced)
-	}
+	// --open-terminal answers batten.open_window true without reading the task worktree, and every other lookup is unchanged.
 	asked := &battenCLI{openTerminalFlag: true}
 	if err := asked.wire(location, "a-slug"); err != nil {
 		t.Fatalf("wire() error = %v; want nil", err)
 	}
-	if want := []string{battenrecipe.NameOpenWindow}; !slices.Equal(asked.env.Command.Forced, want) {
-		t.Errorf("Command.Forced under --open-terminal = %v; want %v", asked.env.Command.Forced, want)
+	if value, err := asked.env.Setting("batten", "open_window"); err != nil || value != true {
+		t.Errorf("Setting(batten, open_window) under --open-terminal = %v, %v; want true, nil", value, err)
+	}
+	if value, err := asked.env.Setting("batten", "seed_ide"); err == nil || value != nil || !strings.Contains(err.Error(), "a-slug") {
+		t.Errorf("Setting(batten, seed_ide) under --open-terminal = %v, %v; want the absent-worktree refusal naming the slug", value, err)
 	}
 }
 

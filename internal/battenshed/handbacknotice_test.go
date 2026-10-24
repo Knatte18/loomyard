@@ -1,3 +1,5 @@
+//go:build tier0
+
 // handbacknotice_test.go pins HandBackNotice's one-notice-per-stop-episode rule against the markers the rows leave.
 
 package battenshed

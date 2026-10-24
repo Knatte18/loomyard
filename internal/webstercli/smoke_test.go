@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_test.go walks the live-only webster behaviors the hermetic tests can
 // never exercise, against the REAL substrate (a real logged-in `claude`): the

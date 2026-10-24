@@ -1,3 +1,5 @@
+//go:build tier0
+
 // state_test.go table-drives loadOrInitState's fresh/resume/hash-mismatch/ terminal classification,
 // exercises moveStaleArtifacts' renaming (including the double-.stale collision case), and
 // round-trips a runState through saveState/loadOrInitState to check the persisted shape survives.

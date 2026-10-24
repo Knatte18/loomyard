@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_tmux_test.go proves creel's delivery on a real tmux pane that runs a shell script standing in for a provider.
 // The script draws a ready marker and an input box line, echoes each line it reads and redraws idle, and a fake shuttle engine reads those frames.

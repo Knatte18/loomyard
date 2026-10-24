@@ -1,3 +1,5 @@
+//go:build tier0
+
 // verbs_test.go drives submit, cancel and status over fakeWorld.
 
 package hibernateengine

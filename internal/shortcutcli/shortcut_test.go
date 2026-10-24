@@ -1,3 +1,5 @@
+//go:build tier0
+
 // shortcut_test.go pins the shortcut file's mount and a shortcut's word routing and dispatch, over a fake root that records the commands it runs.
 
 package shortcutcli

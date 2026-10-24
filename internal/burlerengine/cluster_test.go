@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cluster_test.go table-drives auditClusterRound over the full violation taxonomy (fork-count
 // mismatch, Agent-call-in-fork, write-in-fork, git-mutation-in-fork, named spawns) plus the
 // warning-only ReportReturned==false case, and separately matrixes commandRunsMutatingGit against a set

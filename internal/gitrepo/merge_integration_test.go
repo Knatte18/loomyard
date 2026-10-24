@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // merge_integration_test.go covers the merge primitives in merge.go against real git repositories,
 // reusing gitrepo_test.go's fixture helpers (newRepo, writeFile, commitAll, runGit) and, for the

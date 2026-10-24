@@ -1,3 +1,5 @@
+//go:build tier0
+
 // argsarity_test.go pins every fabric verb's declared positional-argument arity. It is a pure
 // cobra-tree inspection with no git spawn and no hub fixture, per the Test Tier Purity Invariant —
 // the end-to-end per-verb assertions that need a real hub live in the integration-tagged

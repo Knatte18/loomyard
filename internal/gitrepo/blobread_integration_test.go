@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // blobread_integration_test.go covers the history reads — FileAtRevision, FilesInDirAtRevision, PathRevisions, CommitsWithSubject, CommitsNotIn and IsAncestor's real-git reachability — against one real git repository with three commits built under t.TempDir(), reusing gitrepo_test.go's newRepo, writeFile, and commitAll fixture helpers.
 // IsAncestor's argument-validation guard lives in the untagged ancestry_test.go, because a //go:build constraint applies per file, not per function.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // arm_seed_test.go covers arm's seed-presence refusal: resolveRunID drives the whole check against
 // a hand-built *lyxcwd.Location, with no real git repository behind it (shedrun.ReadSeed and
 // shedrun.List are both plain filesystem reads under AnchorPath), so this file stays Tier 1.

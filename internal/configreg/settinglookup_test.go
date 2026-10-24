@@ -1,3 +1,5 @@
+//go:build tier0
+
 // settinglookup_test.go — tests for SettingLookup over temp hub fixtures.
 
 package configreg
@@ -120,6 +122,21 @@ func TestSettingLookup(t *testing.T) {
 			},
 			act:       lookupOnce("loom", "extra_key"),
 			wantError: []string{"loom", "extra_key", "way forward"},
+		},
+		{
+			name:    "the known-key check accepts a template key with no config file written",
+			arrange: func(*testing.T, configengine.Dirs) {},
+			act: func(*testing.T, configengine.Dirs) (any, error) {
+				return nil, CheckSettingKey("loom", "review_max_bounces")
+			},
+		},
+		{
+			name:    "the known-key check keeps the lookup's refusal of a key the template lacks",
+			arrange: func(*testing.T, configengine.Dirs) {},
+			act: func(*testing.T, configengine.Dirs) (any, error) {
+				return nil, CheckSettingKey("loom", "no_such_key")
+			},
+			wantError: []string{"loom", "no_such_key", "way forward"},
 		},
 		{
 			name: "an unreadable default layer propagates naming the module",

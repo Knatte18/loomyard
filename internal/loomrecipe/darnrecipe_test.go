@@ -1,3 +1,5 @@
+//go:build tier0
+
 // darnrecipe_test.go covers NewDarn and DarnRouting: the darn recipe's row order, engines and producer types, its PR-Review and Code-Review routing through Describe, the perch shared with loom's recipe bar its answer key, the verify budget stamped onto both verify-gated rows, the review budget applied to the perch, and the refusal of a budget out of range.
 
 package loomrecipe
@@ -122,7 +124,7 @@ func setCodeBudget(env *shedrecipe.Env, budget int) {
 	env.Segments[codeReviewSegment] = settings
 }
 
-// TestNewDarn_Routing pins the darn tail: the Code-Review perch, then Describe, PR-Review and Finalize after Darn-Write with the review budget on all three perch rows, Finalize's reroute to Code-Bouncer, no Merge-In row, and a review budget of 0 routing Darn-Write's Done and Finalize's reroute straight to PR-Review.
+// TestNewDarn_Routing pins the darn tail: the Code-Review perch, then Describe, PR-Review and Finalize after Darn-Write with the review budget on all three perch rows, Finalize's reroute to Code-Bouncer, no Merge-In row, and a review budget of 0 keeping every edge and gating Describe off.
 func TestNewDarn_Routing(t *testing.T) {
 	build := func(t *testing.T, reviewBudget int) map[string]shedengine.ProducerDef {
 		t.Helper()
@@ -149,8 +151,15 @@ func TestNewDarn_Routing(t *testing.T) {
 		if bouncer.OnDone != loomshed.NameDescribe || bouncer.OnStuck != loomshed.NameCodeBurlerReview || review.OnStuck != loomshed.NameCodeBurlerFix || fix.OnStuck != loomshed.NameCodeBouncer {
 			t.Errorf("Code-Bouncer OnDone/OnStuck = %q/%q, review OnStuck = %q, fix OnStuck = %q; want %q/%q, %q, %q", bouncer.OnDone, bouncer.OnStuck, review.OnStuck, fix.OnStuck, loomshed.NameDescribe, loomshed.NameCodeBurlerReview, loomshed.NameCodeBurlerFix, loomshed.NameCodeBouncer)
 		}
-		if describe := rows[loomshed.NameDescribe]; describe.OnDone != loomshed.NamePRReview || describe.OnStuck != "" {
+		describe := rows[loomshed.NameDescribe]
+		if describe.OnDone != loomshed.NamePRReview || describe.OnStuck != "" {
 			t.Errorf("Describe OnDone/OnStuck = %q/%q; want %q/empty", describe.OnDone, describe.OnStuck, loomshed.NamePRReview)
+		}
+		if describe.EntryGate == nil {
+			t.Fatal("Describe EntryGate = nil; want a gate on the Code-Review budget")
+		}
+		if holds, _, err := describe.EntryGate(); err != nil || !holds {
+			t.Errorf("Describe EntryGate() with a review budget of 4 = %v, %v; want true, nil", holds, err)
 		}
 		if prReview := rows[loomshed.NamePRReview]; prReview.OnDone != loomshed.NameFinalize || prReview.OnStuck != "" || prReview.Segment != "" {
 			t.Errorf("PR-Review OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", prReview.OnDone, prReview.OnStuck, prReview.Segment, loomshed.NameFinalize)
@@ -169,13 +178,20 @@ func TestNewDarn_Routing(t *testing.T) {
 		}
 	})
 
-	t.Run("a review budget of 0 routes Darn-Write's Done and Finalize's reroute straight to PR-Review", func(t *testing.T) {
+	t.Run("a review budget of 0 keeps every edge and gates Describe off", func(t *testing.T) {
 		rows := build(t, 0)
-		if got := rows[loomshed.NameDarnWrite].OnDone; got != loomshed.NamePRReview {
-			t.Errorf("Darn-Write OnDone = %q; want %q", got, loomshed.NamePRReview)
+		if got := rows[loomshed.NameDarnWrite].OnDone; got != loomshed.NameCodeBouncer {
+			t.Errorf("Darn-Write OnDone = %q; want %q", got, loomshed.NameCodeBouncer)
 		}
-		if got := rows[loomshed.NameFinalize].OnReroute; got != loomshed.NamePRReview {
-			t.Errorf("Finalize OnReroute = %q; want %q", got, loomshed.NamePRReview)
+		if got := rows[loomshed.NameFinalize].OnReroute; got != loomshed.NameCodeBouncer {
+			t.Errorf("Finalize OnReroute = %q; want %q", got, loomshed.NameCodeBouncer)
+		}
+		describe := rows[loomshed.NameDescribe]
+		if describe.EntryGate == nil {
+			t.Fatal("Describe EntryGate = nil; want a gate on the Code-Review budget")
+		}
+		if holds, _, err := describe.EntryGate(); err != nil || holds {
+			t.Errorf("Describe EntryGate() with a review budget of 0 = %v, %v; want false, nil", holds, err)
 		}
 	})
 
@@ -274,7 +290,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 	})
 }
 
-// TestDarnRouting pins the projection's rows and its review budget applied as NewDarn applies it, the routes to PR-Review under a budget of 0, and the refusal of a budget below 0.
+// TestDarnRouting pins the projection's rows and its review budget applied as NewDarn applies it, the kept edges under a budget of 0, and the refusal of a budget below 0.
 func TestDarnRouting(t *testing.T) {
 	t.Run("rows and the review budget on the perch", func(t *testing.T) {
 		routing, err := DarnRouting(map[string]int{codeReviewSegment: 2})
@@ -301,17 +317,20 @@ func TestDarnRouting(t *testing.T) {
 		}
 	})
 
-	t.Run("a review budget of 0 routes Darn-Write's Done and Finalize's reroute straight to PR-Review", func(t *testing.T) {
+	t.Run("a review budget of 0 keeps every edge and applies the budget to the perch rows", func(t *testing.T) {
 		routing, err := DarnRouting(map[string]int{codeReviewSegment: 0})
 		if err != nil {
 			t.Fatalf("DarnRouting() error = %v; want nil", err)
 		}
 		for _, p := range routing.Producers {
-			if p.Name == loomshed.NameDarnWrite && p.OnDone != loomshed.NamePRReview {
-				t.Errorf("Darn-Write OnDone = %q; want %q", p.OnDone, loomshed.NamePRReview)
+			if p.Name == loomshed.NameDarnWrite && p.OnDone != loomshed.NameCodeBouncer {
+				t.Errorf("Darn-Write OnDone = %q; want %q", p.OnDone, loomshed.NameCodeBouncer)
 			}
-			if p.Name == loomshed.NameFinalize && p.OnReroute != loomshed.NamePRReview {
-				t.Errorf("Finalize OnReroute = %q; want %q", p.OnReroute, loomshed.NamePRReview)
+			if p.Name == loomshed.NameFinalize && p.OnReroute != loomshed.NameCodeBouncer {
+				t.Errorf("Finalize OnReroute = %q; want %q", p.OnReroute, loomshed.NameCodeBouncer)
+			}
+			if p.Segment == codeReviewSegment && p.MaxBounces != 0 {
+				t.Errorf("%s MaxBounces = %d; want the budget 0", p.Name, p.MaxBounces)
 			}
 		}
 	})

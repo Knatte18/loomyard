@@ -1,3 +1,5 @@
+//go:build tier0
+
 // run_resume_test.go covers Runner.start's resume preflight.
 // A spec with a ResumeSessionID runs the engine's SessionResumer check against the runner's pane cwd before Prepare,
 // a refusal leaves no run directory or strand, a warning reaches Run.ResumeWarning, and an engine without the capability refuses.

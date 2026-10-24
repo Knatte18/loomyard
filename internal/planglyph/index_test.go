@@ -1,3 +1,5 @@
+//go:build tier0
+
 // index_test.go covers the checks the plan index appends beside planparser's entry points.
 
 package planglyph

@@ -1,6 +1,8 @@
+//go:build tier0
+
 // notepath_test.go covers NotePath against a real t.TempDir() with real files, never a stubbed stat,
 // since the guarantee is about the filesystem.
-// Every test here is untagged Tier 1: it uses only os.WriteFile inside a t.TempDir() and t.TempDir
+// Every test here is in tier 0: it uses only os.WriteFile inside a t.TempDir() and t.TempDir
 // itself, and spawns nothing.
 
 package friction

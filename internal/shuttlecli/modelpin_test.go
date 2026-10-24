@@ -1,3 +1,5 @@
+//go:build tier0
+
 // modelpin_test.go is R2-F3's regression guard: every site in this package's smoke suite that
 // starts a REAL `claude` process must thread the shared smokeClaudeModel constant, so no future edit
 // can silently put a live spawn back on the account-default model.

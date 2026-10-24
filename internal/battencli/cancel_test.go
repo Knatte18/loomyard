@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cancel_test.go pins cancelRun's decisions and order over fake substrates, and the pure readings it builds on.
 
 package battencli

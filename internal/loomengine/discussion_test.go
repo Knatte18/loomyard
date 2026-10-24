@@ -1,3 +1,5 @@
+//go:build tier0
+
 // discussion_test.go — untagged Tier-1 unit tests shared by the loom producers' prompts and the twill fixtures DiscussionTable's tests use.
 // Pure Go over an in-memory Config and a temp-dir modelspec registry;
 // no live hub, reed, or network involved.

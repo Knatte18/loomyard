@@ -1,3 +1,5 @@
+//go:build tier0
+
 // shape_test.go carries the package's one row table and the shape-and-identity assertions over New's built list: the real Publish/Finalize swap, told-field threading, a missing-Landing-closure construction failure, and the routing-graph guard.
 // It does not assert the recipe's own structure or parsing -- recipe_test.go owns that.
 

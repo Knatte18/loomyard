@@ -1,3 +1,5 @@
+//go:build tier0
+
 // gate_test.go tables converged across all three GateMode values and their verdict/gatePassed
 // combinations, exercises execGateCommand against real trivial commands (go's own toolchain — the
 // one binary guaranteed present in this repo's test environment) for the pass, fail, timeout, and

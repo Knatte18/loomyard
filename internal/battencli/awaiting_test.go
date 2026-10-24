@@ -1,3 +1,5 @@
+//go:build tier0
+
 // awaiting_test.go asserts a batten status file in StateAwaiting arms without refusal in both
 // battenPreRun and battenPreStep, rather than tripping the unrecognised-state default.
 

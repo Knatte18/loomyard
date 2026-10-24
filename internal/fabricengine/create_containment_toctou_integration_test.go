@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // create_containment_toctou_integration_test.go guards the act-time containment binding that closed
 // R5's CREATE-side symlink-directed-write escape: containedWorktreeAdd must never let `git worktree

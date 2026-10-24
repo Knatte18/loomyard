@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // origin_integration_test.go covers Add's newly-landed provenance step end-to-end: the origin record
 // itself, its commit on the weft branch, its rollback behavior on both the created- and

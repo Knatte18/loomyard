@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // startguard_integration_test.go drives armAt and "lyx batten run" over a hubforge hub to pin that the pre-run guard refuses before any write: no seed, no status file, no board pull or claim and no window.
 

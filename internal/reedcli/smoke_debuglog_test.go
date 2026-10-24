@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_debuglog_test.go exercises the composed live behavior of the debug_log opt-in: a real boot with LYX_REED_DEBUG=1 must write a genuine tmux verbose server log into the hub's _board/.lyx/logs/ dir, and the boot-time prune must have already trimmed pre-existing logs there down to the newest 2, and repeated crash boots must keep every debug log shape bounded.
 // This is the one live-tmux composed scenario for this batch; debugLogArgs and planLogPrune's own unit tests already cover the pure planning logic in isolation (see internal/reedengine/serverlog_test.go).

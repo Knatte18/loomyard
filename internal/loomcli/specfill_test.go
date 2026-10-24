@@ -1,3 +1,5 @@
+//go:build tier0
+
 // specfill_test.go pins the run-identity fields loom's arming fills onto its Spec: RunID, StepsDir
 // and Routing. It calls specFor and loadRouting on a hand-populated receiver, so it spawns nothing.
 

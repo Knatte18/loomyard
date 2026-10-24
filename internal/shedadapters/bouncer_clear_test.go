@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bouncer_clear_test.go covers Bouncer.Call's clear-and-re-seed step: the trigger (an already-judged, CONVERGED round at Call entry), its archive-naming and collision behaviour, every non-triggering case the trigger's fire set must exclude, the harvest path's immunity, the clear's own failure degradation, and the cross-invocation and post-commit-failure cases the trigger is intended to reach.
 
 package shedadapters

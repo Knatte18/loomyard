@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // openparent_integration_test.go covers OpenParent end to end against real hubforge fixtures: the
 // happy path (including the folded-in OriginURL delegation assertion), no live pair for the given

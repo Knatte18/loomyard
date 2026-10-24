@@ -69,7 +69,7 @@
 // The bound: the load also runs before the write, and a write is refused only when the load then fails with a different error, so a stack already failing to load, such as one with no base layer, still takes a write that leaves that failure as it was.
 // A refused hub-wide editor save keeps the staging copy and answers with its own way forward in place of the `--set` one: it names the loader's error, says the hub file is unchanged and names the staging copy's path.
 // The way forward is to copy the staging copy out of that path, re-open the editor and re-apply the edit from the copy with the named key fixed, since every open of the editor overwrites the staging copy with the hub file's bytes.
-// A darn save that empties `tree_scope` while `tree_scope_verify` stays non-empty, over a hub file that held a tree, is told to run `lyx config darn --set tree_scope_verify=` first and then remove the trees in the editor again.
+// A darn save that empties `tree_scope` is an ordinary save: it turns tree scope off.
 //
 // `lyx config reconcile` drops or fills keys across every module against its template, carrying each module's open maps whole;
 // it judges a file against the template its base layer's picked overlay composes, so a lens entry equal to the picked layer's prose is dropped.

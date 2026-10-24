@@ -1,3 +1,5 @@
+//go:build tier0
+
 // byname_test.go pins guidByName's unknown, ambiguous and unique outcomes over a plain strand list,
 // touching no tmux.
 

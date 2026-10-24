@@ -1,3 +1,5 @@
+//go:build tier0
+
 // run_test.go drives the run verb's four dispositions against a hand-populated receiver and a
 // hand-written status file under t.TempDir(), bypassing wire entirely: every Env seam here is a
 // fake that performs no real I/O, no git spawn, and no process spawn.
@@ -118,6 +120,8 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 	}
 	c.env.Setting = func(module, key string) (any, error) { return false, nil }
 	c.env.ExecutableSetting = func(module, key string) (any, error) { return "", nil }
+	c.env.SettingKnown = func(module, key string) error { return nil }
+	c.env.Resume = "lyx batten run some-slug"
 	c.untilStop = inProcessUntilStop(t, c)
 	return c
 }

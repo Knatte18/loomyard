@@ -1,3 +1,5 @@
+//go:build tier0
+
 // step_equivalence_test.go is the test that protects the (*Shed).Run / (*Shed).Step extraction:
 // for each fixture it drives one Shed to a terminal state with repeated Step calls, drives an
 // identical second Shed once with Run, and asserts the two resulting status files agree on every

@@ -1,7 +1,7 @@
 // gitfake_test.go declares fakeGit, an in-memory websterengine.Git over a commit graph a test declares,
 // and writeWorktreeFile, which puts a file in a fixture worktree without a commit.
 // A fixture that sets Geometry.Git to a fakeGit runs the bracket verbs with no git process;
-// a test whose behavior is git itself builds a real scratch repository in a //go:build integration file instead.
+// a test whose behavior is git itself builds a real scratch repository in a //go:build tier1 file instead.
 
 package websterengine_test
 

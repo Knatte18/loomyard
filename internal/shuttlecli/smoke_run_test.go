@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_run_test.go is shuttlecli's live-integration smoke suite entry
 // point: the shared helpers (the orphaned-conhost

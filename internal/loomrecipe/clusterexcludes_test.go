@@ -1,3 +1,5 @@
+//go:build tier0
+
 // clusterexcludes_test.go pins the agreement between each Bouncer row's cluster_excludes and its
 // partner BurlerReview row's cluster fan.
 //

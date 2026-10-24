@@ -1,3 +1,5 @@
+//go:build tier0
+
 // derive_test.go holds the hand-built package graph the pure core's tests share and covers the changed-path parser.
 
 package impactset

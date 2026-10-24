@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // contract_integration_test.go asserts the full psmux/tmux wire contract that
 // doc.go's "Multiplexer contract surface" section pins, against a real,

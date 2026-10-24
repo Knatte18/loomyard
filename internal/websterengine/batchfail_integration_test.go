@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // batchfail_integration_test.go exercises failBatch's suspect-blob recording over a real scratch git repository.
 

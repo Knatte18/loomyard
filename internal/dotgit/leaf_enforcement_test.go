@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces internal/dotgit's import cap from PATTERN-leaf-packages:
 // production code in internal/dotgit imports the standard library alone.
 

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // sourcedirty_integration_test.go covers SourceDirtyPaths and the typed refusal Add returns for a dirty source worktree.
 //

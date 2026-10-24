@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // wiring_carryover_integration_test.go drives writeCarryOver over a real fabric pair,
 // so the entry lands in the decision record and the record is committed alone.

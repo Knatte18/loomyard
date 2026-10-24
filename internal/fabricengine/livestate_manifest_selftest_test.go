@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // manifest_test.go proves CaptureManifest, DiffManifest, and AssertNoUnpermittedChange against real
 // hubs from NewHub: the round-trip properties a permit diff must hold, both directions of the ".git"

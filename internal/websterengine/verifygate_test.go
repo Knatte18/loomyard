@@ -1,3 +1,5 @@
+//go:build tier0
+
 package websterengine
 
 import (
@@ -103,9 +105,6 @@ func (f *gateFake) seams() verifyGateSeams {
 		},
 	}
 }
-
-// testFixPromptPath is the verify-fix prompt path the gate tests hand the gate.
-const testFixPromptPath = "/prompts/verify-fix.md"
 
 const failingPackageLog = "FAIL\texample.com/mod/internal/a\t0.01s\n"
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // routing_test.go covers RoutingOf: the projection's routing fields equal those NewShed builds for
 // the same recipe, row for row, and a parse failure surfaces unwrapped.
 

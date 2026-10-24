@@ -1,3 +1,5 @@
+//go:build tier0
+
 // markers_test.go pins the exact top-level marker set of each stencil whose markers no render test reads in its real file,
 // and the position of each Go-filled marker a row anchors on a heading or the whole text.
 // The rubrics' marker allowlist is pinned in rubric_test.go.

@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // checkedcall_test.go enforces the gitexec Checked-Call Invariant: gitexec.Run/runChecked is the
 // default, and every remaining raw gitexec.RunGit or r.run( call site in non-test source carries an
 // adjacent //gitexec:raw marker justifying why the raw form is correct there.

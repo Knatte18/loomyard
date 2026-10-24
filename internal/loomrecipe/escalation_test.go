@@ -1,3 +1,5 @@
+//go:build tier0
+
 // escalation_test.go drives a real Discussion-Review segment, and a darn run's Code-Review perch, through a spent review budget:
 // the soft-cap rule continues a design-wrong round one round at a time, the Bouncer escalates at the hard cap instead of blocking, and an accept settles the segment.
 

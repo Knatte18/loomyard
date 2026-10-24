@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the Selfexec Leaf Invariant.
 // Production code in internal/selfexec imports only the standard library and internal/logger.
 

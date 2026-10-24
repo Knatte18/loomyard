@@ -1,3 +1,5 @@
+//go:build tier0
+
 // step_test.go covers battenPreStep and the step verb's whole new path end to end, since none of
 // run_test.go's coverage touches it: seeding an absent status before shed.Step reads it, each of
 // the three refusal-kind mappings, and BuildShed being non-nil for verb == "step". Every fixture

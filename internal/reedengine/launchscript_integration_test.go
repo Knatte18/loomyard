@@ -1,4 +1,4 @@
-//go:build tmux && !windows
+//go:build tier2 && !windows
 
 // launchscript_integration_test.go proves against a real tmux that sourcing a strand's launch script runs the same statements in the pane shell's own scope that typing them did.
 // The unit tests around panebin.go and spawn.go pin strings and files;

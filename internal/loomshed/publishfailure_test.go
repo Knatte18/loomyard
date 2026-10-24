@@ -1,3 +1,5 @@
+//go:build tier0
+
 // publishfailure_test.go covers the Plan-Review rubric's note of webster's run record, with no repository.
 
 package loomshed

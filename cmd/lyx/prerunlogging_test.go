@@ -1,3 +1,5 @@
+//go:build tier0
+
 // prerunlogging_test.go guards a dependency the standalone-mode fix relies on but cannot pin
 // behaviourally: root's PersistentPreRunE (newRoot, main.go) must not log at Info or above before its
 // seedStencils(cmd) call. cobra.EnableTraverseRunHooks runs every module's own PersistentPreRunE

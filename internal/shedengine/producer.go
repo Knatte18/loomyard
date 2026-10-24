@@ -29,6 +29,15 @@ const OutcomeGoto Outcome = "goto"
 // A reroute entry ends the bounce-budget episode of every row sharing its routed target's Segment.
 const OutcomeReroute Outcome = "reroute"
 
+// OutcomeSkipped is a history-only Outcome, written when a row's EntryGate does not hold and never returned by a producer.
+// A skipped entry carries the gate's reason, routes by the row's OnDone as a Done does, spends no bounce budget and ends the row's bounce-budget episode as a Done does.
+const OutcomeSkipped Outcome = "skipped"
+
+// EntryGate decides whether a row runs when the run enters it.
+// It reports holds true to run the row; otherwise the row is skipped and reason, which names the check with the values it read, is recorded on the skipped history entry.
+// A non-nil err means the gate could not decide: the run is written failed and the row is not entered.
+type EntryGate func() (holds bool, reason string, err error)
+
 // OutputPointer names a producer's artifact for a human to read.
 // Shed never introspects Path's contents, never validates it, and never stats it to make a
 // control-flow decision -- step 4 is an unconditional re-call.
@@ -97,4 +106,7 @@ type ProducerDef struct {
 	// MaxBounces is this producer's own episode Stuck budget. 0 means "inherit Shed.MaxBounces",
 	// never "no bounces allowed".
 	MaxBounces int
+	// EntryGate is evaluated when the run enters the row; nil is an ungated row that always runs.
+	// A gate that does not hold skips the row through OnDone.
+	EntryGate EntryGate
 }

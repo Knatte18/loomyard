@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the Friction Leaf Invariant: production code in
 // internal/friction imports ONLY the standard library, internal/logger, internal/stencil, and
 // internal/stencilstore — never a feature package (websterengine, burlerengine, loomengine, or any
