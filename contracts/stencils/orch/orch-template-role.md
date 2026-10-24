@@ -158,6 +158,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
   - A decision on an entry no run holds is written into that entry's body through `lyx board`.
   - A decision on a task a run holds is recorded with `lyx loom decision add <slug> --by parent`.
     A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lyx loom decision add --help` says.
+    Several decisions taken together go in one call with `--from <file>`, a JSON array of entries, so they land in one commit and one notice.
     Once the plan is approved, the parent also passes `--amends-plan`.
   - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Loom-Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lyx board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`, with the held task's slug in place of `<slug>`.
     Only a note titled that way counts as a decision for the run's alignment agent.

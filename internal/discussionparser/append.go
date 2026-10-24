@@ -1,7 +1,8 @@
 // append.go implements AppendDecision, one of the two write paths into the decision record.
 // The other keeps a review segment's carry-over entry in `## Open risks`.
 // AppendDecision adds one design call made after the Discussion ended to the record's `## Decisions` section,
-// so a later reader of the record sees it beside the decisions the Discussion itself made.
+// so a later reader of the record sees it beside the decisions the Discussion itself made;
+// AppendDecisions adds several such calls in one write.
 // CheckAddedDecisionsKept reports the entries a record dropped from its history.
 
 package discussionparser
@@ -54,46 +55,30 @@ type AddedDecision struct {
 // When Validate returns findings the prior bytes are restored and the findings come back with a nil
 // error; when Validate returns an error the prior bytes are restored and the error comes back.
 func AppendDecision(decisionRecordPath, supportLogPath string, d AddedDecision) ([]Finding, error) {
+	return AppendDecisions(decisionRecordPath, supportLogPath, []AddedDecision{d})
+}
+
+// AppendDecisions adds every entry of ds, in order, at the end of the record's `## Decisions` section, with its PATTERN bullet when the entry sets one.
+// The record is written once and Validate runs once over the result, so the batch lands whole or not at all:
+// an empty field in any entry, or a record with no `## Decisions` heading, is an error and nothing is written,
+// and a finding or an error from Validate restores the prior bytes.
+// An empty ds is an error.
+func AppendDecisions(decisionRecordPath, supportLogPath string, ds []AddedDecision) ([]Finding, error) {
+	if len(ds) == 0 {
+		return nil, errors.New("no decision to append")
+	}
 	prior, err := os.ReadFile(decisionRecordPath)
 	if err != nil {
 		return nil, err
 	}
 
-	by, title := strings.TrimSpace(d.By), strings.TrimSpace(d.Title)
-	decision, rationale := strings.TrimSpace(d.Decision), strings.TrimSpace(d.Rationale)
-	for name, value := range map[string]string{"by": by, "title": title, "decision": decision, "rationale": rationale} {
-		if value == "" {
-			return nil, fmt.Errorf("decision %s is empty", name)
-		}
-	}
-
-	content := string(prior)
-	at, err := decisionsInsertOffset(content)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", decisionRecordPath, err)
-	}
-
-	entry := fmt.Sprintf("\n### Added after Discussion (%s, %s): %s\n\nDecision: %s\n\nRationale: %s\n",
-		by, d.Date.UTC().Format("2006-01-02"), title, decision, rationale)
-	if at > 0 && content[at-1] != '\n' {
-		entry = "\n" + entry
-	}
-
-	updated := content[:at] + entry + content[at:]
-	if d.PatternChange != nil {
-		bullet := patternChangeAppendedBullet(*d.PatternChange, by, d.Date)
-		patternAt, patternEnd, replace := patternBulletRange(content, strings.TrimSpace(d.PatternChange.ID))
-		insertion := bullet
-		if !replace {
-			var needHeading bool
-			patternAt, needHeading = patternChangesInsertOffset(content)
-			patternEnd = patternAt
-			insertion = patternChangesInsertion(content, patternAt, needHeading, bullet)
-		}
-		if patternAt >= at {
-			updated = content[:at] + entry + content[at:patternAt] + insertion + content[patternEnd:]
-		} else {
-			updated = content[:patternAt] + insertion + content[patternEnd:at] + entry + content[at:]
+	updated := string(prior)
+	for _, d := range ds {
+		if updated, err = insertDecision(updated, d); err != nil {
+			if errors.Is(err, ErrNoDecisionsHeading) {
+				return nil, fmt.Errorf("%s: %w", decisionRecordPath, err)
+			}
+			return nil, err
 		}
 	}
 
@@ -113,6 +98,46 @@ func AppendDecision(decisionRecordPath, supportLogPath string, d AddedDecision) 
 		return nil, errors.Join(err, restoreErr)
 	}
 	return findings, err
+}
+
+// insertDecision returns content with d's entry added at the end of its `## Decisions` section and, when d.PatternChange is set, d's bullet written to its `## PATTERN changes` section.
+// An empty field of d after trimming and content with no `## Decisions` heading are errors.
+func insertDecision(content string, d AddedDecision) (string, error) {
+	by, title := strings.TrimSpace(d.By), strings.TrimSpace(d.Title)
+	decision, rationale := strings.TrimSpace(d.Decision), strings.TrimSpace(d.Rationale)
+	for name, value := range map[string]string{"by": by, "title": title, "decision": decision, "rationale": rationale} {
+		if value == "" {
+			return "", fmt.Errorf("decision %s is empty", name)
+		}
+	}
+
+	at, err := decisionsInsertOffset(content)
+	if err != nil {
+		return "", err
+	}
+
+	entry := fmt.Sprintf("\n### Added after Discussion (%s, %s): %s\n\nDecision: %s\n\nRationale: %s\n",
+		by, d.Date.UTC().Format("2006-01-02"), title, decision, rationale)
+	if at > 0 && content[at-1] != '\n' {
+		entry = "\n" + entry
+	}
+
+	if d.PatternChange == nil {
+		return content[:at] + entry + content[at:], nil
+	}
+	bullet := patternChangeAppendedBullet(*d.PatternChange, by, d.Date)
+	patternAt, patternEnd, replace := patternBulletRange(content, strings.TrimSpace(d.PatternChange.ID))
+	insertion := bullet
+	if !replace {
+		var needHeading bool
+		patternAt, needHeading = patternChangesInsertOffset(content)
+		patternEnd = patternAt
+		insertion = patternChangesInsertion(content, patternAt, needHeading, bullet)
+	}
+	if patternAt >= at {
+		return content[:at] + entry + content[at:patternAt] + insertion + content[patternEnd:], nil
+	}
+	return content[:patternAt] + insertion + content[patternEnd:at] + entry + content[at:], nil
 }
 
 // addedDecisionHeadingPrefix starts the heading of every entry AppendDecision writes.

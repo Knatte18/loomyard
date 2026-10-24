@@ -246,6 +246,51 @@ func TestAppendDecision_FindingRestoresRecord(t *testing.T) {
 	}
 }
 
+// TestAppendDecisions_WritesBatchWholeOrNothing asserts a batch lands its entries in input order with each PATTERN bullet.
+// It also asserts an empty batch, an empty field in a later entry or a finding over the result leaves the record unchanged.
+func TestAppendDecisions_WritesBatchWholeOrNothing(t *testing.T) {
+	t.Parallel()
+	second := addedDecision()
+	second.Title = "Drop the flag"
+	second.PatternChange = &PatternChange{ID: "PATTERN-new", Action: "adds", Text: "New rule."}
+	secondEntry := strings.Replace(wantEntry, "Keep the cache\n", "Drop the flag\n", 1)
+	empty := addedDecision()
+	empty.Rationale = " "
+	bad := addedDecision()
+	bad.PatternChange = &PatternChange{ID: "PATTERN-new", Action: "renames", Text: "x"}
+
+	tests := []struct {
+		name         string
+		batch        []AddedDecision
+		want         string
+		wantErr      bool
+		wantFindings int
+	}{
+		{
+			name:  "Batch",
+			batch: []AddedDecision{addedDecision(), second},
+			want: strings.Replace(allSectionsContent(), "## Decisions\n\nbody text.\n", "## Decisions\n\nbody text.\n"+wantEntry+secondEntry, 1) +
+				"## PATTERN changes\n\n" + wantBullet + "\n",
+		},
+		{name: "Empty", batch: nil, want: allSectionsContent(), wantErr: true},
+		{name: "LaterEntryEmptyField", batch: []AddedDecision{addedDecision(), empty}, want: allSectionsContent(), wantErr: true},
+		{name: "LaterEntryFinding", batch: []AddedDecision{addedDecision(), bad}, want: allSectionsContent(), wantFindings: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			decisionPath, supportPath := writeFixture(t, t.TempDir(), allSectionsContent(), "log")
+			findings, err := AppendDecisions(decisionPath, supportPath, tt.batch)
+			if (err != nil) != tt.wantErr || len(findings) != tt.wantFindings {
+				t.Fatalf("AppendDecisions() = %v, %v; want %d findings and error %v", findings, err, tt.wantFindings, tt.wantErr)
+			}
+			if got := readFile(t, decisionPath); got != tt.want {
+				t.Errorf("record =\n%q\nwant\n%q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseAddedDecisions(t *testing.T) {
 	t.Parallel()
 
