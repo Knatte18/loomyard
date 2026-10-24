@@ -10,7 +10,7 @@
 // a time. See `PATTERN-gitrepo-client-boundary`.
 //
 // This guard is keyed by **method name** and answers which methods may reach the CLI
-// at all; `PATTERN-gitexec-checked-call` is keyed by **call site**
+// at all; `PATTERN-gitrepo-client-boundary`'s checked-call rule is keyed by **call site**
 // and answers which sites, package-wide, may use the raw form. The two invariants are
 // complementary, not redundant.
 //

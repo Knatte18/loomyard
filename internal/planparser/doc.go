@@ -11,17 +11,18 @@
 //
 // # The Glyph Conversion Chokepoint Invariant
 //
-// This package is also bound by PATTERN-glyph-conversion-chokepoint:
-// glyph.Self (glyphref.go) is the only path->glyph call, Glyph.UnitPath is the only
-// glyph->path call, and glyph.Parse plus Glyph.String are the only glyph grammar this
-// package uses. No `strings.TrimSuffix(s, "#")`, no reading Glyph.Unit as a disk path, and
-// no local regex over a glyph string anywhere in this package or its callers --
+// loomyard performs no glyph-to-path or path-to-glyph conversion of its own, bar the external-test unit mappings below.
+// glyph.Self (glyphref.go) is the only path->glyph call, Glyph.UnitPath is the only glyph->path call, and glyph.Parse plus Glyph.String are the only glyph grammar.
+// No `strings.TrimSuffix(s, "#")` over a glyph-typed value, no reading Glyph.Unit as a disk path, and no local regex over a glyph string anywhere in this package or its callers;
 // cmd/lyx/constraintchokepoint_test.go guards this mechanically.
-// goPackageDir and GoPackageCounterpart (targetdirs.go) are the sanctioned adjustments beside Glyph.UnitPath:
-// goPackageDir maps quarry's external-test pseudo-unit `<dir>_test` to its package directory.
-// GoPackageCounterpart maps a member glyph between `<dir>` and `<dir>_test`.
-// ParseRef (glyphref.go) is the one alphabet choice for a plan ref and for a `plan:` handle's body, so nothing outside this package passes a glyph.Language to a parse;
-// PATTERN-glyph-conversion-chokepoint states the rule.
+// goPackageDir and GoPackageCounterpart (targetdirs.go) are the sanctioned adjustments beside Glyph.UnitPath, for the external-test pseudo-unit only:
+// quarry names an external test package's unit `<dir>_test`, a pseudo-path with no directory, which Glyph.UnitPath returns unchanged.
+// goPackageDir maps that pseudo-unit to its package directory.
+// GoPackageCounterpart maps a member glyph between `<dir>` and `<dir>_test`, so a done-check or handle binding finds a test written into the package its plan did not name.
+// ParseRef (glyphref.go) is the one alphabet choice for a plan ref and for a `plan:` handle's body, from the plan's `language:`, so nothing outside this package passes a glyph.Language to a parse.
+// An id quarry minted for a C# member is no plan ref, and ParseMintedCSharpID is the one parse of it.
+// PathEntryPath is the one Go-alphabet reading of a canonicalized path entry back to its path.
+// Quarry's Enclose is a location-to-glyph conversion quarry does, and internal/planglyph's EncloseAt is its one sanctioned call.
 //
 // # Path ownership
 //
@@ -79,7 +80,7 @@
 // rather than comparing classifyRef's return value itself
 // — never `go doc`, never a process spawn.
 // planparser itself spawns no process and stays tier1-pure per the Test Tier Purity Invariant.
-// glyphref.go holds the sole path->glyph call (glyph.Self), and Glyph.UnitPath is the sole glyph->path call, per the glyph-conversion-chokepoint Shared Decision.
+// glyphref.go holds the sole path->glyph call (glyph.Self), and Glyph.UnitPath is the sole glyph->path call, per the Glyph Conversion Chokepoint Invariant above.
 // goPackageDir and GoPackageCounterpart (targetdirs.go) stand beside Glyph.UnitPath as the external-test unit mappings.
 // CardTargetDirs and RefScope call goPackageDir.
 //

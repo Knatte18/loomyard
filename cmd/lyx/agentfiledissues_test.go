@@ -1,6 +1,6 @@
 //go:build tier0
 
-// agentfiledissues_test.go enforces `PATTERN-agent-filed-issues`: lyx files a GitHub issue only through `lyx selfreport create`,
+// agentfiledissues_test.go enforces `PATTERN-github-auth`: lyx files a GitHub issue only through `lyx selfreport create`,
 // run by an agent or the operator, so no production package outside the selfreport module calls selfreportengine.CreateIssue.
 
 package main
@@ -47,6 +47,6 @@ func TestAgentFiledIssues_NoCreateIssueOutsideSelfreport(t *testing.T) {
 	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-agent-filed-issues` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-github-auth` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }

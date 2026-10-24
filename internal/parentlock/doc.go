@@ -2,6 +2,8 @@
 //
 // The package is told every directory it works on and derives none beyond Dir, which spells the ephemeral directory name only through internal/lyxdirs.
 //
+// Moving, merging into or landing on a local parent branch happens only in a run's Finalize, under this lock for that parent.
+//
 // # Record
 //
 // A Record is Branch, Owner and AcquiredAt, stored as JSON at `<Dir>/<hex(branch)>.json`.

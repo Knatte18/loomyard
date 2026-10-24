@@ -8,3 +8,7 @@ The level is `Info` for a lifecycle spawn and `Debug` for a spawn inside a polli
 - Test-fixture machinery, standalone harnesses and dev tooling under `tools/` are outside this rule, not exemptions to it.
 - Never re-exec `os.Executable()` under `go test`.
 - A retry loop around a real spawn caps attempt COUNT, not only elapsed time.
+
+## Log levels
+
+Logging inside a loop or a poll follows `internal/logger`'s Level policy, stated in its package doc: no `Warn` in a loop that iterates without a state change, and a failure that repeats each tick logs `Warn` once per episode.

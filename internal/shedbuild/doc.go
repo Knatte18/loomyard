@@ -26,7 +26,7 @@
 // A gate that does not hold returns the check's text with the value it read.
 // A gate skips only its own row.
 //
-// This package holds PATTERN-told-geometry: Load reads
+// This package holds PATTERN-cwd-resolution: Load reads
 // exactly the absolute path it is told, and the package derives no path of its own.
 //
 // Parse is filesystem-free but Build is not, because two registry constructors reach disk at construction time between them, producing three distinct effects.

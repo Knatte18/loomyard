@@ -21,7 +21,7 @@
 // and told mode respectively.
 // This property is a review obligation here, not machine-enforced — this package has no
 // import-allowlist test policing the absence of internal/lyxcwd.
-// See PATTERN-told-geometry.
+// See PATTERN-cwd-resolution.
 //
 // # Skills and the parent directive
 //
@@ -94,7 +94,12 @@
 // Review-before-fix is a hard gate, not advisory: the review is fully on disk, and accepted by Go, before the fix half spawns at all, so no target file is touched before then.
 // Fixing findings as they are spotted turns the "review" into a post-hoc rationalization of edits already made, which destroys the independent judgment the whole method depends on.
 // No file or message rides between the halves; what carries the acceptance is the digest the review half returns, which the caller records and hands to the fix half.
-// See PATTERN-review-round and the prompt assets that state this rule to each agent every round.
+// The fix half also refuses a review whose bytes changed since its acceptance.
+// Nothing in a round is self-graded: a round ends on a verdict, and each fix is its own commit on the code branch, never pushed.
+// A review segment converges only on a judge verdict; from round 2 on, a fix of a key first raised in the closing round may converge, carried to the decision record's `## Open risks`.
+// The fixer holds neither the fasit nor the rubric, so neither is a dispute ground: the reviewer applies both before it writes, and the judge rules on a finding that breaks them.
+// A finding's class decides who decides and when the loop stops, never whether it is fixed.
+// The prompt assets state this rule to each agent every round.
 // Those assets are the two seat stencils, burler-template-{reviewer,fixer}.md, and the instruction files burler-step-1-explore.md, burler-step-review.md, burler-review-format.md and burler-step-fix.md.
 // The prompts ship as embedded defaults in the top-level stencils package.
 // They are read from the hub's stencils directory (see fabricengine.StencilsDir) at call time via stencilstore.Read, never from a compiled-in copy — see prompt.go.

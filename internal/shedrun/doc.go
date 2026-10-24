@@ -17,7 +17,7 @@
 // a re-written agreeing seed keeps its original stamp, and a seed written before the field existed has none.
 //
 // A seed decodes with any key this binary does not know, the retired `parent` key included, and an agreeing WriteSeed leaves the file as it is.
-// A run's parent is resolved at use from the pair's origin record alone; see PATTERN-agent-name.
+// A run's parent is resolved at use from the pair's origin record alone; see internal/agentname's package doc.
 //
 // The ephemeral run-directory contents include the loop's files, all under StepsDir:
 // the loop lock, pid file and log, the envelope the waiter prints and the per-loop-id slot it is retired into, and each step's trace copy and stderr file.

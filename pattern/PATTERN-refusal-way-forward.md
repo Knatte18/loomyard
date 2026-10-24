@@ -8,3 +8,25 @@ Another module joins by a change to this entry.
 - A new refusal in a bound module lands with a test that reaches it and asserts its message, unless that spec exempts it; one table-driven test may reach many refusals.
 - The message and its reaching test are the record: no table lists the refusals.
 - Enforcement is review discipline plus the tests that reach each refusal; there is no scan.
+
+## No denied recovery
+
+A way forward is performed by the agent that receives the refusal, and that agent's settings deny some commands.
+A refusal, stencil, spec or skill that offers one of them as a step strands the agent: it either breaks its settings or stops.
+When a recovery needs a denied step, lyx performs the step itself behind a guarded verb, such as `lyx webster reset --to start|pre-fix`, and the text names that verb.
+
+- The closed list of denied forms is `git reset --hard`, `git push --force`, `git push -f`, `rm -rf`, `python`, `python3`, `sed -i`, `perl -i`, `systemctl sleep`, `systemctl hibernate`, `systemctl suspend`, `systemctl hybrid-sleep` and `systemctl suspend-then-hibernate`, the deny set today.
+  `internal/shellguard`'s table owns lyx's own denies, and the operator's permission set owns the rest; the list in `cmd/lyx/norecoverydeny_test.go` reads the table's forms and lists the operator's.
+- The raw `go` deny in `shellguard`'s table is pattern-shaped and stays outside this closed list and its token scan, because specs legitimately describe the plan verify commands Go runs.
+  No refusal, stencil or spec names a raw module-wide `go` run as a way forward; the way forward is `lyx gate test`.
+  The raw `go` deny also refuses a command naming the slot, strand or prebuilt-binary variable, so no refusal, stencil or spec may spell one.
+- The computed-path `rm` deny and the in-place spellings beyond the bare `sed -i` and `perl -i` (`-i<suffix>`, `--in-place` and its abbreviations, a short cluster holding `i`) and the `systemctl` sleep verbs behind flag words are pattern-shaped and stay outside the closed list and its token scan.
+- A form matches only as a whole command token sequence, so `git push --force-with-lease` is not `git push --force`.
+- The scanned surface is `contracts/specs/`, `contracts/stencils/`, `plugins/ly/skills/` and the string literals of the non-test Go files under `internal/webster*`, `internal/shed*` and `internal/loom*`, the modules this entry binds.
+  `pattern/` itself is unscanned, because these background files name the denied forms to explain the rule.
+  Test files are unscanned too, since they plant the forms on purpose.
+- The one exemption marker is `never ` immediately before the form, case-insensitive, with an optional backtick between: it marks the form as forbidden.
+  The marker covers the form only as the direct object of "never", a prohibition;
+  a denied form offered later in the same sentence, or preceded by anything else, still fails.
+- `git reset --keep <sha>`, `git checkout <head> -- <path>` and a plain `rm <path>` are not denied and stay valid steps.
+- The scan reports each hit with file and line, and a self-test plants the shapes above to pin it.

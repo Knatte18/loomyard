@@ -4,6 +4,25 @@
 // The shortname is 2-6 characters of [a-z][a-z0-9]; the slug and the role are [a-z][a-z0-9-]*.
 // Every other package forms, parses, validates and matches names through this one,
 // and the package imports the standard library only.
+//
+// # Where names are formed
+//
+// A program sender is "<shortname>:<NAME>" with an upper-case name matching [A-Z][A-Z0-9_]*, formed and parsed by FormatProgram and ParseProgram.
+// EXTERNAL is the reserved name of a sender creel cannot place.
+// Reed forms a strand's full name once, in AddStrand under its state lock, and stores it in the strand record, which is the only key delivery and lookup resolve through.
+// Pane titles and Claude session names are display mirrors.
+// A full name never names a tmux session or socket, since tmux rewrites ':' and '.' there.
+//
+// The module that spawns an agent owns its role name as a constant declared in that module, never as an inline literal in the spawn spec.
+// There is no shared list of roles, and the role set stays open.
+// cmd/lyx/spawnrole_test.go is a tripwire that fails a shuttleengine.Spec or reedengine.AddSpec composite literal whose Role is a string literal.
+// A seat table's role is its prefix, declared in the spawning module, and its lead's role is the prefix alone;
+// a later seat's role suffix may come from the recipe or config, bounded by the role grammar and the table's uniqueness check.
+//
+// A run's parent is the worktree its pair was created from, recorded once in fabric's origin record.
+// Its agent name is resolved at use as the orch role's name in that worktree, and is never stored in a seed or read from the caller's environment.
+// The hub's shortname is recorded in .lyx-shortname at the board root, read and written by internal/fabricengine alone, and told to reed by internal/hubgeom;
+// a standalone run's derived shortname is told by internal/standalonegeom.
 package agentname
 
 import (

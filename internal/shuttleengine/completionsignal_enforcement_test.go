@@ -1,7 +1,7 @@
 //go:build tier0
 
 // completionsignal_enforcement_test.go is the tripwire for the Completion Signal Invariant that
-// wait.go's own file doc comment states and PATTERN-completion-signal records: every code path in this
+// wait.go's own file doc comment states and PATTERN-shuttle-provider-seam records: every code path in this
 // package that finalizes a NEGATIVE answer to "did this run finish" must consult allOutputFilesExist
 // over the run's OutputFiles first.
 //
@@ -258,7 +258,7 @@ func assertAuditedSet(t *testing.T, kind string, got, audited map[string]int, re
 		return
 	}
 	t.Errorf("Completion Signal Invariant tripwire: the %s set in %v has drifted from its audited state.\n%s\n\n%s\n\n"+
-		"See the Completion Signal Invariant in wait.go's file doc comment and in PATTERN-completion-signal.",
+		"See the Completion Signal Invariant in wait.go's file doc comment and in PATTERN-shuttle-provider-seam.",
 		kind, completionSignalScannedFiles, strings.Join(drift, "\n"), remedy)
 }
 

@@ -1,7 +1,7 @@
 //go:build tier0
 
 // shape_enforcement_test.go is the requirement-4 capstone: the two AST-based boundary-enforcement
-// scans that prove PATTERN-ref-shape-registry holds over both packages'
+// scans that prove PATTERN-sole-parsers holds over both packages'
 // production files, not just at the registry's own file boundary.
 // It follows the same idiom as internal/cliwire/bannedecl_enforcement_test.go and this package's own shape_test.go: stdlib go/parser only, production files walked through scankit from the module root --
 // every _test.go file in either package is skipped by design, because a test fixture legitimately spells a raw "plan:" ref or calls classifyRef directly.
@@ -266,7 +266,7 @@ func TestRefKindScan_RealTreeClean(t *testing.T) {
 	if len(failures) > 0 {
 		t.Errorf("Ref-Shape Registry Invariant violated: a production file outside classify.go/shape.go "+
 			"names classifyRef or a refKind identifier directly, rather than routing through lookup: %v "+
-			"(see PATTERN-ref-shape-registry)", failures)
+			"(see PATTERN-sole-parsers)", failures)
 	}
 }
 
@@ -298,6 +298,6 @@ func TestPlanOpScan_RealTreeClean(t *testing.T) {
 	if len(failures) > 0 {
 		t.Errorf("Ref-Shape Registry Invariant violated: a production file outside the handle grammar's "+
 			"declared owners open-codes \"plan:\" string surgery instead of calling into planparser's "+
-			"exported handle vocabulary: %v (see PATTERN-ref-shape-registry)", failures)
+			"exported handle vocabulary: %v (see PATTERN-sole-parsers)", failures)
 	}
 }

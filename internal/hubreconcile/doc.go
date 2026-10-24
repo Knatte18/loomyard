@@ -1,7 +1,7 @@
 // Package hubreconcile reconciles a hub's config once after a binary change, under a hub lock, and commits everything it wrote.
 // Its one entry point is Ensure; a start verb calls it, through EnsureOrWarn, before loading any module config.
 //
-// The package is told the hub's geometry and derives none (PATTERN-told-geometry), so it never imports internal/lyxcwd.
+// The package is told the hub's geometry and derives none (PATTERN-cwd-resolution), so it never imports internal/lyxcwd.
 //
 // # Stamp, lock and key
 //
@@ -29,6 +29,11 @@
 // It writes the marker only when every registered module's base file exists, after the files, and commits files and marker in the one board commit; a pass that leaves a base absent withholds the marker and the next walk strips again.
 // A failed hub-wide step restores the board's files to their prior bytes and removes a marker the pass wrote, while steps that committed before it keep their commits.
 // With the marker present the walk strips no base, so a unit later set equal to the template stays as a pin.
+//
+// A base file is a hub-wide module's hub file or a per-worktree module's repo default.
+// Every write to one, by any package, holds only the units the hub tuned and never fills in a template value;
+// only this walk's one-time strip drops a unit the template holds, behind the board marker.
+// lenses' template-equal entries are the one exception: a per-name entry equal to the template is dropped on every reconcile.
 //
 // # The sparse migration
 //

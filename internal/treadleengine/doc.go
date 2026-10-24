@@ -161,14 +161,11 @@
 //
 // # No burlerengine import — the Treadle Runner-Seam Invariant
 //
-// This package never imports internal/burlerengine or any internal/*cli
-// package (see PATTERN-treadle-runner-seam, enforced by
-// seam_enforcement_test.go). It defines its own vocabulary — Verdict,
-// AttemptInput/AttemptResult — rather than reusing burlerengine.Verdict/
-// Finding; a round-runner adapter maps its own domain's
-// result type onto treadle's. If a type is ever genuinely needed by both
-// treadle and a runner, it gets extracted out of burler into shared ground —
-// never imported downward.
+// This package imports only the allowlist seam_enforcement_test.go holds, and never internal/burlerengine, internal/lyxcwd or any internal/*cli package;
+// the test enforces it.
+// It defines its own vocabulary — Verdict, AttemptInput/AttemptResult — rather than reusing burlerengine.Verdict/Finding;
+// a round-runner adapter maps its own domain's result type onto treadle's.
+// If a type is ever genuinely needed by both treadle and a runner, it gets extracted out of burler into shared ground — never imported downward.
 //
 // # Geometry-blindness and fabric-blindness
 //

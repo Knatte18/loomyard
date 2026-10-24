@@ -67,7 +67,7 @@ var gitSpawnTokens = []string{
 // the helper-name-HermeticGitEnv Shared Decision). This proves presence only — the
 // mechanical half of the check. The semantic half (a real TestMain that calls the
 // helper before m.Run()) is a review obligation, exactly like the repo's other
-// grep-guards (`PATTERN-shell-mechanics-seam` and `PATTERN-shuttle-provider-seam`).
+// grep-guards (`PATTERN-shell-guard-table` and `PATTERN-shuttle-provider-seam`).
 const hermeticPresenceToken = "HermeticGitEnv"
 
 // pkgHermeticStatus accumulates, per package directory, the evidence the guard's

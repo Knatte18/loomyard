@@ -32,6 +32,15 @@
 // The notes are the loom halt note, which names its anomaly kind and recent history and whose format internal/haltnote owns, the loom crash-resume note written at a run or step entry, and the webster refusal note.
 // The reflection decides from them whether a lyx problem is worth an issue.
 //
+// With Tier 2 on, a loom halt (blocked or failed, under run or step), a loom crash-resume and every `lyx webster` refusal but validate's leave one such note.
+// A webster refusal cobra raises before the verb's RunE fires before the friction directory is resolved and is not noted.
+// A halt spawns no reflection at the stop: the run's Friction-Reflect row covers every note in the friction directory.
+// A note-write failure never changes the verb's exit or envelope.
+// No code path archives or deletes a note before a reflection has covered it: internal/frictionengine's Reflect archives only the notes its covered-notes record names, and only after a clean return or on a finished report.
+// The reflection files issues through `lyx selfreport create` only, and only when the notes, the reason or the trace show a lyx problem behind the event;
+// a misread halt leaves its note's trace file, status and history on disk, so the operator can still file.
+// The loomcli, webstercli, websterengine and frictionengine tests pin the notes, and review covers the rest.
+//
 // # Why four roles
 //
 // Role selects one of four directive-text variants, one per agent shape, because each shape needs

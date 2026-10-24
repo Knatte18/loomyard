@@ -12,6 +12,16 @@ Each on-disk format has one parser; consumers read only its model.
   That admits a second, test-only writer of the plan format, reachable only from `_test.go` files by the testkit importer rule.
 - It renders through `planparser.RecognizedFormat`, so a format bump fails at one site, and `TestValidate_GoldenFixture_ZeroFindings` stays the parser-side anchor.
 
+### Ref shapes
+
+`internal/planparser` is the sole declarer of ref-shape vocabulary: classification (`classifyRef` and `refKind`) and the `plan:` handle grammar (`HandlePrefix` and the exported handle helpers).
+
+- Every ref-shape decision in `internal/planparser` and `internal/planglyph` routes through the kind-policy ledger in `internal/planparser/shape.go` or the exported handle vocabulary.
+- Enforced by the `refKind` enum to `allRefKinds` sync meta-test, the `refGate` constants to `ledger` keys sync meta-test, the ledger completeness meta-test, and the AST-based boundary-enforcement scans with per-scan package-qualified exempt sets: `{internal/planparser/classify.go, internal/planparser/shape.go}` for the `refKind` scan, plus `internal/planparser/handle.go` for the `plan:`-op scan.
+  No planglyph file is exempt.
+- The two sync meta-tests are separate obligations, and both parse a const block from the AST because Go cannot reflect over constants.
+  Ledger completeness ranges `ledger`'s own keys and therefore cannot see a gate missing from it entirely.
+
 ## Discussion format (`internal/discussionparser`)
 
 `internal/discussionparser` is the sole reader of `_lyx/discussion/`'s on-disk format.

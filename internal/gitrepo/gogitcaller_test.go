@@ -1,6 +1,6 @@
 //go:build tier0
 
-// gogitcaller_test.go machine-checks PATTERN-gogit-read-helper: in internal/gitrepo's own non-test source, readGoGit is the only function that calls goGit, so no go-git read can bypass its whole-read retry.
+// gogitcaller_test.go machine-checks PATTERN-gitrepo-client-boundary: in internal/gitrepo's own non-test source, readGoGit is the only function that calls goGit, so no go-git read can bypass its whole-read retry.
 // It is untagged and spawns nothing, a pure go/ast scan.
 
 package gitrepo
@@ -18,7 +18,7 @@ import (
 const goGitCallerMinScannedFiles = 5
 
 // TestGoGitCallers_OnlyReadGoGitCallsGoGit fails when any function of internal/gitrepo's non-test source other than readGoGit calls goGit, and when the scan finds no call from readGoGit at all.
-// See PATTERN-gogit-read-helper.
+// See PATTERN-gitrepo-client-boundary.
 func TestGoGitCallers_OnlyReadGoGitCallsGoGit(t *testing.T) {
 	t.Parallel()
 
@@ -56,6 +56,6 @@ func TestGoGitCallers_OnlyReadGoGitCallsGoGit(t *testing.T) {
 		t.Error("the scan found no goGit call inside readGoGit; the scan no longer sees the helper it guards")
 	}
 	if len(violations) > 0 {
-		t.Errorf("PATTERN-gogit-read-helper violated:\n%s", strings.Join(violations, "\n"))
+		t.Errorf("PATTERN-gitrepo-client-boundary violated:\n%s", strings.Join(violations, "\n"))
 	}
 }

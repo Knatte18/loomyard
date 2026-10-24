@@ -1,6 +1,6 @@
 //go:build tier0
 
-// spawnrole_test.go enforces `PATTERN-agent-name`'s role-constant rule:
+// spawnrole_test.go enforces the role-constant rule of agentname's package doc:
 // the module that spawns an agent owns its role name as a constant, so no spawn spec carries an inline role literal.
 // It is a tripwire over production source: it flags a `shuttleengine.Spec` or `reedengine.AddSpec` composite literal whose `Role` field is a string literal.
 // It does not see a spec built field by field, or a literal reached through a variable.
@@ -41,7 +41,7 @@ func roleLiteralFindings(fset *token.FileSet, file *ast.File, rel string) []stri
 				continue
 			}
 			if basic, ok := kv.Value.(*ast.BasicLit); ok && basic.Kind == token.STRING {
-				findings = append(findings, "`PATTERN-agent-name` violated: "+rel+":"+strconv.Itoa(fset.Position(basic.Pos()).Line)+
+				findings = append(findings, "role-constant rule violated (see agentname's package doc): "+rel+":"+strconv.Itoa(fset.Position(basic.Pos()).Line)+
 					" spawns an agent with the inline role literal "+basic.Value+"; declare the role as a constant in the spawning module")
 			}
 		}

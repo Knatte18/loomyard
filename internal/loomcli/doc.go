@@ -272,4 +272,21 @@
 // The task's merge base is the one commit every reader of the task's diff starts from: the code subject, the Code-Review rubric's range, Describe's diff, and the verify gate's lints and tree scope.
 // It is the merge base of HEAD with the parent tip the merge record names, since the local parent branch can lag a tip the task merged.
 // With no merge record, or one that cannot be decoded and is logged at Warn, it falls back to the merge base with the local parent branch.
+//
+// # The recorded driver's one reading site
+//
+// A recorded seed driver value is read only in a recipe's bootstrap verbs: loom's start and resume, and `lyx loom drive`'s own package.
+// Each branch on it selects the run's driving surface — which driver spawns and whether the session carries the loom status strand — and nothing else.
+// No producer, generic verb or engine reads the recorded value, and no code path gates behaviour on it, because a second reader lets what a run is doing diverge silently from what it was seeded as.
+//
+// One carve-out, and only this shape: a CLI verb may compare a driver value the operator just typed against the addressed run's recorded one and refuse on the envelope when they disagree, as battencli's refuseAdoptedSeed does.
+// A refusal decided by the recorded value alone, with nothing typed to compare it against, stays barred.
+// The rule governs the read, not the vocabulary: the driver constants are named at the seeding sites, which validate a flag before a seed exists.
+// Those constant consumers are the shed CLI's seed command, batten's flag validation in internal/battencli/arm.go, batten's child-driver reader in internal/battencli/wire.go, and loom's seed writer in sharedbootstrap.go.
+// The seed writer reads the recipe's driver_kind override, then shed.yaml's, only at seeding.
+// internal/sheddriver reads no seed driver field.
+//
+// bootstrap_test.go is a tripwire, not a completeness proof:
+// it fails when a production file outside internal/shedrun reads the seed's driver field anywhere but this package and the functions in its driverFieldReadCarveOuts.
+// The carve-outs are keyed by file and enclosing function, each with its justification beside it.
 package loomcli

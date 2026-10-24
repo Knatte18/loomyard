@@ -11,6 +11,10 @@ Starting, resuming or landing a run, bar the rest of a Finalize already past its
   A resume with origin unreachable reads the local Bolt.
 - This machine's name comes only from `internal/machinename`.
 
+## Origin reconcile first
+
+Acting on a run or a hub after an absence starts with `fabricengine`'s origin reconcile, so every verdict above reads the state origin holds.
+
 ## Enforcement
 
 - `internal/machinename`'s sole-source scan fails on a production file outside the package that reads the hostname.

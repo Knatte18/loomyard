@@ -1,8 +1,6 @@
-// Package loomshed owns loom's own producer constructors, its durable row names, its
-// status seeder, and its own cancellation helpers. Loom's ordered producer list itself moved to
-// contracts/recipes/loom-recipe.yaml; internal/loomrecipe is what assembles a *shedengine.Shed from
-// it. It takes told absolute paths and has no direct production import of internal/lyxcwd -- see
-// PATTERN-told-geometry.
+// Package loomshed owns loom's own producer constructors, its durable row names, its status seeder, and its own cancellation helpers.
+// Loom's ordered producer list itself moved to contracts/recipes/loom-recipe.yaml; internal/loomrecipe is what assembles a *shedengine.Shed from it.
+// It takes told absolute paths and has no direct production import of internal/lyxcwd -- see PATTERN-cwd-resolution.
 //
 // The stops its gate rows halt on each name a way forward, as contracts/specs/refusal-spec.md defines one.
 // Loom-Preflight's half-finished-run stop names `lyx loom goto` as that way forward.
@@ -62,6 +60,12 @@
 // The Plan-Write rotation archives the prior plan and appends a prior-plan block naming that archive to the respawned session's prompt.
 // It first archives webster's run record into the archive's `webster` subdirectory through a told seam, so the next Webster run starts a new run over the new plan instead of refusing the old record's plan drift.
 // A run holding webster's run lock refuses the archive before any plan file moves, and ArchivedPlanWebsterDirs lists the subdirectories a rotation writes the record into.
+// The Plan-Review and Code-Review run directories stay out of that rotation.
+//
+// `_lyx/plan/`'s top-level files hold exactly one plan generation.
+// A retired generation lives only under the rework round that retired it (`round-<N>/prior-generation/`), or in the Plan-Write rotation's archive above.
+// Only PR-Rework archives a generation into a round, and this package declares the round layout once, building every path from the existing accessors and telling webster its archive destination.
+// Webster's run record and the Plan-Review and Code-Review run directories are generation-scoped: they move into the round with the plan, so the next generation starts with none.
 //
 // The Darn-Write row's producer (NewDarnWrite) wraps the gated darn writer session and tells it a prior-work note, empty when absent.
 // The note, written in Go, says the change is already under way on the task branch and names the latest Darn-Write history entry's halt reason.

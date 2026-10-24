@@ -12,7 +12,7 @@ A refusal has a way forward when its message names one of these:
 2. a transition the run takes by itself: a re-step, the next Master retry, a failure ladder rung;
 3. a plain `git` command in a checkout the message names, when the work there is the operator's and no `lyx` verb covers it.
 
-A way forward never names a command the agents' settings deny (`PATTERN-no-denied-recovery` holds the list); when a step needs one, lyx performs it itself, as `lyx webster reset` does.
+A way forward never names a command the agents' settings deny (`PATTERN-refusal-way-forward` holds the list); when a step needs one, lyx performs it itself, as `lyx webster reset` does.
 
 Hand-editing a lyx-owned state file (`state.json`, `status.json`, `seed.json`, report files) never counts, and neither does a code fix plus a deploy.
 Waiting for a lock holder counts when the message names how to see the holder (`status`).

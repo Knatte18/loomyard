@@ -16,7 +16,7 @@
 //
 // Args passed to either form are rendered verbatim into any resulting
 // *GitError, with no redaction — callers must not pass credentials in args.
-// PATTERN-gitexec-checked-call is the mechanism that
+// PATTERN-gitrepo-client-boundary's checked-call rule is the mechanism that
 // keeps every remaining raw call site (RunGit, or a direct exec.Command)
 // deliberate rather than accidental.
 // A remote subcommand additionally runs under a deadline, a stall bound with one retry, a process-group kill and the low-speed environment; see doc.go.

@@ -500,7 +500,7 @@
 // `lyx fabric clone --shortname <shortname>` records it; a clone of a fresh bind (a weft carrying neither `.lyx-warp` nor `.lyx-anchor`) refuses without `--shortname`,
 // while a bound weft that lacks the record takes `--shortname` or warns.
 // `lyx fabric shortname [<shortname>]` prints the recorded shortname, or records one on a hub that has none, which is how a repo bound before shortnames existed gets its shortname.
-// The grammar and the way reed uses the shortname are `PATTERN-agent-name`.
+// The grammar and the way reed uses the shortname are in internal/agentname's package doc.
 //
 // The anchor, the repo-wide config, and the warp binding are the three repo-wide records that let a
 // later `lyx fabric reconcile` re-wire a hub with no re-clone at all;
@@ -832,8 +832,7 @@
 // reconcile. `ReconcileActionVanishedMidWalk` names the race instead and sets no `Error`, because
 // nothing failed to reconcile: the pair simply stopped existing.
 //
-// See PATTERN-mutation-record for the machine-enforced half of this rule, and
-// `cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource` for the
+// See `cmd/lyx/destructiveguard_test.go`'s `TestMutationRecord_FabricengineProductionSource` for the
 // guard itself.
 //
 // # The fabric vocabulary rule
@@ -870,7 +869,7 @@
 //
 // `destroy.go` is the one file in this package permitted to perform a destructive primitive — `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a branch on a remote (`git push <remote> --delete`), moving a task branch on a remote (a leased force push), a warp checkout's `ResetHard`, and the board checkout's seed-commit drop — and every one of them runs its shared four-check pipeline first.
 // The one exception is `removeWorktreeLeftover`: it keeps containment through `os.Root`, and takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
-// See `PATTERN-fabric-destruction-chokepoint` for the rules;
+// See `PATTERN-fabric-git` for the rules;
 // this section is the rationale the invariant deliberately omits.
 //
 // **The pair-scoped reset.** `ResetPairCode(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`, which refuses on any tracked dirt and accepts the prime checkout.
@@ -1077,7 +1076,7 @@
 // being in the same call (clone.go, codebinding.go, recordsgit.go, junction.go's weft-target materialisation),
 // where only a post-creation same-UID race, never a static pre-plant, could redirect them — the same accepted
 // residual class as the gate's dirtiness window — and each is an allowlisted, reasoned entry in the write-side
-// guard rather than a routed write. See PATTERN-fabric-write-containment and
+// guard rather than a routed write. See PATTERN-fabric-git and
 // `cmd/lyx/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
 //
 // **The launcher teardown path was the last corner still holding the old shape, because every prior

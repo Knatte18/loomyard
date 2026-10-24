@@ -5,7 +5,7 @@
 // It also declares batten's config module, batten.yaml (config.go).
 //
 // Told-geometry tier: this package takes every absolute path it operates on from its caller and
-// has no direct production import of internal/lyxcwd, per PATTERN-told-geometry.
+// has no direct production import of internal/lyxcwd, per PATTERN-cwd-resolution.
 // Its seam_enforcement_test.go enforces that membership mechanically.
 //
 // This package describes one repository throughout. It is not in the Fabric Vocabulary

@@ -1,6 +1,6 @@
 //go:build tier0
 
-// seam_enforcement_test.go enforces `PATTERN-creel-store`'s import half: production code in this package never imports reed or shuttle, so every keystroke goes through the Delivery seam.
+// seam_enforcement_test.go enforces `PATTERN-pane-text-injection`'s import half: production code in this package never imports reed or shuttle, so every keystroke goes through the Delivery seam.
 
 package creelengine
 
@@ -79,7 +79,7 @@ func TestCreelStore_DeliverySeamImports(t *testing.T) {
 		})
 		scankit.RequireFloor(t, scanned, 1, "creel delivery seam scan")
 		if len(failures) > 0 {
-			t.Errorf("`PATTERN-creel-store` violated; reach a pane through the Delivery seam:\n%s", strings.Join(failures, "\n"))
+			t.Errorf("`PATTERN-pane-text-injection` violated; reach a pane through the Delivery seam:\n%s", strings.Join(failures, "\n"))
 		}
 	})
 }

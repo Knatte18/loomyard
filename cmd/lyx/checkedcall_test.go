@@ -5,7 +5,7 @@
 // adjacent //gitexec:raw marker justifying why the raw form is correct there.
 // Test files are exempt from the marker requirement entirely — this guard never scans a _test.go
 // file's content for either token, the same exemption every sibling guard in this package grants.
-// See `PATTERN-gitexec-checked-call`.
+// See `PATTERN-gitrepo-client-boundary`.
 //
 // # The two-token spelling contrast
 //
@@ -154,11 +154,11 @@ func TestCheckedCallInvariant_RawSitesMarkedAndPinned(t *testing.T) {
 
 	sort.Strings(markerFailures)
 	if len(markerFailures) > 0 {
-		t.Errorf("`PATTERN-gitexec-checked-call` violated: unmarked raw call site(s):\n%s", strings.Join(markerFailures, "\n"))
+		t.Errorf("`PATTERN-gitrepo-client-boundary` violated: unmarked raw call site(s):\n%s", strings.Join(markerFailures, "\n"))
 	}
 
 	if diff := checkedCallCountDiff(checkedCallPinnedRawSites, pkgRawCounts); diff != "" {
-		t.Errorf("`PATTERN-gitexec-checked-call` violated: per-package raw-site count drifted from the pinned map:\n%s", diff)
+		t.Errorf("`PATTERN-gitrepo-client-boundary` violated: per-package raw-site count drifted from the pinned map:\n%s", diff)
 	}
 }
 

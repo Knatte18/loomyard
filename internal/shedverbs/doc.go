@@ -118,4 +118,10 @@
 // progress has two shapes.
 // The step envelope's progress is compact: step, steps and name, with a zero step or steps and an empty name omitted, and no remaining list.
 // The status envelope's progress keeps the full form including remaining, since the driver names producers from it.
+//
+// A failure stop is visible before its waiter returns:
+// when an --until-stop loop stops on a failure and no other holder has the run lock, the status file no longer reads running by the time the waiting invocation returns.
+// That covers a dead loop, a child that ended in an error and an arming refusal, so `lyx loom resume` never answers "already running" for such a run, and no failure waits for the quiet notice.
+// A busy stop, an absent or unreadable status file, the Go driver and a bare step are outside it, as the stops above describe.
+// TestLoop_FailureStopLeavesStatusFailedUnlessBusy, TestUntilStop_DeadLoopStopsLoopExited and TestLoopIntegration_ArmingRefusalStopsAsBootstrap pin it.
 package shedverbs

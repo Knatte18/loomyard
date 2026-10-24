@@ -52,6 +52,7 @@
 // so reed stores nothing for it and the options die with the pane;
 // the status bar renders it on the strand's own button, as " ⏳<label> <elapsed>m" appended to the strand's name with tmux computing the elapsed minutes at each refresh,
 // and no Go decision reads it.
+// The options are set only through SetWaitMark, by shuttleengine and the landing wait-mark callback, which marks the verify and the parent lock wait with the label `parent lock <branch>`.
 //
 // Engine.CapturePaneStyled returns a pane's screen with its SGR attributes beside the plain CapturePane, for a caller that reads cell styles; reed interprets none of it.
 //
@@ -186,8 +187,14 @@
 // process's own environment, it survives the pane shell's profile (which has already run by the time
 // anything is typed), and it needs no multiplexer capability. Selvage's pane and the new-session
 // first pane are out of scope.
+// The detached `lyx` window OpenWindow opens composes its command in panebin.go with the same prelude,
+// and every key binding that runs `lyx` names the pinning binary's absolute path from the same executablePath seam, each `#` doubled for run-shell's format expansion.
+// The detached `lyx loom run` and watchdog daemon spawns are outside the rule, since both are spawned from the executable path and never resolve `lyx` from PATH.
+// Every shell token is emitted through internal/shell, in the shell.ForGOOS() dialect the launch command uses.
+// A failed launch-script write degrades to typing the composed line, and an unresolvable executable to a pane with no prelude and no such binding, each with a named logger.Warn, never a failed launch.
+// panebin_enforcement_test.go fails on a split-window or new-window pane-creation site outside the chokepoint and its named allowlist.
 //
-// A strand's full name is formed once, in AddStrand under the state lock, from the prefix the told geometry carries and the strand's role (the grammar is PATTERN-agent-name).
+// A strand's full name is formed once, in AddStrand under the state lock, from the prefix the told geometry carries and the strand's role (the grammar is internal/agentname's).
 // A role already held in the worktree is numbered `-N`, and an explicit name that is held refuses.
 // Before naming, an ordinary add (not the `--if-absent` or unless-name paths) reclaims the name it asks for: the strand holding that exact name, the un-numbered role name or the explicit one, is removed with the ordinary removal when its engine is dead by the liveness predicate, it is not hidden, it has no children, and the pair is not paused.
 // A live holder, a holder inside the launch grace, and a numbered form (`fix-2` for a role add of `fix`) keep the name, and the ordinary numbering or refusal applies.

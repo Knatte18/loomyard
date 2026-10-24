@@ -457,7 +457,7 @@
 // The interrupt marker also releases an ask with cause ask, whichever signal raised it, to the same interrupt stall when the marker's time is not before the ask's, or either time is zero; an awaiting-input ask from a turn end is not released.
 // A granted permission writes neither a turn signal nor a marker, so an ask holds every send until the next turn signal or an interrupt marker.
 // Output files are consulted first only among the output-derived states, so dead and unknown outrank idle-done and a finished run can read dead:
-// the first consumer that acts on dead applies PATTERN-completion-signal's output check before acting.
+// the first consumer that acts on dead applies PATTERN-shuttle-provider-seam's output check before acting.
 // The facts and their sources: the record gives Interactive and the output files (a run that declares none has none that exist), taken once per read;
 // the optional SessionProber gives process liveness for the session id of the newest signal that names one, else the record's, and the interrupt marker of the newest turn start;
 // the optional ActivityReader gives the API-error marker of the newest turn end; the caller's clock gives the reading time.

@@ -2,7 +2,7 @@
 //
 // [Load] is strict: an absent base layer is an error.
 // [LoadOrTemplate] degrades to the caller's embedded template on proven absence of the base layer's `_lyx/` or file, and is otherwise identical.
-// `PATTERN-config-strictness` decides which of the two a caller adopts.
+// `PATTERN-config-layers` decides which of the two a caller adopts.
 //
 // Both resolve a layer stack, fill, in memory, the template keys the merged stack lacks and log each fill with the layer `template`, except under a hub's sparse base, whose fill is not logged;
 // neither writes a file.

@@ -27,7 +27,7 @@ var coversLinePattern = regexp.MustCompile(`^\*\*Covers:\*\*\s*(.+)$`)
 
 // excludedModules is the Sandbox Suite Coverage allowlist: modules that are
 // intentionally never exercised by a sandbox scenario, each with a one-line
-// reason. Coverage is module-level (see `PATTERN-sandbox-coverage`),
+// reason. Coverage is module-level (see tools/sandbox's command doc),
 // so each entry excludes the whole module, not individual subcommands.
 var excludedModules = []scankit.Entry{
 	{
