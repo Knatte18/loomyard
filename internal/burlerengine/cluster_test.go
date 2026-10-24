@@ -2,8 +2,8 @@
 
 // cluster_test.go table-drives auditClusterRound over the full violation taxonomy (fork-count
 // mismatch, Agent-call-in-fork, write-in-fork, git-mutation-in-fork, named spawns) plus the
-// warning-only ReportReturned==false case, and separately matrixes commandRunsMutatingGit against a set
-// of mutating and non-mutating Bash command strings.
+// warning-only ReportReturned==false case, and separately matrixes firstMutatingGitCommand against a set
+// of mutating and non-mutating Bash command strings and against fork command sequences that create their own repositories.
 
 package burlerengine
 
@@ -246,10 +246,10 @@ func TestAuditClusterRound(t *testing.T) {
 	}
 }
 
-// TestCommandRunsMutatingGit matrixes commandRunsMutatingGit against every Bash command shape the audit must classify correctly.
+// TestFirstMutatingGitCommand matrixes firstMutatingGitCommand over a single command against every Bash command shape the audit must classify correctly.
 // Every listed mutating subcommand matches, tolerant of a leading path, a chain prefix, a later line and global options.
 // Read-only subcommands whose arguments name a mutating verb, help requests and git tag's list forms never match.
-func TestCommandRunsMutatingGit(t *testing.T) {
+func TestFirstMutatingGitCommand(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -352,8 +352,66 @@ func TestCommandRunsMutatingGit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := commandRunsMutatingGit(tt.cmd); got != tt.want {
-				t.Errorf("commandRunsMutatingGit(%q) = %v; want %v", tt.cmd, got, tt.want)
+			if _, got := firstMutatingGitCommand([]string{tt.cmd}); got != tt.want {
+				t.Errorf("firstMutatingGitCommand([%q]) found = %v; want %v", tt.cmd, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFirstMutatingGitCommandScopesToForkRepositories pins that a mutating git call inside a repository the fork created earlier passes, whether reached by -C, by cd or through a worktree added from it.
+// A call that may reach any other repository is returned.
+func TestFirstMutatingGitCommandScopesToForkRepositories(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		commands []string
+		want     string
+	}{
+		{
+			"scratch repository experiment in one command",
+			[]string{`S=/tmp/scratch/wt && git init "$S/repo" && git -C "$S/repo" commit --allow-empty -m init && git -C "$S/repo" worktree add "$S/wt2" && git -C "$S/repo" worktree repair`},
+			"",
+		},
+		{
+			"absolute scratch repository in one command",
+			[]string{"git init /tmp/scratch/repo && git -C /tmp/scratch/repo commit --allow-empty -m init"},
+			"",
+		},
+		{"repository created by an earlier command", []string{"git init -b main .scratch/repo", "git -C .scratch/repo commit --allow-empty -m x"}, ""},
+		{"cd into the created repository", []string{"git init /tmp/r && cd /tmp/r && git commit --allow-empty -m x"}, ""},
+		{"git init inside a cd", []string{"cd /tmp/r && git init && git add . && git commit -m x"}, ""},
+		{"subdirectory of the created repository", []string{"git init /tmp/r", "git -C /tmp/r/sub add f"}, ""},
+		{"relative -C under an anchored cd", []string{"cd $S && git init repo && git -C repo/../repo commit -m x"}, ""},
+		{"worktree added from the created repository", []string{"git init /tmp/r", "git -C /tmp/r worktree add /tmp/w", "git -C /tmp/w commit -m x"}, ""},
+		{"commit outside every created repository", []string{"git init /tmp/r", "git -C /tmp/other commit -m x"}, "git -C /tmp/other commit -m x"},
+		{"sibling sharing the created name prefix", []string{"git init /tmp/r", "git -C /tmp/r2 commit -m x"}, "git -C /tmp/r2 commit -m x"},
+		{"commit in the starting directory", []string{"git init /tmp/r && git commit -m x"}, "git init /tmp/r && git commit -m x"},
+		{"push from the created repository", []string{"git init /tmp/r", "git -C /tmp/r push ../target HEAD:main"}, "git -C /tmp/r push ../target HEAD:main"},
+		{"--git-dir beside the created repository", []string{"git init /tmp/r", "git -C /tmp/r --git-dir=/target/.git commit -m x"}, "git -C /tmp/r --git-dir=/target/.git commit -m x"},
+		{"--work-tree beside the created repository", []string{"git init /tmp/r", "git -C /tmp/r --work-tree /target add f"}, "git -C /tmp/r --work-tree /target add f"},
+		{"bare cd after creating a repository", []string{"git init r && cd && git -C r commit -m x"}, "git init r && cd && git -C r commit -m x"},
+		{"cd - after creating a repository", []string{"git init r && cd - && git -C r commit -m x"}, "git init r && cd - && git -C r commit -m x"},
+		{"git init of the starting directory", []string{"git init", "git commit -m x"}, "git commit -m x"},
+		{"git init of an ancestor", []string{"git init ..", "git -C .. commit -m x"}, "git -C .. commit -m x"},
+		{"relative path escaping a created ~ repository", []string{"git init ~/r", "git -C ~/r/../.. commit -m x"}, "git -C ~/r/../.. commit -m x"},
+		{"git -C above an anchored created repository", []string{`git init "$S" && git -C "$S/../target" commit -m x`}, `git init "$S" && git -C "$S/../target" commit -m x`},
+		{"git init of a path leaving the starting directory", []string{"git init ../x", "git -C ../x commit -m x"}, "git -C ../x commit -m x"},
+		{"git init -- terminator", []string{"git init -- -r", "git -C -r commit -m x"}, ""},
+		{"git worktree add valued options", []string{"git init /tmp/r", "git -C /tmp/r worktree add -b br /tmp/w", "git -C /tmp/w commit -m x"}, ""},
+		{"git init valued options", []string{"git init --template /tmp/tpl /tmp/r", "git -C /tmp/r commit -m x"}, ""},
+		{"created path with a trailing slash", []string{"git init /tmp/r/", "git -C /tmp/r commit -m x"}, ""},
+		{"anchored cd after a bare cd", []string{"git init /tmp/r && cd && cd /tmp/r && git commit -m x"}, ""},
+		{"cd in an earlier command does not carry over", []string{"git init /tmp/r && cd /tmp/r", "git commit -m x"}, "git commit -m x"},
+		{"worktree added from an uncreated repository", []string{"git worktree add /tmp/w", "git -C /tmp/w commit -m x"}, "git -C /tmp/w commit -m x"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, found := firstMutatingGitCommand(tt.commands)
+			if got != tt.want || found != (tt.want != "") {
+				t.Errorf("firstMutatingGitCommand(%q) = (%q, %v); want (%q, %v)", tt.commands, got, found, tt.want, tt.want != "")
 			}
 		})
 	}
