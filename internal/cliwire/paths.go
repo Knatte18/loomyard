@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/standalonestate"
@@ -122,17 +123,38 @@ func NormalizeForContainment(path string) string {
 // production call site (resolveStandaloneTarget) can never pass one: its own dir is always derived
 // from cwd, which is refused upstream by lyxcwd.CwdFrom before wire is ever reached, so this
 // precondition is not live-exploitable today.
+//
+// The walk honors GIT_CEILING_DIRECTORIES as git's own discovery does, so it names the repository git would:
+// it never climbs into a listed directory, and a walk stopped there returns dir unchanged.
+// dir itself is checked even when it is listed.
 func RepositoryRootOf(dir string) string {
+	return repositoryRootBelowCeilings(dir, gitCeilingDirectories(os.Getenv("GIT_CEILING_DIRECTORIES")))
+}
+
+// repositoryRootBelowCeilings returns the nearest repository root at or above dir that the walk reaches without climbing into one of ceilings, or dir unchanged when it reaches none.
+func repositoryRootBelowCeilings(dir string, ceilings []string) string {
 	for candidate := dir; ; {
 		if _, err := os.Lstat(filepath.Join(candidate, gitDirName)); err == nil {
 			return candidate
 		}
 		parent := filepath.Dir(candidate)
-		if parent == candidate {
+		if parent == candidate || slices.Contains(ceilings, parent) {
 			return dir
 		}
 		candidate = parent
 	}
+}
+
+// gitCeilingDirectories parses a GIT_CEILING_DIRECTORIES value into the absolute directories it lists, each normalized as the walk's own input is, so a symlinked spelling still matches.
+// Relative and empty entries are dropped, since git ignores them too.
+func gitCeilingDirectories(value string) []string {
+	var ceilings []string
+	for _, entry := range filepath.SplitList(value) {
+		if filepath.IsAbs(entry) {
+			ceilings = append(ceilings, standalonestate.Normalize(entry))
+		}
+	}
+	return ceilings
 }
 
 // SamePlanDir reports whether a told --plan-dir names the same directory as the mode's own default.

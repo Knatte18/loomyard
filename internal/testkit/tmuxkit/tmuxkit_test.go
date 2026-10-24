@@ -49,7 +49,7 @@ func TestSetEnv(t *testing.T) {
 	t.Setenv("LYX_REED_TMUX_CONF", "/operator/tmux.conf")
 	t.Setenv("TMUX_TMPDIR", "/elsewhere")
 	// TMP and TEMP are the Windows temp variables; setting them first has t.Setenv restore them.
-	for _, name := range []string{"TMPDIR", "TMP", "TEMP"} {
+	for _, name := range []string{"TMPDIR", "TMP", "TEMP", "GIT_CEILING_DIRECTORIES"} {
 		t.Setenv(name, os.Getenv(name))
 	}
 	dir := filepath.Join(t.TempDir(), dirPrefix+"0")
@@ -59,7 +59,7 @@ func TestSetEnv(t *testing.T) {
 
 	setEnv(dir)
 
-	for _, name := range []string{"TMUX_TMPDIR", "TMPDIR"} {
+	for _, name := range []string{"TMUX_TMPDIR", "TMPDIR", "GIT_CEILING_DIRECTORIES"} {
 		if got := os.Getenv(name); got != dir {
 			t.Errorf("%s = %q, want %q", name, got, dir)
 		}

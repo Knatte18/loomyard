@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -182,6 +183,7 @@ func TestModule_ResolveStandaloneTarget(t *testing.T) {
 }
 
 // TestRepositoryRootOf covers the repository-root lift: a subdirectory resolves to the repository root, the nearest ".git" wins over the topmost, a directory with no repository above it is returned unchanged, and a ".git" FILE (as a linked worktree records it) counts as a repository root.
+// It also covers the GIT_CEILING_DIRECTORIES stop, driven through the unexported walk so the test stays parallel.
 //
 //testtiming:keep pins the nearest-wins and .git-file lift rules, which the target-resolution cases never reach
 func TestRepositoryRootOf(t *testing.T) {
@@ -234,6 +236,45 @@ func TestRepositoryRootOf(t *testing.T) {
 			t.Errorf("RepositoryRootOf(%q) = %q; want %q -- a .git FILE, as a linked worktree records it, still counts", sub, got, dir)
 		}
 	})
+
+	t.Run("CeilingStopsTheWalkBelowIt", func(t *testing.T) {
+		t.Parallel()
+		ceiling := seedGitRepositoryRoot(t, standalonestate.Normalize(t.TempDir()))
+		repo := seedGitRepositoryRoot(t, filepath.Join(ceiling, "repo"))
+		plain := filepath.Join(ceiling, "plain", "src")
+		for _, dir := range []string{filepath.Join(repo, "src"), plain} {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatalf("mkdir %s: %v", dir, err)
+			}
+		}
+		ceilings := gitCeilingDirectories(string(filepath.ListSeparator) + "relative" + string(filepath.ListSeparator) + ceiling)
+		if !slices.Equal(ceilings, []string{ceiling}) {
+			t.Errorf("gitCeilingDirectories() = %q; want only the absolute entry %q", ceilings, ceiling)
+		}
+		if got := repositoryRootBelowCeilings(plain, ceilings); got != plain {
+			t.Errorf("repositoryRootBelowCeilings(%q, %q) = %q; want it unchanged -- the .git at the ceiling lies above the walk", plain, ceilings, got)
+		}
+		if got := repositoryRootBelowCeilings(filepath.Join(repo, "src"), ceilings); got != repo {
+			t.Errorf("repositoryRootBelowCeilings(%q, %q) = %q; want %q -- a repository below the ceiling is still found", filepath.Join(repo, "src"), ceilings, got, repo)
+		}
+		if got := repositoryRootBelowCeilings(ceiling, ceilings); got != ceiling {
+			t.Errorf("repositoryRootBelowCeilings(%q, %q) = %q; want %q -- the start is checked even when it is a ceiling", ceiling, ceilings, got, ceiling)
+		}
+	})
+}
+
+// TestRepositoryRootOf_ReadsGitCeilingDirectoriesFromTheEnvironment pins that RepositoryRootOf takes its ceilings from GIT_CEILING_DIRECTORIES.
+// It is serial because t.Setenv changes process-global state.
+func TestRepositoryRootOf_ReadsGitCeilingDirectoriesFromTheEnvironment(t *testing.T) {
+	ceiling := seedGitRepositoryRoot(t, standalonestate.Normalize(t.TempDir()))
+	plain := filepath.Join(ceiling, "plain", "src")
+	if err := os.MkdirAll(plain, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", plain, err)
+	}
+	t.Setenv("GIT_CEILING_DIRECTORIES", ceiling)
+	if got := RepositoryRootOf(plain); got != plain {
+		t.Errorf("RepositoryRootOf(%q) = %q; want it unchanged -- the .git at the ceiling lies above the walk", plain, got)
+	}
 }
 
 // TestModule_RefuseNestedStandaloneGeometry covers the nested-geometry refusal over both fixtures, asserting both wordings verbatim -- this is what pins the per-CLI noun phrases as descriptor data.
