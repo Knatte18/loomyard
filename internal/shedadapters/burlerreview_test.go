@@ -36,6 +36,8 @@ type halfProducerSpec struct {
 	requiresFans bool
 	// gateFindingsPath is the deps' told gate findings file; empty tells none.
 	gateFindingsPath string
+	// notifyParent is the deps' told parent notifier; nil tells none.
+	notifyParent func(line string) error
 }
 
 // newHalfSpec returns a spec over the minimal profile and a fixed clock.

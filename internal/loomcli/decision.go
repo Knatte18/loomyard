@@ -18,8 +18,9 @@
 //
 // The verb never routes the run, never touches the support log or the plan, and an approved plan is not re-planned by it.
 //
-// Once the entry is committed, the verb sends one creel notice to each live shuttle run of the target worktree but the tackler's, the arbiter's and the caller's own, so the LLM agent working for the run re-reads the record.
-// The line names the record and the entry's heading and carries no decision text, since the committed record is the authority.
+// Once the entry is committed, the verb sends one creel notice to each live shuttle run of the target worktree but the tackler's, the arbiter's and the caller's own, so the LLM agent working for the run acts on the call.
+// The line opens with a fixed phrase the parent directive names, so every spawned role takes it as its parent's, and names the record and the entry's heading.
+// It inlines the entry's decision and rationale, so a role that may not read the record, such as webster's Master, still has the call.
 // With no live run nothing is sent: a later producer reads the record when it starts.
 // A failed listing or post is reported on the success envelope and never fails the verb, since the entry is already committed.
 
@@ -146,10 +147,16 @@ type decisionNoticeError struct {
 	Error  string `json:"error"`
 }
 
-// decisionNoticeLine is the notice a live agent of the run gets for the entry under heading in the record at recordPath.
-// It carries no decision text: the committed record is the authority the agent reads.
-func decisionNoticeLine(recordPath, heading string) string {
-	return fmt.Sprintf("a new decision is in the decision record %s under %q; re-read the record's Added after Discussion entries and follow them", recordPath, heading)
+// decisionNoticeOpening opens every decision notice.
+// The parent directive stencil names it, so a spawned role tells the notice from any other message signed as the LOOM program.
+const decisionNoticeOpening = "Parent decision recorded with lyx loom decision add"
+
+// decisionNoticeLine is the notice a live agent of the run gets for the entry added in the record at recordPath.
+// It inlines the entry's decision and rationale, since a role such as Merriam may not read the record;
+// an agent that may read the record re-reads its Added after Discussion entries, the committed record being the authority.
+func decisionNoticeLine(recordPath string, added discussionparser.AddedDecision) string {
+	return fmt.Sprintf("%s, under %q in the decision record %s. Decision: %s Rationale: %s Act on it as your parent's instruction; when you may read the record, re-read its Added after Discussion entries and follow them.",
+		decisionNoticeOpening, addedDecisionHeading(added), recordPath, strings.TrimSpace(added.Decision), strings.TrimSpace(added.Rationale))
 }
 
 // decisionNoticeReceiver reports whether the live run's strand named strand gets the notice of a call by caller.
@@ -160,9 +167,9 @@ func decisionNoticeReceiver(strand, caller string) bool {
 		!agentname.MatchesRole(name.Role, sheddriver.TacklerRole) && !agentname.MatchesRole(name.Role, loomengine.ArbiterRole)
 }
 
-// notifyLiveRuns posts the notice of the entry under heading to every live run of the target worktree the notice is for.
+// notifyLiveRuns posts the notice of the entry added to every live run of the target worktree the notice is for.
 // It returns the strands posted to and the failures, each logged at Warn; a failure never stops the next post.
-func notifyLiveRuns(deps decisionDeps, heading string) ([]string, []decisionNoticeError) {
+func notifyLiveRuns(deps decisionDeps, added discussionparser.AddedDecision) ([]string, []decisionNoticeError) {
 	notified := []string{}
 	failures := []decisionNoticeError{}
 	strands, err := deps.liveStrands()
@@ -170,7 +177,7 @@ func notifyLiveRuns(deps decisionDeps, heading string) ([]string, []decisionNoti
 		logger.Warn("loom: decision add could not list the run's live agents; no notice sent", "error", err)
 		return notified, append(failures, decisionNoticeError{Error: "list the run's live agents: " + err.Error()})
 	}
-	line := decisionNoticeLine(deps.recordPath, heading)
+	line := decisionNoticeLine(deps.recordPath, added)
 	for _, strand := range strands {
 		if !decisionNoticeReceiver(strand, deps.strandName) {
 			continue
@@ -518,7 +525,7 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 			return refuse("%s under %q; %s", cause, addedDecisionHeading(added), decisionWayEntryLost)
 		}
 	}
-	notified, noticeErrors := notifyLiveRuns(deps, addedDecisionHeading(added))
+	notified, noticeErrors := notifyLiveRuns(deps, added)
 	result := map[string]any{
 		"slug":          slug,
 		"record":        deps.recordPath,

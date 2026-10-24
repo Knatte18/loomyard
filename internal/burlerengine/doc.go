@@ -66,6 +66,8 @@
 // when they pass, Fix writes a normal fixer report saying nothing was fixed and returns a skipped OutcomeDone with no session;
 // when one fails, the fixer is spawned with the failing gates' findings in a gate-findings file as its work, since a gate exhausted in a round leaves its gate-failed edits in the target and the re-review of that round may find nothing.
 // A gate closure that errors is returned wrapped with nothing spawned.
+// RunOpts.DecisionsRouted marks a caller that sends the review's decision-class findings to the run's parent, since a fixer can neither ask for nor record the call.
+// Fix then counts those findings as no work: a review holding only them is handled as one with none, its skipped report naming the routing, and a spawned fixer's work line says they are not its own.
 // The fixer reads the review, validates each finding against the code, and fixes it.
 // Its spec declares the fixer-report as its only output file, and its gate is RunOpts.Gate with every entry wrapped by repairReportBeforeGate.
 // The fixer's files hold the review-file format and the fix step; it carries no rubric, fasit, PATTERN directive, focus file, prior rounds or explore step,

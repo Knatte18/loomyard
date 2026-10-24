@@ -200,12 +200,21 @@ func composeFixPrompt(stencilsDir string, p *Profile, frictionDirective, work st
 // fixWork returns the fix step's required work statement.
 // With no gate-findings path the review's findings are the work;
 // with one, the review holds no findings but the round's gates failed, so the work is what that file names.
-func fixWork(reviewPath, gateFindingsPath string) string {
-	if gateFindingsPath == "" {
+// decisionsRouted adds that the review's decision-class findings went to the run's parent and are not the fixer's.
+func fixWork(reviewPath, gateFindingsPath string, decisionsRouted bool) string {
+	switch {
+	case gateFindingsPath == "" && !decisionsRouted:
 		return fmt.Sprintf("Fix every finding of the review at `%s`.", reviewPath)
+	case gateFindingsPath == "":
+		return fmt.Sprintf("Fix every finding of the review at `%s` but its `decision`-class findings. %s", reviewPath, routedDecisionsLine)
+	case !decisionsRouted:
+		return fmt.Sprintf("The review at `%s` holds no findings, but the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name.", reviewPath, gateFindingsPath)
 	}
-	return fmt.Sprintf("The review at `%s` holds no findings, but the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name.", reviewPath, gateFindingsPath)
+	return fmt.Sprintf("The review at `%s` holds no findings but `decision`-class ones, and the round's gates failed on the target as it stands. Fix what the gate findings in `%s` name. %s", reviewPath, gateFindingsPath, routedDecisionsLine)
 }
+
+// routedDecisionsLine tells a fixer that the review's decision-class findings went to the run's parent and are not its own.
+const routedDecisionsLine = "Those went to your parent, who makes each call: you neither fix, dispute nor defer them, and your fixer-report leaves them out."
 
 // focusDirectiveBlock renders the focus-directive stencil for focusPath, the value injected as the explore step's optional focus_directive marker.
 // An empty focusPath returns "" without reading anything:

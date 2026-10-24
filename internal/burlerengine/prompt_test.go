@@ -91,7 +91,7 @@ func composeReview(t *testing.T, stencilsDir string, p *Profile, patternDirectiv
 // composeFix composes p's fix half prompt over the placeholder paths and a review's findings as the work, failing the test on error.
 func composeFix(t *testing.T, stencilsDir string, p *Profile, frictionDirective string) halfPrompt {
 	t.Helper()
-	prompt, err := composeFixPrompt(stencilsDir, p, frictionDirective, fixWork(p.ReviewPath, ""), testFixFiles)
+	prompt, err := composeFixPrompt(stencilsDir, p, frictionDirective, fixWork(p.ReviewPath, "", false), testFixFiles)
 	if err != nil {
 		t.Fatalf("composeFixPrompt() = %v; want nil error", err)
 	}

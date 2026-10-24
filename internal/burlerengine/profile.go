@@ -114,6 +114,9 @@ type RunOpts struct {
 	// and from every profile test's comparison, while RunOpts already carries Model, Effort,
 	// Timeout, Round, and NoteID, which is exactly what a gate is.
 	Gate shuttleengine.GateSpec
+	// DecisionsRouted marks a fix whose caller sends the review's decision-class findings to the run's parent, so they are no fixer work.
+	// False keeps every finding as fixer work.
+	DecisionsRouted bool
 }
 
 // validateReview normalizes p in place and reports a fail-loud error if the review half is not runnable.

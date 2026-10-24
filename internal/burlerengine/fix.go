@@ -30,6 +30,15 @@ var skippedFixerReport = "# Fixer report\n\n" +
 	"## Deferred\n\n" +
 	"(none)\n"
 
+// skippedRoutedFixerReport is the fixer report written when the fix half is skipped because the review's only findings are decision-class ones its caller sent to the run's parent.
+var skippedRoutedFixerReport = "# Fixer report\n\n" +
+	"## Changes\n\n" +
+	"Nothing fixed: the review held only decision findings, which went to the run's parent, and the round's gates passed, so no fixer was spawned.\n\n" +
+	"## Disputed\n\n" +
+	"(none)\n\n" +
+	"## Deferred\n\n" +
+	"(none)\n"
+
 // FixResult is the fix half's outcome.
 type FixResult struct {
 	Outcome         shuttleengine.Outcome
@@ -85,6 +94,7 @@ func (p *Profile) fixTable(opts RunOpts, values map[string]string, skills []stri
 // Fix runs the fix half for p, tuned by opts, over the review whose accepted bytes hash to digest.
 // It validates p, then reads the review through acceptedReview, which returns ErrReviewChanged when the file no longer hashes to digest.
 // A review with findings of any severity spawns the fixer.
+// With opts.DecisionsRouted, decision-class findings are no fixer work: the fixer's work line names them as not its own, and a review holding only those counts as one with none.
 // A review with none runs opts.Gate once: when every gate passes, Fix writes the fixer report itself and returns a skipped OutcomeDone with no session;
 // when a gate fails, the fixer is spawned with the failing gates' findings as its work; a gate whose closure errors is returned wrapped with nothing spawned.
 // A fixer that never starts because its provider never came up is OutcomeDied with NotStarted set and a nil error.
@@ -100,16 +110,26 @@ func (e *Engine) Fix(p Profile, opts RunOpts, digest string) (FixResult, error) 
 		return FixResult{}, err
 	}
 
-	logger.Info("burler: fix starting", "round", opts.Round, "findings", len(findings), "fixerReportPath", p.FixerReportPath)
+	work := findings
+	if opts.DecisionsRouted {
+		work = withoutClass(findings, ClassDecision)
+	}
+	routed := len(findings) - len(work)
+
+	logger.Info("burler: fix starting", "round", opts.Round, "findings", len(findings), "routedDecisions", routed, "fixerReportPath", p.FixerReportPath)
 
 	gateFindings := ""
-	if len(findings) == 0 {
+	if len(work) == 0 {
 		gateFindings, err = checkGates(opts.Gate)
 		if err != nil {
 			return FixResult{}, err
 		}
 		if gateFindings == "" {
-			return e.skipFix(&p)
+			report := skippedFixerReport
+			if routed > 0 {
+				report = skippedRoutedFixerReport
+			}
+			return e.skipFix(&p, report)
 		}
 	}
 
@@ -134,7 +154,7 @@ func (e *Engine) Fix(p Profile, opts RunOpts, digest string) (FixResult, error) 
 			return FixResult{}, fmt.Errorf("burler: materialize instruction files: %w", err)
 		}
 	}
-	prompt, err := composeFixPrompt(e.stencilsDir, &p, frictionDirective, fixWork(p.ReviewPath, gateFindingsPath), paths)
+	prompt, err := composeFixPrompt(e.stencilsDir, &p, frictionDirective, fixWork(p.ReviewPath, gateFindingsPath, routed > 0), paths)
 	if err != nil {
 		return FixResult{}, err
 	}
@@ -146,12 +166,23 @@ func (e *Engine) Fix(p Profile, opts RunOpts, digest string) (FixResult, error) 
 	return e.concludeFix(&p, opts, digest, seats, err)
 }
 
-// skipFix writes the skipped fixer report for p and returns the skipped fix result.
-func (e *Engine) skipFix(p *Profile) (FixResult, error) {
+// withoutClass returns the findings whose class is not class, in order.
+func withoutClass(findings []Finding, class Class) []Finding {
+	kept := make([]Finding, 0, len(findings))
+	for _, f := range findings {
+		if f.Class != class {
+			kept = append(kept, f)
+		}
+	}
+	return kept
+}
+
+// skipFix writes report as the fixer report for p and returns the skipped fix result.
+func (e *Engine) skipFix(p *Profile, report string) (FixResult, error) {
 	if err := os.MkdirAll(filepath.Dir(p.FixerReportPath), 0o755); err != nil {
 		return FixResult{}, fmt.Errorf("burler: create the fixer report directory for %q: %w", p.FixerReportPath, err)
 	}
-	if err := os.WriteFile(p.FixerReportPath, []byte(skippedFixerReport), 0o644); err != nil {
+	if err := os.WriteFile(p.FixerReportPath, []byte(report), 0o644); err != nil {
 		return FixResult{}, fmt.Errorf("burler: write the skipped fixer report %q: %w", p.FixerReportPath, err)
 	}
 	logger.Info("burler: fix skipped, the review held no findings and the gates pass", "fixerReportPath", p.FixerReportPath)

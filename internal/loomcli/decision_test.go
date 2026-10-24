@@ -16,10 +16,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 )
 
 const decisionPriorRecord = "# Record\n\n## Decisions\n\n### First\n\nDecision: a.\n"
@@ -741,11 +743,29 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 				if post.receiver != tt.want[i] {
 					t.Errorf("post %d receiver = %q; want %q", i, post.receiver, tt.want[i])
 				}
-				if !strings.Contains(post.line, f.path) || !strings.Contains(post.line, heading) || strings.Contains(post.line, input.decision) {
-					t.Errorf("post line = %q; want the record path and heading %q and no decision text", post.line, heading)
+				if !strings.HasPrefix(post.line, decisionNoticeOpening) {
+					t.Errorf("post line = %q; want it to open with %q", post.line, decisionNoticeOpening)
+				}
+				for _, want := range []string{f.path, heading, input.decision, input.rationale} {
+					if !strings.Contains(post.line, want) {
+						t.Errorf("post line = %q; want it to carry %q", post.line, want)
+					}
 				}
 			}
 		})
+	}
+}
+
+// TestDecisionNoticeOpening_NamedByParentDirective asserts the rendered parent directive quotes the opening every decision notice starts with.
+// That quote is what makes a spawned role admit the notice as its parent's.
+func TestDecisionNoticeOpening_NamedByParentDirective(t *testing.T) {
+	t.Parallel()
+	directive, err := parentdirective.Directive(stencilkit.Seed(t), "hub:orch", false)
+	if err != nil {
+		t.Fatalf("Directive = _, %v; want nil error", err)
+	}
+	if !strings.Contains(directive, "`"+decisionNoticeOpening+"`") {
+		t.Errorf("Directive = %q; want it to quote the decision notice's opening %q", directive, decisionNoticeOpening)
 	}
 }
 
