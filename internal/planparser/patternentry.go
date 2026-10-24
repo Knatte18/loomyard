@@ -67,3 +67,9 @@ func CardPatternEntries(card Card) []PatternEntryLine {
 	}
 	return entries
 }
+
+// CardNamesPatternEntry reports whether card's text names the PATTERN entry id in backticks, anywhere in prose, a code span or a fenced block.
+// It marks the card that carries out a change to the entry which the plan states without fencing a line, such as a removal.
+func CardNamesPatternEntry(card Card, id string) bool {
+	return strings.Contains(card.Text, "`"+id+"`")
+}
