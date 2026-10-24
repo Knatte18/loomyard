@@ -426,6 +426,8 @@
 //
 // Agent activity: RunState records the pid of the process that waits on the run, which Start writes and an attach rewrites to the attaching process.
 // A run counts as live when its outcome reads running and that pid is alive; a record without a pid, from an older binary, is not live.
+// ReadAgentActivity logs a record that reads running with its recorded waiter gone at Warn once per episode per run directory, at Debug while it repeats and at Info once it reads live again, no longer reads running or has no record.
+// Such a run's agent may still be working where no activity reader sees it.
 // ReadAgentActivity returns one AgentActivity per live run under a run-directory root:
 // the run's strand name, its last activity, and whether its newest turn end is an API error with the error's text.
 // The last activity is the newer of the session's last activity, its forks included, and the time of the events file's newest Stop or ask line, the run's creation time when neither is readable.

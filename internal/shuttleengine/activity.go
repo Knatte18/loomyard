@@ -54,6 +54,7 @@ var unreadableFiles logger.EpisodeSet
 // A run is live when its record reads running and the pid of the process that waits on it is alive.
 // A directory that is not a run directory, a run with no record, an undecodable record and a run that is not live are skipped,
 // and an undecodable record is logged once per episode so one torn file cannot hide another run.
+// A record that reads running while the process recorded as waiting on it is gone is skipped too, and logged once per episode, so a working agent that lost its waiter leaves a trace.
 // Each run is read through the engine its record names, the set's default for a record naming none:
 // its events past its prompt offset are parsed through that engine, and the newest turn end among them is handed to the engine's ActivityReader;
 // a run with no turn end past the offset hands over the newest one before it, a skill-load turn end of the same session, for its last activity only, so a first turn spent in a fork still reads active.
@@ -81,9 +82,15 @@ func ReadAgentActivity(cfg Config, anchorPath string, engines EngineSet) ([]Agen
 			continue
 		}
 		unreadableFiles.Recover(runDir, "shuttle: run record readable again", "runDir", runDir)
-		if !found || !runIsLive(rs) {
+		if !found {
+			waiterlessRuns.Recover(runDir, waiterlessRecovered, "runDir", runDir)
 			continue
 		}
+		if !runIsLive(rs) {
+			noteWaiterlessRun(runDir, rs)
+			continue
+		}
+		waiterlessRuns.Recover(runDir, waiterlessRecovered, "runDir", runDir)
 		engine, ok := engines.engineOfRun(runDir, rs)
 		if !ok {
 			continue
@@ -97,6 +104,25 @@ func ReadAgentActivity(cfg Config, anchorPath string, engines EngineSet) ([]Agen
 // runIsLive reports whether rs names a run still waited on: it reads running and its recorded pid is alive.
 func runIsLive(rs RunState) bool {
 	return rs.Outcome == runOutcomeRunning && rs.PID > 0 && isAlive(rs.PID)
+}
+
+// waiterlessRuns keeps one episode per run directory whose record reads running while the process recorded as waiting on it is gone.
+// Its key space is its own because the unreadable-record episode of the same run directory recovers on every readable read.
+var waiterlessRuns logger.EpisodeSet
+
+// waiterlessRecovered is the recovery line of a waiterless-run episode.
+const waiterlessRecovered = "shuttle: run no longer has a gone waiting process"
+
+// noteWaiterlessRun logs the skip of the run at runDir, whose record rs is not live, once per episode when rs reads running with a recorded waiter that is gone.
+// Such a run's agent may still be working where no reader sees it.
+// It ends the episode when rs reads anything else.
+// A record with no pid predates the field and is not counted.
+func noteWaiterlessRun(runDir string, rs RunState) {
+	if rs.Outcome == runOutcomeRunning && rs.PID > 0 {
+		waiterlessRuns.Fail(runDir, "shuttle: skipping a run that reads running but whose waiting process is gone", "runDir", runDir, "strand", rs.StrandName, "pid", rs.PID)
+		return
+	}
+	waiterlessRuns.Recover(runDir, waiterlessRecovered, "runDir", runDir)
 }
 
 // readRunActivity builds the reading of the live run rs; reader is nil when the engine has no ActivityReader.
