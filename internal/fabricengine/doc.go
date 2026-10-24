@@ -1144,9 +1144,12 @@
 //
 // # The hub workspace file
 //
-// `RegenerateHubWorkspace` writes `<hub>/<RepoName>.code-workspace`, the one VS Code workspace file of a hub: the prime first, `Bolt` second, then every task pair at its anchor dir, sorted by slug.
-// The file lists every task pair of the hub, and no per-umbrella partition exists.
-// The file is lyx-owned and rewritten from the hub's current worktrees whenever its bytes would change, so a hand edit is overwritten;
+// `RegenerateHubWorkspace` writes `<hub>/<RepoName>.code-workspace`, the hub's own VS Code workspace file: the prime first, `Bolt` second, then every pair whose parent is the prime at its anchor dir, sorted by slug, the beams among them.
+// A pair's parent is the `parent_worktree` of its origin record, read with `ReadOriginFor`; the prime when that is empty, names the prime or names a pair that is gone, and when the record is absent or cannot be read.
+// A pair under a beam is left out of the hub file.
+// Beside it, `BeamWorkspacePath` names `<hub>/<RepoName>-<beam>.code-workspace` for each pair whose origin record carries the beam mark, listing the beam, its parent, `Bolt` and every pair whose parent is the beam; a sub-beam appears there by its own worktree only and has a file of its own.
+// Each beam file carries `lyx.generated: true` as its first key, and a regeneration removes such a file only when its beam pair is gone, through the hub's `os.Root`, so an operator's unmarked file of that name stays.
+// The files are lyx-owned and rewritten from the hub's current worktrees and origin records whenever their bytes would change, so a hand edit is overwritten;
 // settings belong in the prime's `.vscode/settings.json`, which the file splices verbatim.
 // A regeneration runs under `HubWorkspaceLockPath(hub)`, a leaf lock under the hub scratch directory, and lists the folders only after taking it,
 // so a pair created while the regeneration waits is listed.

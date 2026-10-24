@@ -64,7 +64,7 @@ func TestWriteHubWorkspace(t *testing.T) {
 			path := HubWorkspacePath(l)
 			first := []byte("{\n  \"folders\": []\n}\n")
 
-			wrote, err := writeHubWorkspace(l, first)
+			wrote, err := writeHubWorkspace(l, path, first)
 			if err != nil {
 				t.Fatalf("first write: %v", err)
 			}
@@ -80,7 +80,7 @@ func TestWriteHubWorkspace(t *testing.T) {
 			}
 			assertNoHubContainers(t, l.HubPath)
 
-			wrote, err = writeHubWorkspace(l, first)
+			wrote, err = writeHubWorkspace(l, path, first)
 			if err != nil {
 				t.Fatalf("identical rewrite: %v", err)
 			}
@@ -93,7 +93,7 @@ func TestWriteHubWorkspace(t *testing.T) {
 			}
 
 			second := []byte("{\n  \"folders\": [],\n  \"settings\": {}\n}\n")
-			wrote, err = writeHubWorkspace(l, second)
+			wrote, err = writeHubWorkspace(l, path, second)
 			if err != nil {
 				t.Fatalf("changed rewrite: %v", err)
 			}
@@ -117,7 +117,7 @@ func TestWriteHubWorkspace_ReadErrorFailsWithReadCause(t *testing.T) {
 	l.RepoName = "prime"
 	mkdirAll(t, HubWorkspacePath(l))
 
-	_, err := writeHubWorkspace(l, []byte("{}\n"))
+	_, err := writeHubWorkspace(l, HubWorkspacePath(l), []byte("{}\n"))
 	if err == nil || !strings.Contains(err.Error(), "read workspace file") {
 		t.Fatalf("writeHubWorkspace error = %v; want the read cause", err)
 	}
@@ -135,7 +135,7 @@ func TestWriteHubWorkspace_RefusesEscapingSymlink(t *testing.T) {
 		t.Fatalf("plant escaping symlink: %v", err)
 	}
 
-	if _, err := writeHubWorkspace(l, []byte("{}\n")); err == nil {
+	if _, err := writeHubWorkspace(l, HubWorkspacePath(l), []byte("{}\n")); err == nil {
 		t.Fatalf("writeHubWorkspace succeeded through an escaping symlink; want an error")
 	}
 	entries, err := os.ReadDir(outside)
