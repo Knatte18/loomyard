@@ -1367,8 +1367,8 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 			name:     "webster's models are copied onto the unset merge keys and the drop then removes them",
 			document: "webster_review: sonnet[medium]\nwebster_fix: sonnet[low]\n",
 			wantLines: []string{
-				"merge_reviewer_model: set to webster_review's value, the models Merge-Review ran on; Darn-Review now reads darn_reviewer_model in darn.yaml, which this rewrite cannot set",
-				"merge_fixer_model: set to webster_fix's value, the models Merge-Review ran on; Darn-Review now reads darn_fixer_model in darn.yaml, which this rewrite cannot set",
+				"merge_reviewer_model: set to webster_review's value, the models Merge-Review ran on",
+				"merge_fixer_model: set to webster_fix's value, the models Merge-Review ran on",
 				"webster_review: renamed to webster_reviewer_model",
 				"webster_fix: renamed to webster_fixer_model",
 				"webster_reviewer_model: renamed to code_reviewer_model",
@@ -1383,7 +1383,7 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 			name:     "a set new webster key is the value copied onto merge before the drop",
 			document: "webster_review: opus[high]\nwebster_reviewer_model: sonnet[low]\n",
 			wantLines: []string{
-				"merge_reviewer_model: set to webster_reviewer_model's value, the models Merge-Review ran on; Darn-Review now reads darn_reviewer_model in darn.yaml, which this rewrite cannot set",
+				"merge_reviewer_model: set to webster_reviewer_model's value, the models Merge-Review ran on",
 				"webster_review: removed, webster_reviewer_model already set",
 				"webster_reviewer_model: renamed to code_reviewer_model",
 				"merge_reviewer_model: retired, removed",

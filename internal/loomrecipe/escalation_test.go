@@ -1,4 +1,4 @@
-// escalation_test.go drives a real Discussion-Review segment, and a darn run's Darn-Review perch, through a spent review budget:
+// escalation_test.go drives a real Discussion-Review segment, and a darn run's Code-Review perch, through a spent review budget:
 // the soft-cap rule continues a design-wrong round one round at a time, the Bouncer escalates at the hard cap instead of blocking, and an accept settles the segment.
 
 package loomrecipe
@@ -76,8 +76,8 @@ func (p *haltingProducer) Call(context.Context) (shedengine.Outcome, shedengine.
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: "halting fake"}, nil
 }
 
-// TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe drives a darn run's Darn-Review perch past darn.yaml's default budget of 1 under a hard cap of 2:
-// the soft-cap rule continues round 1 automatically, the Bouncer escalates at the hard cap to the parent with a rendered brief instead of blocking, and an accept settles the perch onto Describe and files the open finding under Darn-Review.
+// TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe drives a darn run's Code-Review perch past a budget of 1 under a hard cap of 2, with code_auto_accept off:
+// the soft-cap rule continues round 1 automatically, the Bouncer escalates at the hard cap to the parent with a rendered brief instead of blocking, and an accept settles the perch onto Describe and files the open finding under Code-Review.
 func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *testing.T) {
 	env, paths := testEnv(t)
 	// A round's review path must sit under the anchor.
@@ -94,9 +94,15 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 		carried = append(carried, entry)
 		return nil
 	}
-	darn := env.Segments["Darn-Review"]
-	darn.HardMaxBounces = 2
-	env.Segments["Darn-Review"] = darn
+	code := env.Segments["Code-Review"]
+	code.MaxBounces, code.HardMaxBounces = 1, 2
+	env.Segments["Code-Review"] = code
+	env.Setting = func(module, key string) (any, error) {
+		if module == "loom" && key == "code_auto_accept" {
+			return false, nil
+		}
+		return envkit.TemplateSetting(module, key)
+	}
 	env.SegmentBounces = func(row string) (int, int, bool, error) {
 		st, found, err := state.ReadJSONNoMkdir[shedengine.Status](env.StatusPath, env.StatusLockPath)
 		if err != nil || !found {
@@ -123,14 +129,14 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 			shed.Producers[i].Producer = describe
 		}
 	}
-	runDir := filepath.Join(env.RunRoot, "darn")
+	runDir := filepath.Join(env.RunRoot, "code")
 
 	result, err := shed.Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run() error = %v; want nil", err)
 	}
-	if result.Outcome != shedengine.RunAwaiting || result.HaltedProducer != loomshed.NameDarnBouncer {
-		t.Fatalf("Run() = %q at %q (reason %q); want %q at %q", result.Outcome, result.HaltedProducer, result.Reason, shedengine.RunAwaiting, loomshed.NameDarnBouncer)
+	if result.Outcome != shedengine.RunAwaiting || result.HaltedProducer != loomshed.NameCodeBouncer {
+		t.Fatalf("Run() = %q at %q (reason %q); want %q at %q", result.Outcome, result.HaltedProducer, result.Reason, shedengine.RunAwaiting, loomshed.NameCodeBouncer)
 	}
 	if !strings.Contains(result.Reason, "(cause: hard-cap)") || !strings.Contains(result.Reason, "brief at ") {
 		t.Errorf("Run() reason = %q; want the hard-cap cause and the rendered brief's path", result.Reason)
@@ -149,8 +155,8 @@ func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *te
 	if result.HaltedProducer != loomshed.NameDescribe || describe.calls != 1 {
 		t.Errorf("Run() after accept halted at %q with Describe called %d times; want it to settle the perch and run Describe once", result.HaltedProducer, describe.calls)
 	}
-	if len(carried) != 1 || carried[0].Segment != "Darn-Review" || len(carried[0].Findings) != 1 || carried[0].Findings[0].Key != "design-gap" {
-		t.Errorf("carry-over entries = %+v; want one for Darn-Review holding the open design-gap finding", carried)
+	if len(carried) != 1 || carried[0].Segment != "Code-Review" || len(carried[0].Findings) != 1 || carried[0].Findings[0].Key != "design-gap" {
+		t.Errorf("carry-over entries = %+v; want one for Code-Review holding the open design-gap finding", carried)
 	}
 }
 

@@ -867,7 +867,7 @@ func (fz *Finalize) mergeParent(ctx context.Context) (shedengine.Outcome, sheden
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err), true
 	}
 
-	// A darn run's re-entered Darn-Bouncer reads the note as its review input; a loom run's Code-Perch reads the fixer's report instead.
+	// A darn run's re-entered Code-Bouncer reads the note as its review input; a loom run's Code-Perch reads the fixer's report instead.
 	if (merge.conflicted || len(overlap.Files) > 0) && !fz.deps.ConflictReroutes {
 		measured := MergeRecord{ParentBranch: fz.deps.ParentBranch, MergedTip: fz.mergedTipRead(before)}
 		if err := WriteOverlapNote(OverlapNotePath(fz.deps.ScratchDir), measured, overlap.Files); err != nil {

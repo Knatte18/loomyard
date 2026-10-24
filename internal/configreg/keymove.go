@@ -23,6 +23,17 @@ func KeyMoves() []KeyMove {
 		{FromModule: "shuttle", FromKey: "claude_prompt_cache_ttl_roles", ToModule: "claude", ToKey: "prompt_cache_ttl_roles"},
 		{FromModule: "burler", FromKey: "lenses", ToModule: "lenses", ToKey: "lenses", KeepTarget: true},
 		{FromModule: "burler", FromKey: "fans", ToModule: "lenses", ToKey: "fans", KeepTarget: true},
+		// The darn recipe's review perch is loom's Code-Review perch, so its darn.yaml keys moved to loom.yaml's Code-Review keys;
+		// review_fan and review_fix_fan are the fan keys' names before darn_reviewer_fan and darn_fixer_fan.
+		{FromModule: "darn", FromKey: "darn_reviewer_model", ToModule: "loom", ToKey: "code_reviewer_model"},
+		{FromModule: "darn", FromKey: "darn_fixer_model", ToModule: "loom", ToKey: "code_fixer_model"},
+		{FromModule: "darn", FromKey: "darn_reviewer_fan", ToModule: "loom", ToKey: "code_reviewer_fan"},
+		{FromModule: "darn", FromKey: "darn_fixer_fan", ToModule: "loom", ToKey: "code_fixer_fan"},
+		{FromModule: "darn", FromKey: "review_fan", ToModule: "loom", ToKey: "code_reviewer_fan"},
+		{FromModule: "darn", FromKey: "review_fix_fan", ToModule: "loom", ToKey: "code_fixer_fan"},
+		{FromModule: "darn", FromKey: "review_max_bounces", ToModule: "loom", ToKey: "code_max_bounces"},
+		{FromModule: "darn", FromKey: "review_hard_max_bounces", ToModule: "loom", ToKey: "code_hard_max_bounces"},
+		{FromModule: "darn", FromKey: "review_amend_max_bounces", ToModule: "loom", ToKey: "review_amend_max_bounces"},
 	}
 }
 

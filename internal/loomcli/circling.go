@@ -23,11 +23,9 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
@@ -193,20 +191,9 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 }
 
 // perchHardCap returns the resolved hard cap of the Bouncer row's perch and the way forward that raises it, by the layer its value comes from.
-// A load failure of the file that holds the cap is returned as is, bar a malformed tree_scope key in darn.yaml, which gains the editor way forward since --set cannot remove it.
+// Every perch's cap is in loom.yaml, a darn run's Code-Review perch's included, and a load failure of that file is returned as is.
 func perchHardCap(location *lyxcwd.Location, row string) (int, string, error) {
 	dirs := fabricengine.ConfigDirs(location)
-	if row == loomshed.NameDarnBouncer {
-		cfg, err := darnengine.LoadConfig(dirs, "darn")
-		if err != nil {
-			return 0, "", darnengine.WithEditorWayForward(err)
-		}
-		raise, err := reviewbudget.Route(dirs, darnengine.ConfigSpec(), reviewbudget.RunHardKey)
-		if err != nil {
-			return 0, "", err
-		}
-		return cfg.ReviewHardMaxBounces, raise, nil
-	}
 	perch, ok := loomPerches[row]
 	if !ok {
 		return 0, "", fmt.Errorf("loom: %s is a Bouncer row with no hard-cap source, so this lyx build is broken", row)

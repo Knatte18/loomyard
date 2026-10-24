@@ -72,7 +72,7 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
-		"darn":    {"darn_fixer_model", "darn_reviewer_model", "driver_kind", "pr_review", "review_amend_max_bounces", "review_hard_max_bounces", "review_max_bounces", "tackler", "tackler_max_spawns", "tackler_timeout_min", "verify_attempts", "writer", "writer_timeout_min"},
+		"darn":    {"driver_kind", "pr_review", "tackler", "tackler_max_spawns", "tackler_timeout_min", "verify_attempts", "writer", "writer_timeout_min"},
 		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min"},
 	}
 	wantLocalDenied := map[string][]string{
@@ -183,7 +183,7 @@ func TestModules_LocalLayerRefusals(t *testing.T) {
 		wantKey string
 		allowed bool
 	}{
-		{"darn", "review_max_bounces: 0\n", "review_max_bounces", true},
+		{"darn", "verify_attempts: 2\n", "verify_attempts", true},
 		{"landing", "deploy_branches: false\n", "deploy_branches", false},
 		{"language", "skills:\n  - scribe:a\n", "skills", false},
 		{"reed", "mouse: true\n", "mouse", false},
@@ -271,7 +271,7 @@ func TestLookup(t *testing.T) {
 			"discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan",
 			"discussion_advisors",
 		}},
-		{"darn", true, []string{"darn_reviewer_model", "darn_fixer_model", "darn_reviewer_fan", "darn_fixer_fan", "tree_scope"}},
+		{"darn", true, []string{"tree_scope"}},
 		{"shuttle", true, nil},
 		{"burler", false, nil},
 		{"bogus", false, nil},

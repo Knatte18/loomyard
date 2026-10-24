@@ -350,7 +350,7 @@ func TestEntryNumbers(t *testing.T) {
 			"Describe": 10, "PR-Review": 11, "Finalize": 12, "Friction-Reflect": 13,
 		}},
 		{"batten", shedrun.RecipeBatten, map[string]int{"Run-Shed": 6, "Land": 7}},
-		{"darn", shedrun.RecipeDarn, map[string]int{"Darn-Bouncer": 3, "Darn-Burler-Review": 3, "Darn-Burler-Fix": 3}},
+		{"darn", shedrun.RecipeDarn, map[string]int{"Code-Bouncer": 3, "Code-Burler-Review": 3, "Code-Burler-Fix": 3}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got := numbersOf(t, tt.recipe)

@@ -1,5 +1,5 @@
 // review.go implements ResolveReview, the review segment's config-to-settings resolver:
-// a pure composer that parses and resolves each review segment's reviewer and fixer model-spec lists, Darn-Review's through ResolveDarnReview, and pairs them with the review round timeout.
+// a pure composer that parses and resolves each review segment's reviewer and fixer model-spec lists and pairs them with the review round timeout.
 // Unlike DiscussionTable and PlanTable, it returns no seatengine.Table.
 // There is no seat to build here, because the review segment's prompts are the Bouncer's own stencils, composed inside internal/shedadapters at call time.
 // The caller threads ReviewSettings' values onto shedrecipe.Env instead.
@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
-	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -167,17 +166,6 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 		}
 	}
 	return settings, nil
-}
-
-// ResolveDarnReview resolves the Darn-Review perch's reviewer and fixer models from darn.yaml's darn_reviewer_model and darn_fixer_model through reg, and returns them with the config keys they came from.
-// Each empty key takes its list in shared, the resolved ReviewSettings.Models.
-func ResolveDarnReview(shared burlerengine.RoundModels, darn darnengine.Config, reg modelspec.Registry) (burlerengine.RoundModels, SegmentKeys, error) {
-	return resolveSegmentModels(segmentModelSource{
-		reviewKey: shuttleengine.ModelKey{Module: "darn", Key: darnengine.ReviewerModelKey},
-		fixKey:    shuttleengine.ModelKey{Module: "darn", Key: darnengine.FixerModelKey},
-		review:    darn.ReviewerModel,
-		fix:       darn.FixerModel,
-	}, shared, reg)
 }
 
 // resolveSegmentModels resolves one review segment's reviewer and fixer lists and returns them with the keys they came from.

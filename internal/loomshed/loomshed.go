@@ -28,7 +28,6 @@ const (
 	NameDescribe          = "Describe"
 	NameMergeIn           = "Merge-In"
 	NameDarnWrite         = "Darn-Write"
-	NameDarnBouncer       = "Darn-Bouncer"
 	NameFinalize          = "Finalize"
 	NameFrictionReflect   = "Friction-Reflect"
 
@@ -36,8 +35,6 @@ const (
 	NameDiscussionBurlerFix    = "Discussion-Burler-Fix"
 	NamePlanBurlerReview       = "Plan-Burler-Review"
 	NamePlanBurlerFix          = "Plan-Burler-Fix"
-	NameDarnBurlerReview       = "Darn-Burler-Review"
-	NameDarnBurlerFix          = "Darn-Burler-Fix"
 
 	NameCodeBouncer      = "Code-Bouncer"
 	NameCodeBurlerReview = "Code-Burler-Review"

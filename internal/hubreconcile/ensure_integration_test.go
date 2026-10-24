@@ -167,8 +167,7 @@ func preMigrationBase(t *testing.T, module configreg.Module) string {
 	case "shed":
 		return formerUnits(t, module.Name, template, map[string]string{"driver_kind": "llm"})
 	case "darn":
-		former := formerUnits(t, module.Name, template, map[string]string{"darn_reviewer_model": "sonnet[high]", "darn_fixer_model": `""`, "darn_reviewer_fan": `""`, "darn_fixer_fan": `""`})
-		return replaceOnce(t, module.Name, former, "verify_attempts: 3 ", "verify_attempts: 5 ")
+		return replaceOnce(t, module.Name, template, "verify_attempts: 3 ", "verify_attempts: 5 ")
 	case "claude":
 		var kept []string
 		found, inRoles := false, false

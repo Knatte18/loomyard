@@ -17,7 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
-	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/failuretrace"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -240,7 +239,7 @@ func landingDeps(
 			return rowEntry(status.History, row), nil
 		},
 		CodeReviewOff:   codeReviewOff(l, recipe),
-		RerouteReviewed: rerouteReviewed(l, recipe),
+		RerouteReviewed: rerouteReviewed(l),
 		// The task branch's remote-tracking ref is read without a fetch, so an absent one is no tip.
 		TaskRemoteTip: func() (string, error) {
 			tip, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/remotes/origin/" + taskBranch)
@@ -252,38 +251,33 @@ func landingDeps(
 	}
 }
 
-// codeReviewOff returns the seam that reports whether the Code-Perch's effective review budget is 0, read from loom.yaml at call time.
-// A darn run has no Merge-In and so no Code-Perch, and its seam reads false.
+// codeReviewOff returns the seam Merge-In reads: whether the Code-Perch's effective review budget is 0.
+// A darn run has no Merge-In, and its seam reads false.
 func codeReviewOff(l *lyxcwd.Location, recipe string) func() (bool, error) {
 	if recipe == shedrun.RecipeDarn {
 		return func() (bool, error) { return false, nil }
 	}
+	return codeBudgetZero(l)
+}
+
+// rerouteReviewed returns the seam that reports whether a review follows Finalize's reroute: whether the Code-Perch's effective budget is above 0.
+// A loom Finalize reroutes through Merge-In to the Code-Perch, and a darn Finalize to Code-Bouncer, which the budget-0 rewrite replaces with PR-Review.
+func rerouteReviewed(l *lyxcwd.Location) func() (bool, error) {
+	budgetZero := codeBudgetZero(l)
+	return func() (bool, error) {
+		zero, err := budgetZero()
+		return !zero, err
+	}
+}
+
+// codeBudgetZero returns the seam that reports whether the Code-Perch's effective review budget is 0, read from loom.yaml at call time.
+func codeBudgetZero(l *lyxcwd.Location) func() (bool, error) {
 	return func() (bool, error) {
 		cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(l), "loom")
 		if err != nil {
 			return false, err
 		}
 		return cfg.Caps(loomengine.PerchCode).Soft == 0, nil
-	}
-}
-
-// rerouteReviewed returns the seam that reports whether a review follows Finalize's reroute, read from the recipe's config at call time.
-// A loom Finalize reroutes through Merge-In to the Code-Perch, so a review follows when that perch's effective budget is above 0.
-// A darn Finalize reroutes to Darn-Bouncer, which the budget-0 rewrite replaces with PR-Review, so a review follows when darn.yaml's review_max_bounces is above 0.
-func rerouteReviewed(l *lyxcwd.Location, recipe string) func() (bool, error) {
-	if recipe == shedrun.RecipeDarn {
-		return func() (bool, error) {
-			cfg, err := darnengine.LoadConfig(fabricengine.ConfigDirs(l), "darn")
-			if err != nil {
-				return false, err
-			}
-			return cfg.ReviewMaxBounces > 0, nil
-		}
-	}
-	reviewOff := codeReviewOff(l, recipe)
-	return func() (bool, error) {
-		off, err := reviewOff()
-		return !off, err
 	}
 }
 

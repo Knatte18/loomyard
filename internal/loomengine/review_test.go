@@ -15,7 +15,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -23,7 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// TestResolveReview verifies ResolveReview and ResolveDarnReview return the expected model/effort/version triples, the keys each segment's models came from, and the timeout.
+// TestResolveReview verifies ResolveReview returns the expected model/effort/version triples, the keys each segment's models came from, and the timeout.
 func TestResolveReview(t *testing.T) {
 	cfg := Config{
 		ReviewerModel:    burlerengine.ModelSpecList{"opus[effort=high]", "sonnet[medium]"},
@@ -85,18 +84,6 @@ func TestResolveReview(t *testing.T) {
 		if tt.got != tt.want {
 			t.Errorf("ResolveReview(...).%sKeys = %+v; want %+v", tt.segment, tt.got, tt.want)
 		}
-	}
-
-	// Darn-Review reads darn.yaml's keys, an empty one taking loom.yaml's shared list.
-	darnModels, darnKeys, err := ResolveDarnReview(settings.Models, darnengine.Config{ReviewerModel: burlerengine.ModelSpecList{""}, FixerModel: burlerengine.ModelSpecList{"sonnet[effort=high]"}}, reg)
-	if err != nil {
-		t.Fatalf("ResolveDarnReview(...) = _, _, %v; want nil error", err)
-	}
-	if !reflect.DeepEqual(darnModels.Review, settings.Models.Review) || len(darnModels.Fix) != 1 || darnModels.Fix[0].Effort != "high" {
-		t.Errorf("ResolveDarnReview(...) models = %+v; want the run-wide review list and a fix list of one high-effort entry", darnModels)
-	}
-	if want := (SegmentKeys{Review: loomKey("reviewer_model"), Fix: shuttleengine.ModelKey{Module: "darn", Key: "darn_fixer_model"}}); darnKeys != want {
-		t.Errorf("ResolveDarnReview(...) keys = %+v; want %+v", darnKeys, want)
 	}
 
 	// A set fan key changes no model: a fanned segment's reviewer list is still its own review list, else the run-wide one.
@@ -286,15 +273,6 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 			wantIn: []string{"entry 1", "in loom.yaml"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveReview(cfg, reg)
-				return err
-			},
-		},
-		{
-			name:   "darn_reviewer_model entry",
-			role:   "darn_reviewer_model",
-			wantIn: []string{"entry 1", "in darn.yaml", "a model-spec the registry defines"},
-			resolve: func(_ Config, reg modelspec.Registry) error {
-				_, _, err := ResolveDarnReview(burlerengine.RoundModels{}, darnengine.Config{ReviewerModel: burlerengine.ModelSpecList{"ghost"}}, reg)
 				return err
 			},
 		},

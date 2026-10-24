@@ -1164,7 +1164,7 @@ func TestDispatchSetProfiles(t *testing.T) {
 	}{
 		{
 			name:     "a local write is refused because no profile key is open to the local layer",
-			setFlag:  `wide={"darn":{"review_max_bounces":2}}`,
+			setFlag:  `wide={"loom":{"code_max_bounces":2}}`,
 			layer:    "local",
 			wantCode: 1,
 			wantFile: seeded,
@@ -1172,8 +1172,8 @@ func TestDispatchSetProfiles(t *testing.T) {
 		},
 		{
 			name:     "a new profile is added beside the existing one",
-			setFlag:  `wide={"darn":{"review_max_bounces":2}}`,
-			wantFile: "# operator notes\nlight:\n    loom: {plan_max_bounces: 1}\nwide:\n    darn: {review_max_bounces: 2}\n",
+			setFlag:  `wide={"loom":{"code_max_bounces":2}}`,
+			wantFile: "# operator notes\nlight:\n    loom: {plan_max_bounces: 1}\nwide:\n    loom: {code_max_bounces: 2}\n",
 		},
 		{
 			name:     "an existing profile is replaced whole",
@@ -1183,8 +1183,8 @@ func TestDispatchSetProfiles(t *testing.T) {
 		{
 			name:        "an absent hub file starts from the template's profiles",
 			absent:      true,
-			setFlag:     `wide={"darn":{"review_max_bounces":2}}`,
-			wantContain: []string{"light:", "budget:", "docs:", "wide:\n    darn: {review_max_bounces: 2}"},
+			setFlag:     `wide={"loom":{"code_max_bounces":2}}`,
+			wantContain: []string{"light:", "budget:", "docs:", "wide:\n    loom: {code_max_bounces: 2}"},
 		},
 		{
 			name:     "a value that is not a JSON object is refused",

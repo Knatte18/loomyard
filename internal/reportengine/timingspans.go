@@ -41,6 +41,13 @@ const (
 	retiredWebsterBurlerFixRow    = "Webster-Burler-Fix"
 )
 
+// The darn perch rows the darn recipe no longer holds, now that it runs loom's Code-Review rows; a past darn run's history still carries them.
+const (
+	retiredDarnBouncerRow      = "Darn-Bouncer"
+	retiredDarnBurlerReviewRow = "Darn-Burler-Review"
+	retiredDarnBurlerFixRow    = "Darn-Burler-Fix"
+)
+
 // retiredRowNames maps each retired loom row to the phase a past run's time on it counts under.
 var retiredRowNames = map[string]string{
 	retiredPublishRow:             PhasePublishFinalize,
@@ -91,9 +98,9 @@ func darnPhases() map[string]string {
 		loomshed.NamePreflight:        PhaseSetup,
 		loomshed.NameDarnWrite:        PhaseWrite,
 		loomshed.NameDescribe:         PhaseWrite,
-		loomshed.NameDarnBouncer:      PhaseReview,
-		loomshed.NameDarnBurlerReview: PhaseReview,
-		loomshed.NameDarnBurlerFix:    PhaseReview,
+		loomshed.NameCodeBouncer:      PhaseReview,
+		loomshed.NameCodeBurlerReview: PhaseReview,
+		loomshed.NameCodeBurlerFix:    PhaseReview,
 		loomshed.NameMergeIn:          PhaseMerge,
 		loomshed.NamePRReview:         PhasePublishFinalize,
 		loomshed.NameFinalize:         PhasePublishFinalize,
@@ -101,6 +108,9 @@ func darnPhases() map[string]string {
 		retiredPublishRow:             PhasePublishFinalize,
 		retiredPRAlignRow:             PhasePublishFinalize,
 		retiredPRGateRow:              PhasePublishFinalize,
+		retiredDarnBouncerRow:         PhaseReview,
+		retiredDarnBurlerReviewRow:    PhaseReview,
+		retiredDarnBurlerFixRow:       PhaseReview,
 	}
 	for retired, successor := range loomrecipe.DarnRetiredRows() {
 		phases[retired] = phases[successor]

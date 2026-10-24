@@ -920,7 +920,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a loom run leaves them nil.
 	if c.recipe == shedrun.RecipeDarn {
-		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry, reviewSettings.Models, shedadapters.BouncerModels(judgeSettings.Code)); err != nil {
+		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry, loomSegmentBudgets(loomCfg)); err != nil {
 			return err
 		}
 	}

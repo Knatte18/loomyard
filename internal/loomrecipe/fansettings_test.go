@@ -117,7 +117,7 @@ func TestShippedRecipes_FanSettingsAgreeWithinSegment(t *testing.T) {
 			{loom, "Discussion-Review", "loom.discussion_reviewer_fan", "loom.discussion_fixer_fan", "loom.discussion_auto_accept"},
 			{loom, "Plan-Review", "loom.plan_reviewer_fan", "loom.plan_fixer_fan", "loom.plan_auto_accept"},
 			{loom, "Code-Review", "loom.code_reviewer_fan", "loom.code_fixer_fan", "loom.code_auto_accept"},
-			{darn, "Darn-Review", "darn.darn_reviewer_fan", "darn.darn_fixer_fan", ""},
+			{darn, "Code-Review", "loom.code_reviewer_fan", "loom.code_fixer_fan", "loom.code_auto_accept"},
 		}
 		for _, p := range perches {
 			want := map[string]map[string]string{

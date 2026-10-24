@@ -262,7 +262,7 @@
 // # Review subjects
 //
 // The wiring tells each Bouncer row what its segment judges, so a re-entry over an unchanged subject settles without a review and a changed one reviews only the change under `review_amend_max_bounces`.
-// A recipe row names its subject by its `subject` key: Discussion-Bouncer and Plan-Bouncer `document`, Webster-Bouncer and darn's Darn-Bouncer `code`.
+// A recipe row names its subject by its `subject` key: Discussion-Bouncer and Plan-Bouncer `document`, Code-Bouncer `code`, in the loom and darn recipes alike.
 // A document subject hashes the row's artifact paths in order: the decision record through its identity text, a plan directory as its overview's identity text and its top-level card files, and an absent path as absent.
 // Its Base is the commit the run records' checkout stands at.
 // A code subject is the task worktree's change against the task's merge base, leaving out the run's own state directories and the harness's own files while untracked.

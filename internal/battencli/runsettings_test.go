@@ -25,8 +25,8 @@ func TestPrepareRunSettings(t *testing.T) {
 	}{
 		{
 			name:     "no profile writes the task's settings alone",
-			settings: battenshed.RunSettings{Settings: map[string]any{"darn": map[string]any{"review_max_bounces": float64(1)}}},
-			wantDocs: map[string]string{"darn": "review_max_bounces: 1\n"},
+			settings: battenshed.RunSettings{Settings: map[string]any{"darn": map[string]any{"verify_attempts": float64(1)}}},
+			wantDocs: map[string]string{"darn": "verify_attempts: 1\n"},
 		},
 		{
 			name:        "the task's settings lie over the profile's, and the profile's retired merge_max_bounces is dropped",

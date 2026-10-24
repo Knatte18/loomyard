@@ -17,6 +17,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 )
 
+// formerSourceDefaults maps a key move's source module to its source key to the template value that key held, as YAML text, before the key moved to another module.
+// A base layer that still holds such a value was never tuned, so the move drops it instead of carrying it over the target's own default.
+// Only values that differ from the target's current default are listed: an equal one changes nothing when it moves.
+var formerSourceDefaults = map[string]map[string]string{
+	"darn": {
+		"darn_reviewer_model":     "sonnet[high]",
+		"darn_fixer_model":        `""`,
+		"darn_reviewer_fan":       `""`,
+		"darn_fixer_fan":          `""`,
+		"review_fan":              `""`,
+		"review_fix_fan":          `""`,
+		"review_hard_max_bounces": "2",
+	},
+}
+
 // moveFile is one module's file of the layer a move works on, parsed and edited in memory until the move writes it.
 type moveFile struct {
 	module string
@@ -33,18 +48,22 @@ type moveFile struct {
 	// A retired module's file is deleted instead.
 	keepHeader bool
 	changed    bool
+	// reported marks a file that carries report lines, so its Result is listed even when the move leaves it unwritten.
+	reported bool
 	// gained marks a target that received a value, so the move writes it before the sources.
 	gained bool
 	// moved, keptTarget and overwritten are the report lines the file's Result carries.
 	moved, keptTarget, overwritten []string
 }
 
-// moveKeys applies configreg.KeyMoves to the layer's files under dir and returns one Result per file it changes or would change.
+// moveKeys applies configreg.KeyMoves to the layer's files under dir and returns one Result per file it changes, would change or carries report lines for.
+// A file that only carries report lines, such as a target a prime-seeded source's dropped value was reported on, is never written and its Result is never Applied.
 // dir is the board dir or the anchor, and base marks a base layer of its stack.
 // seedDir is set only at a board pass that seeds from the prime: an absent source is then the prime's copy, never written.
 // A value moves unexpanded, with its line comment replaced by the target template's.
 // At a base layer a target value other than its template default is kept and the source key dropped, and a default is overwritten;
 // at a sparse layer any target value is kept.
+// At a base layer a source value equal to its key's former template default is dropped instead of moved.
 // A move marked KeepTarget keeps any target value at either layer, the template default included, unless the target was started from the template in this pass,
 // and its kept-target line names the dropped and kept keys without their mappings.
 // A source file the move empties is deleted.
@@ -156,15 +175,20 @@ func moveKeys(dir, seedDir string, layer configengine.Layer, base, apply bool) (
 		}
 	}
 
+	var reportable []*moveFile
 	for _, file := range files {
 		if file.changed {
 			order = append(order, file)
 		}
+		if file.changed || file.reported {
+			reportable = append(reportable, file)
+		}
 	}
 	sort.Slice(order, func(i, j int) bool { return order[i].module < order[j].module })
+	sort.Slice(reportable, func(i, j int) bool { return reportable[i].module < reportable[j].module })
 
 	var results []Result
-	for _, file := range order {
+	for _, file := range reportable {
 		if file.virtual || len(file.moved)+len(file.keptTarget)+len(file.overwritten) == 0 {
 			continue
 		}
@@ -220,8 +244,22 @@ func (file *moveFile) parse(data []byte) error {
 	return nil
 }
 
+// formerSourceDefault reports whether value equals the template value the move's source key held before it moved.
+func formerSourceDefault(move configreg.KeyMove, value *yaml.Node) (bool, error) {
+	text, listed := formerSourceDefaults[move.FromModule][move.FromKey]
+	if !listed {
+		return false, nil
+	}
+	var former yaml.Node
+	if err := yaml.Unmarshal([]byte(text), &former); err != nil {
+		return false, fmt.Errorf("former default of %s.%s is not YAML: %w", move.FromModule, move.FromKey, err)
+	}
+	return nodesEqual(value, former.Content[0]), nil
+}
+
 // takeKey moves the source mapping's entry at index at into this target file under the move's target key, and records the report lines.
 // The source entry is removed from its mapping in every case.
+// With overwriteDefaults a source value equal to its key's former template default is dropped, never moved.
 // A target started from the template, or one lacking the key, takes the source's mapping whole; a move never merges per name.
 // With overwriteDefaults a target value equal to the template default is replaced by the moved value; without it that value is a pin and is kept.
 func (target *moveFile) takeKey(source *moveFile, at int, move configreg.KeyMove, overwriteDefaults bool) error {
@@ -233,9 +271,21 @@ func (target *moveFile) takeKey(source *moveFile, at int, move configreg.KeyMove
 	if source.virtual {
 		reportOn = target
 	}
+	reportOn.reported = true
 	moved := fmt.Sprintf("%s -> %s", sourceName, targetName)
 	source.root.Content = append(source.root.Content[:at], source.root.Content[at+2:]...)
 	source.changed = true
+
+	if overwriteDefaults {
+		former, err := formerSourceDefault(move, value)
+		if err != nil {
+			return &FileError{Module: move.FromModule, Path: source.path, Err: err}
+		}
+		if former {
+			reportOn.keptTarget = append(reportOn.keptTarget, fmt.Sprintf("%s: %s dropped, a former template default", sourceName, nodeText(value)))
+			return nil
+		}
+	}
 
 	held := mappingIndex(target.root, move.ToKey)
 	if held >= 0 && !target.fromTemplate {

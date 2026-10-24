@@ -102,10 +102,10 @@ func TestSettingLookup(t *testing.T) {
 			name: "a hub-wide module answers from the board's file",
 			arrange: func(t *testing.T, dirs configengine.Dirs) {
 				m, _ := Lookup("darn")
-				writeConfigFile(t, configengine.ConfigFile(dirs.Board, "darn"), withTemplateValue(t, m.Template(), "darn_fixer_fan", "fix-plan"))
+				writeConfigFile(t, configengine.ConfigFile(dirs.Board, "darn"), withTemplateValue(t, m.Template(), "writer", "sonnet[low]"))
 			},
-			act:  lookupOnce("darn", "darn_fixer_fan"),
-			want: "fix-plan",
+			act:  lookupOnce("darn", "writer"),
+			want: "sonnet[low]",
 		},
 		{
 			name:      "an unregistered module is refused",
