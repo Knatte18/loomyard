@@ -268,8 +268,8 @@ type BatchState struct {
 	// Terminal reports whether this batch has reached a terminal
 	// classification (done, stuck, dead, or failed).
 	Terminal bool `json:"terminal"`
-	// Status is the batch's terminal status once Terminal is true (done,
-	// stuck, dead, or failed); empty while still in flight.
+	// Status is the batch's terminal status once Terminal is true (done, stuck, dead, or failed).
+	// It is empty while the batch is in flight, or waiting while the in-flight batch waits on a step only the run's parent can take.
 	Status string `json:"status"`
 	// Digest is the distilled digest record-batch persisted at terminal
 	// classification — the carry-forward home that lets begin-batch(N+1)

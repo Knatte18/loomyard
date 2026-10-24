@@ -518,6 +518,20 @@ func TestBeginBatch_Record(t *testing.T) {
 			wantStart: func(*beginFixture) string { return recordedStart },
 		},
 		{
+			name: "a re-begin of a batch waiting on its parent resumes it in flight with its start and its recovery count",
+			prior: &websterengine.BatchState{Slug: "json-flag", Kind: "fork", StartSHA: recordedStart, Status: websterengine.DigestStatusWaiting, Recoveries: 1,
+				Digest: &websterengine.Digest{Batch: "01-json-flag", Status: websterengine.DigestStatusWaiting, Need: "raise the tier 2 timeout"}},
+			prepare: func(t *testing.T, fx *beginFixture) {
+				fx.Git.commit()
+			},
+			wantStart: func(*beginFixture) string { return recordedStart },
+			check: func(t *testing.T, fx *beginFixture, bs *websterengine.BatchState) {
+				if bs.Terminal || bs.Status != "" || bs.Digest != nil || bs.Recoveries != 1 {
+					t.Errorf("Batches[1] Terminal, Status, Digest, Recoveries = %v, %q, %v, %d; want false, \"\", nil, 1", bs.Terminal, bs.Status, bs.Digest, bs.Recoveries)
+				}
+			},
+		},
+		{
 			name:      "a re-begin over a record without a StartSHA records the head",
 			prior:     &websterengine.BatchState{Slug: "json-flag", Kind: "fork"},
 			wantStart: func(fx *beginFixture) string { return fx.Git.head },

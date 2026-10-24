@@ -246,7 +246,7 @@ func rendersNewAmendment(prior *BatchState) bool {
 // the recovery prompt, and starts the recovery strand, returning a fresh BatchState.
 // clk stamps SpawnedAt so elapsed-since-spawn is measured against the same clock.
 // The record appends the spawned run's session id to the prior record's RecoverySessions, and records that run's engine under it in RecoveryEngines.
-// The record counts the spawn in Recoveries unless the prompt renders an amendment no earlier spawn rendered, and carries HEAD at the spawn as RecoveryStartSHA.
+// The record counts the spawn in Recoveries unless the prompt renders an amendment no earlier spawn rendered or prior waits on its parent, and carries HEAD at the spawn as RecoveryStartSHA.
 // HEAD is read before anything is stopped or started, so a failed read starts nothing and counts nothing.
 func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prevDigest string, clk Clock) (*BatchState, error) {
 	number, slug := batchIdentity(batch)
@@ -378,7 +378,8 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 		priorTranscripts = prior.ForkTranscripts
 		recoveries = prior.Recoveries
 	}
-	if !rendersNewAmendment(prior) {
+	// A spawn resuming a batch that waited on its parent continues the recovery that stopped, so it costs none.
+	if !rendersNewAmendment(prior) && !waitsOnParent(prior) {
 		recoveries++
 	}
 	recoverySessions = append(recoverySessions, runState.SessionID)
@@ -475,6 +476,7 @@ func committedSince(geom Geometry, start string) (bool, error) {
 // Before spawning, it refuses with ErrRecoveryDeleteReferenced while an unbegun later card's Edit code still references a symbol the batch's own cards delete, since a recovery cannot change the plan and would fail the same done-check again.
 // The bound: it refuses only while that check fires for the batch's own cards against the current plan and tree;
 // moving the delete and rebaselining clears it.
+// A record waiting on its parent is never attached to and never refused as exhausted: the spawn resumes it uncounted.
 func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *BatchState, spawned bool, err error) {
 	batch, err := findBatch(deps.Batches, batchNumber)
 	if err != nil {
@@ -482,7 +484,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 	}
 
 	prior := deps.State.Batches[batchNumber]
-	if prior != nil && prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != "" {
+	if prior != nil && prior.Kind == "recovery" && !prior.Terminal && prior.StrandGUID != "" && !waitsOnParent(prior) {
 		return prior, false, nil
 	}
 	// The recovery key can change mid-run, so the spawn re-checks it ahead of anything that archives or stops.
@@ -491,7 +493,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			return nil, false, err
 		}
 	}
-	if prior != nil && prior.Recoveries >= maxRecoveries && !rendersNewAmendment(prior) {
+	if prior != nil && prior.Recoveries >= maxRecoveries && !rendersNewAmendment(prior) && !waitsOnParent(prior) {
 		return nil, false, fmt.Errorf("%w: batch %02d has had %d recoveries; %s; or %s", ErrRecoveryExhausted, batchNumber, prior.Recoveries,
 			wayForwardSteps(resetVerb(ResetToBatchStart, batchNumber), fmt.Sprintf("lyx webster recover-batch %d", batchNumber)), freshRestartSteps(stepRun))
 	}
@@ -600,6 +602,9 @@ func RecoverAwait(deps RecoverDeps, batchNumber int, bs *BatchState, wait time.D
 // but the tree says the card is not, and webster believes the tree.
 // The report is archived, the record is terminal failed, and the *BatchFailedError is returned with the pass's warnings,
 // so the next recover-batch spawns a fresh strand instead of re-attaching to the finished one and failing the same checks forever.
+//
+// A waiting digest, from a strand that reported NEEDS_PARENT, runs neither the suspect check nor the pass:
+// the batch is recorded waiting with its need and its report archived, and stays in flight.
 func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, digest *Digest) (warnings []string, err error) {
 	if st == nil {
 		return nil, fmt.Errorf("webster: recovery terminal persistence requires a loaded state; State is nil")
@@ -617,6 +622,11 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		return nil, err
 	}
 	number, slug := batchIdentity(batch)
+
+	// A recovery waiting on its parent has not finished, so the suspect check and the pass wait for the strand that resumes it.
+	if digest.Status == DigestStatusWaiting {
+		return nil, recordWaiting(bs, digest, deps.Geom.ReportsDir, number, slug, time.Now)
+	}
 
 	// The recovery strand's own report carries the head it committed at, already parsed into the digest.
 	// Both verbs reconcile that head against the worktree's HEAD under the merge-only rule and record the batch at the report's head,

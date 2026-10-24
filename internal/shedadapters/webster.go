@@ -76,7 +76,7 @@ func (p *WebsterProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 
 	result, err := p.run(p.deps, websterengine.RunOptions{Fresh: false, AutoRebaseline: true})
 	if err != nil {
-		if errors.Is(err, websterengine.ErrPendingAuditFindings) || errors.Is(err, websterengine.ErrAutoRebaseline) {
+		if errors.Is(err, websterengine.ErrPendingAuditFindings) || errors.Is(err, websterengine.ErrAutoRebaseline) || errors.Is(err, websterengine.ErrBatchDeadEnd) {
 			// A halt only the operator can clear: the run blocks with the refusal's own text, whose way forward already ends in this row's re-entry step.
 			if cerr := cancelErr(ctx, p.name, websterEngineLabel); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr

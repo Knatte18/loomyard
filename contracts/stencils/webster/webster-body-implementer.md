@@ -78,7 +78,7 @@ If any card's gate fails, or a test the card broke fails, and you cannot fix it 
 Never clone the hub's remotes, and never run a mutating `lyx fabric` verb.
 A scratch hub is a Go test fixture over local bare repositories (`hubforge`).
 `lyx fabric` refuses its mutating verbs from your strand; the refusal is the rule's owner.
-When the work itself needs a refused verb, stop and report `status: FAILED`, so the orch runs the verb.
+When the work itself needs a refused verb, stop and report `status: NEEDS_PARENT` naming the verb, so your parent runs it (see "A step only your parent can take" below).
 
 The card gate steps, the batch gate steps, `lyx gate card-verify`, `lyx loom lint-comments`, `lyx loom lint-pattern` and `lyx quarry resolve` are always allowed from any strand, and none of them is a fabric reference.
 The sandbox ban covers mutating `lyx fabric` verbs only.
@@ -117,18 +117,28 @@ A failure the card did not cause is never yours to fix, and it is left to the pl
 That gate runs after every batch and catches what the card gates do not, so a batch gate step that fails only on failures the batch's cards did not cause, by the two-pronged test above, does not make the report `FAILED`.
 A misjudged failure passes the batch and is caught by the `webster` gate, which spawns a fixer when it fails.
 
+## A step only your parent can take
+
+Some work needs a step outside your session's reach: a hub setting such as a tier or gate list in `gate.yaml`, a `lyx fabric` verb lyx refuses from your strand, or a board write.
+No fix of yours and no recovery strand can take it, so it is never a gate failure under the self-fix bound.
+Stop at once, with every card you finished committed, and write the report with `status: NEEDS_PARENT` and a one-line `need` naming the step, specific enough for your parent to take it unasked.
+A refusal that says a session it refuses "reports status: FAILED and the orch runs it" means this for you: report `NEEDS_PARENT` naming the verb.
+Once your parent has taken the step, the batch resumes from your commits.
+
 ## Your final action: the minimal batch-report
 
-Your LAST action of this session — after every card above is committed (or you have given up per the bound above) — is writing the batch-report YAML file to `{{.report_path}}`.
+Your LAST action of this session — after every card above is committed (or you have given up per the bound above, or stopped on a step only your parent can take) — is writing the batch-report YAML file to `{{.report_path}}`.
 Nothing you do after this file exists is read by anyone: write it last, and write it exactly once.
-The report is deliberately minimal — `record-batch` reads ONLY these two fields:
+The report is deliberately minimal — `record-batch` reads ONLY these fields:
 
 ```yaml
-status: OK | FAILED
+status: OK | FAILED | NEEDS_PARENT
 head_sha: <the commit SHA your worktree is at right now>
+need: <one line naming the step only your parent can take; NEEDS_PARENT only, omitted otherwise>
 ```
 
 `status` is `OK` when every card above is committed and every gate it ran, the batch gate included, passed;
-`FAILED` when you stopped after exhausting the self-fix bound on some card or on the batch gate, whether its gate failed or a test the card broke did. `head_sha` is your worktree's current HEAD commit SHA — capture it with `git rev-parse HEAD` as your very last read before writing the report, so it reflects every commit you made.
+`FAILED` when you stopped after exhausting the self-fix bound on some card or on the batch gate, whether its gate failed or a test the card broke did;
+`NEEDS_PARENT` when you stopped on a step only your parent can take, which `need` names. `head_sha` is your worktree's current HEAD commit SHA — capture it with `git rev-parse HEAD` as your very last read before writing the report, so it reflects every commit you made.
 Only a failed card gate, a failed `lyx gate card-verify` call, a failed batch gate or a test the card broke makes `status` `FAILED`, never a slot-busy exit.
 A batch gate step that fails only on failures the batch's cards did not cause does not make it `FAILED`.

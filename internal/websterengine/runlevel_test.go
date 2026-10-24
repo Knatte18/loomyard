@@ -214,6 +214,28 @@ type runRefusalCase struct {
 	check func(t *testing.T, fx *runFixture, err error)
 }
 
+// deadEndRefusalCase returns a row over a run whose batch 1 is recorded as bs, a dead end, refused with ErrBatchDeadEnd and the text want.
+// Its way forward does what `lyx webster reset --to batch-start` does to the record, clearing the recovery count and start, after which the run reaches Master.
+func deadEndRefusalCase(name string, bs *websterengine.BatchState, want string) runRefusalCase {
+	return runRefusalCase{
+		name:  name,
+		cards: 1,
+		setup: func(t *testing.T, fx *runFixture) func() {
+			seedMatchingState(t, fx, &websterengine.State{Batches: map[int]*websterengine.BatchState{1: bs}})
+			return func() {
+				st := loadRunState(t, fx)
+				st.Batches[1].Recoveries, st.Batches[1].RecoveryStartSHA = 0, ""
+				if err := websterengine.SaveState(fx.Deps.Geom.WebsterDir, fx.Deps.Geom.ScratchDir, st); err != nil {
+					t.Fatalf("save the reset record: %v", err)
+				}
+			}
+		},
+		errIs:       websterengine.ErrBatchDeadEnd,
+		msgContains: []string{want, "so a Master would only end the run stuck on it"},
+		wayForward:  []string{"1) lyx webster reset --to batch-start --batch 01; 2) lyx webster run", "or 1) lyx webster reset --to start; 2) lyx webster run"},
+	}
+}
+
 // enginesWithHiddenX returns an engine set whose engine "x" hides its fork audit and whose other engine is the fake that audits, with defaultName as the default.
 func enginesWithHiddenX(defaultName string) shuttleengine.EngineSet {
 	fake := &shuttlefake.Engine{}
@@ -522,6 +544,10 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			errIs:      websterengine.ErrFingerprintMismatch,
 			wayForward: []string{"lyx webster rebaseline", "2) lyx webster run"},
 		},
+		deadEndRefusalCase("a dead recovery that earns no retry", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1},
+			"batch 01-batch1 is dead and its recovery earns no retry"),
+		deadEndRefusalCase("a stuck batch whose recoveries are spent", &websterengine.BatchState{Slug: "batch1", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusStuck, Recoveries: 2},
+			"batch 01-batch1 is stuck and has had its 2 recoveries"),
 		{
 			name:  "an edited card names the card to rebaseline",
 			cards: 2,
