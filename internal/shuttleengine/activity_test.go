@@ -287,6 +287,69 @@ func TestReadAgentActivity(t *testing.T) {
 	})
 
 	// It captures the process-global logger at Debug, so it runs serially like the test.
+	t.Run("a running record whose waiter is gone logs once per episode until it reads live", func(t *testing.T) {
+		buf := logcapture.CaptureVerbose(t)
+		logger.SetVerbosity(2)
+		root := t.TempDir()
+		waiterless := live
+		waiterless.pid = 4343
+		writeActivityRun(t, root, "run-a", waiterless, created, eventsWritten)
+		writeActivityRun(t, root, "run-b", activityRun{outcome: runOutcomeRunning, events: "STOP:turn\n"}, created, eventsWritten)
+		writeActivityRun(t, root, "run-c", activityRun{outcome: string(OutcomeDone), pid: 4343, events: "STOP:turn\n"}, created, eventsWritten)
+		read := func() []AgentActivity {
+			got, err := ReadAgentActivity(Config{RunDir: root}, t.TempDir(), singleEngineSet(&fakeEngine{}))
+			if err != nil {
+				t.Fatalf("ReadAgentActivity error = %v; want nil", err)
+			}
+			return got
+		}
+
+		for range 3 {
+			if got := read(); len(got) != 0 {
+				t.Fatalf("ReadAgentActivity = %+v; want no readings while no run has a live waiter", got)
+			}
+		}
+		writeActivityRun(t, root, "run-a", live, created, eventsWritten)
+		if got := read(); len(got) != 1 {
+			t.Fatalf("ReadAgentActivity = %+v; want the one run whose waiter is live again", got)
+		}
+
+		log := buf.String()
+		requireFailureEpisode(t, log, "reads running but whose waiting process is gone", 2, waiterlessRecovered)
+
+		// A record that stops reading running, or vanishes, ends an open episode with one Info each.
+		writeActivityRun(t, root, "run-a", waiterless, created, eventsWritten)
+		read()
+		finished := waiterless
+		finished.outcome = string(OutcomeDone)
+		writeActivityRun(t, root, "run-a", finished, created, eventsWritten)
+		read()
+		read()
+		if got := countLevelLines(buf.String(), "INFO", waiterlessRecovered); got != 2 {
+			t.Errorf("INFO lines of %q after the record turned terminal = %d, want 2; log: %s", waiterlessRecovered, got, buf.String())
+		}
+		writeActivityRun(t, root, "run-a", waiterless, created, eventsWritten)
+		read()
+		if err := os.Remove(filepath.Join(root, "run-a", runStateFileName)); err != nil {
+			t.Fatal(err)
+		}
+		read()
+		read()
+		if got := countLevelLines(buf.String(), "INFO", waiterlessRecovered); got != 3 {
+			t.Errorf("INFO lines of %q after the record vanished = %d, want 3; log: %s", waiterlessRecovered, got, buf.String())
+		}
+
+		if !strings.Contains(log, filepath.Join(root, "run-a")) {
+			t.Errorf("log names no run-a directory; log: %s", log)
+		}
+		for _, other := range []string{"run-b", "run-c"} {
+			if strings.Contains(log, filepath.Join(root, other)) {
+				t.Errorf("log names %s, a pid-less or finished record; log: %s", other, log)
+			}
+		}
+	})
+
+	// It captures the process-global logger at Debug, so it runs serially like the test.
 	t.Run("each run is read through the engine its record names", func(t *testing.T) {
 		buf := logcapture.CaptureVerbose(t)
 		logger.SetVerbosity(2)
