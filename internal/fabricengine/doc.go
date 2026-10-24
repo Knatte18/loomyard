@@ -667,6 +667,12 @@
 // A named parent checks no tracked dirt in either worktree and logs the parent's dirty paths at Info: the fork takes the parent's last commit, never its uncommitted edits.
 // Without `Parent`, `Add` forks from the acting worktree's HEAD and refuses its tracked dirt with `ErrSourceDirty`.
 //
+// With `AddOptions.AdoptLocal`, `Add` makes a pair over an unmarked local warp branch that already exists, instead of refusing `ErrBranchExists`.
+// The branch is checked out into the new worktree (`git worktree add <path> <branch>`) and, like an adopted marked branch, is never deleted by the rollback; the weft side follows the usual rules, adopting a live records branch and otherwise forking from the parent's records branch.
+// Only `lyx fabric add --adopt-local` sets it, so an unattended run never adopts a stale branch left under a reused slug.
+// Before any mutation `refuseAdoptLocalCheckedOut` refuses a warp branch checked out in another worktree (`lyx fabric checkout <other branch>` in it) and a records branch checked out in another records worktree (`git switch` off it in that worktree, or `git switch --detach` when it belongs to no pair).
+// The origin record's parent comes from `Parent` or the acting worktree, except when the adopted branch is the warp's default branch: then `parent_branch` and `parent_worktree` are empty, a root pair, which batten's Land row refuses to land on.
+//
 // # The one-repo illusion at the public API boundary
 //
 // fabric exists to sell one illusion to every other package: a developer, an agent, and every lyx

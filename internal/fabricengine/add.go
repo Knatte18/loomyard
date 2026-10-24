@@ -45,6 +45,10 @@ type AddOptions struct {
 	Parent string
 	// Beam writes the beam mark into the new pair's origin record.
 	Beam bool
+	// AdoptLocal makes the pair over an unmarked local warp branch that already exists, instead of refusing with ErrBranchExists.
+	// The adopted branch is checked out into the new worktree and is never deleted by a rollback.
+	// It is set only by a command naming the flag, so an unattended run never adopts a stale branch left under a reused slug.
+	AdoptLocal bool
 }
 
 // syncOptions returns the options the records helpers take.
@@ -77,10 +81,10 @@ type ErrBranchExists struct {
 	Branch string
 }
 
-// Error implements the error interface, naming the two ways out for a caller inside a pair.
+// Error implements the error interface, naming the three ways out for a caller inside a pair.
 func (e *ErrBranchExists) Error() string {
 	return fmt.Sprintf(
-		"branch %q already exists; switch a pair onto it with \"lyx fabric checkout %s\", or delete it first with \"git branch -D %s\" if it is a leftover from a removed pair",
+		"branch %q already exists; switch a pair onto it with \"lyx fabric checkout %s\", or delete it first with \"git branch -D %s\" if it is a leftover from a removed pair; or make a pair over it with \"lyx fabric add <slug> --adopt-local\"",
 		e.Branch, e.Branch, e.Branch,
 	)
 }
@@ -179,7 +183,9 @@ func (e *ErrLocalAddOverOrdinary) Error() string {
 // a failure there is logged and never fails the Add.
 // A warp branch that exists locally and carries the local-only mark is adopted rather than refused;
 // as its last step Add clears the mark of each adopted branch and lists it in AddResult.LocalMarkCleared, so the adopted pair is ordinary.
-// An unmarked existing warp branch is refused with ErrBranchExists.
+// An unmarked existing warp branch is refused with ErrBranchExists, unless opts.AdoptLocal adopts it too.
+// An AdoptLocal add refuses, before any mutation, a warp branch checked out in another worktree and a records branch checked out in another records worktree, naming the worktree and the way forward.
+// When the adopted branch is the warp's default branch the origin record names no parent branch and no parent worktree, a root pair.
 // With opts.Parent naming a pair of the hub, the warp branch forks from that pair's last commit and the weft branch from its records branch, the origin record names the parent's branch and slug,
 // and no tracked dirt is checked in either worktree; a parent that cannot be forked from is refused before any mutation.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddResult, error) {
@@ -242,12 +248,12 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		if err != nil {
 			return AddResult{}, fmt.Errorf("read local mark of warp branch %q: %w", warpBranch, err)
 		}
-		if !warpBranchMarked && !local {
+		if !warpBranchMarked && !local && !opts.AdoptLocal {
 			return AddResult{}, &ErrBranchExists{Branch: warpBranch}
 		}
 	}
-	// A marked warp branch is a local pair's kept branch: both paths adopt it.
-	warpAdopted := warpBranchExists && warpBranchMarked
+	// A marked warp branch is a local pair's kept branch: both paths adopt it, and so does a command naming AdoptLocal.
+	warpAdopted := warpBranchExists && (warpBranchMarked || opts.AdoptLocal)
 
 	target := WorktreePath(l, slug)
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
@@ -292,6 +298,12 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		}
 	}
 
+	if opts.AdoptLocal && warpAdopted {
+		if err := refuseAdoptLocalCheckedOut(l, slug, warpBranch, weftBranch, weftBranchAlreadyExists); err != nil {
+			return AddResult{}, err
+		}
+	}
+
 	// Resolve parent warp branch before worktree creation to avoid partial state on failure.
 	// A detached HEAD and an unborn branch are both refusals, and neither is a read error.
 	// A named parent was resolved above; its branch, records branch and worktree name stand in for the acting worktree's.
@@ -308,6 +320,18 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 			return AddResult{}, fmt.Errorf("cannot spawn weft branch: warp worktree is on a detached HEAD or unborn branch")
 		}
 		parentWeftBranch, parentWorktree = RecordsBranchName(parentBranch), l.WorktreeName
+	}
+
+	// A pair over the warp's default branch is a root pair: its record names no parent, which batten's Land row refuses to land on.
+	recordedParentBranch, recordedParentWorktree := parentBranch, parentWorktree
+	if opts.AdoptLocal && warpAdopted {
+		defaultBranch, err := warpDefaultBranch(l, opts)
+		if err != nil {
+			return AddResult{}, err
+		}
+		if defaultBranch == warpBranch {
+			recordedParentBranch, recordedParentWorktree = "", ""
+		}
 	}
 
 	// Probe both origins before the first mutation: decide whether the pair is live, and refuse an unreplaceable leftover here rather than at the caller's later push.
@@ -482,7 +506,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 	// so a task moved between machines keeps its recorded parent.
 	// A forked weft always gets its own record, though it may carry the parent's.
 	if _, statErr := os.Stat(OriginRecordPathFor(l, slug)); !weftAdopted || statErr != nil {
-		if err := WriteOrigin(rec, l, slug, Origin{ParentBranch: parentBranch, ParentWorktree: parentWorktree, Beam: opts.Beam}); err != nil {
+		if err := WriteOrigin(rec, l, slug, Origin{ParentBranch: recordedParentBranch, ParentWorktree: recordedParentWorktree, Beam: opts.Beam}); err != nil {
 			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("record parent branch: %w", err)
 		}

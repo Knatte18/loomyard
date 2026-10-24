@@ -20,9 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// TestAdd_ExistingBranchErrorNamesRemedy creates the warp branch a slug would claim, calls Add with
-// that slug, and asserts the rejection names both remedies (checkout onto it, or delete the
-// leftover).
+// TestAdd_ExistingBranchErrorNamesRemedy creates the warp branch a slug would claim and calls Add with that slug.
+// It asserts the rejection names all three remedies: checkout onto it, delete the leftover, or adopt it with --adopt-local.
 func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 	t.Parallel()
 
@@ -37,7 +36,7 @@ func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Add(%q) error = nil; want branch-already-exists rejection", slug)
 	}
-	for _, want := range []string{"already exists", "lyx fabric checkout " + slug, "git branch -D " + slug} {
+	for _, want := range []string{"already exists", "lyx fabric checkout " + slug, "git branch -D " + slug, "lyx fabric add <slug> --adopt-local"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Add(%q) error = %q; want substring %q", slug, err.Error(), want)
 		}
