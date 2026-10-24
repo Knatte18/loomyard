@@ -1,6 +1,6 @@
 //go:build tier0
 
-// patternentry_test.go covers CardPatternEntries, the reader of a card's fenced PATTERN.md entry lines.
+// patternentry_test.go covers the readers of a card's PATTERN entries: its fenced entry lines and the entry IDs its text names.
 
 package planparser
 
@@ -62,6 +62,28 @@ func TestCardPatternEntries(t *testing.T) {
 			got := CardPatternEntries(Card{Text: tt.text})
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CardPatternEntries() = %#v; want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCardNamesPatternEntry(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		text string
+		want bool
+	}{
+		{"BacktickedIDInProse", "Delete the `PATTERN-a` bullet from PATTERN.md.\n", true},
+		{"IDInAFencedLine", "```\n- `PATTERN-a` — rule a.\n```\n", true},
+		{"BareIDWithoutBackticks", "Delete PATTERN-a from PATTERN.md.\n", false},
+		{"LongerIDSharingThePrefix", "Delete the `PATTERN-ab` bullet.\n", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := CardNamesPatternEntry(Card{Text: tt.text}, "PATTERN-a"); got != tt.want {
+				t.Errorf("CardNamesPatternEntry(%q, PATTERN-a) = %v; want %v", tt.text, got, tt.want)
 			}
 		})
 	}

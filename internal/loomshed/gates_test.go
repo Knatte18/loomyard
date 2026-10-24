@@ -647,6 +647,13 @@ func TestNewPlanGate(t *testing.T) {
 	longEntryA := "- `PATTERN-a` — " + strings.Repeat("l", 200)
 	bigEntryB := "- `PATTERN-b` — " + strings.Repeat("b", 150)
 	underLine := overviewOf(pattern.HeadroomBytes-100, shortEntryA, entryB)
+	// removableUnderLine grows past the line when longEntryA replaces shortEntryA, and falls back under it once bigEntryB is removed too.
+	removableUnderLine := overviewOf(pattern.HeadroomBytes-100, shortEntryA, bigEntryB)
+	const (
+		namesB  = "Delete the `PATTERN-b` bullet from PATTERN.md."
+		cardOne = "1-first-card"
+		cardTwo = "2-first-card"
+	)
 	smallOverview := "# PATTERN\n\n- `PATTERN-other` — o.\n"
 	const (
 		headroomWayForward     = "lyx loom decision add"
@@ -675,21 +682,29 @@ func TestNewPlanGate(t *testing.T) {
 		// cardFence is fenced text on the sole card, secondFence the Text of a second card added to the parsed plan, and noRecordPath clears the context's decision record path.
 		cardFence, secondFence string
 		noRecordPath           bool
-		// wantDetail is a fragment every finding of the three PATTERN checks must hold, the way forward its message names.
+		// wantDetail is a fragment every finding of the PATTERN checks must hold, the way forward its message names.
 		wantDetail                                  string
 		wantHeadroom, wantRemoves, wantUnprescribed int
-		wantErr                                     bool
+		// wantCardHeadroom counts the pattern-card-headroom findings, each of which must name the card wantCardHeadroomOn.
+		wantCardHeadroom   int
+		wantCardHeadroomOn string
+		wantErr            bool
 	}{
-		{name: "PatternLinesGrowingPastTheLineFromABaseUnderIt", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(longEntryA), wantHeadroom: 1, wantDetail: headroomWayForward},
+		{name: "PatternLinesGrowingPastTheLineFromABaseUnderIt", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(longEntryA), wantHeadroom: 1, wantCardHeadroom: 1, wantCardHeadroomOn: cardOne, wantDetail: headroomWayForward},
 		{name: "PatternLinesReplacingBulletsAtEqualSizePass", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA)},
 		{name: "PatternOverviewPastTheLineWithNoRemovesIsFlagged", recordSection: "absent", patternOverview: overviewOf(pattern.HeadroomBytes+20, shortEntryA, bigEntryB), patternBase: underLine, wantHeadroom: 1, wantDetail: headroomWayForward},
 		{name: "PatternRemovesWithNoFencedLineShrinksTheProjection", planSection: removesB, recordSection: "absent", patternOverview: overviewOf(pattern.HeadroomBytes+20, shortEntryA, bigEntryB), patternBase: underLine},
 		{name: "PatternRemovesFencedLineIsFlagged", planSection: removesA, recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA), wantRemoves: 1, wantDetail: removesWayForward},
 		{name: "PatternRemovesFencedByADoneCardPasses", planSection: removesA, recordSection: "absent", doneCard: true, patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA)},
-		{name: "TwoCardsFencingOneIDWhereTheLaterFitsPass", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(longEntryA), secondFence: fenceOf(sameSizeA)},
-		{name: "TwoCardsFencingOneIDWhereTheLaterOverflowsIsFlagged", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA), secondFence: fenceOf(longEntryA), wantHeadroom: 1, wantDetail: headroomWayForward},
+		{name: "TwoCardsFencingOneIDWhereTheLaterFitsFlagsOnlyTheEarlierCard", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(longEntryA), secondFence: fenceOf(sameSizeA), wantCardHeadroom: 1, wantCardHeadroomOn: cardOne, wantDetail: headroomWayForward},
+		{name: "TwoCardsFencingOneIDWhereTheLaterOverflowsIsFlagged", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA), secondFence: fenceOf(longEntryA), wantHeadroom: 1, wantCardHeadroom: 1, wantCardHeadroomOn: cardTwo, wantDetail: headroomWayForward},
+		{name: "RemovalNamedByTheGrowingCardOffsetsItsGrowth", planSection: removesB, recordSection: "absent", patternOverview: removableUnderLine, patternBase: removableUnderLine, cardFence: namesB + "\n\n" + fenceOf(longEntryA)},
+		{name: "RemovalNamedByTwoCardsIsCreditedToTheFirstNotTheLast", planSection: removesB, recordSection: "absent", patternOverview: removableUnderLine, patternBase: removableUnderLine, cardFence: namesB + "\n\n" + fenceOf(longEntryA), secondFence: namesB},
+		{name: "RemovalNamedByALaterCardFlagsTheEarlierGrowingCard", planSection: removesB, recordSection: "absent", patternOverview: removableUnderLine, patternBase: removableUnderLine, cardFence: fenceOf(longEntryA), secondFence: namesB, wantCardHeadroom: 1, wantCardHeadroomOn: cardOne, wantDetail: headroomWayForward},
+		{name: "RemovalNoCardNamesShrinksTheProjectionBeforeTheFirstCard", planSection: removesB, recordSection: "absent", patternOverview: removableUnderLine, patternBase: removableUnderLine, cardFence: fenceOf(longEntryA)},
+		{name: "DoneCardIsNeverProjected", recordSection: "absent", doneCard: true, patternOverview: underLine, patternBase: overviewOf(pattern.HeadroomBytes+200, shortEntryA, entryB), cardFence: fenceOf(longEntryA)},
 		{name: "TwoLinesOfOneCardWhereTheLaterFitsPass", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(longEntryA, sameSizeA)},
-		{name: "TwoLinesOfOneCardWhereTheLaterOverflowsIsFlagged", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA, longEntryA), wantHeadroom: 1, wantDetail: headroomWayForward},
+		{name: "TwoLinesOfOneCardWhereTheLaterOverflowsIsFlagged", recordSection: "absent", patternOverview: underLine, patternBase: underLine, cardFence: fenceOf(sameSizeA, longEntryA), wantHeadroom: 1, wantCardHeadroom: 1, wantCardHeadroomOn: cardOne, wantDetail: headroomWayForward},
 		{name: "OverviewAlreadyHoldingTheLinesProjectsTheBaseSize", recordSection: "absent", patternOverview: overviewOf(pattern.HeadroomBytes+50, longEntryA, entryB), patternBase: overviewOf(pattern.HeadroomBytes+50, longEntryA, entryB), cardFence: fenceOf(longEntryA)},
 		{name: "DeclaredEntryWithNoFencedLineAndAnUnchangedBulletIsFlagged", planSection: bullet, recordSection: bullet, patternOverview: smallOverview, patternBase: smallOverview, wantUnprescribed: 1, wantDetail: unprescribedWayForward},
 		{name: "DeclaredEntryWithAFencedLinePasses", planSection: bullet, recordSection: bullet, patternOverview: smallOverview, patternBase: smallOverview, cardFence: fenceOf("- `PATTERN-cwd-resolution` — the new text")},
@@ -773,15 +788,18 @@ func TestNewPlanGate(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ValidatePlan() error = %v; want nil", err)
 			}
-			for check, want := range map[string]int{patternHeadroomCheck: tt.wantHeadroom, patternRemovesPrescribedCheck: tt.wantRemoves, patternLineUnprescribedCheck: tt.wantUnprescribed} {
+			for check, want := range map[string]int{patternHeadroomCheck: tt.wantHeadroom, patternCardHeadroomCheck: tt.wantCardHeadroom, patternRemovesPrescribedCheck: tt.wantRemoves, patternLineUnprescribedCheck: tt.wantUnprescribed} {
 				if got := countCheck(findings, check); got != want {
 					t.Errorf("ValidatePlan() %s findings = %d; want %d (%v)", check, got, want, findings)
 				}
 			}
 			for _, f := range findings {
-				isPatternCheck := f.Check == patternHeadroomCheck || f.Check == patternRemovesPrescribedCheck || f.Check == patternLineUnprescribedCheck
+				isPatternCheck := f.Check == patternHeadroomCheck || f.Check == patternCardHeadroomCheck || f.Check == patternRemovesPrescribedCheck || f.Check == patternLineUnprescribedCheck
 				if isPatternCheck && (f.Severity != planindex.SeverityBlocking || !strings.Contains(f.Detail, tt.wantDetail)) {
 					t.Errorf("ValidatePlan() %s finding = %+v; want a blocking finding whose detail holds %q", f.Check, f, tt.wantDetail)
+				}
+				if f.Check == patternCardHeadroomCheck && f.Card != tt.wantCardHeadroomOn {
+					t.Errorf("ValidatePlan() %s finding Card = %q; want %q", f.Check, f.Card, tt.wantCardHeadroomOn)
 				}
 			}
 			if got := countCheck(findings, renameToolMissingCheck); got != tt.wantRename {

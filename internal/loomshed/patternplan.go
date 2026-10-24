@@ -1,4 +1,4 @@
-// patternplan.go holds the plan gate's PATTERN checks: pattern-removes-prescribed, pattern-headroom and pattern-line-unprescribed.
+// patternplan.go holds the plan gate's PATTERN checks: pattern-removes-prescribed, pattern-headroom, pattern-card-headroom and pattern-line-unprescribed.
 // They compare the plan's fenced entry lines and its declared PATTERN changes with the overview in the worktree and at the base, so they live beside the other context checks rather than in planparser.
 
 package loomshed
@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"slices"
 
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/patternlint"
@@ -18,6 +19,12 @@ import (
 // patternHeadroomCheck names the finding patternPlanFindings appends when the overview the plan's fenced entry lines project grows past the headroom line.
 const patternHeadroomCheck = "pattern-headroom"
 
+// patternCardHeadroomCheck names the finding patternPlanFindings appends for a card whose own step grows the projected overview past the headroom line.
+const patternCardHeadroomCheck = "pattern-card-headroom"
+
+// patternHeadroomWayForward is the fix both headroom findings name.
+const patternHeadroomWayForward = "shorten the prescribed lines or move detail into the entries' background files, and when that is not enough ask the parent to record a `changes` decision that shortens other entries with `lyx loom decision add --pattern-entry ... --pattern-action changes --pattern-text ...` and prescribe those lines on a card; once the plan is approved, the parent passes `--amends-plan` as well"
+
 // patternRemovesPrescribedCheck names the finding patternPlanFindings appends when a card fences a line for an entry the plan removes.
 const patternRemovesPrescribedCheck = "pattern-removes-prescribed"
 
@@ -27,6 +34,7 @@ const patternLineUnprescribedCheck = "pattern-line-unprescribed"
 // patternPlanFindings returns the PATTERN checks' findings, in this order.
 // First one pattern-removes-prescribed per removed entry that a card in cards fences a line for.
 // Then a pattern-headroom when the overview projected from every card of plan grows past the headroom line.
+// Then one pattern-card-headroom per card in cards whose own step, projected from the worktree overview in card order, grows past the line.
 // Last, only with pc.DecisionRecordPath set, one pattern-line-unprescribed per added or changed entry that no card fences a line for and whose bullet the worktree overview still holds as the base does.
 // It reads nothing and returns nil when pc.PatternBase is nil or worktreeRoot holds no PATTERN.md; a read error of either overview is returned.
 func patternPlanFindings(plan *planparser.Plan, cards []planparser.Card, worktreeRoot string, pc PlanContext) ([]planindex.Finding, error) {
@@ -80,10 +88,11 @@ func patternPlanFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 	if finding, over := pattern.Headroom(base, pattern.ProjectOverview(overview, prescribed, removed)); over {
 		findings = append(findings, planindex.Finding{
 			Check:    patternHeadroomCheck,
-			Detail:   finding.Message + "; way forward: shorten the prescribed lines or move detail into the entries' background files, and when that is not enough ask the parent to record a `changes` decision that shortens other entries with `lyx loom decision add --pattern-entry ... --pattern-action changes --pattern-text ...` and prescribe those lines on a card; once the plan is approved, the parent passes `--amends-plan` as well",
+			Detail:   finding.Message + "; way forward: " + patternHeadroomWayForward,
 			Severity: planindex.SeverityBlocking,
 		})
 	}
+	findings = append(findings, cardHeadroomFindings(overview, cards, removed)...)
 
 	if pc.DecisionRecordPath == "" {
 		return findings, nil
@@ -107,6 +116,43 @@ func patternPlanFindings(plan *planparser.Plan, cards []planparser.Card, worktre
 		})
 	}
 	return findings, nil
+}
+
+// cardHeadroomFindings returns one pattern-card-headroom finding per card of cards whose own step grows the projected overview past the headroom line, the bound each card's lint-pattern step applies against the commit before it.
+// The projection starts at overview and takes cards in order.
+// A card's step applies its fenced entry lines, then drops each entry of removed whose ID the card is the first of cards to name;
+// a removed entry no card names is dropped before the first card, so the check never flags a step its card gate would pass.
+func cardHeadroomFindings(overview []byte, cards []planparser.Card, removed []string) []planindex.Finding {
+	removedByCard := make(map[int][]string)
+	var removedUpfront []string
+	for _, id := range removed {
+		index := slices.IndexFunc(cards, func(card planparser.Card) bool { return planparser.CardNamesPatternEntry(card, id) })
+		if index < 0 {
+			removedUpfront = append(removedUpfront, id)
+			continue
+		}
+		removedByCard[index] = append(removedByCard[index], id)
+	}
+
+	var findings []planindex.Finding
+	running := pattern.ProjectOverview(overview, nil, removedUpfront)
+	for index, card := range cards {
+		var prescribed []string
+		for _, entry := range planparser.CardPatternEntries(card) {
+			prescribed = append(prescribed, entry.Line)
+		}
+		next := pattern.ProjectOverview(running, prescribed, removedByCard[index])
+		if finding, over := pattern.Headroom(running, next); over {
+			findings = append(findings, planindex.Finding{
+				Check:    patternCardHeadroomCheck,
+				Card:     card.ID(),
+				Detail:   fmt.Sprintf("card %d: %s, so its lint-pattern step fails against the overview the cards before it leave; way forward: %s", card.Number, finding.Message, patternHeadroomWayForward),
+				Severity: planindex.SeverityBlocking,
+			})
+		}
+		running = next
+	}
+	return findings
 }
 
 // PatternBaseReader returns the PlanContext.PatternBase reader for worktreeRoot's repository.
