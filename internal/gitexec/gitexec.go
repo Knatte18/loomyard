@@ -19,7 +19,7 @@
 // PATTERN-gitexec-checked-call is the mechanism that
 // keeps every remaining raw call site (RunGit, or a direct exec.Command)
 // deliberate rather than accidental.
-// A remote subcommand additionally runs under a deadline, a process-group kill and the low-speed environment; see doc.go.
+// A remote subcommand additionally runs under a deadline, a stall bound with one retry, a process-group kill and the low-speed environment; see doc.go.
 
 package gitexec
 
@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/toolfloor"
@@ -44,6 +45,10 @@ import (
 // remoteDeadline bounds one remote git command; a command still running when it expires is killed.
 // It is a variable only so a test can shorten it.
 var remoteDeadline = 10 * time.Minute
+
+// stallBound bounds the wait for a remote's first answer; a remote command that has received no packet when it passes is killed and run once more.
+// It is a variable only so a test can shorten it.
+var stallBound = 30 * time.Second
 
 // remoteWaitDelay bounds the wait on output pipes after a remote git command exits or is killed, since an orphaned helper such as git-remote-https can still hold them.
 const remoteWaitDelay = 10 * time.Second
@@ -73,9 +78,9 @@ func reportKill(args []string, pid int, groupErr error) {
 	}
 }
 
-// GitError reports that a git command ran and exited non-zero, or that a remote command outlived its deadline and was killed.
-// It carries the command that was run, the directory it ran in, its exit code, its stderr and, for a killed remote command, the deadline.
-// Error renders the args, the exit code or deadline and the stderr; Dir deliberately is not rendered, and is carried solely for a caller that wants to name the directory itself.
+// GitError reports that a git command ran and exited non-zero, or that a remote command outlived its deadline or stalled twice and was killed.
+// It carries the command that was run, the directory it ran in, its exit code, its stderr and, for a killed remote command, the bound that killed it.
+// Error renders the args, the exit code or bound and the stderr; Dir deliberately is not rendered, and is carried solely for a caller that wants to name the directory itself.
 // The omission is the reason a caller can wrap a GitError without the result naming the same directory twice:
 // at nearly every call site the wrapper already says which repo or worktree it was operating on, so rendering Dir here would duplicate it in the one part of the message an operator reads first.
 // Args are rendered verbatim, with no redaction — callers must not pass credentials in args.
@@ -85,11 +90,14 @@ type GitError struct {
 	ExitCode int
 	Stderr   string
 
-	// Timeout is the deadline a remote command outlived before it was killed; zero unless the deadline killed git, in which case ExitCode is -1.
+	// Timeout is the bound a remote command outlived before it was killed, the deadline or the stall bound; zero unless a bound killed git, in which case ExitCode is -1.
 	Timeout time.Duration
+
+	// Stalled reports that the remote sent no answer within the stall bound on both attempts, and Timeout is the stall bound.
+	Stalled bool
 }
 
-// Error renders "git <args>: exit <code>", or "git <args>: timed out after <deadline>" when the deadline killed git, followed by ": <trimmed stderr>" only when the trimmed stderr is non-empty.
+// Error renders "git <args>: exit <code>", "git <args>: timed out after <deadline>" when the deadline killed git, or "git <args>: no answer from the remote within <stall bound>, twice" for a stall, followed by ": <trimmed stderr>" only when the trimmed stderr is non-empty.
 // Each arg is rendered bare, except an arg that is empty or contains a space, tab, or newline, which is rendered %q-quoted so the boundary between adjacent args stays legible.
 func (e *GitError) Error() string {
 	rendered := make([]string, len(e.Args))
@@ -97,9 +105,13 @@ func (e *GitError) Error() string {
 		rendered[i] = renderArg(arg)
 	}
 
-	msg := fmt.Sprintf("git %s: exit %d", strings.Join(rendered, " "), e.ExitCode)
-	if e.Timeout != 0 {
-		msg = fmt.Sprintf("git %s: timed out after %s", strings.Join(rendered, " "), e.Timeout)
+	command := strings.Join(rendered, " ")
+	msg := fmt.Sprintf("git %s: exit %d", command, e.ExitCode)
+	switch {
+	case e.Stalled:
+		msg = fmt.Sprintf("git %s: no answer from the remote within %s, twice", command, e.Timeout)
+	case e.Timeout != 0:
+		msg = fmt.Sprintf("git %s: timed out after %s", command, e.Timeout)
 	}
 
 	if stderr := strings.TrimSpace(e.Stderr); stderr != "" {
@@ -184,35 +196,79 @@ func runCore(args []string, cwd, stdin string) (stdout, stderr string, exitCode 
 
 // runCoreWithin spawns git with args in cwd and captures its output.
 // It first checks git's floor and returns that error unwrapped with exit code -1, before any spawn.
-// A non-nil err means git could not be run at all (not found, permission denied, cwd invalid, …), that git is below the floor, or that a remote subcommand outlived deadline, which is a *GitError with exit code -1.
+// A non-nil err means git could not be run at all (not found, permission denied, cwd invalid, …), that git is below the floor, or that a remote subcommand outlived deadline or stalled twice, which is a *GitError with exit code -1.
 // A non-zero git exit is reported as exitCode with a nil err.
 // A non-empty stdin is fed to git's standard input; an empty one leaves it unset.
 //
-// A remote subcommand runs under deadline, in its own process group, with lowSpeedEnv added to the environment;
+// A remote subcommand runs under deadline and stallBound, in its own process group, with lowSpeedEnv added to the environment;
 // a local one runs unbounded.
-// A remote subcommand first waits while a pause covers the process, through the installed network gate, if any, and its deadline starts only once it runs.
+// A remote subcommand killed for a stall runs once more, since it received nothing from the remote and so changed nothing there.
+// A remote subcommand first waits while a pause covers the process, through the installed network gate, if any, and its bounds start only once it runs.
 // Every child gets the process environment less GIT_DIR, GIT_WORK_TREE and GIT_OPTIONAL_LOCKS, with GIT_OPTIONAL_LOCKS=0 set.
 func runCoreWithin(args []string, cwd, stdin string, deadline time.Duration) (stdout, stderr string, exitCode int, err error) {
 	if floorErr := CheckFloor(); floorErr != nil {
 		return "", "", -1, floorErr
 	}
+	if !remoteSubcommands[subcommand(args)] {
+		stdout, stderr, exitCode, _, err = runAttempt(args, cwd, stdin, false, deadline)
+		return stdout, stderr, exitCode, err
+	}
+
+	// The hold comes before the bounds' timers, so a command held by a pause starts its bounds only when it runs.
+	_, done := pauserecord.Network(subcommand(args))
+	defer done()
+	stdout, stderr, exitCode, stalled, err := runAttempt(args, cwd, stdin, true, deadline)
+	if !stalled {
+		return stdout, stderr, exitCode, err
+	}
+	logger.Warn("gitexec: remote sent no answer, retrying once", "subcommand", subcommand(args), "dir", cwd, "stall_bound", stallBound)
+	stdout, stderr, exitCode, stalled, err = runAttempt(args, cwd, stdin, true, deadline)
+	if stalled {
+		return stdout, stderr, -1, &GitError{Args: args, Dir: cwd, ExitCode: -1, Stderr: stderr, Timeout: stallBound, Stalled: true}
+	}
+	return stdout, stderr, exitCode, err
+}
+
+// runAttempt spawns git once with args in cwd and captures its output, with runCoreWithin's result contract.
+// A remote attempt runs under deadline, in its own process group, with lowSpeedEnv and a packet trace file added to the environment.
+// When stallBound passes under deadline and the trace file is still empty, the remote has sent no answer:
+// the attempt is killed and reports stalled, with a nil err and exit code -1.
+func runAttempt(args []string, cwd, stdin string, remote bool, deadline time.Duration) (stdout, stderr string, exitCode int, stalled bool, err error) {
 	logger.Debug("gitexec: spawn", "subcommand", subcommand(args), "dir", cwd)
 
 	var cmd *exec.Cmd
 	var ctx context.Context
-	if remoteSubcommands[subcommand(args)] {
-		// The hold comes before the deadline's context, so a command held by a pause starts its bound only when it runs.
-		_, done := pauserecord.Network(subcommand(args))
-		defer done()
+	var sawStall atomic.Bool
+	if remote {
+		trace, err := lyxtemp.CreateTemp("git-packet-trace-*")
+		if err != nil {
+			return "", "", -1, false, fmt.Errorf("create the git packet trace file: %w", err)
+		}
+		tracePath := trace.Name()
+		defer os.Remove(tracePath)
+		if err := trace.Close(); err != nil {
+			return "", "", -1, false, fmt.Errorf("close the git packet trace file: %w", err)
+		}
+
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(context.Background(), deadline)
 		defer cancel()
 		cmd = exec.CommandContext(ctx, "git", args...)
 		cmd.WaitDelay = remoteWaitDelay
-		cmd.Env = childEnv(lowSpeedEnv)
+		cmd.Env = childEnv(append(append([]string(nil), lowSpeedEnv...), "GIT_TRACE_PACKET="+tracePath))
 		proc.ConfigureGroupKill(cmd, func(pid int, groupErr error) {
 			reportKill(args, pid, groupErr)
 		})
+		if stallBound < deadline {
+			// git writes the trace's first line only once the remote's first packet arrives, so an empty trace at the bound is a remote that never answered.
+			stallTimer := time.AfterFunc(stallBound, func() {
+				if info, statErr := os.Stat(tracePath); statErr == nil && info.Size() == 0 {
+					sawStall.Store(true)
+					cancel()
+				}
+			})
+			defer stallTimer.Stop()
+		}
 	} else {
 		cmd = exec.Command("git", args...)
 		cmd.Env = childEnv(nil)
@@ -230,19 +286,22 @@ func runCoreWithin(args []string, cwd, stdin string, deadline time.Duration) (st
 
 	runErr := cmd.Run()
 
+	if runErr != nil && sawStall.Load() {
+		return outBuf.String(), errBuf.String(), -1, true, nil
+	}
 	if runErr != nil && ctx != nil && ctx.Err() != nil {
-		return outBuf.String(), errBuf.String(), -1, &GitError{Args: args, Dir: cwd, ExitCode: -1, Stderr: errBuf.String(), Timeout: deadline}
+		return outBuf.String(), errBuf.String(), -1, false, &GitError{Args: args, Dir: cwd, ExitCode: -1, Stderr: errBuf.String(), Timeout: deadline}
 	}
 	if errors.Is(runErr, exec.ErrWaitDelay) && cmd.ProcessState != nil {
-		return outBuf.String(), errBuf.String(), cmd.ProcessState.ExitCode(), nil
+		return outBuf.String(), errBuf.String(), cmd.ProcessState.ExitCode(), false, nil
 	}
 	if exitErr, ok := runErr.(*exec.ExitError); ok {
-		return outBuf.String(), errBuf.String(), exitErr.ExitCode(), nil
+		return outBuf.String(), errBuf.String(), exitErr.ExitCode(), false, nil
 	} else if runErr != nil {
-		return "", "", -1, runErr
+		return "", "", -1, false, runErr
 	}
 
-	return outBuf.String(), errBuf.String(), 0, nil
+	return outBuf.String(), errBuf.String(), 0, false, nil
 }
 
 // noOptionalLocksEnv stops a read-only git command, such as `git status`, from taking the index lock to write back a refreshed stat cache.
@@ -266,7 +325,7 @@ func childEnv(extra []string) []string {
 
 // RunGit runs a git command and returns stdout, stderr, and exit code.
 // A git below lyx's floor returns the *toolfloor.FloorError with exit code -1, which is no *GitError.
-// A remote command that outlives its deadline is returned as a *GitError with a non-zero Timeout, though git did not exit on its own.
+// A remote command that outlives its deadline or stalls twice is returned as a *GitError with a non-zero Timeout, though git did not exit on its own.
 func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
 	stdout, stderr, exitCode, err = runCore(args, cwd, "")
 	if err != nil {
@@ -284,13 +343,13 @@ func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err
 // alongside a *GitError; it is empty on an exec-level failure only because
 // git never ran.
 // A git below lyx's floor returns the *toolfloor.FloorError, which is no *GitError, since no git command ran.
-// A remote command that outlives its deadline is returned as a *GitError with a non-zero Timeout, though git did not exit on its own.
+// A remote command that outlives its deadline or stalls twice is returned as a *GitError with a non-zero Timeout, though git did not exit on its own.
 func Run(args []string, cwd string) (string, error) {
 	return RunStdin(args, cwd, "")
 }
 
 // RunWithin is Run with a remote command bounded by deadline instead of the package-wide bound, for a caller that must give up on an unreachable remote sooner.
-// A local command ignores deadline.
+// A local command ignores deadline, and a deadline at or under the stall bound leaves the stall check unarmed.
 func RunWithin(args []string, cwd string, deadline time.Duration) (string, error) {
 	stdout, stderr, exitCode, err := runCoreWithin(args, cwd, "", deadline)
 	if err != nil {
@@ -303,7 +362,7 @@ func RunWithin(args []string, cwd string, deadline time.Duration) (string, error
 }
 
 // RunStdin is Run with stdin fed to git's standard input, for a command such as `cat-file --batch-check` that reads its operands there.
-// It reports a non-zero exit, an exec-level failure, the floor error and a remote deadline exactly as Run does, and an empty stdin behaves as Run.
+// It reports a non-zero exit, an exec-level failure, the floor error, a remote deadline and a stall exactly as Run does, and an empty stdin behaves as Run.
 func RunStdin(args []string, cwd, stdin string) (string, error) {
 	stdout, stderr, exitCode, err := runCore(args, cwd, stdin)
 	if err != nil {

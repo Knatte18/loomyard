@@ -1,4 +1,4 @@
-// export_test.go lets package gitexec_test shorten the remote deadline and inject a git version line.
+// export_test.go lets package gitexec_test shorten the remote deadline and the stall bound and inject a git version line.
 
 package gitexec
 
@@ -29,4 +29,14 @@ func SetRemoteDeadlineForTest(t *testing.T, d time.Duration) {
 	previous := remoteDeadline
 	remoteDeadline = d
 	t.Cleanup(func() { remoteDeadline = previous })
+}
+
+// SetStallBoundForTest sets stallBound to d until the test ends.
+// It changes process-global state, so the calling test must not be parallel.
+func SetStallBoundForTest(t *testing.T, d time.Duration) {
+	t.Helper()
+
+	previous := stallBound
+	stallBound = d
+	t.Cleanup(func() { stallBound = previous })
 }

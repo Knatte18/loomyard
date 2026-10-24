@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/lyxtemp"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
@@ -245,7 +246,7 @@ func TestRun_StdoutOnError(t *testing.T) {
 }
 
 // TestRun_RemoteBounds drives the bounds on a remote git command through git's ext:: transport, a remote that accepts and never answers, with no network.
-// Its rows run serially because they set the remote deadline, the kill reporter and the pause network gate, which are process-global state.
+// Its rows run serially because they set the remote deadline, the stall bound, the kill reporter, the pause network gate and the process environment, which are process-global state.
 // The ext:: command is a shell script, so the test is Unix-only.
 func TestRun_RemoteBounds(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -409,7 +410,101 @@ func TestRun_RemoteBounds(t *testing.T) {
 		return
 	}
 
-	if !t.Run("a remote command gets the low-speed environment", func(t *testing.T) {
+	// remoteAttempts runs a remote ls-remote against an ext:: command that counts its runs, writes reply and hangs, and returns the command's run count, the call's kill reports and its error.
+	remoteAttempts := func(t *testing.T, name, reply string) (int, []kill, error) {
+		t.Helper()
+		countFile := filepath.Join(scriptDir, name+".count")
+		script := filepath.Join(scriptDir, name+".sh")
+		body := "#!/bin/sh\necho run >> " + countFile + "\nprintf '" + reply + "'\nexec sleep 300\n"
+		if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+			t.Fatalf("write %s: %v", script, err)
+		}
+		mu.Lock()
+		kills = nil
+		mu.Unlock()
+
+		_, err := gitexec.Run([]string{"-c", "protocol.ext.allow=always", "ls-remote", "ext::" + script}, repoDir)
+
+		counted, readErr := os.ReadFile(countFile)
+		if readErr != nil {
+			t.Fatalf("read the ext command's run count: %v", readErr)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Count(string(counted), "run\n"), append([]kill(nil), kills...), err
+	}
+
+	if !t.Run("a remote that never answers is killed at the stall bound and run once more", func(t *testing.T) {
+		const stall = deadline / 5
+		gitexec.SetStallBoundForTest(t, stall)
+		logs := logcapture.Capture(t)
+
+		runs, recorded, err := remoteAttempts(t, "silent", "")
+
+		var gitErr *gitexec.GitError
+		if !errors.As(err, &gitErr) || !gitErr.Stalled || gitErr.Timeout != stall || gitErr.ExitCode != -1 {
+			t.Fatalf("Run error = %v; want a stalled *GitError with Timeout %v and exit code -1", err, stall)
+		}
+		if !gitexec.IsTransportFailure(err) {
+			t.Errorf("IsTransportFailure(%v) = false; want true for a stalled remote command", err)
+		}
+		if runs != 2 || len(recorded) != 2 {
+			t.Errorf("runs = %d, kill reports = %d; want 2 of each, the call and its one retry", runs, len(recorded))
+		}
+		if got := strings.Count(logs.String(), "remote sent no answer, retrying once"); got != 1 {
+			t.Errorf("retry warnings = %d; want 1; log:\n%s", got, logs.String())
+		}
+
+		runDir, dirErr := lyxtemp.Dir()
+		if dirErr != nil {
+			t.Fatalf("lyxtemp.Dir() error = %v", dirErr)
+		}
+		leftover, globErr := filepath.Glob(filepath.Join(runDir, "git-packet-trace-*"))
+		if globErr != nil {
+			t.Fatalf("glob the run directory: %v", globErr)
+		}
+		if len(leftover) != 0 {
+			t.Errorf("trace files left after the call = %v; want none", leftover)
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("a deadline at or under the stall bound kills a silent remote once, at the deadline", func(t *testing.T) {
+		gitexec.SetStallBoundForTest(t, deadline)
+
+		runs, recorded, err := remoteAttempts(t, "unarmed", "")
+
+		var gitErr *gitexec.GitError
+		if !errors.As(err, &gitErr) || gitErr.Stalled || gitErr.Timeout != deadline {
+			t.Fatalf("Run error = %v; want a *GitError with Timeout %v that is not stalled", err, deadline)
+		}
+		if runs != 1 || len(recorded) != 1 {
+			t.Errorf("runs = %d, kill reports = %d; want 1 of each", runs, len(recorded))
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("a remote that answers is not stalled, and is killed at the deadline without a retry", func(t *testing.T) {
+		gitexec.SetStallBoundForTest(t, deadline/5)
+
+		runs, recorded, err := remoteAttempts(t, "answering", "000eversion 2\\n")
+
+		var gitErr *gitexec.GitError
+		if !errors.As(err, &gitErr) || gitErr.Stalled || gitErr.Timeout != deadline {
+			t.Fatalf("Run error = %v; want a *GitError with Timeout %v that is not stalled", err, deadline)
+		}
+		if runs != 1 || len(recorded) != 1 {
+			t.Errorf("runs = %d, kill reports = %d; want 1 of each", runs, len(recorded))
+		}
+	}) {
+		return
+	}
+
+	if !t.Run("a remote command gets the low-speed environment and its own packet trace, over an operator's", func(t *testing.T) {
+		const operatorTrace = "/operator/chosen/trace"
+		t.Setenv("GIT_TRACE_PACKET", operatorTrace)
 		_, err := gitexec.Run([]string{"-c", "protocol.ext.allow=always", "ls-remote", "ext::" + printEnv}, repoDir)
 		var gitErr *gitexec.GitError
 		if !errors.As(err, &gitErr) {
@@ -420,17 +515,31 @@ func TestRun_RemoteBounds(t *testing.T) {
 				t.Errorf("remote command environment lacks %s; stderr: %s", want, gitErr.Stderr)
 			}
 		}
+		if !strings.Contains(gitErr.Stderr, "GIT_TRACE_PACKET=") {
+			t.Errorf("remote command environment lacks GIT_TRACE_PACKET; stderr: %s", gitErr.Stderr)
+		}
+		if strings.Contains(gitErr.Stderr, operatorTrace) {
+			t.Errorf("remote command environment keeps the operator's GIT_TRACE_PACKET; stderr: %s", gitErr.Stderr)
+		}
 	}) {
 		return
 	}
 
-	t.Run("a local command is neither bounded nor given the low-speed environment", func(t *testing.T) {
+	t.Run("a local command is neither bounded nor given the low-speed environment or a packet trace", func(t *testing.T) {
+		// t.Setenv registers the restore of the operator's value; the unset keeps an exported GIT_TRACE_PACKET out of the child.
+		t.Setenv("GIT_TRACE_PACKET", "")
+		if err := os.Unsetenv("GIT_TRACE_PACKET"); err != nil {
+			t.Fatalf("unset GIT_TRACE_PACKET: %v", err)
+		}
 		stdout, err := gitexec.Run([]string{"-c", "alias.slowenv=!sleep 2 && env", "slowenv"}, repoDir)
 		if err != nil {
 			t.Fatalf("Run error = %v; want a local command to run past the remote deadline", err)
 		}
 		if strings.Contains(stdout, "GIT_HTTP_LOW_SPEED") {
 			t.Errorf("local command environment holds a low-speed variable; stdout: %s", stdout)
+		}
+		if strings.Contains(stdout, "GIT_TRACE_PACKET") {
+			t.Errorf("local command environment holds GIT_TRACE_PACKET; stdout: %s", stdout)
 		}
 	})
 }

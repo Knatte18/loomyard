@@ -67,6 +67,11 @@ func TestGitError_Error(t *testing.T) {
 			want: `git ls-remote origin: timed out after 10m0s: fatal: hung`,
 		},
 		{
+			name: "StalledRendersStallBoundInPlaceOfExitCode",
+			err:  &gitexec.GitError{Args: []string{"push", "origin", "HEAD"}, ExitCode: -1, Stderr: "", Timeout: 30 * time.Second, Stalled: true},
+			want: `git push origin HEAD: no answer from the remote within 30s, twice`,
+		},
+		{
 			name: "MixedVector",
 			err:  &gitexec.GitError{Args: []string{"commit", "-m", "a message", "--amend"}, ExitCode: 1, Stderr: "  fatal: boom  "},
 			want: `git commit -m "a message" --amend: exit 1: fatal: boom`,
