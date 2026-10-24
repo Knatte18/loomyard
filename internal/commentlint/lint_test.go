@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // lint_test.go drives the break classification over base and new text pairs.
 
 package commentlint

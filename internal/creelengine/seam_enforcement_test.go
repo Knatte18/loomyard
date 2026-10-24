@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces `PATTERN-creel-store`'s import half: production code in this package never imports reed or shuttle, so every keystroke goes through the Delivery seam.
 
 package creelengine

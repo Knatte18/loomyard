@@ -1,3 +1,5 @@
+//go:build tier0
+
 // finalize_gate_test.go drives Finalize's landing gate and its finalize-mode merge fixer over the gate fixture, a fake seat runner, a fake parent merger and fake line-change reads.
 
 package landingshed
@@ -39,7 +41,7 @@ func newFinalizeGateFixture(t *testing.T) *finalizeGateFixture {
 	deps := newTestDeps(t)
 	stencilkit.SeedInto(t, deps.StencilsDir)
 	fx := &finalizeGateFixture{
-		gate:   newGateFixture(t, "go test ./...", nil),
+		gate:   newGateFixture(t, "finalize", "go test ./...", nil),
 		seats:  &fakeFixerSeats{},
 		merger: &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}},
 		head:   "t2",
@@ -172,7 +174,7 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 	t.Run("a darn Finalize gates through the command its verify source answers", func(t *testing.T) {
 		const treeScoped = "lyx gate test --wait --tier 0 --tree-scoped"
 		fx := newFinalizeGateFixture(t)
-		fx.fz.gate.command = func() (string, error) { return treeScoped, nil }
+		fx.fz.gate.command = func(string) (string, error) { return treeScoped, nil }
 
 		outcome, ptr := fx.call(t)
 

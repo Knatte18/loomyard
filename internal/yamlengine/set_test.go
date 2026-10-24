@@ -1,3 +1,5 @@
+//go:build tier0
+
 // set_test.go contains table-driven tests for SetValues, covering unknown-key rejection, byte-for-byte round-tripping of tricky values, comment/order preservation, orphan-key preservation, list keys and open maps, and the partial-existing regression case that motivated Card 1's always-mutate-the-template-tree design.
 
 package yamlengine

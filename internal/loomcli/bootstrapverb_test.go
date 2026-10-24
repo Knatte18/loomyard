@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bootstrapverb_test.go covers BootstrapVerb: that it is exactly "start", and that it equals the
 // Use field of the cobra command startCmd builds -- the assertion that catches a rename of the verb
 // that leaves the constant behind.

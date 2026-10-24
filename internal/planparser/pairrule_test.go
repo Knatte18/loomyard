@@ -1,3 +1,5 @@
+//go:build tier0
+
 // pairrule_test.go covers CardRefKind and DependencyEdge, the pair rule that decides whether two cards' overlapping refs make a dependency edge.
 
 package planparser

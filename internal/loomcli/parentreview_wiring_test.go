@@ -1,3 +1,5 @@
+//go:build tier0
+
 // parentreview_wiring_test.go pins how wire fills the Discussion-Write parent-review gate:
 // the recipe's gate list, the reviewer taken from the parent resolver and its liveness seam, and the commit pathspec.
 

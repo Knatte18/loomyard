@@ -1,3 +1,5 @@
+//go:build tier0
+
 // friction_test.go — untagged Tier-1 unit tests for LoomDurableDir, LoomFrictionDir, LoomFrictionArchivePrefix and LoomFrictionLock.
 // Pure path arithmetic over a hand-built lyxcwd.Location, no live hub, reed, or network involved.
 

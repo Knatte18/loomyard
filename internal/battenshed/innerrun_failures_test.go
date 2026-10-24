@@ -1,3 +1,5 @@
+//go:build tier0
+
 // innerrun_failures_test.go covers how the inner-run wait logs a polled seam that keeps failing, and the attempts it repeats:
 // one Warn per episode with Debug lines while it lasts and one Info at recovery, and Info only for the first attempt of a retried goto, resume or spawn.
 // The tests capture the process-global logger, so they do not run in parallel.

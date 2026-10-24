@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // verbs_test.go covers webstercli's git-backed/spawn-backed verbs (begin-batch, record-batch, recover-batch, run) through the RunCLI seam:
 // a real scratch git repo backs WorktreeRoot, a real *shuttleengine.Runner wired over local fake shuttleengine.ReedOps/shuttleengine.Engine doubles is the starter seam, webster's own fixture pattern — a fake struct alone cannot satisfy these interfaces, since a genuine *shuttleengine.Run's StrandGUID is only ever minted by a real Runner.Start), and run's own Master spawn is a local fake MasterStarter (mirroring websterengine's own runlevel_test.go runFakeStarter).
@@ -984,7 +984,7 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 	if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &out, []string{"1", "--wait", "1ns"}); code != 0 {
 		t.Fatalf("recover-batch 1 = %d; want 0, output: %s", code, out.String())
 	}
-	if want := "  - `lyx gate test --wait --tier 0 --card 1-only`\n"; !strings.Contains(prompt, want) {
+	if want := "  - `lyx gate test --wait --gate card --card 1-only`\n"; !strings.Contains(prompt, want) {
 		t.Errorf("recovery prompt lacks the edited card's gate call %q; got %q", want, prompt)
 	}
 

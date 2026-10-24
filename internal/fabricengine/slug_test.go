@@ -1,3 +1,5 @@
+//go:build tier0
+
 // slug_test.go pins the shared worktree-slug validator both Add and Remove route through.
 // It is untagged Tier 1: validateWorktreeSlug is pure string work with no git spawn and no
 // filesystem access.

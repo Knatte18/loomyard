@@ -1,3 +1,5 @@
+//go:build tier0
+
 // update_test.go covers UpdateJSON's missing-file, existing-file and mutate-error dispositions, plus its core concurrency property: many concurrent callers each appending one element under UpdateJSON never lose or clobber each other's write.
 // Its corrupt-file disposition is covered by TestCorruptFile in state_test.go.
 

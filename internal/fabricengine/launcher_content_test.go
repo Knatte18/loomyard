@@ -1,3 +1,5 @@
+//go:build tier0
+
 // launcher_content_test.go tests the pure, build-tag-free launcher content builder for both the
 // Windows (.cmd) and non-Windows (.sh) branches.
 // Because launcherScript and launcherExt take goos as a parameter rather than reading runtime.GOOS,

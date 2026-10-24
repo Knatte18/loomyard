@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pairparts_integration_test.go covers Topology.PairParts and Topology.TaskBranchOnOrigin over hubforge hubs.
 // Every hub has an empty branch_prefix, so a pair's task branch is the bare slug.

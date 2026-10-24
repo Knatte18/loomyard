@@ -70,13 +70,13 @@
 // It pulls the board instead, which needs origin, and refuses a task another machine owns before anything is seeded or claimed.
 //
 // Between Seed-Child and Run-Shed, three Command rows run one shell command each: Open-Window opens the operator's terminal window attached to the pair's reed session, Seed-IDE writes the pair's VS Code colour and .vscode/ config, and Open-IDE opens VS Code on the pair.
-// Each runs its command only when its batten.yaml switch is on, open_window, seed_ide and open_ide in turn, of which only open_ide is off by default, and is Done either way, a failed command only warning.
-// The switches are read from the pair's own config stack when the row runs, after Seed-Child has written the task's run settings into the pair's local layer, so a task's run_settings sets them per task.
+// Each runs its command only when its entry gate's batten.yaml setting is on, open_window, seed_ide and open_ide in turn, of which only open_ide is off by default, and is Done either way, a failed command only warning; a row whose setting is off is skipped.
+// The settings are read from the pair's own config stack when the row is entered, after Seed-Child has written the task's run settings into the pair's local layer, so a task's run_settings sets them per task.
 // The commands are the open_window_command, seed_ide_command and open_ide_command keys, read from the template and the board default layer only, so a task's run settings and a worktree's own batten.yaml cannot change them;
 // `lyx config batten --layer default --set <key>=<value>` from the prime changes one, and a different value in another layer is ignored with a warning.
 // A command may hold the placeholders {lyx}, {slug} and {task_dir}.
-// "--window" passes the hidden "--open-terminal", which turns Open-Window on for that run whatever batten.yaml says.
-// A run resumed past Open-Window runs that command again when no client is attached to the pair's reed session, through the same switch, so a window closed or left on another machine opens afresh; a resume with a client attached opens none.
+// "--window" passes the hidden "--open-terminal", which makes the open_window setting answer true for that run whatever batten.yaml says.
+// A run resumed past Open-Window runs that command again when batten.open_window is on and no client is attached to the pair's reed session, so a window closed or left on another machine opens afresh; a resume with a client attached opens none.
 //
 // The InnerRun row waits on its child inside its call rather than returning once per poll.
 // Every poll_interval_s it stats the child's status file, and decodes it when its modification time differs from the last decode or notice_probe_s has passed.

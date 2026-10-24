@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // wiring_darn_integration_test.go drives commitDarnDiscussion over a real fabric pair,
 // so the board entry snapshot is committed with the discussion directory, and a failed snapshot leaves the directory uncommitted.

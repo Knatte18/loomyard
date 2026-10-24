@@ -1,3 +1,5 @@
+//go:build tier0
+
 // junction_test.go unit-tests unseedJunctionRecords directly against synthetic WarpJunction slices
 // — no build tag, since it touches only plain directories and fslink, never git.
 // It exists because WarpJunctions(l, slug) still returns exactly one entry in this batch (a second

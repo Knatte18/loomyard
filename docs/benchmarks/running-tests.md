@@ -34,7 +34,7 @@ Two further opt-in tags exist alongside `integration`, each gating a distinct ki
   It needs a logged-in `claude` and costs tokens, wall-clock and RAM.
   No gate ever runs `llm`; the plan verify and the card gates only compile it.
 
-The tags do not nest: `-tags integration` does not include `tmux` or `llm`, and a run that wants several names them all (`-tags integration,tmux`).
+The tags do not nest: `-tags tier1` does not run `tier0`'s tests and does not include `tier2` or `tier3`, and a run that wants several names them all (`-tags tier1,tier2`).
 `cmd/lyx/tierpurity_test.go` holds the untagged tier to its premise and `cmd/lyx/llmtier_test.go` keeps LLM spawns inside `llm`.
 The rules behind the tiers live in `PATTERN-test-speed` in `PATTERN.md`, which this page does not restate.
 
@@ -71,21 +71,22 @@ No arguments needed;
 it works the same outside any editor.
 
 ```sh
-# Fast: Tier 1 (offline). Windows ~29 s / Linux ~1 s (median of 3, 2026-07-13).
+# Fast: tier0 (offline), run as -tags tier0. Windows ~29 s / Linux ~1 s (median of 3, 2026-07-13).
 go run ./cmd/testtiming
 
-# Full: Tier 2 (integration, real git). Windows ~128 s / Linux ~5 s (median of 3, 2026-07-13).
+# Full: tier1 (real git), run as -tags tier1, which does not run tier0's tests. Windows ~128 s / Linux ~5 s (median of 3, 2026-07-13).
 go run ./cmd/testtiming -full
 
 # Show more (or fewer) of the slowest tests (default 15).
 go run ./cmd/testtiming -full -top 30
 
 # Any tag set, e.g. the tmux tier (refused together with -full).
-go run ./cmd/testtiming -tags tmux
+go run ./cmd/testtiming -tags tier2
 ```
 
-It shells out to `go test ./... -json -count=1` (adding `-tags integration` in full mode), so it needs nothing beyond a working Go toolchain.
-A tagged run builds `lyx` once and hands it to every test binary through the `LYX_PREBUILT_LYX` variable, as `lyx gate test --tags` does, and an untagged run strips an inherited value.
+It shells out to `go test ./... -json -count=1 -tags <tags>` (`tier0` with no tags of its own, `tier1` in full mode), so it needs nothing beyond a working Go toolchain.
+The tiers are disjoint, so a run that wants several names every tag.
+A run under a tier above `tier0` builds `lyx` once and hands it to every test binary through the `LYX_PREBUILT_LYX` variable, as `lyx gate test --tags` does, and a `tier0` run builds nothing and strips an inherited value.
 `lyx gate test --tags <tags> <packages>` is where one `lyx` build serves every package of the run.
 Exit code mirrors `go test`: `0` on success, `1` if any package fails to build or any test fails (failing rows are marked `FAIL` in the table).
 
@@ -108,18 +109,18 @@ The committed report is [test-suite-weight.md](test-suite-weight.md), regenerate
 
 ```sh
 go run ./cmd/testtiming -resources
-go run ./cmd/testtiming -resources -tags integration
-go run ./cmd/testtiming -resources -tags tmux
+go run ./cmd/testtiming -resources -tags tier1
+go run ./cmd/testtiming -resources -tags tier2
 ```
 
 CPU and peak memory come from the package's systemd scope cgroup when `systemd-run --user --scope` works, and from the child's rusage otherwise, where peak memory is the largest single process rather than the sum.
 The process count is system-wide, so a measurement reads "quiet machine" as a precondition: run it with nothing else using the machine, and read the load averages at the end of each table.
-The `llm` tier is not in the report, because a run spends tokens and its time and CPU are the model's; `go run ./cmd/testtiming -resources -tags llm` measures it by hand.
+The `llm` tier is not in the report, because a run spends tokens and its time and CPU are the model's; `go run ./cmd/testtiming -resources -tags tier3` measures it by hand.
 
-Example (Tier 1):
+Example (tier0):
 
 ```
-Running Tier 1 (offline)  —  go test ./... -count=1
+Running Tier 0 (offline)  —  go test -tags tier0 ./... -count=1
 
 PACKAGE                                   ELAPSED
 ----------------------------------------  --------

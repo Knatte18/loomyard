@@ -13,8 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -31,13 +31,21 @@ type GuardScanKind string
 const (
 	// GuardMisplaced is a marker not directly above a top-level `func Test…` line.
 	GuardMisplaced GuardScanKind = "misplaced"
-	// GuardNotIntegration is a marker in a file no `integration`-tier run compiles.
-	GuardNotIntegration GuardScanKind = "not-integration"
+	// GuardWrongTier is a marker in a `tier2` or `tier3` test file, whose tier a gate runs only whole or by hand.
+	GuardWrongTier GuardScanKind = "wrong-tier"
 	// GuardParse is a file the Go parser rejects, including a file that cannot be read.
 	GuardParse GuardScanKind = "parse"
 )
 
-// GuardScanError is a failure of the guard scan that sits in the content of a test file: a file that does not parse, a marker not directly above a top-level test, or a marker in a file no `integration`-tier run compiles.
+// GuardTest is a test marked `//lyx:guard`: its name and the tier of the file declaring it.
+type GuardTest struct {
+	// Name is the top-level test function's name.
+	Name string
+	// Tier is the N of the `tierN` tag the file's build constraint names, 0 for a file naming none.
+	Tier int
+}
+
+// GuardScanError is a failure of the guard scan that sits in the content of a test file: a file that does not parse, a marker not directly above a top-level test, or a marker in a `tier2` or `tier3` file.
 // The author of the change can fix each one, unlike a failure to read a directory or git.
 type GuardScanError struct {
 	// File is the worktree-relative, slash-separated path of the test file the error sits in.
@@ -58,11 +66,11 @@ func IsGuardScanError(err error) bool {
 	return errors.As(err, &scanErr)
 }
 
-// FindGuardTests returns, per package directory, the sorted names of the tests marked `//lyx:guard` in its `_test.go` files.
+// FindGuardTests returns, per package directory, the tests marked `//lyx:guard` in its `_test.go` files, sorted by name, each with the tier of its file.
 // The caller passes the package directories, worktree-relative and slash-separated.
-// A marker not directly above a top-level `func Test…` line, or in a file no `integration`-tier run compiles, is an error naming the file and line.
-func FindGuardTests(worktree string, dirs []string) (map[string][]string, error) {
-	guards := map[string][]string{}
+// A marker not directly above a top-level `func Test…` line, or in a `tier2` or `tier3` file, is an error naming the file and line.
+func FindGuardTests(worktree string, dirs []string) (map[string][]GuardTest, error) {
+	guards := map[string][]GuardTest{}
 	for _, dir := range dirs {
 		entries, err := os.ReadDir(filepath.Join(worktree, filepath.FromSlash(dir)))
 		if err != nil {
@@ -76,13 +84,13 @@ func FindGuardTests(worktree string, dirs []string) (map[string][]string, error)
 			if dir == "." {
 				rel = entry.Name()
 			}
-			names, err := guardNamesInFile(filepath.Join(worktree, filepath.FromSlash(rel)), rel)
+			found, err := guardNamesInFile(filepath.Join(worktree, filepath.FromSlash(rel)), rel)
 			if err != nil {
 				return nil, err
 			}
-			guards[dir] = append(guards[dir], names...)
+			guards[dir] = append(guards[dir], found...)
 		}
-		sort.Strings(guards[dir])
+		sort.Slice(guards[dir], func(i, j int) bool { return guards[dir][i].Name < guards[dir][j].Name })
 	}
 	return guards, nil
 }
@@ -90,16 +98,16 @@ func FindGuardTests(worktree string, dirs []string) (map[string][]string, error)
 // moduleDirsFormat is the `go list -f` template ModuleGuardTests reads: one NUL-terminated record per entry, its directory then its error, tab-separated.
 const moduleDirsFormat = `{{.Dir}}{{"\t"}}{{with .Error}}{{.Err}}{{end}}{{"\x00"}}`
 
-// ModuleGuardTests returns, per package directory of the module at moduleDir, the sorted names of the tests marked `//lyx:guard`, keyed by the module-relative, slash-separated directory.
-// It lists the packages under the `integration`, `tmux` and `llm` tags with `go list -e`, so a package whose test file cannot be read stays listed and the scan reports that file as a GuardParse error.
+// ModuleGuardTests returns, per package directory of the module at moduleDir, the tests marked `//lyx:guard` with their file's tier, keyed by the module-relative, slash-separated directory.
+// It lists the packages under the tier tags `tier0` through `tier3` and the older `integration`, `tmux` and `llm` spellings with `go list -e`, so a package whose test file cannot be read stays listed and the scan reports that file as a GuardParse error.
 // A failed `go list` run, or an entry with no directory such as an unreadable package directory, is a plain error naming moduleDir and the enumeration's own error, and so is a listed package directory outside moduleDir.
 // A marker the scan rejects is a *GuardScanError.
-func ModuleGuardTests(moduleDir string) (map[string][]string, error) {
+func ModuleGuardTests(moduleDir string) (map[string][]GuardTest, error) {
 	absolute, err := filepath.Abs(moduleDir)
 	if err != nil {
 		return nil, fmt.Errorf("impactset: resolve %s: %w", moduleDir, err)
 	}
-	cmd := exec.Command("go", "list", "-e", "-tags", "integration,tmux,llm", "-f", moduleDirsFormat, "./...")
+	cmd := exec.Command("go", "list", "-e", "-tags", "tier0,tier1,tier2,tier3,integration,tmux,llm", "-f", moduleDirsFormat, "./...")
 	cmd.Dir = moduleDir
 	logger.Info("impactset: spawning go list", "dir", moduleDir)
 	output, err := cmd.Output()
@@ -131,8 +139,8 @@ func ModuleGuardTests(moduleDir string) (map[string][]string, error) {
 	return FindGuardTests(absolute, dirs)
 }
 
-// guardNamesInFile returns the names of the tests marked in one file; rel names the file in an error.
-func guardNamesInFile(path, rel string) ([]string, error) {
+// guardNamesInFile returns the tests marked in one file, each with the file's tier; rel names the file in an error.
+func guardNamesInFile(path, rel string) ([]GuardTest, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 	if err != nil {
@@ -144,7 +152,8 @@ func guardNamesInFile(path, rel string) ([]string, error) {
 		return nil, &GuardScanError{File: rel, Kind: GuardParse, Line: parseLine, message: fmt.Sprintf("impactset: parse %s: %v", rel, err)}
 	}
 
-	var names []string
+	tier := FileTier(file)
+	var names []GuardTest
 	firstMarkerLine := 0
 	placed := map[*ast.Comment]bool{}
 	for _, decl := range file.Decls {
@@ -163,7 +172,7 @@ func guardNamesInFile(path, rel string) ([]string, error) {
 			if firstMarkerLine == 0 {
 				firstMarkerLine = fset.Position(comment.Pos()).Line
 			}
-			names = append(names, fn.Name.Name)
+			names = append(names, GuardTest{Name: fn.Name.Name, Tier: tier})
 		}
 	}
 
@@ -176,8 +185,8 @@ func guardNamesInFile(path, rel string) ([]string, error) {
 			return nil, &GuardScanError{File: rel, Kind: GuardMisplaced, Line: markerLine, message: fmt.Sprintf("impactset: %s:%d: %s is not directly above a top-level func Test line", rel, markerLine, guardMarker)}
 		}
 	}
-	if len(names) > 0 && !compiledUnderIntegration(file) {
-		return nil, &GuardScanError{File: rel, Kind: GuardNotIntegration, Line: firstMarkerLine, message: fmt.Sprintf("impactset: %s:%d: %s marks a guard test in a file no integration-tier run compiles", rel, firstMarkerLine, guardMarker)}
+	if len(names) > 0 && tier > 1 {
+		return nil, &GuardScanError{File: rel, Kind: GuardWrongTier, Line: firstMarkerLine, message: fmt.Sprintf("impactset: %s:%d: %s marks a guard test in a tier%d file; a guard test lives in a tier0 or tier1 file", rel, firstMarkerLine, guardMarker, tier)}
 	}
 	return names, nil
 }
@@ -192,21 +201,37 @@ func onlyKeepLinesAfter(comments []*ast.Comment) bool {
 	return true
 }
 
-// compiledUnderIntegration reports whether the file's build constraint holds with no tag or with the `integration` tag alone, on the host platform.
-// A file with no constraint always holds.
-func compiledUnderIntegration(file *ast.File) bool {
+// FileTier returns the tier of a test file: the N of the `tierN` tag its `//go:build` constraint names, 0 when it names none.
+// A negated tag does not count, and a constraint naming several tier tags reads as the lowest, so a transitional `tier1 || integration` file reads as tier 1.
+func FileTier(file *ast.File) int {
 	expr := buildConstraint(file)
 	if expr == nil {
-		return true
+		return 0
 	}
-	for _, integration := range []bool{false, true} {
-		if expr.Eval(func(tag string) bool {
-			return tag == runtime.GOOS || tag == runtime.GOARCH || tag == "gc" || tag == "cgo" || (tag == "unix" && runtime.GOOS != "windows") || (tag == "integration" && integration)
-		}) {
-			return true
+	tier := -1
+	for _, number := range positiveTierTags(expr) {
+		if tier < 0 || number < tier {
+			tier = number
 		}
 	}
-	return false
+	return max(tier, 0)
+}
+
+// positiveTierTags returns the N of every `tierN` tag the expression names outside a negation.
+func positiveTierTags(expr constraint.Expr) []int {
+	switch x := expr.(type) {
+	case *constraint.TagExpr:
+		number, err := strconv.Atoi(strings.TrimPrefix(x.Tag, "tier"))
+		if err != nil || !strings.HasPrefix(x.Tag, "tier") {
+			return nil
+		}
+		return []int{number}
+	case *constraint.AndExpr:
+		return append(positiveTierTags(x.X), positiveTierTags(x.Y)...)
+	case *constraint.OrExpr:
+		return append(positiveTierTags(x.X), positiveTierTags(x.Y)...)
+	}
+	return nil
 }
 
 // buildConstraint returns the `//go:build` expression in the comments above the package clause, nil when there is none.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // help_test.go pins the documented payload schema visible via --help for every board leaf command.
 // Each test drives RunCLI with --help and asserts that the Long output contains the documented
 // field names and does NOT contain any removed token (id_or_slug, phase, group) that would signal a

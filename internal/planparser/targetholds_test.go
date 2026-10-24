@@ -1,3 +1,5 @@
+//go:build tier0
+
 // targetholds_test.go covers TargetHolds, the rule that decides whether a card target holds a code location.
 
 package planparser

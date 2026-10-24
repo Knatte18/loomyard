@@ -1,3 +1,5 @@
+//go:build tier0
+
 // owners_test.go — ParseOwners, Owners.Effective and OwnedElsewhere.
 
 package boardengine

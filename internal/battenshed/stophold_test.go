@@ -1,3 +1,5 @@
+//go:build tier0
+
 // stophold_test.go covers the eligible-stop hold: when the state-changed notice of an arbiter-eligible stop waits for the arbiter, and when the report wait starts after the hold.
 
 package battenshed

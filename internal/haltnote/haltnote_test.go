@@ -1,3 +1,5 @@
+//go:build tier0
+
 // haltnote_test.go pins the halt note's rendered bytes, its tolerant parse and its file-name test.
 
 package haltnote

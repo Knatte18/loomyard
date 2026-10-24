@@ -1,3 +1,5 @@
+//go:build tier0
+
 // shortcuts_test.go checks the embedded shortcut file against the real root and pins how the mounted shortcuts list in help and in the command index.
 
 package main

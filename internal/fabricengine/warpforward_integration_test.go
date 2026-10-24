@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // warpforward_integration_test.go is the Tier-2 real-git coverage for the
 // warp-only Fabric methods added in warpforward.go: CurrentBranch, IsAncestor,

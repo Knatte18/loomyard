@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // add_runrecords_integration_test.go proves Add forks a new pair's weft branch without the parent's shed run records:
 // the records never reach the new worktree's disk, the pair's first weft commit records their deletion,

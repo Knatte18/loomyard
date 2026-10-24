@@ -1,3 +1,5 @@
+//go:build tier0
+
 // tied_test.go covers the platform-independent behavior of StartTied and IsBreakawayRefused.
 // It spawns a real child, which this package's Test Tier Purity allowlist entry admits: process control is the package's subject.
 

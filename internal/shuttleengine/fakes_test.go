@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fakes_test.go implements the hermetic test doubles the rest of shuttleengine's tests drive the
 // run loop against: fakeReed (a ReedOps double that records every call and lets a test script
 // Status liveness/CapturePane content per call and inject a per-method error) and fakeEngine (an

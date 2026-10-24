@@ -1,3 +1,5 @@
+//go:build tier0
+
 // roundfiles_test.go table-drives roundToken/artifactPaths' naming shape: the bare round token for
 // a first attempt, the letter-suffixed token for a retry, and the round-<token>-<kind>.md file
 // names each produces inside a run dir.

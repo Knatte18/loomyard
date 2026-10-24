@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the Runproc Leaf Invariant.
 // Production code in internal/runproc imports only the standard library, internal/proc, internal/state and internal/logger.
 

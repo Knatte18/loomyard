@@ -1,4 +1,6 @@
-// tacklerprompt_test.go — untagged Tier-1 tests for the tackler's prompt and launch spec composers.
+//go:build tier0
+
+// tacklerprompt_test.go — tier 0 tests for the tackler's prompt and launch spec composers.
 
 package sheddriver
 

@@ -70,11 +70,11 @@
 // Plan-predicted file impact is frequently incomplete, so treating deviation as failure would make the system impractically brittle.
 // Within one fork's batch, each card lands as its own commit (BatchState.CardSHAs records the ordered per-card SHA trail — one element under the identity batcher, more once a grouping batchifier ships), and a card that declares a `**Verify:**` line has `lyx gate card-verify` run for it, which must pass before the next card.
 // After the last card the fork runs the batch gate once;
-// Go never runs it, and Webster's plan-level `final` gate catches a fork that skips it.
+// Go never runs it, and Webster's plan-level `webster` gate catches a fork that skips it.
 // The fork runs every card gate step, `lyx gate card-verify` call and the batch gate in the foreground under the gate rule in its system prompt and never backgrounds a call, so its only turn end is its final report.
-// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is the hub's `card` gate call, `lyx gate test --wait --tier <n>... --card <card id>` from `gateslot.Config.GateCall`, then `lyx loom lint-comments`, the comment line-break lint, then `lyx loom lint-pattern`, the PATTERN headroom lint, one step per line.
+// A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is the hub's `card` gate call, `lyx gate test --wait --gate card --card <card id>` from `gateslot.Config.GateCall`, then `lyx loom lint-comments`, the comment line-break lint, then `lyx loom lint-pattern`, the PATTERN headroom lint, one step per line.
 // The gate call computes the card's packages and runs the guard step itself, so Go renders no package list and scans for no guard test.
-// The batch gate is the hub's `batch` gate call over every card of the batch, `--card <card id>` once per card.
+// The batch gate is the hub's `batch` gate call, `lyx gate test --wait --gate batch`, over every card of the batch, `--card <card id>` once per card.
 // Both calls are rendered from `BeginDeps.Gate` and `RecoverDeps.Gate`, which `webstercli` loads from the hub's `gate.yaml`;
 // a hub whose `card` or `batch` list the config cannot give refuses begin-batch and recover-batch with the config's way forward before they mutate anything.
 // The implementer body tells a fork to fix a guard step failure on a file outside the card's list under the card's commit, moving a pin only when the pin itself must move.
@@ -525,7 +525,7 @@
 // The gate's re-prompt line and its findings both open with the way forward to the routed fixer, naming the fixer-fork step and the prompt file's path, or the backgrounded `lyx webster fix-verify` call, so the rule stands where Merriam reads the failure.
 // The waiting turn end in between is no arrival.
 // Both fixers' prompts share one body, webster-body-verify-fix, behind a prefix of their own.
-// The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lyx`, commits each fix as `fix: <summary>` and does not run the plan-level verify; before it reports it runs the hub's `round` gate call over the computed scope, which Run renders from the told Geometry.GateConfig into the prompt's `fix_gate` marker.
+// The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lyx`, commits each fix as `fix: <summary>` and does not run the plan-level verify; before it reports it runs the hub's `webster-fix` gate call, `lyx gate test --wait --gate webster-fix`, which Run renders from the told Geometry.GateConfig into the prompt's `fix_gate` marker.
 // Its commits skip record-batch's done-checks, drift detection and glyph scope guard.
 // They are bounded by the gate's commit check, the run-exit fork audit, the gate's own verify and the Code-Review perch after Merge-In, which reviews the committed range.
 // The plan directory and `_lyx` sit outside every code commit, so the run-exit fork audit is what catches a fixer write there:
@@ -535,7 +535,7 @@
 //
 // For a cold failure, Merriam runs `lyx webster fix-verify` as a backgrounded Bash command, which Master's spawn declares an awaited shell prefix beside recover-batch, ends its turn, and on its completion notification, whatever its exit, rewrites its outcome and summary files as after a fork.
 // FixVerifySpawnOrAttach spawns the cold fixer as its own strand, role `verify-fixer`, at RoleRecovery's model choice, with RenderVerifyFixColdPrompt's prompt: the shared body behind a cold prefix carrying the parent, edit, PATTERN and friction directives and its own orientation steps.
-// It refuses, spawning nothing, with no verify-gate report on disk, a recovery role whose engine cannot audit forks, or a gate config with no `round` list.
+// It refuses, spawning nothing, with no verify-gate report on disk, a recovery role whose engine cannot audit forks, or a gate config with no `webster-fix` key.
 // The fixer's final action is its reply file in the scratch dir (VerifyFixReplyPath), the strand's shuttle output file; a stale one is removed at spawn.
 // Each spawn appends a VerifyFixerState to State.VerifyFixers, which the verb saves and fabric-commits at once;
 // a call that finds the last record not terminal attaches to it instead of spawning a second.
@@ -550,7 +550,7 @@
 //
 // # The verify gate
 //
-// Run hands Merriam's spawn the hub's `final` gate as one must-pass gate entry named `verify` (NewVerifyGate), beside any entry the caller's RunDeps.Gate carries;
+// Run hands Merriam's spawn the hub's `webster` gate as one must-pass gate entry named `verify` (NewVerifyGate), beside any entry the caller's RunDeps.Gate carries;
 // a RunDeps.Gate that already names `verify` is refused, so a recipe row cannot add a second entry.
 // Its attempt budget is Config.VerifyGateAttempts, and the count and the pre-fix head live in the closure's memory for one shuttle run, so an attach restarts them from zero.
 // The shipped Webster row supplies no gates of its own, and StartMaster is Merriam's only start, so every Merriam carries the spec.
@@ -560,8 +560,8 @@
 // Once a pre-fix head is recorded, every commit from it to HEAD on the first-parent chain must be a non-merge commit or a clean parent merge (fixCommitRejection, in gitwrap.go);
 // any other fails the gate `Terminal`, which ends the run at once with the commit and the reason.
 // The non-merge commits in that range, with the `Pattern-Departure:` trailers their messages declare, are recorded in the gate's notes at each evaluation, and Run appends them after the wait as a `## Verify gate fix commits` section of summary.md (AppendVerifyGateFixCommits): one bullet per `fix:` commit, then one per departure.
-// Otherwise the closure renders `lyx gate test --wait --tier <n> ... --all` for the `final` gate's list from the told Geometry.GateConfig, read at each arrival, and verifytree.Verify runs that call under the site label `webster gate`, told Geometry.VerifyHold so a pause covering the run holds the first run and the rerun until the resume; a pass records the tree, keyed by the rendered call.
-// A config that cannot be loaded, or a `final` list the config refuses, is the gate's returned error naming `lyx config gate`, never a pass.
+// Otherwise the closure renders `lyx gate test --wait --gate webster` for the `webster` gate key from the told Geometry.GateConfig, read at each arrival, and verifytree.Verify runs that call under the site label `webster gate`, told Geometry.VerifyHold so a pause covering the run holds the first run and the rerun until the resume; a pass records the tree, keyed by the rendered call.
+// A config that cannot be loaded, or a `webster` key the config refuses, is the gate's returned error naming `lyx config gate`, never a pass.
 // A failure is parsed from the log and rerun once: a rerun pass passes the gate, and the identities that failed once are flaky, which Run reports after the wait as a warning, a summary.md section and a friction note (VerifyGateNotes.Apply).
 // A failure that survives the rerun returns findings.
 // Each failure goes to a fixer: the cold fixer for the failure that reaches the attempt budget, for one whose previous fixer added no commit above the pre-fix head, and for every failure after one that went cold; the fixer fork otherwise.

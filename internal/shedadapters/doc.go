@@ -360,20 +360,19 @@
 //
 // # The Command producer
 //
-// CommandProducer wraps no engine: it runs one shell command, once, behind one config switch, for side actions a run must never halt over.
+// CommandProducer wraps no engine: it runs one shell command, once, for side actions a run must never halt over.
+// A row that should run only when a setting is on carries that setting as its entry gate, so the producer reads no switch and runs its command whenever it is called.
 // The recipe's owner tells every seam through CommandDeps, so the producer derives no path.
 // Call follows this order:
 //
 //  1. A nil ExecutableSetting is an error naming its way forward, before anything is read or run.
-//  2. A row named in Forced is on; otherwise the switch is read through Setting, and an unreadable or non-bool switch is an error naming the key and the rerun command.
-//     A switch that is off is Done with no process.
-//  3. The command is read through ExecutableSetting, which the owner builds over the template and the board default layer only; an unreadable or non-string command is an error naming the key and the `lyx config <module> --layer default --set <key>=<value>` correction.
+//  2. The command is read through ExecutableSetting, which the owner builds over the template and the board default layer only; an unreadable or non-string command is an error naming the key and the `lyx config <module> --layer default --set <key>=<value>` correction.
 //     When Setting answers a different non-empty command for the key, the row warns that value is ignored.
-//  4. An empty command is Done with no process, warned about only on a forced row.
-//  5. The placeholders {lyx}, {slug} and {task_dir} are replaced, each value quoted by verifyrun.QuoteArg for the shell the command runs under;
+//  3. An empty command is Done with no process.
+//  4. The placeholders {lyx}, {slug} and {task_dir} are replaced, each value quoted by verifyrun.QuoteArg for the shell the command runs under;
 //     any other brace text, ${HOME} included, passes through literally, and TaskDir is called only when {task_dir} appears.
 //     A value cmd cannot quote, one holding a percent sign, makes the row Done with no process and a warning naming the placeholder and its way forward.
-//  6. The command runs once through Run, in Dir with the row's log path and timeout.
+//  5. The command runs once through Run, in Dir with the row's log path and timeout.
 //     An exit of 0 is Done; a non-zero exit, a timeout and a runner error are each Done with a warning naming the log path.
 //     A cancelled context returns the cancellation error.
 //

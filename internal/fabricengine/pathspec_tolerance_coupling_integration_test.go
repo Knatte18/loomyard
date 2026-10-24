@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pathspec_tolerance_coupling_integration_test.go pins the one coupling commitWeftLocked's
 // "did not match any files" tolerance rests on, which no behavioural test of that tolerance covers.

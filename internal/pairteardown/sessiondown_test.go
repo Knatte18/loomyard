@@ -1,3 +1,5 @@
+//go:build tier0
+
 // sessiondown_test.go pins EndBeforeSessionDown, the local-state reading `lyx reed down` runs before it kills a pair's session.
 
 package pairteardown

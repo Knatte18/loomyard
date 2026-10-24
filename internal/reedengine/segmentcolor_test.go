@@ -1,3 +1,5 @@
+//go:build tier0
+
 // segmentcolor_test.go pins segmentColor's resolution of a segment to a palette color.
 
 package reedengine

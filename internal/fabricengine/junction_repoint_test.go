@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // junction_repoint_test.go proves WireJunctions (via seedLyxJunction) repairs
 // a corrupted warp _lyx junction — one that dangles, or resolves to the wrong

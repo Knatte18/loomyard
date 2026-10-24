@@ -1,3 +1,5 @@
+//go:build tier0
+
 // verifygate_test.go covers verifyGate.clean and verifyGate.check branch by branch against fake verifytree seams,
 // so no test spawns git or a shell.
 
@@ -85,15 +87,16 @@ func (f *fakeVerifyTree) verify(ctx context.Context, p verifytree.Paths, site ve
 	return result, f.verifyErr
 }
 
-// gateFixture builds a gate over t.TempDir() paths with fake verifytree seams and a counting command closure.
+// gateFixture builds a gate for the row of gateKey over t.TempDir() paths with fake verifytree seams and a command closure that counts its calls and records the key each was made with.
 type gateFixture struct {
 	gate         verifyGate
 	fake         *fakeVerifyTree
 	closureCalls int
+	closureKeys  []string
 	paths        verifytree.Paths
 }
 
-func newGateFixture(t *testing.T, command string, closureErr error) *gateFixture {
+func newGateFixture(t *testing.T, gateKey, command string, closureErr error) *gateFixture {
 	t.Helper()
 	root := t.TempDir()
 	f := &gateFixture{
@@ -101,8 +104,10 @@ func newGateFixture(t *testing.T, command string, closureErr error) *gateFixture
 		paths: verifytree.NewPaths(root, filepath.Join(root, "verify")),
 	}
 	f.gate = verifyGate{
-		command: func() (string, error) {
+		key: gateKey,
+		command: func(key string) (string, error) {
 			f.closureCalls++
+			f.closureKeys = append(f.closureKeys, key)
 			return command, closureErr
 		},
 		tiers:  fixedGateTiers,
@@ -121,7 +126,7 @@ const (
 )
 
 // fixedGateTierLists are the tier lists fixedGateTiers answers, one gate's highest tier differing from its first.
-var fixedGateTierLists = map[string][]int{"landing": {0, 1}, "publish": {2}, "final": {0}}
+var fixedGateTierLists = map[string][]int{"merge-in": {0, 1}, "finalize": {0, 1}, "webster": {0}}
 
 // fixedGateTiers is the tier lookup the fixtures tell their gate.
 func fixedGateTiers(gate string) ([]int, error) {
@@ -169,7 +174,7 @@ func TestVerifyGate_WaitMark(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			f := newGateFixture(t, "true", nil)
+			f := newGateFixture(t, "finalize", "true", nil)
 			f.fake.result = tc.result
 			f.fake.verifyErr = tc.verifyErr
 			var calls []waitMarkCall
@@ -276,7 +281,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 				}
 			}
 			hold := verifytree.NewPauseHold(pauserecord.Geometry{}, nil)
-			f := newGateFixture(t, tc.command, nil)
+			f := newGateFixture(t, "finalize", tc.command, nil)
 			f.gate.hold = hold
 			f.fake.result = result
 			if tc.staleRecord {
@@ -297,6 +302,9 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 
 			if f.fake.verifyCalls != 1 || f.fake.command != tc.command || f.fake.paths != f.paths || f.fake.site != (verifytree.Site{Label: tc.site, Hold: hold}) {
 				t.Errorf("verify got calls=%d command=%q paths=%+v site=%+v", f.fake.verifyCalls, f.fake.command, f.fake.paths, f.fake.site)
+			}
+			if !slices.Equal(f.closureKeys, []string{"finalize"}) {
+				t.Errorf("command closure keys = %v; want [finalize], the key the gate was built for", f.closureKeys)
 			}
 
 			if tc.wantErrHas != "" {
@@ -345,7 +353,7 @@ func TestVerifyGate_CheckWithoutCommandSkipsVerify(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := logcapture.Capture(t)
-			f := newGateFixture(t, tc.command, nil)
+			f := newGateFixture(t, "finalize", tc.command, nil)
 			if tc.noGate {
 				f.gate.command = nil
 			}
@@ -374,7 +382,7 @@ func TestVerifyGate_CheckWithoutCommandSkipsVerify(t *testing.T) {
 func TestVerifyGate_ClosureError(t *testing.T) {
 	t.Parallel()
 
-	f := newGateFixture(t, "", errors.New("plan unreadable"))
+	f := newGateFixture(t, "finalize", "", errors.New("plan unreadable"))
 	reason, err := f.gate.check(context.Background(), "Publish", "main")
 	if reason != "" || err == nil || !strings.Contains(err.Error(), "plan unreadable") || !strings.Contains(err.Error(), "Publish") {
 		t.Fatalf("got (%q, %v)", reason, err)
@@ -387,7 +395,7 @@ func TestVerifyGate_ClosureError(t *testing.T) {
 func TestVerifyGate_Cancellation(t *testing.T) {
 	t.Parallel()
 
-	f := newGateFixture(t, "true", nil)
+	f := newGateFixture(t, "finalize", "true", nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	f.fake.onVerify = cancel
 	f.fake.verifyErr = context.Canceled
@@ -442,7 +450,7 @@ func TestVerifyGate_Clean(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			f := newGateFixture(t, "true", nil)
+			f := newGateFixture(t, "finalize", "true", nil)
 			if tc.setup != nil {
 				tc.setup(f)
 			}

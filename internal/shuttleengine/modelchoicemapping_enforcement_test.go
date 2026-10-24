@@ -1,3 +1,5 @@
+//go:build tier0
+
 // modelchoicemapping_enforcement_test.go enforces PATTERN-model-choice-mapping:
 // only NewModelChoice reads a modelspec.Resolved field outside internal/modelspec,
 // so every resolved model key reaches a spawn as a ModelChoice.

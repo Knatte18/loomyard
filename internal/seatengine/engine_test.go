@@ -1,3 +1,5 @@
+//go:build tier0
+
 // engine_test.go covers Engine.Run: the start order, how the chair's result and failures end the step, advisor failures, the notices sent to the chair and the stop rule.
 
 package seatengine

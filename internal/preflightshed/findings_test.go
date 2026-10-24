@@ -1,3 +1,5 @@
+//go:build tier0
+
 // findings_test.go asserts that the general Preflight producer surfaces the determined failures it
 // used to discard.
 // This row carries no OnStuck in any producer list that names it -- nothing in a list produces the

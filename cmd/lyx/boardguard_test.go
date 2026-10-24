@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // boardguard_test.go enforces the Fabric Git Invariant's board carve-out: internal/boardengine's
 // non-test production code never imports internal/gitrepo or internal/gitexec directly,
 // and never shells out to `git` itself.

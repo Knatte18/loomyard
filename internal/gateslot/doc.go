@@ -48,29 +48,55 @@
 // `slots` and `tier_parallel` take a machine-local override at `<BoardDir>/.lyx/config/gate.machine.yaml`, never reconciled and read at every acquire; every other key stays hub-file only.
 // `cli_wait_sec` is a retired key: every load drops it and reconcile prunes it, since the slot wait is bounded by the keep-cache-warm cap with no knob.
 // `go_parallel` is retired in the hub and machine layers alike, in favor of `tier_parallel`, with the same load and prune behavior.
+// `guard_tier` is retired too: the guard step runs each guard test under the tier its file belongs to, so no key names one tier for them all, and the same load and prune behavior applies.
 // LoadConfig reads it strictly and refuses any value below 1 naming its key, except `busy_quit_sec`, which accepts 0 and is refused below it; Config.Limits converts it to the Limits a Pool reads.
 // An absent hub file is ErrConfigAbsent with the way forward `lyx fabric reconcile`; outside every hub, where the dirs tell no board, the file is the worktree's own and the way forward is `lyx config gate`, after creating the worktree's `_lyx` directory.
 // TemplateConfig decodes the template alone, for a run outside every hub.
 //
-// The tier keys are `tiers`, `gates`, `scoper`, `guard_tier`, `refuse_raw` and `tier_parallel`.
+// The tier keys are `tiers`, `gates`, `scoper`, `refuse_raw` and `tier_parallel`.
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lyx config gate --set 'tiers.tierN={...}'` flow mapping;
-// `gates` is a per-name map from a gate name to its list of tier numbers, so a hub file that sets one gate keeps the template's list for every other, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
-// `tiers` is an executable key, since a tier command runs any shell command in a task worktree, and `gates`, `scoper`, `guard_tier` and `refuse_raw` are guard keys, so all of them are hub-file only.
+// `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`, so a hub file that sets one key keeps the template's value for every other, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
+// The keys lyx reads are `card` and `batch` (scope `card`), `webster`, `merge-in` and `finalize` (scope `all`), and `webster-fix`, `darn-write` and `code-burler-fix` (scope `diff`).
+// `tiers` is an executable key, since a tier command runs any shell command in a task worktree, and `gates`, `scoper` and `refuse_raw` are guard keys, so all of them are hub-file only.
 // The machine override is a sibling map rather than a path under `tiers`, because an open map is one unit in the layer merge, so a machine layer holding part of `tiers` would replace the hub's tiers whole.
 // A tier's `manual: true` keeps it out of a `lyx gate test --upto` range, so it runs only when named by number.
 // A declared tier's effective Parallel is its `tier_parallel` entry when one is set, from whichever layer sets it, and 1 when neither sets one; a standalone worktree has no machine layer and sets the key in its own file.
 //
 // LoadConfig refuses at load, naming the key and `lyx config gate`: a tier lacking `command`, `timeout_min` or `counter`, or `all_targets` when its command holds `{targets}`;
 // `manual: true` on `tier0`, the tier a call with no tier flag runs; `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1, a counter other than `go-json` or `vstest`, a scoper other than `go` or `none`;
-// a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`, a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces, and a `tier_parallel` entry that is no integer of at least 1.
+// a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`, a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces, and a `tier_parallel` entry that is no integer of at least 1;
+// a gate key whose scope is not `card`, `diff` or `all`, and a `card` scope on any key but `card` and `batch`.
+// A `gates` entry still in the retired list shape, such as `card: [0]`, is refused naming `lyx fabric reconcile` as the way forward, since the reconcile runs MigrateConfig.
 // A `tier_parallel` entry for a tier the config does not declare is dropped with a logged warning, so a tier the hub removes leaves no entry that fails the load.
-// Cross-references are checked at use, never at load, so the template and a hub whose gate lists name an undeclared tier both load.
+// Cross-references are checked at use, never at load, so the template and a hub whose gate keys name an undeclared tier both load.
 //
-// At use, Config.TierList refuses a hub with no `tier0`, a gate name the config holds no list for, an empty list for any gate, and a listed tier the hub does not declare; Config.Tier refuses an undeclared number.
+// At use, Config.Gate returns a key's tiers and scope and refuses a hub with no `tier0`, a key the config does not hold, an empty tier list, and a listed tier the hub does not declare; Config.TierList returns its tiers; Config.Tier refuses an undeclared number.
 // Each refusal names `lyx config gate` and closes with the clause that a session that is not the prime reports status: FAILED and the orch takes the steps.
-// Config.GateCall renders the one `lyx gate test --wait --tier <n>...` call a site runs, in the list's order and followed by the scope words.
-// MigrateConfig prunes the retired `gates.publish` list from a gate.yaml document, so reconcile removes it from the hub file.
-// Config.TiersValue renders the tier lines and the Go-read gate lists a prompt takes, or `none` when no tier is declared.
+// Config.GateCall renders the one `lyx gate test --wait --gate <key>` call a site runs, followed by one `--card <id>` per card given.
+// MigrateConfig prunes the retired `gates.publish` list and the retired `guard_tier` key from a gate.yaml document and migrates the retired lists, so reconcile rewrites the hub file:
+// `landing` becomes `merge-in` and `finalize` with scope `all` and `darn-write` and `code-burler-fix` with scope `diff`, `final` becomes `webster` with scope `all`, `round` becomes `webster-fix` with scope `diff`, and a `card` or `batch` list becomes a mapping with scope `card`.
+// A key the file already holds in the new shape keeps its value, and a second pass changes nothing.
+// Config.TiersValue renders the tier lines and the Go-read gate keys a prompt takes, or `none` when no tier is declared.
+//
+// # Tier plan
+//
+// Each shipped recipe row that runs a test gate reads one key, whose template scope is its default:
+//
+//	Recipe      Row                                     Key              Scope
+//	loom        Webster, per card                       card             card
+//	loom        Webster, per batch                      batch            card
+//	loom        Webster, verify fixers                  webster-fix      diff
+//	loom        Webster, end gate                       webster          all
+//	loom        Merge-In                                merge-in         all
+//	loom, darn  Code-Burler-Fix                         code-burler-fix  diff
+//	loom, darn  Finalize                                finalize         all
+//	darn        Darn-Write                              darn-write       diff
+//	darn        Darn-Write, Code-Burler-Fix, Finalize   the row's key    the touched trees' targets
+//
+// The last line holds for a diff wholly under darn's `tree_scope`: the row runs its own key's tiers over the targets of the trees the diff touches, in place of the key's scope.
+// Darn and loom share the keys of the rows they share.
+// Their writers' gates differ by operator decision: Webster's end gate runs whole, and darn's writer runs the diff.
+// A recipe row's `gate_key` setting names the key it reads in place of its lower-cased row name, and the merge fixer runs the key of the row that spawned it.
 //
 // # Watchdog and timeout lines
 //
@@ -83,8 +109,11 @@
 //
 // RunLogDir is `<gateDir>/runs`, under the board's never-tracked `.lyx` inside a hub and under the worktree's own outside one, so the records outlive the worktree.
 // WriteRunRecord writes one RunRecord per tier run as `<stamp>-tier<N>-<pid>.json` with the run's full output beside it as a `.log`, and prunes files older than 14 days first.
+// ReadRunRecords reads a directory's records tolerantly, skipping a file that does not decode, for the reports that total them.
 // The record is a domain log that no run reads to proceed.
-// TierSummaryLine renders the one stderr line the gate prints after each tier run, and FailedTier finds the last failing one in a log, so a site that keeps the gate's output can name the failing tier.
+// A tier the gate carried forward over an unchanged tree writes its record with `carried` set.
+// A go-json tier's record lists a PackageLaunch per package whose test binary ran; a record written without the list reads with none.
+// TierSummaryLine renders the one stderr line the gate prints after each tier run, marking a carried tier with `carried` after the scope form, and FailedTier finds the last failing one in a log, so a site that keeps the gate's output can name the failing tier.
 //
 // # Wait records
 //

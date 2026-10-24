@@ -1,3 +1,5 @@
+//go:build tier0
+
 // logsdir_test.go tests the AnchorPath-anchored LogsDir constructor on hand-built Locations — pure
 // path arithmetic, no spawning, untagged (Tier 1).
 // It replaces worktreelogs_test.go: every assertion there pinned the old WorktreePath-anchored

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // clone_explicit_root_subpath_test.go pins the one value that used to escape clone's
 // never-silently-re-anchor rule: an explicit `--subpath .` against a hub whose recorded anchor is a

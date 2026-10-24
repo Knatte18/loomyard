@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // reconcile_empty_anchor_integration_test.go pins Reconcile's refusal to wire against a
 // present-but-empty lyx-anchor marker.

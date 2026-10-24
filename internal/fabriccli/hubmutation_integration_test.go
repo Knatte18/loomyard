@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // hubmutation_integration_test.go drives the fabric CLI's mutating verbs — the two-sided bypass push, "push" from a task pair and from the prime, "add", "remove" and "reconcile" — against one real hub as an ordered scenario, asserting each verb's envelope and exit-code contract:
 // a pre-flight failure is a bare error carrying neither "mutations" nor "partial", reconcile heals missing hub-wide config and skips the heal while the board remote is unreachable, a pair that vanished mid-walk is not a failure, and a pair reconcile could not repair is.

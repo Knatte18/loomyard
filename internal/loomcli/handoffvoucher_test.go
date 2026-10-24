@@ -1,3 +1,5 @@
+//go:build tier0
+
 // handoffvoucher_test.go is the untagged suite for the handoff voucher (crucible round 2,
 // R2-F1): recordHandoffVoucher and consumeHandoffVoucher directly, and observeEntry's consumption of
 // the voucher into EntryObservation.Vouched. Everything runs against t.TempDir() paths via

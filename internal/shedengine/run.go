@@ -262,6 +262,26 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		return StepResult{Next: st.CurrentProducer, State: StatePaused, Reason: reason, History: st.History}, nil
 	}
 
+	// Step 3a, the entry evaluation. A gated row the run has not entered runs its gate here, and a row whose gate does not hold is skipped, possibly several in a chain.
+	// After a skip the status holds the row to call, so it is read again.
+	gated := def.EntryGate != nil && st.EnteredRow != def.Name
+	def, ended, err := s.enter(st, def)
+	if err != nil {
+		return StepResult{}, err
+	}
+	if ended != nil {
+		return *ended, nil
+	}
+	if gated {
+		st, found, err = state.ReadJSONNoMkdir[Status](s.StatusPath, s.StatusLockPath)
+		if err != nil {
+			return StepResult{}, fmt.Errorf("shedengine: read status file %q: %w", s.StatusPath, err)
+		}
+		if !found {
+			return StepResult{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
+		}
+	}
+
 	// Step 3b, the resume write. A run resumed from paused, blocked, failed, or awaiting reaches
 	// this point about to call a producer, while the status file still says that halt state
 	// -- and for every LLM row that is minutes, during which the file, the status strand,
@@ -273,7 +293,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// is deliberately conditional: on the ordinary running-to-running path it never fires, so
 	// the loop's one-persist-per-iteration shape is unchanged for every step after the first.
 	if st.State != StateRunning {
-		if err := s.persistMarked(true, st.CurrentProducer, StateRunning, "", st.History, false, false, "", "", "", ""); err != nil {
+		if err := s.persistMarked(true, st.CurrentProducer, StateRunning, "", st.History, false, false, "", "", "", "", false); err != nil {
 			return StepResult{}, err
 		}
 	}
@@ -402,7 +422,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			if err != nil {
 				return StepResult{}, err
 			}
-			if err := s.persistTransient(def.OnStuck, next, "", nextHistory, false, next == StatePaused, def.OnStuck, "", "", reason); err != nil {
+			if err := s.persistRouted(def.OnStuck, next, nextHistory, next == StatePaused, def.OnStuck, reason); err != nil {
 				return StepResult{}, err
 			}
 			return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.OnStuck, State: next, Reason: reason, History: nextHistory}, nil
@@ -441,7 +461,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		if err != nil {
 			return StepResult{}, err
 		}
-		if err := s.persistTransient(def.OnDone, next, "", nextHistory, false, next == StatePaused, "", "", "", reason); err != nil {
+		if err := s.persistRouted(def.OnDone, next, nextHistory, next == StatePaused, "", reason); err != nil {
 			return StepResult{}, err
 		}
 		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.OnDone, State: next, Reason: reason, History: nextHistory}, nil
@@ -575,6 +595,7 @@ func nowRFC3339() string {
 // A done entry written by the hard-failure arm also terminates the scan, and that is accepted
 // rather than special-cased: the engine records the verdict a producer actually returned, and
 // state: "failed" halts the run, so every continuation past it is a fresh human-initiated act.
+// A skipped entry ends the episode as a Done by its row does.
 // A Stuck entry whose BudgetExempt is true is skipped and never counted.
 // An OutcomeGoto entry is skipped like any other non-Done entry, so a goto keeps the spent budget.
 // An OutcomeReroute entry ends the episode when its RoutedTo target shares def.Segment, or is def itself when def.Segment is empty;
@@ -598,7 +619,7 @@ func episodeStuckCount(history []HistoryEntry, def ProducerDef, producers []Prod
 			}
 			continue
 		}
-		if entry.Outcome == Done && (entry.Producer == name || slices.Contains(enders, entry.Producer)) {
+		if (entry.Outcome == Done || entry.Outcome == OutcomeSkipped) && (entry.Producer == name || slices.Contains(enders, entry.Producer)) {
 			return count
 		}
 		if entry.Producer != name {
@@ -749,7 +770,7 @@ func effectiveMaxBounces(def ProducerDef, shedMax int) int {
 // and the history it leaves behind (appended or folded) is committed whole by the next transition that does change producer or state.
 //
 // persist writes an empty transient class and an empty parent notice and leaves pause_before and pause_after as they are;
-// the producer-error arm, the awaiting arm, the pause writes and the routed writes call persistTransient.
+// the producer-error arm, the awaiting arm and the pause writes call persistTransient, and the routed writes and the skips call persistRouted.
 func (s *Shed) persist(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause bool, routedTo string) error {
 	return s.persistTransient(nextCurrentProducer, nextState, nextError, nextHistory, consumePause, false, routedTo, "", "", "")
 }
@@ -806,20 +827,30 @@ func recordedVerdict(cur, next []HistoryEntry) bool {
 // clearConditions is true only in the persist that records paused for a fired condition; every other write carries a recorded condition through unchanged.
 // A write that appends a history entry hands the pending caller label to the appended entry and clears it; a write that appends none carries the label through.
 // pauseReason is recorded as pause_reason when nextState is StatePaused; see persistMarked.
+// It keeps the entered row, so a resume or a halt re-calls the row without evaluating its entry gate.
 func (s *Shed) persistTransient(nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause, clearConditions bool, routedTo string, transient TransientClass, parentNotice, pauseReason string) error {
-	return s.persistMarked(false, nextCurrentProducer, nextState, nextError, nextHistory, consumePause, clearConditions, routedTo, transient, parentNotice, pauseReason)
+	return s.persistMarked(false, nextCurrentProducer, nextState, nextError, nextHistory, consumePause, clearConditions, routedTo, transient, parentNotice, pauseReason, false)
+}
+
+// persistRouted is the write of a routed running outcome and of a skip: persistTransient with an empty error, transient class and parent notice, and with the entered row cleared.
+// A row is thus entered only between its own entry evaluation and its verdict, and a route back into it evaluates its gate again.
+// It also records ResumedBy as persistMarked does for a resume, since a skip can be the first write of a resumed run.
+func (s *Shed) persistRouted(nextCurrentProducer string, nextState State, nextHistory []HistoryEntry, clearConditions bool, routedTo, pauseReason string) error {
+	return s.persistMarked(true, nextCurrentProducer, nextState, "", nextHistory, false, clearConditions, routedTo, "", "", pauseReason, true)
 }
 
 // persistMarked is persistTransient that, when markResume is true, also records ResumedBy as the pending caller label.
 // It records it only over a blocked, failed or awaiting status with no label pending, so the first label of a resumed run stands and a resume from paused records nothing.
 // A write recording StatePaused sets pause_reason to pauseReason, and every other write clears it.
 // Consuming pause_requested also clears its pause_requested_by label, and clearing the conditions clears both condition labels.
-func (s *Shed) persistMarked(markResume bool, nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause, clearConditions bool, routedTo string, transient TransientClass, parentNotice, pauseReason string) error {
+// A write that appends a skipped entry carries a pending label through to the next verdict's entry instead of handing it to the skipped one.
+// clearEntered clears the entered row in the same write.
+func (s *Shed) persistMarked(markResume bool, nextCurrentProducer string, nextState State, nextError string, nextHistory []HistoryEntry, consumePause, clearConditions bool, routedTo string, transient TransientClass, parentNotice, pauseReason string, clearEntered bool) error {
 	err := state.UpdateJSON(s.StatusPath, s.StatusLockPath, func(cur Status, found bool) (Status, error) {
 		if !found {
 			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-run; Shed refuses to create one", s.StatusPath)
 		}
-		if len(nextHistory) > len(cur.History) && cur.PendingBy != "" {
+		if len(nextHistory) > len(cur.History) && cur.PendingBy != "" && nextHistory[len(nextHistory)-1].Outcome != OutcomeSkipped {
 			nextHistory = slices.Clone(nextHistory)
 			nextHistory[len(nextHistory)-1].By = cur.PendingBy
 			cur.PendingBy = ""
@@ -842,6 +873,9 @@ func (s *Shed) persistMarked(markResume bool, nextCurrentProducer string, nextSt
 		cur.Activity = composeActivity(nextCurrentProducer, nextHistory, nextState, nextError, routedTo)
 		if !recorded {
 			cur.Activity.Last = prevLast
+		}
+		if clearEntered {
+			cur.EnteredRow = ""
 		}
 		if consumePause {
 			cur.PauseRequested = false

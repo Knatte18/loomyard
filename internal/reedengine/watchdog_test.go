@@ -1,3 +1,5 @@
+//go:build tier0
+
 // watchdog_test.go pins watchdog.go's pure surface: watchdogOption's validate/normalize contract, the wake cadence rule and both embedded templates' watchdog default.
 // Untagged: nothing here spawns a process or sleeps (Test Tier Purity Invariant).
 

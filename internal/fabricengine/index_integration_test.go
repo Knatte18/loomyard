@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // index_integration_test.go — integration tests for the fabric layer's git
 // wiring around the correspondence index: gitdir resolution, the

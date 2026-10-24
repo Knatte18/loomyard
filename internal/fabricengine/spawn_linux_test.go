@@ -1,3 +1,5 @@
+//go:build tier0
+
 // spawn_linux_test.go — the registration of the detached push child in the owner record, driven with a harmless real child that is reaped by the test.
 
 package fabricengine

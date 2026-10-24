@@ -1,3 +1,5 @@
+//go:build tier0
+
 // merriambase_test.go covers the start base the batchifier prices Merriam's session from: the line sum of the texts it loads, the fixed system-prompt context, and how the base follows the worktree's CLAUDE.md and the plan's overview.
 // Tier 1: the base is read from a temp worktree with the shipped stencils seeded; no git, no process.
 

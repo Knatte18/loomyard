@@ -1,3 +1,5 @@
+//go:build tier0
+
 // prreview_test.go covers the PR-Review stub: it passes with its flag off and on, logs once only when on, and surfaces a cancelled context as an error.
 
 package landingshed

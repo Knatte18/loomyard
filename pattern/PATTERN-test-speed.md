@@ -8,28 +8,34 @@ The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and
 
 | Tier | Tag | Needs | Costs |
 |---|---|---|---|
-| `tier0` | none | nothing: offline, no spawn | seconds, runs on every card gate |
-| `tier1` | `integration` | git, a built `lyx`, subprocesses; no tmux server and no LLM, which `tmuxkit.Main` checks at the end of the package | tens of seconds, runs once per batch and in the final gate |
-| `tier2` | `tmux` | a real tmux server, no LLM | slower, runs in the `final` and `landing` gates and by hand |
-| `tier3` | `llm` | a real LLM session | billed, compiled by every gate and run by hand only |
+| `tier0` | `tier0` | nothing: offline, no spawn | seconds, runs on every card gate |
+| `tier1` | `tier1` | git, a built `lyx`, subprocesses; no tmux server and no LLM, which `tmuxkit.Main` checks at the end of the package | tens of seconds, runs in the keys that list it |
+| `tier2` | `tier2` | a real tmux server, no LLM | slower, runs in the keys that list it and by hand |
+| `tier3` | `tier3` | a real LLM session | billed, compiled by every gate and run by hand only |
 
-- Tags do not nest: `-tags integration` runs no `tmux` or `llm` file, so a tier's command names every tag it wants.
+- Tags are disjoint: `-tags tier1` compiles no `tier0`, `tier2` or `tier3` test file, so each test runs in exactly one tier, and a key that wants two tiers lists both.
+- A test file holding a `Test`, `Benchmark`, `Fuzz` or `Example` function carries exactly one tier tag, a platform term staying beside it (`tier2 && !windows`); an untagged test file holds support only, such as `TestMain` and helpers.
+  Enforced by `cmd/lyx/tiertags_test.go`.
+- A file holding a `//lyx:guard` test takes `tierN || integration` until the deployed `lyx` replaces the installed guard scan, which accepts a marker only in a file compiling with no tag or with `integration` alone; the hub's tier commands carry both spellings of their tag for that transition.
 - A test needing two substrates takes the higher tier.
-- Each tag compiles on its own: `go vet -tags tmux ./...` and `go vet -tags llm ./...` each pass.
-- A helper file used by files of two tiers and spawning something carries the disjunction of their tags (`//go:build tmux || llm`); a helper that spawns nothing goes untagged; a helper only one tier uses lives in that tier's file.
-- `llm` files are compiled by `go vet -tags llm ./...` and never run by a gate.
+- Each tag compiles on its own: `go vet -tags tier2 ./...` and `go vet -tags tier3 ./...` each pass.
+- A helper file used by files of two tiers carries the disjunction of their tags (`//go:build tier2 || tier3`), and holds no test; a helper only one tier uses lives in that tier's file, and a file whose helpers another tier's tests use is split.
+- `tier3` files are compiled by `go vet -tags tier3 ./...` and never run by a gate.
 
-### Gate per tier
+### Gate keys
 
-A gate is a named list of tiers in `gate.yaml`, and a site runs its gate's list through `lyx gate test`; no site spells a test command.
+A gate key in `gate.yaml` names a site's tiers and its scope, and a site runs `lyx gate test --wait --gate <key>`; no site spells a tier list, a scope or a test command.
+`internal/gateslot`'s doc holds the tier plan, which recipe row reads which key.
 
-| Gate | Runs |
-|---|---|
-| `card` | the tiers the `card` list names over the card's own packages through `lyx gate test --card`, then the comment lint and the headroom lint |
-| `batch` | the `batch` list once per batch over the batch's packages, each failing on a tmux server socket its end-of-package check finds |
-| `round` | the Webster-Burler-Fix round gate: the headroom lint when told a merge base, then the comment lint, then the `round` list over the impacted set, which runs whole wherever the impacted set cannot narrow |
-| `final`, `landing` | webster's gate, Merge-In and Finalize: the `final` and `landing` lists over the whole tree |
-| By hand | the `llm` tier |
+| Key | Site | Template scope |
+|---|---|---|
+| `card` | each Webster card, through `--card`, then the comment lint and the headroom lint | `card` |
+| `batch` | each Webster batch, each tier run failing on a tmux server socket its end-of-package check finds | `card` |
+| `webster-fix` | Webster-Burler-Fix's verify fixers, after the headroom and comment lints | `diff` |
+| `webster` | Webster's end gate | `all` |
+| `merge-in`, `finalize` | Merge-In and Finalize | `all` |
+| `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |
+| By hand | the `tier3` tier | |
 
 ### No gate runs `llm`
 
@@ -70,14 +76,14 @@ Bound: a forged value misleads only an ungated raw run, since `lyx gate test` se
 ## Repository-scanning tests carry `//lyx:guard`
 
 - A test that reads repository files outside its own package directory carries `//lyx:guard` on the line directly above its `func Test…` line, the way `//testtiming:keep` sits above a kept test.
-- The round gate runs every marked test by name whatever the impacted set, because a guard's result depends on files no import edge names.
+- A narrowed gate's guard step runs every marked test by name under its file's tier, whatever the impacted set, because a guard's result depends on files no import edge names.
 - A test carrying both markers stacks them as contiguous directive lines directly above the `func Test…` line, in either order.
   `//lyx:guard` counts as directly above when only `//testtiming:keep` lines separate it from the func line, and `//testtiming:keep` counts as directly above when only `//lyx:` lines separate it; two stacked keeps stay an error.
 - A test that reads only its own package directory is left unmarked, since the impacted set selects it whenever that package changes.
-- No marked test sits in a `tmux` or `llm` file.
+- No marked test sits in a `tier2` or `tier3` file.
 - Whether a scanning test carries the marker is review discipline, not a test.
 - Bound: an unmarked scanning test is not run by the round gate or darn's writer gates, so a violation passes those and is caught by the whole verify at the sites that keep it for a diff touching production code, never on `main`.
-  For a tree-scoped darn diff such a violation can reach the parent, bounded by what the hub lists as non-production in `darn.yaml`'s `tree_scope`.
+  For a tree-scoped darn diff, a site runs its row's key over the trees' targets, so such a violation can reach the parent, bounded by what the hub lists as non-production in `darn.yaml`'s `tree_scope`.
 
 ## Time is injectable
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // resume_test.go covers checkResumable over a temp project directory, a fixture session registry and a fake liveness probe:
 // a malformed id, a missing or unstattable transcript and a live holder refuse,
 // where a live holder whose start time cannot be compared refuses as unproven,

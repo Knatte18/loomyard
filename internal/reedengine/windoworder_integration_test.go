@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // windoworder_integration_test.go proves the window order against a real tmux.
 // The session's windows hold the overview first, the agents in start order, then the window named shell, then the hidden windows; a relaunch keeps its window's place, and a session booted by an older lyx is brought into that order.

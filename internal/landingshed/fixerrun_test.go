@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fixerrun_test.go drives the merge fixer loop over a fake seat runner, the gate fixture's fake verify tree and fake seams.
 // fakeFixerSeats is the shared fake the Merge-In and Finalize fixer tests drive too.
 
@@ -90,7 +92,7 @@ const (
 func newFixerRunFixture(t *testing.T) *fixerRunFixture {
 	t.Helper()
 	fx := &fixerRunFixture{
-		gate:      newGateFixture(t, "go test ./...", nil),
+		gate:      newGateFixture(t, "merge-in", "go test ./...", nil),
 		seats:     &fakeFixerSeats{},
 		clock:     gateMarkStart,
 		remoteTip: "remote-1",
@@ -109,6 +111,7 @@ func newFixerRunFixture(t *testing.T) *fixerRunFixture {
 		}
 	}
 	fx.deps = Deps{
+		GateKey:            "merge-in",
 		ScratchDir:         scratch,
 		StencilsDir:        stencilsDir,
 		DecisionRecordPath: filepath.Join(scratch, "decision-record.md"),

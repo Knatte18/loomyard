@@ -1,3 +1,5 @@
+//go:build tier0
+
 // gatequiescence_test.go pins the precondition the per-attempt done-signal narrowing rests on:
 // a gate runs at a turn end that is not a wait, so no gate may run while a fork subagent is live.
 // Batch 1's engine_test.go pins that the in-process Agent tool is denied by the shipped shuttle template.

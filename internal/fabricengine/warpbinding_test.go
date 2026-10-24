@@ -1,3 +1,5 @@
+//go:build tier0
+
 // warpbinding_test.go — table tests for the warp-binding core: the normalizer, the transport-identity
 // collapse, the pure conflict resolver, and the on-disk read/write round trip.
 // This is a Tier 1 file: it is package fabricengine (so it can exercise the unexported helpers

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces this package's no-resolver, no-<module>cli import seam: production
 // code in internal/shedverbs takes every path it operates on from a told Spec, never derives one, and
 // never imports back into a CLI module.

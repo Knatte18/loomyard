@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // finalize_integration_test.go drives Finalize against a real two-worktree pair on both the task
 // side and the parent side, built by the standard hub fixture (internal/hubforge), with only the

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // record_test.go tests the owner record: registering, listing with pruning, owner grouping and the liveness seams.
 
 package runproc

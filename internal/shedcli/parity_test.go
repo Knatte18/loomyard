@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // parity_test.go asserts byte-identical envelopes from the same fixture across the two invocation paths -- "lyx <module> <verb> [<run-id>]" and "lyx shed <verb> [<run-id>]" -- for every verb/ recipe pair this table supports, plus the lightweight-wiring proof.
 //

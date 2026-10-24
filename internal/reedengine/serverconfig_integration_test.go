@@ -1,4 +1,4 @@
-//go:build tmux && !windows
+//go:build tier2 && !windows
 
 // serverconfig_integration_test.go proves against a real tmux server that reed's own server reads no operator config and that its strand panes start non-login shells.
 // It also pins the shell options reed's session pins share with the test kit's server config, and that the capability probe's transient server stays off the hub's socket.

@@ -715,7 +715,8 @@ func (c *battenCLI) preDriveCheck() error {
 const openWindowTimeout = 30 * time.Second
 
 // reopenWindow runs the Open-Window row's command once for a resumed run that is past the row and has no client attached to the task worktree's reed session, since the window the first run opened is gone with that client.
-// It runs the row's command through a command producer over the row's batten.open_window switch and batten.open_window_command command, so a forced switch and a task's open_window: false apply as in the row.
+// It opens nothing when batten.open_window, read through Env.Setting as the row's entry gate reads it, is off, so a forced run and a task's open_window: false apply as in the row.
+// Otherwise it runs the batten.open_window_command command through a command producer.
 // A status whose history holds no Open-Window entry, or whose current producer is still at or before the row, opens nothing; so does an attached client.
 // A failed client check is warned about and opens nothing, and the command's own failure only warns.
 func (c *battenCLI) reopenWindow(ctx context.Context, status shedengine.Status) error {
@@ -730,12 +731,21 @@ func (c *battenCLI) reopenWindow(ctx context.Context, status shedengine.Status) 
 	if attached {
 		return nil
 	}
+	value, err := c.env.Setting("batten", "open_window")
+	if err != nil {
+		return fmt.Errorf("battencli: reopen the window: read batten.open_window: %w; way forward: correct it, then %s", err, c.env.Resume)
+	}
+	enabled, isBool := value.(bool)
+	if !isBool {
+		return fmt.Errorf("battencli: reopen the window: batten.open_window holds %v, not a bool; way forward: correct it, then %s", value, c.env.Resume)
+	}
+	if !enabled {
+		return nil
+	}
 	deps := c.env.Command
 	deps.Setting = c.env.Setting
 	deps.ExecutableSetting = c.env.ExecutableSetting
 	row := shedadapters.CommandRow{
-		SwitchModule:  "batten",
-		SwitchKey:     "open_window",
 		CommandModule: "batten",
 		CommandKey:    "open_window_command",
 		Timeout:       openWindowTimeout,

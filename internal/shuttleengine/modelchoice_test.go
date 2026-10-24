@@ -1,3 +1,5 @@
+//go:build tier0
+
 // modelchoice_test.go verifies NewModelChoice maps a resolved model spec onto the neutral choice.
 
 package shuttleengine

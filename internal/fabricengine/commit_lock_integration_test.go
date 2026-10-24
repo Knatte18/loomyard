@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // commit_lock_integration_test.go — integration coverage for the
 // combined-commit-lock and commit-lock-scoped-to-commit-only Shared

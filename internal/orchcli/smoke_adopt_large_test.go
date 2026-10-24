@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_adopt_large_test.go measures what adopting a large real session costs: whether the resume launch reaches a live strand within `startup_timeout_s` and leaves no dialog on the pane.
 // It is opt-in: LYX_SMOKE_ADOPT_SESSION names the id of an existing Claude Code session, and the test skips without it.

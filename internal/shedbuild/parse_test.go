@@ -1,3 +1,5 @@
+//go:build tier0
+
 // parse_test.go covers Parse's shape checks and decode errors, table-driven over inline YAML
 // byte-slice literals with no filesystem access anywhere in this file.
 
@@ -388,6 +390,80 @@ producers:
     engine: burler
 `,
 			wantErrSub: `shedbuild: producer 1 "dup": duplicate name, already defined by producer 0`,
+		},
+		{
+			name: "an entry_gate check joining two operands is refused naming the row, the check and the way forward",
+			yaml: `version: 1
+entry: row1
+terminals: [row1]
+producers:
+  - name: row1
+    engine: bouncer
+    entry_gate: "loom.a && loom.b"
+`,
+			wantErrSub: `shedbuild: row "row1": entry_gate check "loom.a && loom.b": "loom.a && loom.b" is not an operand of the form module.key or budget.<Segment>; way forward: write each check as <operand>, <operand> == <literal> or <operand> != <literal>`,
+		},
+		{
+			name: "an entry_gate list holding an operand with no dot is refused",
+			yaml: `version: 1
+entry: row1
+terminals: [row1]
+producers:
+  - name: row1
+    engine: bouncer
+    entry_gate: [loom.a, loom]
+`,
+			wantErrSub: `entry_gate check "loom": "loom" is not an operand`,
+		},
+		{
+			name: "an empty entry_gate check is refused",
+			yaml: `version: 1
+entry: row1
+terminals: [row1]
+producers:
+  - name: row1
+    engine: bouncer
+    entry_gate: ""
+`,
+			wantErrSub: "the check is empty",
+		},
+		{
+			name: "a comparison with no literal is refused",
+			yaml: `version: 1
+entry: row1
+terminals: [row1]
+producers:
+  - name: row1
+    engine: bouncer
+    entry_gate: "loom.a =="
+`,
+			wantErrSub: "the literal after the comparison is empty",
+		},
+		{
+			name: "an unquoted literal holding whitespace is refused",
+			yaml: `version: 1
+entry: row1
+terminals: [row1]
+producers:
+  - name: row1
+    engine: bouncer
+    entry_gate: "loom.a == 1 != 2"
+`,
+			wantErrSub: `the literal "1 != 2" holds whitespace`,
+		},
+		{
+			name: "an entry_gate mapping is refused",
+			yaml: `version: 1
+entry: row1
+terminals: [row1]
+producers:
+  - name: row1
+    engine: bouncer
+    entry_gate:
+      loom.a: true
+`,
+			wantErrSub:  "entry_gate must be one check or a list of checks",
+			wantLineNum: true,
 		},
 		{
 			// A stray "---" mid-recipe once silently truncated the producer graph: Parse decoded once and stopped, so a self-consistent prefix ran as a truncated pipeline.

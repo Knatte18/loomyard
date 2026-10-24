@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // acceptaudit_test.go covers the accept-audit verb through its cobra.Command, on the verbs fixture's hub.
 package webstercli

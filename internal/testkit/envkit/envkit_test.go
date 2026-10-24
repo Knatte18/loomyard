@@ -1,3 +1,5 @@
+//go:build tier0
+
 package envkit
 
 import (

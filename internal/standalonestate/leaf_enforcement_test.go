@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the Standalonestate Leaf Invariant: production code in
 // internal/standalonestate imports only the standard library -- no other package at all.
 // Like modelspec's leaf_enforcement_test.go, this check is an ALLOWLIST: any import outside the

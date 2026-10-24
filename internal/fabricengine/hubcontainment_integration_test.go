@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // hubcontainment_integration_test.go gives the Hub Containment Invariant teeth: no hub-level
 // container is ever junctioned into a worktree, so <worktree>/<anchorRel>/_board must not exist

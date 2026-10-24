@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go verifies shuttle.yaml's template parses, defaults resolve through LoadConfig, and
 // environment overrides + the template-fallback path behave the way reedengine's config tests
 // establish the pattern.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // summary_test.go exercises Parse's accept/reject table, Path's join, and CommitMessage's
 // subject/body composition -- the read-side coverage this package owns as summaryparser-leaf's
 // external interface.

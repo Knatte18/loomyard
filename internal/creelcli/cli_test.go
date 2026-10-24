@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cli_test.go drives the `lyx creel` verbs through RunCLIIn over a hubforge hub, with the daemon run in process on a fake delivery and fake clocks.
 // The rows set the strand name in the environment and replace the package's client seam, which is process-global state, so the test does not run in parallel.

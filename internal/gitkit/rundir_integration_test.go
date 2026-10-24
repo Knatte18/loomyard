@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // rundir_integration_test.go pins that a test binary running under tmuxkit.Main keeps all its temp files in a run directory of the lyx temp root and leaves nothing behind, after a passing and after a failing run.
 // The test re-executes the gitkit test binary as its own helper.

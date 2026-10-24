@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // cli_tmux_test.go holds the one cli_integration_test.go test that starts a tmux server:
 // the standalone `run` pre-run boots a real reed session before the plan-validation gate, so the test sits in the `tmux` tier.

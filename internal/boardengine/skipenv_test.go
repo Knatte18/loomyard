@@ -1,3 +1,5 @@
+//go:build tier0
+
 // skipenv_test.go — unit tests for ApplySkipEnv.
 //
 // Tests the env→cfg resolution helper that folds BOARD_SKIP_* environment variables into the Config

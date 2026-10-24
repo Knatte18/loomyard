@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the lyxtemp Leaf Invariant.
 // Production code in internal/lyxtemp imports only the standard library and internal/lock.
 

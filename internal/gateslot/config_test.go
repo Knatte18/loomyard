@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go covers loading the hub-wide gate config over a bare temp directory seeded with just a gate.yaml, with no hub and no git.
 
 package gateslot
@@ -7,6 +9,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,7 +23,16 @@ import (
 
 var templateDefaults = Config{
 	Slots: 2, BusyQuitSec: 120,
-	Gates:  map[string][]int{"card": {0}, "batch": {0}, "round": {0}, "final": {0}, "landing": {0}},
+	Gates: map[string]GateKey{
+		"card":            {Tiers: []int{0}, Scope: "card"},
+		"batch":           {Tiers: []int{0}, Scope: "card"},
+		"webster":         {Tiers: []int{0}, Scope: "all"},
+		"merge-in":        {Tiers: []int{0}, Scope: "all"},
+		"finalize":        {Tiers: []int{0}, Scope: "all"},
+		"webster-fix":     {Tiers: []int{0}, Scope: "diff"},
+		"darn-write":      {Tiers: []int{0}, Scope: "diff"},
+		"code-burler-fix": {Tiers: []int{0}, Scope: "diff"},
+	},
 	Scoper: "none",
 }
 
@@ -84,6 +96,7 @@ func TestLoadConfig(t *testing.T) {
 		{"zero slots", "slots: 0\n", Config{}, `gate config key "slots": 0; want at least 1; fix it with "lyx config gate" from the prime` + roleClause},
 		{"a retired go_parallel still loads, whatever its value", "slots: 2\ngo_parallel: 0\n", hubWith(func(*Config) {}), ""},
 		{"a retired cli_wait_sec still loads", "slots: 3\ncli_wait_sec: 180\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
+		{"a retired guard_tier still loads", "slots: 3\nguard_tier: 1\n", hubWith(func(c *Config) { c.Slots = 3 }), ""},
 		{"busy_quit_sec zero turns the watchdog off", "slots: 2\nbusy_quit_sec: 0\n", hubWith(func(c *Config) { c.BusyQuitSec = 0 }), ""},
 		{
 			"a tier in flow form reads parallel and slots as 1", baseKeys + tier0Flow,
@@ -102,13 +115,16 @@ func TestLoadConfig(t *testing.T) {
 			}), "",
 		},
 		{
-			"gate lists naming an undeclared tier still load", baseKeys + "gates:\n  card: [3]\n  push: [0, 1]\n",
+			"gate keys naming an undeclared tier still load", baseKeys + "gates:\n  card: {tiers: [3], scope: card}\n  push: {tiers: [0, 1], scope: diff}\n",
 			hubWith(func(c *Config) {
 				c.Gates = maps.Clone(templateDefaults.Gates)
-				c.Gates["card"] = []int{3}
-				c.Gates["push"] = []int{0, 1}
+				c.Gates["card"] = GateKey{Tiers: []int{3}, Scope: "card"}
+				c.Gates["push"] = GateKey{Tiers: []int{0, 1}, Scope: "diff"}
 			}), "",
 		},
+		{"scope card on a key but card and batch", baseKeys + "gates:\n  merge-in: {tiers: [0], scope: card}\n", Config{}, `gate config key "gates.merge-in": scope card is only for the card and batch keys` + fixIt},
+		{"an unknown scope", baseKeys + "gates:\n  merge-in: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.merge-in": scope "some"; want card, diff or all` + fixIt},
+		{"a key in the retired list shape", baseKeys + "gates:\n  card: [0]\n", Config{}, `gate config key "gates.card": the retired list shape; fix it with "lyx fabric reconcile" (or "lyx config reconcile --layer default --apply") from the prime, which migrates it` + roleClause},
 		{
 			"a manual tier above tier0 loads", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}, tier3: {command: y, timeout_min: 5, counter: vstest, manual: true}}`,
 			hubWith(func(c *Config) {
@@ -459,8 +475,11 @@ func TestLoadConfig_DropsTierParallelOfUndeclaredTier(t *testing.T) {
 func TestMigrateConfig(t *testing.T) {
 	t.Parallel()
 
-	withPublish := "gates:\n  card: [0]\n  round: [0, 1]\n  publish: [2]\nscoper: none\n"
-	withoutPublish := "gates:\n  card: [0]\n  round: [0, 1]\nscoper: none\n"
+	withPublish := "gates:\n  card: {tiers: [0], scope: card}\n  webster-fix: {tiers: [0, 1], scope: diff}\n  publish: [2]\nscoper: none\n"
+	withoutPublish := "gates:\n  card: {tiers: [0], scope: card}\n  webster-fix: {tiers: [0, 1], scope: diff}\nscoper: none\n"
+	retiredLists := "gates:\n  # the lists\n  card: [0]\n  batch: [0, 1]\n  round: [0, 1]\n  final: [0, 1, 2]\n  landing: [0, 1]\nscoper: none\n"
+	migratedLists := "gates:\n  # the lists\n  card: {tiers: [0], scope: card}\n  batch: {tiers: [0, 1], scope: card}\n  webster-fix: {tiers: [0, 1], scope: diff}\n  webster: {tiers: [0, 1, 2], scope: all}\n" +
+		"  merge-in: {tiers: [0, 1], scope: all}\n  finalize: {tiers: [0, 1], scope: all}\n  darn-write: {tiers: [0, 1], scope: diff}\n  code-burler-fix: {tiers: [0, 1], scope: diff}\nscoper: none\n"
 
 	tests := []struct {
 		name      string
@@ -470,7 +489,37 @@ func TestMigrateConfig(t *testing.T) {
 		wantErr   bool
 	}{
 		{"a publish list pruned and the round list kept", withPublish, withoutPublish, []string{"gates.publish: retired, removed"}, false},
-		{"an empty publish list pruned", "gates:\n  card: [0]\n  publish: []\n", "gates:\n  card: [0]\n", []string{"gates.publish: retired, removed"}, false},
+		{"an empty publish list pruned", "gates:\n  card: {tiers: [0], scope: card}\n  publish: []\n", "gates:\n  card: {tiers: [0], scope: card}\n", []string{"gates.publish: retired, removed"}, false},
+		{
+			"the retired lists migrate to keys with scopes", retiredLists, migratedLists,
+			[]string{
+				"gates.card: list shape retired, migrated to tiers and scope card",
+				"gates.batch: list shape retired, migrated to tiers and scope card",
+				"gates.round: retired, migrated to webster-fix",
+				"gates.final: retired, migrated to webster",
+				"gates.landing: retired, migrated to merge-in, finalize, darn-write and code-burler-fix",
+			},
+			false,
+		},
+		{
+			"a migrated key the file already holds keeps its value", "gates:\n  landing: [0, 1]\n  merge-in: {tiers: [0], scope: diff}\n",
+			"gates:\n  finalize: {tiers: [0, 1], scope: all}\n  darn-write: {tiers: [0, 1], scope: diff}\n  code-burler-fix: {tiers: [0, 1], scope: diff}\n  merge-in: {tiers: [0], scope: diff}\n",
+			[]string{"gates.landing: retired, migrated to finalize, darn-write and code-burler-fix"}, false,
+		},
+		{
+			"a hub file with the retired lists and guard_tier reconciles to the keys with no guard_tier", "gates:\n  # the lists\n  card: [0]\n  batch: [0, 1]\n  round: [0, 1]\n  final: [0, 1, 2]\n  landing: [0, 1]\nscoper: go\nguard_tier: 1\nrefuse_raw: []\n",
+			strings.Replace(migratedLists, "scoper: none\n", "scoper: go\nrefuse_raw: []\n", 1),
+			[]string{
+				"gates.card: list shape retired, migrated to tiers and scope card",
+				"gates.batch: list shape retired, migrated to tiers and scope card",
+				"gates.round: retired, migrated to webster-fix",
+				"gates.final: retired, migrated to webster",
+				"gates.landing: retired, migrated to merge-in, finalize, darn-write and code-burler-fix",
+				"guard_tier: retired, removed",
+			},
+			false,
+		},
+		{"a guard_tier alone is pruned", "scoper: go\nguard_tier: 0\n", "scoper: go\n", []string{"guard_tier: retired, removed"}, false},
 		{"a document without publish unchanged", withoutPublish, withoutPublish, nil, false},
 		{"an empty document unchanged", "", "", nil, false},
 		{"an unparseable document", "gates: [", "", nil, true},
@@ -508,11 +557,23 @@ func TestConfig_TierUse(t *testing.T) {
 
 	twoTier := Config{
 		Tiers: map[string]Tier{"tier0": {About: "unit tests"}, "tier1": {About: "integration tests"}},
-		Gates: map[string][]int{
-			"card": {0}, "batch": {0, 1}, "round": {0, 1}, "final": {0, 1}, "landing": {0, 1},
-			"push": {0, 1}, "dangling": {0, 2}, "empty": {},
+		Gates: map[string]GateKey{
+			"card": {Tiers: []int{0}, Scope: "card"}, "batch": {Tiers: []int{0, 1}, Scope: "card"},
+			"webster-fix": {Tiers: []int{0, 1}, Scope: "diff"}, "webster": {Tiers: []int{0, 1}, Scope: "all"}, "finalize": {Tiers: []int{0, 1}, Scope: "all"},
+			"push": {Tiers: []int{0, 1}, Scope: "diff"}, "dangling": {Tiers: []int{0, 2}, Scope: "diff"}, "empty": {Scope: "diff"},
 		},
 	}
+
+	t.Run("Gate", func(t *testing.T) {
+		t.Parallel()
+		got, err := twoTier.Gate("push")
+		if err != nil || !slices.Equal(got.Tiers, []int{0, 1}) || got.Scope != "diff" {
+			t.Errorf("Gate(push) = (%+v, %v); want tiers [0 1] and scope diff", got, err)
+		}
+		if _, err := twoTier.Gate("nope"); err == nil || !strings.Contains(err.Error(), `gates holds no key "nope"`) {
+			t.Errorf("Gate(nope) error = %v; want the no-such-key refusal", err)
+		}
+	})
 
 	t.Run("TierList", func(t *testing.T) {
 		t.Parallel()
@@ -524,10 +585,10 @@ func TestConfig_TierUse(t *testing.T) {
 			wantErr string
 		}{
 			{"a declared list", twoTier, "batch", []int{0, 1}, ""},
-			{"a gate the config holds no list for", twoTier, "nope", nil, `gates holds no list for "nope"`},
+			{"a gate the config holds no list for", twoTier, "nope", nil, `gates holds no key "nope"`},
 			{"a list naming an undeclared tier", twoTier, "dangling", nil, "gates.dangling lists tier2, which the hub does not declare"},
 			{"an empty list for any gate", twoTier, "empty", nil, "gates.empty is empty, and every gate verifies at least one tier"},
-			{"an empty list for a gate lyx reads", Config{Tiers: twoTier.Tiers, Gates: map[string][]int{"round": {}}}, "round", nil, "gates.round is empty, and every gate verifies at least one tier"},
+			{"an empty list for a gate lyx reads", Config{Tiers: twoTier.Tiers, Gates: map[string]GateKey{"webster-fix": {Scope: "diff"}}}, "webster-fix", nil, "gates.webster-fix is empty, and every gate verifies at least one tier"},
 			{"a hub with no tier0", Config{Tiers: map[string]Tier{"tier1": {}}, Gates: twoTier.Gates}, "batch", nil, "the hub declares no tier0"},
 		}
 		for _, tt := range tests {
@@ -565,34 +626,28 @@ func TestConfig_TierUse(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
 			gate  string
-			scope []string
+			cards []string
 			want  string
 		}{
-			{"batch", []string{"--all"}, "lyx gate test --wait --tier 0 --tier 1 --all"},
-			{"card", []string{"--card", "03"}, "lyx gate test --wait --tier 0 --card 03"},
-			{"push", nil, "lyx gate test --wait --tier 0 --tier 1"},
+			{"batch", []string{"01", "02"}, "lyx gate test --wait --gate batch --card 01 --card 02"},
+			{"card", []string{"03"}, "lyx gate test --wait --gate card --card 03"},
+			{"webster", nil, "lyx gate test --wait --gate webster"},
 		}
 		for _, tt := range tests {
-			got, err := twoTier.GateCall(tt.gate, tt.scope...)
+			got, err := twoTier.GateCall(tt.gate, tt.cards...)
 			if err != nil || got != tt.want {
-				t.Errorf("GateCall(%q, %v) = (%q, %v); want (%q, nil)", tt.gate, tt.scope, got, err, tt.want)
+				t.Errorf("GateCall(%q, %v) = (%q, %v); want (%q, nil)", tt.gate, tt.cards, got, err, tt.want)
 			}
 		}
-		// Merge-In skips a tree Webster's gate passed only while the two gates render one call.
-		final, _ := twoTier.GateCall("final", "--all")
-		landing, _ := twoTier.GateCall("landing", "--all")
-		if final != landing {
-			t.Errorf("GateCall(final) = %q, GateCall(landing) = %q; want one call for two gates holding the same list", final, landing)
-		}
-		if _, err := twoTier.GateCall("nope", "--all"); err == nil {
-			t.Error("GateCall(nope) error = nil; want the TierList refusal")
+		if _, err := twoTier.GateCall("nope"); err == nil {
+			t.Error("GateCall(nope) error = nil; want the Gate refusal")
 		}
 	})
 
 	t.Run("TiersValue", func(t *testing.T) {
 		t.Parallel()
 		want := "- tier0: unit tests\n- tier1: integration tests\n" +
-			"- gate card: [0]\n- gate batch: [0, 1]\n- gate round: [0, 1]\n- gate final: [0, 1]\n- gate landing: [0, 1]"
+			"- gate card: [0] card\n- gate batch: [0, 1] card\n- gate webster: [0, 1] all\n- gate finalize: [0, 1] all\n- gate webster-fix: [0, 1] diff"
 		if got := twoTier.TiersValue(); got != want {
 			t.Errorf("TiersValue() = %q; want %q", got, want)
 		}

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // intake_test.go — unit tests for importing and folding GitHub issues (intake.go).
 //
 // Every test runs a Board over a temp dir with a configured vocabulary and SkipGit;

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // takegateslot_integration_test.go pins the one slot every testtiming mode holds, over a hubforge hub whose pool it reads.
 // It is Tier 2: the hub fixture spawns git, so it needs the integration build tag.

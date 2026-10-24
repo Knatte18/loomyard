@@ -1,4 +1,6 @@
-// creationtime_test.go covers CreationTime, defined with the same signature on both platforms, so this file needs no //go:build tag.
+//go:build tier0
+
+// creationtime_test.go covers CreationTime, defined with the same signature on both platforms, so this file carries no platform constraint.
 
 package proc
 

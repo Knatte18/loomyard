@@ -1,3 +1,5 @@
+//go:build tier0
+
 // reopen_window_test.go asserts battenPreRun reopens the terminal window of a resumed run only when no client is attached.
 
 package battencli
@@ -36,16 +38,14 @@ func TestBattenPreRun_ReopensTheWindowWithNoClientAttached(t *testing.T) {
 		status         *shedengine.Status
 		clientAttached func() (bool, error)
 		switchOn       bool
-		forced         bool
 		wantCommands   int
 	}{
-		{"PastOpenWindowWithNoClient", &pastOpenWindowStatus, attached(false, nil), true, false, 1},
-		{"ClientAttached", &pastOpenWindowStatus, attached(true, nil), true, false, 0},
-		{"SwitchOff", &pastOpenWindowStatus, attached(false, nil), false, false, 0},
-		{"SwitchOffAndOpenTerminalForced", &pastOpenWindowStatus, attached(false, nil), false, true, 1},
-		{"ClientCheckErrorOpensNone", &pastOpenWindowStatus, attached(false, errors.New("tmux unreachable")), true, false, 0},
-		{"StillAtOpenWindow", &atOpenWindowStatus, attached(false, nil), true, false, 0},
-		{"FreshStart", nil, attached(false, nil), true, false, 0},
+		{"PastOpenWindowWithNoClient", &pastOpenWindowStatus, attached(false, nil), true, 1},
+		{"ClientAttached", &pastOpenWindowStatus, attached(true, nil), true, 0},
+		{"SwitchOff", &pastOpenWindowStatus, attached(false, nil), false, 0},
+		{"ClientCheckErrorOpensNone", &pastOpenWindowStatus, attached(false, errors.New("tmux unreachable")), true, 0},
+		{"StillAtOpenWindow", &atOpenWindowStatus, attached(false, nil), true, 0},
+		{"FreshStart", nil, attached(false, nil), true, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -63,9 +63,6 @@ func TestBattenPreRun_ReopensTheWindowWithNoClientAttached(t *testing.T) {
 					return shedadapters.CommandResult{}, nil
 				},
 				GOOS: "linux",
-			}
-			if tt.forced {
-				c.env.Command.Forced = []string{battenrecipe.NameOpenWindow}
 			}
 			c.clientAttached = tt.clientAttached
 			if tt.status != nil {

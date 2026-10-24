@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // clone_emptyweft_integration_test.go pins the empty-weft-remote bootstrap: the documented
 // first-ever-setup path that probeWeftBinding's unborn-HEAD check and ensureBoardWorktree's orphan

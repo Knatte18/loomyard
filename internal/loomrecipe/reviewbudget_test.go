@@ -1,3 +1,5 @@
+//go:build tier0
+
 // reviewbudget_test.go asserts the review bounce budget comes from the caller, not the recipe:
 // New and Routing set it on every row of a Bouncer-holding segment.
 
@@ -150,6 +152,23 @@ func TestZeroBudget_BouncerSettlesAtOnce(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("darn Code-Review entry", func(t *testing.T) {
+		env, paths := testEnv(t)
+		setCodeBudget(&env, 0)
+		shed, err := NewDarn(env, paths)
+		if err != nil {
+			t.Fatalf("NewDarn() = _, %v; want nil", err)
+		}
+
+		outcome, _, err := builtProducer(t, shed, loomshed.NameCodeBouncer).Call(context.Background())
+		if err != nil || outcome != shedengine.Done {
+			t.Errorf("darn %s Call() = %q, %v; want Done, nil", loomshed.NameCodeBouncer, outcome, err)
+		}
+		if shuttle := env.Shuttle.(*shedfake.Shuttle); shuttle.Called {
+			t.Errorf("shuttle started %d spec(s); want none from a zero-round Bouncer", len(shuttle.Specs))
+		}
+	})
 }
 
 // builtProducer returns the producer of the named row of shed.

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mergestage_integration_test.go covers MergeStageResolved against real conflicted pairs: resolving
 // on disk then staging via the verb (unblocking MergeContinue), a path neither side lists (error, not

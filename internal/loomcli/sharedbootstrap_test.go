@@ -1,3 +1,5 @@
+//go:build tier0
+
 // sharedbootstrap_test.go covers the three helpers sharedbootstrap.go extracts, driven against a
 // hand-populated *loomCLI receiver -- bypassing wire entirely, the idiom cli_test.go already uses for
 // the drive/pause refusal paths. No test here spawns a real hub or brings up a real reed session;

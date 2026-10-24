@@ -1,3 +1,5 @@
+//go:build tier0
+
 // parentguard_test.go drives the parent lock guard against a real parentlock.Store in a temporary directory and fake tip reads.
 
 package landingshed

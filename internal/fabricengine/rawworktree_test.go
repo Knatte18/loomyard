@@ -1,3 +1,5 @@
+//go:build tier0
+
 // rawworktree_test.go pins isRawWarpWorktree's anchor-awareness: the _lyx management-marker probe
 // must look at the worktree's ANCHORED directory, the only place fabric ever wires the junction —
 // a root-joined probe misclassified every subpath-anchored managed worktree as raw.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // overlay_test.go pins ListSessions' parsing half against TmuxCmd's execHook seam, driving the
 // three outcomes the watchdog daemon's idle rule distinguishes: a multi-line listing, an exit-0
 // empty listing, and an error — with no live tmux server required. It also pins the reap seam's

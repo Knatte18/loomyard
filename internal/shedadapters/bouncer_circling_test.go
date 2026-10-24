@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bouncer_circling_test.go covers the Bouncer's handling of a CIRCLING round: the Awaiting Reason it writes for the parent and the way it acts on the recorded decision.
 
 package shedadapters

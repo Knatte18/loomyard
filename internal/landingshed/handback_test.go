@@ -1,3 +1,5 @@
+//go:build tier0
+
 // handback_test.go pins which blocked stops HandsBack hands to the orch.
 
 package landingshed

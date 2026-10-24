@@ -1,4 +1,4 @@
-//go:build tmux && linux
+//go:build tier2 && linux
 
 // bar_integration_test.go expands the two-line status bar against a real tmux server and an attached client,
 // and asserts the acceptance rows: which button is lit, which windows get a button, the wait mark, and the session line.

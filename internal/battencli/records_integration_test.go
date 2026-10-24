@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // records_integration_test.go is the end-to-end check that batten's hand-off keeps the run's records: a child that goes awaiting, is resumed by the operator, reaches done and is torn down leaves its friction notes and drive report reachable from the archive tag on the records origin.
 //

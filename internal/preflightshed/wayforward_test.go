@@ -1,3 +1,5 @@
+//go:build tier0
+
 // wayforward_test.go covers wayForward's per-check mapping over in-memory Reports.
 // The rows reached from a real hub (a dirty task worktree, a `_lyx` checkout off its paired branch) belong to the integration suite;
 // this file stays offline.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // archivereset_test.go covers ArchiveRunAfterReset: the pending-findings guard it runs against HEAD and the in-place archive it performs.
 // Tier 1: the package's fakeGit and a run record under t.TempDir(), no git process.
 

@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 package tmuxkit
 

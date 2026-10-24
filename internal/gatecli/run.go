@@ -61,29 +61,39 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	if refusal := preTierExpiry(preCtx, runCtx, request, "loading the gate config"); refusal != "" {
 		return output.Err(out, refusal)
 	}
+	if refusal := gateKeyRefusal(cfg, request); refusal != "" {
+		return output.Err(out, refusal)
+	}
 	request.root = buildRoot(location, dir)
 	request.busyQuit = cfg.Limits().BusyQuit
 
-	sc, err := computeScope(preCtx, cfg, location, request.root, request)
+	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg.Scoper == "go")
+	sc, err := computeScope(preCtx, cfg, location, request.root, request, green)
 	if refusal := preTierExpiry(preCtx, runCtx, request, "computing the scope"); refusal != "" {
 		return output.Err(out, refusal)
 	}
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	plan, err := planTierRuns(cfg, request, sc)
-	if err != nil {
-		return output.Err(out, err.Error())
-	}
 
-	if guard := guardRunOf(plan); guard != nil && sc.guards == nil {
-		sc.guardDir = guard.invocations[0].dir
+	// The guard groups come from the scan's tiers, so the scan runs before the plan.
+	if (request.guards || sc.guardStep) && cfg.Scoper == "go" && sc.guards == nil {
+		if sc.guardDir, err = guardScanDir(cfg, request, sc); err != nil {
+			return output.Err(out, err.Error())
+		}
 		if sc, err = scanGuards(sc, request.root); err != nil {
 			return output.Err(out, err.Error())
 		}
 		if refusal := preTierExpiry(preCtx, runCtx, request, "scanning the guard tests"); refusal != "" {
 			return output.Err(out, refusal)
 		}
+	}
+	plan, err := planTierRuns(cfg, request, sc)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	if (request.guards || sc.guardStep) && len(sc.guards) == 0 {
+		logger.Info("gate test: no guard test found outside the scope; the guard step runs nothing")
 	}
 
 	exe := &execution{
@@ -92,14 +102,13 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		request:   request,
 		cfg:       cfg,
 		location:  location,
-		runLogDir: gateslot.RunLogDir(gateslot.WaitDir(location.WorktreePath())),
+		runLogDir: runLogDirOf(location, inHub),
 		tierList:  tierNumbers(plan),
 		guards:    sc.guards,
 	}
 	if inHub {
 		exe.pool = hubgeom.GateSlots(location)
 		exe.request.prebuiltStore = exe.pool.PrebuiltDir()
-		exe.runLogDir = gateslot.RunLogDir(gateslot.Dir(fabricengine.BoardDir(location.HubPath)))
 		exe.slug = originSlug(location)
 		if inherited := os.Getenv(gateslot.InheritEnv); inherited != "" && exe.pool.Inherited(inherited) {
 			logger.Info("gate test: running inside the slot an enclosing gate run holds", "slot", inherited, "dir", dir)
@@ -108,6 +117,8 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	} else {
 		logger.Info("gate test: no hub bound applies; running unslotted", "dir", dir)
 	}
+
+	exe.green = green
 
 	// The tiers run without the strand name, so a test driving `lyx fabric` never meets a role guard that reads it.
 	// They also run without this process's trace id, which is new at every run and would change the test cache key of every package that reads it.
@@ -124,11 +135,17 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	code := 0
 	for _, run := range plan {
 		if run.guardStep {
-			code = exe.runGuard(run)
 			break
 		}
 		if code = exe.runListed(run); code != 0 {
 			break
+		}
+	}
+	if code == 0 {
+		for _, run := range guardRunOf(plan) {
+			if code = exe.runGuard(run); code != 0 {
+				break
+			}
 		}
 	}
 	return exitAfterSignal(caught, code)
@@ -138,6 +155,16 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 func flagShapeRefusal(request testRequest) string {
 	if request.tags != "" {
 		return fmt.Sprintf("gate test: --tags %q is refused, since a tier's own command sets its build tags; way forward: name the tier that compiles them with --tier, for example --tier 1, and re-run the same command", request.tags)
+	}
+	if request.gate != "" {
+		for _, other := range []struct {
+			flag  string
+			given bool
+		}{{"--tier", len(request.tiers) > 0}, {"--upto", request.uptoGiven}, {"--all", request.all}, {"--base", request.base != ""}} {
+			if other.given {
+				return fmt.Sprintf("gate test: --gate %q takes its tiers and scope from gate.yaml, so it goes with none of --tier, --upto, --all and --base; way forward: drop %s, then re-run the same command", request.gate, other.flag)
+			}
+		}
 	}
 	if request.uptoGiven && request.upto < 0 {
 		return fmt.Sprintf("gate test: --upto %d names no tier; way forward: pass the highest tier number to run, 0 or more, then re-run the same command", request.upto)
@@ -153,6 +180,22 @@ func flagShapeRefusal(request testRequest) string {
 	}
 	if forms > 1 {
 		return "gate test: explicit targets, --all, --base and --card are each one scope form, and a call takes one; way forward: keep one scope form, then re-run the same command"
+	}
+	return ""
+}
+
+// gateKeyRefusal returns the refusal for a --gate key the config cannot run, or "" when request names no key or a runnable one.
+// An unknown key, an empty tier list and an undeclared tier carry the config's own way forward, and a key of scope card with no --card and no explicit targets is refused naming the key.
+func gateKeyRefusal(cfg gateslot.Config, request testRequest) string {
+	if request.gate == "" {
+		return ""
+	}
+	key, err := cfg.Gate(request.gate)
+	if err != nil {
+		return fmt.Sprintf("gate test: %v", err)
+	}
+	if key.Scope == scopeCard && len(request.cards) == 0 && len(request.targets) == 0 {
+		return fmt.Sprintf("gate test: --gate %q has scope card, which runs the packages of the cards named; way forward: pass --card <id> once per card, then re-run the same command", request.gate)
 	}
 	return ""
 }
@@ -198,12 +241,15 @@ func preTierExpiry(preCtx, runCtx context.Context, request testRequest, step str
 	return fmt.Sprintf("gate test: the work before the first tier outlived its %s ceiling while %s; way forward: run the same command again, which a transient hang such as a stalled \"go list\" passes", request.preTierCeiling, step)
 }
 
-// guardRunOf returns the guard step of plan, which is its last run, or nil when plan has none.
-func guardRunOf(plan []tierRun) *tierRun {
-	if len(plan) > 0 && plan[len(plan)-1].guardStep {
-		return &plan[len(plan)-1]
+// guardRunOf returns every guard run of plan, in tier order, which are its last runs; nil when plan has none.
+func guardRunOf(plan []tierRun) []tierRun {
+	var guards []tierRun
+	for _, run := range plan {
+		if run.guardStep {
+			guards = append(guards, run)
+		}
 	}
-	return nil
+	return guards
 }
 
 // tierNumbers returns the tier numbers of the listed runs of plan, leaving out the guard step.
@@ -245,35 +291,64 @@ type execution struct {
 	runLogDir string
 	slug      string
 	tierList  []int
-	guards    map[string][]string
+	// guards holds the guard tests per tier, tier to directory to guard names, the guard runs of the plan are built over.
+	guards map[int]map[string][]string
+	// green is the call's use of the green record; nil when the worktree is dirty or the record cannot apply, so every tier runs.
+	green *greenRun
 	// lastStamp is the time of the latest run record, kept so two records of one process never share a stamped name.
 	lastStamp time.Time
 }
 
 // runListed runs one listed tier with its slots held, and returns the exit code to stop on, or 0.
-// A tier with no invocation takes no slot.
+// A tier with no invocation takes no slot, and neither does a tier the green record holds green for the current tree: it is reported as carried.
+// A tier the record holds green in part runs only the rest, and a pass is recorded.
 func (e *execution) runListed(run tierRun) int {
 	if run.ignoresTargets {
 		printLine(e.request.stderr, fmt.Sprintf("gate test: the command of %s holds no {targets}, so it runs whole", tierName(run.number)))
 	}
 	if len(run.invocations) == 0 {
 		printLine(e.request.stderr, fmt.Sprintf("gate test: the scope is empty, so %s runs no command", tierName(run.number)))
+		return e.runWithSlots(run, true, func(env []string) tierResult {
+			return runTier(e.ctx, e.out, run, env, e.request)
+		})
 	}
-	return e.runWithSlots(run, len(run.invocations) == 0, func(env []string) tierResult {
-		return runTier(e.ctx, e.out, run, env, e.request)
-	})
+	return e.runGreenAware(run)
 }
 
-// runGuard runs the guard step with the guard tier's slots held, unless the module has no guard test.
-func (e *execution) runGuard(run tierRun) int {
-	moduleDir := resolveRunDir(e.request.root, run.invocations[0].dir)
-	if packages, _ := guardPackages(e.guards); len(packages) == 0 {
-		logger.Info("gate test: no guard test found in the module; the guard step runs nothing", "dir", moduleDir)
-		return 0
+// runGuard runs one guard group with its tier's slots held, unless the green record holds the group green.
+func (e *execution) runGuard(planned tierRun) int {
+	moduleDir := resolveRunDir(e.request.root, planned.invocations[0].dir)
+	run, err := guardStepRun(e.cfg, moduleDir, planned.number, e.guards[planned.number], e.request)
+	if err != nil {
+		return output.Err(e.out, err.Error())
 	}
-	return e.runWithSlots(run, false, func(env []string) tierResult {
-		return runGuardStep(e.ctx, e.out, e.cfg, moduleDir, e.guards, env, e.request)
+	return e.runGreenAware(run)
+}
+
+// runGreenAware subtracts what the green record holds green from run, then reports run carried when nothing is left, else runs the rest inside the tier's slots and records a pass.
+func (e *execution) runGreenAware(run tierRun) int {
+	var plan greenPlan
+	if e.green != nil {
+		plan = e.green.subtract(e.ctx, run, e.env)
+		if len(plan.invocations) == 0 {
+			return e.reportCarried(run)
+		}
+		run.invocations = plan.invocations
+	}
+	code := e.runWithSlots(run, false, func(env []string) tierResult {
+		return runTier(e.ctx, e.out, run, env, e.request)
 	})
+	if code == 0 && e.green != nil {
+		e.green.recordPass(e.ctx, run, run.invocations, plan, e.env, time.Now())
+	}
+	return code
+}
+
+// reportCarried writes the run record and summary line of a tier the green record held green, which took no slot and ran no command, and returns its exit code 0.
+func (e *execution) reportCarried(run tierRun) int {
+	now := time.Now()
+	record := gateslot.RunRecord{Tier: run.number, ScopeForm: run.scopeForm, Slots: run.tier.Slots, GuardStep: run.guardStep, Start: now, End: now, Outcome: "passed", Carried: true}
+	return e.report(run, tierResult{record: record}, now)
 }
 
 // runWithSlots takes the slots of run's tier unless the call is unslotted, inherited or the run empty, runs body inside them with the environment the slots give, releases the slots and reports the tier's outcome.
@@ -301,6 +376,7 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 	record.Worktree = e.request.root
 	record.Slug = e.slug
 	record.TierList = e.tierList
+	record.GateKey = e.request.gate
 	record.WaitStart = waitStart
 
 	stamp := time.Now()

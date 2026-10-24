@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bindings_test.go pins bindingArgvs's output: the five Alt keys and the status click, each a root-table binding, and no other key.
 // It also pins the bindings' build stamp and the op lock's re-pin of a server an older build pinned.
 

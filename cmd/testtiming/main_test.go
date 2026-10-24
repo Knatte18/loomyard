@@ -1,3 +1,5 @@
+//go:build tier0
+
 package main
 
 import (
@@ -65,8 +67,8 @@ func TestRedundancyTags(t *testing.T) {
 		want    string
 		wantErr string
 	}{
-		{name: "default is every tier but llm", want: "integration,tmux"},
-		{name: "full", full: true, want: "integration"},
+		{name: "default is every tier but llm", want: "tier0,tier1,tier2,integration,tmux"},
+		{name: "full", full: true, want: "tier1"},
 		{name: "explicit", tags: "tmux", want: "tmux"},
 		{name: "both", full: true, tags: "tmux", wantErr: "-full and -tags"},
 	}
@@ -129,9 +131,9 @@ func TestResolveTags(t *testing.T) {
 		wantErr string
 	}{
 		{name: "neither", want: ""},
-		{name: "full", full: true, want: "integration"},
-		{name: "tags", tags: "integration,tmux", want: "integration,tmux"},
-		{name: "both", full: true, tags: "tmux", wantErr: "-full and -tags"},
+		{name: "full", full: true, want: "tier1"},
+		{name: "tags", tags: "tier1,tier2", want: "tier1,tier2"},
+		{name: "both", full: true, tags: "tier2", wantErr: "-full means -tags tier1"},
 	}
 	for _, row := range rows {
 		t.Run(row.name, func(t *testing.T) {

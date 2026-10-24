@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces this package's told-geometry membership: production code in internal/reportengine imports only the packages whose records it reads, and never internal/lyxcwd.
 
 package reportengine

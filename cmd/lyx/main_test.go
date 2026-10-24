@@ -1,3 +1,5 @@
+//go:build tier0
+
 // main_test.go — tests for the module dispatcher (main.go).
 //
 // Drives run() directly: module routing from an uninitialized repo, that the root hook mints nothing under test, and that it keeps the init-time log level when no -v is given.

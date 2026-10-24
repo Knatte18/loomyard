@@ -1,3 +1,5 @@
+//go:build tier0
+
 // index_test.go pins RenderIndex's line forms and audience filtering over a synthetic cobra tree.
 
 package clihelp

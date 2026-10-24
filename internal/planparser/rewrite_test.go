@@ -1,3 +1,5 @@
+//go:build tier0
+
 // rewrite_test.go covers RewriteRefs: substitution across Targets, Uses, and both endpoints of a
 // Pairs entry; substitution finding a surface lexeme that differs from the canonical key; two
 // cards spelling one canonical string differently each being rewritten from their own lexeme;

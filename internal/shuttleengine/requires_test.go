@@ -1,3 +1,5 @@
+//go:build tier0
+
 // requires_test.go covers Spec.Requires: the refusals at Start and at attach, and the runs that pass the check.
 
 package shuttleengine

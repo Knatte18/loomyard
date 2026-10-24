@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // parentreview_integration_test.go drives the whole parent-review exchange against a real hub pair:
 // the Discussion-Write row's gate list as wire() builds it, the real verbs through RunCLIIn, the real round store, status, and the discussion commit.

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // push_test.go covers Push, PushRebaseFree and PushCoalesced against real git repositories.
 // Two fixtures are kept deliberately separate, per discussion.md: a bare remote with several clones exercises cross-clone rebase-retry recovery (the single-pusher lock cannot be exercised there, since two clones have two distinct lock files), while a single clone with concurrent goroutines and processes exercises PushCoalesced's lock-blocking/coalescing behavior.

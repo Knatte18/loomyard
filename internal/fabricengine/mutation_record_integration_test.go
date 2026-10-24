@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mutation_record_integration_test.go asserts the mutation record at the engine boundary: a Remove refused for a dirty worktree records nothing,
 // and an Add that fails partway and runs rollbackAdd is the mutated-then-errored case.

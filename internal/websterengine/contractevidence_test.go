@@ -1,3 +1,5 @@
+//go:build tier0
+
 // contractevidence_test.go covers contractFileStatus and AcceptPendingAudit over contract-file
 // paths, without git.
 // Untagged, with a shuttlefake.Engine — no git, no subprocess spawns.

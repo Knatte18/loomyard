@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cardpackages_test.go covers CardPackages: the Go packages a set of cards' targets live in, grouped per module.
 
 package planparser_test

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // render_test.go covers the plan-directory display split the standalone Master fix introduced
 // (crucible round fable5-high-r3, F-A4).
 

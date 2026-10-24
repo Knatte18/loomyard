@@ -1,3 +1,5 @@
+//go:build tier0
+
 // activity_test.go is a table test over composeActivity's three mechanical rules.
 
 package shedengine
@@ -31,6 +33,14 @@ func TestComposeActivity(t *testing.T) {
 			history:         []HistoryEntry{{Producer: "Plan-Write", Outcome: Done, At: "2026-08-15T09:00:00Z"}},
 			state:           StateRunning,
 			want:            Activity{Now: "Plan-Review", Last: "Plan-Write → done"},
+		},
+		{
+			name:            "skipped entry composes as skipped whatever routedTo is",
+			currentProducer: "Finalize",
+			history:         []HistoryEntry{{Producer: "Code-Review", Outcome: OutcomeSkipped, Reason: "budget is 0", At: "2026-08-15T09:00:00Z"}},
+			state:           StateRunning,
+			routedTo:        "Finalize",
+			want:            Activity{Now: "Finalize", Last: "Code-Review → skipped"},
 		},
 		{
 			name:            "awaiting entry keeps its outcome",

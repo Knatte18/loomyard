@@ -1,4 +1,4 @@
-//go:build tmux && linux
+//go:build tier2 && linux
 
 // switch_integration_test.go drives SwitchClient against a real tmux server with a real attached client:
 // it steps the client across three sessions in id order, wraps at both ends, and errors on an unknown client or a socket nothing listens on.

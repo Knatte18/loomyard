@@ -137,6 +137,7 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 //
 // All four fix rows share this one constructor, which is why the validator is selected by the "gates" key rather than implied by the constructor:
 // the Webster and Darn fixers name the "verify" gate, so a round that changed code ends with a passing verify, and the two review segments name their own validators.
+// The optional "gate_key" string names the key of the hub's gate.yaml the "verify" gate runs, else the row name in lower case.
 // The row's models and fix key come from its segment's SegmentSettings.
 // The row names no fan list of its own: a fixer fan reaches it through the review row's recorded round, and only when its fixer_fan_setting key names a setting, which requires the recorded round and is cited as the fan's source.
 func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
@@ -168,7 +169,7 @@ func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "review_row", "profile", "timeout_s", "gates", "color_segment", "role_prefix", "fixer_fan_setting"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "review_row", "profile", "timeout_s", "gates", "gate_key", "color_segment", "role_prefix", "fixer_fan_setting"); err != nil {
 		return nil, err
 	}
 	segment, err := rowSegment("BurlerFix", row, env)

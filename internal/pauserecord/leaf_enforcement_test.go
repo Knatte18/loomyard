@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the pauserecord Leaf Invariant.
 // Production code in internal/pauserecord imports only the standard library, internal/state.
 

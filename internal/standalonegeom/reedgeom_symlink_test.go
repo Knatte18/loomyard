@@ -1,5 +1,7 @@
+//go:build tier0
+
 // reedgeom_symlink_test.go pins ReedGeometry's session name against a real filesystem: a symlinked and a real spelling of one target directory must produce ONE session name, because they already produce one hash8, one socket key, and one state directory.
-// It needs a real filesystem to create a symlink, but spawns nothing, so it stays untagged.
+// It needs a real filesystem to create a symlink, but spawns nothing, so it stays in tier 0.
 
 package standalonegeom
 

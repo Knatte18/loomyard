@@ -1,3 +1,5 @@
+//go:build tier0
+
 // looparm_test.go pins the hook loom arms on the loop's step watchdog: what it stops and what it tells the interrupted cause.
 
 package loomcli

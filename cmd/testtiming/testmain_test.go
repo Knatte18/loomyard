@@ -1,4 +1,4 @@
-// testmain_test.go runs the test binary under tmux isolation, which the integration-tagged prebuild test requires of its package, and makes a re-exec'd test binary a stand-in `go` when the prebuild test asks for one.
+// testmain_test.go runs the test binary under tmux isolation, which the tier1-tagged prebuild test requires of its package, and makes a re-exec'd test binary a stand-in `go` when the prebuild test asks for one.
 // It carries no build tag, so it compiles into every tag set.
 
 package main

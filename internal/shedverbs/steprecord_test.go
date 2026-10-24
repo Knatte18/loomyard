@@ -1,3 +1,5 @@
+//go:build tier0
+
 // steprecord_test.go covers the step body's own per-invocation record and status's last_step: the
 // in-flight file exists while a producer runs, the full envelope is recorded before the short one
 // is printed, and last_step tracks the newest record.

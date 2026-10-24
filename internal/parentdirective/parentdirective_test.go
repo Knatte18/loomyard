@@ -1,5 +1,7 @@
+//go:build tier0
+
 // parentdirective_test.go covers Directive's three renderings and its missing-stencil error.
-// Every test here is untagged Tier 1: it reads a seeded temporary stencils directory and spawns nothing.
+// Every test here reads a seeded temporary stencils directory and spawns nothing.
 
 package parentdirective
 

@@ -172,13 +172,13 @@ const lyxEnvNamesPattern = `(` + gateslot.InheritEnv + `|` + agentname.StrandNam
 // rawGoCommandPattern is the grep -E pattern the raw go deny matches against the raw PreToolUse payload JSON.
 // It matches three shapes.
 // A go test, build or vet whose arguments include a word holding ... or the word all.
-// A go test whose -tags value names tmux or llm.
+// A go test whose -tags value names tmux, llm, tier2 or tier3.
 // A command setting or reading the slot-inheritance variable, the strand-name variable or the prebuilt-binary variable: one named outside quotes, or expanded inside a double-quoted string.
 // It sees static text only, so it is a guardrail and not a barrier:
 // a run hidden behind a script, bash -c, a cd plus a relative pattern it does not cover, a shell variable, a command substitution inside a double-quoted string, a command after a < before a quote, or a quote commandPositionPattern misreads passes, as does any raw package-scoped go test and a variable read by printenv with its name quoted.
 // It falsely denies a word holding ... or the word all inside a quoted argument of the go command itself, such as a -run filter.
 const rawGoCommandPattern = `(` + goSubcommandPattern + `(test|build|vet)[[:space:]]` + goArgumentsPattern + `(` + goWordPattern + `\.\.\.` + goWordPattern + `|all)([[:space:]"\\;&|()` + "`" + `]|$))` +
-	`|(` + goSubcommandPattern + `test[[:space:]]` + goArgumentsPattern + `-{1,2}tags[[:space:]=]+[^[:space:];&|]*(tmux|llm))` +
+	`|(` + goSubcommandPattern + `test[[:space:]]` + goArgumentsPattern + `-{1,2}tags[[:space:]=]+[^[:space:];&|]*(tmux|llm|tier2|tier3))` +
 	`|(` + commandFieldPattern + `(` + shellUnitPattern + `*([^A-Za-z0-9_"\\'<]|\\[^"]))?` + lyxEnvNamesPattern + `)` +
 	`|(` + commandFieldPattern + shellUnitPattern + `*` + doubleQuotedOpenPattern + `[$]\{?` + lyxEnvNamesPattern + `)`
 

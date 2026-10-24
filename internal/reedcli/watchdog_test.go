@@ -1,3 +1,5 @@
+//go:build tier0
+
 // watchdog_test.go pins the watchdog daemon's pure seams — planSessionDiff, sessionsAreIdle,
 // planReapCycle, worktreeRootGone, hubIsLiveDir, validateWatchdogFlags, watchdogDefaultTiming, discoveryWake and consumeDiscoverSignal —
 // against no tmux server and no filesystem at all beyond t.TempDir(), table-driven.

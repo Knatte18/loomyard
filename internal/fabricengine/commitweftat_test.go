@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // commitweftat_test.go — integration coverage for commitWeftAt, the
 // package-level, warp-untethered commit primitive: a real commit on a dirty

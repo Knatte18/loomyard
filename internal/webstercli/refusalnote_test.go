@@ -1,3 +1,5 @@
+//go:build tier0
+
 // refusalnote_test.go covers noteRefusals and addVerbs over a hand-built websterCLI and a temporary friction directory.
 // No hub is needed: every refusal here fires before a verb reaches the plan, state or fabric.
 package webstercli
@@ -28,24 +30,6 @@ func runVerbs(t *testing.T, c *websterCLI, noted bool, args ...string) (int, str
 	var out bytes.Buffer
 	code := clihelp.Execute(parent, &out, args)
 	return code, out.String()
-}
-
-// refusalNotes returns the contents of every refusal note in dir, keyed by file name.
-func refusalNotes(t *testing.T, dir string) map[string]string {
-	t.Helper()
-	paths, err := filepath.Glob(filepath.Join(dir, "webster-refusal-*.md"))
-	if err != nil {
-		t.Fatalf("glob %s: %v", dir, err)
-	}
-	notes := make(map[string]string, len(paths))
-	for _, p := range paths {
-		data, err := os.ReadFile(p)
-		if err != nil {
-			t.Fatalf("read %s: %v", p, err)
-		}
-		notes[filepath.Base(p)] = string(data)
-	}
-	return notes
 }
 
 // stubRefusal returns a verb that prints an ErrFields refusal carrying plan_drifted.

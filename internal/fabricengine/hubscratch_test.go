@@ -1,3 +1,5 @@
+//go:build tier0
+
 // hubscratch_test.go covers fabricengine.HubScratchDir and fabricengine.HubLogsDir's own
 // idempotency against it.
 // It is an external test package because clone_test.go's own header comment documents the same

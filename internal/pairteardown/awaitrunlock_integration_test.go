@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // awaitrunlock_integration_test.go pins awaitRunLockOrPass's holder, waiting-marker and parent-lock reads over a real task worktree and a hub's pause and parent lock files.
 

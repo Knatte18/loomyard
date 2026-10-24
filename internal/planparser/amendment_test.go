@@ -1,3 +1,5 @@
+//go:build tier0
+
 // amendment_test.go covers AppendAmendment: a first append creating the file with its heading and every field rendered; a second append leaving the first entry byte-identical and adding the second below it; and a wrapped error convention matching this package's other write paths.
 
 package planparser_test

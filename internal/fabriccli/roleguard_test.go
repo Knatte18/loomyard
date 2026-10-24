@@ -1,3 +1,5 @@
+//go:build tier0
+
 // roleguard_test.go pins the sandboxed-role guard of the fabric command tree: which subcommands a task-session role may run, and which strand names the guard lets through.
 // It drives the built command tree against an empty directory, so a passing verb stops at its own worktree-resolution error and spawns nothing.
 

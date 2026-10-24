@@ -1,4 +1,6 @@
-// table_test.go covers table.go's recipes map and its two accessors. It stays untagged tier 1: it
+//go:build tier0
+
+// table_test.go covers table.go's recipes map and its two accessors. It stays in tier 0: it
 // calls lookup and names alone, neither of which resolves cwd or spawns git.
 
 package shedcli

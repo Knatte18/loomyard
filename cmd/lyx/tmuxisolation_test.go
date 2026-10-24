@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // tmuxisolation_test.go enforces the Tmux Test Isolation Invariant: every test package runs its tests through tmuxkit.Main, under every tag set and on every platform that compile any of its test files.
 // "Starts tmux" has no static shape, and a package's `t.TempDir` trees belong in the process run directory, so the rule covers every test package at the cost of one run directory per test binary.
 // Modelled on hermeticenv_test.go; see `PATTERN-test-isolation`.
@@ -27,10 +29,13 @@ import (
 var allowedNoTmuxMain = []scankit.Entry{}
 
 // isolationTags are the build tags that make a test file tagged.
-var isolationTags = []string{"integration", "tmux", "llm"}
+var isolationTags = []string{"integration", "tmux", "llm", "tier0", "tier1", "tier2", "tier3"}
 
-// isolationTagSets are the tag sets a package's test files are compiled under: untagged, each isolation tag alone, and the three tier tags combined.
-var isolationTagSets = [][]string{nil, {"integration"}, {"tmux"}, {"llm"}, {"integration", "tmux", "llm"}}
+// isolationTagSets are the tag sets a package's test files are compiled under: untagged, each old tier tag alone and the three combined, then each `tierN` tag alone and the four combined.
+var isolationTagSets = [][]string{
+	nil, {"integration"}, {"tmux"}, {"llm"}, {"integration", "tmux", "llm"},
+	{"tier0"}, {"tier1"}, {"tier2"}, {"tier3"}, {"tier0", "tier1", "tier2", "tier3"},
+}
 
 // isolationPlatform is one platform a package's test files are compiled for, with the build tags it satisfies.
 type isolationPlatform struct {
@@ -303,9 +308,9 @@ func TestTmuxIsolation_FixtureTrees(t *testing.T) {
 	}{
 		{"main in every set", map[string]string{"p/main_test.go": withMain, "p/i_test.go": taggedTest}, 1, 0},
 		{"missing kit call", map[string]string{"p/main_test.go": bareMain, "p/i_test.go": taggedTest}, 1, 1},
-		{"no TestMain at all", map[string]string{"p/a_test.go": untaggedTest, "p/i_test.go": taggedTest}, 1, 5},
-		{"integration-only main", map[string]string{"p/main_test.go": "//go:build integration\n\n" + withMain, "p/a_test.go": untaggedTest}, 1, 3},
-		{"untagged package without TestMain", map[string]string{"p/a_test.go": untaggedTest}, 0, 5},
+		{"no TestMain at all", map[string]string{"p/a_test.go": untaggedTest, "p/i_test.go": taggedTest}, 1, 10},
+		{"integration-only main", map[string]string{"p/main_test.go": "//go:build integration\n\n" + withMain, "p/a_test.go": untaggedTest}, 1, 8},
+		{"untagged package without TestMain", map[string]string{"p/a_test.go": untaggedTest}, 0, 10},
 		{"untagged package with the kit's TestMain", map[string]string{"p/a_test.go": untaggedTest, "p/main_test.go": withMain}, 0, 0},
 		{"main confined by constraint to another platform", map[string]string{"p/main_test.go": "//go:build windows\n\n" + withMain, "p/i_test.go": "//go:build integration && linux\n\npackage p\n"}, 1, 2},
 		{"main confined by file name to another platform", map[string]string{"p/main_windows_test.go": withMain, "p/i_test.go": "//go:build integration && linux\n\npackage p\n"}, 1, 2},
@@ -315,6 +320,8 @@ func TestTmuxIsolation_FixtureTrees(t *testing.T) {
 		{"kit's own unqualified call", map[string]string{"internal/testkit/tmuxkit/main_test.go": unqualifiedMain, "internal/testkit/tmuxkit/i_test.go": kitTaggedTest}, 1, 0},
 		{"unqualified call outside the kit", map[string]string{"p/main_test.go": unqualifiedMain, "p/i_test.go": kitTaggedTest}, 1, 1},
 		{"tmux-only tag with the paired mains", map[string]string{"p/main_test.go": "//go:build !integration\n\n" + withMain, "p/main_integration_test.go": "//go:build integration\n\n" + withMain, "p/t_test.go": "//go:build tmux\n\npackage p\n"}, 1, 0},
+		{"tier0 and tier2 files without a TestMain", map[string]string{"p/a_test.go": "//go:build tier0\n\npackage p\n", "p/t_test.go": "//go:build tier2\n\npackage p\n"}, 1, 3},
+		{"tier0 and tier2 files with a main confined to them", map[string]string{"p/main_test.go": "//go:build tier0 || tier2\n\n" + withMain, "p/a_test.go": "//go:build tier0\n\npackage p\n", "p/t_test.go": "//go:build tier2\n\npackage p\n"}, 1, 0},
 		{"tmux-only tag without the !integration main", map[string]string{"p/main_integration_test.go": "//go:build integration\n\n" + withMain, "p/t_test.go": "//go:build tmux\n\npackage p\n"}, 1, 1},
 	}
 	for _, tc := range cases {

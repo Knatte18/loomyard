@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // wiring_publish_integration_test.go drives wireLanding over a real hub and pair, so the landing deps carry what wire loaded from the hub.
 

@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // gitrepoboundary_test.go enforces the gitrepo Client Boundary Invariant: a pinned
 // set of methods on internal/gitrepo's Repo type may call r.run or r.runChecked (the
 // package's two CLI choke points), and exactly two gitexec entry-point call

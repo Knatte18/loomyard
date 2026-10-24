@@ -2,12 +2,14 @@
 //
 // It defines the Config type mirroring darn.yaml's keys and the ConfigTemplate accessor.
 // LoadConfig loads the file strictly.
-// TreeScopedCommand classifies a diff against the configured trees and returns the tree-scoped command.
+// TreeScopedTargets classifies a diff against the configured trees and returns the touched trees' targets.
+// MigrateConfig carries a hub file off the retired tree_scope_verify key.
 // The module is hub-wide, so every path here is told by the caller.
 
 package darnengine
 
 import (
+	"bytes"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -31,22 +33,6 @@ func ConfigTemplate() string {
 // configModule is the config module name darn.yaml is loaded under.
 const configModule = "darn"
 
-// treeScopeTargetsMarker is the placeholder in tree_scope_verify that the touched trees' targets replace.
-const treeScopeTargetsMarker = "{targets}"
-
-// The commands the tree-scope refusals name.
-const (
-	treeScopeAddTreeCommand = "lyx config darn --set tree_scope.<tree>=<target>"
-	treeScopeOffCommand     = "lyx config darn --set tree_scope_verify="
-	treeScopeVerifyCommand  = "lyx config darn --set tree_scope_verify=<one lyx gate test --wait call holding {targets}>"
-)
-
-// treeScopeControlOperators are the shell control operators a tree_scope_verify call may not hold; a newline and a carriage return end a command too.
-var treeScopeControlOperators = []string{";", "&", "|", "\n", "\r", "`", "$(", "<", ">"}
-
-// ErrTreeScopeWithoutTrees marks a tree_scope_verify that is set while tree_scope holds no tree.
-var ErrTreeScopeWithoutTrees = errors.New("darn config key \"tree_scope_verify\" is set while \"tree_scope\" holds no tree")
-
 // ErrTreeScopeKey marks a tree_scope key that is malformed or repeats another key after its trailing slash is trimmed.
 var ErrTreeScopeKey = errors.New("darn config key \"tree_scope\" holds a malformed tree key")
 
@@ -58,13 +44,10 @@ type Config struct {
 	WriterTimeoutMin int `yaml:"writer_timeout_min"`
 	// VerifyAttempts is how many times a verify gate, the writer's or a Code-Review fix round's, re-prompts its session before it halts the run.
 	VerifyAttempts int `yaml:"verify_attempts"`
-	// TreeScope maps each worktree-relative tree path, without a trailing slash, to the test target the tree contributes to TreeScopeVerify's {targets}.
+	// TreeScope maps each worktree-relative tree path, without a trailing slash, to the test target the tree contributes to a tree-scoped site's call.
 	// An empty target means the tree has no tests of its own.
+	// Tree scope is on exactly when it holds a tree.
 	TreeScope map[string]string `yaml:"tree_scope"`
-	// TreeScopeVerify is the command a tree-scoped diff runs at every darn verify site in place of the landing call, holding {targets}.
-	// It is one `lyx gate test` call holding `--wait` and no shell control operator, so the whole tree-scoped command is slotted and waits out a busy hub.
-	// Tree scope is on only when it and TreeScope are both non-empty.
-	TreeScopeVerify string `yaml:"tree_scope_verify"`
 	// DriverKind, Tackler, TacklerTimeoutMin and TacklerMaxSpawns override shed.yaml's keys of the same names for a darn run;
 	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns of 0 turns the tackler off.
 	DriverKind        string `yaml:"driver_kind"`
@@ -91,16 +74,14 @@ func ConfigOpenMaps() []string {
 }
 
 // ConfigSpec returns darn's layered-load spec.
-// tree_scope_verify runs a shell command, so it may not be set in the local layer.
-// tree_scope picks which diffs skip the landing gate, so it is a guard key and closed to the local layer too; no task run_settings sets it or tree_scope_verify.
-// verify is retired, so a hub file that still sets it loads and reconcile prunes it.
+// tree_scope picks which diffs run the narrower targets, so it is a guard key and closed to the local layer; no task run_settings sets it.
+// verify and tree_scope_verify are retired, so a hub file that still sets either loads and reconcile prunes it.
 func ConfigSpec() configengine.Spec {
 	categories := map[string]configengine.Category{
 		"writer":             configengine.CategoryNone,
 		"writer_timeout_min": configengine.CategoryNone,
 		"verify_attempts":    configengine.CategoryNone,
 		"tree_scope":         configengine.CategoryGuard,
-		"tree_scope_verify":  configengine.CategoryExecutable,
 
 		"driver_kind":         configengine.CategoryNone,
 		"tackler":             configengine.CategoryNone,
@@ -115,7 +96,8 @@ func ConfigSpec() configengine.Spec {
 		OpenMaps:   ConfigOpenMaps(),
 		Categories: categories,
 		RetiredKeys: map[string]configengine.Category{
-			"verify": configengine.CategoryExecutable,
+			"verify":            configengine.CategoryExecutable,
+			"tree_scope_verify": configengine.CategoryExecutable,
 		},
 	}
 }
@@ -128,8 +110,7 @@ func ValidateLocalValues(document []byte) error {
 
 // LoadConfig loads and unmarshals the darn module's configuration strictly through the hub-wide layer stack under dirs.
 // It validates the writer key's model-spec grammar at load time and leaves verify_attempts to its reader.
-// It returns tree_scope keyed by trimmed tree path and refuses a malformed or repeated tree key wrapping ErrTreeScopeKey, a tree_scope_verify with no tree wrapping ErrTreeScopeWithoutTrees, a tree_scope_verify without {targets},
-// and a tree_scope_verify that is not exactly one `lyx gate test` call holding `--wait` and no shell control operator.
+// It returns tree_scope keyed by trimmed tree path and refuses a malformed or repeated tree key wrapping ErrTreeScopeKey.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -163,7 +144,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
-// normalizeTreeScope returns cfg's tree_scope keyed by trimmed tree path, or the refusal of a malformed key, a repeated tree, a tree_scope_verify without a tree, one without {targets}, or one that is not a single waiting gate call.
+// normalizeTreeScope returns cfg's tree_scope keyed by trimmed tree path, or the refusal of a malformed key or a repeated tree.
 func normalizeTreeScope(cfg Config) (map[string]string, error) {
 	keys := make([]string, 0, len(cfg.TreeScope))
 	for key := range cfg.TreeScope {
@@ -186,32 +167,71 @@ func normalizeTreeScope(cfg Config) (map[string]string, error) {
 		written[tree] = key
 		trees[tree] = cfg.TreeScope[key]
 	}
-
-	if strings.TrimSpace(cfg.TreeScopeVerify) == "" {
-		return trees, nil
-	}
-	if len(trees) == 0 {
-		return nil, fmt.Errorf("%w; run %q in the same call as the command, or %q to turn tree scope off; a tree path holding \".\", such as \".github\", is written in lyx config darn's editor", ErrTreeScopeWithoutTrees, treeScopeAddTreeCommand, treeScopeOffCommand)
-	}
-	if !strings.Contains(cfg.TreeScopeVerify, treeScopeTargetsMarker) {
-		return nil, fmt.Errorf("darn config key %q holds no %s; run %q", "tree_scope_verify", treeScopeTargetsMarker, treeScopeVerifyCommand)
-	}
-	if !isSingleWaitingGateCall(cfg.TreeScopeVerify) {
-		return nil, fmt.Errorf("darn config key %q is not exactly one lyx gate test call holding --wait and no shell control operator, so the call would not be slotted and would not wait out a busy hub; run %q", "tree_scope_verify", treeScopeVerifyCommand)
-	}
 	return trees, nil
 }
 
-// isSingleWaitingGateCall reports whether command is one `lyx gate test` call that holds `--wait` and no shell control operator.
-// It reads static text only, so a script the call runs is outside it.
-func isSingleWaitingGateCall(command string) bool {
-	for _, operator := range treeScopeControlOperators {
-		if strings.Contains(command, operator) {
-			return false
+// MigrateConfig carries a darn.yaml document off the retired tree_scope_verify key, for lyx config reconcile.
+// It fires only while the document still holds the key.
+// A key held empty empties tree_scope and is pruned, so an off hub stays off; a key held set is pruned and tree_scope kept.
+// A document without the key is returned unchanged, so trees the operator adds later are never touched, and so a second pass changes nothing.
+// Each rewrite returns one line, and every comment and other key is carried through yaml node editing.
+// A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
+func MigrateConfig(existing []byte) ([]byte, []string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal(existing, &document); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate darn config: unmarshal yaml: %w", err))
+	}
+	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
+		return existing, nil, nil
+	}
+	root := document.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate darn config: yaml root is not a mapping"))
+	}
+
+	retiredAt := mappingKeyIndex(root, "tree_scope_verify")
+	if retiredAt < 0 {
+		return existing, nil, nil
+	}
+	held := strings.TrimSpace(root.Content[retiredAt+1].Value)
+	root.Content = slices.Delete(root.Content, retiredAt, retiredAt+2)
+
+	line := "tree_scope_verify: retired, removed; tree_scope kept"
+	if held == "" {
+		line = "tree_scope_verify: retired, removed; tree scope was off, tree_scope emptied"
+		if at := mappingKeyIndex(root, "tree_scope"); at >= 0 {
+			old := root.Content[at+1]
+			root.Content[at+1] = &yaml.Node{
+				Kind:        yaml.MappingNode,
+				Tag:         "!!map",
+				Style:       yaml.FlowStyle,
+				HeadComment: old.HeadComment,
+				LineComment: old.LineComment,
+				FootComment: old.FootComment,
+			}
 		}
 	}
-	words := strings.Fields(command)
-	return len(words) >= 3 && words[0] == "lyx" && words[1] == "gate" && words[2] == "test" && slices.Contains(words, "--wait")
+
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&document); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate darn config: encode yaml: %w", err))
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate darn config: encode yaml: %w", err))
+	}
+	return out.Bytes(), []string{line}, nil
+}
+
+// mappingKeyIndex returns the index of key among mapping's content, which is the key node's, or -1 when mapping holds no such key.
+func mappingKeyIndex(mapping *yaml.Node, key string) int {
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if mapping.Content[i].Value == key {
+			return i
+		}
+	}
+	return -1
 }
 
 // WithEditorWayForward appends the editor way forward to an error wrapping ErrTreeScopeKey, since --set cannot remove a key the hub file holds, and returns every other error, nil included, unchanged.
@@ -223,16 +243,16 @@ func WithEditorWayForward(err error) error {
 	return fmt.Errorf("%w; fix the named tree_scope key in lyx config darn's editor from the prime, then re-run the lyx command that refused", err)
 }
 
-// TreeScopedCommand classifies a diff against cfg's trees and returns the tree-scoped command and whether the diff is tree-scoped.
-// cfg is one LoadConfig returned, so its tree keys carry no trailing slash and a non-empty TreeScopeVerify comes with at least one tree.
-// Tree scope is off, and the answer ("", false), when TreeScopeVerify is empty.
+// TreeScopedTargets classifies a diff against cfg's trees and returns the touched trees' targets and whether the diff is tree-scoped.
+// cfg is one LoadConfig returned, so its tree keys carry no trailing slash.
+// Tree scope is off, and the answer (nil, false), when cfg holds no tree.
 // A diff is tree-scoped when every path lies in some tree, an empty path list included.
 // A path touches every tree it lies in, nested trees included.
-// The command is TreeScopeVerify with {targets} replaced by the touched trees' non-empty targets, deduplicated, in tree-path order, so no path text reaches it.
-// When no touched tree contributes a target, as for a docs-only or empty diff, the answer is scoped with an empty command, which every darn site runs as nothing.
-func TreeScopedCommand(cfg Config, paths []string) (string, bool) {
-	if strings.TrimSpace(cfg.TreeScopeVerify) == "" {
-		return "", false
+// The targets are the touched trees' non-empty targets, deduplicated, in tree-path order, so no path text reaches them.
+// When no touched tree contributes a target, as for a docs-only or empty diff, the answer is scoped with no targets, which every darn site runs as nothing.
+func TreeScopedTargets(cfg Config, paths []string) ([]string, bool) {
+	if len(cfg.TreeScope) == 0 {
+		return nil, false
 	}
 	trees := make([]string, 0, len(cfg.TreeScope))
 	for tree := range cfg.TreeScope {
@@ -250,7 +270,7 @@ func TreeScopedCommand(cfg Config, paths []string) (string, bool) {
 			}
 		}
 		if !inAnyTree {
-			return "", false
+			return nil, false
 		}
 	}
 
@@ -261,8 +281,5 @@ func TreeScopedCommand(cfg Config, paths []string) (string, bool) {
 			targets = append(targets, target)
 		}
 	}
-	if len(targets) == 0 {
-		return "", true
-	}
-	return strings.ReplaceAll(cfg.TreeScopeVerify, treeScopeTargetsMarker, strings.Join(targets, " ")), true
+	return targets, true
 }

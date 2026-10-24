@@ -1,3 +1,5 @@
+//go:build tier0
+
 // lockedcheck_test.go covers Shed.LockedCheck: a refusal under the run lock stops Run and Step before any producer call or status write.
 
 package shedengine

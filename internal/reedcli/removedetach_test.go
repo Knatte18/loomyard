@@ -1,3 +1,5 @@
+//go:build tier0
+
 // removedetach_test.go pins `reed remove --detach`'s retiring mark and the status verb's `retiring` key through a fake engine seam.
 // It spawns nothing and drives no tmux.
 

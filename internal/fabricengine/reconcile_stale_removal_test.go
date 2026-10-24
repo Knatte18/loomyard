@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // reconcile_stale_removal_test.go covers batch 2's declarative convergence:
 // Reconcile now converges every warp worktree to the repo-wide `pathspec`

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go — unit tests for the strict and degrading config loaders.
 //
 // Tests cover: the strict Load contract using yamlengine + envsource, missing-key detection,

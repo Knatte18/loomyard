@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_planwrite_test.go covers planWriteEntry: its construction-time validation over Config and the Env fields it reads,
 // and the Calls proving the told table is evaluated once, carries the row's gate, reaches the seat runner with the prior-plan amendment on a fresh spawn only, and the commit closure fires.
 

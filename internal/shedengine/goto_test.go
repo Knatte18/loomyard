@@ -1,3 +1,5 @@
+//go:build tier0
+
 package shedengine
 
 import (
@@ -43,6 +45,7 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	seed.PauseBefore = "B"
 	seed.PauseAfter = "A"
 	seed.PendingBy = "driver"
+	seed.EnteredRow = "B"
 	seed.PauseRequestedBy = "orch"
 	seed.PauseBeforeBy = "orch"
 	seed.PauseAfterBy = "orch"
@@ -59,8 +62,8 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	if !reflect.DeepEqual(returned, got) {
 		t.Errorf("returned Status = %+v; want the written file %+v", returned, got)
 	}
-	if got.CurrentProducer != "A" || got.State != StatePaused {
-		t.Errorf("CurrentProducer, State = %q, %q; want A, paused", got.CurrentProducer, got.State)
+	if got.CurrentProducer != "A" || got.State != StatePaused || got.EnteredRow != "A" {
+		t.Errorf("CurrentProducer, State, EnteredRow = %q, %q, %q; want A, paused, A", got.CurrentProducer, got.State, got.EnteredRow)
 	}
 	if got.Error != "" || got.Transient != "" || got.PauseRequested || got.PauseBefore != "" || got.PauseAfter != "" {
 		t.Errorf("Error, Transient, PauseRequested, PauseBefore, PauseAfter = %q, %q, %v, %q, %q; want all cleared", got.Error, got.Transient, got.PauseRequested, got.PauseBefore, got.PauseAfter)
@@ -226,6 +229,8 @@ func TestGoto_MissingStatusFileWayForward(t *testing.T) {
 
 func TestGoto_StepResumesAtTarget(t *testing.T) {
 	shed, a, b := gotoShed(t)
+	// The target's gate is off, yet the goto names the row as entered, so the step calls it without evaluating the gate.
+	shed.Producers[0].EntryGate = func() (bool, string, error) { return false, "gate is off", nil }
 	seed := commonSeed("B")
 	seed.State = StateBlocked
 	seed.Error = "stuck on A"
@@ -585,10 +590,10 @@ func TestRelaunch(t *testing.T) {
 			wantErr: "could not be checked: seam unreadable; way forward: re-run goto",
 		},
 		{
-			name: "backward target keeps the pause conditions", seed: seedWith(StateBlocked, "B"), target: "A", wantAdmits: 1,
+			name: "backward target keeps the pause conditions and clears the entered row", seed: enteredSeed(StateBlocked, "B", "B"), target: "A", wantAdmits: 1,
 			check: func(t *testing.T, got Status) {
-				if got.CurrentProducer != "A" || got.State != StatePaused || got.Error != "" || got.Transient != "" {
-					t.Errorf("CurrentProducer, State, Error, Transient = %q, %q, %q, %q; want A, paused, cleared", got.CurrentProducer, got.State, got.Error, got.Transient)
+				if got.CurrentProducer != "A" || got.State != StatePaused || got.Error != "" || got.Transient != "" || got.EnteredRow != "" {
+					t.Errorf("CurrentProducer, State, Error, Transient, EnteredRow = %q, %q, %q, %q, %q; want A, paused, cleared", got.CurrentProducer, got.State, got.Error, got.Transient, got.EnteredRow)
 				}
 				if len(got.History) != 1 || got.History[0].Producer != "A" || got.History[0].Outcome != OutcomeGoto {
 					t.Fatalf("History = %+v; want one goto entry for A", got.History)
@@ -615,8 +620,8 @@ func TestRelaunch(t *testing.T) {
 				}
 			},
 		},
-		{name: "no target writes the status unchanged", seed: seedWith(StateBlocked, "B"), wantAdmits: 1},
-		{name: "target in effect writes the status unchanged", seed: seedWith(StateBlocked, "B"), target: "A", admitInEffect: true, wantAdmits: 1},
+		{name: "no target writes the status unchanged, the entered row included", seed: enteredSeed(StateBlocked, "B", "B"), wantAdmits: 1},
+		{name: "target in effect writes the status unchanged, the entered row included", seed: enteredSeed(StateBlocked, "B", "B"), target: "A", admitInEffect: true, wantAdmits: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -689,6 +694,13 @@ func TestRelaunch(t *testing.T) {
 func pendingSeed(s State, currentProducer, pendingBy string) *Status {
 	seed := seedWith(s, currentProducer)
 	seed.PendingBy = pendingBy
+	return seed
+}
+
+// enteredSeed returns seedWith's status naming enteredRow as the entered row.
+func enteredSeed(s State, currentProducer, enteredRow string) *Status {
+	seed := seedWith(s, currentProducer)
+	seed.EnteredRow = enteredRow
 	return seed
 }
 

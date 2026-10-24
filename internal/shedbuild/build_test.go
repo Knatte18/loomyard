@@ -1,3 +1,5 @@
+//go:build tier0
+
 // build_test.go covers Build's own routing logic against Recipe values constructed in Go rather
 // than parsed, so a Build failure can never be a Parse failure in disguise. The filesystem-backed
 // twelve-engine coverage lives in build_engines_test.go instead -- see that file's own doc comment.
@@ -69,6 +71,29 @@ func TestBuild_Errors(t *testing.T) {
 			name:     "preflight with a blank Env.Cwd",
 			rows:     []Row{{Name: "Pre", Engine: "Preflight"}},
 			wantSubs: []string{"0", "Pre", "Cwd"},
+		},
+		{
+			name:     "entry gate naming an unregistered module",
+			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"nosuchmodule.key"}}},
+			fullEnv:  true,
+			wantSubs: []string{"Gated", "nosuchmodule.key", "not a registered config module"},
+		},
+		{
+			name:     "entry gate naming a key the module's template lacks",
+			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"loom.nosuchkey"}}},
+			fullEnv:  true,
+			wantSubs: []string{"Gated", "loom.nosuchkey", "is not a key of module"},
+		},
+		{
+			name:     "entry gate naming a segment with no Env.Segments entry",
+			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"budget.No-Such-Segment"}}},
+			fullEnv:  true,
+			wantSubs: []string{"Gated", "budget.No-Such-Segment", "has no Env.Segments entry"},
+		},
+		{
+			name:     "entry gate naming a setting while Env.SettingKnown is nil",
+			rows:     []Row{{Name: "Gated", Engine: "Stub", EntryGate: EntryChecks{"loom.plan_auto_accept"}}},
+			wantSubs: []string{"Gated", "Env.SettingKnown is nil", "fill Env.SettingKnown in the caller"},
 		},
 		{
 			// Proves cfg reaches the constructor rather than being dropped: an engine that accepts no config keys rejects a non-empty block through its own unknown-key check.

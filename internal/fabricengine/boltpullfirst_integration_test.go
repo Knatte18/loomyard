@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // boltpullfirst_integration_test.go proves Bolt.PullThenCommitWritten and the gated seed-commit drop under it.
 // The hub is a hubforge hub whose records upstream a second clone moves.

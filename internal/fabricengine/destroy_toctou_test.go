@@ -1,3 +1,5 @@
+//go:build tier0
+
 // destroy_toctou_test.go guards the act-time containment binding that closed R3's containment TOCTOU:
 // removeContainedPath must refuse to carry a removal through a symlink escaping its container, must
 // still remove a legitimate nested entry and a final-component link (a junction), and must treat an

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // durfmt_test.go pins the format boundaries of FormatMinutes and FormatSeconds.
 
 package durfmt

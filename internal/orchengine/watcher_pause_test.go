@@ -1,3 +1,5 @@
+//go:build tier0
+
 // watcher_pause_test.go drives the watcher over a temp pause record: what it interrupts, holds and queues while a hub pause entry is live and after it is resumed.
 
 package orchengine

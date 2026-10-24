@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // owner_integration_test.go drives armAt over a real hub, the one owner check that needs the prime-name refusal ahead of it.
 

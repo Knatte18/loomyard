@@ -1,3 +1,5 @@
+//go:build tier0
+
 // spawnorder_test.go pins the spawn order the teller hands reed: the sort rule and where a pair's start time is read from.
 
 package hubgeom

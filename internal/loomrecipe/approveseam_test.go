@@ -1,3 +1,5 @@
+//go:build tier0
+
 // approveseam_test.go's single subject: the approval seam is wired as shipped, and a mis-wiring is
 // rejected rather than silently accepted. Removing approve_seam from the shipped Plan-Bouncer row is
 // not reachable through the sequence fixture -- the recipe is parsed unconditionally from the

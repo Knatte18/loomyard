@@ -1,3 +1,5 @@
+//go:build tier0
+
 // watch_test.go covers the watch verb and its production session adapter with a fake strandOps and no real reed.
 
 package orchcli

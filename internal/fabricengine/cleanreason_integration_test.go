@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cleanreason_integration_test.go is card 6's regression guard for Clean's reworded reason string:
 // no earlier test asserted its exact wording, and loomengine prints it verbatim to an operator, so

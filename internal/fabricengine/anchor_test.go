@@ -1,3 +1,5 @@
+//go:build tier0
+
 // anchor_test.go — unit tests for the pure reachableAnchor walk.
 // Every test here drives reachableAnchor against a hand-built []corrEntry slice and a fake
 // in-memory reachable predicate (a map[string]bool closure);

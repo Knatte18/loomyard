@@ -1,3 +1,5 @@
+//go:build tier0
+
 // run_persist_test.go covers the boundary between Shed and disk: the read-modify-write merge against a concurrent external writer, the opaque product passthrough, the unknown keys a persist keeps, the two ways a persist can fail, the five read-gate and lookup hard errors, and the locking rules (already-held run lock, lock-parent creation, and the same-path validation error).
 
 package shedengine

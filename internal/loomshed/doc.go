@@ -37,24 +37,25 @@
 // The blocking path is unchanged: the findings go to the writer and the log line in full.
 //
 // The verify gate (NewVerifyGate) is told its verify command by the recipe's wiring and reads it at each arrival; it never parses the plan itself.
-// Told a tree scope reader, it takes the darn form; otherwise it takes the round form the Webster-Burler-Fix row runs, which runs less than the full command.
-// Told a merge base, the round form first runs the headroom lint from it to HEAD, before the comment lint and any test; told none, it skips that lint.
+// The command is the row's own `lyx gate test --wait --gate <key>` call, the `code-burler-fix` key at Code-Burler-Fix and the `darn-write` key at Darn-Write, so each fix row and writer runs its own key and shares no pass with Webster's end gate.
+// Told a tree scope reader, it takes the darn form; otherwise it takes the round form.
 // The form is a told reader, never inferred from the merge base reader's presence.
-// It is also told a gate list through a RoundGate source, read at each arrival, whose error is the gate's returned error; the fix rows of loom and darn tell it the hub's `landing` list.
-// It lints the comments added since the told command's last recorded pass, then runs the round call, `lyx gate test --wait --tier <told list> --base <that pass's commit>`, through verifytree.Verify, running the told list's own whole-tree call, `--all`, where there is no pass to diff from.
-// The narrowing, the fallback to whole and the guard step are the round call's own; Webster's gate, Publish and Finalize keep the full verify on the tree that lands.
+// Told a merge base, the round form first runs the headroom lint from it to HEAD, before the comment lint and any test; told none, it skips that lint.
+// The round form lints the comments added since the told command's latest recorded pass when that commit is an ancestor of HEAD, else since the merge base, so a first round lints rather than skips; with neither base it runs no lint.
+// It then runs the told command as it is through verifytree.Verify: the gate derives its own diff base, narrowing, fallback to whole and guard step.
+// Webster's gate, Publish and Finalize keep the full verify on the tree that lands.
 // A failed run's findings carry the exit code, the log path and the log's tail, and when the whole log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, a paragraph naming the window.
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then re-stepping the row.
 // The gate runs no flake rerun.
-// The round runs the tiers the told list holds and nothing else, so `tmux` and `llm` tiers run only if the hub lists them in the `landing` gate.
+// The told command runs the tiers its key lists and nothing else, so `tmux` and `llm` tiers run only if the hub lists them in that key.
 // Publish reruns both verifies in full regardless, and stays the guard.
 // Told a tree scope reader, it takes the darn form the darn recipe's `Darn-Write` and `Code-Burler-Fix` rows run, and requires the merge base reader:
 // the headroom lint and then the comment lint run from the task branch's merge base with the parent to HEAD, so every attempt diffs from the merge base and is never narrowed to a stale pass.
 // The tree scope reader is then read at each arrival.
 // A tree-scoped diff, wholly under the hub's configured non-production trees, runs only the tree-scoped command the reader answers; an empty command, as for a docs-only diff whose trees name no target, runs nothing, logs so and passes, so an empty tree scope never falls back to the computed scope.
-// Any other diff runs the round call over `--base` the merge base, with the same guard step the round form gets from it.
-// The told command is the site's base command in every case, so a pass keeps its record entry and Publish skips on the same tree and command.
-// That form has no skip path: an empty told command, a command read error, a round read error, a merge base read error and a tree scope read error are each the gate's returned error.
+// Any other diff runs the told command.
+// The told command is the key's own call in every case, so a pass keeps its record entry and a later arrival on the same tree and command skips.
+// That form has no skip path: an empty told command, a command read error, a merge base read error and a tree scope read error are each the gate's returned error.
 // An impact-scoped pass lets through a break only the whole module shows;
 // Merge-In's whole run catches it for every diff touching production code.
 //

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // planwrite_test.go exercises the Plan-Write row's two halves separately, which is what they now
 // are: NewPlanWrite's post-Done commit decoration, and NewPlanDirRotator's stale-plan-directory
 // rotation.

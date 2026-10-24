@@ -1,4 +1,6 @@
-// command_test.go covers CommandProducer's per-call order over fake lookups and a recording runner: the switch, the command read, the placeholder quoting, the outcome mapping and the refusals that stop the run.
+//go:build tier0
+
+// command_test.go covers CommandProducer's per-call order over fake lookups and a recording runner: the command read, the placeholder quoting, the outcome mapping and the refusals that stop the run.
 
 package shedadapters
 
@@ -33,11 +35,6 @@ func TestCommandProducer(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// off turns the switch off; switchValue, when set, replaces the bool the switch answers.
-		off         bool
-		switchValue any
-		switchErr   error
-		forced      bool
 		// command is what ExecutableSetting answers; commandValue, when set, replaces it with a non-string.
 		command      string
 		commandValue any
@@ -59,20 +56,15 @@ func TestCommandProducer(t *testing.T) {
 		// wantWarn must all appear in the captured Warn records; none means the records must be empty.
 		wantWarn []string
 	}{
-		{name: "switch off runs nothing", off: true, command: "echo hi"},
-		{name: "empty command runs nothing and is quiet unforced", command: ""},
-		{name: "empty command on a forced row warns", forced: true, command: "", wantWarn: []string{"empty command"}},
+		{name: "empty command runs nothing and is quiet", command: ""},
 		{name: "exit zero", command: "echo hi", wantRuns: 1, wantCommand: "echo hi"},
 		{name: "non-zero exit warns with the log path", command: "false", result: CommandResult{ExitCode: 3}, wantRuns: 1, wantCommand: "false", wantWarn: []string{logPath, "failed"}},
 		{name: "timeout warns with the log path", command: "sleep 99", result: CommandResult{TimedOut: true}, wantRuns: 1, wantCommand: "sleep 99", wantWarn: []string{logPath, "timed out"}},
 		{name: "runner error warns with the log path", command: "x", runErr: errors.New("no shell"), wantRuns: 1, wantCommand: "x", wantWarn: []string{logPath, "no shell"}},
-		{name: "unreadable switch", switchErr: errors.New("bad yaml"), command: "x", wantErr: []string{"batten.open_window", rerun}},
-		{name: "non-bool switch", switchValue: "yes", command: "x", wantErr: []string{"batten.open_window", rerun}},
 		{name: "command lookup error", commandErr: errors.New("bad yaml"), wantErr: []string{"batten.open_command", setCommand, rerun}},
 		{name: "non-string command", commandValue: 7, wantErr: []string{"batten.open_command", setCommand, rerun}},
 		{name: "task dir error", command: "open {task_dir}", taskDirErr: errors.New("no worktree"), wantErr: []string{"task worktree", rerun}},
 		{name: "nil executable lookup", noLookup: true, command: "x", wantErr: []string{"executable-key lookup", "way forward", rerun}},
-		{name: "forced row runs past a failing switch lookup", forced: true, switchErr: errors.New("bad yaml"), command: "echo hi", wantRuns: 1, wantCommand: "echo hi"},
 		{
 			name:        "placeholder values reach sh as quoted literals",
 			command:     "open {lyx} {slug} {task_dir}",
@@ -101,14 +93,6 @@ func TestCommandProducer(t *testing.T) {
 			var rowTimeout time.Duration
 			setting := func(module, key string) (any, error) {
 				switch module + "." + key {
-				case "batten.open_window":
-					if tt.switchErr != nil {
-						return nil, tt.switchErr
-					}
-					if tt.switchValue != nil {
-						return tt.switchValue, nil
-					}
-					return !tt.off, nil
 				case "batten.open_command":
 					if tt.otherErr != nil {
 						return nil, tt.otherErr
@@ -154,10 +138,7 @@ func TestCommandProducer(t *testing.T) {
 			if tt.noLookup {
 				deps.ExecutableSetting = nil
 			}
-			if tt.forced {
-				deps.Forced = []string{"Open-Window"}
-			}
-			row := CommandRow{SwitchModule: "batten", SwitchKey: "open_window", CommandModule: "batten", CommandKey: "open_command", Timeout: 30 * time.Second}
+			row := CommandRow{CommandModule: "batten", CommandKey: "open_command", Timeout: 30 * time.Second}
 			ctx := context.Background()
 			if tt.cancelled {
 				var cancel context.CancelFunc

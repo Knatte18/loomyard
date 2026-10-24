@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // rows_integration_test.go runs each row's patterns under `sh` with grep against PreToolUse payloads, pinning which Bash commands each guard denies and which it lets through.
 
@@ -86,6 +86,9 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"raw-go", "tmux_tier_tags", "go test -tags tmux ./internal/x", true},
 		{"raw-go", "llm_tier_in_a_tag_list", "go test -tags=integration,llm ./internal/x", true},
 		{"raw-go", "long_tags_flag", "go test --tags tmux ./internal/x", true},
+		{"raw-go", "tier2_tag", "go test -tags tier2 ./internal/x", true},
+		{"raw-go", "tier3_tag_with_equals", "go test -tags=tier3 ./internal/x", true},
+		{"raw-go", "tier1_tag_package_scoped", "go test -tags tier1 ./internal/x", false},
 		{"raw-go", "names_the_slot_variable", "LYX_GATE_SLOT=/x lyx gate test ./internal/x", true},
 		{"raw-go", "names_the_strand_variable", "echo $LYX_STRAND_NAME", true},
 		{"raw-go", "names_the_prebuilt_binary_variable", "LYX_PREBUILT_LYX=/x/lyx go test ./internal/x", true},

@@ -23,8 +23,8 @@ type Targets struct {
 	Base string
 	// Modules are the impacted packages per module; empty with Whole, and empty when only Markdown files changed.
 	Modules []ModuleTargets
-	// Guards maps the directory of each package outside the set to the sorted names of its `//lyx:guard` tests.
-	Guards map[string][]string
+	// Guards maps the directory of each package outside the set to its `//lyx:guard` tests, sorted by name, each with its file's tier.
+	Guards map[string][]GuardTest
 	// BinaryTests are the sorted worktree-relative directories of every package whose tests import `internal/testkit/lyxbin`, inside the set or not; empty with Whole.
 	BinaryTests []string
 }
@@ -112,21 +112,21 @@ func changedPathsInTree(ctx context.Context, worktree, base string) ([]string, e
 }
 
 // targetsFor is the pure core of DeriveTargets: the impacted set of the changed paths over the graph as root-module targets, or a Whole fallback.
-// guards maps a package directory to the names of its guard tests.
-func targetsFor(graph moduleGraph, changedPaths []string, guards map[string][]string) Targets {
+// guards maps a package directory to its guard tests.
+func targetsFor(graph moduleGraph, changedPaths []string, guards map[string][]GuardTest) Targets {
 	set, fallback := impactedFor(graph, changedPaths)
 	if fallback != "" {
 		return wholeTargets("", fallback)
 	}
 
-	targets := Targets{Guards: map[string][]string{}, BinaryTests: graph.addBinaryBuildingTests(map[string]bool{})}
+	targets := Targets{Guards: map[string][]GuardTest{}, BinaryTests: graph.addBinaryBuildingTests(map[string]bool{})}
 	if len(set) > 0 {
 		targets.Modules = []ModuleTargets{{Dir: ".", Packages: packageArgs(graph.packageDirs(set))}}
 	}
-	for dir, names := range guards {
-		if len(names) > 0 && !set[graph.byDir[dir].ImportPath] {
-			sorted := slices.Clone(names)
-			sort.Strings(sorted)
+	for dir, tests := range guards {
+		if len(tests) > 0 && !set[graph.byDir[dir].ImportPath] {
+			sorted := slices.Clone(tests)
+			sort.Slice(sorted, func(i, j int) bool { return sorted[i].Name < sorted[j].Name })
 			targets.Guards[dir] = slices.Compact(sorted)
 		}
 	}

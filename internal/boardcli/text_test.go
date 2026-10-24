@@ -1,3 +1,5 @@
+//go:build tier0
+
 // text_test.go holds pure tests of the compact listing; nothing here touches disk or spawns a process.
 
 package boardcli_test

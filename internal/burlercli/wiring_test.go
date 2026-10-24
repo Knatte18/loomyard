@@ -1,4 +1,6 @@
-// wiring_test.go pins wire's mode truth table at tier 1: every case drives c.wire directly with a
+//go:build tier0
+
+// wiring_test.go pins wire's mode truth table at tier 0: every case drives c.wire directly with a
 // told preflight.Mode -- never through the real pre-run -- so no case spawns a process or resolves
 // cwd.
 //

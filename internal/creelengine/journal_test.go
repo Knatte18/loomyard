@@ -1,3 +1,5 @@
+//go:build tier0
+
 // journal_test.go pins how the journal folds into the pool and how retention carries live state out of old day files.
 
 package creelengine

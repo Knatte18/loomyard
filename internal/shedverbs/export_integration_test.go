@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // export_integration_test.go re-exports the seams loop_arming_integration_test.go drives:
 // internal/shedverbs sits inside internal/hubforge's dependency set, so a hubforge-using test cannot live in-package without closing a compile cycle — the standard Go export_test.go idiom.

@@ -1,4 +1,4 @@
-// verifygate.go implements NewVerifyGate, the must-pass gate on Merriam's strand that holds a webster run's done until the hub's `final` gate passes on the committed tree.
+// verifygate.go implements NewVerifyGate, the must-pass gate on Merriam's strand that holds a webster run's done until the hub's `webster` gate passes on the committed tree.
 // A failure goes back to Merriam's live session as findings, and Merriam fixes it through one fixer fork or, escalated, the cold fixer strand.
 
 package websterengine
@@ -155,7 +155,7 @@ func AppendVerifyGateFixCommits(websterDir string, commits []CommitLogEntry) err
 type verifyGateSeams struct {
 	// outcome returns the outcome outcome.yaml names.
 	outcome func() (string, error)
-	// verifyCommand returns the hub's `final` gate call over the whole tree, or the gate config's refusal.
+	// verifyCommand returns the hub's `webster` gate call over the whole tree, or the gate config's refusal.
 	verifyCommand func() (string, error)
 	// dirty returns the worktree's dirty paths.
 	dirty func() ([]string, error)
@@ -195,7 +195,7 @@ type verifyGateSeams struct {
 // it passes without verifying when outcome.yaml names an outcome other than done;
 // it fails with the dirty paths when the tree is not clean;
 // once a pre-fix head is recorded, it fails `Terminal` when a commit above it is neither a non-merge commit nor a clean parent merge, and otherwise records those commits in the notes;
-// it renders the hub's `final` gate call over the whole tree from the told gate config, and returns the config's refusal, which names `lyx config gate`, as its error;
+// it renders the hub's `webster` gate call over the whole tree from the told gate config, and returns the config's refusal, which names `lyx config gate`, as its error;
 // otherwise it runs that call through verifytree.Verify, told geom.VerifyHold on the first run and the rerun alike, reruns it once on a failure, and passes a flaky failure whose rerun passed.
 // A run that timed out or hung, as classifyHang reads its log and exit code, is not re-run: it fails at once.
 // A failure that survives returns findings, and the first failure of any kind records HEAD as the pre-fix head.
@@ -220,7 +220,7 @@ func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentB
 			if err != nil {
 				return "", err
 			}
-			return cfg.GateCall("final", "--all")
+			return cfg.GateCall("webster")
 		},
 		dirty: func() ([]string, error) { return geom.git().DirtyPaths(geom.WorktreeRoot) },
 		head:  func() (string, error) { return geom.git().HeadSHA(geom.WorktreeRoot) },

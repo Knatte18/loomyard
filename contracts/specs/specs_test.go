@@ -1,3 +1,5 @@
+//go:build tier0
+
 // specs_test.go pins the specs registry's names, defaults, RelPath placement, and stamp round-trip.
 // Unlike contracts/stencils/registry_test.go, this package's registry is deliberately not
 // cross-checked against an on-disk tree walk: the specs registry's two entries come from two

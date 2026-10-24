@@ -1,3 +1,5 @@
+//go:build tier0
+
 // events_test.go exercises ParseEvents against a fixture JSONL containing two Stop events, an
 // interleaved garbage line, a non-Stop/non-ask event, and a blank line — asserting the lenient skip
 // behaviour and that Raw round trips the exact line it was parsed from — plus dedicated cases for

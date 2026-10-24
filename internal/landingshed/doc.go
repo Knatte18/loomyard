@@ -33,7 +33,7 @@
 // The merge is large when it needed the conflict session, or when the parent's changes since the merged tip it read touch a file the task changed since its merge base; a parent already holding the task's work is never large.
 // A large merge keeps the merge commit and reroutes with no gate run: a Stuck with Reroute set on the row's on_reroute edge, which spends no bounce budget, and the deferred release frees the lock first, with shed's reroute cap as its bound.
 // Finalize then writes the merge record with the new merged tip and the aligned tip as it was.
-// Next it runs the `landing` gate over the merged tree through verifytree, which skips a tree it already verified, so a run that went right holds the lock for one merge, a skipped gate and the landing.
+// Next it runs its own gate key, `finalize`, over the merged tree through verifytree, which skips a tree it already verified, so a run that went right holds the lock for one merge, a skipped gate and the landing.
 // A darn Finalize over a diff wholly under `tree_scope` runs the tree-scoped command, since darn's verify source answers it.
 // A passing gate removes the landing failure record, and a failing one writes it.
 // A failing gate spawns the merge fixer in finalize mode, which fixes failing tests only, on the attempts `finalize_fix_attempts` leaves the entry, read from the attempt record under the row's entry.
@@ -45,7 +45,7 @@
 // An escalate report keeps the commits and halts naming the report; a turn that ended without a usable result halts, and a failed spawn is an error that spends no attempt.
 // An attempt record that does not decode halts naming the file, with removing it, which grants a fresh cap, as the way forward.
 // A Finalize reroute leaves the entry's attempt record for the next entry to clear, and a Done clears it.
-// The size and kind caps bound what an unreviewed Finalize fix lets through: a fix within them lands with no perch, behind only the `landing` gate it passed and the finalize mode's instruction to fix failing tests only.
+// The size and kind caps bound what an unreviewed Finalize fix lets through: a fix within them lands with no perch, behind only the `finalize` gate it passed and the finalize mode's instruction to fix failing tests only.
 // After a merge-in-required error from the parent-side merge Finalize retries once, which covers a parent moved by run records alone;
 // the retry merges and judges the parent again under the same lock, so a code-side commit that arrives between the first merge and the parent-side merge reroutes there and never lands.
 // A dirty parent is Stuck naming the parent's code checkout and its tracked dirty paths, capped at 20, with the way forward per reason.
@@ -72,13 +72,15 @@
 // With an upstream and no push skip it fetches and merges the parent's upstream tip, read from the fetching tips read and never the local tip, so a landing another run made locally and has not pushed is never merged in.
 // Under the told push skip, or with no upstream, it takes the parent lock through the shared guard only for the read of the local tip and releases it before the merge, which then runs unlocked.
 // A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
-// It then clears a parked merge-in, merges that tip into the task worktree through internal/mergeresolve, and runs the `landing` gate over the merged tree.
+// It then clears a parked merge-in, merges that tip into the task worktree through internal/mergeresolve, and runs its own gate key, `merge-in`, over the merged tree.
 // The task worktree must be clean at three points: before the merge-in (after the status commit), after the merge-in, and after the verify.
 // A dirty tree at any of them is Stuck naming the paths, so nothing uncommitted is merged over or reviewed;
 // a verify that dirties the tree is a non-hermetic test and halts rather than ships.
-// The told landing call, the `landing` gate's `lyx gate test` call rendered from the hub's gate config at each run, runs through internal/verifytree, unless its verified-tree record already names the tree and the command.
-// Its base command is the told Deps.BaseCommand, so a landing-list pass keeps the entry a `final`-list pass wrote, and a tree Webster's gate passed is skipped when the two lists render the same call.
-// A refusal of the gate config or of the `landing` list is the producer's returned error, carrying the refusal's way forward.
+// The row's gate key is the told Deps.GateKey, which each row's registry entry sets from its optional `gate_key` config key, else its row name in lower case.
+// The told call, that key's `lyx gate test` call rendered from the hub's gate config at each run, runs through internal/verifytree, unless its verified-tree record already names the tree and the command.
+// The merge fixer a row spawns judges each turn through that row's gate, so it runs the same key.
+// Its base command is the told Deps.BaseCommand, the fix rows' `code-burler-fix` call, so a landing pass keeps the entry the Code-Burler-Fix lint base reads.
+// A refusal of the gate config or of the key is the producer's returned error, carrying the refusal's way forward.
 // A verify that does not finish within the verify timeout is killed and halts the run Stuck with the log path.
 // While the verify runs, the told Deps.VerifyWaitMark callback marks the run's driver strand on screen as `verify <producer>`, and clears the mark on every way out of the verify.
 // The mark is display only: a failing or absent callback changes no Stuck reason, error or verify outcome.
@@ -115,8 +117,8 @@
 // A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
 // Merge-In and Finalize persist their verify failure.
-// When a `landing` call fails with a non-zero exit, Merge-In or Finalize writes the verifytree landing failure record with the failing gate as its kind, the failing tier, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
-// The tier is the last failing tier the log's `lyx gate test` summary lines name; a log without one, such as a refusal before the first tier, takes the highest tier of the gate's list, read through the told Deps.GateTiers.
+// When a row's gate call fails with a non-zero exit, Merge-In or Finalize writes the verifytree landing failure record with the row's gate key as its kind, the failing tier, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
+// The tier is the last failing tier the log's `lyx gate test` summary lines name; a log without one, such as a refusal before the first tier, takes the highest tier of the row's key, read through the told Deps.GateTiers.
 // The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Finalize takes it from its own merge.
 // A dirty tree, a timeout and a shell that could not start write no record, and a write failure is logged and never changes the Stuck verdict.
 // When Deps.TraceFailure is set and both the log and HEAD are non-empty, the record also carries the trace the seam returns: `cards`, `later_range` and `untraced`, the plan cards and commit ranges the failing locations trace to.

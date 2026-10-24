@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // refusal_integration_test.go proves the orch refusals end to end over one hub: the prime-only rule (`status`, `start`, `resume-context` and `rules` from a task worktree or the prime's records sibling) and the config refusal (a non-bypass permission_mode makes `status` and the watcher start fail with the fix named), each landing before any .lyx/orch is created.
 

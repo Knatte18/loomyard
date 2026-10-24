@@ -4,13 +4,11 @@
 // Main is exempt because it runs in TestMain and only the tagged tests it isolates start a server.
 // Matching on an exported identifier keeps a file-name mention such as tmuxkit.go out of the rule.
 // This file names no export besides Main, so it never trips the scan.
+// It carries no build tag, so the guards of every tier that read it compile it.
 
 package main
 
-import (
-	"regexp"
-	"testing"
-)
+import "regexp"
 
 // tmuxkitReference matches a tmuxkit-qualified exported identifier and captures the identifier.
 var tmuxkitReference = regexp.MustCompile(`tmuxkit\.([A-Z][A-Za-z0-9_]*)`)
@@ -26,30 +24,4 @@ func tmuxkitSpawnReference(content string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-//testtiming:keep pins the tmuxkit-spawn definition the TestTierPurity_UntaggedTestsSpawnNothing guard uses: every export but Main spawns, file-name mentions do not
-func TestTmuxkitSpawnReference(t *testing.T) {
-	// The sample references are assembled at run time so this file's own source carries none.
-	pkg := "tmux" + "kit."
-	tests := []struct {
-		name    string
-		content string
-		want    string
-		found   bool
-	}{
-		{"spawning export", "k := " + pkg + "Socket(t, tmux)", pkg + "Socket", true},
-		{"main only", "os.Exit(" + pkg + "Main(m))", "", false},
-		{"main then spawn", pkg + "Main(m)\n" + pkg + "Socket(t, tmux)", pkg + "Socket", true},
-		{"file name mention", "see " + pkg + "go for details", "", false},
-		{"no mention", "package p", "", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, found := tmuxkitSpawnReference(tt.content)
-			if got != tt.want || found != tt.found {
-				t.Errorf("tmuxkitSpawnReference(%q) = %q, %v; want %q, %v", tt.content, got, found, tt.want, tt.found)
-			}
-		})
-	}
 }

@@ -119,7 +119,7 @@ type battenCLI struct {
 	windowOpener func(name string, lyxArgs []string) (reedengine.WindowResult, error)
 	// terminalLauncher, when non-nil, replaces termwindow.Resolve as what --window asks for this machine's terminal launcher name, so the envelope is testable on any machine.
 	terminalLauncher func() (string, error)
-	// openTerminalFlag carries "run"'s hidden --open-terminal value, which --window passes to the run it starts and which forces the Open-Window row's switch on.
+	// openTerminalFlag carries "run"'s hidden --open-terminal value, which --window passes to the run it starts and which makes the open_window setting answer true for that run.
 	openTerminalFlag bool
 	// reconcile runs the run-scope origin reconcile of a slug the pre-run resumes; Command wires it to reconcileRun, and nil reads as no reconcile, which only a hand-populated receiver has.
 	reconcile func(slug string) (fabricengine.OriginReport, error)
@@ -136,7 +136,7 @@ type battenCLI struct {
 // windowNamePrefix starts the name of the window "lyx batten run <slug> --window" opens, ahead of the slug.
 const windowNamePrefix = "batten:"
 
-// openTerminalFlagName names the hidden run flag that forces the Open-Window row's switch on for the run, whatever batten.yaml's open_window says.
+// openTerminalFlagName names the hidden run flag that makes the open_window setting answer true for the run, whatever batten.yaml says.
 const openTerminalFlagName = "open-terminal"
 
 // battenVerbTexts carries batten's four shedverbs-driven verbs' Use/Short/Long text.
@@ -166,9 +166,8 @@ The Go driver meets an unexpected stop with its rule table and a cold tackler
 agent before the orch sees it; a second run for the slug is refused while the
 first holds the driver lock.
 
-The run-id positional is required in practice, even though cobra accepts
-its absence: prime hosts many slug-addressed batten runs, so an omitted
-run-id refuses by name rather than defaulting to "self".
+The run-id is required in practice: an omitted run-id refuses by name
+rather than defaulting to "self".
 
 With --window, the same run starts in its own tmux window of the prime's reed
 session and the verb returns at once with the window's id and name; the tmux
@@ -177,14 +176,14 @@ is reported and nothing is started.
 
 The Open-Window, Seed-IDE and Open-IDE rows are Command rows: each runs its
 batten.yaml command (open_window_command, seed_ide_command, open_ide_command)
-only when its switch (open_window, seed_ide, open_ide) is on. Open-Window's
-default command opens one desktop terminal window attached to the task
-worktree's reed session; Seed-IDE's writes the worktree's VS Code config, and
-Open-IDE's opens VS Code. --window turns Open-Window's switch on for that run.
-The envelope's terminal_window field names the launcher, or says no window is
-opened when this machine has none. A run resumed past that row opens a window
-again when no client is attached to the task worktree's reed session, through
-the same switch and command.
+only when its entry gate (the open_window, seed_ide or open_ide setting) is on.
+Open-Window's default command opens one desktop terminal window attached to the
+task worktree's reed session; Seed-IDE's writes the worktree's VS Code config,
+and Open-IDE's opens VS Code. --window answers the open_window setting on for
+that run. The envelope's terminal_window field names the launcher, or says no
+window is opened when this machine has none. A run resumed past that row opens a
+window again when no client is attached to the task worktree's reed session and
+open_window is on, through the same command.
 
 Example:
   lyx batten run some-slug
@@ -336,7 +335,7 @@ Example:
 	runVerb.Flags().StringVar(&c.driverFlag, "driver", shedrun.DriverGo, "the run's own driver (batten has no bootstrap verb, so \"llm\" is refused)")
 	runVerb.Flags().StringVar(&c.childDriverFlag, "child-driver", "", "the driver the task worktree's own inner run uses; unset, the child recipe's driver_kind, then shed.yaml's")
 	runVerb.Flags().BoolVar(&c.windowFlag, "window", false, "start the same run in its own tmux window of the prime's reed session and return at once, and have its Open-Window row run its command whatever batten.yaml's open_window says")
-	runVerb.Flags().BoolVar(&c.openTerminalFlag, openTerminalFlagName, false, "force the Open-Window row's switch on for this run whatever batten.yaml's open_window says; --window passes it")
+	runVerb.Flags().BoolVar(&c.openTerminalFlag, openTerminalFlagName, false, "answer the open_window setting true for this run whatever batten.yaml says; --window passes it")
 	_ = runVerb.Flags().MarkHidden(openTerminalFlagName)
 	runVerb.RunE = func(cmd *cobra.Command, args []string) error {
 		if !c.windowFlag {

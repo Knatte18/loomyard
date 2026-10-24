@@ -1,4 +1,6 @@
-// records_test.go — untagged Tier-1 tests for the attempt records, the verdict schema and the decision snapshot.
+//go:build tier0
+
+// records_test.go — tier 0 tests for the attempt records, the verdict schema and the decision snapshot.
 
 package alignment
 

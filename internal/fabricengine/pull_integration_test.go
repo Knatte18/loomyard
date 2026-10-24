@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pull_integration_test.go — the end-to-end integration matrix for
 // Fabric.Pull: clean fast-forward, warp history rewrite detection and

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // mergepaths_test.go is table-driven, pure-logic (Tier 1) coverage for unifyConflictPaths' mapping
 // rule: warp pass-through, weft identity mapping at "." and a subpath anchor, the unmappable
 // classes (outside-wired-set and both-sides-collision), sort order, and the empty-never-nil result.

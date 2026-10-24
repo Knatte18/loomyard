@@ -59,8 +59,23 @@ type tierFile struct {
 	Manual      bool              `yaml:"manual"`
 }
 
-// goReadGates are the gate names the Go verify sites read, in the order TiersValue lists them.
-var goReadGates = []string{"card", "batch", "round", "final", "landing"}
+// GateKey is one gate.yaml key: the tier numbers a site runs and the scope form its call runs them over.
+type GateKey struct {
+	// Tiers are the tier numbers the key runs, in order.
+	Tiers []int `yaml:"tiers"`
+	// Scope is card, diff or all.
+	Scope string `yaml:"scope"`
+}
+
+// Scope values a gate key may hold.
+const (
+	scopeCard = "card"
+	scopeDiff = "diff"
+	scopeAll  = "all"
+)
+
+// goReadGates are the gate keys the Go verify sites read, in the order TiersValue lists them.
+var goReadGates = []string{"card", "batch", "webster", "merge-in", "finalize", "webster-fix", "darn-write", "code-burler-fix"}
 
 var (
 	tierKeyPattern   = regexp.MustCompile(`^tier(0|[1-9][0-9]*)$`)
@@ -228,42 +243,51 @@ func (c Config) Tier(number int) (Tier, error) {
 	return tier, nil
 }
 
-// TierList returns the tier numbers the named gate runs, in order.
-// It refuses, naming lyx config gate, a hub with no tier0, a gate the config holds no list for, an empty list for any gate, and a listed tier the hub does not declare.
-func (c Config) TierList(gate string) ([]int, error) {
+// Gate returns the named gate key's tiers and scope.
+// It refuses, naming lyx config gate, a hub with no tier0, a key the config does not hold, an empty tier list, and a listed tier the hub does not declare.
+func (c Config) Gate(key string) (GateKey, error) {
 	if _, declared := c.Tiers[tierKey(0)]; !declared {
-		return nil, useRefusal("the hub declares no tier0, so no gate has a tier to run")
+		return GateKey{}, useRefusal("the hub declares no tier0, so no gate has a tier to run")
 	}
-	list, ok := c.Gates[gate]
+	gate, ok := c.Gates[key]
 	if !ok {
-		return nil, useRefusal("gates holds no list for %q", gate)
+		return GateKey{}, useRefusal("gates holds no key %q", key)
 	}
-	if len(list) == 0 {
-		return nil, useRefusal("gates.%s is empty, and every gate verifies at least one tier", gate)
+	if len(gate.Tiers) == 0 {
+		return GateKey{}, useRefusal("gates.%s is empty, and every gate verifies at least one tier", key)
 	}
-	for _, number := range list {
+	for _, number := range gate.Tiers {
 		if _, declared := c.Tiers[tierKey(number)]; !declared {
-			return nil, useRefusal("gates.%s lists %s, which the hub does not declare", gate, tierKey(number))
+			return GateKey{}, useRefusal("gates.%s lists %s, which the hub does not declare", key, tierKey(number))
 		}
 	}
-	return slices.Clone(list), nil
+	return GateKey{Tiers: slices.Clone(gate.Tiers), Scope: gate.Scope}, nil
 }
 
-// GateCall renders the one call a site runs for the named gate: `lyx gate test --wait` with one `--tier <n>` per listed tier, in the list's order, then the scope words.
-func (c Config) GateCall(gate string, scope ...string) (string, error) {
-	list, err := c.TierList(gate)
+// TierList returns the tier numbers the named gate key runs, in order, with the refusals Gate gives.
+func (c Config) TierList(gate string) ([]int, error) {
+	key, err := c.Gate(gate)
 	if err != nil {
+		return nil, err
+	}
+	return key.Tiers, nil
+}
+
+// GateCall renders the one call a site runs for the named gate key: `lyx gate test --wait --gate <key>` followed by one `--card <id>` per card id given.
+// It refuses, with the refusals Gate gives, a key the config cannot run.
+func (c Config) GateCall(key string, cards ...string) (string, error) {
+	if _, err := c.Gate(key); err != nil {
 		return "", err
 	}
-	words := []string{"lyx", "gate", "test", "--wait"}
-	for _, number := range list {
-		words = append(words, "--tier", strconv.Itoa(number))
+	words := []string{"lyx", "gate", "test", "--wait", "--gate", key}
+	for _, card := range cards {
+		words = append(words, "--card", card)
 	}
-	return strings.Join(append(words, scope...), " "), nil
+	return strings.Join(words, " "), nil
 }
 
 // TiersValue renders the value prompts take for the hub's tiers:
-// one line per declared tier in number order, `- tier<N>: <about>`, then one line per Go-read gate the config lists, `- gate <name>: [<n>, ...]`.
+// one line per declared tier in number order, `- tier<N>: <about>`, then one line per Go-read gate key the config lists, `- gate <key>: [<n>, ...] <scope>`.
 // It is `none` when no tier is declared.
 func (c Config) TiersValue() string {
 	if len(c.Tiers) == 0 {
@@ -280,15 +304,15 @@ func (c Config) TiersValue() string {
 		lines = append(lines, fmt.Sprintf("- %s: %s", tierKey(number), c.Tiers[tierKey(number)].About))
 	}
 	for _, gate := range goReadGates {
-		list, ok := c.Gates[gate]
+		key, ok := c.Gates[gate]
 		if !ok {
 			continue
 		}
-		items := make([]string, len(list))
-		for i, number := range list {
+		items := make([]string, len(key.Tiers))
+		for i, number := range key.Tiers {
 			items[i] = strconv.Itoa(number)
 		}
-		lines = append(lines, fmt.Sprintf("- gate %s: [%s]", gate, strings.Join(items, ", ")))
+		lines = append(lines, fmt.Sprintf("- gate %s: [%s] %s", gate, strings.Join(items, ", "), key.Scope))
 	}
 	return strings.Join(lines, "\n")
 }

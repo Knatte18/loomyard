@@ -1,4 +1,6 @@
-// driverules_test.go — untagged Tier-1 tests for the Go driver's rule table and its stop parse.
+//go:build tier0
+
+// driverules_test.go — tier 0 tests for the Go driver's rule table and its stop parse.
 
 package sheddriver
 

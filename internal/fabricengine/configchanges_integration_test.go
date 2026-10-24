@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // configchanges_integration_test.go proves ReadConfigChanges reports a task's changes to the per-worktree config files it is told about, read from the task's weft branch since its fork point.
 //

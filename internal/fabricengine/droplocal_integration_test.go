@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // droplocal_integration_test.go proves DropLocal on a hubforge hub: a pair's local-only tips are tagged and its branches moved to origin's tips, or a dirty path refuses with nothing moved.
 //

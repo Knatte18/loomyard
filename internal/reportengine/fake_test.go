@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fake_test.go holds fakeRepo, an in-memory Reader, and the builders that put tags, loom records and batten snapshots into it.
 // A fake holds one main line of commits, which Log walks, and any number of commits off it, which only a tag names, as an archive tag names a commit off the records branch.
 

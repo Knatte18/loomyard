@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // glyphchain_integration_test.go carries each glyph-chain shape row's legs past the plan gate through a real commit's delta, handle binding, the on-disk rewrite and the done-checks, spawning git through Delta — the reason this file carries the integration build tag.
 // glyphchain_test.go holds the shape table and the untagged plan-gate legs.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // creelseam_test.go covers the folds of creel's journal entries into the watcher's outcome and sent values.
 
 package orchcli

@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_lifecycle_test.go drives the composed up/add/remove/status/down behaviors through RunCLIIn against a real tmux server: the basic round-trip, successive adds each opening a window of their own, foreign-pane reaping, recovery from a scrubbed state file, the --if-absent reopen sequence, the told pane cwd, the detached self-removal, and the interactive attach handover.
 

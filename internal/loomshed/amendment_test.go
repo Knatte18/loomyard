@@ -1,3 +1,5 @@
+//go:build tier0
+
 // amendment_test.go covers the plan amendment record: its append-only writes, tolerant read, removal and the settle rule.
 
 package loomshed

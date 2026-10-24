@@ -1,3 +1,5 @@
+//go:build tier0
+
 // state_test.go round-trips ReedState through Save/Load and pins the unreadable-file refusals.
 
 package reedengine

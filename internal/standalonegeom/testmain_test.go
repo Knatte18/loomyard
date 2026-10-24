@@ -1,10 +1,10 @@
-//go:build !integration
+//go:build !tier1
 
-// testmain_test.go runs the test binary compiled without the `integration` tag under tmux isolation through tmuxkit.Main.
-// The `tmux`-tagged naming_integration_test.go runs `git init` here, so gitkit.HermeticGitEnv() arms the hermetic git test environment too (see PATTERN-test-isolation).
+// testmain_test.go runs the test binary compiled without the `tier1` tag under tmux isolation through tmuxkit.Main.
+// The `tier2`-tagged naming_integration_test.go runs `git init` here, so gitkit.HermeticGitEnv() arms the hermetic git test environment too (see PATTERN-test-isolation).
 //
-// The `!integration` constraint is load-bearing: testmain_integration_test.go declares its own TestMain under the `integration` tag,
-// and an untagged file always compiles, so without this negation both would collide under `go test -tags integration`.
+// The `!tier1` constraint is load-bearing: testmain_integration_test.go declares its own TestMain under the `tier1` tag,
+// and a file without the negation always compiles, so both would collide under the tier 1 command.
 
 package standalonegeom
 

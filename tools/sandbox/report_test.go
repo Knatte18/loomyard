@@ -1,3 +1,5 @@
+//go:build tier0
+
 // report_test.go contains unit tests for the sandbox-report.json contract and the fetchReport validate/stamp/fetch pipeline.
 // All tests use t.TempDir() -- no real lyx, claude, or network calls are made.
 // The runFetch tests rewrite the package-level devBinPath and lookPath seams, so they do not call t.Parallel; the fetchReport tests touch no seam and run in parallel.

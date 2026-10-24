@@ -1,3 +1,5 @@
+//go:build tier0
+
 // adopt_test.go drives the takeover sequence over fake deps: the refusals before anything runs, the reconcile stops, the per-entry stops and their two ways forward, the pair add, the owner write, the pause lift, the run resume and the halted-child resume.
 
 package adoptcli

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // stamp_test.go covers the build key, the stamp file round trip and the stamp and lock paths.
 
 package hubreconcile

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // stopkey_test.go covers StopKeyOf's reading of a status.
 
 package sheddriver

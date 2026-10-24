@@ -18,13 +18,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/configsync"
-	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
-	"gopkg.in/yaml.v3"
 )
 
 // configDirs holds what a config verb addresses:
@@ -415,7 +413,7 @@ func editHubWide(dirs configDirs, out io.Writer, module configreg.Module, edit c
 		return output.Err(out, fmt.Sprintf("%s changed while the editor was open; your edit is kept at %s, re-apply it", path, staging))
 	}
 	if errors.Is(writeErr, errHubFileLoad) {
-		return output.Err(out, hubFileLoadRefusal(writeErr, module, path, staging, base))
+		return output.Err(out, hubFileLoadRefusal(writeErr, module, path, staging))
 	}
 	_ = os.Remove(staging)
 	return reportHubWrite(out, module.Name, path, commitErr, writeErr, nil)
@@ -454,19 +452,7 @@ func copyStagedToHub(path, staging string, base []byte, template, boardDir strin
 }
 
 // hubFileLoadRefusal returns the editor's refusal of a save the module's loader newly rejects, which keeps the staging copy.
-// A save that empties tree_scope while tree_scope_verify stays non-empty is told to clear tree_scope_verify first;
-// every other refusal is told to copy the staging copy out, since every open of the editor overwrites it with the hub file's bytes.
-func hubFileLoadRefusal(loadErr error, module configreg.Module, path, staging string, hubBefore []byte) string {
-	if errors.Is(loadErr, darnengine.ErrTreeScopeWithoutTrees) && holdsTree(hubBefore) {
-		return fmt.Sprintf("%v; %s unchanged; your edit is kept at %s; way forward: run \"lyx config darn --set tree_scope_verify=\" first, then remove the trees in \"lyx config darn\" again", loadErr, path, staging)
-	}
+// The refusal tells the operator to copy the staging copy out, since every open of the editor overwrites it with the hub file's bytes.
+func hubFileLoadRefusal(loadErr error, module configreg.Module, path, staging string) string {
 	return fmt.Sprintf("%v; %s unchanged; your edit is kept at %s; way forward: copy it out of that path, re-open \"lyx config %s\" and re-apply the edit from the copy with the named key fixed, since every open of the editor overwrites that path with the hub file's bytes", loadErr, path, staging, module.Name)
-}
-
-// holdsTree reports whether the darn.yaml bytes hold at least one tree_scope entry.
-func holdsTree(hubFile []byte) bool {
-	var document struct {
-		TreeScope map[string]any `yaml:"tree_scope"`
-	}
-	return yaml.Unmarshal(hubFile, &document) == nil && len(document.TreeScope) > 0
 }

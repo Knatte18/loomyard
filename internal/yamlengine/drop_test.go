@@ -1,3 +1,5 @@
+//go:build tier0
+
 // drop_test.go pins DropKeys over the document shapes a retired key can sit in.
 
 package yamlengine

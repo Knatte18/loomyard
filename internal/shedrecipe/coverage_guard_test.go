@@ -1,3 +1,5 @@
+//go:build tier0
+
 // coverage_guard_test.go is the cross-consumer registry coverage guard: it unions every recipe
 // consumer's own RecipeEngines() and asserts every name in shedrecipe.Names() is reached by that
 // union or is explicitly allowlisted. This guard, not any one consumer, is where a new registry

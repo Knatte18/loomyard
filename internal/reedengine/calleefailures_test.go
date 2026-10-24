@@ -1,3 +1,5 @@
+//go:build tier0
+
 // calleefailures_test.go pins that a failure repeating on every tick of the name-repair loop logs once per episode: Warn at the first failure, Debug while it goes on, Info at recovery.
 
 package reedengine

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // housekeeping_integration_test.go covers the hub stores' gc housekeeping end to end: Add and Remove write gc.auto=0 and maintenance.auto=false into both stores, Remove runs a foreground gc, and a gc failure is a warning that never fails the Remove.
 

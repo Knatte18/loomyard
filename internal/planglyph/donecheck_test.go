@@ -1,3 +1,5 @@
+//go:build tier0
+
 // donecheck_test.go covers doneCheckVerdicts, the pure half of DoneChecks: the three done rules applied to a hand-built answer index, plus the coverage guard that refuses an answer set which does not cover a target the caller asked about.
 // It reads no repository at all, only the candidate files an ambiguous row writes under a temp root — DoneChecks' own resolve-backed half is covered by donecheck_resolve_test.go instead.
 

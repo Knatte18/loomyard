@@ -1,4 +1,6 @@
-// stopper_test.go holds the recording StrandStopper double the reclaim tests share, and pins RemoveRecoveryStrands against it (Tier 1: no git, no reed).
+//go:build tier0
+
+// stopper_test.go pins RemoveRecoveryStrands against the recording StrandStopper double (no git, no reed).
 
 package websterengine_test
 
@@ -9,17 +11,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// recordingStopper is a websterengine.StrandStopper that records every guid it is asked to stop, in order, and answers Err.
-type recordingStopper struct {
-	Stopped []string
-	Err     error
-}
-
-func (s *recordingStopper) StopStrand(guid string) error {
-	s.Stopped = append(s.Stopped, guid)
-	return s.Err
-}
 
 // TestRemoveRecoveryStrands pins which recorded strands are stopped, in batch-number order, and that the first stop failure is reported with its guid.
 func TestRemoveRecoveryStrands(t *testing.T) {

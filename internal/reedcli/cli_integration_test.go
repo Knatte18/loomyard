@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // cli_integration_test.go holds the reedcli scenario that builds a real fixture hub (hubforge.NewHub) with reed config resolution against a real fixture hub, so this file is integration-tagged per the Test Tier Purity Invariant.
 

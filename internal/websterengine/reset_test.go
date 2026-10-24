@@ -1,3 +1,5 @@
+//go:build tier0
+
 // reset_test.go pins the PlanReset refusals that need no real git: the held run lock, the missing state, the --batch pairing and each target's resolution refusal.
 // Tier 1: package websterengine_test over the package's fakeGit, a reports directory under t.TempDir() and a fake reed; no git process.
 

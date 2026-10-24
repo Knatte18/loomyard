@@ -1,3 +1,5 @@
+//go:build tier0
+
 // loompreflight_test.go is the Tier-1 suite for newLoomPreflight's outcome mapping, driving it
 // directly over status files under t.TempDir. It is untagged: no spawn, no git -- newLoomPreflight
 // only delegates to loomengine.CheckSeed, which itself only stats a file, MkdirAll's a lock parent,

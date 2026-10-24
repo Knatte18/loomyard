@@ -1,3 +1,5 @@
+//go:build tier0
+
 // parent_test.go covers ResolveParent's decision table over the pure helper, and the one filesystem case a parent worktree that no longer exists.
 
 package hubgeom

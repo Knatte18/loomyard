@@ -1,3 +1,5 @@
+//go:build tier0
+
 // scope_test.go covers ScopeGuard against fake deltas, never a real quarry.Repo, since the
 // function's own contract is pure comparison over an already-computed answer.
 

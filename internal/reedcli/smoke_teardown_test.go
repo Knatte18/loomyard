@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_teardown_test.go pins the teardown guarantees of `reed down` and `reed remove` against a real tmux server: the server is released before down returns, every pane descendant is reaped, and a worktree's down never touches a sibling worktree's session.
 

@@ -6,6 +6,7 @@ package shedrecipe
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -25,33 +26,62 @@ func preflightEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	return preflightshed.NewPreflight(row.Name, env.Cwd), nil
 }
 
-// mergeInEntry is the Constructor for the "MergeIn" registry row: it returns landingshed.NewMergeIn(env.Landing), wrapping that constructor's own error with this package's error-text prefix rather than surfacing it raw.
+// landingRowDeps returns a copy of env.Landing whose GateKey is the key the row's optional "gate_key" string names, else the row name in lower case.
+// The copy keeps Env run-wide: each landing row sets its own key on its own Deps.
+// A non-string "gate_key" is refused naming the entry, the row, the key and the way forward.
+// "gate_key" selects only which key of the hub's gate.yaml the row runs, and the key's tiers and scope stay hub-file only.
+func landingRowDeps(entry string, row RowIdentity, cfg Config, env Env) (landingshed.Deps, error) {
+	gateKey := strings.ToLower(row.Name)
+	if raw, ok := cfg["gate_key"]; ok {
+		named, isString := raw.(string)
+		if !isString {
+			return landingshed.Deps{}, fmt.Errorf("shedrecipe: %s: row %q config key %q must be a string, got %T; way forward: set %q to the name of a gate.yaml key, a string, or remove it to run the key named for the row", entry, row.Name, "gate_key", raw, "gate_key")
+		}
+		if named != "" {
+			gateKey = named
+		}
+	}
+	deps := env.Landing
+	deps.GateKey = gateKey
+	return deps, nil
+}
+
+// mergeInEntry is the Constructor for the "MergeIn" registry row: it returns landingshed.NewMergeIn over a copy of env.Landing whose GateKey is the row's, wrapping that constructor's own error with this package's error-text prefix rather than surfacing it raw.
 //
-// name is deliberately discarded: landingshed.Deps carries no name field, and Merge-In's own identity is a package constant.
+// The optional "gate_key" string names the key of the hub's gate.yaml the row runs after its merge-in, else the row name in lower case.
 //
 // It validates no Env field of its own: landingshed.NewMergeIn already rejects the nil seams and the empty merge record path it requires.
-func mergeInEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg); err != nil {
+func mergeInEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	if err := configRejectUnknown(cfg, "gate_key"); err != nil {
 		return nil, err
 	}
-	m, err := landingshed.NewMergeIn(env.Landing)
+	deps, err := landingRowDeps("MergeIn", row, cfg, env)
+	if err != nil {
+		return nil, err
+	}
+	m, err := landingshed.NewMergeIn(deps)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: MergeIn: %w", err)
 	}
 	return m, nil
 }
 
-// finalizeEntry is the Constructor for the "Finalize" registry row: it returns landingshed.NewFinalize(env.Landing), wrapping that constructor's own error with this package's error-text prefix rather than surfacing it raw.
+// finalizeEntry is the Constructor for the "Finalize" registry row: it returns landingshed.NewFinalize over a copy of env.Landing whose GateKey is the row's, wrapping that constructor's own error with this package's error-text prefix rather than surfacing it raw.
 //
-// name is deliberately discarded: landingshed.Deps carries no name field, and Finalize's own identity is the package constant finalizeName.
+// The optional "gate_key" string names the key of the hub's gate.yaml the row runs after its merge-in, else the row name in lower case.
+// Finalize's own identity is the package constant finalizeName.
 // The coverage-guard test in internal/loomrecipe/coverage_guard_test.go is what pins this row's registry key ("Finalize") to match that constant.
 //
 // It validates no Env field of its own: landingshed.NewFinalize already rejects the nil closures in landingshed.Deps.
-func finalizeEntry(_ RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg); err != nil {
+func finalizeEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	if err := configRejectUnknown(cfg, "gate_key"); err != nil {
 		return nil, err
 	}
-	fz, err := landingshed.NewFinalize(env.Landing)
+	deps, err := landingRowDeps("Finalize", row, cfg, env)
+	if err != nil {
+		return nil, err
+	}
+	fz, err := landingshed.NewFinalize(deps)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: Finalize: %w", err)
 	}

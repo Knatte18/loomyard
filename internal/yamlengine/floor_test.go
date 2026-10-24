@@ -1,3 +1,5 @@
+//go:build tier0
+
 // floor_test.go pins RaiseIntFloor over every value shape a stored key can hold.
 
 package yamlengine

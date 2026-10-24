@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // ownwindow_integration_test.go proves own-window strands against a real tmux.
 // An own-window strand opens in a detached window of its own named by its role without moving the viewer, keeps a dead pane bound across later operations, is found again by Resume after a server restart, is refused a move out of its anchor, and takes its window with it on removal.

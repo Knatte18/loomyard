@@ -1,4 +1,6 @@
-// tackler_test.go — untagged Tier-1 tests for the tackler's record readers and writers, over temp directories.
+//go:build tier0
+
+// tackler_test.go — tier 0 tests for the tackler's record readers and writers, over temp directories.
 
 package sheddriver
 

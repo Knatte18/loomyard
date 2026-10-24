@@ -108,6 +108,9 @@ func checkRowShape(i int, row Row, seen map[string]int) error {
 	if earlier, ok := seen[row.Name]; ok {
 		return fmt.Errorf("shedbuild: producer %d %q: duplicate name, already defined by producer %d", i, row.Name, earlier)
 	}
+	if _, err := parseEntryGate(row); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // websterretiredsteps_test.go pins that no webster way forward names `git reset --keep`, or a `lyx webster reset` followed by `lyx webster run --fresh`.
 // `reset --to start` archives the run record and performs the keep form itself, so a plain `lyx webster run` follows every reset.
 // The scan reads files only, so it stays in the untagged tier, and reuses the token matcher of norecoverydeny_test.go.

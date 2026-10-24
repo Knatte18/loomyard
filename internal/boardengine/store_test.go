@@ -1,3 +1,5 @@
+//go:build tier0
+
 // store_test.go — unit tests for the Store (store.go).
 //
 // CRUD, sequential ID assignment, and every validation rule: dangling deps, isolated/kind/label constraints, cycle detection, and batch/merge atomicity.

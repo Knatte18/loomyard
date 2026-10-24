@@ -1,3 +1,5 @@
+//go:build tier0
+
 // planbaseline_test.go covers the plan baseline store and RestorePlan.
 // Tier 1: no git, only t.TempDir().
 

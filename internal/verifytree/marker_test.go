@@ -1,3 +1,5 @@
+//go:build tier0
+
 // marker_test.go covers ReadMarker without spawning anything.
 
 package verifytree

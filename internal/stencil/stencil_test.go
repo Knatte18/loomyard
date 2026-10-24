@@ -1,3 +1,5 @@
+//go:build tier0
+
 // stencil_test.go is the black-box contract test for stencil.Fill, stencil.FillOptional and stencil.FillWith:
 // one table covers the happy path, the unfilled-top-level-marker guard (including sorting/dedup), the incremental branch-internal guard, conditional sections, the leading-comment strip, the no-HTML-escaping guarantee, and FillOptional's optional-marker exemption from both guards.
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bouncer_reentry_test.go covers the Bouncer's settle record and its re-entry over a settled verdict: the records an approved settle writes, and the cases that re-settle, harvest or clear.
 
 package shedadapters

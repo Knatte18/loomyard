@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // weftguards_integration_test.go pins the weft-guards-drop batch's own regression surface: the four
 // guard arms mergeguards.go and destroy.go dropped from the weft (dirty, detached, not-fabric-managed,

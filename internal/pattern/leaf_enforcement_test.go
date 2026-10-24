@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the Pattern Leaf Invariant: production code in internal/pattern
 // imports ONLY the standard library, internal/stencilstore, and
 // internal/stencil — never a feature package (websterengine, burlerengine, loomengine, or any

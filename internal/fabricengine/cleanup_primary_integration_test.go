@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cleanup_primary_integration_test.go pins the carve-out that keeps `lyx fabric cleanup` from
 // deleting the repo's primary weft branch.

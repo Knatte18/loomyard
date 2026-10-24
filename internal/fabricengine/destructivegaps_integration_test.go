@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // destructivegaps_integration_test.go proves the destructive gate closes the three gaps this
 // slice's discussion names as newly-closed by this refactor (not merely re-covering a

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bouncer_seed_test.go covers Bouncer.Call's seed call, seed-side harvest, and the re-bounce mode,
 // plus the prompt-shape guarantees shared by both templates: marker completeness against the
 // shipped stencils package bytes and the stamp-leak regression.

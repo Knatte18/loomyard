@@ -1,4 +1,4 @@
-//go:build !integration
+//go:build !tier1
 
 // testmain_test.go runs the untagged test binary under tmux isolation through tmuxkit.Main.
 // No untagged test here spawns git, so it needs no hermetic git call.

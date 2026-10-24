@@ -1,3 +1,5 @@
+//go:build tier0
+
 // coverage_guard_test.go pins the registry's reason to exist: every row the recipe's built list actually assembles resolves through internal/shedrecipe's registry via the row-to-engine table of wantProducerTable (shape_test.go),
 // checked in both directions against New's real, current output rather than against a standalone literal that could drift silently.
 // It builds a real shedrecipe.Env/ShedPaths pair and calls this package's own New, rather than iterating the table alone.

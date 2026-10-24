@@ -1,3 +1,5 @@
+//go:build tier0
+
 // teardown_test.go covers NewWorktreeTeardown over fake seams: the strict Shutdown-before-Remove
 // ordering, which half a stuck reason names, the abandoned-session log path, and prime-lock
 // dispositions.

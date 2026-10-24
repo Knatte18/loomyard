@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // commit_gating_integration_test.go — integration coverage for
 // Fabric.Commit's commit-side skip-git gating: under opts.SkipGit, the warp

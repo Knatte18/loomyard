@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // hubrepourl_integration_test.go proves HubRepoURL's source order over a copied hub:
 // the recorded warp binding first, the warp worktree's origin remote second, and an error when neither exists.

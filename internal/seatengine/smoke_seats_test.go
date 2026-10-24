@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_seats_test.go is seatengine's opt-in live smoke: one chair and one advisor run against a real claude in real tmux panes.
 // The chair asks the advisor one question over the session channel and writes the answer into its output.

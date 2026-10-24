@@ -1,3 +1,5 @@
+//go:build tier0
+
 // siblings_test.go — the sibling check of a depends_on write (siblings.go), driven through the Board facade.
 
 package boardengine_test

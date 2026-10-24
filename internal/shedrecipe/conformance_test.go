@@ -1,3 +1,5 @@
+//go:build tier0
+
 // conformance_test.go holds the checks every registry entry must pass, ranged over Names() so a new entry cannot skip them silently.
 
 package shedrecipe

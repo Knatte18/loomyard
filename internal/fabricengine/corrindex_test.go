@@ -1,3 +1,5 @@
+//go:build tier0
+
 // corrindex_test.go — unit tests for the git-free correspondence-index component.
 // Every test here uses an explicit t.TempDir() file path and never spawns git, per the
 // correspondence index layering decision.

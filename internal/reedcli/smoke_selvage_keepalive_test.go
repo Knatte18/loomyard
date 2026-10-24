@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_selvage_keepalive_test.go pins Selvage's keepalive guarantee — the job the header pane's `--blocking` process once served before this task, now served by a permanent, deliberately ordinary shell pane instead of a custom blocking mechanism.
 // There is no analogue of the old blockForever/deadlock-avoidance test here: Selvage runs the operator's configured shell (e.cfg.Shell) directly, so there is no reed-authored blocking loop left to pin against a runtime deadlock detector.

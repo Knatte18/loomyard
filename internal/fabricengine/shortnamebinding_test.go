@@ -1,3 +1,5 @@
+//go:build tier0
+
 // shortnamebinding_test.go covers the .lyx-shortname record's read/write helpers and every row of resolveEffectiveShortname.
 
 package fabricengine

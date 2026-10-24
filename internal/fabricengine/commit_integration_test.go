@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // commit_integration_test.go — integration coverage for Fabric.Commit's
 // classify-and-dispatch two-sided commit: warp-first ordering, correspondence

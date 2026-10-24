@@ -1,3 +1,5 @@
+//go:build tier0
+
 // keybindings_test.go covers the keybindings block's entries and merge, the seeding of the user file and the per-platform path.
 
 package vscode

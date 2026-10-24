@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remove_warpbranch_integration_test.go covers Remove's local warp-branch deletion: a pair's task
 // branch goes when the destructive gate proves its work is pushed or landed on the parent recorded in

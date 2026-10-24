@@ -1,3 +1,5 @@
+//go:build tier0
+
 // acceptbatch_test.go covers AcceptBatchFabricReference: it clears a failed batch's pathless fabric-reference findings only on the HEAD-at-start, clean-tree evidence,
 // records each as a batch audit warning, and refuses every other case without mutating the state.
 // fakeGit only — Test Tier Purity Invariant.

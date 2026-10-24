@@ -1,3 +1,5 @@
+//go:build tier0
+
 // review_test.go tables the review half (Engine.Review, ProbeReview, ResumeReview) against the same-package fakeShuttle.
 // It covers the one-seat table's shape, an accepted review's digest, verdict and findings, the strict-parse and cluster-audit refusals, every non-done outcome, the start and stop failures, and probe and resume.
 

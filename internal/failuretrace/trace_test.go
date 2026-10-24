@@ -1,3 +1,5 @@
+//go:build tier0
+
 // trace_test.go covers Trace over fakes of its three quarry seams, with a fixed plan and Webster state, and NewTracer's missing-plan and missing-state errors over temp-dir fixtures.
 
 package failuretrace

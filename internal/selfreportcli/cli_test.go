@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_test.go contains white-box unit tests for the selfreport CLI.
 //
 // Tests live in package selfreportcli (same package as the production code) so the local stdin seam can be replaced without exporting it.

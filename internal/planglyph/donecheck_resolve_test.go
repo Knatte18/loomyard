@@ -1,3 +1,5 @@
+//go:build tier0
+
 // donecheck_resolve_test.go covers DoneChecks against fixture repositories, since it resolves against the actual on-disk tree rather than a hand-built []quarry.ResolveResult.
 // The fixtures are plain files that quarry reads; nothing here spawns git.
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces that production code in internal/fabricvocab imports the standard library and nothing else.
 // The check is an ALLOWLIST, empty here because no non-stdlib import is ever permitted.
 

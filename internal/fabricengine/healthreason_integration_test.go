@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // healthreason_integration_test.go is card 5's regression guard for HealthReason: one case per
 // HealthCause, asserting Healthy returns the typed cause and its fabric-worded Detail — the

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
 // code in internal/loomrecipe takes every absolute path it operates on from its caller and has no
 // direct production import of internal/lyxcwd.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // ready_test.go covers Ready(l)'s three outcomes: sibling absent, sibling present, and a stat
 // failure other than not-exist.
 

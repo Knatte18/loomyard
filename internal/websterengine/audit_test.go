@@ -1,3 +1,5 @@
+//go:build tier0
+
 // audit_test.go table-drives webster's own fork-audit policy over the full violation taxonomy
 // CheckFork/CheckParent enforce, the fabricengine.RefScanner matcher (built from a fake
 // lyxcwd.Location, never a hardcoded geometry token), and SettleRetry with a recording fake Sleeper.

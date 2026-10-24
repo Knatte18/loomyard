@@ -1,3 +1,5 @@
+//go:build tier0
+
 // template_test.go pins that each shipped judge template names the verdict words and frontmatter keys this package parses,
 // and that each template fills through stencil with its required markers.
 

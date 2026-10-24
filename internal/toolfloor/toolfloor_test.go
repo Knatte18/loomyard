@@ -1,3 +1,5 @@
+//go:build tier0
+
 // toolfloor_test.go covers the version-line parsing and floor comparison of CheckGit and CheckTmux, and the allow-set-title release check.
 
 package toolfloor

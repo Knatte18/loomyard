@@ -7,9 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/gateslot"
 )
 
 const (
@@ -29,13 +34,17 @@ type tierCounts struct {
 }
 
 // counter is the writer a tier command's stdout and stderr go through.
-// It passes the output on as text and counts the tests it reports; the counts decide nothing about the run's outcome.
+// It passes the output on as text and counts the tests it reports; the totals decide nothing about the run's outcome, while the per-package counts let a go-json tier fail a package that ran none of its tests.
 type counter interface {
 	io.Writer
 	// Flush emits a trailing partial line that no newline ended.
 	Flush() error
 	// Counts returns the counts so far.
 	Counts() tierCounts
+	// TestsRun returns, per package the events named, how many tests ran in it, zero for a package that sent events but ran none; nil for a counter that does not read packages.
+	TestsRun() map[string]int
+	// Launches returns, per package whose test binary ran, how long the binary took to launch and how long the package took, in the order the packages started; nil for a counter that does not read packages.
+	Launches() []gateslot.PackageLaunch
 }
 
 // newCounter returns the counter kind names, writing the tier's text output to out.
@@ -106,13 +115,37 @@ func (r *lineReader) passThrough(line []byte, terminated bool) error {
 type goJSONCounter struct {
 	lines  lineReader
 	counts tierCounts
+	// packages holds the launch timing of each package that sent a start event, and order the packages in the order they started.
+	packages map[string]*packageTiming
+	order    []string
+	// testsRun holds, per package any event named, the number of tests that sent a run event.
+	testsRun map[string]int
+}
+
+// packageTiming is what the counter has seen of one package's test binary launching.
+type packageTiming struct {
+	// started is the time of the package's start event, valid when hasStart is set.
+	started  time.Time
+	hasStart bool
+	// gapSeconds is the time from started to the package's next event, valid when hasGap is set.
+	gapSeconds float64
+	hasGap     bool
+	// elapsedSeconds is the elapsed time of the package's closing pass or fail event, valid when closed is set.
+	elapsedSeconds float64
+	closed         bool
+	// noBinary is set when the package's output reports a cached result or no test files, so no test binary ran.
+	noBinary bool
 }
 
 // goTestEvent is the part of a `go test -json` event the counter reads.
 type goTestEvent struct {
-	Action string
-	Test   string
-	Output string
+	Action  string
+	Package string
+	Test    string
+	Output  string
+	// Time is the event's RFC 3339 timestamp, kept as text so a missing or odd one never turns the line into plain output.
+	Time    string
+	Elapsed float64
 }
 
 func (c *goJSONCounter) Write(p []byte) (int, error) { return c.lines.Write(p) }
@@ -125,11 +158,82 @@ func (c *goJSONCounter) Counts() tierCounts {
 	return c.counts
 }
 
+// TestsRun returns a copy of the per-package count of tests that sent a run event; a package whose events carry no test, such as one with only a `TestMain`, counts zero.
+func (c *goJSONCounter) TestsRun() map[string]int {
+	c.lines.mu.Lock()
+	defer c.lines.mu.Unlock()
+	return maps.Clone(c.testsRun)
+}
+
+// Launches returns the packages whose test binary ran, with the gap from the package's start event to its next event and the elapsed time of its closing event.
+// A package that reported a cached result or no test files, or that never closed, is left out.
+func (c *goJSONCounter) Launches() []gateslot.PackageLaunch {
+	c.lines.mu.Lock()
+	defer c.lines.mu.Unlock()
+	var launches []gateslot.PackageLaunch
+	for _, name := range c.order {
+		timing := c.packages[name]
+		if timing.noBinary || !timing.hasGap || !timing.closed {
+			continue
+		}
+		launches = append(launches, gateslot.PackageLaunch{Package: name, LaunchSeconds: timing.gapSeconds, ElapsedSeconds: timing.elapsedSeconds})
+	}
+	return launches
+}
+
+// observePackage folds event into the launch timing of its package.
+func (c *goJSONCounter) observePackage(event goTestEvent) {
+	if event.Package == "" {
+		return
+	}
+	at, timeErr := time.Parse(time.RFC3339Nano, event.Time)
+	if event.Action == "start" && event.Test == "" {
+		if c.packages == nil {
+			c.packages = map[string]*packageTiming{}
+		}
+		if _, seen := c.packages[event.Package]; !seen {
+			c.order = append(c.order, event.Package)
+		}
+		c.packages[event.Package] = &packageTiming{started: at, hasStart: timeErr == nil}
+		return
+	}
+	timing := c.packages[event.Package]
+	if timing == nil {
+		return
+	}
+	if timing.hasStart && !timing.hasGap && timeErr == nil {
+		timing.gapSeconds, timing.hasGap = at.Sub(timing.started).Seconds(), true
+	}
+	if event.Test != "" {
+		return
+	}
+	switch event.Action {
+	case "output":
+		if strings.Contains(event.Output, "(cached)") || strings.Contains(event.Output, "[no test files]") {
+			timing.noBinary = true
+		}
+	case "pass", "fail":
+		timing.elapsedSeconds, timing.closed = event.Elapsed, true
+	}
+}
+
 // handle runs under the line reader's lock.
 func (c *goJSONCounter) handle(line []byte, terminated bool) error {
 	var event goTestEvent
 	if len(line) == 0 || line[0] != '{' || json.Unmarshal(line, &event) != nil || event.Action == "" {
 		return c.lines.passThrough(line, terminated)
+	}
+	c.observePackage(event)
+	if event.Package != "" {
+		if c.testsRun == nil {
+			c.testsRun = map[string]int{}
+		}
+		if _, seen := c.testsRun[event.Package]; !seen {
+			c.testsRun[event.Package] = 0
+		}
+		if event.Test != "" && event.Action == "run" {
+			c.testsRun[event.Package]++
+		}
 	}
 	if event.Test != "" {
 		switch event.Action {
@@ -165,6 +269,12 @@ func (c *vstestCounter) Counts() tierCounts {
 	defer c.lines.mu.Unlock()
 	return c.counts
 }
+
+// TestsRun returns nil: a VSTest run reports no per-package counts.
+func (c *vstestCounter) TestsRun() map[string]int { return nil }
+
+// Launches returns nil: a VSTest run reports no per-package launch timing.
+func (c *vstestCounter) Launches() []gateslot.PackageLaunch { return nil }
 
 // handle runs under the line reader's lock.
 func (c *vstestCounter) handle(line []byte, terminated bool) error {

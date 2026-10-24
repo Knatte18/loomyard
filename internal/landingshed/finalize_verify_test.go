@@ -1,3 +1,5 @@
+//go:build tier0
+
 // finalize_verify_test.go covers the clean-tree checks and the post-merge verify gate as Finalize.mergeAndGate wires them around every merge of the parent, against fake verifytree seams, a scripted resolver and the package's fake merger.
 
 package landingshed
@@ -52,7 +54,7 @@ type finalizeVerifyFixture struct {
 
 func newFinalizeVerifyFixture(t *testing.T, res resolver, results ...mergeCallResult) *finalizeVerifyFixture {
 	t.Helper()
-	fx := &finalizeVerifyFixture{gate: newGateFixture(t, "go test ./...", nil)}
+	fx := &finalizeVerifyFixture{gate: newGateFixture(t, "finalize", "go test ./...", nil)}
 	deps := newTestDeps(t)
 	deps.MarkTaskDone = func() error { fx.markedDone++; return nil }
 	if len(results) == 0 {
@@ -132,8 +134,8 @@ func TestFinalizeVerify_Fail(t *testing.T) {
 		t.Errorf("fixer sessions = %d; want 1", len(fx.seats.tables))
 	}
 	failure, found, err := verifytree.ReadLandingFailure(fx.gate.paths)
-	if err != nil || !found || failure.Kind != verifytree.FailureKindLanding || failure.LogPath != log {
-		t.Errorf("landing failure record = %+v, %v, %v; want kind %s naming %s", failure, found, err, verifytree.FailureKindLanding, log)
+	if err != nil || !found || failure.Kind != "finalize" || failure.LogPath != log {
+		t.Errorf("landing failure record = %+v, %v, %v; want kind finalize naming %s", failure, found, err, log)
 	}
 	if len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
 		t.Errorf("merge calls = %d, push calls = %d; want none after a halted gate", len(fx.merger.calls), len(fx.merger.pushCalls))

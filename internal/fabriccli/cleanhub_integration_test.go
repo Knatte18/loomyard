@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cleanhub_integration_test.go drives the fabric CLI's read-only, refusal and record-keeping verbs against one real hub built by hubforge, as ordered scenarios:
 // the clone-time config commit, pairs, status, prune, the shortname record and the refusals that need a resolved cwd but touch no pair state.

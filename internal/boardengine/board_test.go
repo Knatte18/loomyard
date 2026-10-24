@@ -1,3 +1,5 @@
+//go:build tier0
+
 // board_test.go — unit tests for the Board facade (board.go).
 //
 // Upsert / remove / rerender against a temp board with git skipped.

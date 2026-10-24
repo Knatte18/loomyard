@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // verifygate_integration_test.go drives newVerifyGate's real verifytree functions against a scratch repo and real shell commands,
 // and pins the record-keyed behaviour the unit tests fake: the log holds the command's output on a pass and a fail,
@@ -31,7 +31,7 @@ func newGateScratch(t *testing.T) (deps Deps, counter string) {
 	deps = newTestDeps(t)
 	deps.WorktreeRoot = worktree
 	deps.VerifyDir = t.TempDir()
-	deps.VerifyCommand = func() (string, error) { return "echo run >> " + counter, nil }
+	deps.VerifyCommand = func(string) (string, error) { return "echo run >> " + counter, nil }
 	return deps, counter
 }
 
@@ -57,7 +57,7 @@ func TestVerifyGate_RealVerifytreeScenario(t *testing.T) {
 
 	deps, counter := newGateScratch(t)
 	command := "echo verify-ok; echo run >> " + counter
-	deps.VerifyCommand = func() (string, error) { return command, nil }
+	deps.VerifyCommand = func(string) (string, error) { return command, nil }
 	gate := newVerifyGate(deps)
 	check := func(ctx context.Context) (string, error) { return gate.check(ctx, "Publish", "main") }
 	requireRuns := func(t *testing.T, want int) {

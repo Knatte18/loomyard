@@ -1,4 +1,6 @@
-// hubissues_test.go covers Repo's calls against httptest servers, so no test reaches real token resolution or the network -- untagged Tier 1.
+//go:build tier0
+
+// hubissues_test.go covers Repo's calls against httptest servers, so no test reaches real token resolution or the network.
 
 package hubissues_test
 

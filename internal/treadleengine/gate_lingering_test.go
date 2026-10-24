@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // gate_lingering_test.go holds the one treadleengine test that spawns real
 // cmd/ping child processes and, by design, sits in the production

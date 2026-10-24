@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // strandops_integration_test.go proves ReplaceStrand and AddStrand with an empty Cmd against a real tmux.
 // Replacing the first of three strands leaves the replacement in its slot of the strand table, with the other strands' panes untouched;

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // corpus_test.go replays the corpus of real turn ends under testdata/corpus through ParseEvents, shuttle's wait loop and the session-state fold.
 // Each case directory holds a trimmed transcript, the run's events file and a case.yaml naming the reading each turn end must get and the session state each signal-bearing line reaches.
 

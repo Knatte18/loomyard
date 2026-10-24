@@ -1,3 +1,5 @@
+//go:build tier0
+
 // main_test.go covers run's subcommand dispatch and decideClone's clone/reset decisions.
 // Every test here rewrites the package-level seams (devBinPath, lookPath, cloneRun, removeAll, launchAgent, reedDown), so none calls t.Parallel.
 

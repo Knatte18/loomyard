@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // tolerantrecords_test.go enforces `PATTERN-tolerant-records`: no production file calls encoding/json's DisallowUnknownFields, so no reader of a Go-written JSON record refuses a key a newer binary added.
 // The scan sees the method name at a call site only; yaml.v3's KnownFields is outside it.
 

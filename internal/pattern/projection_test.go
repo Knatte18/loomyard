@@ -1,3 +1,5 @@
+//go:build tier0
+
 // projection_test.go covers ProjectOverview and EntryBullet, one row per replace, append and delete outcome.
 
 package pattern

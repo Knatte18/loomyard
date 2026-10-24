@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production code takes every absolute path from its caller and has no direct production import of internal/lyxcwd.
 // The allowlist is a membership list rather than a bare denylist, modelled on internal/loomshed's own.
 

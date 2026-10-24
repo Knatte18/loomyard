@@ -1,3 +1,5 @@
+//go:build tier0
+
 // discussionpath_test.go tests the AnchorPath-anchored DiscussionDir/
 // DiscussionDecisionRecord/DiscussionSupportLog accessors on a hand-built lyxcwd.Location — pure
 // path arithmetic, no spawning, untagged (Tier 1).

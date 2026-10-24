@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_test.go covers the parts of `lyx gate test` that spawn nothing: the refusals that precede hub resolution and the slot wait its help text names.
 
 package gatecli
@@ -27,6 +29,10 @@ func TestGateTest_RefusesBeforeResolvingTheHub(t *testing.T) {
 		{name: "-C with --card names explicit targets", args: []string{"test", "-C", "sub", "--card", "1"}, wantError: "explicit targets"},
 		{name: "--all with explicit targets is two scope forms", args: []string{"test", "--all", "./pkg"}, wantError: "one scope form"},
 		{name: "--all with --base is two scope forms", args: []string{"test", "--all", "--base", "main"}, wantError: "one scope form"},
+		{name: "--gate with --tier names --tier", args: []string{"test", "--gate", "card", "--tier", "1"}, wantError: "drop --tier"},
+		{name: "--gate with --upto names --upto", args: []string{"test", "--gate", "card", "--upto", "1"}, wantError: "drop --upto"},
+		{name: "--gate with --all names --all", args: []string{"test", "--gate", "card", "--all"}, wantError: "drop --all"},
+		{name: "--gate with --base names --base", args: []string{"test", "--gate", "card", "--base", "main"}, wantError: "drop --base"},
 		{name: "a negative --upto names no tier", args: []string{"test", "--upto", "-1"}, wantError: "--upto -1 names no tier"},
 		{name: "-C directory does not exist", args: []string{"test", "-C", missingDir, "./pkg"}, wantError: "does not exist"},
 	}

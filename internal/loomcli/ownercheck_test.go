@@ -1,3 +1,5 @@
+//go:build tier0
+
 // ownercheck_test.go pins the owner refusal of `lyx loom start` and `lyx loom resume` over a fake owner verdict.
 
 package loomcli

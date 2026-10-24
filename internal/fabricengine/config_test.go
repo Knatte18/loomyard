@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go — unit tests for fabricengine.LoadConfig.
 //
 // Covers: happy-path with template keys present, branch_prefix/pathspec parsing, environment

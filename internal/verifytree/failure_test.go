@@ -1,3 +1,5 @@
+//go:build tier0
+
 // failure_test.go covers the landing failure record codec without spawning anything.
 
 package verifytree

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // time_integration_test.go checks that run reads each finished run's archived shed status from a real git repository's archive tags,
 // and that with no slugs named it counts only full loom runs and says in the header which it counted and skipped.

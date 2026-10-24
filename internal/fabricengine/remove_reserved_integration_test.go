@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remove_reserved_integration_test.go proves Remove refuses the same reserved slugs Add refuses,
 // against a real hub with those directories actually present on disk.

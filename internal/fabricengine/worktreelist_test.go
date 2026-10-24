@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // worktreelist_test.go covers the porcelain worktree-list parser, including
 // the bare-repo rejection and Main-on-first-entry behavior.

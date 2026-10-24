@@ -30,8 +30,8 @@ type funcInfo struct {
 	decl     *ast.FuncDecl
 	imports  map[string]string // file-level import name -> import path
 	isTest   bool              // declared in a _test.go file
-	tmuxTier bool              // the file's //go:build line mentions the tmux tag
-	tagged   bool              // the file's //go:build line mentions the integration, tmux or llm tag
+	tmuxTier bool              // the file's //go:build line mentions the tmux or tier2 tag
+	tagged   bool              // the file's //go:build line mentions a tier tag other than tier0
 }
 
 // pkgSource indexes the declarations of one directory's Go sources.
@@ -106,9 +106,10 @@ func loadPkgSource(dir string, withTests bool) (*pkgSource, error) {
 	return src, nil
 }
 
-// fileTier reads the file's //go:build line and reports whether it mentions a tier tag at all and the tmux tag in particular.
+// fileTier reads the file's //go:build line and reports whether it mentions a tier tag at all and the tmux tier in particular.
+// The tmux tier is the `tmux` tag or `tier2`, and any other tier tag except `tier0` (`integration`, `llm`, `tier1`, `tier3`) makes the file tagged.
 // A constraint such as `tmux && linux` or `tmux && !windows` mentions tmux.
-// A file without a //go:build line mentions nothing.
+// A file without a //go:build line, or one naming only `tier0`, mentions nothing.
 func fileTier(file *ast.File) (tagged, tmuxTier bool) {
 	for _, group := range file.Comments {
 		if group.Pos() >= file.Package {
@@ -124,9 +125,9 @@ func fileTier(file *ast.File) (tagged, tmuxTier bool) {
 			}
 			for _, tag := range mentionedTags(expr) {
 				switch tag {
-				case "tmux":
+				case "tmux", "tier2":
 					tmuxTier, tagged = true, true
-				case "integration", "llm":
+				case "integration", "llm", "tier1", "tier3":
 					tagged = true
 				}
 			}

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -27,12 +29,10 @@ type Config struct {
 	BusyQuitSec int `yaml:"busy_quit_sec"`
 	// Tiers are the declared test tiers keyed tier0, tier1, and so on.
 	Tiers map[string]Tier `yaml:"tiers"`
-	// Gates maps a gate name to the tier numbers that site runs.
-	Gates map[string][]int `yaml:"gates"`
+	// Gates maps a gate key to the tiers and scope that site runs.
+	Gates map[string]GateKey `yaml:"gates"`
 	// Scoper is how a computed, base or card scope maps to targets: go or none.
 	Scoper string `yaml:"scoper"`
-	// GuardTier is the tier whose command runs the guard tests outside a narrowed scope.
-	GuardTier int `yaml:"guard_tier"`
 	// RefuseRaw lists the command prefixes the shell guard refuses.
 	RefuseRaw []string `yaml:"refuse_raw"`
 	// TierParallel holds this machine's parallel for each declared tier it overrides.
@@ -40,14 +40,13 @@ type Config struct {
 }
 
 // configFile is gate.yaml as it is spelled, before defaults and validation.
-// A tier_parallel entry is a node because a scalar --set writes it as a string.
+// A tier_parallel entry is a node because a scalar --set writes it as a string, and a gates entry is a node so decodeGates names the key a bad entry sits under.
 type configFile struct {
 	Slots        int                  `yaml:"slots"`
 	BusyQuitSec  int                  `yaml:"busy_quit_sec"`
 	Tiers        map[string]tierFile  `yaml:"tiers"`
-	Gates        map[string][]int     `yaml:"gates"`
+	Gates        map[string]yaml.Node `yaml:"gates"`
 	Scoper       string               `yaml:"scoper"`
-	GuardTier    int                  `yaml:"guard_tier"`
 	RefuseRaw    []string             `yaml:"refuse_raw"`
 	TierParallel map[string]yaml.Node `yaml:"tier_parallel"`
 }
@@ -69,8 +68,8 @@ func ConfigPerNameMaps() []string {
 
 // ConfigSpec returns gate's layered-load spec.
 // `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
-// `tiers` runs any shell command in a task worktree, so it is executable; the gate lists, the scoper, the guard tier and the refused commands switch off or hollow a guard.
-// `cli_wait_sec` and `go_parallel` are retired, so a hub or machine file that still sets one loads and reconcile prunes it.
+// `tiers` runs any shell command in a task worktree, so it is executable; the gate lists, the scoper and the refused commands switch off or hollow a guard.
+// `cli_wait_sec`, `go_parallel` and `guard_tier` are retired, so a hub or machine file that still sets one loads and reconcile prunes it.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:        "gate",
@@ -85,12 +84,12 @@ func ConfigSpec() configengine.Spec {
 			"tiers":         configengine.CategoryExecutable,
 			"gates":         configengine.CategoryGuard,
 			"scoper":        configengine.CategoryGuard,
-			"guard_tier":    configengine.CategoryGuard,
 			"refuse_raw":    configengine.CategoryGuard,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"cli_wait_sec": configengine.CategoryCrossPair,
 			"go_parallel":  configengine.CategoryMachine,
+			"guard_tier":   configengine.CategoryGuard,
 		},
 	}
 }
@@ -123,6 +122,9 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		}
 		return Config{}, fmt.Errorf("%w; run \"lyx fabric reconcile\"; a session lyx refuses the verb from reports status: FAILED and the orch runs it", ErrConfigAbsent)
 	}
+	if err := refuseRetiredGateLists(files[0]); err != nil {
+		return Config{}, err
+	}
 	local := ""
 	if localFile, applies := configengine.LayerFile(dirs, spec, configengine.LayerLocal); applies {
 		if _, err := configengine.FindBaseDir(dirs.Anchor); err == nil {
@@ -138,6 +140,10 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	_, machineLayerApplies := configengine.LayerFile(dirs, spec, configengine.LayerMachine)
 	cfg, err := decodeConfig(resolved, machineLayerApplies)
 	if err != nil {
+		var guided guidedError
+		if errors.As(err, &guided) {
+			return Config{}, err
+		}
 		return Config{}, withConfigWayForward(err, files, local)
 	}
 	return cfg, nil
@@ -197,6 +203,10 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	gates, err := decodeGates(file.Gates)
+	if err != nil {
+		return Config{}, err
+	}
 	if file.Scoper != "go" && file.Scoper != "none" {
 		return Config{}, fmt.Errorf("gate config key %q: %q; want go or none", "scoper", file.Scoper)
 	}
@@ -211,12 +221,63 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		Slots:        file.Slots,
 		BusyQuitSec:  file.BusyQuitSec,
 		Tiers:        tiers,
-		Gates:        file.Gates,
+		Gates:        gates,
 		Scoper:       file.Scoper,
-		GuardTier:    file.GuardTier,
 		RefuseRaw:    file.RefuseRaw,
 		TierParallel: tierParallel,
 	}, nil
+}
+
+// guidedError marks a decode refusal that already carries its own way forward, so LoadConfig returns it without the generic clause.
+type guidedError struct{ error }
+
+func (e guidedError) Unwrap() error { return e.error }
+
+// refuseRetiredGateLists refuses a hub file whose gates entry is still in the retired list shape, which a deploy leaves until reconcile runs MigrateConfig.
+// The layered load would refuse it first as a shape mismatch against the template, naming no way forward that migrates it.
+func refuseRetiredGateLists(hubFile string) error {
+	data, err := os.ReadFile(hubFile)
+	if err != nil {
+		return nil
+	}
+	var document yaml.Node
+	if yaml.Unmarshal(data, &document) != nil || document.Kind != yaml.DocumentNode || len(document.Content) == 0 || document.Content[0].Kind != yaml.MappingNode {
+		return nil
+	}
+	gates := mappingValue(document.Content[0], "gates")
+	if gates == nil || gates.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(gates.Content); i += 2 {
+		if gates.Content[i+1].Kind == yaml.SequenceNode {
+			return fmt.Errorf("gate config key %q: the retired list shape; fix it with \"lyx fabric reconcile\" (or \"lyx config reconcile --layer default --apply\") from the prime, which migrates it%s", "gates."+gates.Content[i].Value, roleClause)
+		}
+	}
+	return nil
+}
+
+// decodeGates decodes the gates entries into keys and validates each key's scope.
+func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
+	gates := make(map[string]GateKey, len(entries))
+	for _, name := range sortedKeys(entries) {
+		node := entries[name]
+		path := "gates." + name
+		var key GateKey
+		if err := node.Decode(&key); err != nil {
+			return nil, fmt.Errorf("gate config key %q: %w", path, err)
+		}
+		switch key.Scope {
+		case scopeCard:
+			if name != "card" && name != "batch" {
+				return nil, guidedError{fmt.Errorf("gate config key %q: scope card is only for the card and batch keys; fix it with \"lyx config gate\" from the prime%s", path, roleClause)}
+			}
+		case scopeDiff, scopeAll:
+		default:
+			return nil, guidedError{fmt.Errorf("gate config key %q: scope %q; want card, diff or all; fix it with \"lyx config gate\" from the prime%s", path, key.Scope, roleClause)}
+		}
+		gates[name] = key
+	}
+	return gates, nil
 }
 
 // Limits converts the config to the pool limits, busy_quit_sec as a duration.
@@ -229,9 +290,23 @@ func (c Config) Limits() Limits {
 	}
 }
 
-// MigrateConfig prunes the retired gates.publish list from a gate.yaml document and returns one line, "gates.publish: retired, removed", when it did.
-// Every other gate, the round list included, and every comment is carried through yaml node editing.
-// A document without gates.publish is returned unchanged, so a migrated file is unchanged on a second pass.
+// gateTarget is one key a retired gate list migrates to, with the scope its mapping takes.
+type gateTarget struct {
+	key   string
+	scope string
+}
+
+// retiredGateLists maps each retired gate list to the keys it becomes.
+var retiredGateLists = map[string][]gateTarget{
+	"landing": {{"merge-in", scopeAll}, {"finalize", scopeAll}, {"darn-write", scopeDiff}, {"code-burler-fix", scopeDiff}},
+	"final":   {{"webster", scopeAll}},
+	"round":   {{"webster-fix", scopeDiff}},
+}
+
+// MigrateConfig migrates a gate.yaml document's retired gates and keys and returns one line per rewrite.
+// The retired gates.publish list and the retired guard_tier key are pruned, a landing, final or round list becomes the keys retiredGateLists names, and a card or batch list becomes a mapping with scope card.
+// A key the file already holds in the new shape keeps its value, and every comment and other key is carried through yaml node editing.
+// A document with nothing to migrate is returned unchanged, so a migrated file is unchanged on a second pass.
 // A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	var document yaml.Node
@@ -245,15 +320,21 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	if root.Kind != yaml.MappingNode {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: yaml root is not a mapping"))
 	}
-	gates := mappingValue(root, "gates")
-	if gates == nil || gates.Kind != yaml.MappingNode {
+	var lines []string
+	if gates := mappingValue(root, "gates"); gates != nil && gates.Kind == yaml.MappingNode {
+		if at := mappingKeyIndex(gates, "publish"); at >= 0 {
+			gates.Content = append(gates.Content[:at], gates.Content[at+2:]...)
+			lines = append(lines, "gates.publish: retired, removed")
+		}
+		lines = append(lines, migrateGateLists(gates)...)
+	}
+	if at := mappingKeyIndex(root, "guard_tier"); at >= 0 {
+		root.Content = append(root.Content[:at], root.Content[at+2:]...)
+		lines = append(lines, "guard_tier: retired, removed")
+	}
+	if len(lines) == 0 {
 		return existing, nil, nil
 	}
-	at := mappingKeyIndex(gates, "publish")
-	if at < 0 {
-		return existing, nil, nil
-	}
-	gates.Content = append(gates.Content[:at], gates.Content[at+2:]...)
 
 	var out bytes.Buffer
 	encoder := yaml.NewEncoder(&out)
@@ -264,7 +345,80 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	if err := encoder.Close(); err != nil {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate gate config: encode yaml: %w", err))
 	}
-	return out.Bytes(), []string{"gates.publish: retired, removed"}, nil
+	return out.Bytes(), lines, nil
+}
+
+// migrateGateLists rewrites every list-shaped entry of the gates mapping into the keyed shape and returns one line per rewrite.
+// A retired key's list is dropped from its place and its targets, minus those the mapping already holds, take that place.
+func migrateGateLists(gates *yaml.Node) []string {
+	held := make(map[string]bool)
+	for i := 0; i+1 < len(gates.Content); i += 2 {
+		held[gates.Content[i].Value] = true
+	}
+	var lines []string
+	var content []*yaml.Node
+	for i := 0; i+1 < len(gates.Content); i += 2 {
+		name, value := gates.Content[i], gates.Content[i+1]
+		if value.Kind != yaml.SequenceNode {
+			content = append(content, name, value)
+			continue
+		}
+		if name.Value == "card" || name.Value == "batch" {
+			content = append(content, name, gateMapping(value, scopeCard))
+			lines = append(lines, fmt.Sprintf("gates.%s: list shape retired, migrated to tiers and scope %s", name.Value, scopeCard))
+			continue
+		}
+		targets, retired := retiredGateLists[name.Value]
+		if !retired {
+			content = append(content, name, value)
+			continue
+		}
+		var created []string
+		for _, target := range targets {
+			if held[target.key] {
+				continue
+			}
+			held[target.key] = true
+			targetName := *name
+			targetName.Value = target.key
+			if len(created) > 0 {
+				targetName.HeadComment, targetName.LineComment, targetName.FootComment = "", "", ""
+			}
+			content = append(content, &targetName, gateMapping(value, target.scope))
+			created = append(created, target.key)
+		}
+		if len(created) == 0 {
+			lines = append(lines, fmt.Sprintf("gates.%s: retired, removed", name.Value))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("gates.%s: retired, migrated to %s", name.Value, joinWithAnd(created)))
+	}
+	gates.Content = content
+	return lines
+}
+
+// gateMapping returns a flow mapping node holding a copy of the tiers list and the scope.
+func gateMapping(tiers *yaml.Node, scope string) *yaml.Node {
+	list := *tiers
+	list.Content = slices.Clone(tiers.Content)
+	list.Style = yaml.FlowStyle
+	scalar := func(value string) *yaml.Node {
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
+	}
+	return &yaml.Node{
+		Kind:    yaml.MappingNode,
+		Tag:     "!!map",
+		Style:   yaml.FlowStyle,
+		Content: []*yaml.Node{scalar("tiers"), &list, scalar("scope"), scalar(scope)},
+	}
+}
+
+// joinWithAnd joins names with commas and a final "and".
+func joinWithAnd(names []string) string {
+	if len(names) == 1 {
+		return names[0]
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
 // mappingKeyIndex returns the index of key in mapping's Content, or -1 when the mapping holds no such key.

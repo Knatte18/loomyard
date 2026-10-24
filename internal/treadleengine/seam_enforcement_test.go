@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces the Treadle Runner-Seam Invariant:
 // production code in internal/treadleengine imports ONLY the standard library, internal/editdirective, internal/lock, internal/logger, internal/parentdirective, internal/segmentcolor, internal/state, internal/stencil, internal/stencilstore, internal/shuttleengine, and gopkg.in/yaml.v3;
 // it never imports internal/burlerengine, never internal/lyxcwd as a direct import, and never any internal/*cli package.

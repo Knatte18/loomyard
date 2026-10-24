@@ -1,3 +1,5 @@
+//go:build tier0
+
 // revive_test.go pins the revival trigger inside the boot and the Revive predicate against the fake tmux.
 
 package reedengine

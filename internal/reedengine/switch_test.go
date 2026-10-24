@@ -1,3 +1,5 @@
+//go:build tier0
+
 // switch_test.go pins SwitchClient's session ordering and the exact tmux commands it issues, through TmuxCmd's execHook seam.
 
 package reedengine

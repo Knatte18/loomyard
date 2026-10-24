@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // wiring_rework_integration_test.go drives wire()'s real plan seams over a real fabric pair,
 // so the Plan-Review skip seam reads the rework rounds an earlier run left at the records HEAD.

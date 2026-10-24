@@ -1,3 +1,5 @@
+//go:build tier0
+
 // panebin_test.go hermetically covers panebin.go's composition: paneBinPrelude and
 // composePaneLaunchLine, driven directly against injected inputs with no tmux and no process
 // spawned. Every case injects the executable path by overriding executablePath and restoring it via
@@ -20,15 +22,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
-
-// withInjectedExecutablePath overrides executablePath for the duration of t, restoring the previous
-// value on cleanup.
-func withInjectedExecutablePath(t *testing.T, fn func() (string, error)) {
-	t.Helper()
-	prev := executablePath
-	executablePath = fn
-	t.Cleanup(func() { executablePath = prev })
-}
 
 // TestPaneBinPrelude_ComposesPrependThenExport drives paneBinPrelude directly, once per dialect.
 //

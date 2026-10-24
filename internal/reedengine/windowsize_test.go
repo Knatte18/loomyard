@@ -1,3 +1,5 @@
+//go:build tier0
+
 // windowsize_test.go covers windowsize.go's geometry pins and the window-resized unpin.
 // Every case is driven through TmuxCmd's execHook seam (no live server, no external process spawn, no sleep), the shape generation_test.go and strand_test.go already use.
 
@@ -316,14 +318,4 @@ func TestPinGeometryOptionsLocked(t *testing.T) {
 			t.Errorf("set-hook calls = %d, want %d", got, want)
 		}
 	})
-}
-
-// containsArg reports whether want appears verbatim anywhere in args.
-func containsArg(args []string, want string) bool {
-	for _, a := range args {
-		if a == want {
-			return true
-		}
-	}
-	return false
 }

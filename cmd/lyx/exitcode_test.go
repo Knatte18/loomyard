@@ -1,3 +1,5 @@
+//go:build tier0
+
 // exitcode_test.go asserts the exit-code contract for the lyx cobra root via the run() seam.
 // It covers four distinct exit paths: help (exit 0), unknown command (exit 1, cobra text), handler
 // failure (exit 1, JSON envelope), and confirms that help paths never emit a JSON error envelope.

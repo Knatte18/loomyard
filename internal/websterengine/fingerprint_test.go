@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fingerprint_test.go covers fingerprint's identity properties: identical directories fingerprint
 // identically,
 // and a rename, a one-byte content edit, or an added batch file each change the result, while

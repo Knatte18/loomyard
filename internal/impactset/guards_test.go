@@ -1,3 +1,5 @@
+//go:build tier0
+
 // guards_test.go parses fixture test files written under t.TempDir.
 
 package impactset
@@ -29,7 +31,7 @@ func TestFindGuardTests(t *testing.T) {
 	tests := []struct {
 		name     string
 		file     string
-		want     []string
+		want     []GuardTest
 		wantErr  string
 		wantKind GuardScanKind
 		wantLine int
@@ -37,17 +39,27 @@ func TestFindGuardTests(t *testing.T) {
 		{
 			name: "a marked top-level test is found",
 			file: "package p\n\n// TestA scans the tree.\n//\n//lyx:guard\nfunc TestA(t *testing.T) {}\n\nfunc TestUnmarked(t *testing.T) {}\n",
-			want: []string{"TestA"},
+			want: []GuardTest{{Name: "TestA", Tier: 0}},
 		},
 		{
 			name: "a marker stacked with a testtiming keep line is found",
 			file: "package p\n\n//lyx:guard\n//testtiming:keep pins the scan\nfunc TestA(t *testing.T) {}\n",
-			want: []string{"TestA"},
+			want: []GuardTest{{Name: "TestA", Tier: 0}},
 		},
 		{
-			name: "a guard in an integration file is found",
-			file: "//go:build integration\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
-			want: []string{"TestA"},
+			name: "a guard in a tier0 file is found as tier 0",
+			file: "//go:build tier0\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
+			want: []GuardTest{{Name: "TestA", Tier: 0}},
+		},
+		{
+			name: "a guard in a tier1 file is found as tier 1",
+			file: "//go:build tier1\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
+			want: []GuardTest{{Name: "TestA", Tier: 1}},
+		},
+		{
+			name: "a guard in a transitional tier1 or integration file is found as tier 1",
+			file: "//go:build tier1 || integration\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
+			want: []GuardTest{{Name: "TestA", Tier: 1}},
 		},
 		{
 			name:     "a file that does not parse fails naming the file",
@@ -85,17 +97,17 @@ func TestFindGuardTests(t *testing.T) {
 			wantLine: 4,
 		},
 		{
-			name:     "a marker in a tmux file fails with its line",
-			file:     "//go:build tmux\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
+			name:     "a marker in a tier2 file fails with its line",
+			file:     "//go:build tier2\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
 			wantErr:  "p_test.go:5",
-			wantKind: GuardNotIntegration,
+			wantKind: GuardWrongTier,
 			wantLine: 5,
 		},
 		{
-			name:     "a marker in an llm file fails with its line",
-			file:     "//go:build llm && linux\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
+			name:     "a marker in a tier3 file with a platform term fails with its line",
+			file:     "//go:build tier3 && linux\n\npackage p\n\n//lyx:guard\nfunc TestA(t *testing.T) {}\n",
 			wantErr:  "p_test.go:5",
-			wantKind: GuardNotIntegration,
+			wantKind: GuardWrongTier,
 			wantLine: 5,
 		},
 	}

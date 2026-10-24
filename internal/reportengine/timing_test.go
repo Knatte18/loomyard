@@ -1,3 +1,5 @@
+//go:build tier0
+
 // timing_test.go tests ComputeTiming over a fake records repository: which runs it covers, each run's span and phases, machine sleep, the day and week buckets and the phase medians.
 
 package reportengine
@@ -559,6 +561,27 @@ func TestComputeTiming(t *testing.T) {
 				wantPhases(t, runOf(t, got, "oldtail"), map[string]int64{PhaseSetup: 600, PhaseWebster: 600, PhaseMerge: 60, PhasePublishFinalize: 120})
 				if len(got.Findings) != 0 {
 					t.Errorf("findings = %+v; want none, since every row names a phase", got.Findings)
+				}
+			},
+		},
+		{
+			name: "a skipped Describe is no timed row, so its stretch counts with the next row's and not under Describe's webster phase",
+			setup: func(w *world) {
+				skipped := entryAt(loomshed.NameDescribe, secondsAfter(run, 1260))
+				skipped.Outcome = shedengine.OutcomeSkipped
+				skipped.Reason = "review budget is 0"
+				landedRun(w, "skipdesc", "t1", 3, seedStartedAt(run), []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(run, 600)),
+					entryAt(loomshed.NameWebster, secondsAfter(run, 1200)),
+					skipped,
+					entryAt(loomshed.NamePRReview, secondsAfter(run, 1320)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 1380)),
+				})
+			},
+			check: func(t *testing.T, got TimingReport) {
+				wantPhases(t, runOf(t, got, "skipdesc"), map[string]int64{PhaseSetup: 600, PhaseWebster: 600, PhasePublishFinalize: 180})
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none", got.Findings)
 				}
 			},
 		},

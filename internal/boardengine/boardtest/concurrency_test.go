@@ -1,3 +1,5 @@
+//go:build tier0
+
 // concurrency_test.go — concurrency correctness + read-under-write contention.
 //
 // Verifies that many readers run correctly alongside a writer (reads see a consistent wiki, never a

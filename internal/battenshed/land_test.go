@@ -1,3 +1,5 @@
+//go:build tier0
+
 // land_test.go covers NewLand over fake seams, a fake clock and a recording Notify:
 // the landing dispositions, every failing step, the dirty-prime and land-lock waits and the ready notice.
 

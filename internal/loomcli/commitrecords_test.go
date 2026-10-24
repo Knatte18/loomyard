@@ -1,3 +1,5 @@
+//go:build tier0
+
 // commitrecords_test.go drives commitRecordsVerb over stub commitStatusDeps closures, spawning no git.
 
 package loomcli

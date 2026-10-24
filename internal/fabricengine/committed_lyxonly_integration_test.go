@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // committed_lyxonly_integration_test.go pins the value-identity argument from the discussion's
 // commit-result-committed-method decision: a Fabric.Commit call whose file list is

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // run_routing_test.go covers Run's outcome-routing scenarios: the happy path, the completion
 // terminal values, the unconditional re-call guarantee, Stuck routing and the per-producer,
 // episode-scoped bounce budget, and producer errors and unrecognised outcomes. It drives Run end

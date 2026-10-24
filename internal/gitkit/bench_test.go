@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // bench_test.go holds the permanent probes behind the numbers in
 // docs/benchmarks/fixture-copy.md. Run them with:

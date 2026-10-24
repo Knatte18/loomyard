@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
@@ -148,6 +147,7 @@ func (noopFixerSeats) Run(seatengine.Table) (seatengine.Result, error) {
 // LandingDeps returns a `landingshed.Deps` with every field the Merge-In and Finalize constructors require, filled with told values derived from dir.
 func LandingDeps(dir string) landingshed.Deps {
 	return landingshed.Deps{
+		GateKey:          "merge-in",
 		WorktreeRoot:     dir,
 		TaskBranch:       "task-branch",
 		ParentBranch:     "fixture-parent",
@@ -222,8 +222,17 @@ func TemplateSetting(module, key string) (any, error) {
 	return value, nil
 }
 
-// fixedGateLists are the gate lists the kit's seams answer from, so a resolved gate builds without a hub's gate.yaml.
-var fixedGateLists = map[string][]int{"round": {0, 1}, "landing": {0, 1}}
+// fixedGateLists are the tier lists of the eight gate keys the kit's seams answer from, so a resolved gate builds without a hub's gate.yaml.
+var fixedGateLists = map[string][]int{
+	"card":            {0, 1},
+	"batch":           {0, 1},
+	"webster":         {0, 1},
+	"merge-in":        {0, 1},
+	"finalize":        {0, 1},
+	"webster-fix":     {0, 1},
+	"darn-write":      {0, 1},
+	"code-burler-fix": {0, 1},
+}
 
 // fixedGateTiers answers a named gate's tier list from fixedGateLists, and errors naming a gate the kit holds no list for.
 func fixedGateTiers(gate string) ([]int, error) {
@@ -232,17 +241,6 @@ func fixedGateTiers(gate string) ([]int, error) {
 		return nil, fmt.Errorf("envkit: no fixed list for gate %q", gate)
 	}
 	return list, nil
-}
-
-// fixedRoundGate is a loomshed.RoundGate over fixed gate lists, so a resolved verify gate builds without a hub's gate.yaml.
-func fixedRoundGate() loomshed.RoundGate {
-	return loomshed.RoundGate{
-		Tiers: fixedGateLists["round"],
-		Render: func(scope ...string) string {
-			return strings.Join(append([]string{"lyx", "gate", "test", "--wait", "--tier", "0", "--tier", "1"}, scope...), " ")
-		},
-		GateTiers: fixedGateTiers,
-	}
 }
 
 // FullEnv returns a `shedrecipe.Env` with every path field an absolute path under one `t.TempDir()` and every seam any registered engine requires filled.
@@ -256,8 +254,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		ConfigDirs:         configengine.Dirs{Anchor: filepath.Join(dir, "anchor")},
 		WorktreeRoot:       mustMkdir(t, filepath.Join(dir, "worktree")),
 		VerifyDir:          mustMkdir(t, filepath.Join(dir, "verify")),
-		VerifyCommand:      func() (string, error) { return "go test ./...", nil },
-		Round:              func() (loomshed.RoundGate, error) { return fixedRoundGate(), nil },
+		VerifyCommand:      func(string) (string, error) { return "go test ./...", nil },
+		VerifyTreeScope:    func(string) (string, bool, error) { return "", false, nil },
 		VerifyHold:         verifytree.NewPauseHold(pauserecord.Geometry{}, nil),
 		StatusPath:         filepath.Join(dir, "status.json"),
 		StatusLockPath:     filepath.Join(dir, "status.json.lock"),
@@ -277,6 +275,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Seats:              &shedfake.SeatRunner{},
 		Models:             modelspec.Registry{"opus": {Engine: "claude", Model: "claude-opus-test"}},
 		Setting:            TemplateSetting,
+		SettingKnown:       configreg.CheckSettingKey,
+		Resume:             "lyx loom resume",
 		ExecutableSetting:  TemplateSetting,
 		Segments: map[string]shedrecipe.SegmentSettings{
 			"Discussion-Review": fullEnvSegment(3, "loom.yaml"),

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // alignmentwiring_test.go pins the parent-review Aligner's wiring over a fake shuttle and a fake board read: when it is off, that Spawn is idempotent per round, and how a polled verdict maps onto the gate's poll.
 
 package loomcli

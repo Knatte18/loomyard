@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // spawnrole_test.go enforces `PATTERN-agent-name`'s role-constant rule:
 // the module that spawns an agent owns its role name as a constant, so no spawn spec carries an inline role literal.
 // It is a tripwire over production source: it flags a `shuttleengine.Spec` or `reedengine.AddSpec` composite literal whose `Role` field is a string literal.

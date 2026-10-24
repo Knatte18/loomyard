@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 package gitkit
 

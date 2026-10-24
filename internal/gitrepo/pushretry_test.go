@@ -1,3 +1,5 @@
+//go:build tier0
+
 // pushretry_test.go pins the retryable-refusal classifier and the bounded push retry loop, offline against a fake push and a recording sleep.
 
 package gitrepo

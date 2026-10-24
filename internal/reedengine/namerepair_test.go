@@ -1,3 +1,5 @@
+//go:build tier0
+
 // namerepair_test.go pins the name-repair pass on a fake tmux and a fake SessionNamer: which titles are rewritten, when a session name is renamed, and what is logged.
 
 package reedengine

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // mutation_test.go covers the mutation-record vocabulary declared in mutation.go: append ordering,
 // the hub-relative Target conversion, ref recording, copy/isolation semantics, JSON marshalling, and
 // the nil-safety and value-receiver contracts the doc comments promise.

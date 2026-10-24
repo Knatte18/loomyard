@@ -11,17 +11,17 @@ import (
 )
 
 // darnWriteEntry is the Constructor for the "DarnWrite" registry row:
-// it resolves the row's "gates" Config key through resolveGateSpec, validates Env.DarnTable, Env.Seats and every seam of Env.Darn, then builds a seat-table producer behind loomshed.NewDarnWrite.
+// it resolves the row's "gates" Config key through resolveRowGateSpec, so its "verify" gate runs the "gate_key" key and reads as "<row> gate", validates Env.DarnTable, Env.Seats and every seam of Env.Darn, then builds a seat-table producer behind loomshed.NewDarnWrite.
 // Env.Shuttle is never read: the writer runs through Env.Seats.
 //
 // The table arrives as an injected func(loomshed.DarnTold) for the reason planWriteEntry gives, evaluated with the values the producer tells each session it builds.
 // The resolved gate is stamped onto each table it returns, so the row's "gates" key guards the writer.
 func darnWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	gate, err := resolveGateSpec("DarnWrite", cfg, env)
+	gate, err := resolveRowGateSpec("DarnWrite", row.Name, cfg, env)
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "gates"); err != nil {
+	if err := configRejectUnknown(cfg, "gates", "gate_key"); err != nil {
 		return nil, err
 	}
 	if err := requireSeam("DarnWrite", "DarnTable", env.DarnTable); err != nil {

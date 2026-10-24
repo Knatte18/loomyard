@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_staterecovery_test.go drives the R5 review's state-loss/corruption recovery findings at the CLI seam a real operator uses, against a real tmux server, as the one TestSmokeStateRecovery scenario: a reed.json that outlives the session incarnation it was written for (R5-F2), a worktree renamed while its session is up (R5-F5), and a .lyx directory copied between two worktrees of one hub (R5-F4).
 // All three are ordinary operator/environment events — a backup restore, a `mv`, a `cp -r` — not adversarial misuse, which is why they belong in the live suite rather than only in hermetic unit tests.

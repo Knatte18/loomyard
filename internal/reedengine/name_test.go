@@ -1,3 +1,5 @@
+//go:build tier0
+
 // name_test.go verifies newGUID produces unique, well-formed hex identifiers.
 
 package reedengine

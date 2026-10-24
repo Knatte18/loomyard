@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remote_integration_test.go covers RemoteURL against a real git repository, reusing gitrepo_test.go's fixture helpers (newRepo, writeFile, commitAll) and push_test.go's newBareRemote/newRepoWithRemote helpers for a repo carrying a configured origin remote.
 

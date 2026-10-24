@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // peers_integration_test.go drives the real hubPeersDeps closures over a hub forged by hubforge, with pairs added through hubforge.AddPair.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,

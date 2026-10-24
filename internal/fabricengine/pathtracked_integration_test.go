@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pathtracked_integration_test.go pins PathTracked's index-only answer on a real repo.
 // It is integration-tagged because the query spawns real git.

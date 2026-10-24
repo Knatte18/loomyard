@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pushdeferral_integration_test.go covers a detached push child whose first gated push meets a covering pause, over plain code and records repos with local bare origins.
 

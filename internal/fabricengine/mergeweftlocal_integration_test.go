@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mergeweftlocal_integration_test.go pins the warp-only merge against a real hubforge pair: the weft
 // is never a merge participant in either verb or either direction, so a weft counterpart that

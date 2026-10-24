@@ -1,3 +1,5 @@
+//go:build tier0
+
 // historyfold_test.go covers appendOrFold: consecutive budget-exempt Stucks with the same producer, output, and gate attempts fold into one entry,
 // and every other shape appends.
 

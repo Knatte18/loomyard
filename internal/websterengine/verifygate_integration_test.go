@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // verifygate_integration_test.go drives the verify gate's closure over a real scratch repository:
 // the clean-tree check at a done arrival, and the fixer commit check through the real fixCommitRejection.
@@ -30,7 +30,7 @@ type verifyGateRepo struct {
 	sentinel string
 }
 
-// verifyGateConfig returns the gate.yaml a scratch worktree holds: a `final` list over tier0, which runs a shell stand-in that writes sentinel.
+// verifyGateConfig returns the gate.yaml a scratch worktree holds: a `webster` key over tier0, which runs a shell stand-in that writes sentinel.
 func verifyGateConfig(sentinel string) string {
 	return `slots: 1
 scoper: none
@@ -41,12 +41,14 @@ tiers:
     timeout_min: 1
     counter: go-json
 gates:
-  card: [0]
-  batch: [0]
-  round: [0]
-  final: [0]
-  landing: [0]
-  publish: [0]
+  card: {tiers: [0], scope: card}
+  batch: {tiers: [0], scope: card}
+  webster: {tiers: [0], scope: all}
+  merge-in: {tiers: [0], scope: all}
+  finalize: {tiers: [0], scope: all}
+  webster-fix: {tiers: [0], scope: diff}
+  darn-write: {tiers: [0], scope: diff}
+  code-burler-fix: {tiers: [0], scope: diff}
 `
 }
 

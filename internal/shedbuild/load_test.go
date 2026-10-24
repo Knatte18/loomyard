@@ -1,3 +1,5 @@
+//go:build tier0
+
 // load_test.go covers Load's path handling only -- a well-formed round trip, an absent file, a
 // relative path, and a directory path -- deliberately not a second copy of the Parse table.
 

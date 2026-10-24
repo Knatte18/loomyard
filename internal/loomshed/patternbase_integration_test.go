@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // patternbase_integration_test.go covers PatternBaseReader against a real git repository, so it carries the integration tag.
 

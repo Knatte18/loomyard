@@ -1,3 +1,5 @@
+//go:build tier0
+
 // wakes_test.go tests the wake sources, automatic steps, alignment outcomes, stops and failure classes of a run over a fake records repository.
 
 package reportengine

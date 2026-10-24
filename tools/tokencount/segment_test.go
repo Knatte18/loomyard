@@ -1,3 +1,5 @@
+//go:build tier0
+
 // segment_test.go drives the segment grouping over fake reads: a role's segment and label, the most expensive parts, the cost per run and the segment tree's order.
 // Tier-1 (no git, no spawn).
 

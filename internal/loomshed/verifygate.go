@@ -1,4 +1,4 @@
-// verifygate.go implements NewVerifyGate, the must-pass gate that holds a handoff until the headroom lint, the comment lint and the told verify command pass on the committed tree, narrowed to the told gate list over the diff, or in the darn form to the diff's tree-scoped command or the told list from a told merge base.
+// verifygate.go implements NewVerifyGate, the must-pass gate that holds a handoff until the headroom lint, the comment lint and the told verify command pass on the committed tree, the told command being the row's own gate key call, or in the darn form the diff's tree-scoped command when the diff is wholly under the configured trees.
 
 package loomshed
 
@@ -22,42 +22,29 @@ import (
 // verifyLogTailBytes bounds how much of the verify log a failing verdict quotes.
 const verifyLogTailBytes = 4096
 
-// RoundGate is the told gate list as the verify gate reads it at each arrival.
-// The fix rows of loom and darn tell it the hub's `landing` list.
-type RoundGate struct {
-	// Tiers are the tier numbers the told list holds, in order.
-	Tiers []int
-	// Render spells the one `lyx gate test --wait --tier <told list>` call over the given scope words.
-	Render func(scope ...string) string
-	// GateTiers returns the tier numbers a named gate lists, or the config refusal with its way forward.
-	GateTiers func(gate string) ([]int, error)
-}
-
-// NewVerifyGate returns a must-pass shuttleengine.Gate that, at each arrival, reads the told verify command, lints the comments the work added, and runs the gate's command through verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
+// NewVerifyGate returns a must-pass shuttleengine.Gate that, at each arrival, reads the told verify command, lints the comments the work added, and runs the command through verifytree.Verify over worktreeRoot, keeping its record, marker and log in verifyDir.
 // siteLabel names the call site in the running marker, and the closure's own count of its calls is the attempt.
-// command is the told verify-command source, read at each arrival; it is the site's base command, so a pass keeps its record entry and Publish skips on the same tree and command.
-// round is the told gate list source, the `landing` list at the fix rows, read at each arrival after the told command; its error is the gate's returned error, carrying the config refusal's own way forward.
+// command is the told verify-command source, the site's own `lyx gate test --wait --gate <key>` call, read at each arrival; it runs as it is, since the gate derives its own diff base, and a pass keeps its record entry so a later arrival on the same tree skips.
 // hold is the told pause hold of the worktree's scope: a non-nil hold holds the verify under a pause covering the worktree, and nil holds nothing.
 //
 // With treeScope nil the gate takes the round form.
-// The base of the round is the commit of the told command's latest recorded pass, when that commit is an ancestor of HEAD.
-// With a usable base the comment lint runs from it to HEAD before any test, and the command is the round call over `--base` that commit, whose scope narrows, falls back to whole and runs the guard step.
-// With no usable base the lint passes and the command is the told list's own whole-tree call, `--all`, while the told command stays the site's base command and the record entry a pass keeps.
+// The comment lint runs before any test from its own base: the commit of the told command's latest recorded pass when that commit is an ancestor of HEAD, else the merge base mergeBase reads, so a first round lints rather than skips.
+// With neither base, no comment lint runs.
 // An empty told command passes with a logged warning.
 // When mergeBase is non-nil, the headroom lint also runs from the merge base it reads to HEAD, before the comment lint and any test; nil skips it.
 //
 // With treeScope non-nil the gate takes the darn form, and mergeBase must be non-nil.
 // The headroom lint and then the comment lint run from the merge base mergeBase reads to HEAD, so every attempt diffs from the merge base.
 // Then treeScope is read: a tree-scoped diff runs the tree-scoped command it answers, and passes with a logged note, running nothing, when that command is empty;
-// any other diff runs the round call over `--base` the merge base.
+// any other diff runs the told command.
 // The form has no skip path: an empty told command is an error naming the source, never a pass, and so is a nil mergeBase.
 //
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
-// `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward; a test file the round call's guard scan rejects, such as a misplaced `//lyx:guard` marker, reaches the findings through that tail with its file and line.
+// `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward; a test file the command's guard scan rejects, such as a misplaced `//lyx:guard` marker, reaches the findings through that tail with its file and line.
 // A headroom finding or a comment lint finding fails with its file and line or its bytes and the way forward.
-// A command, round, merge base or tree scope read error, a failure to read git, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
-func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), round func() (RoundGate, error), hold *verifytree.PauseHold) shuttleengine.Gate {
+// A command, merge base or tree scope read error, a failure to read git, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
+func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), hold *verifytree.PauseHold) shuttleengine.Gate {
 	attempt := 0
 	darnForm := treeScope != nil
 	paths := verifytree.NewPaths(worktreeRoot, verifyDir)
@@ -77,33 +64,21 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 		if darnForm && mergeBase == nil {
 			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: the darn form was told no merge base reader")
 		}
-		roundGate, err := round()
-		if err != nil {
-			return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: read the round gate: %w", err)
-		}
 
 		var lintBase, headroomBase string
 		runCommand := told
-		if darnForm {
-			lintBase, err = mergeBase()
+		if mergeBase != nil {
+			headroomBase, err = mergeBase()
 			if err != nil {
 				return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: read the merge base: %w", err)
 			}
-			headroomBase = lintBase
+		}
+		if darnForm {
+			lintBase = headroomBase
+		} else if pass, ok := verifytree.LatestPass(paths, told); ok && isAncestorOfHead(worktreeRoot, pass.Commit) {
+			lintBase = pass.Commit
 		} else {
-			if pass, ok := verifytree.LatestPass(paths, told); ok && isAncestorOfHead(worktreeRoot, pass.Commit) {
-				lintBase = pass.Commit
-				runCommand = roundGate.Render("--base", lintBase)
-			} else {
-				runCommand = roundGate.Render("--all")
-				logger.Info("loomshed: verify gate runs the told list over the whole tree", "gate", siteLabel, "attempt", attempt, "reason", "no recorded pass of the told command to diff from")
-			}
-			if mergeBase != nil {
-				headroomBase, err = mergeBase()
-				if err != nil {
-					return shuttleengine.GateResult{}, fmt.Errorf("loomshed: verify gate: read the merge base: %w", err)
-				}
-			}
+			lintBase = headroomBase
 		}
 		if mergeBase != nil {
 			finding, found, err := patternlint.Lint(worktreeRoot, headroomBase)
@@ -136,8 +111,6 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 				return shuttleengine.GateResult{Passed: true}, nil
 			case isScoped:
 				runCommand = scoped
-			default:
-				runCommand = roundGate.Render("--base", lintBase)
 			}
 		}
 

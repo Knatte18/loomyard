@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // taskbranchdiscard_integration_test.go covers Topology.DiscardTaskBranch and the deletion half it runs under archive tags, over hubforge hubs.
 // Every hub has an empty branch_prefix, so a pair's task branch is the bare slug, and h.CodeBare is the warp origin.

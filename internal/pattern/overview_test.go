@@ -1,3 +1,5 @@
+//go:build tier0
+
 // overview_test.go runs the format checker against loomyard's own PATTERN.
 
 package pattern

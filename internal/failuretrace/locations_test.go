@@ -1,3 +1,5 @@
+//go:build tier0
+
 // locations_test.go covers Locations, the extraction and placement of the `path:line` locations a verify log names.
 
 package failuretrace

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // launchers_containment_integration_test.go drives the real `add` verb end-to-end against a symlink
 // planted at the per-slug launcher directory (<hub>/_launchers/<anchor>/<slug>) and at the _launchers

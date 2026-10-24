@@ -1,4 +1,6 @@
-// drive_test.go — untagged Tier-1 tests for the shed driver's settle loop, over fake seams and a temp worktree.
+//go:build tier0
+
+// drive_test.go — tier 0 tests for the shed driver's settle loop, over fake seams and a temp worktree.
 
 package sheddriver
 

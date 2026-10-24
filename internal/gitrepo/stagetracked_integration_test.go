@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // stagetracked_integration_test.go covers StageTrackedChanges and UntrackedFiles against real git repositories, reusing gitrepo_test.go's fixture helpers.
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the Summaryparser Sole-Parser Invariant's stdlib-only half:
 // production code in internal/summaryparser imports the standard library and nothing else -- never
 // internal/lyxcwd, never any feature package.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_refusals_test.go covers the fabric CLI's refusals and help output that arise before any hub or git work:
 // the --warp-path/--weft-path push-only gate, clone's positional arity and merge's usage surface.
 // Every case runs against a bare temporary directory, spawning nothing.

@@ -1,4 +1,4 @@
-// entries_command.go implements the Command registry entry: it reads a row's switch, command and timeout_s keys and builds a shedadapters.CommandProducer over Env.Command.
+// entries_command.go implements the Command registry entry: it reads a row's command and timeout_s keys and builds a shedadapters.CommandProducer over Env.Command.
 
 package shedrecipe
 
@@ -16,22 +16,18 @@ const (
 	// commandDefaultTimeout is the time a Command row's command may run when the row sets no timeout_s.
 	commandDefaultTimeout = 30 * time.Second
 
-	commandRefWayForward     = "way forward: set switch and command to module.key setting references in the row's config"
+	commandRefWayForward     = "way forward: set command to a module.key setting reference in the row's config"
 	commandTimeoutWayForward = "way forward: set timeout_s to a positive integer of seconds or remove it"
-	commandKeyWayForward     = "way forward: remove the key; a Command row takes switch, command and timeout_s"
+	commandKeyWayForward     = "way forward: remove the key; a Command row takes command and timeout_s, and a switch moves to the row's entry_gate"
 )
 
 // commandEntry is the Constructor for the "Command" registry row.
-// The row's switch and command are required module.key setting references and timeout_s is an optional positive number of seconds.
+// The row's command is a required module.key setting reference and timeout_s is an optional positive number of seconds.
 // Env.Command is handed to the producer with its two setting lookups taken from Env.Setting and Env.ExecutableSetting;
 // a nil Env.ExecutableSetting builds, and the producer refuses when the row is reached.
 func commandEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	if err := configRejectUnknown(cfg, "switch", "command", "timeout_s"); err != nil {
+	if err := configRejectUnknown(cfg, "command", "timeout_s"); err != nil {
 		return nil, fmt.Errorf("%w; row %q: %s", err, row.Name, commandKeyWayForward)
-	}
-	switchRef, err := commandSettingRef(row, cfg, "switch", env)
-	if err != nil {
-		return nil, err
 	}
 	commandRef, err := commandSettingRef(row, cfg, "command", env)
 	if err != nil {
@@ -46,8 +42,6 @@ func commandEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	deps.Setting = env.Setting
 	deps.ExecutableSetting = env.ExecutableSetting
 	return shedadapters.NewCommandProducer(row.Name, shedadapters.CommandRow{
-		SwitchModule:  switchRef.Module,
-		SwitchKey:     switchRef.Key,
 		CommandModule: commandRef.Module,
 		CommandKey:    commandRef.Key,
 		Timeout:       timeout,

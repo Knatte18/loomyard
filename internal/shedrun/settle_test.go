@@ -1,3 +1,5 @@
+//go:build tier0
+
 // settle_test.go pins the tolerant decoding of the Go driver's settle-records file.
 
 package shedrun

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // reset_test.go covers the reset verb through its cobra.Command over one hubforge hub, each step on its own task pair.
 // Each success path checks the branch, the files and the mutation record; each refusal checks its way forward and that nothing moved.

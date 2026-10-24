@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // destroy_containment_toctou_integration_test.go drives the real `remove` verb end-to-end against a
 // symlink planted at an intermediate segment of a gate target (the per-slug launcher directory,

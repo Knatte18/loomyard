@@ -1,3 +1,5 @@
+//go:build tier0
+
 // status_test.go covers the generic status body's both told absent-file dispositions,
 // StatusExtras merging and its un-re-prefixed error, the told decode prefix, the told lock-dir
 // boolean's effect over an as-yet-uncreated parent directory, and the --watch tail's rendering,

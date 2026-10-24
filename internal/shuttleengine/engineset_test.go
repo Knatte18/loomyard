@@ -1,3 +1,5 @@
+//go:build tier0
+
 // engineset_test.go verifies EngineSet's name lookup, its default, its sorted names and its isolation from the map it was built over.
 
 package shuttleengine

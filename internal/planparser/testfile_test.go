@@ -1,3 +1,5 @@
+//go:build tier0
+
 // testfile_test.go table-tests the per-language test-file matchers, their union and the plan's effective language.
 
 package planparser

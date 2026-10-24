@@ -1,3 +1,5 @@
+//go:build tier0
+
 // description_test.go exercises ValidateDescription's finding table and LandingMessage.
 
 package summaryparser_test

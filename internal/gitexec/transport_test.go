@@ -1,3 +1,5 @@
+//go:build tier0
+
 // transport_test.go covers IsTransportFailure on hand-built *GitError values; it spawns no git.
 
 package gitexec_test

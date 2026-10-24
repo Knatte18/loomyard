@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // gitexclude_integration_test.go pins the serialisation and atomicity of `.git/info/exclude`
 // mutation.

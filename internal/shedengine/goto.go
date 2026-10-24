@@ -61,6 +61,7 @@ type GotoRequest struct {
 // Goto moves a halted run onto the Target row and leaves it paused.
 // It writes paused, never running: the next step resumes through the ordinary resume write, whereas running with the lock free would read as a crashed driver.
 // The appended history entry carries the OutcomeGoto outcome, which leaves every row's spent bounce budget as it was.
+// It names the target as the entered row, so the next step runs the target without evaluating its entry gate.
 // The told GotoRequest.Guard runs after CheckGotoTarget and before the write, under the run lock, so every refusal leaves the status file unchanged.
 // It calls no CommitStatus and sets no transient mark;
 // the next step's persist commits the file, as pause's write is.
@@ -118,6 +119,8 @@ func Goto(req GotoRequest) (Status, error) {
 			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-goto; Shed refuses to create one", req.StatusPath)
 		}
 		cur.CurrentProducer = req.Target
+		// Naming the target as entered runs it without evaluating its entry gate.
+		cur.EnteredRow = req.Target
 		cur.State = StatePaused
 		cur.Error = ""
 		cur.Transient = ""
@@ -186,7 +189,7 @@ type RelaunchRequest struct {
 
 // Relaunch is the status-file mutation behind a driver's re-launch of a halted run.
 // Under the run lock and one hold of the status lock, it refuses a missing file, an invalid state, a done run and a running run, checks a non-empty Target with CheckGotoTarget and then the told Guard, then calls Admit.
-// Only after Admit passes does it write: with a Target, it moves the run as Goto does, except that pause_requested, pause_before and pause_after stay as they stand; without one, the status is written unchanged.
+// Only after Admit passes does it write: with a Target, it moves the run as Goto does, except that pause_requested, pause_before and pause_after stay as they stand and the entered row is cleared, so the target's entry gate is evaluated; without one, the status is written unchanged.
 // The checks run before Admit so a refused target never lets Admit write its side effect.
 // When Admit reports the target already in effect, no goto is performed and the status is written unchanged, so the history gains no entry.
 // A held run lock returns ErrShedBusy and Admit is never called.
@@ -236,6 +239,8 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 		}
 		if req.Target != "" && !inEffect {
 			cur.CurrentProducer = req.Target
+			// Clearing the entered row makes the next step evaluate the target's entry gate.
+			cur.EnteredRow = ""
 			cur.State = StatePaused
 			cur.Error = ""
 			cur.Transient = ""
@@ -308,7 +313,7 @@ func gotoAdmitted(producers []ProducerDef, st Status) (reference string, admitte
 				}
 				refIdx = i
 				switch entry.Outcome {
-				case Done:
+				case Done, OutcomeSkipped:
 					routed = def.OnDone
 				case Stuck:
 					routed = def.OnStuck

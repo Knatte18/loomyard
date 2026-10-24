@@ -1,3 +1,5 @@
+//go:build tier0
+
 // glyphref_test.go covers ParseRef's alphabet choice and planLanguage's mapping
 // from Plan.Language to the glyph package's own Language type.
 

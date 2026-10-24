@@ -1,3 +1,5 @@
+//go:build tier0
+
 // pane_test.go pins the pane loop's redraw, uncut drawing, binary check, back-off and resize behavior against fake size and wait seams.
 
 package statuspane

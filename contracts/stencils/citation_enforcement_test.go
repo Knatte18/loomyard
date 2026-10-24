@@ -1,3 +1,5 @@
+//go:build tier0
+
 // citation_enforcement_test.go is the permanent guard behind the class of bug this task closes: a stencil body naming a loomyard-internal path an agent working in some other repository cannot open.
 // It scans each stencil's agent-facing body -- the bytes StripLeadingComment produces, the same stripping Fill and FillOptional apply before a template is ever executed, so a banner-only reference (this package's own doc comments about where a file lives on the loomyard side) is never flagged: an agent never sees the banner, so it is not a citation an agent could act on.
 //

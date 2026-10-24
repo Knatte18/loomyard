@@ -1,3 +1,5 @@
+//go:build tier0
+
 // failedpush_test.go covers the failed-push record store, its once-per-episode notice and its way-forward lines.
 // It is an external test package, and the notifier is process-global, so every test here that installs one runs without t.Parallel.
 
@@ -15,27 +17,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
-
-// fakePushNotifier counts the calls carrying its own hub path, so a parallel test recording a failure in another hub never reaches its counts.
-type fakePushNotifier struct {
-	hub    string
-	posted bool
-	err    error
-	lines  []string
-}
-
-func (n *fakePushNotifier) notify(hubPath, line string) (bool, error) {
-	if hubPath != n.hub {
-		return true, nil
-	}
-	n.lines = append(n.lines, line)
-	return n.posted, n.err
-}
-
-func installFakePushNotifier(t *testing.T, n *fakePushNotifier) {
-	t.Helper()
-	t.Cleanup(fabricengine.InstallPushNotifier(n.notify))
-}
 
 func composedPushLine(f fabricengine.FailedPush) string {
 	return fmt.Sprintf("a push of %s branch %s failed (%s): %s; way forward: %s", f.Repo, f.Branch, f.Class, f.Error, fabricengine.FailedPushWayForward(f))

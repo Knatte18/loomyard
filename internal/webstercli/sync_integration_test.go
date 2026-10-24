@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // sync_integration_test.go covers fabricSync's composed behavior against real
 // git repositories. Two

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // spawn_scenario_integration_test.go drives Spawn as scenarios over one hubforge hub per anchor, so a hub is built once per anchor instead of once per check.
 // Serial by design: every step swaps the package-level CodeLauncher, and the driven steps swap the logger output.

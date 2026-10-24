@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // parity_pattern_integration_test.go pins the Gate Self-Check Parity Invariant for the plan gate's pattern-headroom check, which reads the overview at a merge base through a real git repository.
 

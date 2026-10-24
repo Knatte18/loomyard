@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership and its Shuttle Provider-Seam Invariant: production code in internal/orchengine takes every absolute path it operates on from its caller, resolves no geometry, and never reaches provider specifics.
 //
 // The allowlist is a membership list rather than a bare denylist, mirroring internal/battenshed:

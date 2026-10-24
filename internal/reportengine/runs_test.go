@@ -1,3 +1,5 @@
+//go:build tier0
+
 // runs_test.go tests run selection and the batten span over a fake records repository.
 
 package reportengine

@@ -12,6 +12,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
+// CheckSettingKey refuses an unregistered module and a key the module's embedded template lacks, each with the way forward in its message.
+// It reads no config file, so it answers without a worktree.
+func CheckSettingKey(module, key string) error {
+	m, ok := Lookup(module)
+	if !ok {
+		return fmt.Errorf("configreg: setting module %q is not a registered config module; way forward: name one of %s", module, strings.Join(Names(), ", "))
+	}
+	var template map[string]any
+	if err := yaml.Unmarshal([]byte(m.Template()), &template); err != nil {
+		return fmt.Errorf("configreg: decode %s template: %w", module, err)
+	}
+	if _, ok := template[key]; !ok {
+		return fmt.Errorf("configreg: setting key %q is not a key of module %q; way forward: name a key of %s.yaml's template", key, module, module)
+	}
+	return nil
+}
+
 // SettingLookup returns a read-only lookup of one top-level key of one registered config module, resolved over the layer stack under dirs.
 // A call refuses an unregistered module and a key the module's embedded template lacks, each with the way forward in its message.
 // The first call for a module loads its stack strictly and keeps the decoded snapshot, so every later key of that module answers from it;
@@ -22,17 +39,10 @@ func SettingLookup(dirs configengine.Dirs) func(module, key string) (any, error)
 	var mu sync.Mutex
 	snapshots := map[string]map[string]any{}
 	return func(module, key string) (any, error) {
-		m, ok := Lookup(module)
-		if !ok {
-			return nil, fmt.Errorf("configreg: setting module %q is not a registered config module; way forward: name one of %s", module, strings.Join(Names(), ", "))
+		if err := CheckSettingKey(module, key); err != nil {
+			return nil, err
 		}
-		var template map[string]any
-		if err := yaml.Unmarshal([]byte(m.Template()), &template); err != nil {
-			return nil, fmt.Errorf("configreg: decode %s template: %w", module, err)
-		}
-		if _, ok := template[key]; !ok {
-			return nil, fmt.Errorf("configreg: setting key %q is not a key of module %q; way forward: name a key of %s.yaml's template", key, module, module)
-		}
+		m, _ := Lookup(module)
 
 		mu.Lock()
 		defer mu.Unlock()

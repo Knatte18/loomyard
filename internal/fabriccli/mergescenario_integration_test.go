@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mergescenario_integration_test.go drives the "lyx fabric merge", "merge-in", "merge-stage" and "status" verbs end-to-end against one real hubforge pair, through fabriccli.RunCLIIn, as an ordered scenario.
 // It is the CLI-boundary counterpart to internal/fabricengine's own merge integration tests, which cover the same matrix at the Go-API layer:

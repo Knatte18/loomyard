@@ -1,12 +1,12 @@
+//go:build tier0
+
 // deleteorder_test.go covers LaterDeleteReferences against a fixture repository: which delete/edit pairs it refuses and which reference shapes it matches.
 
 package planglyph
 
 import (
-	"fmt"
 	"maps"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -250,30 +250,3 @@ func TestLaterDeleteReferences(t *testing.T) {
 	}
 }
 
-// blockingDeleteOrderSite and informationalDeleteOrderSite pick the location out of a delete-before-reference detail.
-var (
-	blockingDeleteOrderSite      = regexp.MustCompile(`still references it at (\S+:\d+) in its Edit code`)
-	informationalDeleteOrderSite = regexp.MustCompile(`follows a dot in (.+), in the Edit code of card`)
-)
-
-// deleteOrderSites returns, sorted, "<severity> <location>" for each delete-before-reference finding of findings, the location read from its detail: "<file>:<line>" when blocking and "<file> at line <n>" when informational.
-// A finding whose detail holds no location yields its whole detail, so a changed wording fails the comparison instead of passing unseen.
-func deleteOrderSites(findings []Finding) []string {
-	var sites []string
-	for _, f := range findings {
-		if f.Check != "delete-before-reference" {
-			continue
-		}
-		pattern := blockingDeleteOrderSite
-		if f.Severity == SeverityInformational {
-			pattern = informationalDeleteOrderSite
-		}
-		location := f.Detail
-		if match := pattern.FindStringSubmatch(f.Detail); match != nil {
-			location = match[1]
-		}
-		sites = append(sites, fmt.Sprintf("%s %s", f.Severity, location))
-	}
-	slices.Sort(sites)
-	return sites
-}

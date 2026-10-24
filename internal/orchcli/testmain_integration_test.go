@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // testmain_integration_test.go wires this package's integration test binary into the hermetic git test environment: gitkit.HermeticGitEnv() runs once before any test, since prime_integration_test.go spawns git via hubforge fixtures (Test Tier Purity Invariant / Hermetic Git Test Environment Invariant), in the shape internal/landingshed's own equivalent already uses.
 

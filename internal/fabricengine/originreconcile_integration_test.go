@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // originreconcile_integration_test.go proves the origin reconcile's judgment on hubforge hubs.
 // The other machine is a second clone of the hub's code or records bare repository.

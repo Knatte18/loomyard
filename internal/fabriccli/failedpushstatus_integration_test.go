@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // failedpushstatus_integration_test.go covers `lyx fabric status` printing the hub's outstanding failed-push records over a hubforge hub.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.

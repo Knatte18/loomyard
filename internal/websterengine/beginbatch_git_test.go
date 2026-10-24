@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // beginbatch_git_test.go pins BeginBatch's wiring to the real repository: with no Git told, the batch's start commit is the worktree's actual HEAD.
 // Every other BeginBatch behavior is tested over a fakeGit in beginbatch_test.go.

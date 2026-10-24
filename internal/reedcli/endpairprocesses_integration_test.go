@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // endpairprocesses_integration_test.go pins endPairProcesses over a hub fixture: a pair reads the pause and ends what is registered with no network call, and the prime ends nothing and reads no pair.
 

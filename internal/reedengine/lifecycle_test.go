@@ -1,3 +1,5 @@
+//go:build tier0
+
 // lifecycle_test.go drives the lifecycle ops' planning seams — the parts that decide what would run
 // without needing a live tmux server: planUpLaunches (Up never launches anything) and
 // planResumeLaunches across the three states the discussion calls out (server dead, server-up/

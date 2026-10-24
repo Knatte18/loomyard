@@ -1,3 +1,5 @@
+//go:build tier0
+
 // syncdeferral_test.go covers the board sync's deferrable flag under the process's network gate, against a board path that does not exist.
 
 package boardcli

@@ -1,3 +1,5 @@
+//go:build tier0
+
 package state_test
 
 import (

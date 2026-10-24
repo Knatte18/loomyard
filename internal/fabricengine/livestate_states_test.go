@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // states.go defines the ten named hostile states every cell in the cross-product matrix batches 6-7
 // build can be run against: a dirtiness state modifies or creates content in one of the checkouts a

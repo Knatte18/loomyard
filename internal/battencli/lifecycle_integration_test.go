@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // lifecycle_integration_test.go is the end-to-end suite over a real hub built by
 // internal/hubforge through its fabric fixture entry point, per the hubforge Fabric-Fixture
@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -540,15 +541,22 @@ func fourRowRunForRecipe(t *testing.T, h *hubforge.Hub, recipe string) {
 		t.Errorf("committed seed at HEAD:%s = %q; want it to match the working-tree seed %q", seedRel, committedData, seedData)
 	}
 
-	for _, row := range []string{battenrecipe.NameOpenWindow, battenrecipe.NameSeedIDE, battenrecipe.NameOpenIDE} {
+	for _, row := range []string{battenrecipe.NameOpenWindow, battenrecipe.NameSeedIDE} {
 		step, err := shed.Step(ctx)
 		if err != nil || step.Producer != row || step.Outcome != shedengine.Done {
 			t.Fatalf("Step (%s) = producer %q outcome %q, %v; want %q Done", row, step.Producer, step.Outcome, err, row)
 		}
 	}
 
-	if _, err := shed.Step(ctx); err != nil {
-		t.Fatalf("Step (Run-Shed): %v", err)
+	// open_ide is off by default, so its entry gate skips Open-IDE and the same step runs Run-Shed.
+	step, err := shed.Step(ctx)
+	if err != nil || step.Producer != battenrecipe.NameRunShed {
+		t.Fatalf("Step (Open-IDE gated off) = producer %q, %v; want %q", step.Producer, err, battenrecipe.NameRunShed)
+	}
+	if skipped := slices.IndexFunc(step.History, func(entry shedengine.HistoryEntry) bool {
+		return entry.Producer == battenrecipe.NameOpenIDE && entry.Outcome == shedengine.OutcomeSkipped
+	}); skipped < 0 {
+		t.Errorf("history after the gated-off Open-IDE = %+v; want a skipped %s entry", step.History, battenrecipe.NameOpenIDE)
 	}
 	if !pathExists(pairPath) {
 		t.Fatalf("pair does not exist after Run-Shed: %s", pairPath)
@@ -1250,7 +1258,35 @@ func stepCommandRows_IgnoreACommandSetInTheTasksTrackedLayer(t *testing.T, h *hu
 	}
 }
 
-// stepCommandRows_FollowTheTasksLocalSwitch asserts Open-IDE runs its command with open_ide on in the task worktree's local layer and not with it off, and that --open-terminal forces Open-Window on over open_window off.
+// stepGatedOffCommandRow seeds a running status at row with pause_before naming next, the row's on_done row, and steps once.
+// It fatals unless the history ends in a skipped entry for row and the run is paused at next, so no later row runs.
+func stepGatedOffCommandRow(t *testing.T, c *battenCLI, row, next string) {
+	t.Helper()
+	seedEntryStatus(t, c, row, shedengine.StateRunning, nil)
+	err := state.UpdateJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+		cur.PauseBefore = next
+		return cur, nil
+	})
+	if err != nil {
+		t.Fatalf("record pause_before %s: %v", next, err)
+	}
+	shed, err := battenrecipe.New(c.env, c.shedPaths)
+	if err != nil {
+		t.Fatalf("battenrecipe.New: %v", err)
+	}
+	step, err := shed.Step(context.Background())
+	if err != nil {
+		t.Fatalf("Step (%s gated off) = %v; want nil", row, err)
+	}
+	if n := len(step.History); n == 0 || step.History[n-1].Producer != row || step.History[n-1].Outcome != shedengine.OutcomeSkipped {
+		t.Errorf("Step (%s gated off) history = %+v; want it to end in a skipped %s entry", row, step.History, row)
+	}
+	if step.State != shedengine.StatePaused || step.Next != next || step.Producer != "" {
+		t.Errorf("Step (%s gated off) = producer %q, state %q, next %q; want no producer called and the run paused at %q", row, step.Producer, step.State, step.Next, next)
+	}
+}
+
+// stepCommandRows_FollowTheTasksLocalSwitch asserts Open-IDE runs its command with open_ide on in the task worktree's local layer and is skipped by its entry gate with it off, and that --open-terminal makes the Open-Window row's gate hold over open_window off.
 func stepCommandRows_FollowTheTasksLocalSwitch(t *testing.T, h *hubforge.Hub) {
 	const slug = "batten-command-switch"
 	c, markers, pair := newCommandRowFixture(t, h, slug)
@@ -1265,16 +1301,22 @@ func stepCommandRows_FollowTheTasksLocalSwitch(t *testing.T, h *hubforge.Hub) {
 	}
 
 	writeLocalBatten(t, pair, "open_ide: false\nopen_window: false\n")
-	stepCommandRow(t, c, battenrecipe.NameOpenIDE)
+	stepGatedOffCommandRow(t, c, battenrecipe.NameOpenIDE, battenrecipe.NameRunShed)
 	if got, found := readCommandMarker(t, markers["open_ide_command"]); found {
 		t.Errorf("Open-IDE marker with open_ide off = %q; want none", got)
 	}
 
-	stepCommandRow(t, c, battenrecipe.NameOpenWindow)
+	stepGatedOffCommandRow(t, c, battenrecipe.NameOpenWindow, battenrecipe.NameSeedIDE)
 	if got, found := readCommandMarker(t, markers["open_window_command"]); found {
 		t.Errorf("Open-Window marker with open_window off = %q; want none", got)
 	}
-	c.env.Command.Forced = []string{battenrecipe.NameOpenWindow}
+	// The forced answer is built at wiring, so the CLI is wired again with --open-terminal and given the fixture's seams.
+	forced := &battenCLI{location: c.location, openTerminalFlag: true}
+	if err := forced.wire(c.location, slug); err != nil {
+		t.Fatalf("wire(%s) with --open-terminal: %v", slug, err)
+	}
+	forced.env.InnerRun = c.env.InnerRun
+	c = forced
 	stepCommandRow(t, c, battenrecipe.NameOpenWindow)
 	if got, found := readCommandMarker(t, markers["open_window_command"]); !found || got != slug {
 		t.Errorf("Open-Window marker with open_window off and the row forced = %q (found %v); want %q", got, found, slug)
@@ -1311,16 +1353,15 @@ func stepCommandRows_ResumeAtARowAnOlderBinaryLeftStanding(t *testing.T, h *hubf
 // startCostBound is the decision record's D2 acceptance criterion: a Command row costs less than this beyond the status commit and the command's own process.
 const startCostBound = 100 * time.Millisecond
 
-// stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess steps a Command row whose switch is off, and Open-Window whose command only starts a background process, and asserts each costs under startCostBound beyond the status commit and the process.
+// stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess steps Seed-IDE, whose command is empty so it spawns nothing, and Open-Window whose command only starts a background process, and asserts each costs under startCostBound beyond the status commit and the process.
 // A history entry's timestamp has one-second resolution, so a row's cost is the wall time of its one step.
 // The status commit's time is measured by wrapping the wired CommitStatus seam in a timer, and the process's time by running the same command once through runRowCommand, whose marker the row's own run then overwrites.
 func stepStartCost_CommandRowsCostUnderTheBoundBeyondTheCommitAndTheProcess(t *testing.T, h *hubforge.Hub) {
 	const slug = "batten-start-cost"
-	c, _, pair := newCommandRowFixture(t, h, slug)
+	c, _, _ := newCommandRowFixture(t, h, slug)
 	marker := filepath.Join(t.TempDir(), "open-window-start")
 	command := "date +%s%N > " + marker + "; sleep 0 &"
 	writeBoardBattenCommands(t, h, map[string]string{"open_window_command": command})
-	writeLocalBatten(t, pair, "seed_ide: false\n")
 
 	var commitTime time.Duration
 	commitStatus := c.shedPaths.CommitStatus

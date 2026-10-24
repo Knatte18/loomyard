@@ -1,3 +1,5 @@
+//go:build tier0
+
 // recipeoverride_test.go pins RecipeOverride's pick of the module file that holds a run's shed override.
 
 package loomengine

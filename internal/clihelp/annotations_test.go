@@ -1,3 +1,5 @@
+//go:build tier0
+
 // annotations_test.go asserts the exact literal values of this package's cobra-annotation constants,
 // so a rename cannot silently decouple a producer command (e.g. reed switch) from the consumer gate
 // (cmd/lyx's skipStencilSeed).

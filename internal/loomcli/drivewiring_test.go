@@ -1,3 +1,5 @@
+//go:build tier0
+
 // drivewiring_test.go — untagged Tier-1 tests for the Park seam loom hands the shed driver, over a fake commit in a temp dir.
 
 package loomcli

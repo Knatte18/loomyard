@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fswatch_test.go tests Watch against real files in a temp directory.
 
 package fswatch

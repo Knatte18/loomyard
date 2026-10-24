@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // recordbatch_git_test.go exercises RecordBatch's post-batch checks over a real scratch git repository:
 // the delta of the batch's own commits, which quarry computes from git's blobs, drives handle binding, the scope guard and drift detection,

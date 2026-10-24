@@ -112,7 +112,7 @@ Among the others, the first one with a live pid wins.
 
 The value is one line.
 A gate wait renders `<producer>: <site> waiting for a gate slot <elapsed>`, one clause per live record, oldest first and joined with `; `, then `(holders: <worktree> <site>, ...)` once, for example `Plan-Write: lyx gate test ./internal/foo waiting for a gate slot 2m (holders: /hub/other lyx gate test ./internal/bar)`.
-A running verify or shuttle wait renders `<producer>: <what> running <elapsed> (<detail>)`, for example `Webster-Burler-Fix: verify running 6m (attempt 2; lyx gate test --wait --tier 0 --tier 1 --base 0a1b2c3)`.
+A running verify or shuttle wait renders `<producer>: <what> running <elapsed> (<detail>)`, for example `Code-Burler-Fix: verify running 6m (attempt 2; lyx gate test --wait --gate code-burler-fix)`.
 A verify still waiting for a gate slot renders `<producer>: verify waiting for a gate slot <elapsed> (<site>; holders: <worktree> <site>, ...)`, elapsed measured from the wait start.
 A parent lock wait renders `<producer>: waiting for the parent lock on <branch> held by <slug> <elapsed>`, elapsed measured from the record's start.
 A lock wait record whose writer is dead is ignored.

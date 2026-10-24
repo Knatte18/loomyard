@@ -1,3 +1,5 @@
+//go:build tier0
+
 // land_test.go covers the Land row's pure wiring helper: which board tasks count as ready.
 
 package battencli

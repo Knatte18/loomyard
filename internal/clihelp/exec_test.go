@@ -1,3 +1,5 @@
+//go:build tier0
+
 // exec_test.go tests the exit-state holder, the Execute seam adapter, and WrapRun.
 // Tests use synthetic cobra command trees built in-test — no real lyx commands.
 

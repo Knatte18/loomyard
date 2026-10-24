@@ -1,3 +1,5 @@
+//go:build tier0
+
 // archive_test.go drives the pair-log archive over temporary directories with an injected clock.
 
 package pairteardown

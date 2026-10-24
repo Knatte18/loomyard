@@ -1,9 +1,10 @@
+//go:build tier0
+
 // cleanup_test.go drives cleanup over a synthetic prime location with stubbed records deps; it spawns no git and no process.
 
 package battencli
 
 import (
-	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
@@ -17,7 +18,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
-	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 )
@@ -72,25 +72,6 @@ func (s *cleanupStubs) deps() cleanupDeps {
 			return s.spawnErr
 		},
 		Now: func() time.Time { return cleanupNow },
-	}
-}
-
-func statusJSON(t *testing.T, state string) []byte {
-	t.Helper()
-	data, err := json.Marshal(shedengine.Status{CurrentProducer: "Worktree-Teardown", State: shedengine.State(state), History: []shedengine.HistoryEntry{}})
-	if err != nil {
-		t.Fatalf("marshal status: %v", err)
-	}
-	return data
-}
-
-func writeCleanupFile(t *testing.T, path string, data []byte) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
 	}
 }
 

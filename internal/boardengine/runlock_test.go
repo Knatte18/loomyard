@@ -1,3 +1,5 @@
+//go:build tier0
+
 // runlock_test.go — the run-status form and the lock on a run-held entry's scope (runlock.go), driven through the Board facade.
 
 package boardengine_test

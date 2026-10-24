@@ -1,3 +1,5 @@
+//go:build tier0
+
 // deps_test.go covers the hub-only pause reading that makes a pair under a slug-scope pause read live.
 
 package adoptcli

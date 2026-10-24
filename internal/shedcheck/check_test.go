@@ -1,3 +1,5 @@
+//go:build tier0
+
 // check_test.go table-drives Check across every finding kind, its deterministic output order, and
 // the tolerated-malformed-input behaviours. Every case builds bare []shedengine.ProducerDef
 // literals with Producer left nil -- no fakes of any kind.

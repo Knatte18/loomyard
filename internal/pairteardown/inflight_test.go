@@ -1,3 +1,5 @@
+//go:build tier0
+
 // inflight_test.go covers which live reed sessions count as another pair's when a pair is removed.
 
 package pairteardown

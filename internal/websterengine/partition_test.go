@@ -1,3 +1,5 @@
+//go:build tier0
+
 // partition_test.go covers ExecutionBatches and RecordPartition: which batches each state shape resolves to, that a recorded partition outlives a changed size source, and the refusals for a recorded partition that no longer matches the plan or runs backward.
 // Tier 1: package websterengine_test, no git, no disk — a fake size source and a size-driven fake batchifier stand in for the real ones.
 

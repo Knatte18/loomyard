@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bouncerprompt_test.go covers that BouncerConfig.ClusterExcludes and WebsterRecord reach the seed and judge fills
 // and that the judge prompt offers CIRCLING only from the checkpoint round.
 

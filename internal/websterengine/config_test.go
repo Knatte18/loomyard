@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go verifies webster.yaml's template parses, defaults resolve through LoadConfig,
 // overrides round-trip, a malformed role model-spec fails loud naming the offending key, and an
 // absent _lyx/ degrades to the embedded template,

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // acquire_test.go covers the queue wait and the wait record, with a fake Sleep so no test waits out a poll delay.
 
 package parentlock

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // reconcile_stale_registration_test.go proves Reconcile repairs a weft
 // worktree that was deleted by hand (plain rm, not `git worktree remove`),

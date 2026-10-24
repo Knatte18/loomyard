@@ -1,3 +1,5 @@
+//go:build tier0
+
 // sessionread_test.go covers ReadSessionStates over run directories written by the test, with an engine double that parses session signals and answers the prober and the transcript reading.
 // TestReadSessionStates captures the process-global logger, so it does not run in parallel.
 

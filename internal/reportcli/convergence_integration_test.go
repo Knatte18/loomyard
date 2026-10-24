@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // convergence_integration_test.go drives `lyx report convergence` through RunCLIIn over a hubforge hub: the prime-only refusals, the empty report before any tag, and the report of one finished run seeded the way a landing leaves it.
 

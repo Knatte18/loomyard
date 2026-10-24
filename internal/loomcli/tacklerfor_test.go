@@ -1,3 +1,5 @@
+//go:build tier0
+
 // tacklerfor_test.go pins tacklerFor's pick of the module file whose tackler keys a run takes, over temp config layers.
 
 package loomcli

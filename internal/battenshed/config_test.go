@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go pins batten.yaml's load: the tackler override keys it carries over shed.yaml, and the refusal of a driver_kind key.
 
 package battenshed

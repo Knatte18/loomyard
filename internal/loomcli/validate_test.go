@@ -1,3 +1,5 @@
+//go:build tier0
+
 // validate_test.go covers validate-discussion and validate-plan's clean, findings, and I/O-fault
 // cases: exit code, exactly-one-JSON-line output, and the decoded envelope's ok value and findings
 // key presence. Both verbs are driven directly against the leaf command built by
@@ -18,7 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -322,23 +323,6 @@ func planFixture(t *testing.T, anchorPath, worktreeRoot string, approved bool) *
 		AnchorPath:   anchorPath,
 		WorktreeRoot: worktreeRoot,
 	}}
-}
-
-// hubLocationAt returns a Location whose anchor is anchorPath, under a hub that holds the hub-wide language.yaml languageContent when that is non-empty and none otherwise.
-// The hub is anchorPath's parent directory, so a test's plan fixtures and its language file share one temp tree.
-func hubLocationAt(t *testing.T, anchorPath, languageContent string) *lyxcwd.Location {
-	t.Helper()
-	loc := &lyxcwd.Location{HubPath: filepath.Dir(anchorPath), WorktreeName: filepath.Base(anchorPath), AnchorRel: "."}
-	if languageContent != "" {
-		languagePath := configengine.ConfigFile(fabricengine.BoardDir(loc.HubPath), "language")
-		if err := os.MkdirAll(filepath.Dir(languagePath), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(languagePath), err)
-		}
-		if err := os.WriteFile(languagePath, []byte(languageContent), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", languagePath, err)
-		}
-	}
-	return loc
 }
 
 // glyphPlanFixture writes a syntactically complete, one-card language: go plan under

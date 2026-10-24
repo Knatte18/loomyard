@@ -1,3 +1,5 @@
+//go:build tier0
+
 // status_test.go covers the JSON round-trip TDD candidate for Status: an in-memory marshal/unmarshal round-trip and State.valid's enum gate.
 
 package shedengine
@@ -37,6 +39,7 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 		PauseBefore:     "Plan-Write",
 		PauseAfter:      "Preflight",
 		PendingBy:       "orch",
+		EnteredRow:      "Plan-Write",
 
 		PauseReason:      "pause requested by orch",
 		PauseRequestedBy: "orch",
@@ -53,6 +56,7 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 				{Gate: "plan-parse", Kind: GateSpanKindGate, Start: "2026-08-15T09:04:00.25Z", End: "2026-08-15T09:04:01.5Z"},
 				{Gate: "plan-parse", Kind: GateSpanKindRework, Start: "2026-08-15T09:04:02Z", End: "2026-08-15T09:04:30Z"},
 			}},
+			{Producer: "Code-Review", Outcome: OutcomeSkipped, At: "2026-08-15T09:06:00Z", Reason: "review budget is 0"},
 		},
 		Product: json.RawMessage(`{"foo":"bar","nested":{"n":1}}`),
 	}
@@ -89,8 +93,8 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 	if strings.Contains(string(empty), "pause_before") || strings.Contains(string(empty), "pause_after") {
 		t.Errorf("empty Status marshals as %s; want pause_before and pause_after omitted", empty)
 	}
-	if got.PendingBy != want.PendingBy {
-		t.Errorf("PendingBy = %q; want %q", got.PendingBy, want.PendingBy)
+	if got.PendingBy != want.PendingBy || got.EnteredRow != want.EnteredRow {
+		t.Errorf("PendingBy, EnteredRow = %q, %q; want %q, %q", got.PendingBy, got.EnteredRow, want.PendingBy, want.EnteredRow)
 	}
 	if got.PauseReason != want.PauseReason || got.PauseRequestedBy != want.PauseRequestedBy || got.PauseBeforeBy != want.PauseBeforeBy || got.PauseAfterBy != want.PauseAfterBy {
 		t.Errorf("PauseReason, PauseRequestedBy, PauseBeforeBy, PauseAfterBy = %q, %q, %q, %q; want %q, %q, %q, %q",
@@ -119,6 +123,10 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 	}
 	if legacy.PendingBy != "" || legacy.History[0].By != "" || strings.Contains(string(reencoded), `"by"`) || strings.Contains(string(reencoded), "pending_by") {
 		t.Errorf("record without caller labels = %+v re-encoded as %s; want empty values and no by or pending_by key", legacy, reencoded)
+	}
+	// The same record has no entered row and no skip reason, which read as empty and are not written back.
+	if legacy.EnteredRow != "" || legacy.History[0].Reason != "" || strings.Contains(string(reencoded), "entered_row") || strings.Contains(string(reencoded), `"reason"`) {
+		t.Errorf("record without entered_row and reason = %+v re-encoded as %s; want empty values and no entered_row or reason key", legacy, reencoded)
 	}
 	if got.Activity != want.Activity {
 		t.Errorf("Activity = %+v; want %+v", got.Activity, want.Activity)

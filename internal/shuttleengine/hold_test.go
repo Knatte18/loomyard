@@ -1,3 +1,5 @@
+//go:build tier0
+
 // hold_test.go covers the notice Wait sends a parent for an autonomous run's held turn end:
 // when it is sent, how often, and the shape and bounds of its line.
 

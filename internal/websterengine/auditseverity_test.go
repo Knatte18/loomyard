@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // auditseverity_test.go exercises ClassifyViolation over a real scratch repo, and the stability of the finding Keys CheckParent assigns.
 

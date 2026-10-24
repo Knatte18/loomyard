@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // prune_dirty_integration_test.go pins Prune's dirty-weft gate.
 // `prune --apply` removes a stale pair's weft worktree with `git worktree remove --force`, which

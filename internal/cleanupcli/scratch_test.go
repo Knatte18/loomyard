@@ -1,3 +1,5 @@
+//go:build tier0
+
 // scratch_test.go covers scratchSegment over a temp .scratch directory with a fixed clock and board reads.
 
 package cleanupcli

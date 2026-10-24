@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // prune_unowned_integration_test.go pins Prune's ownership gate.
 // Prune's orphan pass enumerates on directory NAME alone — every hub child whose name ends in the

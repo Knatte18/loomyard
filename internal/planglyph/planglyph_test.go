@@ -1,3 +1,5 @@
+//go:build tier0
+
 // planglyph_test.go covers ValidateFormat/Validate's composition over planparser's own checks,
 // resolvePass's language: none short-circuit, and collectGlyphTargets' deduplication.
 

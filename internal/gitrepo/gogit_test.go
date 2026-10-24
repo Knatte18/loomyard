@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // gogit_test.go covers goGit's open/cache behaviour and readGoGit's concurrent-safety and reindex counting from inside package gitrepo, so
 // it can reach Repo's unexported fields and methods (goGitMu, goGitRepo,

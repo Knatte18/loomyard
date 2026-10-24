@@ -1,3 +1,5 @@
+//go:build tier0
+
 // run_commitstatus_test.go covers Shed.CommitStatus, the injected persist-time seam: that it is
 // called on every write path a run performs, that a nil seam is a silent no-op, that a seam error
 // propagates out of Run after the status-file write has already landed, that the closure receives

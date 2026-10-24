@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces the reviewbudget leaf invariant: production code in internal/reviewbudget imports only the standard library and internal/configengine.
 
 package reviewbudget

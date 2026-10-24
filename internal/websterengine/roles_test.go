@@ -1,3 +1,5 @@
+//go:build tier0
+
 // roles_test.go exercises ResolveRoles's pre-flight: both roles resolve cleanly, an unknown alias
 // fails naming the offending role, an escape-form spec resolves with no registry entry at all, and
 // a bracket param survives into the resolved Params map — scoped to webster's two roles

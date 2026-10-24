@@ -1,3 +1,5 @@
+//go:build tier0
+
 // landingdeps_markdone_test.go drives landingDeps' MarkTaskDone closure against a hub directory holding only the board config, so the board config load, the hub-board path and the status write run for real with no git and no hub fixture.
 // Every test sets the board skip variables, which are process-global, so none calls t.Parallel.
 

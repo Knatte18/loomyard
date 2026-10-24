@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bouncer_usage_test.go covers the usage record the Bouncer writes beside the Burler's: one entry per seed or judge pass whose result reached the Call.
 
 package shedadapters

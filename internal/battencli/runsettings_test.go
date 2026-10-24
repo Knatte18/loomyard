@@ -1,3 +1,5 @@
+//go:build tier0
+
 // runsettings_test.go table-drives Seed-Child's prepare step against a profiles.yaml under t.TempDir.
 
 package battencli

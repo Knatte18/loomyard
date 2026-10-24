@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mergelock_integration_test.go pins the lifecycle verbs' guard-under-lock ordering: every merge
 // verb must read the merge record and evaluate its preconditions AFTER acquiring the weft write

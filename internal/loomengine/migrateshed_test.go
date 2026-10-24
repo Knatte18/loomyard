@@ -1,3 +1,5 @@
+//go:build tier0
+
 // migrateshed_test.go pins MigrateConfig's step that moves the driver and tackler keys off the retired template's defaults.
 
 package loomengine

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // profile_test.go table-drives Profile.validateReview and Profile.validateFix over the happy path and every fail-loud rule
 // documented on them: field-emptiness, path existence, FixScope legality, ClusterFan's
 // fan-resolution gate, and in-place absolute-path resolution for both relative and already-absolute

@@ -1,5 +1,7 @@
+//go:build tier0
+
 // strict_test.go tests ReadJSONNoMkdir's unknown-field tolerance and no-MkdirAll contract using only temp
-// files — no git, no spawning, untagged (Tier 1).
+// files — no git, no spawning.
 
 package state
 

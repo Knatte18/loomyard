@@ -1,4 +1,4 @@
-//go:build integration && linux
+//go:build tier1 && linux
 
 // cli_integration_test.go drives `lyx hibernate status`, `cancel`, `request` and `watch` through the cobra commands over a hubforge hub with one pair, and the operator index the root renders.
 // The test calls no t.Parallel: it sets the strand-name variable.

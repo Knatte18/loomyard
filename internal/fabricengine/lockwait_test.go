@@ -1,3 +1,5 @@
+//go:build tier0
+
 // lockwait_test.go pins that the weft write lock's wait signal reaches only the path a test registered for.
 
 package fabricengine

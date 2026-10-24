@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // probequiet_integration_test.go pins probeQuiet's reading of the Go driver's lock on a real git worktree, which the untagged tests cannot create.
 

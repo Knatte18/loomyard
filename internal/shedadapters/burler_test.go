@@ -1,3 +1,5 @@
+//go:build tier0
+
 // burler_test.go holds the run directory writers and the minimal profile the Burler row producers' tests share.
 
 package shedadapters

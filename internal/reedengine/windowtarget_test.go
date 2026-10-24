@@ -1,3 +1,5 @@
+//go:build tier0
+
 // windowtarget_test.go covers the strand-window seam: which window it resolves for each shape of recorded state and session listing, against the scripted multiplexer fake.
 
 package reedengine

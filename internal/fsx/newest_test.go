@@ -1,3 +1,5 @@
+//go:build tier0
+
 // newest_test.go — unit tests for NewestModTime (newest.go).
 
 package fsx_test

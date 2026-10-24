@@ -43,7 +43,7 @@ func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeout
 		RunE: clihelp.GroupRunE,
 	}
 
-	var dir, tags, base string
+	var dir, tags, base, gate string
 	var tiers []int
 	var upto int
 	var cards []string
@@ -53,31 +53,32 @@ func newCommand(goBinary string, samplePeriod, slotWait, preTierCeiling, timeout
 		Short:       "run the hub's test tiers once their gate slots are free",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: fmt.Sprintf(`test runs the tiers the hub declares in gate.yaml, in ascending tier number, stopping at the first tier that fails.
---tier N names a tier and may repeat; the default is tier0 unless --upto is given.
+--gate K runs the tiers and the scope the gate key K of gate.yaml names, and goes with none of --tier, --upto, --all and --base.
+A key of scope card needs --card <id> per card, scope all runs every tier whole, and scope diff runs the diff from the merge base with the pair's parent branch.
+Explicit <targets> beside --gate replace the key's scope.
+--tier N names a tier and may repeat; the default is tier0 without --upto or --gate.
 --upto N adds every declared tier numbered 0 through N but a manual one, which runs only when --tier names it.
-A listed tier that another listed tier covers is dropped.
-Each tier takes the gate slots it asks for, so the hub never runs more gate builds and tests at once than its configured slot count allows, and runs its command through the platform shell as one process tree, bounded by the tier's timeout_min once its slots are held.
+Each tier takes the gate slots it asks for and runs its command through the platform shell, bounded by its timeout_min.
 Without --wait it waits for the slots for up to %s, under the prompt-cache lifetime.
 When they do not free, it prints ok with slot_free false naming the holders and exits %d, which is no failure:
 run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls.
-With --wait it blocks until the slots free, which costs only the caller's prompt cache.
+With --wait it blocks until the slots free.
 Inside a slot already held by an enclosing gate run it runs without acquiring another.
-After each tier the verb prints a summary line to stderr and writes the run's record and log under the gate directory.
+Each tier prints a summary line to stderr and writes its record and log under the gate directory.
 The exit code is the failing tier's own, or 0.
-The scope is the explicit <targets>, --all, --card <id>, --base <rev>, or, with none of them, the diff from the merge base with the pair's parent branch.
+Without --gate the scope is the explicit <targets>, --all, --card <id>, --base <rev>, or the diff from the merge base with the pair's parent branch.
 Arguments after "--" fill each tier's {args}.
---guards, and a narrower scope under the go scoper, also run the guard tier over the //lyx:guard tests outside the scope.
+--guards, and a narrower scope under the go scoper, also run the //lyx:guard tests outside the scope.
 -C names the run directory, with explicit targets only.
 
 Examples:
 
   lyx gate test --wait ./internal/foo
   lyx gate test --tier 0 --tier 1 --all
+  lyx gate test --wait --gate finalize
+  lyx gate test --wait --gate card --card 3
   lyx gate test --upto 2
-  lyx gate test --wait --card 3 --card 4
   lyx gate test --base main
-  lyx gate test -C backend ./internal/foo ./internal/bar
-  lyx gate test --guards ./internal/foo
   lyx gate test ./... -- -run TestSomething -count=1`, slotWait, SlotBusyExit),
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -86,7 +87,7 @@ Examples:
 			}
 			request := testRequest{
 				goBinary: goBinary, samplePeriod: samplePeriod, slotWait: slotWait, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit,
-				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, tiers: tiers, cards: cards, base: base, all: all, guards: guards, wait: wait, targets: args,
+				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, base: base, all: all, guards: guards, wait: wait, targets: args,
 				upto: upto, uptoGiven: cmd.Flags().Changed("upto"),
 			}
 			if dash := cmd.ArgsLenAtDash(); dash >= 0 {
@@ -98,15 +99,17 @@ Examples:
 	}
 	testCmd.Flags().StringVarP(&dir, "dir", "C", "", "directory the tiers run in, with explicit targets only; defaults to each tier's own dir")
 	testCmd.Flags().StringVar(&tags, "tags", "", "refused: name the tier that compiles the tags with --tier")
+	testCmd.Flags().StringVar(&gate, "gate", "", "gate.yaml key whose tiers and scope the call runs; goes with none of --tier, --upto, --all and --base")
 	testCmd.Flags().IntSliceVar(&tiers, "tier", nil, "tier number to run; repeatable, default 0")
 	testCmd.Flags().IntVar(&upto, "upto", 0, "run every declared tier numbered 0 through N but the manual ones")
 	testCmd.Flags().StringArrayVar(&cards, "card", nil, "plan card id whose packages are the scope; repeatable")
 	testCmd.Flags().StringVar(&base, "base", "", "revision whose diff to the working tree is the scope")
 	testCmd.Flags().BoolVar(&all, "all", false, "run every tier over its all_targets")
-	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers pass, run the guard tier over every //lyx:guard test of the module")
+	testCmd.Flags().BoolVar(&guards, "guards", false, "after the listed tiers pass, run every //lyx:guard test of the module under the tier its file belongs to")
 	testCmd.Flags().BoolVar(&wait, "wait", false, "block until the tiers' slots free instead of answering slot_free false after the keep-cache-warm cap")
 	cmd.AddCommand(testCmd)
 	cmd.AddCommand(statusCmd())
+	cmd.AddCommand(reportCmd())
 	cmd.AddCommand(cardVerifyCmd())
 
 	return cmd
@@ -143,6 +146,8 @@ type testRequest struct {
 	// dir is the -C value as typed; empty means the tier's own dir.
 	dir  string
 	tags string
+	// gate is the --gate key: its tiers are the listed tiers and its scope picks the scope form; empty for a call with manual flags.
+	gate string
 	// tiers are the --tier values as typed; empty means tier0 unless uptoGiven.
 	tiers []int
 	// upto is the --upto value, read only when uptoGiven.
@@ -205,8 +210,8 @@ func guardScanRefusal(moduleDir string, err error) string {
 	switch scanErr.Kind {
 	case impactset.GuardMisplaced:
 		return fmt.Sprintf("gate test: the guard step found a //lyx:guard marker at %s that is not directly above a top-level func Test line; way forward: move the marker directly above its func Test line, then re-run the same command", location)
-	case impactset.GuardNotIntegration:
-		return fmt.Sprintf("gate test: the guard step found a //lyx:guard marker at %s in a file no integration-tier run compiles; way forward: compile the marked test's file under the integration tag, then re-run the same command", location)
+	case impactset.GuardWrongTier:
+		return fmt.Sprintf("gate test: the guard step found a //lyx:guard marker at %s in a tier2 or tier3 file; way forward: move the marked test into a tier0 or tier1 file, then re-run the same command", location)
 	default:
 		return fmt.Sprintf("gate test: the guard step cannot parse %s: %v; way forward: make the file readable or fix it until it parses, then re-run the same command", location, err)
 	}

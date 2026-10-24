@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces PATTERN-shed-driver's import seam and this package's Told-Geometry Invariant membership:
 // production code in internal/sheddriver takes every path from its caller and reaches recipe behaviour only through the seams its arming module fills.
 

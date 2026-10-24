@@ -1,3 +1,5 @@
+//go:build tier0
+
 // weftpaths_test.go covers the weft-sibling path accessors relocated from internal/lyxcwd in this
 // batch — RecordsWorktree, RecordsWorktreePath, WeftLyxDir and WeftLyxDirFor — with both AnchorRel "."
 // (root) and subpath cases, pinning the "-weft" sibling naming across container/base/subpath

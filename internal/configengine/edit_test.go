@@ -1,3 +1,5 @@
+//go:build tier0
+
 // edit_test.go — unit tests for the interactive config editing machinery (edit.go).
 //
 // Tests cover: scaffold-when-missing, edit of existing file, re-edit loop on validation failure,

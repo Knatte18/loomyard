@@ -1,4 +1,4 @@
-//go:build tmux && linux
+//go:build tier2 && linux
 
 // tmuxconf_integration_test.go proves against a real tmux server what an operator tmux config named by `tmux_conf` can and cannot change on a server reed starts.
 // It is linux-only because the status bar's session row is expanded for a client attached through the pty harness.

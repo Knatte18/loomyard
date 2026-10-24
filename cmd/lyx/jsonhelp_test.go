@@ -1,3 +1,5 @@
+//go:build tier0
+
 // jsonhelp_test.go asserts the --json help schema at multiple levels of the lyx command tree.
 // Each row drives the run() seam with --json and validates that the captured output is valid JSON matching the {name, short, commands, flags} schema.
 // It also confirms that hidden and meta flags are absent from the flags array.

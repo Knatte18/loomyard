@@ -1,3 +1,5 @@
+//go:build tier0
+
 // branchname_test.go — unit tests for RecordsBranchName's uniform derivation.
 
 package fabricengine_test

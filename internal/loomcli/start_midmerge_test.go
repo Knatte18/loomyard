@@ -1,3 +1,5 @@
+//go:build tier0
+
 // start_midmerge_test.go pins runDriverSpawnAndWait's mid-merge check: it refuses a spawn or a resume over an unfinished merge, and leaves a live working driver alone.
 // Fakes only, no git.
 

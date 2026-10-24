@@ -1,3 +1,5 @@
+//go:build tier0
+
 // matchparent_test.go covers matchParentBranch, the pure worktree-entry matcher OpenParent's
 // resolution chain builds on — no fixture needed, since the function takes a hand-built
 // []fabricengine.WorktreeEntry slice.

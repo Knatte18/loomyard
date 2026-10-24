@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // bolt_integration_test.go — integration coverage for Bolt.Commit/Push/Sync,
 // the unpaired weft:main handle: a dirty repo commits and pushes, a clean

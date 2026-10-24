@@ -749,6 +749,7 @@ func checklistWaitLine(poll statuspane.StatusPoll, waitNote string) string {
 // checklistVisitsOf sums the status history into per-row time, visit counts and visit logs, lists the rows in the order they were first visited, and returns every visit in history order.
 // A visit lasts from the previous entry's end to its own end, less the time paused within that span; a goto entry is no visit and starts the next one at its own time.
 // A goto entry is in the history-order result as a zero-time line and in no per-row log.
+// A skipped entry is a row passed through: it is no visit, in no result, and starts the next visit at its own time.
 // While the run is not done, the current producer's open visit runs from the last entry's end to now.
 // A Stuck entry that records where it was routed reads checklistBouncedWord and one that does not reads as stored; an awaiting entry reads checklistEscalatedWord.
 func checklistVisitsOf(status shedengine.Status, startedAt string, paused []pauserecord.Interval, now time.Time) (visits map[string]checklistVisits, order []string, history []checklistVisit) {
@@ -780,6 +781,12 @@ func checklistVisitsOf(status shedengine.Status, startedAt string, paused []paus
 				outcome:    string(entry.Outcome),
 				folds:      1,
 			})
+			if atKnown {
+				prevEnd, prevKnown = at, true
+			}
+			continue
+		}
+		if entry.Outcome == shedengine.OutcomeSkipped {
 			if atKnown {
 				prevEnd, prevKnown = at, true
 			}

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_implementer_test.go pins the Implementer entry: the engine its setting names builds the row, and every unusable setting refuses with a way forward.
 
 package shedrecipe

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // lint_integration_test.go drives Lint over a real repository.
 

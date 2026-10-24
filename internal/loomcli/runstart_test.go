@@ -1,3 +1,5 @@
+//go:build tier0
+
 // runstart_test.go covers seedRunStart's three outcomes over a hand-built location: a parsed stamp, a zero time after a warning, and a read failure.
 // It also covers findRunPullRequest's run-start bound.
 

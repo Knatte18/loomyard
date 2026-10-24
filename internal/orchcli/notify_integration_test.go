@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // notify_integration_test.go proves PrimeOrchStrand over a real hub: from a task worktree it names the prime's orch strand, and answers not recorded when the prime records none.
 

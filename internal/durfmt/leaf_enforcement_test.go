@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces internal/durfmt's import cap from PATTERN-leaf-packages:
 // production code in internal/durfmt imports the standard library alone.
 

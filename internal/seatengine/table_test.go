@@ -1,3 +1,5 @@
+//go:build tier0
+
 // table_test.go covers Table.Validate against a seeded stencils directory, and the table's name, accessor and reserved-marker helpers.
 
 package seatengine

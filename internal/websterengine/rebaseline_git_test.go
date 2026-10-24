@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // rebaseline_git_test.go pins Rebaseline after a record-batch handle binding, which needs the real delta of a real commit.
 // Every other Rebaseline behavior is tested over a fakeGit in rebaseline_test.go.

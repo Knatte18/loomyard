@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // roleskills_test.go pins PATTERN-role-skills-typed: a skill reaches a spawned session because the
 // spawning module names it on the launch spec and lyx delivers it, so no stencil asks an agent to load
 // a skill.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // audit_incremental_test.go covers AuditForksIncremental's seen-set filtering: only fork
 // transcripts whose path is not a key of seenTranscripts are reported, a nil map is equivalent to
 // AuditForks, and the parent facts

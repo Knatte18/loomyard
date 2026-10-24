@@ -1,3 +1,5 @@
+//go:build tier0
+
 // reconcile_test.go pins the mapping of an origin reconcile report onto the hibernate engine's own view of it.
 
 package hibernatecli

@@ -14,7 +14,8 @@ import (
 type FailureKind string
 
 const (
-	// FailureKindLanding means a tier of the `landing` gate failed.
+	// FailureKindLanding is the retired `landing` kind an older build wrote.
+	// A record carrying it reads as the gate key of the row that reads it: Merge-In, Finalize or the merge fixer either spawns, since the record names no row and only those rows read it.
 	FailureKindLanding FailureKind = "landing"
 	// FailureKindPublish means a tier of the `publish` gate failed.
 	FailureKindPublish FailureKind = "publish"

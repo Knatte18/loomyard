@@ -26,7 +26,7 @@ type RenameRequest struct {
 	RunID string
 }
 
-// RenameProducers rewrites every retired row name the status file carries onto its successor: current_producer, pause_before, pause_after and each history entry's producer.
+// RenameProducers rewrites every retired row name the status file carries onto its successor: current_producer, entered_row, pause_before, pause_after and each history entry's producer.
 // It reports whether it wrote the file.
 // An absent status file, and one that names no retired row, are left untouched and take no lock, so a caller may run it before every verb.
 // A run lock held by a live driver refuses with ErrShedBusy and leaves the file unchanged.
@@ -58,6 +58,7 @@ func RenameProducers(req RenameRequest) (bool, error) {
 			return Status{}, fmt.Errorf("shedengine: status file %q vanished mid-rename; Shed refuses to create one", req.StatusPath)
 		}
 		cur.CurrentProducer = renamed(cur.CurrentProducer, req.Renames)
+		cur.EnteredRow = renamed(cur.EnteredRow, req.Renames)
 		cur.PauseBefore = renamed(cur.PauseBefore, req.Renames)
 		cur.PauseAfter = renamed(cur.PauseAfter, req.Renames)
 		for i := range cur.History {
@@ -74,7 +75,7 @@ func RenameProducers(req RenameRequest) (bool, error) {
 
 // namesRetiredRow reports whether any field RenameProducers rewrites holds a key of renames.
 func namesRetiredRow(st Status, renames map[string]string) bool {
-	names := []string{st.CurrentProducer, st.PauseBefore, st.PauseAfter}
+	names := []string{st.CurrentProducer, st.EnteredRow, st.PauseBefore, st.PauseAfter}
 	for _, entry := range st.History {
 		names = append(names, entry.Producer)
 	}

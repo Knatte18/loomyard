@@ -1,3 +1,5 @@
+//go:build tier0
+
 // approve_test.go covers SetApproved: the flip, no-op, and insert cases over the approved:
 // frontmatter key, byte-for-byte preservation of every other frontmatter key/order and of the
 // entire body, and SetApproved's error cases.

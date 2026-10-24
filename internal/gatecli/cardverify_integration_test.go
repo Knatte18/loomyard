@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cardverify_integration_test.go drives `lyx gate card-verify` in-process over a git worktree outside every hub holding a plan, whose card lines spawn a shell.
 // It is Tier 2: it spawns git and the shell.

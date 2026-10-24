@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // preflight_integration_test.go drives Check/CheckResolved/Wired/HubPresent end-to-end against real
 // git fixtures — a paired code+fabric worktree with a wired _lyx junction — covering every

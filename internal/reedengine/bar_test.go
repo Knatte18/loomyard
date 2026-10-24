@@ -1,3 +1,5 @@
+//go:build tier0
+
 // bar_test.go pins the status bar's format strings against shapes a live tmux of this host cannot catch.
 
 package reedengine

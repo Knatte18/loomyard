@@ -1,6 +1,7 @@
-// killpid_test.go covers KillPID, defined identically-named on both platforms, so this file needs
-// no //go:build tag — it is the untagged shared home for KillPID, mirroring how isalive_test.go is
-// the untagged shared home for IsAlive.
+//go:build tier0
+
+// killpid_test.go covers KillPID, defined identically-named on both platforms, so this file carries no platform constraint.
+// It is the shared home for KillPID, mirroring how isalive_test.go is the shared home for IsAlive.
 // It is allowed under this package's Test Tier Purity Invariant allowlist entry ("process control
 // is the package's subject — its tests must spawn"): both sub-tests below spawn a real child
 // process, one held alive to prove KillPID actually terminates it, one waited on immediately to

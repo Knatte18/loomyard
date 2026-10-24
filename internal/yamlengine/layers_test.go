@@ -1,3 +1,5 @@
+//go:build tier0
+
 // layers_test.go contains table-driven tests for the layer operations: Merge, Strip, SetSparse, Prune, DropTemplateEqualNames, LeafPaths and AnnotateLeaves.
 
 package yamlengine

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // spec_test.go verifies Spec.validate's normalization and error paths: mandatory
 // Prompt/OutputFiles, relative-to-absolute resolution for output files, the Timeout
 // defaulting/negative-rejection rules, and the Display.Anchor default.

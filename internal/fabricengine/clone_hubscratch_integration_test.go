@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // clone_hubscratch_integration_test.go — CloneHub's hub-scratch materialisation at <hub>/_board/.lyx, which needs real git repositories.
 

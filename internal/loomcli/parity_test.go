@@ -1,3 +1,5 @@
+//go:build tier0
+
 // parity_test.go asserts the Gate Self-Check Parity Invariant for the gate sites the loomshed
 // gate closures cover: NewDiscussionGate and NewDarnDiscussionGate against validate-discussion, NewPlanGate against
 // validate-plan's flag-absent mode. Both the gate closure and its loomcli verb must
@@ -30,50 +32,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// parityVerdict is the shared three-valued outcome both the producer side and the CLI side map
-// onto before comparison. Declaring it as a string-typed constant set (rather than comparing raw
-// producer outcomes against raw exit codes) is what makes a mismatch failure message name the two
-// sides' verdicts readably.
-type parityVerdict string
-
-const (
-	verdictDone  parityVerdict = "done"
-	verdictStuck parityVerdict = "stuck"
-	verdictError parityVerdict = "error"
-)
-
-// producerVerdict maps a shuttleengine.Gate closure's raw (GateResult, error) onto a parityVerdict:
-// a non-nil error is verdictError; GateResult.Passed == false is verdictStuck; GateResult.Passed ==
-// true is verdictDone.
-func producerVerdict(result shuttleengine.GateResult, err error) parityVerdict {
-	if err != nil {
-		return verdictError
-	}
-	if !result.Passed {
-		return verdictStuck
-	}
-	return verdictDone
-}
-
-// cliVerdict maps a decoded verb envelope onto a parityVerdict: ok == true is verdictDone; ok ==
-// false with a "findings" key present is verdictStuck; ok == false without a "findings" key is
-// verdictError. The findings-key presence check is structural, per the envelope-and-exit-contract
-// Shared Decision, never a matter of message wording.
-func cliVerdict(env envelope.Envelope) parityVerdict {
-	if env.OK {
-		return verdictDone
-	}
-	if _, hasFindings := env.Raw["findings"]; hasFindings {
-		return verdictStuck
-	}
-	return verdictError
-}
 
 // discussionParityCase is one fixture for TestGateParity_DiscussionGate: build populates dir
 // with whatever the fixture needs and returns the single *loomCLI both the gate closure and the

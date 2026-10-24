@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_drivingsurface_test.go pins the live-substrate properties behind a run's driving surface.
 // On the start side, an llm-seeded start keeps exactly one status strand.

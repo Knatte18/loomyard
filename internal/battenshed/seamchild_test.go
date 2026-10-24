@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seamchild_test.go covers NewSeedChild's full verdict table, keeping the two-source split visible
 // -- recipe from the Board's own type, driver from prime's own seed -- and keeping the
 // failed-commit and failed-push arms distinct, since collapsing either pairing is the likeliest

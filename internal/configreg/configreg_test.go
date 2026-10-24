@@ -1,3 +1,5 @@
+//go:build tier0
+
 // configreg_test.go — tests for the module registry.
 
 package configreg

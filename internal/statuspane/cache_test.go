@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cache_test.go pins StatusCache.Poll's file contract: absent, found, unchanged-time skip, and the two-strike unreadable rule.
 
 package statuspane

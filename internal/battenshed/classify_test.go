@@ -1,3 +1,5 @@
+//go:build tier0
+
 // classify_test.go tests ParseStateChange and ClassifyRecords over hand-built batten records.
 
 package battenshed
@@ -100,6 +102,16 @@ func TestClassifyRecords(t *testing.T) {
 			),
 			wantAutomatic: []AutomaticStep{{Kind: AutomaticKindVerifyRetry, Producer: "Publish", At: parseEntryTime(minuteText(1))}},
 			wantAccounted: []int{0},
+		},
+		{
+			name:  "a child skip before the goto is no change and no accounted entry",
+			rules: rules,
+			record: changesRecord(
+				[]shedengine.HistoryEntry{childEntry(2, "Describe", shedengine.OutcomeSkipped), childEntry(3, "Merge-In", shedengine.OutcomeGoto)},
+				changeEntry(1, "child running → blocked at Publish"),
+			),
+			wantAutomatic: []AutomaticStep{{Kind: AutomaticKindVerifyRetry, Producer: "Publish", At: parseEntryTime(minuteText(1))}},
+			wantAccounted: []int{1},
 		},
 		{
 			name:  "a second blocked at the same verify row is a wake",

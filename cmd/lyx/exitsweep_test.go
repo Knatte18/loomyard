@@ -1,3 +1,5 @@
+//go:build tier0
+
 // exitsweep_test.go covers notifyExitAndSweep's arm-gated sweep and exitSweepBounds' bounds choice.
 // Every case uses t.TempDir() fixtures and a redirected sink, so nothing arms a cwd-anchored sink.
 // The logger's sink directory and output are process-global state, so no test here runs in parallel.

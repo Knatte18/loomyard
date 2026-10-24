@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_discussionwrite_test.go covers discussionWriteEntry: its construction-time validation over Config and the three Env seams it reads,
 // and the Calls proving the told table is evaluated once, carries the row's gate, and that the parent-review round is opened exactly on a fresh spawn.
 

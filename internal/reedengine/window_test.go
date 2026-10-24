@@ -1,3 +1,5 @@
+//go:build tier0
+
 // window_test.go covers OpenWindow against the scripted multiplexer fake: each outcome of the op and the command line it composes.
 
 package reedengine

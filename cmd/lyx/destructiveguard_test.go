@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // destructiveguard_test.go closes slice 12's completeness proof by machine-checking that
 // internal/fabricengine's production source contains no destructive primitive call outside
 // destroy.go — the one file the Fabric Destruction Chokepoint Invariant names as permitted to

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // human_test.go covers the human status renderer's exact output, and the status verb's choice
 // between it and the JSON envelope: terminal vs. non-terminal writer, --json, --watch --json, and
 // an absent status file on a terminal.

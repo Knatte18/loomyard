@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // loop_arming_integration_test.go runs the loop's arming refusal over a real hub.
 // It drives a lyx built by internal/testkit/lyxbin over a loom-seeded run in a real hub, from the external test package because internal/hubforge reaches back into this package.

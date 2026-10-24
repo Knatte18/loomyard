@@ -1,3 +1,5 @@
+//go:build tier0
+
 // generation_test.go exercises PlanReviewSkippable at Tier 1 over a fake committed-file reader and temp directories.
 
 package loomshed

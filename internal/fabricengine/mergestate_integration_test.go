@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // mergestate_integration_test.go — integration coverage for the on-disk merge-state record and the
 // foreign-merge-state probes: save/load roundtrip, absence, delete idempotence, and

@@ -65,7 +65,8 @@ const cgroupRoot = "/sys/fs/cgroup"
 // It returns an error when a package failed.
 func runResources(tags, pkgFlag string) error {
 	patterns := strings.Split(pkgFlag, ",")
-	packages, err := listPackages(tags, patterns)
+	goTags := goTestTags(tags)
+	packages, err := listPackages(goTags, patterns)
 	if err != nil {
 		return err
 	}
@@ -81,15 +82,15 @@ func runResources(tags, pkgFlag string) error {
 		}
 		defer cleanupLyx()
 
-		tier := "Tier 1 (offline)"
-		if tags != "" {
-			tier = "Tags: " + tags
+		tier := "Tags: " + goTags
+		if isOfflineRun(tags) {
+			tier = "Tier 0 (offline)"
 		}
 
 		loadBefore := readLoadAverage()
 		rows := make([]resourceRow, 0, len(packages))
 		for _, importPath := range packages {
-			row, err := measurePackageResources(tags, importPath, env, parallel)
+			row, err := measurePackageResources(goTags, importPath, env, parallel)
 			if err != nil {
 				return err
 			}
@@ -162,6 +163,7 @@ func takeGateSlot(ctx context.Context, cwd, site string) (lease *gateslot.Lease,
 }
 
 // measurePackageResources runs `go test` over importPath with leftoverMarkerEnv set in the child's environment and returns what the run cost.
+// The child runs under the build tags it is handed, none when tags is empty.
 // CPU and peak memory come from the child's systemd scope cgroup when systemd-run is on PATH and the scope is readable, and from the child's rusage otherwise.
 func measurePackageResources(tags, importPath string, env []string, parallel int) (resourceRow, error) {
 	goArgs := []string{"test", "-json", "-count=1", "-p", strconv.Itoa(parallel)}

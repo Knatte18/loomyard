@@ -1,3 +1,5 @@
+//go:build tier0
+
 // server_test.go pins the daemon over a real socket: the protocol, identity from the peer, the single-instance lifecycle and the waiting verbs across a restart.
 
 package creelengine_test

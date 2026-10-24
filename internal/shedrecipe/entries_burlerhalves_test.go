@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_burlerhalves_test.go covers burlerReviewEntry and burlerFixEntry: the happy paths, the profile-to-Profile mapping (including the target relative-path exception), strict unknown-key rejection, the run-directory group shared with entries_bouncer_test.go's Bouncer coverage, every construction failure, and the "gates" Config key the fix entry resolves into RunOpts.Gate.
 
 package shedrecipe

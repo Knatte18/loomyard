@@ -1,3 +1,5 @@
+//go:build tier0
+
 // down_test.go pins the wait `reed down` makes for the hub's watchdog lock, through the fake engine seam and an injected probe and sleep so no test waits out the production bound.
 
 package reedcli

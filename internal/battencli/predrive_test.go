@@ -1,3 +1,5 @@
+//go:build tier0
+
 // predrive_test.go pins the pre-drive check at its two call sites: the seeding of an absent status, and the shed's run lock for a resume.
 
 package battencli

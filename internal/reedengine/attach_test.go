@@ -1,3 +1,5 @@
+//go:build tier0
+
 // attach_test.go pins AttachArgv's argv shape, its pre-flight and its window selection.
 //
 // Every case drives AttachArgv entirely through TmuxCmd's execHook seam — no external process spawn,

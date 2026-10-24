@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // spawn_hub_integration_test.go holds the Spawn checks that run against the prime and against a task pair of one hubforge hub:
 // the prime opens the lyx-generated hub workspace, a task slug still opens its bare folder.

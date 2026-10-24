@@ -1,3 +1,5 @@
+//go:build tier0
+
 // landingdeps_test.go drift-guards landingDeps: it asserts every field of the returned
 // landingshed.Deps is populated, via a reflection-based walk rather than an enumerated list of field
 // assertions, so a newly added field is caught automatically rather than silently passing. This test
@@ -123,9 +125,10 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 
 	v := reflect.ValueOf(deps)
 	typ := v.Type()
-	// FixerSeats is the one field wireLanding fills, from the seat engine wire built.
+	// FixerSeats is filled by wireLanding, from the seat engine wire built, and GateKey by each landing row's registry entry, on its own copy of Deps.
 	unfilled := map[string]bool{
 		"FixerSeats": true,
+		"GateKey":    true,
 	}
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)

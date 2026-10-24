@@ -1,3 +1,5 @@
+//go:build tier0
+
 // leaf_enforcement_test.go enforces internal/lyxcwd's own import cap from PATTERN-cwd-resolution.
 // Production code in internal/lyxcwd imports ONLY the standard library and internal/dotgit.
 // That keeps fabricengine -> logger -> lyxcwd acyclic, and leaves lyxcwd unable to spawn git.

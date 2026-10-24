@@ -1,3 +1,5 @@
+//go:build tier0
+
 // refusalof_test.go covers RefusalOf's errors.As traversal: a bare refusal, one wrapped several
 // layers deep, a nil error, an ordinary error, and remove.go's own dirty pre-flight shape, which is
 // not a gate refusal at all. It is a pure-data table test with no git spawn, per the Test Tier

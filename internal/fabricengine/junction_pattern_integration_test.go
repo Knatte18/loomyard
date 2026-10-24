@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // junction_pattern_integration_test.go covers the per-junction generalisation
 // this batch makes to seedLyxJunction, unseedLyxJunction, checkJunctionHealth,

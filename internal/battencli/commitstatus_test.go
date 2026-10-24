@@ -1,3 +1,5 @@
+//go:build tier0
+
 // commitstatus_test.go pins batten's per-transition status seam: the on-disk no-op-transition skip added on top of the shared statuscommit core's dispositions, which statuscommit's own tests pin.
 // Every test here drives newCommitStatusSeam against injected commitStatusDeps stub closures and a real temp-file marker path, spawning no git and no process,
 // so the file stays Tier 1 with no hub fixture.

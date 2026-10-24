@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remove_localmode_integration_test.go covers RemoveLocal, the removal mode that runs no origin step and waits on no other writer, and SnapshotUncommitted with SnapshotTagged.
 // TestRemoveLocal swaps package-global hooks, so it is not parallel.

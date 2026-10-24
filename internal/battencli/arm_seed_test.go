@@ -1,3 +1,5 @@
+//go:build tier0
+
 // arm_seed_test.go covers arm's run-id resolution, its self-address refusal, and its gated
 // auto-seed: resolveBattenRunID, refuseSelfAddress and armSeed each drive against a hand-built
 // *lyxcwd.Location, with no real git repository behind it (shedrun.ReadSeed, shedrun.WriteSeed and

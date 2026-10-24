@@ -1,3 +1,5 @@
+//go:build tier0
+
 // inflight_test.go exercises RunInFlight over t.TempDir() anchors.
 // Tier 1: no git.
 

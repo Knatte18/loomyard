@@ -1,3 +1,5 @@
+//go:build tier0
+
 // proctree_test.go table-tests the pure /proc process-tree helpers in proctree.go: parseStat's stat-line parsing (including the space-and-paren comm edge case), descendantClosure's fixed-point walk (including a missing-parent, a reparent-to-init, and a cycle), and matchSocketCmdlines' argv matcher (including both near-miss shapes).
 // These are the TDD surface for the batch: the OS-suffixed seams that call them (proctree_linux.go,
 // proctree_windows.go) are compile-checked only, never run on this host.

@@ -51,8 +51,8 @@ Either section reaches the PR reviewer because the `Describe` stencil carries it
 
 ## The verify gate
 
-Merriam's strand carries the hub's `final` gate, rendered from `gate.yaml` as one `lyx gate test` call over the whole tree, as one must-pass gate named `verify`, so the call runs once per attempt at HEAD after Merriam's turn ends, never inside a batch.
-A `gate.yaml` that cannot be loaded, or a `final` list naming an undeclared tier, is the gate's error naming `lyx config gate`, never a pass.
+Merriam's strand carries the hub's `webster` gate, rendered from `gate.yaml` as the one call `lyx gate test --wait --gate webster`, as one must-pass gate named `verify`, so the call runs once per attempt at HEAD after Merriam's turn ends, never inside a batch.
+A `gate.yaml` that cannot be loaded, or a `webster` key naming an undeclared tier, is the gate's error naming `lyx config gate`, never a pass.
 Merriam's strand role is `webster`, so its agent name is `<shortname>:<slug>:webster`.
 A failing run is rerun once;
 a pass on the rerun passes the gate and records the failing identities as flaky.
@@ -64,7 +64,7 @@ The gate routes each failure to a fixer and records it as `fixer` in `verify-gat
 an exhausted gate ends the run `stuck`, as does a fixer commit the gate rejects.
 `verify-gate.yaml` replaces the retired post-exit `integration.yaml`: nothing runs the suite after the session ends, and a run in flight with the retired record restarts with `lyx webster run --fresh`.
 
-`lyx webster verify` runs the same `final` gate call through the same function, `internal/verifytree`, and boots no reed session.
+`lyx webster verify` runs the same `webster` gate call through the same function, `internal/verifytree`, and boots no reed session.
 A pass records the verified tree, so a landing step or a later gate that finds the tree unchanged skips the run.
 
 ## See also

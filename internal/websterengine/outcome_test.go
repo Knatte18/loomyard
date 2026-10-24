@@ -1,3 +1,5 @@
+//go:build tier0
+
 // outcome_test.go exercises parseOutcome's accept/reject table.
 // Tier 1: no git, only t.TempDir() plus an injected now.
 

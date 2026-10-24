@@ -1,3 +1,5 @@
+//go:build tier0
+
 // estimate_test.go verifies PeakContext against a fake size source and hand-built cards, and DiskSizes against a temporary worktree tree.
 // Tier-1 (pure logic, no git, no spawn).
 

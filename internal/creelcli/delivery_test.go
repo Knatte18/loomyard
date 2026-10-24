@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // delivery_test.go covers the hub delivery over a hubforge hub with a pair, reed states seeded on disk and the worktree wiring replaced by a stub.
 

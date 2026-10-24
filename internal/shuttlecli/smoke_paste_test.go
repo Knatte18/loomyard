@@ -1,4 +1,4 @@
-//go:build llm
+//go:build tier3
 
 // smoke_paste_test.go pins, against a REAL claude in a REAL tmux pane, the facts the paste path rests on:
 // an Enter right after reed's bracketed paste submits it, a slash command pasted that way starts no turn, and a long paste collapses into a placeholder from claudeengine.PasteCollapseMinChars characters.

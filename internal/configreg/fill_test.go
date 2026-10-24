@@ -1,3 +1,5 @@
+//go:build tier0
+
 // fill_test.go — tests that configengine fills a present config file's missing keys from each real module template.
 
 package configreg_test

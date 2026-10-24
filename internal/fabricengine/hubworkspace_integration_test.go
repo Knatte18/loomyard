@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // hubworkspace_integration_test.go drives RegenerateHubWorkspace against hubforge hubs:
 // the folder list and its order, the skip exits, the mutation record, the lock, and the failures that write no file.

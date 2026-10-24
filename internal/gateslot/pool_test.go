@@ -1,3 +1,5 @@
+//go:build tier0
+
 // pool_test.go covers the slot pool, its holder records, the inherited slot check, the child environment and the wait records over file locks in a temp directory.
 // File locks are not spawns, so the tests stay untagged and run with a shortened poll interval.
 

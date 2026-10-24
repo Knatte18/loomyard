@@ -1,3 +1,5 @@
+//go:build tier0
+
 // command_test.go table-tests the pane-shell command composition helpers: quoting of paths with
 // spaces and embedded single quotes, model/flag presence per the interactive toggle, the exact
 // resume-command shape, the resolveModelID bare-word-plus-version composition rule, the

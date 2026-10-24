@@ -1,3 +1,5 @@
+//go:build tier0
+
 // peers_test.go — untagged Tier-1 tests for the peers verbs over fake peersDeps.
 
 package loomcli

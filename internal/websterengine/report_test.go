@@ -1,3 +1,5 @@
+//go:build tier0
+
 // report_test.go covers Report's round-trip through WriteReport->ParseReport for both terminal
 // statuses and both empty and populated deviation lists, plus ParseReport's strict-decode
 // rejections: an unknown key, a missing head_sha, an unrecognized status, malformed YAML, an

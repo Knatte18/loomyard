@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // crosscompile_test.go is the durable in-repo cross-compile gate for Linux support.
 // It shells out to the real `go` toolchain with GOOS=linux and fails the build if any

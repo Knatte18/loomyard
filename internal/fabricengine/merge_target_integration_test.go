@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // merge_target_integration_test.go covers Merge's target-pair scenario matrix against a real
 // hubforge pair: a second "target"/"target-weft" pair added alongside the fixture's own source pair,

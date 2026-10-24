@@ -1,3 +1,5 @@
+//go:build tier0
+
 // refscanner_test.go covers RefScanner.Matches against the three cases websterengine's
 // audit_test.go exercises today for its own weftReferencePattern (a command containing the sibling
 // worktree path, a command containing a -weft sibling name, and a lyx fabric/weft/warp invocation),

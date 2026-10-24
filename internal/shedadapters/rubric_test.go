@@ -1,3 +1,5 @@
+//go:build tier0
+
 // rubric_test.go covers ReadRubric directly: the fill, the strip, the markerless pass-through, and
 // the required-marker error, exercised against a realistically stamped fixture file rather than a
 // bare body.

@@ -12,6 +12,7 @@ import "fmt"
 // non-empty, as exactly "<producer> → bounced to <routedTo>". Wait is errText when st is
 // StateBlocked, StateFailed or StateAwaiting, and the empty string for every other state.
 // A latest entry that is a reroute entry composes as exactly "<producer> → rerouted to <target>", whatever routedTo is.
+// A latest entry that is a skipped entry composes as exactly "<producer> → skipped", whatever routedTo is.
 //
 // routedTo is told by the one call site that routes a Stuck verdict to another row (or back to
 // the same row), because the activity line is composed in the same persist that records the bounce.
@@ -26,6 +27,8 @@ func composeActivity(currentProducer string, history []HistoryEntry, st State, e
 		switch {
 		case latest.Outcome == OutcomeReroute:
 			last = fmt.Sprintf("%s → rerouted to %s", latest.Producer, latest.RoutedTo)
+		case latest.Outcome == OutcomeSkipped:
+			last = fmt.Sprintf("%s → skipped", latest.Producer)
 		case routedTo != "":
 			last = fmt.Sprintf("%s → bounced to %s", latest.Producer, routedTo)
 		default:

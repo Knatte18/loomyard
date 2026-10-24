@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // preflight_integration_test.go covers preflightshed.NewPreflight's wrapper against a hubforge
 // fixture hub. It is in-package because nothing in hubforge's dependency set reaches this new leaf

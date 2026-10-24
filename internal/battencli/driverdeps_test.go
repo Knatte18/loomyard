@@ -1,3 +1,5 @@
+//go:build tier0
+
 // driverdeps_test.go covers the seams batten fills the shed driver with: which are wired, which are left to remove their rule-table rows, and the paths and lock they name.
 
 package battencli

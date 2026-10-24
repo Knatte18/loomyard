@@ -1,3 +1,5 @@
+//go:build tier0
+
 // devbin_test.go covers the RepoRoot/Dir/BinPath derivation helpers.
 // All tests are Go-native and Tier-1 pure: they only inspect derived paths and the local filesystem
 // layout of this checkout, with no process spawns.

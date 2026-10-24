@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // envfile_integration_test.go runs the env file content under `bash` in Claude Code's prelude shape.
 // It pins that the content closes the shell's default stdin without touching a stdin a command supplies itself,

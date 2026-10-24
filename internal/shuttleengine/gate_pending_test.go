@@ -1,3 +1,5 @@
+//go:build tier0
+
 // gate_pending_test.go covers the pending gate state: a PassOnCap entry that holds the run at a turn boundary,
 // driven through the same fake engine, fake reed and fake clock gate_test.go uses — hermetic, untagged, and never sleeping for real.
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // layer_test.go — unit tests for derived fields (layer.go).
 //
 // ComputeLayers depth assignment and RenderOrder.

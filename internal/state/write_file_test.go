@@ -1,4 +1,6 @@
-// write_file_test.go tests WriteFile's verbatim atomic write of raw record bytes using only temp files — no git, no spawning, untagged (Tier 1).
+//go:build tier0
+
+// write_file_test.go tests WriteFile's verbatim atomic write of raw record bytes using only temp files — no git, no spawning.
 
 package state
 

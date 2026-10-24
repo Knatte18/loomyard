@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // lintcomments_integration_test.go drives the lint-comments and lint-pattern verbs over a real repository.
 

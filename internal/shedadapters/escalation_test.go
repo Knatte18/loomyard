@@ -1,3 +1,5 @@
+//go:build tier0
+
 // escalation_test.go covers the escalation record over a temp run directory.
 
 package shedadapters

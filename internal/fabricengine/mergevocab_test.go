@@ -1,3 +1,5 @@
+//go:build tier0
+
 // mergevocab_test.go is the explicit side-free vocabulary assertion the enforcement walk
 // (internal/lyxcwd's TestEnforcement_FabricVocabulary) cannot provide for the merge surface:
 // internal/fabricengine sits inside that walk's owner set, so a warp/weft leak into MergeResult,

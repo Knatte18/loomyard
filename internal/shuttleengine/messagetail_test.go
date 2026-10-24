@@ -1,3 +1,5 @@
+//go:build tier0
+
 // messagetail_test.go verifies WithMessageTail appends the fixed tail exactly once.
 
 package shuttleengine_test

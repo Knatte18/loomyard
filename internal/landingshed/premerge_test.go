@@ -1,3 +1,5 @@
+//go:build tier0
+
 // premerge_test.go covers the pre-merge step Merge-In and Finalize run ahead of their merge-in, driven through each producer's Call with the package's fake resolver and recording seam closures.
 // It captures the process-global logger output, so its tests do not run in parallel.
 

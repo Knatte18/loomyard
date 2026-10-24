@@ -1,3 +1,5 @@
+//go:build tier0
+
 // reap_test.go drives Reap over fake end seams and a scripted owner record, worktree list and process listing.
 
 package tenderengine

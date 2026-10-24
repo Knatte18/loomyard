@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // reset_test.go covers Repo.ResetHard and Repo.ResetKeep against real git repositories, reusing
 // gitrepo_test.go's fixture helpers (newRepo, writeFile, commitAll, runGit).

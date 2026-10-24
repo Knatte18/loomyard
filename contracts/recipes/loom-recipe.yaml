@@ -460,9 +460,10 @@ producers:
       review_row: Code-Burler-Review
       # The verify gate runs on the committed tree after each round and re-prompts the round
       # session with the findings until it passes. It first runs the headroom lint from the merge
-      # base with the parent branch, then lints the comments the round added, then runs the hub's
-      # `landing` call narrowed to the diff since the plan verify's last pass, or the `landing`
-      # list's own whole-tree call wherever that diff cannot be narrowed. A tree the
+      # base with the parent branch, then lints the comments the round added from its own latest
+      # pass, or from the merge base on a first round, then runs the hub's `code-burler-fix` key,
+      # whose scope the gate derives itself. The row runs its own key and shares no pass with
+      # Webster's end gate; gate_key names another key of the hub's gate.yaml. A tree the
       # record already names passes without running, so a round that changed no code costs
       # nothing.
       gates:

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remove_finish_integration_test.go covers Remove finishing a half-removed pair: the task worktree removed by hand, both worktrees gone with branches left, a sibling branch only on origin, a stray path at the pair location, and a pair of which nothing remains.
 // Each case converges on one re-run of Remove.

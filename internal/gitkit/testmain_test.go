@@ -1,4 +1,4 @@
-//go:build !integration
+//go:build !tier1
 
 // testmain_test.go runs the untagged test binary under the hermetic git test environment and tmux isolation:
 // HermeticGitEnv() runs once before any test, then tmuxkit.Main runs the tests.

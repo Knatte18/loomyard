@@ -1,3 +1,5 @@
+//go:build tier0
+
 // standalonestate_test.go drives both platform rows of derive through its unexported seam, so runtime.GOOS being a compile-time constant never leaves one row unexercised in CI.
 // A test that changes the working directory with t.Chdir cannot run in parallel; the one such test names that process-global state, and every other test here runs in parallel.
 

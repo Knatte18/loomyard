@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cleanup_local_integration_test.go covers Cleanup over a local pair's orphan weft branch, which is neither archived nor deleted on origin.
 // The hub's origin URLs point at a path that does not exist, so any origin step fails the call.

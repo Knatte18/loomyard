@@ -1,85 +1,24 @@
-// bench_test.go — offline (Tier 1) benchmarks for the core board commands.
+//go:build tier0
+
+// bench_test.go — offline (tier 0) benchmarks for the core board commands.
 //
 // Benchmarks the pure Render and the Board facade (Board.UpsertTask) across board sizes of
 // 10/100/1000 tasks, with git skipped (BOARD_SKIP_GIT=1) so they measure board logic + file I/O
 // only and stay in the default offline loop.
-// Also defines seedWiki, the task-seeding helper shared across this package.
 // The CLI-driven upsert/get/list benchmarks require a real git repo (config resolution) and so live
 // behind `//go:build integration` in bench_cli_test.go.
 
 package boardtest
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
-
-// benchSizes is the set of board sizes (number of tasks already in board.json) each benchmark is run against.
-// Every write re-renders the whole board, so cost is expected to grow with size — these sizes make that scaling visible.
-var benchSizes = []int{10, 100, 1000}
-
-// seedWiki writes a board.json with n independent (dependency-free) tasks into a fresh temp dir, seeded with _lyx/config/board.yaml for config, and returns the cwd path.
-// Callers must set BOARD_SKIP_GIT=1 so the benchmark measures board logic + file I/O,
-// not git push latency. It takes a testing.TB so both benchmarks and concurrency tests
-// can use it. For direct facade tests (not CLI), construct Board from the config's Path
-// which is resolved from board.yaml.
-func seedWiki(tb testing.TB, n int) string {
-	tb.Helper()
-
-	dir := tb.TempDir()
-
-	// Create _lyx and _lyx/config directories with board.yaml config
-	lyxDir := filepath.Join(dir, lyxdirs.LyxDirName)
-	if err := os.MkdirAll(lyxDir, 0o755); err != nil {
-		tb.Fatalf("mkdir _lyx: %v", err)
-	}
-	configDir := configengine.ConfigDir(dir)
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		tb.Fatalf("mkdir _lyx/config: %v", err)
-	}
-	configPath := configengine.ConfigFile(dir, "board")
-	if err := os.WriteFile(configPath, []byte("path: board\nreadme: Home.md\ndesign_prefix: proposal-\ntypes: [bug, enhancement]\nlabels: [undecided]\n"), 0o644); err != nil {
-		tb.Fatalf("write board.yaml: %v", err)
-	}
-
-	// Create board directory and board.json
-	boardDir := filepath.Join(dir, "board")
-	if err := os.MkdirAll(boardDir, 0o755); err != nil {
-		tb.Fatalf("mkdir board: %v", err)
-	}
-
-	tasks := make([]boardengine.Task, n)
-	for i := range tasks {
-		tasks[i] = boardengine.Task{
-			ID:        i,
-			Slug:      "task-" + strconv.Itoa(i),
-			Title:     "Task " + strconv.Itoa(i),
-			Kind:      boardengine.KindTask,
-			Labels:    []string{"enhancement"},
-			DependsOn: []string{},
-			Brief:     "brief for task " + strconv.Itoa(i),
-		}
-	}
-
-	data, err := json.MarshalIndent(map[string]any{"version": 1, "entries": tasks}, "", "  ")
-	if err != nil {
-		tb.Fatalf("marshal seed: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), data, 0o644); err != nil {
-		tb.Fatalf("write seed: %v", err)
-	}
-	// Return the cwd (parent) for CLI benchmarks, which will call b.Chdir
-	return dir
-}
 
 // BenchmarkRender measures the pure Render function (tasks → markdown content), no I/O.
 // A quarter of the tasks have a body so proposal-*.md generation is exercised.

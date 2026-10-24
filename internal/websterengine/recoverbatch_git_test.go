@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // recoverbatch_git_test.go exercises recover-batch's suspect-path evidence over a real scratch git repository:
 // the flagged blob a failed batch recorded is looked up by git in the recovery report's head, at the start commit and in the worktree, so these tests need git's own object and ignore semantics.

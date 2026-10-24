@@ -1,3 +1,5 @@
+//go:build tier0
+
 // config_test.go — untagged Tier-1 unit tests for loomengine.LoadConfig.
 //
 // Seeds a bare t.TempDir() with just a _lyx/config/loom.yaml file (no real hub, no SeedConfig, no

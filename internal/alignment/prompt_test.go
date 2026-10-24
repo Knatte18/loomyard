@@ -1,4 +1,6 @@
-// prompt_test.go — untagged Tier-1 tests for the agent's prompt and launch spec, over a stencils directory seeded from the shipped registry.
+//go:build tier0
+
+// prompt_test.go — tier 0 tests for the agent's prompt and launch spec, over a stencils directory seeded from the shipped registry.
 
 package alignment
 

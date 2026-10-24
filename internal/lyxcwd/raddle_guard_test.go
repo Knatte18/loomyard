@@ -1,3 +1,5 @@
+//go:build tier0
+
 // raddle_guard_test.go is a guard to ensure that internal/lyxcwd never discovers or enumerates the
 // _raddle directory.
 // This documents that lyxcwd never scans the worktree to mirror dirs — a future nested/ignored

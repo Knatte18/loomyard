@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // These tests set the prebuilt-binary variable through t.Setenv, so none of them calls t.Parallel: the process environment is the global state they share.
 

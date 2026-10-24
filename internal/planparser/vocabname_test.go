@@ -1,3 +1,5 @@
+//go:build tier0
+
 // vocabname_test.go covers CheckFabricVocabularyName over in-memory plans.
 
 package planparser_test

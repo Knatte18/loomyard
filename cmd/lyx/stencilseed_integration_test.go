@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // stencilseed_integration_test.go pins the root pre-run's stencil-seed path against real hubs.
 // stencilSeedTarget's hub-presence gate is pinned against the defect that a plain repository with no hub-level sibling used to seed a fictional hub, and against a narrowing onto preflight.Wired, which would stop seeding in three real-hub situations that seed correctly today.

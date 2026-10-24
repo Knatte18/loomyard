@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // remove_junctions_integration_test.go proves card 9's fix: Remove tears down
 // every warp junction — not just the worktree-root case

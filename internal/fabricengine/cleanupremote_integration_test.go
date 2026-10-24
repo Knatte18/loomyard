@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cleanupremote_integration_test.go covers Cleanup's remote branch deletion under --remote: the
 // opt-in deletion of an orphan weft branch's copy on the remote, its default-off regression guard,

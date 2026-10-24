@@ -1,3 +1,5 @@
+//go:build tier0
+
 // payload_test.go couples each board payload command's `{…}` Use token to the payloadKeys its parser validates against.
 // It inspects the built cobra tree only and runs no command.
 

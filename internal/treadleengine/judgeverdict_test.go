@@ -1,3 +1,5 @@
+//go:build tier0
+
 // judgeverdict_test.go table-drives ParseJudgeVerdict (both framings) over
 // the happy paths and every fail-loud rule documented on it: every legal verdict per framing, the
 // wrong framing's vocabulary rejected, lowercase rejected, missing/empty rationale rejected,

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // build_engines_test.go holds one test asserting every name shedrecipe.Names() returns is
 // buildable from a recipe given a sufficiently filled environment. It is deliberately not
 // filesystem-free: the bouncer and burler-round engines create the run directory they resolve, and
@@ -46,7 +48,6 @@ func engineMinimalConfig(advisorStencilName, leadStencilName, rubricStencilName 
 			"profile":    map[string]any{"fix-scope": "source"},
 		},
 		"Command": {
-			"switch":  "batten.open_window",
 			"command": "batten.open_window_command",
 		},
 		"Implementer": {

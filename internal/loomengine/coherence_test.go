@@ -1,3 +1,5 @@
+//go:build tier0
+
 // coherence_test.go is the TDD driver for checkCoherence: table tests over in-memory
 // shedengine.Status/Status pairs covering every rule check 4 enforces plus the fresh-start
 // invariants, across the two-row (generic then loom's own) world. It is untagged (Tier 1): no
@@ -148,6 +150,14 @@ func TestCheckCoherence(t *testing.T) {
 			name: "RerouteHistoryOutcomeIsValid",
 			mutateShed: func(s shedengine.Status) shedengine.Status {
 				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: shedengine.OutcomeReroute, RoutedTo: "Loom-Preflight", At: "2026-07-17T10:01:30Z"}}
+				return s
+			},
+			wantEmpty: true,
+		},
+		{
+			name: "SkippedHistoryOutcomeIsValid",
+			mutateShed: func(s shedengine.Status) shedengine.Status {
+				s.History = []shedengine.HistoryEntry{{Producer: "Loom-Preflight", Outcome: shedengine.OutcomeSkipped, Reason: "review budget is 0", At: "2026-07-17T10:01:30Z"}}
 				return s
 			},
 			wantEmpty: true,

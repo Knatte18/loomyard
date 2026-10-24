@@ -1,3 +1,5 @@
+//go:build tier0
+
 // mergestate_test.go is pure-logic (Tier 1) coverage for the merge record's two derived flags,
 // landedConcludeCommit and bothSidesAlreadyUpToDate, which MergeResult.Committed and
 // MergeResult.AlreadyUpToDate are read off.

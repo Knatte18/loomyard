@@ -1,3 +1,5 @@
+//go:build tier0
+
 // innerrun_wait_test.go covers the inner-run watch's in-call wait: what ends it, what it ignores, and when it decodes the child's status file.
 // The subtest that captures log output replaces the process-global logger output, so the test does not run in parallel.
 

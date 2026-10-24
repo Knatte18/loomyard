@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // deleteremotebranch_integration_test.go covers Repo.DeleteRemoteBranch and DeleteRemoteBranchLeased against a real bare remote and clones, reusing push_test.go's bare-remote/clone fixtures (newBareRemote, newRepoWithRemote, cloneFromBare) exactly as fetch_integration_test.go does.
 

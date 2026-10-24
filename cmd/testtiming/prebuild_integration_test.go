@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // prebuild_integration_test.go pins the harness's one lyx build per tagged run.
 // It is Tier 2: the building rows spawn a real go build of a throwaway module, or the test binary as a stand-in go, so it needs the integration build tag.
@@ -51,6 +51,7 @@ func TestPrebuildLyx(t *testing.T) {
 		wantError     string
 	}{
 		{name: "an untagged run builds nothing and strips the inherited value", mainSource: "package main\n\nfunc main() {}\n"},
+		{name: "a tier0 run builds nothing and strips the inherited value", tags: "tier0", mainSource: "package main\n\nfunc main() {}\n"},
 		{name: "a tagged run without cmd/lyx builds nothing and strips the inherited value", tags: "integration"},
 		{name: "a tagged run builds cmd/lyx and exports it", tags: "integration", mainSource: "package main\n\nfunc main() {}\n", wantBuilt: true},
 		{

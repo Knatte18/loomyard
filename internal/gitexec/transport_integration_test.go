@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // transport_integration_test.go pins the real stderr git prints for an unreachable remote and for a rejected push.
 

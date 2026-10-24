@@ -1,3 +1,5 @@
+//go:build tier0
+
 // run_test.go — tests for run directories (run.go) and the process API (lyxtemp.go).
 
 package lyxtemp

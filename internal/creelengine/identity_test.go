@@ -1,3 +1,5 @@
+//go:build tier0
+
 // identity_test.go pins how a request's sender is resolved from the peer's process ancestry and its claim.
 
 package creelengine

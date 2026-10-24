@@ -1,3 +1,5 @@
+//go:build tier0
+
 // prober_test.go covers Claude's SessionProber: process liveness over a temp session registry with injected liveness and start-time probes, and the interrupt marker over temp transcripts named by a turn start's payload.
 // It also covers the turn progress reader over the testdata/turnprogress fixtures.
 

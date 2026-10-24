@@ -1,3 +1,5 @@
+//go:build tier0
+
 // report_test.go covers Report's own bookkeeping methods — AddFailure and Has — and the
 // OK == (len(Failures) == 0) invariant, spawning nothing.
 

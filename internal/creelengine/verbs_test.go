@@ -1,3 +1,5 @@
+//go:build tier0
+
 // verbs_test.go pins the pool's verbs over the fake delivery seam: mail, replies, reads, forwards, the log, injects, interrupts and holds.
 
 package creelengine_test

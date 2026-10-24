@@ -1,3 +1,5 @@
+//go:build tier0
+
 // follow_test.go pins the told-geometry follow jump: the window it selects from tmux facts and the exact commands it issues, through TmuxCmd's execHook seam.
 
 package reedengine

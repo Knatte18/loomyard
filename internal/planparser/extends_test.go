@@ -1,3 +1,5 @@
+//go:build tier0
+
 // extends_test.go covers the Extends type label's checks and the readers that treat an Extends group as an Edit group.
 
 package planparser_test

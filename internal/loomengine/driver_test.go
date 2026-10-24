@@ -1,3 +1,5 @@
+//go:build tier0
+
 // driver_test.go — untagged Tier-1 unit tests for ResolveDriver.
 // Mirrors review_test.go's shape: pure Go over an in-memory Config and a temp-dir modelspec
 // registry, no live hub, reed, or network involved.

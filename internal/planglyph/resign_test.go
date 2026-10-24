@@ -1,3 +1,5 @@
+//go:build tier0
+
 // resign_test.go covers RebindResigns: the carrying of a recorded C# re-sign arrow into the plan once its edit is in the tree.
 
 package planglyph

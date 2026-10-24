@@ -1,3 +1,5 @@
+//go:build tier0
+
 // gates_test.go covers NewDiscussionGate and NewPlanGate's own outcome mapping, the ParsePlan error
 // split that is the subtlest rule in the task, the fail-closed severity predicate both gates key
 // their pass/fail split on.

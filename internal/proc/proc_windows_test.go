@@ -1,4 +1,4 @@
-//go:build windows
+//go:build tier0 && windows
 
 package proc
 

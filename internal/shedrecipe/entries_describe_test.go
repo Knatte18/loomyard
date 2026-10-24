@@ -1,3 +1,5 @@
+//go:build tier0
+
 // entries_describe_test.go covers describeEntry: its construction-time validation over Config, the
 // three injected Env seams and the told DescriptionPath, plus the happy path that runs one table through the seat runner.
 

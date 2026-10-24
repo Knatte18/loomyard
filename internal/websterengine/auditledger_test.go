@@ -1,3 +1,5 @@
+//go:build tier0
+
 // auditledger_test.go covers the audit ledger's once-per-identity rule, the parent/fork identity split, ordering of RecordedAuditWarnings, and the pathless-finding refusal.
 // Plain t.TempDir() files only — Test Tier Purity Invariant.
 

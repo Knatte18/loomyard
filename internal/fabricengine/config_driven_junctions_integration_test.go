@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // config_driven_junctions_integration_test.go proves the two behaviors batch
 // 3 exists to prove: (1) the extensibility promise of the hybrid name-sourcing

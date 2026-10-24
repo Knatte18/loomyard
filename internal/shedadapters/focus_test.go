@@ -1,3 +1,5 @@
+//go:build tier0
+
 // focus_test.go covers readRoundFocus against the focus file the Bouncer actually writes: the
 // YAML-frontmatter round-<N>-focus.md shape renderFocus produces and parseFocus accepts.
 // TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething is the two-sided regression guard -- it

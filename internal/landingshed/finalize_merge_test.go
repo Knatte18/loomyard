@@ -1,3 +1,5 @@
+//go:build tier0
+
 // finalize_merge_test.go drives Finalize's merge of the parent branch into the task and the judgement of that merge, over a fake task merger, a fake resolver and the gate fixture.
 
 package landingshed
@@ -140,7 +142,7 @@ func TestFinalize_MergeJudgement(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			gate := newGateFixture(t, "go test ./...", nil)
+			gate := newGateFixture(t, "finalize", "go test ./...", nil)
 			merger := &recordingParentMerger{results: []mergeCallResult{{result: committed}}}
 			taskMerger := &fakeTaskMerger{result: tt.merge, onMerge: func() {
 				if len(tt.merge.Conflicts) == 0 && !tt.merge.AlreadyUpToDate {

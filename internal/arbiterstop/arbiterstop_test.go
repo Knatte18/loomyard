@@ -1,3 +1,5 @@
+//go:build tier0
+
 // arbiterstop_test.go pins the eligibility answer the Go driver's escalation fact takes.
 
 package arbiterstop

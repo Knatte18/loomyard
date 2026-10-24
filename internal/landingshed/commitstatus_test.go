@@ -1,3 +1,5 @@
+//go:build tier0
+
 // commitstatus_test.go covers Deps.CommitStatus, the injected loop-owner seam Finalize commits the product's own orchestration status file through before it merges.
 // Merge-In's cases live in mergein_test.go.
 //

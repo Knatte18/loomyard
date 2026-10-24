@@ -1,3 +1,5 @@
+//go:build tier0
+
 // tiers_test.go covers the pure planning of a call's tier runs and the rendering of a tier's command.
 
 package gatecli
@@ -20,8 +22,7 @@ func planConfig() gateslot.Config {
 			"tier0": {Command: "go test {targets} {args}", Dir: ".", AllTargets: "./...", TimeoutMin: 1, Counter: "go-json", Parallel: 1, Slots: 1},
 			"tier1": {Command: "go test -tags integration {targets} {args}", Dir: "sub", AllTargets: "./... ./x/...", TimeoutMin: 1, Counter: "go-json", Parallel: 1, Slots: 1, Covers: []int{0}},
 		},
-		Scoper:    "go",
-		GuardTier: 1,
+		Scoper: "go",
 	}
 }
 
@@ -63,13 +64,17 @@ func requestScope(request testRequest) scope {
 func TestPlanTierRuns(t *testing.T) {
 	t.Parallel()
 
+	tier1Guards := map[int]map[string][]string{1: {"g": {"TestG"}}}
+	bothTierGuards := map[int]map[string][]string{0: {"f": {"TestF"}}, 1: {"g": {"TestG"}}}
 	narrower := scope{
 		form:      scopeComputed,
 		modules:   []moduleTargets{{dir: ".", targets: []string{"./a", "./b"}}, {dir: "nested", targets: []string{"."}}},
 		guardStep: true,
 		guardDir:  ".",
-		guards:    map[string][]string{},
+		guards:    tier1Guards,
 	}
+	narrowerWithBothTiers := narrower
+	narrowerWithBothTiers.guards = bothTierGuards
 	tests := []struct {
 		name    string
 		mutate  func(*gateslot.Config)
@@ -119,6 +124,24 @@ func TestPlanTierRuns(t *testing.T) {
 			wantStderr: "tier0 is covered by tier1",
 		},
 		{
+			name: "a gate key's tiers are the listed tiers, ascending, a manual one included",
+			mutate: func(cfg *gateslot.Config) {
+				withManualTier3(cfg)
+				cfg.Gates = map[string]gateslot.GateKey{"both": {Tiers: []int{3, 0}, Scope: "all"}}
+			},
+			request: testRequest{gate: "both"},
+			want:    []string{"tier0 all dir=. ./...", "tier3 all dir=."},
+		},
+		{
+			name: "a gate key's tier another listed tier covers is dropped and named on stderr",
+			mutate: func(cfg *gateslot.Config) {
+				cfg.Gates = map[string]gateslot.GateKey{"both": {Tiers: []int{0, 1}, Scope: "all"}}
+			},
+			request:    testRequest{gate: "both"},
+			want:       []string{"tier1 all dir=sub ./... ./x/..."},
+			wantStderr: "tier0 is covered by tier1",
+		},
+		{
 			name:    "explicit targets run verbatim in the -C directory",
 			request: testRequest{tiers: []int{0}, targets: []string{"./a", "./b"}, dir: "/work/nested"},
 			want:    []string{"tier0 targets dir=/work/nested ./a ./b"},
@@ -134,28 +157,42 @@ func TestPlanTierRuns(t *testing.T) {
 			want:    []string{"tier1 all dir=sub ./... ./x/..."},
 		},
 		{
-			name:    "the guard step follows the listed tiers",
+			name:    "a guard group follows the listed tiers under the dir of its own tier",
 			request: testRequest{tiers: []int{0}, guards: true},
+			scope:   scope{form: scopeAll, whole: true, guards: tier1Guards},
 			want:    []string{"tier0 all dir=. ./...", "tier1 guard dir=sub guard"},
 		},
 		{
-			name:    "the guard step is skipped when the call ran guard_tier whole",
-			request: testRequest{tiers: []int{1}, guards: true},
+			name:  "guard tests in tier0 and tier1 files plan two groups under their own tiers, ascending",
+			scope: narrowerWithBothTiers,
+			want:  []string{"tier0 computed dir=. ./a ./b | dir=nested .", "tier0 guard dir=. guard", "tier1 guard dir=. guard"},
+		},
+		{
+			name:    "a group is skipped when the call ran its tier whole",
+			request: testRequest{tiers: []int{0, 1}, guards: true},
+			scope:   scope{form: scopeAll, whole: true, guards: tier1Guards},
 			want:    []string{"tier1 all dir=sub ./... ./x/..."},
 		},
 		{
-			name:    "the guard step is skipped when a tier covering guard_tier ran whole",
-			mutate:  func(cfg *gateslot.Config) { cfg.GuardTier = 0 },
+			name:    "a group is skipped when a tier covering its tier ran whole",
 			request: testRequest{tiers: []int{1}, guards: true},
+			scope:   scope{form: scopeAll, whole: true, guards: map[int]map[string][]string{0: {"f": {"TestF"}}}},
 			want:    []string{"tier1 all dir=sub ./... ./x/..."},
 		},
 		{
-			name:    "the guard step still runs after guard_tier ran over explicit targets",
+			name:    "a group still runs after its tier ran over explicit targets",
 			request: testRequest{tiers: []int{1}, guards: true, targets: []string{"./a"}},
+			scope:   scope{form: scopeTargets, guards: tier1Guards},
 			want:    []string{"tier1 targets dir=sub ./a", "tier1 guard dir=sub guard"},
 		},
 		{
-			name:  "a per-module scope runs the tier once per module, then the guard step in the scope's guard dir",
+			name:    "no guard group is planned when the scan found no guard test",
+			request: testRequest{guards: true},
+			scope:   scope{form: scopeAll, whole: true, guards: map[int]map[string][]string{}},
+			want:    []string{"tier0 all dir=. ./..."},
+		},
+		{
+			name:  "a per-module scope runs the tier once per module, then the guard group in the scope's guard dir",
 			scope: narrower,
 			want:  []string{"tier0 computed dir=. ./a ./b | dir=nested .", "tier1 guard dir=. guard"},
 		},
@@ -170,23 +207,23 @@ func TestPlanTierRuns(t *testing.T) {
 			want:  []string{"tier0 computed dir=. ./... ignores", "tier1 guard dir=. guard"},
 		},
 		{
-			name:  "an empty scope runs no listed tier's command, and the guard step is still planned",
-			scope: scope{form: scopeComputed, guardStep: true, guardDir: ".", guards: map[string][]string{}},
+			name:  "an empty scope runs no listed tier's command, and the guard group is still planned",
+			scope: scope{form: scopeComputed, guardStep: true, guardDir: ".", guards: tier1Guards},
 			want:  []string{"tier0 computed none", "tier1 guard dir=. guard"},
 		},
 		{
-			name:  "a whole fallback runs the tier whole and still plans the guard step",
-			scope: scope{form: scopeComputed, whole: true, guardStep: true, guardDir: "."},
+			name:  "a whole fallback runs the tier whole and still plans the guard group",
+			scope: scope{form: scopeComputed, whole: true, guardStep: true, guardDir: ".", guards: tier1Guards},
 			want:  []string{"tier0 computed dir=. ./...", "tier1 guard dir=. guard"},
 		},
 		{
-			name:    "a whole scope that ran guard_tier whole plans no guard step",
+			name:    "a whole scope that ran the group's tier whole plans no guard group",
 			request: testRequest{tiers: []int{1}},
-			scope:   scope{form: scopeComputed, whole: true, guardStep: true, guardDir: "."},
+			scope:   scope{form: scopeComputed, whole: true, guardStep: true, guardDir: ".", guards: tier1Guards},
 			want:    []string{"tier1 computed dir=sub ./... ./x/..."},
 		},
 		{
-			name:    "a narrower scope plans the guard step although the listed tier is guard_tier",
+			name:    "a narrower scope plans the guard group although the listed tier is the group's tier",
 			request: testRequest{tiers: []int{1}},
 			scope:   narrower,
 			want:    []string{"tier1 computed dir=. ./a ./b | dir=nested .", "tier1 guard dir=. guard"},
@@ -226,7 +263,9 @@ func TestPlanTierRuns(t *testing.T) {
 		name    string
 		mutate  func(*gateslot.Config)
 		request testRequest
-		want    string
+		// scope defaults to the scope of the request's explicit targets, or --all.
+		scope scope
+		want  string
 	}{
 		{
 			name: "words after -- for a tier without {args}",
@@ -251,29 +290,31 @@ func TestPlanTierRuns(t *testing.T) {
 			want:    "tier1 covers tier7",
 		},
 		{
-			name:    "a guard_tier naming an undeclared tier",
-			mutate:  func(cfg *gateslot.Config) { cfg.GuardTier = 9 },
+			name:    "a guard group whose tier is undeclared",
 			request: testRequest{guards: true},
-			want:    "guard_tier",
+			scope:   scope{form: scopeAll, whole: true, guards: map[int]map[string][]string{9: {"g": {"TestG"}}}},
+			want:    "declares no tier9",
 		},
 		{
-			name: "a guard tier command without {targets}",
+			name: "a guard group whose tier command lacks {targets}",
 			mutate: func(cfg *gateslot.Config) {
 				t1 := cfg.Tiers["tier1"]
 				t1.Command = "go test {args}"
 				cfg.Tiers["tier1"] = t1
 			},
 			request: testRequest{guards: true},
+			scope:   scope{form: scopeAll, whole: true, guards: map[int]map[string][]string{1: {"g": {"TestG"}}}},
 			want:    "must hold {targets} and {args}",
 		},
 		{
-			name: "a guard tier command without {args}",
+			name: "a guard group whose tier command lacks {args}",
 			mutate: func(cfg *gateslot.Config) {
 				t1 := cfg.Tiers["tier1"]
 				t1.Command = "go test {targets}"
 				cfg.Tiers["tier1"] = t1
 			},
 			request: testRequest{guards: true},
+			scope:   scope{form: scopeAll, whole: true, guards: map[int]map[string][]string{1: {"g": {"TestG"}}}},
 			want:    "must hold {targets} and {args}",
 		},
 		{
@@ -290,7 +331,11 @@ func TestPlanTierRuns(t *testing.T) {
 			if tc.mutate != nil {
 				tc.mutate(&cfg)
 			}
-			_, err := planTierRuns(cfg, tc.request, requestScope(tc.request))
+			sc := tc.scope
+			if sc.form == "" {
+				sc = requestScope(tc.request)
+			}
+			_, err := planTierRuns(cfg, tc.request, sc)
 			if err == nil {
 				t.Fatal("planTierRuns() error = nil; want a refusal")
 			}

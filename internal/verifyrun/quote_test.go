@@ -1,3 +1,5 @@
+//go:build tier0
+
 // quote_test.go pins QuoteArg's quoting per platform shell.
 
 package verifyrun

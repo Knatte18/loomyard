@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // adoptremote_integration_test.go drives the fabric CLI verbs that take a pair's weft branch from origin when it exists only there, and `add`'s adoption of a live pair's branches, against one real hub as an ordered scenario.
 // Origin-only branches are pushed into the hub's bare from a scratch clone,

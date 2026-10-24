@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // gitscratch_test.go builds the real scratch git repository the integration-tier tests use
 // where the behavior under test is git itself: head capture across commits, merge commits, dirtiness, ignore rules and blobs.

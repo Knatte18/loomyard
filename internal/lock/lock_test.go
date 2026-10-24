@@ -1,3 +1,5 @@
+//go:build tier0
+
 // lock_test.go — unit tests for file locking (lock.go).
 //
 // Acquire/release and exclusive-lock contention between holders.

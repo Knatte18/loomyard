@@ -1,5 +1,7 @@
-// llmtier_test.go enforces the LLM-tier half of `PATTERN-test-speed`: only `llm` test files reach an LLM, through internal/testkit/llmkit.
-// The guard sees the static shape only: a `tmux`-tier test that drives `lyx` into spawning an LLM without calling llmkit is caught by review.
+//go:build tier0 || integration
+
+// llmtier_test.go enforces the LLM-tier half of `PATTERN-test-speed`: only `tier3` test files, tagged `llm` until that spelling is dropped, reach an LLM, through internal/testkit/llmkit.
+// The guard sees the static shape only: a `tier2` test that drives `lyx` into spawning an LLM without calling llmkit is caught by review.
 
 package main
 
@@ -126,12 +128,12 @@ func nonLookPathExecUse(file *ast.File) string {
 	return used
 }
 
-// canCompileWithoutLLM reports whether the constraint can be true with `llm` unset and every other tag and platform term set.
+// canCompileWithoutLLM reports whether the constraint can be true with `tier3` and its old spelling `llm` unset and every other tag and platform term set.
 func canCompileWithoutLLM(expr constraint.Expr) bool {
 	if expr == nil {
 		return true
 	}
-	return expr.Eval(func(tag string) bool { return tag != "llm" })
+	return expr.Eval(func(tag string) bool { return tag != "llm" && tag != "tier3" })
 }
 
 // llmTierFailures walks the Go files under opts and returns the violating files' failure lines and the number of files scanned.
@@ -155,17 +157,17 @@ func llmTierFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlis
 			return
 		}
 		if importsPath(file, llmkitImportPath) && canCompileWithoutLLM(buildConstraint(file)) {
-			failures = append(failures, fmt.Sprintf("%s: imports llmkit but can compile without the `llm` tag; constrain it to `//go:build llm`", f.Rel))
+			failures = append(failures, fmt.Sprintf("%s: imports llmkit but can compile without the `tier3` tag; constrain it to `//go:build tier3` (or the old `llm`)", f.Rel))
 		}
 		if bin := lookPathLLMBinary(file); bin != "" {
-			failures = append(failures, fmt.Sprintf("%s: looks up %q with exec.LookPath outside llmkit; call llmkit.Claude from an `llm` file", f.Rel, bin))
+			failures = append(failures, fmt.Sprintf("%s: looks up %q with exec.LookPath outside llmkit; call llmkit.Claude from a `tier3` file", f.Rel, bin))
 		}
 	})
 	sort.Strings(failures)
 	return failures, scanned
 }
 
-// TestLLMTier_OnlyLLMFilesReachAnLLM fails for a test file that imports llmkit without being confined to the `llm` tag, for a test file outside the kit that looks up an LLM binary, and for a kit file using `os/exec` beyond LookPath.
+// TestLLMTier_OnlyLLMFilesReachAnLLM fails for a test file that imports llmkit without being confined to the `tier3` tag or its old spelling `llm`, for a test file outside the kit that looks up an LLM binary, and for a kit file using `os/exec` beyond LookPath.
 //
 //lyx:guard
 func TestLLMTier_OnlyLLMFilesReachAnLLM(t *testing.T) {
@@ -195,6 +197,9 @@ func TestLLMTier_FixtureTrees(t *testing.T) {
 		{"tmux or llm file imports llmkit", map[string]string{"p/a_test.go": "//go:build tmux || llm\n\n" + importsKit}, 1},
 		{"integration file imports llmkit", map[string]string{"p/a_test.go": "//go:build integration\n\n" + importsKit}, 1},
 		{"llm file imports llmkit", map[string]string{"p/a_test.go": "//go:build llm\n\n" + importsKit}, 0},
+		{"tier3 file imports llmkit", map[string]string{"p/a_test.go": "//go:build tier3\n\n" + importsKit}, 0},
+		{"tier3 and platform file imports llmkit", map[string]string{"p/a_test.go": "//go:build tier3 && linux\n\n" + importsKit}, 0},
+		{"tier2 or tier3 file imports llmkit", map[string]string{"p/a_test.go": "//go:build tier2 || tier3\n\n" + importsKit}, 1},
 		{"llm and platform file imports llmkit", map[string]string{"p/a_test.go": "//go:build llm && linux\n\n" + importsKit}, 0},
 		{"integration file looks up claude", map[string]string{"p/a_test.go": "//go:build integration\n\n" + lookPathClaude}, 1},
 		{"integration file looks up claude through a constant", map[string]string{"p/a_test.go": "//go:build integration\n\n" + lookPathConst}, 1},

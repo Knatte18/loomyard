@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // loop_integration_test.go runs the loop against real processes.
 // The child-tree test starts this test binary as a waiter, a detached loop and a step child, to see which of them the others outlive.

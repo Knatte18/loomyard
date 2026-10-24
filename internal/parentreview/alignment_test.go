@@ -1,3 +1,5 @@
+//go:build tier0
+
 // alignment_test.go covers the gate's alignment-agent path over a scripted fake Aligner.
 
 package parentreview

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // judge_test.go tables runCircling and runMilestone against a same-package
 // fakeJudgeShuttle: the happy path (spec construction — Role, Model/Effort passthrough, OutputFiles
 // — plus a valid scripted verdict file) and every fail-safe branch (Run error, non-done outcome,

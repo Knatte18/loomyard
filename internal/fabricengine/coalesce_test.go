@@ -1,3 +1,5 @@
+//go:build tier0
+
 // coalesce_test.go covers coalescePush's loop-exit contract with scripted step closures: no real
 // git is spawned, only a flock on a t.TempDir() path, so this file stays untagged per the Test Tier
 // Purity Invariant.

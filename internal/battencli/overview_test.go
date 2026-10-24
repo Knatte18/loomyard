@@ -1,3 +1,5 @@
+//go:build tier0
+
 // overview_test.go pins the runs overview: renderOverview over built runs, and the source that reads a prime's runs from disk.
 
 package battencli

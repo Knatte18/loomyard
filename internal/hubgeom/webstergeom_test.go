@@ -1,3 +1,5 @@
+//go:build tier0
+
 // webstergeom_test.go pins WebsterGeometry against the websterengine accessors, planparser.PlanDir
 // and fabricengine.StencilsDir themselves, so this test cannot drift from those packages' own joins.
 // Following hubgeom_test.go's fixture discipline, hub, worktree root, and anchor path stay three

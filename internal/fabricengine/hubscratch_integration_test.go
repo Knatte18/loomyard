@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // hubscratch_integration_test.go pins card 2's ordering guarantee at CloneHub's own boundary: the
 // board worktree's weft-common-gitdir excludes carry a `.lyx/` entry the instant CloneHub returns,

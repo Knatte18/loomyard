@@ -1,3 +1,5 @@
+//go:build tier0
+
 // reservedhubname_test.go pins that two names the hub once reserved are no longer reserved.
 // BoardDir, HubPath and IsReservedHubName live in internal/fabricengine; their full coverage is in fabricengine/junctionnames_test.go, and this file keeps only the inverse-of-the-old-truth rows.
 

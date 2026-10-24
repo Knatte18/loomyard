@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // syncweft_integration_test.go — integration coverage for the parts of the
 // weft-git surface that genuinely need git spawned: the Warp-SHA trailer

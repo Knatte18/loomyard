@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seam_enforcement_test.go enforces the Agent Name Invariant's leaf clause:
 // production code in internal/agentname imports the standard library only.
 

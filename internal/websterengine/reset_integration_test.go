@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // reset_integration_test.go drives PlanReset over a scratch git repository under t.TempDir():
 // each refusal after the lock and state checks, the octopus merge-base of diverging starts, and the own-path set.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // resolve_test.go contains table-driven tests for the Resolve function and its supporting expansion
 // logic.
 

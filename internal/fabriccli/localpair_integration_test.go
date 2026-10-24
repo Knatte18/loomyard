@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // localpair_integration_test.go drives the local-only pair verbs of the fabric CLI over one real hub: `add --local`, the push that skips a local pair's branches, and the local add's refusal over an ordinary pair.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // teardownlock_test.go covers DetachedPush's exit under a pause, which needs no git and no real hub:
 // the worktree paths it is given do not exist, so a child that goes on past the pause check stops at the gone-worktree check.
 

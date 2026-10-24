@@ -1,3 +1,5 @@
+//go:build tier0
+
 // sequence_test.go covers CheckBatchOrder through its exported surface: a batch list whose every dependency edge (a Uses entry naming another card's Targets entry, or two cards writing one Targets entry in card order) runs forward is accepted, and one with an edge to an earlier batch, including a cycle, is refused with an error that wraps ErrBatchOrder and names both batch numbers, the card, the ref and the way forward.
 // Tier 1: package websterengine_test, no git, no disk — every fixture is a hand-built []batcher.Batch
 // literal; nothing goes through planparser.ParsePlan.

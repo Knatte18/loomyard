@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cli_test.go covers the loomcli cobra seam: the bare-group invocation's git-free guard, and the run/pause/status verbs' own
 // refusal paths driven directly against a hand-populated receiver -- bypassing wire entirely, since
 // none of the three refusals needs a wired hub.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // patternentry_test.go covers CardPatternEntries, the reader of a card's fenced PATTERN.md entry lines.
 
 package planparser

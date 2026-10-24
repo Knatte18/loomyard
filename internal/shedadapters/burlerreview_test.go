@@ -1,3 +1,5 @@
+//go:build tier0
+
 // burlerreview_test.go pins BurlerReviewProducer and the pieces both half producers share over shedfake.BurlerHalfRunner:
 // It covers the constructors' validation, the acceptance record, the round scan and hand-ons, the profile each round carries, and the accepted exit and its records.
 // It also covers every failure exit's archive set, cancellation, and probe and resume.

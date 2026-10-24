@@ -1,3 +1,5 @@
+//go:build tier0
+
 // watchdog_test.go covers the CPU watchdog's quit decisions over a scripted sampler and a fake clock, and the conditions under which the watchdog runs at all.
 
 package gatecli

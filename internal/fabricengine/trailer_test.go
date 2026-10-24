@@ -1,3 +1,5 @@
+//go:build tier0
+
 // trailer_test.go — unit tests for the Warp-SHA trailer format/parse helpers.
 
 package fabricengine

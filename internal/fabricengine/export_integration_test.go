@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // export_integration_test.go holds the git-spawning setup helpers behind export_test.go's seams:
 // they spawn git through gitkit, so they live in a tagged file and every caller is tagged too.

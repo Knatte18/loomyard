@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // entersession_integration_test.go pins that the watchdog daemon's per-session engine drives the tmux binary the daemon was told, against a hub fixture and with no tmux server.
 

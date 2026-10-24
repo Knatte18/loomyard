@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // verbs_test.go drives each entry in Verbs exactly once in the "clean" state, before the cross product
 // batch 7 builds multiplies any wiring mistake by nine.

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // goto_test.go covers batten's PreGoto hook: Worktree-Teardown is admitted only from Worktree-Teardown itself or once the child run reads done.
 
 package battencli

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // attachprobe_test.go covers the live-agent probe the Bouncer runs before it archives or spawns -- the seam that stops a resumed run from starting a second agent over one that is still alive.
 // The Bouncer probes through its Shuttle; the Burler rows' probes are covered beside their producers in burlerreview_test.go and burlerfix_test.go.
 //

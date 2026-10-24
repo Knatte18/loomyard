@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // cli_test.go covers the ide CLI cobra surface: spawn dispatch with a stubbed
 // launcher, the non-git refusal and the missing-slug error.

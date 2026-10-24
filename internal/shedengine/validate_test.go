@@ -1,3 +1,5 @@
+//go:build tier0
+
 // validate_test.go is a table test over (*Shed).validate's rules: one case per rule, each
 // asserting a distinct error-message substring, plus one case asserting a fully-valid Shed
 // returns nil.

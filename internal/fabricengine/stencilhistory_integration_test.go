@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // stencilhistory_integration_test.go covers StencilBaseByStamp against a real hubforge hub whose
 // board has been seeded and re-seeded with a changed default, via CommitSeededStencils exactly as

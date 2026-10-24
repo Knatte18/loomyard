@@ -1,4 +1,4 @@
-//go:build tmux
+//go:build tier2
 
 // smoke_test.go is the tagged smoke suite for the session bootstrap: the one thing nothing else in
 // this package can catch, because it needs a real tmux server, a real detached driver process, and

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // parentreview_test.go — untagged Tier-1 unit tests for ParentReviewDeliveryPrompt and ParentReviewBrief.
 
 package loomengine

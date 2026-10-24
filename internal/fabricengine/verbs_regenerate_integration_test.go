@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // verbs_regenerate_integration_test.go proves the fabric verbs that create, remove or switch a warp worktree regenerate the hub workspace file,
 // and that a failed regeneration never changes a verb's result.

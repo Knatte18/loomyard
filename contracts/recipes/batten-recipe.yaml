@@ -18,10 +18,10 @@
 # StateFailed at Run-Shed with the run halted; a halted child is no longer such a return, only a
 # mechanism failure is.
 #
-# Open-Window, Seed-IDE and Open-IDE are Command rows: each runs its batten.yaml command only when
-# its switch is on, and is Done either way, a failed command only warning. They follow Seed-Child
-# because that row writes the task's run_settings into the pair's local config layer, which their
-# switches are read from.
+# Open-Window, Seed-IDE and Open-IDE are Command rows: each runs its batten.yaml command, and is Done
+# whether the command succeeds or not, a failed command only warning. A row whose setting is off is
+# skipped by its entry gate. They follow Seed-Child because that row writes the task's run_settings
+# into the pair's local config layer, which their entry gates are read from.
 #
 # Land runs after Run-Shed's Done: under the hub's land lock it pulls the prime, runs the hub-wide
 # deploy command, prunes the board and names the tasks the landing made ready. It carries no
@@ -48,22 +48,22 @@ producers:
   - name: Open-Window
     engine: Command
     on_done: Seed-IDE
+    entry_gate: batten.open_window
     config:
-      switch: batten.open_window
       command: batten.open_window_command
 
   - name: Seed-IDE
     engine: Command
     on_done: Open-IDE
+    entry_gate: batten.seed_ide
     config:
-      switch: batten.seed_ide
       command: batten.seed_ide_command
 
   - name: Open-IDE
     engine: Command
     on_done: Run-Shed
+    entry_gate: batten.open_ide
     config:
-      switch: batten.open_ide
       command: batten.open_ide_command
 
   - name: Run-Shed

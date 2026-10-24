@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // checkout_index_refresh_test.go proves Checkout refreshes the pair's
 // per-worktree correspondence index for the newly-current branch. Pre-fix,

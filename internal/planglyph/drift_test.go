@@ -1,3 +1,5 @@
+//go:build tier0
+
 // drift_test.go covers DetectDrift with hand-built deltas: the gates decide before any git call, and the repair revalidates through quarry reading plain fixture files, so these tests stay in the untagged tier — the half driving a delta from a real git repository lives in delta_integration_test.go.
 
 package planglyph
@@ -13,35 +15,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
 )
-
-const driftTestTimestamp = "2026-01-01T00:00:00Z"
-
-// requireExactTierRepair asserts an exact-tier rename sub#Old -> sub#New was auto-repaired in card 1 of the plan under dir: the card names the new glyph only, and the amendments file carries exactly one entry holding every string of wantAmendment.
-func requireExactTierRepair(t *testing.T, dir string, wantAmendment []string) {
-	t.Helper()
-
-	got := readCardFile(t, dir, 1, "card1")
-	if strings.Contains(got, "sub#Old") {
-		t.Errorf("card still references the old glyph after auto-repair: %s", got)
-	}
-	if !strings.Contains(got, "sub#New") {
-		t.Errorf("card was not rewritten to the new glyph: %s", got)
-	}
-
-	amendData, readErr := os.ReadFile(filepath.Join(dir, planparser.AmendmentsFileName))
-	if readErr != nil {
-		t.Fatalf("read amendments file: %v", readErr)
-	}
-	amendText := string(amendData)
-	for _, want := range wantAmendment {
-		if !strings.Contains(amendText, want) {
-			t.Errorf("amendments file = %q; want it to contain %q", amendText, want)
-		}
-	}
-	if strings.Count(amendText, "OldGlyph:") != 1 {
-		t.Errorf("amendments file = %q; want exactly one amendment entry", amendText)
-	}
-}
 
 // TestDetectDrift_ExactTierRenameAutoRepairsAndAmends covers an exact-tier rename rewriting the
 // plan, revalidating clean, and appending exactly one amendment carrying all six fields.

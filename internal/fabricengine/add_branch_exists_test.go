@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // add_branch_exists_test.go proves Add's branch-already-exists rejection names
 // a way forward. Remove deliberately leaves the warp branch behind (it may

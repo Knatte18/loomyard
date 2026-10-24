@@ -1,3 +1,5 @@
+//go:build tier0
+
 // strand_test.go covers StrandLive against a shuttlefake.Reed (present/live, present/not-live, absent) and TurnEndedAfter against a shuttlefake.Engine (newest stop event, no stop event, missing events file, a ParseEvents error, the load-turn offset).
 // Tier 1: no git, only local fakes.
 

@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // suspect_test.go exercises the suspect-path check and AcceptPendingAudit's evidence rule over real scratch git repositories.
 

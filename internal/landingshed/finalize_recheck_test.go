@@ -1,3 +1,5 @@
+//go:build tier0
+
 // finalize_recheck_test.go drives Finalize's lock re-check before the landing over a real parentlock.Store, with the fixer's turn standing in for whatever releases the record between the acquire and the re-check.
 
 package landingshed

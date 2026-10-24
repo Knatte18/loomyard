@@ -1,3 +1,5 @@
+//go:build tier0
+
 // help_test.go pins the declared surface of the built fabric command tree: every verb's summary and the commit verb's flag set.
 // It inspects cobra commands only, spawning nothing, per the Test Tier Purity Invariant.
 

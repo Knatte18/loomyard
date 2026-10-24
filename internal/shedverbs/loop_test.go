@@ -1,3 +1,5 @@
+//go:build tier0
+
 // loop_test.go drives step's --until-stop loop through stepCmd over a fake ChildRunner that writes step records, stdout envelopes and status files the way a child would,
 // and a fake trace lister over files in the test's directory.
 // No test in this file calls t.Parallel: the loop logs through the process-global logger.
@@ -15,7 +17,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -214,34 +215,6 @@ func failing(kind, transient, msg string) childScript {
 	return func(fx *loopFixture, traceID string, _ ChildRequest) error {
 		fx.writeError(traceID, kind, transient, msg)
 		return nil
-	}
-}
-
-// loopOf is the envelope's loop object.
-func loopOf(t *testing.T, env map[string]any) map[string]any {
-	t.Helper()
-	loop, ok := env["loop"].(map[string]any)
-	if !ok {
-		t.Fatalf("envelope %v has no loop object", env)
-	}
-	return loop
-}
-
-// assertLoopKeys checks the loop object's closed key set.
-func assertLoopKeys(t *testing.T, loop map[string]any, withRestep bool) {
-	t.Helper()
-	want := []string{"steps", "first_producer", "stop", "detail", "status_moved", "hand_back", "current_producer", "history_length", "state", "interrupt_policy", "trace_copy", "stderr_path"}
-	if withRestep {
-		want = append(want, "restep")
-	}
-	var got []string
-	for key := range loop {
-		got = append(got, key)
-	}
-	sort.Strings(got)
-	sort.Strings(want)
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("loop keys = %v; want the closed set %v", got, want)
 	}
 }
 

@@ -1,3 +1,5 @@
+//go:build tier0
+
 // audit_parentfacts_test.go covers the parent-session write/bash fact extraction AuditForks
 // populates onto ForkAudit: ParentWriteCalls, ParentWrites, and ParentBashCommands.
 // Fixture transcripts are written directly with os.WriteFile (Tier 1: no fixture files, no

@@ -47,6 +47,7 @@ func newTestDeps(t *testing.T) Deps {
 	}
 	owner := parentlock.Owner{Slug: "me", Pair: "/p/me", RunID: "r1", PID: 222, StartTime: "t2"}
 	return Deps{
+		GateKey:         "finalize",
 		WorktreeRoot:    t.TempDir(),
 		TaskBranch:      "task-branch",
 		ParentBranch:    "main",

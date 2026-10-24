@@ -1,3 +1,5 @@
+//go:build tier0
+
 // wiring_commitstatus_test.go pins loom's side of the per-transition status seam -- its board status write and both ShedPaths fill sites -- and the status pathspec.
 // The seam's three dispositions -- commit-hard-errors, spawn-warns, skip-while-mid-merge -- live in internal/statuscommit and are pinned there.
 // Every test here drives newCommitStatusSeam against injected commitStatusDeps stub closures, spawning no git

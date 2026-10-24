@@ -1,3 +1,5 @@
+//go:build tier0
+
 // orch_test.go drives the orchestrator count and the cost estimate over fake reads: the charge by time, a fork naming one run, the window cut-off, the Orch segment of the segment tables, the section order, the fake engine's prices and an unpriced model.
 // The prices are the fake pricer's, not any provider's.
 // Tier-1 (no git, no spawn).

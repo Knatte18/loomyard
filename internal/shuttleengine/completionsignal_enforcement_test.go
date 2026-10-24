@@ -1,3 +1,5 @@
+//go:build tier0
+
 // completionsignal_enforcement_test.go is the tripwire for the Completion Signal Invariant that
 // wait.go's own file doc comment states and PATTERN-completion-signal records: every code path in this
 // package that finalizes a NEGATIVE answer to "did this run finish" must consult allOutputFilesExist

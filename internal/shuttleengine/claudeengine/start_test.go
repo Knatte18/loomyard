@@ -1,3 +1,5 @@
+//go:build tier0
+
 // start_test.go drives shuttle's real start path with Claude's own box and session readings over a fake reed.
 
 package claudeengine

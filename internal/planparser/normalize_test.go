@@ -1,3 +1,5 @@
+//go:build tier0
+
 // normalize_test.go covers normalizeCardPath's three-case root:/// resolution rule directly: the
 // "//" worktree-root escape, a set root's join, the degenerate "root: ."
 // case,

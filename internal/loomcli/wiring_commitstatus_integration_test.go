@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // wiring_commitstatus_integration_test.go drives the per-transition status seam, and commitRecordsVerb over the same deps, against a REAL
 // fabric pair — real MergeStateActive, real CommitAnchoredPaths, real PushPairAnchored, real git — which

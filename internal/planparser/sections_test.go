@@ -1,3 +1,5 @@
+//go:build tier0
+
 // sections_test.go covers the plan-level body sections extracted from 00-overview.md.
 // The first three are exposed verbatim from the format-4 golden fixture, and each is empty when its heading is absent from the overview.
 // The PATTERN changes section parses into entries.

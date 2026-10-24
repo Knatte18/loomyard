@@ -1,3 +1,5 @@
+//go:build tier0
+
 // rename_test.go — tests for Board.Rename: what a rename keeps, rewrites and reports, and what it refuses.
 
 package boardengine_test

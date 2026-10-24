@@ -1,3 +1,5 @@
+//go:build tier0
+
 // warpjunction_test.go covers the warp-side junction primitives relocated from internal/lyxcwd in
 // this batch — CodeLyxLink, WarpLyxLinkHere, WarpJunctions and WarpJunctionsHere, plus the
 // WarpJunction record shape — over synthetic *lyxcwd.Location literals rather than real fixtures,

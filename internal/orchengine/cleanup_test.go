@@ -1,3 +1,5 @@
+//go:build tier0
+
 // cleanup_test.go covers CleanupHandoffs over told paths under a temp directory: which handoffs survive, when nothing is removed, and the state lock held against a cycle.
 
 package orchengine

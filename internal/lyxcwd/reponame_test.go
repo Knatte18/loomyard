@@ -1,3 +1,5 @@
+//go:build tier0
+
 // reponame_test.go covers hubSuffix trimming in buildLocation, pinning the clean-break behaviour:
 // the current -LYXHUB suffix is trimmed from Location.RepoName, the retired -HUB suffix is not, and
 // a hub basename with no suffix at all is left untouched.

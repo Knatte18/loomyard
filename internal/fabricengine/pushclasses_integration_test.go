@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // pushclasses_integration_test.go proves that every push fabric runs classifies a failure, recovers where it safely can, and otherwise writes the failed-push record and its one notice.
 // The other machine is a second clone of the hub's bare repositories, and a refusing origin is a pre-receive hook or an unreachable URL.

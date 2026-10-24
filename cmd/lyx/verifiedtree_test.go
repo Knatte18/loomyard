@@ -1,3 +1,5 @@
+//go:build tier0 || integration
+
 // verifiedtree_test.go enforces `PATTERN-verified-tree`:
 // every plan-verify site goes through verifytree.Verify, so none verifies a dirty tree and none skips without the record.
 // It is a tripwire over production source, like constraintchokepoint_test.go: a same-line substring scan that skips comment-only lines.

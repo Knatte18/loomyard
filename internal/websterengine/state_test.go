@@ -1,3 +1,5 @@
+//go:build tier0
+
 // state_test.go covers LoadState/SaveState's documented cases: round-tripping a populated State
 // through disk (including a persisted digest and per-card SHA trail), an absent state.json
 // returning (nil, nil), a corrupt state.json returning a

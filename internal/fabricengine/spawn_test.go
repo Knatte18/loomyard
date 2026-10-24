@@ -1,3 +1,5 @@
+//go:build tier0
+
 // spawn_test.go — Tier-1 (untagged, no git spawn, no process fork) tests for SpawnDetachedPush's
 // skip-env/both-paths-empty gating and PushWarpAt's SkipGit/SkipPush gating.
 // The real fork path is intentionally not exercised here — forking from the test binary would

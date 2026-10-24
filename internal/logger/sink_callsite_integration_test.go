@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1
 
 // sink_callsite_integration_test.go exercises the durable sink's cwd-anchored fallback THROUGH its
 // real call site — logger.Info arming the sink via ensureDurableSink/armDurableSinkLocked with no

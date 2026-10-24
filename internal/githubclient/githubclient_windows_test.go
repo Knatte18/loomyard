@@ -1,4 +1,4 @@
-//go:build windows
+//go:build tier0 && windows
 
 // githubclient_windows_test.go carries the one case in this package's test
 // suite that is genuinely platform-specific: asserting the token cache

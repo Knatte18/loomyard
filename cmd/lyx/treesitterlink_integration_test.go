@@ -1,4 +1,4 @@
-//go:build integration
+//go:build tier1 || integration
 
 // treesitterlink_integration_test.go runs `go list` over the module under every test tag and holds the allowed list of the tree-sitter link guard.
 // The chain search and the comparison live in treesitterlink_test.go.
@@ -31,13 +31,13 @@ var treeSitterAllowedLinks = []scankit.Entry{
 const treeSitterLinkMinTestBinaries = 100
 
 // TestTreeSitterLink_OnlyAllowedTestBinariesLinkIt fails when a test binary outside treeSitterAllowedLinks links tree-sitter, or when an allowed one no longer does.
-// The tag set is every tier's, so a binary that links it only through a `tmux` or `llm` test file counts.
+// The tag set is every tier's under both spellings, so a binary that links it only through a `tier0`, `tier2` or `tier3` test file counts.
 //
 //lyx:guard
 func TestTreeSitterLink_OnlyAllowedTestBinariesLinkIt(t *testing.T) {
 	t.Parallel()
 
-	cmd := exec.Command("go", "list", "-test", "-deps", "-tags", "integration,tmux,llm",
+	cmd := exec.Command("go", "list", "-test", "-deps", "-tags", "tier0,tier1,tier2,tier3,integration,tmux,llm",
 		"-f", goListImportsFormat, "./...")
 	cmd.Dir = scankit.Root(t)
 	logger.Info("cmd/lyx test: spawning go list for the tree-sitter link guard", "dir", cmd.Dir)

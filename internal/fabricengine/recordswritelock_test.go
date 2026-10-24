@@ -1,3 +1,5 @@
+//go:build tier0
+
 // recordswritelock_test.go — Tier-0 (untagged, no git spawn) test for HoldRecordsWriteLock, the exported hold of the combined records write lock.
 
 package fabricengine

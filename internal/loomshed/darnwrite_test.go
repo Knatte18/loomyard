@@ -1,3 +1,5 @@
+//go:build tier0
+
 // darnwrite_test.go exercises the Darn-Write row's producer at Tier 1: a fake session and in-memory seams recording the order of their calls.
 
 package loomshed

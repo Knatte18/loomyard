@@ -1,3 +1,5 @@
+//go:build tier0
+
 // rubric_test.go pins the marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for every rubric:
 // a rubric may carry the specs_dir, stencils_dir, webster_record, gate_tiers and amendment markers and nothing else, and only the Plan-Review rubric renders the webster run record and the gate tiers, while every rubric renders the amendment note -- the old no-marker-at-all rule relaxed to the same shape rather than deleted, because a third marker is still invisible to the fill at the value-interpolation site and must still fail loudly.
 // It additionally pins that the markers render successfully through the production render helper, that the rubrics carrying the specs_dir marker render its value, and that both review rubrics name their writer's deployed stencil path.

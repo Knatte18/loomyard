@@ -1,3 +1,5 @@
+//go:build tier0
+
 // seed_test.go is the Tier-1 suite for CheckSeed, driving it directly over t.TempDir paths.
 // It is untagged: no spawn, no git -- CheckSeed itself only stats a file, MkdirAll's a lock
 // parent, and decodes JSON.

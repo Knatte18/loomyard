@@ -1,3 +1,5 @@
+//go:build tier0
+
 // selvagepane_test.go tests the seam helpers selvagepane.go owns: bottommostPaneID and
 // ensureSelvagePaneLocked's create/heal path (relocated from lifecycle_test.go, unchanged).
 // All are pure/hermetic or driven through the e.tmux.execHook fake — no live tmux required.

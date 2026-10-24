@@ -1,3 +1,5 @@
+//go:build tier0
+
 // originseams_test.go drives the origin reconcile's seams through the fake substrates, so it spawns nothing.
 
 package pairteardown

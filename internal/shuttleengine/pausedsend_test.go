@@ -1,3 +1,5 @@
+//go:build tier0
+
 // pausedsend_test.go covers the refusal of a send into a session a pause covers: which slug judges the target, when coverage is read, and what a refused send leaves untyped.
 
 package shuttleengine

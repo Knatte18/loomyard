@@ -1,3 +1,5 @@
+//go:build tier0
+
 // prebuild_test.go covers the prebuilt lyx store over plain files: the content-derived name, reuse of a stored binary, refreshing a missing entry, pruning by last use, a destination another run published first and a store that cannot be created.
 
 package gatecli
