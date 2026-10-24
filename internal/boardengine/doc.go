@@ -28,6 +28,16 @@
 // It refuses to remove a project another surviving entry still names, naming those entries as the ones to move first.
 // A promote keeps a note's project.
 //
+// The beam flag marks a project as a beam, and only the beam verbs write it.
+// An upsert, batch or merge payload may carry beam only as the entry's stored value, false for a new entry, which is dropped as a no-op.
+// Any other value is refused.
+// True names `lyx beam create <slug>` for a project and `lyx beam promote <slug>` for a task.
+// False on a beam says the flag stays set for the beam's life, which ends when `lyx beam land <slug>` lands it and marks the project done.
+// The replay is not routed through that rule, as the owner rule is not, so a hand edit of board.json can still set the flag.
+// SetOwners writes the flag through OwnerRequest.Beam, in the one commit that records the owner.
+// OwnerRequest.ToProject, which needs Beam, also turns each named task into a project in that commit, clearing its depends_on, recipe, profile, run_settings and priority and giving it the lowest free P handle.
+// OwnerEntry carries IsProject and Beam for `lyx adopt`'s beam admission.
+//
 // # Labels
 //
 // Each entry carries labels, validated against two maps in board.yaml, each from a label to its one-line description.

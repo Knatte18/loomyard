@@ -27,6 +27,8 @@ const unreachableOrigin = "http://127.0.0.1:1/board.git"
 // ownerFixture is a board seeded with a few entries and pushed to a bare origin, beside a second clone of that origin.
 // The board is the hub's _board worktree of a weft repository, the shape a rejected push's replay requires.
 // The seed holds alpha and beta, unowned; away, owned by box; and held, run-held and owned by box.
+// It also holds promotable, a task carrying every field that turning it into a project clears.
+// x-weft is a task whose slug ends in the records suffix, grouping a project, and beamer a project that is a beam.
 type ownerFixture struct {
 	bare     string
 	boardDir string
@@ -49,6 +51,9 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 		{"slug": "beta", "title": "Beta", "kind": "task", "labels": []string{"bug"}},
 		{"slug": "away", "title": "Away", "kind": "task", "labels": []string{"bug"}},
 		{"slug": "held", "title": "Held", "kind": "task", "labels": []string{"bug"}, "status": RunStatus("running", "Webster")},
+		{"slug": "promotable", "title": "Promotable", "kind": "task", "labels": []string{"bug"}, "depends_on": []string{"alpha"}, "recipe": "darn", "profile": "light",
+			"run_settings": map[string]any{"darn": map[string]any{"review_max_bounces": 1}}},
+		{"slug": "x-weft", "title": "Ends in the records suffix", "kind": "task", "labels": []string{"bug"}},
 		{"slug": "grouping", "title": "Grouping", "kind": "project", "labels": []string{"bug"}},
 		{"slug": "beamer", "title": "Beamer", "kind": "project", "labels": []string{"bug"}},
 	} {
@@ -375,6 +380,72 @@ func TestSetOwners(t *testing.T) {
 			}
 		})
 	}
+
+	originTasks := func(t *testing.T, f *ownerFixture) map[string]Task {
+		t.Helper()
+		tasks, err := ParseBoardTasks([]byte(gitkit.Git(t, f.bare, "show", "main:board.json")))
+		if err != nil {
+			t.Fatalf("parse origin tasks: %v", err)
+		}
+		bySlug := make(map[string]Task, len(tasks))
+		for _, task := range tasks {
+			bySlug[task.Slug] = task
+		}
+		return bySlug
+	}
+
+	t.Run("BeamAndOwnerLandInOneCommit", func(t *testing.T) {
+		t.Parallel()
+		f := newOwnerFixture(t, "neve")
+
+		got, err := SetOwners(f.boardDir, OwnerRequest{Machine: "neve", Slugs: []string{"grouping"}, Beam: true, Sleep: failOnSleep(t)})
+		if err != nil || !slices.Equal(got.Recorded, []string{"grouping"}) {
+			t.Fatalf("SetOwners() = %+v, %v; want grouping recorded", got, err)
+		}
+		grouping := originTasks(t, f)["grouping"]
+		if !grouping.Beam || grouping.OwnerMachine != "neve" {
+			t.Errorf("origin grouping = beam %v, owner %q; want the beam flag and neve written together", grouping.Beam, grouping.OwnerMachine)
+		}
+		if count := gitkit.Git(t, f.bare, "rev-list", "--count", f.seedHead+"..main"); count != "1" {
+			t.Errorf("commits on origin since the seed = %s; want 1, the flag and the owner in one commit", count)
+		}
+	})
+
+	t.Run("ToProjectTurnsATaskIntoABeamProject", func(t *testing.T) {
+		t.Parallel()
+		f := newOwnerFixture(t, "neve")
+
+		got, err := SetOwners(f.boardDir, OwnerRequest{Machine: "neve", Slugs: []string{"promotable", "x-weft"}, Beam: true, ToProject: true, Sleep: failOnSleep(t)})
+		if err != nil || !slices.Equal(got.Recorded, []string{"promotable", "x-weft"}) {
+			t.Fatalf("SetOwners() = %+v, %v; want both recorded, the owner setter making no slug so a records-suffix slug passes", got, err)
+		}
+		tasks := originTasks(t, f)
+		handles := map[string]bool{}
+		for _, slug := range []string{"promotable", "x-weft"} {
+			task := tasks[slug]
+			if task.Kind != KindProject || !task.Beam || task.OwnerMachine != "neve" {
+				t.Errorf("origin %s = kind %q, beam %v, owner %q; want a beam project owned by neve", slug, task.Kind, task.Beam, task.OwnerMachine)
+			}
+			if len(task.DependsOn) != 0 || task.Recipe != "" || task.Profile != "" || len(task.RunSettings) != 0 || task.Priority != "" {
+				t.Errorf("origin %s = %+v; want depends_on, recipe, profile, run_settings and priority cleared", slug, task)
+			}
+			if !strings.HasPrefix(task.Handle, projectHandleLetter) || handles[task.Handle] {
+				t.Errorf("origin %s handle = %q; want a P handle no other entry holds", slug, task.Handle)
+			}
+			handles[task.Handle] = true
+		}
+		if alpha := tasks["alpha"]; alpha.Kind != KindTask || alpha.Beam {
+			t.Errorf("origin alpha = %+v; want an entry the request did not name left a task", alpha)
+		}
+	})
+
+	t.Run("ToProjectWithoutBeamIsRefused", func(t *testing.T) {
+		t.Parallel()
+		_, err := SetOwners(t.TempDir(), OwnerRequest{Machine: "neve", Slugs: []string{"alpha"}, ToProject: true, Sleep: failOnSleep(t)})
+		if err == nil || !strings.Contains(err.Error(), "lyx beam promote") {
+			t.Errorf("SetOwners() with ToProject and no Beam error = %v; want a refusal naming lyx beam promote", err)
+		}
+	})
 
 	t.Run("CompetingWriteLosesToOrigins", func(t *testing.T) {
 		t.Parallel()

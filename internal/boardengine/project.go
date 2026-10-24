@@ -51,6 +51,37 @@ func checkProjectRules(loaded, after []Task, pairExists func(slug string) bool) 
 	return nil
 }
 
+// checkBeamPayload judges the beam key of an upsert payload against the entry's stored flag, the entry being new when the store holds none.
+// A value equal to the stored one, false for a new entry, is a no-op and is dropped from fields; any other value is refused, since only the beam verbs write the flag.
+// A payload without the key passes untouched.
+func checkBeamPayload(s *Store, fields map[string]any) error {
+	value, carried := fields["beam"]
+	if !carried {
+		return nil
+	}
+	slug, _ := fields["slug"].(string)
+	stored, held := s.GetTask(slug)
+	proposed, isBool := value.(bool)
+	if !isBool {
+		return fmt.Errorf("entry %q has a beam value that is not true or false: drop the beam key from the payload", slug)
+	}
+	if proposed == stored.Beam {
+		delete(fields, "beam")
+		return nil
+	}
+	if !proposed {
+		return fmt.Errorf("entry %q is a beam, and the beam flag stays set for the beam's life, which ends when `lyx beam land %s` lands it and marks the project done: drop the beam key from the payload", slug, slug)
+	}
+	kind, _ := fields["kind"].(string)
+	if held {
+		kind = stored.Kind
+	}
+	if kind == KindProject {
+		return fmt.Errorf("entry %q cannot be made a beam by a board write: run `lyx beam create %s` to make the project a beam, and drop the beam key from the payload", slug, slug)
+	}
+	return fmt.Errorf("entry %q cannot be made a beam by a board write: run `lyx beam promote %s` to turn the task into a beam, and drop the beam key from the payload", slug, slug)
+}
+
 // membershipError is the refusal of an entry's project or order field at slug, naming the way forward of correcting that slug or dropping it from the field.
 func membershipError(entry, field, slug, reason string) error {
 	return fmt.Errorf("entry %q has %s %q, which %s: correct the slug, or drop it from %s", entry, field, slug, reason, field)

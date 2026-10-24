@@ -441,9 +441,9 @@ type MergeStatusUpdate struct {
 
 // UpsertPayloadKeys returns the keys a task payload carries on every upsert path: the required keys and the optional ones.
 // "id" and "handle" are assigned by the board and never accepted; "phase" and "group" are retired.
-// "owner_machine" is accepted only as the entry's effective owner, a no-op.
+// "owner_machine" is accepted only as the entry's effective owner, a no-op, and "beam" only as the entry's stored flag.
 func UpsertPayloadKeys() (required, optional []string) {
-	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "owner_machine", "project", "order"}
+	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "owner_machine", "project", "order", "beam"}
 }
 
 // upsertAllowedKeys is the set of field names every upsert path accepts, enforced at the store boundary.
@@ -489,6 +489,9 @@ func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
 		return Task{}, err
 	}
 	if err := checkOwnerPayload(s, fields); err != nil {
+		return Task{}, err
+	}
+	if err := checkBeamPayload(s, fields); err != nil {
 		return Task{}, err
 	}
 
@@ -812,6 +815,9 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 		if err := checkOwnerPayload(s, fields); err != nil {
 			return err
 		}
+		if err := checkBeamPayload(s, fields); err != nil {
+			return err
+		}
 	}
 
 	snapshot := make([]Task, len(s.tasks))
@@ -986,6 +992,9 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 		return Task{}, err
 	}
 	if err := checkOwnerPayload(s, upsert); err != nil {
+		return Task{}, err
+	}
+	if err := checkBeamPayload(s, upsert); err != nil {
 		return Task{}, err
 	}
 

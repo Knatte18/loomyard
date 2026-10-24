@@ -326,6 +326,59 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 		}
 	})
 
+	t.Run("upsert_beam_field_allowed_only_as_the_stored_value", func(t *testing.T) {
+		dir := t.TempDir()
+		stored := `{"version":1,"entries":[` +
+			`{"id":0,"slug":"beamer","title":"B","kind":"project","labels":["bug"],"beam":true},` +
+			`{"id":1,"slug":"grouper","title":"G","kind":"project","labels":["bug"]},` +
+			`{"id":2,"slug":"work","title":"W","kind":"task","labels":["bug"]}]}`
+		if err := os.WriteFile(filepath.Join(dir, "board.json"), []byte(stored), 0o644); err != nil {
+			t.Fatalf("write board.json: %v", err)
+		}
+		s := boardengine.NewStore(dir)
+		if err := s.Load(); err != nil {
+			t.Fatalf("Load() error = %v; want nil", err)
+		}
+
+		refused := []struct {
+			name    string
+			fields  map[string]any
+			wantHas []string
+		}{
+			{"true on a project", map[string]any{"slug": "grouper", "beam": true}, []string{`"grouper"`, "lyx beam create grouper"}},
+			{"true on a task", map[string]any{"slug": "work", "beam": true}, []string{`"work"`, "lyx beam promote work"}},
+			{"true on a new project", map[string]any{"slug": "fresh", "kind": "project", "beam": true}, []string{`"fresh"`, "lyx beam create fresh"}},
+			{"true on a new task", map[string]any{"slug": "fresh", "kind": "task", "beam": true}, []string{`"fresh"`, "lyx beam promote fresh"}},
+			{"false on a beam", map[string]any{"slug": "beamer", "beam": false}, []string{`"beamer"`, "stays set for the beam's life", "lyx beam land beamer"}},
+			{"not a boolean", map[string]any{"slug": "work", "beam": "yes"}, []string{`"work"`, "true or false"}},
+		}
+		for _, tt := range refused {
+			_, err := s.UpsertTask(tt.fields)
+			if err == nil {
+				t.Errorf("%s: error = nil; want a refusal", tt.name)
+				continue
+			}
+			for _, want := range tt.wantHas {
+				if !stringContains(err.Error(), want) {
+					t.Errorf("%s: error = %q; want it to contain %q", tt.name, err, want)
+				}
+			}
+		}
+
+		for _, fields := range []map[string]any{
+			{"slug": "beamer", "beam": true, "title": "Renamed title"},
+			{"slug": "grouper", "beam": false, "title": "G2"},
+			{"slug": "fresh", "kind": "project", "beam": false},
+		} {
+			if _, err := s.UpsertTask(fields); err != nil {
+				t.Errorf("UpsertTask(%v) error = %v; want nil, since the beam value is the stored one", fields, err)
+			}
+		}
+		if beamer, _ := s.GetTask("beamer"); !beamer.Beam || beamer.Title != "Renamed title" {
+			t.Errorf("beamer after a write carrying its stored beam = %+v; want the flag kept and the title changed", beamer)
+		}
+	})
+
 	t.Run("upsert_short_name_field_allowed_and_persisted", func(t *testing.T) {
 		s := boardengine.NewStore("")
 		task, err := s.UpsertTask(map[string]any{
@@ -740,6 +793,20 @@ func TestMergeTasks(t *testing.T) {
 		}
 	})
 
+	t.Run("TestMergeTasksRefusesABeamPayload", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		if _, err := s.UpsertTask(map[string]any{"slug": "gone", "title": "G"}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := s.MergeTasks([]string{"gone"}, map[string]any{"slug": "p", "kind": "project", "beam": true}, nil)
+		if err == nil || !stringContains(err.Error(), "lyx beam create p") {
+			t.Errorf("MergeTasks with beam true = %v; want a refusal naming lyx beam create p", err)
+		}
+		if _, found := s.GetTask("gone"); !found || len(s.Tasks()) != 1 {
+			t.Errorf("a refused merge changed the store: %+v", s.Tasks())
+		}
+	})
+
 	t.Run("TestMergeTasksNonStringSlugErrors", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
@@ -1124,6 +1191,20 @@ func TestUpsertTasksBatch(t *testing.T) {
 
 		if tasks[0].Slug != "task1" || tasks[1].Slug != "task2" {
 			t.Errorf("expected slugs task1 and task2, got %s and %s", tasks[0].Slug, tasks[1].Slug)
+		}
+	})
+
+	t.Run("TestUpsertTasksBatchRefusesABeamPayload", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		err := s.UpsertTasksBatch([]map[string]any{
+			{"slug": "t", "title": "T"},
+			{"slug": "p", "kind": "project", "beam": true},
+		})
+		if err == nil || !stringContains(err.Error(), "lyx beam create p") {
+			t.Errorf("UpsertTasksBatch with beam true = %v; want a refusal naming lyx beam create p", err)
+		}
+		if len(s.Tasks()) != 0 {
+			t.Errorf("a refused batch changed the store: %+v", s.Tasks())
 		}
 	})
 
