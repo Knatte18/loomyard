@@ -335,13 +335,14 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			return append(make([]HistoryEntry, 0, len(st.History)), st.History...)
 		}
 		return appendOrFold(st.History, HistoryEntry{
-			Producer:        def.Name,
-			Outcome:         outcome,
-			Output:          output.Path,
-			At:              nowRFC3339(),
-			GateAttempts:    output.GateAttempts,
-			GateSpans:       output.GateSpans,
-			BudgetExempt:    outcome == Stuck && (output.BudgetExempt || output.Halt),
+			Producer:     def.Name,
+			Outcome:      outcome,
+			Output:       output.Path,
+			At:           nowRFC3339(),
+			GateAttempts: output.GateAttempts,
+			GateSpans:    output.GateSpans,
+			// A Stuck that blocks at a row with no OnStuck never reaches a budget, so it is exempt too, and a repeat of the same halt folds into its entry.
+			BudgetExempt:    outcome == Stuck && (output.BudgetExempt || output.Halt || def.OnStuck == ""),
 			RoutedTo:        routedTo,
 			GenerationStart: outcome == Stuck && output.GenerationStart,
 		})
