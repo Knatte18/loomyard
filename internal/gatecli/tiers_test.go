@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
 // planConfig returns a gate config with tier0 over the root module and tier1, which covers tier0, over the directory sub.
@@ -34,11 +35,17 @@ func withManualTier3(cfg *gateslot.Config) {
 	cfg.Tiers["tier3"] = gateslot.Tier{Command: "llm {args}", Dir: ".", TimeoutMin: 1, Counter: "go-json", Parallel: 1, Slots: 1, Manual: true}
 }
 
-// describe renders a run as `tier<N> <scope> dir=<dir> <targets>`, one `dir=… …` per invocation joined by ` | ` and `none` for no invocation, with ` ignores` for a command that ignores the scope and ` guard` for the guard step.
+// describe renders a run as `tier<N> <scope> dir=<dir> <targets>`, one `dir=… …` per invocation joined by ` | ` and `none` for no invocation, with ` terms=<terms>` and ` partial` after an invocation that carries them, ` ignores` for a command that ignores the scope and ` guard` for the guard step.
 func describe(run tierRun) string {
 	parts := make([]string, len(run.invocations))
 	for i, invocation := range run.invocations {
 		parts[i] = strings.TrimSpace(fmt.Sprintf("dir=%s %s", invocation.dir, strings.Join(invocation.targets, " ")))
+		if len(invocation.terms) > 0 {
+			parts[i] += " terms=" + strings.Join(invocation.terms, ",")
+		}
+		if invocation.partial {
+			parts[i] += " partial"
+		}
 	}
 	if len(parts) == 0 {
 		parts = []string{"none"}
@@ -49,6 +56,9 @@ func describe(run tierRun) string {
 	}
 	if run.guardStep {
 		line += " guard"
+	}
+	if run.buildOnly {
+		line += " buildonly"
 	}
 	return line
 }
@@ -80,6 +90,21 @@ func TestPlanTierRuns(t *testing.T) {
 	card.tagTiers = []int{0, 1, 3}
 	cardOfTier0And1 := card
 	cardOfTier0And1.tagTiers = []int{0, 1}
+	dotnet := func(cfg *gateslot.Config) {
+		cfg.Scoper = "dotnet"
+		t1 := cfg.Tiers["tier1"]
+		t1.Covers = nil
+		cfg.Tiers["tier1"] = t1
+	}
+	noCarry := func(cfg *gateslot.Config) {
+		t0 := cfg.Tiers["tier0"]
+		t0.NoCarry = true
+		cfg.Tiers["tier0"] = t0
+	}
+	projects := tierScope{modules: []moduleTargets{
+		{dir: ".", targets: []string{"A/A.csproj"}, terms: []string{"T1", "T2"}},
+		{dir: ".", targets: []string{"B/B.csproj"}, terms: []string{"T3"}},
+	}}
 	tests := []struct {
 		name    string
 		mutate  func(*gateslot.Config)
@@ -251,6 +276,105 @@ func TestPlanTierRuns(t *testing.T) {
 			scope:  scope{form: scopeCard, whole: true, tagTiers: []int{1}},
 			want:   []string{"tier0 card dir=. ./..."},
 		},
+		{
+			name:   "a narrowed dotnet share runs one partial invocation per project with its terms",
+			mutate: dotnet,
+			scope:  scope{form: scopeComputed, tiers: map[int]tierScope{0: projects}},
+			want:   []string{"tier0 computed dir=. A/A.csproj terms=T1,T2 partial | dir=. B/B.csproj terms=T3 partial"},
+		},
+		{
+			name: "a narrowed dotnet share for a command without {targets} runs once, whole, with no terms",
+			mutate: func(cfg *gateslot.Config) {
+				dotnet(cfg)
+				t0 := cfg.Tiers["tier0"]
+				t0.Command = "dotnet test {filter}"
+				cfg.Tiers["tier0"] = t0
+			},
+			scope: scope{form: scopeComputed, tiers: map[int]tierScope{0: projects}},
+			want:  []string{"tier0 computed dir=. ./... ignores"},
+		},
+		{
+			name:    "dotnet shares split by base: one tier narrowed, another whole with no terms",
+			mutate:  dotnet,
+			request: testRequest{tiers: []int{0, 1}},
+			scope:   scope{form: scopeComputed, tiers: map[int]tierScope{0: {whole: true}, 1: projects}},
+			want:    []string{"tier0 computed dir=. ./...", "tier1 computed dir=. A/A.csproj terms=T1,T2 partial | dir=. B/B.csproj terms=T3 partial"},
+		},
+		{
+			name: "a dotnet scope that selected no test class gives a shared_build tier no invocation and runs another tier whole",
+			mutate: func(cfg *gateslot.Config) {
+				dotnet(cfg)
+				t0 := cfg.Tiers["tier0"]
+				t0.SharedBuild = true
+				cfg.Tiers["tier0"] = t0
+			},
+			request:    testRequest{tiers: []int{0, 1}},
+			scope:      scope{form: scopeComputed, tiers: map[int]tierScope{0: {noTests: true}, 1: {noTests: true}}},
+			want:       []string{"tier0 computed none buildonly", "tier1 computed dir=sub ./... ./x/..."},
+			wantStderr: "gate test: the scope selected no test class, so tier1 runs whole",
+		},
+		{
+			name: "a no-test-class share gives a shared_build tier a build-only run and a shared_build carry: false tier its whole invocation",
+			mutate: func(cfg *gateslot.Config) {
+				dotnet(cfg)
+				for _, key := range []string{"tier0", "tier1"} {
+					tier := cfg.Tiers[key]
+					tier.SharedBuild = true
+					cfg.Tiers[key] = tier
+				}
+				t1 := cfg.Tiers["tier1"]
+				t1.NoCarry = true
+				cfg.Tiers["tier1"] = t1
+			},
+			request: testRequest{tiers: []int{0, 1}},
+			scope:   scope{form: scopeComputed, tiers: map[int]tierScope{0: {noTests: true}, 1: {noTests: true}}},
+			want:    []string{"tier0 computed none buildonly", "tier1 computed dir=sub ./... ./x/..."},
+		},
+		{
+			name:   "a carry: false tier runs whole under a narrowed computed scope",
+			mutate: noCarry,
+			scope:  narrower,
+			want:   []string{"tier0 computed dir=. ./...", "tier1 guard dir=. guard"},
+		},
+		{
+			name:   "a carry: false tier runs whole under a --card scope",
+			mutate: noCarry,
+			scope:  scope{form: scopeCard, modules: narrower.modules, tagTiers: []int{0}},
+			want:   []string{"tier0 card dir=. ./..."},
+		},
+		{
+			name:   "a carry: false tier runs whole under the empty scope",
+			mutate: noCarry,
+			scope:  scope{form: scopeComputed},
+			want:   []string{"tier0 computed dir=. ./..."},
+		},
+		{
+			name: "a carry: false shared_build tier runs whole under a no-test-class share",
+			mutate: func(cfg *gateslot.Config) {
+				dotnet(cfg)
+				noCarry(cfg)
+				t0 := cfg.Tiers["tier0"]
+				t0.SharedBuild = true
+				cfg.Tiers["tier0"] = t0
+			},
+			scope: scope{form: scopeComputed, tiers: map[int]tierScope{0: {noTests: true}}},
+			want:  []string{"tier0 computed dir=. ./..."},
+		},
+		{
+			name: "a carry: false tier runs whole, with no terms, under a narrowed dotnet share",
+			mutate: func(cfg *gateslot.Config) {
+				dotnet(cfg)
+				noCarry(cfg)
+			},
+			scope: scope{form: scopeComputed, tiers: map[int]tierScope{0: projects}},
+			want:  []string{"tier0 computed dir=. ./..."},
+		},
+		{
+			name:    "a carry: false tier narrows to explicit targets like any tier",
+			mutate:  noCarry,
+			request: testRequest{tiers: []int{0}, targets: []string{"./a"}},
+			want:    []string{"tier0 targets dir=. ./a"},
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -289,6 +413,8 @@ func TestPlanTierRuns(t *testing.T) {
 		// scope defaults to the scope of the request's explicit targets, or --all.
 		scope scope
 		want  string
+		// exact is the whole refusal, for one that names no `lyx config gate` way forward.
+		exact string
 	}{
 		{
 			name: "words after -- for a tier without {args}",
@@ -346,6 +472,12 @@ func TestPlanTierRuns(t *testing.T) {
 			request: testRequest{guards: true},
 			want:    `scoper is "none"`,
 		},
+		{
+			name:    "--guards under the dotnet scoper",
+			mutate:  func(cfg *gateslot.Config) { cfg.Scoper = "dotnet" },
+			request: testRequest{guards: true},
+			exact:   `gate test: --guards needs the go scoper to find the guard tests, but gate.yaml's scoper is "dotnet"; way forward: drop --guards, then re-run the same command`,
+		},
 	}
 	for _, tc := range refusals {
 		t.Run("refuses "+tc.name, func(t *testing.T) {
@@ -361,6 +493,12 @@ func TestPlanTierRuns(t *testing.T) {
 			_, err := planTierRuns(cfg, tc.request, sc)
 			if err == nil {
 				t.Fatal("planTierRuns() error = nil; want a refusal")
+			}
+			if tc.exact != "" {
+				if err.Error() != tc.exact {
+					t.Errorf("planTierRuns() error = %q; want %q", err, tc.exact)
+				}
+				return
 			}
 			for _, want := range []string{tc.want, "lyx config gate", "status: FAILED"} {
 				if !strings.Contains(err.Error(), want) {
@@ -414,7 +552,9 @@ func TestRenderTierCommand(t *testing.T) {
 	tests := []struct {
 		name    string
 		command string
+		filter  string
 		targets []string
+		terms   []string
 		args    []string
 		want    string
 	}{
@@ -422,16 +562,54 @@ func TestRenderTierCommand(t *testing.T) {
 		{name: "parallel is filled", command: "make -j{parallel}", targets: []string{"x"}, want: "make -j3"},
 		{name: "a placeholder the command lacks is not added", command: "build", targets: []string{"x"}, args: []string{"y"}, want: "build"},
 		{name: "a target holding a placeholder is not expanded again", command: "run {targets} {args}", targets: []string{"{args}"}, args: []string{"z"}, want: "run '{args}' 'z'"},
+		{name: "a tier filter alone", command: "t {targets} {filter}", filter: "Category!=Slow", targets: []string{"p"}, want: "t 'p' --filter 'Category!=Slow'"},
+		{name: "no filter and no terms renders nothing", command: "t {targets} {filter}", targets: []string{"p"}, want: "t 'p' "},
+		{name: "terms alone", command: "t {filter}", terms: []string{"FullyQualifiedName~A", "FullyQualifiedName~B"}, want: "t --filter 'FullyQualifiedName~A|FullyQualifiedName~B'"},
+		{name: "terms compose with the tier filter", command: "t {filter}", filter: "Category!=Slow", terms: []string{"FullyQualifiedName~A"}, want: "t --filter '(Category!=Slow)&(FullyQualifiedName~A)'"},
+		{name: "terms past the budget render the tier filter alone", command: "t {filter}", filter: "Category!=Slow", terms: []string{strings.Repeat("A", greenCommandBudget)}, want: "t --filter 'Category!=Slow'"},
+		{name: "terms given to a command without a filter placeholder filter nothing", command: "t {targets}", targets: []string{"p"}, terms: []string{"FullyQualifiedName~A"}, want: "t 'p'"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := renderTierCommand(gateslot.Tier{Command: tc.command, Parallel: 3}, tc.targets, tc.args)
+			got, err := renderTierCommand(2, gateslot.Tier{Command: tc.command, Filter: tc.filter, Parallel: 3}, tc.targets, tc.terms, tc.args)
 			if err != nil {
 				t.Fatalf("renderTierCommand() error = %v", err)
 			}
 			if got != tc.want {
 				t.Errorf("renderTierCommand() = %q; want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFilterArgument(t *testing.T) {
+	t.Parallel()
+	refusal := "gate test: the filter of tier3 cannot be quoted for the shell: " + verifyrun.ErrPercentUnderCmd.Error() +
+		"; way forward: fix the tier's filter with \"lyx config gate\" from the prime" + roleClause
+	tests := []struct {
+		name    string
+		goos    string
+		filter  string
+		want    string
+		wantErr string
+	}{
+		{name: "a percent sign is quoted under sh", goos: "linux", filter: "Name!=100%", want: "--filter 'Name!=100%'"},
+		{name: "a plain filter is quoted under cmd", goos: "windows", filter: "Category!=Slow", want: `--filter "Category!=Slow"`},
+		{name: "a percent sign is refused under cmd", goos: "windows", filter: "Name!=100%", wantErr: refusal},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := filterArgument(tt.goos, 3, gateslot.Tier{Filter: tt.filter}, nil)
+			if tt.wantErr != "" {
+				if err == nil || err.Error() != tt.wantErr {
+					t.Fatalf("filterArgument() error = %v; want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil || got != tt.want {
+				t.Errorf("filterArgument() = %q, %v; want %q", got, err, tt.want)
 			}
 		})
 	}

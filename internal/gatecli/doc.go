@@ -22,7 +22,13 @@
 // `--tags` stays a registered flag only to be refused before any slot, naming `--tier`: a tier's own command sets its build tags.
 // The words after `--` fill each tier's `{args}`.
 //
-// A tier is one shell command with the placeholders `{targets}`, `{parallel}` and `{args}`, which `renderTierCommand` fills with each target and each arg quoted for the platform shell by `verifyrun.QuoteArg`.
+// A tier is one shell command with the placeholders `{targets}`, `{parallel}`, `{args}` and `{filter}`, which `renderTierCommand` fills with each target and each arg quoted for the platform shell by `verifyrun.QuoteArg`.
+// `{filter}` renders as `--filter ` and the quoted expression, or as nothing when there is no expression.
+// With no class terms the expression is the tier's `filter`;
+// with the terms of an invocation the dotnet scoper narrowed to one project it is `(<filter>)&(<term>|<term>...)`, or the terms alone when the tier has no filter.
+// Terms that push the expression past `greenCommandBudget` are dropped and the tier's `filter` stands alone, so that project runs whole within itself, and an Info log names the tier.
+// A command without `{filter}` renders no filter whatever terms it is given.
+// A tier's `filter` applies at whole scope too, landing gates included, bounded by the executable, hub-file-only `tiers` key.
 // The command runs through the shell `verifyrun.ShellFor` names, as a tied child in the run directory, with this process's environment less the strand-name and trace-id variables, less an inherited `gateslot.PrebuiltLyxEnv`, plus the tier's `env` with `{parallel}` filled, plus the lease's `gateslot.InheritEnv` and the enclosing-gate pid.
 // The tier's `dir`, relative to the worktree root, is the run directory.
 // A tier with `prebuilt_lyx` first builds `lyx` at the tier's `parallel`, inside its slots and timeout, only where the worktree root holds `cmd/lyx`, and exports `gateslot.PrebuiltLyxEnv`.
@@ -50,16 +56,60 @@
 // Tiers that land on the same base share one `impactset.DeriveTargets` derivation, and each derivation prints `gate test: diff scope from <base> for <tiers>` on stderr.
 // `--base` names one base for every tier.
 // `--card`, repeatable, reads the plan at the anchor's plan directory through `planparser.ParsePlan` and takes `planparser.CardPackages` of the named cards; an id is a card's number or its `N-slug`, an unknown id is refused before any slot naming the plan's ids, and a worktree with no plan is refused naming `--all` and explicit targets.
-// The plan read and its two refusals run first under either scoper.
+// The plan read and its two refusals, held by `readCards`, run first under every scoper.
 //
-// Under the `none` scoper each of the three forms is whole, so a tier takes its `all_targets`, and no guard step is planned.
+// Under the `none` scoper each of the three forms is whole, so a tier takes its `all_targets`, and no guard step is planned, except under `inert_paths` below.
+// Under the `dotnet` scoper `dotnetScope` derives the forms through `dotnetimpact`.
+// A computed or `--base` scope groups the listed tiers by base as above and runs `dotnetimpact.DeriveDiff` once per distinct base and tier `dir`, printing `gate test: diff scope from <base> for <tiers>` per derivation, and a tier with no base runs whole.
+// A `--card` scope runs `dotnetimpact.DeriveCards` once per distinct tier `dir` over `planparser.CardCSharpSeeds` of the cards.
+// Both are told `gateslot.Config.Inert` as the inert predicate.
+// A derivation that falls back gives its tiers a whole share and prints `gate test: the scope falls back to whole: <reason>`.
+// A narrowed share runs each selected test project once, in the tier's `dir`, with the project path as `{targets}` and its class terms rendered into `{filter}`, under one slot hold and one `timeout_min`.
+// A command without `{targets}` runs once, whole, with its tier filter only.
+// Two scopes are empty and tell apart: nothing testable changed, such as an inert-only diff, which makes no invocation as under `go`, and changes that no test class names, which runs a tier with `shared_build` as no invocation and any other tier whole, naming it on stderr, so a compile break still fails the gate.
+// The scope plans no guard step and no vet step, and `--guards` is refused naming the scoper and the way forward of dropping it, since no config change gives a C# hub the guard tests.
+// Green record: a narrowed project invocation is partial and writes no entry, even when its target equals the tier's `all_targets`, so a filtered pass never stands in for a whole run; a whole `dotnet` pass writes its whole entry as under `none`, and only whole entries carry.
+// The class closure skips every test class it does not select, so it misses only references that never spell a changed type's name, and the gates that run whole, such as `merge-in` and `finalize`, catch those.
 // Under the `go` scoper a computed or `--base` scope is `impactset.DeriveTargets` of the diff from its base to the working tree, and falls back to whole wherever it does, naming the reason on stderr;
 // a `--card` scope is the cards' packages.
 // A narrower scope runs each listed tier once per module, in that module's directory with its module-relative targets, under one slot hold and one `timeout_min` covering every invocation.
-// An empty scope, such as a diff of Markdown files only, runs no listed tier's command: each listed tier passes with zero discovered, is logged so, takes no slot, and only the guard step runs.
+// An empty scope, such as a diff of Markdown files only, runs no listed tier's command, bar a tier with `carry: false`: each other listed tier passes with zero discovered, is logged so, takes no slot, and only the guard step runs; a `shared_build` tier that only has the build to run takes its slots for it, as the Build step section says.
+// A tier with `carry: false` runs whole over its `all_targets` in its `dir` under every scope form but explicit targets, the empty scope included, so a timing or capture tier never goes unrun on a computed scope.
 // The import graph cannot see everything a narrower run skips, such as `go build ./...`, so that is left to the whole runs at `final` and `landing`.
 // Once the config is loaded, `planTierRuns` refuses, before any slot and naming `lyx config gate`: words after `--` for a tier whose command lacks `{args}`, an undeclared tier, a hub with no `tier0`, a `covers` entry naming a tier the hub does not declare, and, for the guard step below, a guard group whose tier the hub does not declare.
 // Every such refusal closes with the clause that a session that is not the prime takes none of the steps, reports status: FAILED and leaves them to the orch.
+//
+// # Inert paths
+//
+// A hub's `inert_paths` lists the patterns of files no test reads; `gateslot.Config.Inert` is the one matcher, and `allInertSince` reads the files that differ between a base and the working tree, untracked files included, and holds them inert when every one matches.
+// An empty diff is not inert-only, and a read error is logged at Warn and holds the diff not inert, so the scope stays as it would be.
+// Under the `go` and `none` scopers a computed or `--base` scope checks each base group's diff before deriving it, and a group that is inert-only gets the empty share, so none of its tiers runs a command but a `carry: false` tier, which runs whole.
+// Under `go` the derivation is skipped for that group, and a call whose groups are all inert-only plans the guard step over a module scan of `tier0`'s dir, as a whole tier does.
+// Under `none` the empty share is the only change, every other group and tier staying whole, and the scope plans no guard step.
+// Under `dotnet` the derivation drops inert paths itself.
+// A `--card` scope is not narrowed by `inert_paths`.
+// A whole gate carries over inert-only history: a whole invocation of a tier that carries, with no entry on the current tree, is carried when the newest whole entry of an ancestor under the tier's fingerprint and the same module has an inert-only diff to the working tree, and a whole entry is then written for the current tree so a later gate carries it directly.
+// The carry runs only on a clean tree, and the inert list is part of the fingerprint, so a changed list voids it.
+//
+// Bound: a test that reads an inert file is skipped when only that file changes, so a hub lists only files no test reads.
+//
+// # Build step
+//
+// A hub's `build` declares a shell command, run once per call, that the tiers with `shared_build: true` depend on.
+// The first such tier in plan order whose run takes slots, one with invocations left after the green record's subtraction or one with only a build to run, runs `runBuild` inside its slots, before its own command, and no later tier runs it again.
+// A call whose opted-in tiers are all carried, or whose shares are empty, such as an inert-only, all-inert-card or empty diff, runs no build, bar a `carry: false` tier, which runs whole and so runs the build before its command.
+// A `shared_build` tier whose share selected no test class has no invocation and takes its slots only to run the build, so a compile break still fails the gate; it then passes with nothing discovered.
+// The command runs through the platform shell as a tied child in the build's `dir`, with the call's environment, the slot's inherited variable and the build's `env`; the words after `--` never reach it, and lyx adds no MSBuild or compiler-server switch.
+// Its output passes to stdout and into its log, and it is bounded by its own `timeout_min` counted from the hold, so the tier's `timeout_min` starts after it.
+// A timeout kills the tree, exits 1 and prints and logs `gateslot.BuildTimeoutLine`.
+// A shell that cannot start is refused naming the build's `dir`, halts the call with exit 1 and writes no build record.
+// The build writes a run record, `build` true and scope form `build`, for the tier it precedes, and prints `gateslot.BuildSummaryLine` on stderr.
+// A failed or timed-out build is a failed run counted before that tier, and the call exits with the first failed run's code in plan order.
+// Every tier that opts into the build from there on runs no command: it writes a run record with outcome failed, the build's exit code and `blocked_by` the build's log, prints `gate test: tierN did not run, since the build failed; see <log>` and no tier summary line, and the closing line names it blocked by the build.
+// Tiers that do not opt in still run.
+// `lyx gate report` totals build records apart, in `build_runs` and `build_seconds`.
+//
+// Bound: a `shared_build` tier whose command lacks `--no-build` builds again inside its own run, since lyx does not read the command.
 //
 // # Vet step
 //
@@ -82,7 +132,7 @@
 // A scan error refuses the call before any slot with the file, the line when there is one and a way forward for its kind:
 // move a misplaced marker directly above its `func Test…` line, move a marked test out of a `tier2` or `tier3` file into a `tier0` or `tier1` file, or make an unparsable or unreadable file readable and parseable.
 // Any other scan error, such as an unreadable package directory, names the module directory and the way forward to make `go list ./...` succeed there.
-// `--guards` under the `none` scoper is refused naming the scoper, since the scan is Go's.
+// `--guards` under the `none` or `dotnet` scoper is refused naming the scoper, since the scan is Go's.
 // A module with no marked test runs no guard step and logs so.
 //
 // # Hub resolution
@@ -122,11 +172,13 @@
 // The record is one JSON file per worktree, `green.json` in the worktree's never-tracked gate directory, `gateslot.WaitDir` of the anchor, read tolerantly:
 // an unreadable or malformed file reads as empty.
 // An entry holds the tier fingerprint, HEAD's tree and commit, the module directory, the args after `--`, and either `whole` or the green package set, plus its write time.
-// `tierFingerprint` hashes the tier's declaration without `parallel`, `timeout_min` and `slots`, so a changed command, env, targets or counter never carries.
+// `tierFingerprint` hashes the tier's declaration without `parallel`, `timeout_min` and `slots`, so a changed command, env, targets, counter, `filter`, `shared_build` or `carry` never carries.
+// It also hashes the hub's `build` declaration for a tier with `shared_build` and the hub's `inert_paths` when it is non-empty, so a changed build or inert list stops the tiers it concerns from carrying.
+// A key at its default value adds nothing to the hash, so a tier that sets none of these keeps its fingerprint and its green entries.
 //
 // Before the first tier the verb checks the worktree with `verifytree.DirtyPaths`: a dirty worktree neither reads nor writes the record.
 // On a clean one it reads HEAD's tree and commit, and before acquiring slots each listed tier subtracts what `greenRecord.covered` holds green for the current tree:
-// a whole entry covers every target, and under the `go` scoper a package entry covers its packages, so a remainder runs as explicit packages; under the `none` scoper only a whole entry carries.
+// a whole entry covers every target, and under the `go` scoper a package entry covers its packages, so a remainder runs as explicit packages; under the `none` scoper only a whole entry carries, and so under the `dotnet` scoper, whose pass narrowed to a project and its classes records nothing.
 // An entry with empty args covers a request with empty args and the guard step's own `-run` filter; any other args need an exact match, so `-- -count=1` reruns.
 // A remainder whose targets would exceed a shell-safe length, or whose packages `go list` cannot list, runs whole instead.
 // A tier with nothing left is carried: it takes no slot, runs no command, writes a run record with `carried` set, and prints its summary line with `carried` after the scope form and exit 0, so every reader of the line still parses it.
@@ -138,6 +190,9 @@
 // Only a whole entry with empty args counts toward the 20 and outlives its tree, since only such an entry can serve as a base.
 // The carry sits under `verifytree`'s command-and-tree skip, which every site keeps.
 // The record only saves time, so a failure around it decides nothing: an unreadable record, a failed lock, a failed status or HEAD read is logged at Warn and every tier runs, and a failed write is logged and leaves the tier's outcome and exit code unchanged.
+//
+// A tier with `carry: false` is never carried: `subtract` keeps every invocation of it and `recordPass` writes no entry for it, so it runs again on an unchanged tree.
+// Bound: that is the record's rule alone; a verify site's verified-tree record still skips a command over a tree it passed on, explicit targets still narrow such a tier, and a listed tier whose `covers` names it still drops it.
 //
 // Bound: a carried tier trusts a pass over the same tree, tier declaration and args on this worktree, so a flaky test that passed once is not rerun.
 // A Go toolchain change, inherited environment variables outside the tier's `env` and ignored files such as `.dev-bin` are outside the fingerprint and the clean check.

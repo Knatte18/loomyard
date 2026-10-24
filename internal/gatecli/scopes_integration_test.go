@@ -62,6 +62,23 @@ func TestGateTest_Scopes(t *testing.T) {
 		}
 	}
 	writeScoper(t, "go")
+	// writeDotnet switches the hub to the dotnet scoper with Markdown files inert, and the stand-in command `{targets} {filter}` on both tiers, after mutate has changed the config.
+	writeDotnet := func(t *testing.T, mutate func(cfg map[string]any)) {
+		t.Helper()
+		config := scopesConfigWith(t, "dotnet", func(cfg map[string]any) {
+			cfg["inert_paths"] = []string{"*.md"}
+			tiers := cfg["tiers"].(map[string]any)
+			for _, name := range []string{"tier0", "tier1"} {
+				tiers[name].(map[string]any)["command"] = "'" + os.Args[0] + "' {targets} {filter}"
+			}
+			if mutate != nil {
+				mutate(cfg)
+			}
+		})
+		if err := os.WriteFile(configPath, config, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	pool := hubgeom.GateSlots(h.Location)
 
 	// The module lives on the prime's branch and the pair is fast-forwarded onto it, so the merge base the pair diffs from holds the module and a computed scope sees only the edits a row makes.
@@ -75,9 +92,16 @@ func TestGateTest_Scopes(t *testing.T) {
 		"nested/go.mod":      "module example.com/scopes/nested\n\ngo 1.21\n",
 		"nested/n.go":        "package nested\n",
 		"docs/note.md":       "note\n",
+
+		"cs/Lib/Lib.csproj":             "<Project />\n",
+		"cs/Lib/Circle.cs":              "namespace Lib;\n\npublic class Circle { }\n",
+		"cs/Lib/Unused.cs":              "namespace Lib;\n\npublic class Unused { }\n",
+		"cs/Lib.Tests/Lib.Tests.csproj": "<Project />\n",
+		"cs/Lib.Tests/CircleTests.cs":   "namespace Lib.Tests;\n\n[TestFixture]\npublic class CircleTests\n{\n    [Test]\n    public void Area() { var circle = new Circle(); }\n}\n",
+		"cs/Lib.Tests/OtherTests.cs":    "namespace Lib.Tests;\n\n[TestFixture]\npublic class OtherTests\n{\n    [Test]\n    public void Run() { }\n}\n",
 	}
 	plankit.WriteTree(t, prime, files)
-	gitkit.Git(t, prime, "add", "go.mod", "lib", "user", "other", "guardpkg", "nested", "docs")
+	gitkit.Git(t, prime, "add", "go.mod", "lib", "user", "other", "guardpkg", "nested", "docs", "cs")
 	gitkit.Git(t, prime, "commit", "-q", "-m", "seed the scopes module")
 	gitkit.Git(t, pair, "merge", "--ff-only", "-q", "main")
 
@@ -184,6 +208,137 @@ func TestGateTest_Scopes(t *testing.T) {
 		requireFree(t)
 	})
 
+	// writeInert switches the hub to scoper with Markdown files inert, after mutate has changed the config.
+	writeInert := func(t *testing.T, scoper string, mutate func(cfg map[string]any)) {
+		t.Helper()
+		config := scopesConfigWith(t, scoper, func(cfg map[string]any) {
+			cfg["inert_paths"] = []string{"*.md"}
+			if mutate != nil {
+				mutate(cfg)
+			}
+		})
+		if err := os.WriteFile(configPath, config, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// noCarryTier1 lists tier1 apart from tier0 with carry: false.
+	noCarryTier1 := func(cfg map[string]any) {
+		tier1 := cfg["tiers"].(map[string]any)["tier1"].(map[string]any)
+		delete(tier1, "covers")
+		tier1["carry"] = false
+	}
+	// wantInertEmpty checks that the gate named the inert diff and ran no command of the tiers that carry.
+	wantInertEmpty := func(t *testing.T, g *runningGate) {
+		t.Helper()
+		if !strings.Contains(g.stdout.String(), "every changed file is inert, so the scope is empty") {
+			t.Errorf("stdout = %q; want the inert-only diff named", g.stdout.String())
+		}
+	}
+
+	t.Run("an inert-only diff under go runs no listed tier's command and still runs the guard step, and a carry: false tier beside it runs whole", func(t *testing.T) {
+		writeInert(t, "go", noCarryTier1)
+		defer writeScoper(t, "go")
+		edit(t, "docs/note.md", "inert note\n")
+		g := gate(t, pair, nil, "--tier", "0", "--tier", "1")
+		wantArgs(t, g, []string{"./..."}, guardInvocation)
+		wantInertEmpty(t, g)
+		if !strings.Contains(g.stdout.String(), "the scope is empty, so tier0 runs no command") {
+			t.Errorf("stdout = %q; want tier0 to run no command", g.stdout.String())
+		}
+	})
+
+	t.Run("an inert-only diff under none runs no listed tier's command and plans no guard step, and a carry: false tier beside it runs whole", func(t *testing.T) {
+		writeInert(t, "none", noCarryTier1)
+		defer writeScoper(t, "go")
+		edit(t, "docs/note.md", "inert note\n")
+		g := gate(t, pair, nil, "--tier", "0", "--tier", "1")
+		wantArgs(t, g, []string{"./..."})
+		wantInertEmpty(t, g)
+	})
+
+	t.Run("an inert-only diff under dotnet runs no listed tier's command, and a carry: false tier beside it runs whole", func(t *testing.T) {
+		writeDotnet(t, noCarryTier1)
+		defer writeScoper(t, "go")
+		edit(t, "docs/note.md", "inert note\n")
+		wantArgs(t, gate(t, pair, nil, "--tier", "0", "--tier", "1"), []string{"./..."})
+	})
+
+	t.Run("an untracked non-inert file beside an inert change keeps the go scope as it is derived", func(t *testing.T) {
+		writeInert(t, "go", nil)
+		defer writeScoper(t, "go")
+		edit(t, "docs/note.md", "inert note\n")
+		edit(t, "other/added.go", "package other\n\nvar Added = 1\n")
+		g := gate(t, pair, nil)
+		wantArgs(t, g, []string{"./other"}, guardInvocation)
+		if strings.Contains(g.stdout.String(), "every changed file is inert") {
+			t.Errorf("stdout = %q; want the diff not held inert", g.stdout.String())
+		}
+	})
+
+	// withSharedBuild declares the hub's build step over the stand-in, sets shared_build on tier0 and leaves tier1 out of it and no longer covering tier0.
+	withSharedBuild := func(cfg map[string]any) {
+		cfg["build"] = map[string]any{"command": "'" + os.Args[0] + "' sharedbuild", "timeout_min": 1}
+		tiers := cfg["tiers"].(map[string]any)
+		tiers["tier0"].(map[string]any)["shared_build"] = true
+		delete(tiers["tier1"].(map[string]any), "covers")
+	}
+	// builds returns the shared build's invocations in g.
+	builds := func(t *testing.T, g *runningGate) []standInRecord {
+		t.Helper()
+		return slices.DeleteFunc(g.records(t), func(record standInRecord) bool { return !record.Build })
+	}
+
+	t.Run("a dotnet scope that selected no test class runs the build once in tier0's slots, runs no tier0 command and runs tier1 whole", func(t *testing.T) {
+		writeDotnet(t, withSharedBuild)
+		defer writeScoper(t, "go")
+		edit(t, "cs/Lib/Unused.cs", "namespace Lib;\n\npublic class Unused { public int Edge; }\n")
+		g := gate(t, pair, nil, "--tier", "0", "--tier", "1")
+		wantArgs(t, g, []string{"./..."})
+		if got := builds(t, g); len(got) != 1 || filepath.Dir(got[0].Slot) != pool.Dir {
+			t.Errorf("build invocations = %+v; want the one build, inside a slot of %s", got, pool.Dir)
+		}
+		if !strings.Contains(g.stdout.String(), "gate test: the scope selected no test class, so tier1 runs whole") {
+			t.Errorf("stdout = %q; want tier1 named as run whole", g.stdout.String())
+		}
+		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.Discovered != 0 || run.ExitCode != 0 {
+			t.Errorf("tier0 run record = %+v; want an empty pass", run)
+		}
+		requireFree(t)
+
+		failing := startGate(t, gateRun{cwd: pair, args: []string{"test", "--tier", "0", "--tier", "1"}, env: []string{helperBuildExitEnv + "=3"}})
+		if code := failing.wait(t); code != 3 {
+			t.Errorf("exit code with a build exiting 3 = %d, stdout %q; want 3", code, failing.stdout.String())
+		}
+	})
+
+	t.Run("an inert-only dotnet diff and an empty one run no build", func(t *testing.T) {
+		writeDotnet(t, withSharedBuild)
+		defer writeScoper(t, "go")
+		wantNothingRun := func(name string) {
+			t.Helper()
+			g := gate(t, pair, nil, "--tier", "0", "--tier", "1")
+			if got := g.records(t); g.exit != 0 || len(got) != 0 {
+				t.Errorf("%s diff: exit %d, stand-in records %+v; want no build and no tier command", name, g.exit, got)
+			}
+		}
+		wantNothingRun("empty")
+		edit(t, "docs/note.md", "inert note\n")
+		wantNothingRun("inert-only")
+	})
+
+	t.Run("an empty dotnet diff with a carry: false tier that opts into the build runs the build before that tier's whole command", func(t *testing.T) {
+		writeDotnet(t, func(cfg map[string]any) {
+			withSharedBuild(cfg)
+			cfg["tiers"].(map[string]any)["tier0"].(map[string]any)["carry"] = false
+		})
+		defer writeScoper(t, "go")
+		g := gate(t, pair, nil, "--tier", "0", "--tier", "1")
+		records := g.records(t)
+		if g.exit != 0 || len(records) != 2 || !records[0].Build || records[1].Build || !slices.Equal(records[1].Args, []string{"./..."}) {
+			t.Errorf("gate = exit %d, stand-in records %+v; want the build, then tier0's whole command", g.exit, records)
+		}
+	})
+
 	t.Run("--base runs the packages the diff from that revision reaches, then the guard step", func(t *testing.T) {
 		base := gitkit.RevParse(t, pair, "HEAD")
 		edit(t, "user/user.go", "package user\n\nimport \"example.com/scopes/lib\"\n\nfunc Two() int { return lib.One() + 2 }\n")
@@ -191,6 +346,30 @@ func TestGateTest_Scopes(t *testing.T) {
 		wantArgs(t, g, []string{"./user"}, guardInvocation)
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "base" {
 			t.Errorf("tier0 run record scope form = %q; want base", run.ScopeForm)
+		}
+	})
+
+	circleTestsArgs := []string{"cs/Lib.Tests/Lib.Tests.csproj", "--filter", "FullyQualifiedName~Lib.Tests.CircleTests"}
+
+	t.Run("a computed scope under dotnet runs the selected test project once with its class filter", func(t *testing.T) {
+		writeDotnet(t, nil)
+		defer writeScoper(t, "go")
+		edit(t, "cs/Lib/Circle.cs", "namespace Lib;\n\npublic class Circle { public int Radius; }\n")
+		g := gate(t, pair, nil)
+		wantArgs(t, g, circleTestsArgs)
+		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "computed" {
+			t.Errorf("tier0 run record scope form = %q; want computed", run.ScopeForm)
+		}
+	})
+
+	t.Run("a project file change under dotnet falls back to whole, naming the path", func(t *testing.T) {
+		writeDotnet(t, nil)
+		defer writeScoper(t, "go")
+		edit(t, "cs/Lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n")
+		g := gate(t, pair, nil)
+		wantArgs(t, g, []string{"./..."})
+		if !strings.Contains(g.stdout.String(), "falls back to whole: cs/Lib/Lib.csproj is neither inert nor a .cs file") {
+			t.Errorf("stdout = %q; want the fallback and its reason", g.stdout.String())
 		}
 	})
 
@@ -211,6 +390,21 @@ func TestGateTest_Scopes(t *testing.T) {
 		if want := []string{pair, filepath.Join(pair, "nested"), pair}; !slices.Equal(cwds, want) {
 			t.Errorf("tier cwds = %q; want the root module, the nested module, then the guard step in the root module: %q", cwds, want)
 		}
+		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" {
+			t.Errorf("tier0 run record scope form = %q; want card", run.ScopeForm)
+		}
+	})
+
+	t.Run("--card under dotnet runs the project of the test class naming a card's member glyph target", func(t *testing.T) {
+		writeDotnet(t, nil)
+		defer writeScoper(t, "go")
+		csharpPlan := plan
+		csharpPlan.Language = "csharp"
+		csharpPlan.Cards = []plankit.Card{{Number: 1, Slug: "span", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"Lib#Circle.Area"}}}}}
+		plankit.Write(t, planparser.PlanDir(pair), csharpPlan)
+		t.Cleanup(func() { plankit.Write(t, planparser.PlanDir(pair), plan) })
+		g := gate(t, pair, nil, "--card", "1")
+		wantArgs(t, g, circleTestsArgs)
 		if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ScopeForm != "card" {
 			t.Errorf("tier0 run record scope form = %q; want card", run.ScopeForm)
 		}
@@ -286,7 +480,7 @@ func TestGateTest_Scopes(t *testing.T) {
 		requireFree(t)
 	})
 
-	for _, scoper := range []string{"go", "none"} {
+	for _, scoper := range []string{"go", "none", "dotnet"} {
 		t.Run("--card with an unknown id is refused before any slot naming the plan's ids under "+scoper, func(t *testing.T) {
 			writeScoper(t, scoper)
 			defer writeScoper(t, "go")
@@ -537,6 +731,91 @@ func TestGateTest_Scopes(t *testing.T) {
 		if count := strings.Count(split.stdout.String(), "gate test: diff scope from"); count != 2 {
 			t.Errorf("derivation lines = %d in stdout %q; want 2", count, split.stdout.String())
 		}
+	})
+
+	t.Run("a narrowed dotnet pass records nothing, a --all run records the tier whole, and two vstest tiers then carry", func(t *testing.T) {
+		const project = "cs/Lib.Tests/Lib.Tests.csproj"
+		writeDotnet(t, func(cfg map[string]any) {
+			tiers := cfg["tiers"].(map[string]any)
+			for _, name := range []string{"tier0", "tier1"} {
+				tier := tiers[name].(map[string]any)
+				tier["all_targets"] = project
+				tier["counter"] = "vstest"
+			}
+			delete(tiers["tier1"].(map[string]any), "covers")
+		})
+		defer writeScoper(t, "go")
+		removeGreen(t)
+
+		base := gitkit.RevParse(t, pair, "HEAD")
+		commitChange(t, "cs/Lib/Circle.cs", "namespace Lib;\n\npublic class Circle { public int Edge; }\n")
+		wantArgs(t, gate(t, pair, nil, "--base", base), circleTestsArgs)
+		if entries := readGreen(greenPath).Entries; len(entries) != 0 {
+			t.Errorf("green record = %+v; want nothing recorded for a narrowed project run", entries)
+		}
+
+		wantArgs(t, gate(t, pair, nil, "--all"), []string{project})
+		first := gate(t, pair, nil, "--all", "--tier", "0", "--tier", "1")
+		wantArgs(t, first, []string{project})
+		wantCarried(t, gate(t, pair, nil, "--all", "--tier", "0", "--tier", "1"))
+	})
+
+	t.Run("an --all run carries over a committed inert-only change from a whole ancestor and writes the current tree's entry", func(t *testing.T) {
+		writeInert(t, "go", nil)
+		defer writeScoper(t, "go")
+		removeGreen(t)
+		wantArgs(t, real(t, "--all"), []string{"./..."})
+
+		current := commitChange(t, "docs/note.md", "an inert commit\n")
+		wantCarried(t, real(t, "--all"))
+		if !slices.ContainsFunc(readGreen(greenPath).Entries, func(entry greenEntry) bool { return entry.Commit == current && entry.Whole }) {
+			t.Errorf("green record = %+v; want a whole entry for the current commit %s", readGreen(greenPath).Entries, current)
+		}
+
+		// The entry written for the current tree carries the next call directly: removing the ancestor's leaves it alone.
+		record := readGreen(greenPath)
+		record.Entries = slices.DeleteFunc(record.Entries, func(entry greenEntry) bool { return entry.Commit != current })
+		removeGreen(t)
+		for _, entry := range record.Entries {
+			if err := recordGreen(greenPath, entry, entry.Written); err != nil {
+				t.Fatal(err)
+			}
+		}
+		wantCarried(t, real(t, "--all"))
+	})
+
+	t.Run("an --all run runs after a committed non-inert change although a whole ancestor is green", func(t *testing.T) {
+		writeInert(t, "go", nil)
+		defer writeScoper(t, "go")
+		commitChange(t, "lib/lib.go", "package lib\n\nfunc One() int { return 10 }\n")
+		wantArgs(t, real(t, "--all"), []string{"./..."})
+	})
+
+	t.Run("an --all run on a dirty tree runs whole although the history is inert-only", func(t *testing.T) {
+		writeInert(t, "go", nil)
+		defer writeScoper(t, "go")
+		commitChange(t, "docs/note.md", "another inert commit\n")
+		edit(t, "docs/note.md", "a dirtying note\n")
+		wantArgs(t, real(t, "--all"), []string{"./..."})
+	})
+
+	t.Run("a carry: false tier runs again over inert-only history", func(t *testing.T) {
+		writeInert(t, "go", func(cfg map[string]any) { cfg["tiers"].(map[string]any)["tier0"].(map[string]any)["carry"] = false })
+		defer writeScoper(t, "go")
+		removeGreen(t)
+		wantArgs(t, real(t, "--all"), []string{"./..."})
+		commitChange(t, "docs/note.md", "a third inert commit\n")
+		wantArgs(t, real(t, "--all"), []string{"./..."})
+	})
+
+	t.Run("a changed inert_paths list voids the entries an inert carry would use", func(t *testing.T) {
+		defer writeScoper(t, "go")
+		writeInert(t, "go", nil)
+		removeGreen(t)
+		wantArgs(t, real(t, "--all"), []string{"./..."})
+		writeInert(t, "go", func(cfg map[string]any) { cfg["inert_paths"] = []string{"*.md", "*.txt"} })
+		commitChange(t, "docs/note.md", "a fourth inert commit\n")
+		wantArgs(t, real(t, "--all"), []string{"./..."})
 	})
 
 	t.Run("under the none scoper a Markdown-only diff runs the listed tiers whole, skipping a covered one", func(t *testing.T) {

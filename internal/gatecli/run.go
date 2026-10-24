@@ -67,7 +67,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	request.root = buildRoot(location, dir)
 	request.busyQuit = cfg.Limits().BusyQuit
 
-	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg.Scoper == "go")
+	green := openGreen(gateslot.WaitDir(location.AnchorPath()), request.root, request.goBinary, cfg)
 	sc, err := computeScope(preCtx, cfg, location, request.root, request, green)
 	if refusal := preTierExpiry(preCtx, runCtx, request, "computing the scope"); refusal != "" {
 		return output.Err(out, refusal)
@@ -135,6 +135,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	// A failed run does not stop the call, so a failure the change under test did not cause leaves every later tier and guard run checked.
 	var failures []string
 	code, firstFailed := 0, ""
+	buildNamed := false
 	for _, run := range plan {
 		var end runEnd
 		if run.guardStep {
@@ -142,7 +143,17 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		} else {
 			end = exe.runListed(run)
 		}
-		if end.ran && end.code != 0 {
+		if end.blocked {
+			// The build is a failed run counted before the first tier it blocked.
+			if !buildNamed {
+				buildNamed = true
+				failures = append(failures, fmt.Sprintf("build (exit %d)", end.code))
+				if code == 0 {
+					code, firstFailed = end.code, "build"
+				}
+			}
+			failures = append(failures, runLabel(run)+" (blocked by the build)")
+		} else if end.ran && end.code != 0 {
 			failures = append(failures, fmt.Sprintf("%s (exit %d)", runLabel(run), end.code))
 			if code == 0 {
 				code, firstFailed = end.code, runLabel(run)
@@ -193,6 +204,8 @@ type runEnd struct {
 	halt bool
 	// ran is whether the run's command ran to an outcome, as opposed to a refusal or a slot wait that ended the call before it.
 	ran bool
+	// blocked is set for a tier that ran no command since the build step it opts into failed; code is then the build's exit code.
+	blocked bool
 }
 
 // runLabel names run in the closing line of failed runs: its tier, prefixed `guard` for a guard run and `vet` for a vet run.
@@ -341,16 +354,26 @@ type execution struct {
 	green *greenRun
 	// lastStamp is the time of the latest run record, kept so two records of one process never share a stamped name.
 	lastStamp time.Time
+	// buildDone is set once the call's build step has started, so the first opted-in tier whose run acquires slots runs it and no later tier does.
+	buildDone bool
+	// buildFailure is the log path of the build step once it failed or timed out; every opted-in tier after it runs no command.
+	buildFailure string
+	// buildExit is the exit code of the failed build.
+	buildExit int
 }
 
 // runListed runs one listed tier with its slots held, and returns how it ended.
 // A tier with no invocation takes no slot, and neither does a tier the green record holds green for the current tree: it is reported as carried.
 // A tier the record holds green in part runs only the rest, and a pass is recorded.
+// A tier with only a build to run takes its slots for the build, and a tier that opts into a build that failed is reported blocked.
 func (e *execution) runListed(run tierRun) runEnd {
+	if run.tier.SharedBuild && e.buildFailure != "" {
+		return e.reportBlocked(run)
+	}
 	if run.ignoresTargets {
 		printLine(e.request.stderr, fmt.Sprintf("gate test: the command of %s holds no {targets}, so it runs whole", tierName(run.number)))
 	}
-	if len(run.invocations) == 0 {
+	if len(run.invocations) == 0 && !run.buildOnly {
 		printLine(e.request.stderr, fmt.Sprintf("gate test: the scope is empty, so %s runs no command", tierName(run.number)))
 		return e.runWithSlots(run, true, func(env []string) tierResult {
 			return runTier(e.ctx, e.out, run, env, e.request)
@@ -370,16 +393,24 @@ func (e *execution) runGuard(planned tierRun) runEnd {
 }
 
 // runGreenAware subtracts what the green record holds green from run, then reports run carried when nothing is left, else runs the rest inside the tier's slots and records a pass.
+// A module carried over an inert-only diff gets its whole entry for the current tree before the run goes on.
+// The first tier that opts into the build and whose run takes slots runs the call's build step inside them, before its own command.
 func (e *execution) runGreenAware(run tierRun) runEnd {
 	var plan greenPlan
-	if e.green != nil {
+	if e.green != nil && !run.buildOnly {
 		plan = e.green.subtract(e.ctx, run, e.env)
+		e.green.recordInertCarried(run, plan, time.Now())
 		if len(plan.invocations) == 0 {
 			return e.reportCarried(run)
 		}
 		run.invocations = plan.invocations
 	}
 	end := e.runWithSlots(run, false, func(env []string) tierResult {
+		if run.tier.SharedBuild && !run.guardStep && !run.vetStep && !e.buildDone {
+			if result, ok := e.runBuild(run, env); !ok {
+				return result
+			}
+		}
 		return runTier(e.ctx, e.out, run, env, e.request)
 	})
 	if end.code == 0 && !end.halt && e.green != nil {
@@ -418,30 +449,38 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 	if result.refusal != "" {
 		return runEnd{code: output.Err(e.out, result.refusal), halt: true}
 	}
+	if result.buildFailed {
+		return e.reportBlocked(run)
+	}
 	record := result.record
+	record.WaitStart = waitStart
+	logPath := e.writeRecord(record, result.log, tierName(run.number))
+	if result.trimpathNote != "" {
+		printLine(e.request.stderr, result.trimpathNote)
+	}
+	printLine(e.request.stderr, gateslot.TierSummaryLine(record, logPath))
+	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true}
+}
+
+// writeRecord adds the call's worktree, slug, tier list and gate key to record, writes it with log under a stamp later than the previous record's, and returns the log's path, "(not written)" when the write failed.
+// run names the record in a failure.
+func (e *execution) writeRecord(record gateslot.RunRecord, log []byte, run string) string {
 	record.Worktree = e.request.root
 	record.Slug = e.slug
 	record.TierList = e.tierList
 	record.GateKey = e.request.gate
-	record.WaitStart = waitStart
 
 	stamp := time.Now()
 	if !stamp.After(e.lastStamp.Add(time.Second)) {
 		stamp = e.lastStamp.Add(time.Second)
 	}
 	e.lastStamp = stamp
-	logPath := "(not written)"
-	path, err := gateslot.WriteRunRecord(e.runLogDir, record, result.log, stamp)
+	path, err := gateslot.WriteRunRecord(e.runLogDir, record, log, stamp)
 	if err != nil {
-		logger.Warn("gate test: could not write the tier's run record", "tier", tierName(run.number), "cause", err)
-	} else {
-		logPath = strings.TrimSuffix(path, ".json") + ".log"
+		logger.Warn("gate test: could not write the run record", "run", run, "cause", err)
+		return "(not written)"
 	}
-	if result.trimpathNote != "" {
-		printLine(e.request.stderr, result.trimpathNote)
-	}
-	printLine(e.request.stderr, gateslot.TierSummaryLine(record, logPath))
-	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true}
+	return strings.TrimSuffix(path, ".json") + ".log"
 }
 
 // resolveHub returns the location of the hub worktree that contains dir, and whether dir is inside a hub at all.

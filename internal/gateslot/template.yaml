@@ -5,6 +5,7 @@ busy_quit_sec: 120  # seconds a Go test binary under lyx gate test may keep a CP
 # A tier is written whole with one flow mapping: lyx config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}'
 # It holds command (with {targets}, {parallel} and {args} placeholders), timeout_min (at least 1) and counter (go-json or vstest), and all_targets when the command holds {targets}.
 # It may also hold about, dir (default .), env, parallel (at least 1, default 1), covers (lower tier numbers its command runs anyway), slots (a count of at least 1, or all; default 1), prebuilt_lyx and manual (true keeps a tier above tier0 out of lyx gate test --upto, so it runs only when --tier names it).
+# Three more keys: filter (the tier's own test-filter expression, allowed only when the command holds {filter}), shared_build (true runs the hub's build step first, once per call) and carry (false keeps a green run from being carried over an unchanged tree; default true).
 # Inside the mapping a value holding a brace, comma or bracket is a double-quoted string.
 tiers: {}
 
@@ -22,8 +23,16 @@ gates:
   darn-write: {tiers: [0], scope: diff}
   code-burler-fix: {tiers: [0], scope: diff}
 
-# How a computed, base or card scope maps to {targets}: go derives the impacted Go packages per module, none runs every tier whole.
+# How a computed, base or card scope maps to {targets}: go derives the impacted Go packages per module, dotnet derives the impacted C# test projects and classes from the type-name closure over test classes, none runs every tier whole.
 scoper: none
+
+# The build a tier with shared_build runs once per call; {} declares none.
+# It holds command and timeout_min (at least 1), and may hold about, dir (default .) and env.
+build: {}
+
+# Glob patterns of files no test reads, such as "*.md" or "docs/*": a pattern without a slash matches the file's base name, one with a slash the whole worktree-relative path.
+# A diff of inert files alone runs no tier.
+inert_paths: []
 
 # Command prefixes the shell guard refuses, each one or more words of letters, digits, dot, underscore and dash separated by single spaces, such as "go test".
 refuse_raw: []

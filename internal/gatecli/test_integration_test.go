@@ -43,6 +43,7 @@ const (
 	helperRoleGate = "gate"
 	// helperRoleStandIn records how it was invoked, then exits with helperExitEnv or, under helperHoldEnv, sleeps until killed with a sleeper child.
 	// A build invocation instead writes helperBuildContentEnv to its `-o` file when it succeeds and exits with helperBuildExitEnv.
+	// The hub's shared build step is such an invocation too, with `sharedbuild` as its first argument, and holds under helperHoldEnv like a tier does.
 	helperRoleStandIn = "standin"
 	// helperRoleSleeper sleeps until killed.
 	helperRoleSleeper = "sleeper"
@@ -72,10 +73,12 @@ func init() {
 type standInRecord struct {
 	// Args are the stand-in's arguments as the tier command or the prebuild passed them.
 	Args []string `json:"args"`
-	// Build is set for the `go build` of the prebuild, which the stand-in also stands for.
+	// Build is set for the `go build` of the prebuild and for the shared build step, which the stand-in also stands for.
 	Build   bool   `json:"build"`
 	Cwd     string `json:"cwd"`
 	GoFlags string `json:"goflags"`
+	// BuildMark is the BUILD_MARK variable the stand-in saw, which the scenarios set in the shared build's env.
+	BuildMark string `json:"build_mark"`
 	// Slot is the inherited-slot variable the stand-in saw.
 	Slot string `json:"slot"`
 	// Strand is the strand-name variable the stand-in saw; empty when the gate dropped it.
@@ -118,10 +121,11 @@ func runGateHelper() int {
 
 func runStandIn() int {
 	cwd, _ := os.Getwd()
-	isBuild := len(os.Args) > 1 && os.Args[1] == "build"
-	record := standInRecord{Args: os.Args[1:], Build: isBuild, Cwd: cwd, GoFlags: os.Getenv("GOFLAGS"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLyxEnv), Enclosing: os.Getenv(enclosingGateEnv), Trace: os.Getenv(logger.TraceIDEnv), PID: os.Getpid()}
-	// A build invocation only records itself and exits with its own code; the hold belongs to the tier's invocation.
-	hold := !isBuild && os.Getenv(helperHoldEnv) != ""
+	sharedBuild := len(os.Args) > 1 && os.Args[1] == "sharedbuild"
+	isBuild := sharedBuild || (len(os.Args) > 1 && os.Args[1] == "build")
+	record := standInRecord{Args: os.Args[1:], Build: isBuild, Cwd: cwd, GoFlags: os.Getenv("GOFLAGS"), BuildMark: os.Getenv("BUILD_MARK"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLyxEnv), Enclosing: os.Getenv(enclosingGateEnv), Trace: os.Getenv(logger.TraceIDEnv), PID: os.Getpid()}
+	// A prebuild invocation only records itself and exits with its own code; the hold belongs to the tier's invocation and the shared build's.
+	hold := (!isBuild || sharedBuild) && os.Getenv(helperHoldEnv) != ""
 	if hold {
 		sleeper := exec.Command(os.Args[0])
 		sleeper.Env = append(os.Environ(), helperEnv+"="+helperRoleSleeper)
@@ -143,6 +147,9 @@ func runStandIn() int {
 	if closeErr := file.Close(); writeErr != nil || closeErr != nil {
 		return 1
 	}
+	if hold {
+		select {}
+	}
 	if isBuild {
 		code, _ := strconv.Atoi(os.Getenv(helperBuildExitEnv))
 		if output := slices.Index(os.Args, "-o"); code == 0 && output >= 0 && output+1 < len(os.Args) {
@@ -151,9 +158,6 @@ func runStandIn() int {
 			}
 		}
 		return code
-	}
-	if hold {
-		select {}
 	}
 	exitEnv := helperExitEnv
 	if slices.ContainsFunc(os.Args, func(arg string) bool { return strings.HasPrefix(arg, "^(TestGuard") }) && os.Getenv(helperGuardExitEnv) != "" {
@@ -330,26 +334,52 @@ func processGone(pid int) bool {
 func summaryLogPath(t *testing.T, output string, tier int) string {
 	t.Helper()
 
-	return summaryLogPathOf(t, output, tier, false)
+	return summaryLogPathOf(t, output, tier, summaryTier)
 }
 
-// summaryLogPathOf returns the log path the last summary line of tier in output names that is a guard group's line when guard is set and any other tier line otherwise.
-func summaryLogPathOf(t *testing.T, output string, tier int, guard bool) string {
+// summaryKind says which summary line of a tier summaryLogPathOf finds.
+type summaryKind int
+
+const (
+	// summaryTier is a tier's own summary line, a guard group's apart.
+	summaryTier summaryKind = iota
+	// summaryGuard is a guard group's summary line.
+	summaryGuard
+	// summaryBuild is the `build before tier<N>` line of the shared build step that ran before the tier.
+	summaryBuild
+)
+
+// summaryLogPathOf returns the log path the last summary line of tier in output names, of the kind kind says.
+func summaryLogPathOf(t *testing.T, output string, tier int, kind summaryKind) string {
 	t.Helper()
 
 	prefix := "gate test: tier" + strconv.Itoa(tier) + " "
+	if kind == summaryBuild {
+		prefix = "gate test: build before tier" + strconv.Itoa(tier) + " "
+	}
 	var summary string
 	for _, line := range strings.Split(output, "\n") {
 		// A tier's `-trimpath` line shares the prefix but names no log.
-		if strings.HasPrefix(line, prefix) && strings.Contains(line, " log ") && strings.HasPrefix(line[len(prefix):], "guard ") == guard {
-			summary = line
+		if !strings.HasPrefix(line, prefix) || !strings.Contains(line, " log ") {
+			continue
 		}
+		if kind != summaryBuild && strings.HasPrefix(line[len(prefix):], "guard ") != (kind == summaryGuard) {
+			continue
+		}
+		summary = line
 	}
 	_, logPath, found := strings.Cut(summary, " log ")
 	if !found {
-		t.Fatalf("output %q holds no summary line of tier%d (guard group: %v)", output, tier, guard)
+		t.Fatalf("output %q holds no summary line of tier%d (kind %d)", output, tier, kind)
 	}
 	return logPath
+}
+
+// buildRunRecordOf reads the run record and log that the build summary line before tier in output names.
+func buildRunRecordOf(t *testing.T, output string, tier int) (record gateslot.RunRecord, log string) {
+	t.Helper()
+
+	return runRecordAt(t, summaryLogPathOf(t, output, tier, summaryBuild), tier)
 }
 
 // runRecordOf reads the run record and log that the last summary line of tier in output names, a guard group's line apart.
@@ -363,7 +393,7 @@ func runRecordOf(t *testing.T, output string, tier int) (record gateslot.RunReco
 func guardRunRecordOf(t *testing.T, output string, tier int) (record gateslot.RunRecord, log string) {
 	t.Helper()
 
-	return runRecordAt(t, summaryLogPathOf(t, output, tier, true), tier)
+	return runRecordAt(t, summaryLogPathOf(t, output, tier, summaryGuard), tier)
 }
 
 // runRecordAt reads the run record and log that logPath names; tier names the run in a failure.
@@ -522,6 +552,170 @@ func TestGateTest_Scenario(t *testing.T) {
 		}
 		_ = firstLease.Release()
 		_ = secondLease.Release()
+	})
+
+	// withSharedBuild declares the hub's build step over the stand-in, run in dir, and sets shared_build on tier0 and tier6.
+	withSharedBuild := func(dir string) func(cfg map[string]any) {
+		return func(cfg map[string]any) {
+			cfg["build"] = map[string]any{"command": "'" + os.Args[0] + "' sharedbuild", "dir": dir, "env": map[string]string{"BUILD_MARK": "1"}, "timeout_min": 1}
+			tiers := cfg["tiers"].(map[string]any)
+			for _, name := range []string{"tier0", "tier6"} {
+				tiers[name].(map[string]any)["shared_build"] = true
+			}
+		}
+	}
+	buildDir := filepath.Join(prime, "sub")
+	if err := os.MkdirAll(buildDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// buildRecords returns the build step's records in g.
+	buildRecords := func(t *testing.T, g *runningGate) []standInRecord {
+		t.Helper()
+		return slices.DeleteFunc(g.records(t), func(record standInRecord) bool { return !record.Build })
+	}
+
+	t.Run("the shared build runs once before the first opted-in tier, in its dir with the slot and its env and none of the call's words, and the tier's clock starts after it", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
+		defer writeConfig(t, gateConfig)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "6", "./pkg", "--", "-count=1"}})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+		}
+		builds := buildRecords(t, g)
+		if len(builds) != 1 {
+			t.Fatalf("build invocations = %+v; want the build once for both tiers", builds)
+		}
+		if build := builds[0]; !slices.Equal(build.Args, []string{"sharedbuild"}) || build.Cwd != buildDir || build.BuildMark != "1" || filepath.Dir(build.Slot) != pool.Dir {
+			t.Errorf("build invocation = %+v; want only `sharedbuild`, run in %s with BUILD_MARK and a slot of %s", build, buildDir, pool.Dir)
+		}
+		if records := g.records(t); len(records) != 3 || !records[0].Build || records[1].Build || records[2].Build || records[1].BuildMark != "" || records[1].Slot != builds[0].Slot {
+			t.Errorf("stand-in records = %+v; want the build first, then both tiers in the build's slot without its env", records)
+		}
+		if got, want := g.tierArgs(t), [][]string{{"./pkg", "-count=1"}, {"./pkg", "-count=1"}}; !reflect.DeepEqual(got, want) {
+			t.Errorf("tier invocations = %q; want %q", got, want)
+		}
+
+		logPath := summaryLogPathOf(t, g.stdout.String(), 0, summaryBuild)
+		build, _ := buildRunRecordOf(t, g.stdout.String(), 0)
+		tier0, _ := runRecordOf(t, g.stdout.String(), 0)
+		if !build.Build || build.ScopeForm != "build" || build.Tier != 0 || build.ExitCode != 0 || !strings.Contains(logPath, "-build-") {
+			t.Errorf("build run record = %+v at %s; want a passed build record before tier0 named with -build-", build, logPath)
+		}
+		if tier0.Start.Before(build.End) {
+			t.Errorf("tier0 started at %s, before the build ended at %s; want its timeout_min counted after the build", tier0.Start, build.End)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a failing build blocks every opted-in tier, names the build first in the closing line and still runs a tier that did not opt in", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
+		defer writeConfig(t, gateConfig)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "2", "--tier", "6", "./pkg"}, env: []string{helperBuildExitEnv + "=3"}})
+		if code := g.wait(t); code != 3 {
+			t.Errorf("exit code = %d, stdout %q; want the build's 3", code, g.stdout.String())
+		}
+		if got, want := g.tierArgs(t), [][]string{{"whole"}}; !reflect.DeepEqual(got, want) {
+			t.Errorf("tier invocations = %q; want tier2 alone, since it does not opt into the build", got)
+		}
+		output := g.stdout.String()
+		buildLog := summaryLogPathOf(t, output, 0, summaryBuild)
+		for _, tier := range []string{"tier0", "tier6"} {
+			if want := "gate test: " + tier + " did not run, since the build failed; see " + buildLog; !strings.Contains(output, want+"\n") {
+				t.Errorf("stdout = %q; want the line %q", output, want)
+			}
+			for _, line := range strings.Split(output, "\n") {
+				if strings.HasPrefix(line, "gate test: "+tier+" ") && strings.Contains(line, " discovered ") {
+					t.Errorf("stdout holds the summary line %q; want none for a blocked %s", line, tier)
+				}
+			}
+		}
+		records, err := gateslot.ReadRunRecords(filepath.Dir(buildLog))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var blocked []int
+		for _, record := range records {
+			if record.BlockedBy == buildLog {
+				blocked = append(blocked, record.Tier)
+				if record.Outcome != "failed" || record.ExitCode != 3 {
+					t.Errorf("blocked run record = %+v; want outcome failed and the build's exit 3", record)
+				}
+			}
+		}
+		slices.Sort(blocked)
+		if !slices.Equal(blocked, []int{0, 6}) {
+			t.Errorf("run records blocked by %s = tiers %v; want [0 6]", buildLog, blocked)
+		}
+		want := "gate test: failed runs: build (exit 3), tier0 (blocked by the build), tier6 (blocked by the build); the exit code is build's"
+		if !strings.Contains(output, want+"\n") {
+			t.Errorf("stdout = %q; want the closing line %q", output, want)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a build that outlives its timeout_min is killed with the build timeout line and exits 1", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
+		defer writeConfig(t, gateConfig)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "./pkg"}, env: []string{helperHoldEnv + "=1", helperUnitEnv + "=1s"}})
+		code := g.wait(t)
+		// tierRecords leaves out a build, so the held sleeper is read from the build's own record.
+		for _, record := range buildRecords(t, g) {
+			t.Cleanup(func() { _ = (&os.Process{Pid: record.Grandchild}).Kill() })
+		}
+		if tier, ok := gateslot.FindTierTimeout(g.stdout.String()); code != 1 || !ok || tier != "build" {
+			t.Errorf("gate = exit %d, FindTierTimeout = (%q, %v), stdout %q; want exit 1 and the build timeout line", code, tier, ok, g.stdout.String())
+		}
+		if build, log := buildRunRecordOf(t, g.stdout.String(), 0); !build.TimedOut || build.ExitCode != 1 || !strings.Contains(log, "build timeout") {
+			t.Errorf("build run record = %+v, log %q; want a timed-out build with the timeout line in its log", build, log)
+		}
+		if len(g.tierRecords(t)) != 0 {
+			t.Errorf("tier invocations = %q; want none after the build timed out", g.tierArgs(t))
+		}
+		requireFree(t)
+	})
+
+	t.Run("a build whose dir is missing is refused naming the dir and the way forward, and runs no tier command", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, withSharedBuild("missing")))
+		defer writeConfig(t, gateConfig)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "--tier", "2", "./pkg"}})
+		code := g.wait(t)
+		var envelope struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(g.stdout.Bytes(), &envelope); err != nil {
+			t.Fatalf("stdout %q is not a JSON envelope: %v", g.stdout.String(), err)
+		}
+		missing := filepath.Join(prime, "missing")
+		if code != 1 || envelope.OK || !strings.Contains(envelope.Error, "could not start the shell for the build in "+missing) || !strings.Contains(envelope.Error, "make build.dir an existing directory and put the platform shell on PATH, then re-run the same command") {
+			t.Errorf("gate = exit %d, %+v; want exit 1 and the refusal naming %s and the way forward", code, envelope, missing)
+		}
+		if len(g.records(t)) != 0 {
+			t.Errorf("stand-in records = %+v; want no tier command, tier2 included", g.records(t))
+		}
+		requireFree(t)
+	})
+
+	t.Run("a second --all run over the same clean tree carries both opted-in tiers and runs no build", func(t *testing.T) {
+		clean(t)
+		if err := os.Remove(greenPath); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
+		defer writeConfig(t, gateConfig)
+
+		first := startGate(t, gateRun{cwd: prime, args: []string{"test", "--all", "--tier", "0", "--tier", "6"}})
+		if code := first.wait(t); code != 0 || len(buildRecords(t, first)) != 1 {
+			t.Fatalf("first run = exit %d, builds %+v; want exit 0 and the one build", code, buildRecords(t, first))
+		}
+		second := startGate(t, gateRun{cwd: prime, args: []string{"test", "--all", "--tier", "0", "--tier", "6"}})
+		if code := second.wait(t); code != 0 || len(second.records(t)) != 0 || strings.Contains(second.stdout.String(), "build before") {
+			t.Errorf("second run = exit %d, stand-in records %+v, stdout %q; want both tiers carried and no build", code, second.records(t), second.stdout.String())
+		}
 	})
 
 	t.Run("--guards plans a group per tier of the guard tests' files, a repeat carries both groups, and a plain run of their packages runs them", func(t *testing.T) {

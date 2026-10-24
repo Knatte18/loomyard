@@ -15,9 +15,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// resolveAncestorBase returns the commit hash base names, and whether it is an ancestor of HEAD.
+// AncestorBase returns the commit hash base names, and whether it is an ancestor of HEAD.
 // Any git refusal, such as an unknown commit, reads as not an ancestor.
-func resolveAncestorBase(worktree, base string) (string, bool) {
+func AncestorBase(worktree, base string) (string, bool) {
 	resolved, err := gitexec.Run([]string{"rev-parse", "--verify", base + "^{commit}"}, worktree)
 	if err != nil {
 		return "", false

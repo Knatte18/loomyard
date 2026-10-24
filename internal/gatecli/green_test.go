@@ -22,6 +22,12 @@ func greenTier() gateslot.Tier {
 	return gateslot.Tier{Command: "go test {targets} {args}", Dir: ".", AllTargets: "./...", Counter: "go-json", TimeoutMin: 1, Parallel: 1, Slots: 1}
 }
 
+// withTier returns tier with change applied.
+func withTier(tier gateslot.Tier, change func(*gateslot.Tier)) gateslot.Tier {
+	change(&tier)
+	return tier
+}
+
 // TestGreenRecord covers the rows the gate scenario does not reach:
 // the fingerprint's ignored fields, the args an entry covers, the none scoper carrying only a whole entry, the pruning of old trees, and a malformed file reading as empty.
 func TestGreenRecord(t *testing.T) {
@@ -32,20 +38,39 @@ func TestGreenRecord(t *testing.T) {
 		base := greenTier()
 		same := base
 		same.Parallel, same.TimeoutMin, same.Slots = 8, 90, 0
-		if tierFingerprint(base) != tierFingerprint(same) {
+		noBuild := gateslot.BuildStep{}
+		if tierFingerprint(base, noBuild, nil) != tierFingerprint(same, noBuild, nil) {
 			t.Error("tierFingerprint changed with parallel, timeout_min and slots; want them ignored")
 		}
-		for name, change := range map[string]func(*gateslot.Tier){
-			"command":     func(tier *gateslot.Tier) { tier.Command = "go test -count=1 {targets} {args}" },
-			"env":         func(tier *gateslot.Tier) { tier.Env = map[string]string{"GOFLAGS": "-trimpath"} },
-			"all_targets": func(tier *gateslot.Tier) { tier.AllTargets = "./internal/..." },
-			"counter":     func(tier *gateslot.Tier) { tier.Counter = "vstest" },
+		// wantBase was captured from tierFingerprint(greenTier()) before the filter, shared_build, carry, build and inert keys existed.
+		const wantBase = "b1f910c02f09e5ca9ba567a4a9d2825cf8d7087192f356c99b48b5d6f5d78744"
+		if got := tierFingerprint(base, noBuild, nil); got != wantBase {
+			t.Errorf("tierFingerprint(greenTier(), BuildStep{}, nil) = %s; want %s", got, wantBase)
+		}
+		sharedBuild := base
+		sharedBuild.SharedBuild = true
+		build := gateslot.BuildStep{Command: "dotnet build", TimeoutMin: 5}
+		otherBuild := gateslot.BuildStep{Command: "dotnet build -m", TimeoutMin: 5}
+		for name, changed := range map[string]string{
+			"command":      tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.Command = "go test -count=1 {targets} {args}" }), noBuild, nil),
+			"env":          tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.Env = map[string]string{"GOFLAGS": "-trimpath"} }), noBuild, nil),
+			"all_targets":  tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.AllTargets = "./internal/..." }), noBuild, nil),
+			"counter":      tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.Counter = "vstest" }), noBuild, nil),
+			"filter":       tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.Filter = "Category!=Slow" }), noBuild, nil),
+			"shared_build": tierFingerprint(sharedBuild, noBuild, nil),
+			"carry":        tierFingerprint(withTier(base, func(tier *gateslot.Tier) { tier.NoCarry = true }), noBuild, nil),
+			"build":        tierFingerprint(sharedBuild, build, nil),
+			"inert_paths":  tierFingerprint(base, noBuild, []string{"*.md"}),
 		} {
-			changed := base
-			change(&changed)
-			if tierFingerprint(base) == tierFingerprint(changed) {
+			if changed == wantBase {
 				t.Errorf("tierFingerprint is unchanged by a changed %s; want it to differ", name)
 			}
+		}
+		if tierFingerprint(sharedBuild, build, nil) == tierFingerprint(sharedBuild, otherBuild, nil) {
+			t.Error("tierFingerprint is unchanged by a changed build under shared_build; want it to differ")
+		}
+		if tierFingerprint(base, build, nil) != tierFingerprint(base, otherBuild, nil) {
+			t.Error("tierFingerprint changed with the build of a tier without shared_build; want it ignored")
 		}
 	})
 
@@ -93,16 +118,16 @@ func TestGreenRecord(t *testing.T) {
 	t.Run("the none scoper carries only a whole entry and the go scoper also subtracts packages", func(t *testing.T) {
 		t.Parallel()
 		tier := greenTier()
-		fingerprint := tierFingerprint(tier)
-		run := tierRun{number: 0, tier: tier, invocations: []invocation{{dir: ".", targets: []string{"./a", "./b"}}}}
 		root := t.TempDir()
 		tests := []struct {
 			name        string
 			entry       greenEntry
 			scoperGo    bool
+			noCarry     bool
 			wantTargets [][]string
 			wantCarried []string
 		}{
+			{name: "a carry: false tier keeps its invocation despite a whole entry", entry: greenEntry{Whole: true}, noCarry: true, wantTargets: [][]string{{"./a", "./b"}}},
 			{name: "a whole entry carries under the none scoper", entry: greenEntry{Whole: true}},
 			{name: "a package entry carries nothing under the none scoper", entry: greenEntry{Packages: []string{"./a"}}, wantTargets: [][]string{{"./a", "./b"}}},
 			{name: "a package entry runs the rest under the go scoper", entry: greenEntry{Packages: []string{"./a"}}, scoperGo: true, wantTargets: [][]string{{"./b"}}, wantCarried: []string{"./a"}},
@@ -112,7 +137,10 @@ func TestGreenRecord(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				tt.entry.Fingerprint, tt.entry.Tree, tt.entry.ModuleDir = fingerprint, "t", "."
+				runTier := tier
+				runTier.NoCarry = tt.noCarry
+				tt.entry.Fingerprint, tt.entry.Tree, tt.entry.ModuleDir = tierFingerprint(runTier, gateslot.BuildStep{}, nil), "t", "."
+				run := tierRun{number: 0, tier: runTier, invocations: []invocation{{dir: ".", targets: []string{"./a", "./b"}}}}
 				green := &greenRun{root: root, tree: "t", record: greenRecord{Entries: []greenEntry{tt.entry}}, scoperGo: tt.scoperGo}
 				plan := green.subtract(context.Background(), run, nil)
 				var gotTargets [][]string
@@ -238,7 +266,7 @@ func TestGreenRecord(t *testing.T) {
 func TestGreenRecord_NewestWholeAncestor(t *testing.T) {
 	t.Parallel()
 
-	fingerprint := tierFingerprint(greenTier())
+	fingerprint := tierFingerprint(greenTier(), gateslot.BuildStep{}, nil)
 	at := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	whole := func(commit string, age time.Duration) greenEntry {
 		return greenEntry{Fingerprint: fingerprint, Commit: commit, ModuleDir: ".", Whole: true, Written: at.Add(age)}

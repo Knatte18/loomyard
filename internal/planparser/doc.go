@@ -127,6 +127,9 @@
 // IdentityText returns the overview's bytes without the frontmatter's `approved:` line, the one line SetApproved writes.
 // A caller that decides whether a plan overview changed since it was reviewed hashes that form, so an approval alone never counts as a change.
 //
+// CardCSharpSeeds returns, beside CardPackages' Go packages, one CSharpSeed per target ref of a C# plan's cards: the file the ref names and the type names its owner chain seeds, for a test scoper that starts from types.
+// It reads no disk, and a ref that is a directory or a namespace-only self glyph, such as the slash-free spelling the bound below describes, yields a seed with neither file nor types, which the scoper reads as a fallback to whole.
+//
 // # Test-file patterns
 //
 // IsTestFile reports whether a slash-separated, repository-relative path is a test file of a language, from a per-language table declared beside the source-extension table.

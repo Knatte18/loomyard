@@ -58,6 +58,38 @@ func TestWriteRunRecord(t *testing.T) {
 		}
 	})
 
+	for _, tc := range []struct {
+		name     string
+		record   RunRecord
+		wantStem string
+	}{
+		{"BuildRecordIsNamedForTheBuild", RunRecord{Tier: 1, Build: true, ScopeForm: "build", ExitCode: 1, Outcome: "failed"}, "-build-"},
+		{"BlockedTierRecordKeepsTheFailedBuildLog", RunRecord{Tier: 2, BlockedBy: "/runs/b.log", Outcome: "failed"}, "-tier2-"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			path, err := WriteRunRecord(RunLogDir(t.TempDir()), tc.record, []byte("x\n"), now)
+			if err != nil {
+				t.Fatalf("WriteRunRecord() error = %v", err)
+			}
+			if !strings.Contains(filepath.Base(path), tc.wantStem) {
+				t.Errorf("WriteRunRecord() path = %q; want the stem %q", path, tc.wantStem)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read record: %v", err)
+			}
+			var got RunRecord
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatalf("decode record: %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.record) {
+				t.Errorf("record read back = %+v; want %+v", got, tc.record)
+			}
+		})
+	}
+
 	t.Run("RecordWithoutLaunchesReadsWithNone", func(t *testing.T) {
 		t.Parallel()
 
@@ -122,30 +154,37 @@ func testFailedTier(t *testing.T) {
 	line := func(tier, exit int) string {
 		return TierSummaryLine(RunRecord{Tier: tier, ScopeForm: "--base main", Discovered: 4, Passed: 4, WallSec: 1.5, ExitCode: exit}, "/runs/x.log")
 	}
+	build := func(tier, exit int) string {
+		return BuildSummaryLine(RunRecord{Tier: tier, Build: true, ScopeForm: "build", WallSec: 2.5, ExitCode: exit}, "/runs/b.log")
+	}
 	carried := func(tier int) string {
 		return TierSummaryLine(RunRecord{Tier: tier, ScopeForm: "all", Carried: true}, "/runs/y.log")
 	}
 	tests := []struct {
-		name     string
-		log      string
-		wantTier int
-		wantOK   bool
+		name      string
+		log       string
+		wantTier  int
+		wantBuild bool
+		wantOK    bool
 	}{
-		{"failing line after a passing one", line(0, 0) + "\n" + line(2, 1) + "\n", 2, true},
-		{"first of two failing lines", line(0, 3) + "\n" + line(6, 1) + "\n", 0, true},
-		{"failing line followed by a passing one", line(1, 2) + "\n" + line(2, 0) + "\n", 1, true},
-		{"a carried line beside a failing one is read as exit 0", carried(0) + "\n" + line(1, 3) + "\n" + carried(2) + "\n", 1, true},
-		{"a carried line alone is no failure", carried(0) + "\n", 0, false},
-		{"no failing summary line", line(0, 0) + "\nok example.com/x\n", 0, false},
-		{"no summary line", "FAIL\n", 0, false},
+		{"failing line after a passing one", line(0, 0) + "\n" + line(2, 1) + "\n", 2, false, true},
+		{"first of two failing lines", line(0, 3) + "\n" + line(6, 1) + "\n", 0, false, true},
+		{"failing line followed by a passing one", line(1, 2) + "\n" + line(2, 0) + "\n", 1, false, true},
+		{"a carried line beside a failing one is read as exit 0", carried(0) + "\n" + line(1, 3) + "\n" + carried(2) + "\n", 1, false, true},
+		{"a carried line alone is no failure", carried(0) + "\n", 0, false, false},
+		{"no failing summary line", line(0, 0) + "\nok example.com/x\n", 0, false, false},
+		{"no summary line", "FAIL\n", 0, false, false},
+		{"a failing build line first", build(1, 1) + "\n", 1, true, true},
+		{"a passing build line then a failing tier line", build(0, 0) + "\n" + line(2, 1) + "\n", 2, false, true},
+		{"a failing build line after a failing tier line", line(1, 1) + "\n" + build(2, 1) + "\n", 1, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			tier, ok := FailedTier(tt.log)
-			if tier != tt.wantTier || ok != tt.wantOK {
-				t.Errorf("FailedTier() = %d, %v; want %d, %v", tier, ok, tt.wantTier, tt.wantOK)
+			tier, isBuild, ok := FailedTier(tt.log)
+			if tier != tt.wantTier || isBuild != tt.wantBuild || ok != tt.wantOK {
+				t.Errorf("FailedTier() = %d, %v, %v; want %d, %v, %v", tier, isBuild, ok, tt.wantTier, tt.wantBuild, tt.wantOK)
 			}
 		})
 	}

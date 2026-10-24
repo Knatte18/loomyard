@@ -32,6 +32,7 @@
 // The landing failure record is the one never-tracked file, `landing-failure.yaml`, that Merge-In and Finalize leave when a verify of their own gate key fails.
 // A file an older build left under `publish-failure.yaml` is neither read nor kept from pruning.
 // It names the failing gate as a FailureKind and the failing tier of that gate, the failing tests, the failing run's own log, HEAD and the merge-in commit the row made.
+// Its optional `build` field is true when the gate failed in its build step before any test ran, so the record then holds the first tier the build blocked and no tests; a record without the field reads as a test failure.
 // A record written before the gates carries the retired kinds `plan_verify` and `publish_verify` and no tier, and a reader maps them onto the two gates.
 // A record carrying the retired kind `landing` reads as the key of the row that reads it, Merge-In, Finalize or the merge fixer they spawn, since the record names no row and only those rows read it.
 // It may also carry a trace of the failure to the plan: `cards`, each TracedCard holding the card's number, the glyphs and `path:line` locations matched to it, its Webster batch (0 when Webster holds no record of the card) and that batch's commit range; `later_range`, the commits made after the traced batches; and `untraced`, the locations no card holds.

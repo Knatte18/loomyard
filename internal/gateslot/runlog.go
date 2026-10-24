@@ -23,9 +23,15 @@ const (
 
 	tierTimeoutPrefix = "lyx gate test: tier timeout: "
 	tierTimeoutMid    = " exceeded timeout_min "
+
+	buildTimeoutPrefix = "lyx gate test: build timeout: "
+	buildTierName      = "build"
 )
 
-var tierSummaryPattern = regexp.MustCompile(`^gate test: tier(\d+) .* discovered \d+ passed \d+ failed \d+ skipped \d+ wall \S+s exit (-?\d+) log .*$`)
+var (
+	tierSummaryPattern  = regexp.MustCompile(`^gate test: tier(\d+) .* discovered \d+ passed \d+ failed \d+ skipped \d+ wall \S+s exit (-?\d+) log .*$`)
+	buildSummaryPattern = regexp.MustCompile(`^gate test: build before tier(\d+) wall \S+s exit (-?\d+) log .*$`)
+)
 
 // RunRecord is the diagnostic record of one tier run.
 // It is a domain log: no run reads it to proceed.
@@ -51,11 +57,15 @@ type RunRecord struct {
 	Outcome   string `json:"outcome"`
 	GuardStep bool   `json:"guard_step"`
 	// Carried is set for a tier the green record held green over an unchanged tree, which took no slot and ran no command.
-	Carried    bool `json:"carried,omitempty"`
-	Discovered int  `json:"discovered"`
-	Passed     int  `json:"passed"`
-	Failed     int  `json:"failed"`
-	Skipped    int  `json:"skipped"`
+	Carried bool `json:"carried,omitempty"`
+	// Build is set on the record of the build step, whose Tier is the first opted-in tier it ran before and whose ScopeForm is build.
+	Build bool `json:"build,omitempty"`
+	// BlockedBy is the log path of the failed build that kept this tier from running, empty for a tier the build did not block.
+	BlockedBy  string `json:"blocked_by,omitempty"`
+	Discovered int    `json:"discovered"`
+	Passed     int    `json:"passed"`
+	Failed     int    `json:"failed"`
+	Skipped    int    `json:"skipped"`
 	// Launches lists, per package whose test binary ran, how long the binary took to launch; empty for a record written before the list existed, a tier that reads no packages and a run that launched none.
 	Launches []PackageLaunch `json:"launches,omitempty"`
 }
@@ -75,7 +85,7 @@ func RunLogDir(gateDir string) string {
 	return filepath.Join(gateDir, runLogDirName)
 }
 
-// WriteRunRecord writes record as `<stamp>-tier<N>-<pid>.json` in dir with the run's full output beside it as the same stem with `.log`, and returns the record's path.
+// WriteRunRecord writes record as `<stamp>-tier<N>-<pid>.json`, or `<stamp>-build-<pid>.json` for a build record, in dir with the run's full output beside it as the same stem with `.log`, and returns the record's path.
 // Both files are written atomically, the log first, so a record always has its log.
 // It first removes every `.json` and `.log` file in dir last modified more than 14 days before now; a failed removal is logged and never returned.
 func WriteRunRecord(dir string, record RunRecord, output []byte, now time.Time) (string, error) {
@@ -84,7 +94,11 @@ func WriteRunRecord(dir string, record RunRecord, output []byte, now time.Time) 
 	}
 	pruneRunLog(dir, now)
 
-	stem := fmt.Sprintf("%s-tier%d-%d", now.UTC().Format("20060102T150405Z"), record.Tier, os.Getpid())
+	name := fmt.Sprintf("tier%d", record.Tier)
+	if record.Build {
+		name = buildTierName
+	}
+	stem := fmt.Sprintf("%s-%s-%d", now.UTC().Format("20060102T150405Z"), name, os.Getpid())
 	if err := fsx.AtomicWriteBytes(filepath.Join(dir, stem+".log"), output); err != nil {
 		return "", fmt.Errorf("write gate run log: %w", err)
 	}
@@ -160,10 +174,20 @@ func TierTimeoutLine(tier string, timeout time.Duration) string {
 		tierTimeoutPrefix, tier, tierTimeoutMid, timeout, tier)
 }
 
-// FindTierTimeout returns the tier of the first tier timeout line anywhere in log, and false when the log holds none.
+// BuildTimeoutLine renders the line the gate prints to stderr and into the log when the build step outlives timeout.
+// It names the timeout and the way forward.
+func BuildTimeoutLine(timeout time.Duration) string {
+	return fmt.Sprintf("%s%s%s%s; find the hang in this log; when the build is slow but healthy, rewrite the build whole from the prime with \"lyx config gate --set 'build={...}'\", carrying every key of the build and the raised timeout_min, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it",
+		buildTimeoutPrefix, buildTierName, tierTimeoutMid, timeout)
+}
+
+// FindTierTimeout returns the tier of the first tier or build timeout line anywhere in log, `build` for a build line, and false when the log holds none.
 func FindTierTimeout(log string) (tier string, ok bool) {
 	for _, line := range strings.Split(log, "\n") {
 		rest, found := strings.CutPrefix(line, tierTimeoutPrefix)
+		if !found {
+			rest, found = strings.CutPrefix(line, buildTimeoutPrefix)
+		}
 		if !found {
 			continue
 		}
@@ -185,11 +209,24 @@ func TierSummaryLine(record RunRecord, logPath string) string {
 		record.Tier, scope, record.Discovered, record.Passed, record.Failed, record.Skipped, record.WallSec, record.ExitCode, logPath)
 }
 
-// FailedTier returns the tier number of the first tier summary line in log whose exit code is not 0, and false when the log holds none.
-// A gate call that ran several failed runs exits with the first one's code, so the first line names the tier that code belongs to.
-func FailedTier(log string) (tier int, ok bool) {
+// BuildSummaryLine renders the one stderr line the gate prints after the build step, naming the opted-in tier it ran before.
+// No tier summary reader matches it, so a build line never reads as a tier line.
+func BuildSummaryLine(record RunRecord, logPath string) string {
+	return fmt.Sprintf("gate test: build before tier%d wall %.1fs exit %d log %s", record.Tier, record.WallSec, record.ExitCode, logPath)
+}
+
+// FailedTier returns the tier number of the first tier or build summary line in log whose exit code is not 0, and false when the log holds none.
+// build is true when that line is the build's, whose tier is the first opted-in tier the failed build blocked.
+// A gate call that ran several failed runs exits with the first one's code, so the first line names the run that code belongs to.
+func FailedTier(log string) (tier int, build bool, ok bool) {
 	for _, line := range strings.Split(log, "\n") {
-		match := tierSummaryPattern.FindStringSubmatch(strings.TrimRight(line, "\r"))
+		line = strings.TrimRight(line, "\r")
+		match := tierSummaryPattern.FindStringSubmatch(line)
+		isBuild := false
+		if match == nil {
+			match = buildSummaryPattern.FindStringSubmatch(line)
+			isBuild = true
+		}
 		if match == nil || match[2] == "0" {
 			continue
 		}
@@ -197,7 +234,7 @@ func FailedTier(log string) (tier int, ok bool) {
 		if err != nil {
 			continue
 		}
-		return number, true
+		return number, isBuild, true
 	}
-	return 0, false
+	return 0, false, false
 }

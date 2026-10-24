@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -31,12 +32,39 @@ type Config struct {
 	Tiers map[string]Tier `yaml:"tiers"`
 	// Gates maps a gate key to the tiers and scope that site runs.
 	Gates map[string]GateKey `yaml:"gates"`
-	// Scoper is how a computed, base or card scope maps to targets: go or none.
+	// Scoper is how a computed, base or card scope maps to targets: go, none or dotnet.
 	Scoper string `yaml:"scoper"`
 	// RefuseRaw lists the command prefixes the shell guard refuses.
 	RefuseRaw []string `yaml:"refuse_raw"`
 	// TierParallel holds this machine's parallel for each declared tier it overrides.
 	TierParallel map[string]int `yaml:"tier_parallel"`
+	// Build is the hub's shared build step; its zero value declares none, and a declared step has a non-empty Command.
+	Build BuildStep `yaml:"build"`
+	// InertPaths are the path patterns of files no test reads, matched by Inert.
+	InertPaths []string `yaml:"inert_paths"`
+}
+
+// BuildStep is the build a gate call runs once for every tier that sets shared_build.
+type BuildStep struct {
+	// About is one line saying what the build produces.
+	About string
+	// Command is the shell command the build runs.
+	Command string
+	// Dir is the run directory relative to the worktree root.
+	Dir string
+	// Env is the environment the command runs with.
+	Env map[string]string
+	// TimeoutMin is the minutes the build may run once its slots are held.
+	TimeoutMin int
+}
+
+// buildFile is the build step as gate.yaml spells it, before defaults and validation.
+type buildFile struct {
+	About      string            `yaml:"about"`
+	Command    string            `yaml:"command"`
+	Dir        string            `yaml:"dir"`
+	Env        map[string]string `yaml:"env"`
+	TimeoutMin *int              `yaml:"timeout_min"`
 }
 
 // configFile is gate.yaml as it is spelled, before defaults and validation.
@@ -49,6 +77,8 @@ type configFile struct {
 	Scoper       string               `yaml:"scoper"`
 	RefuseRaw    []string             `yaml:"refuse_raw"`
 	TierParallel map[string]yaml.Node `yaml:"tier_parallel"`
+	Build        buildFile            `yaml:"build"`
+	InertPaths   []string             `yaml:"inert_paths"`
 }
 
 // ErrConfigAbsent is LoadConfig's error for a baseDir with no gate.yaml.
@@ -57,7 +87,7 @@ var ErrConfigAbsent = errors.New("gate config absent")
 
 // ConfigOpenMaps returns the gate.yaml keys whose entries belong to the operator, which configengine carries whole through reconcile and the layer stack.
 func ConfigOpenMaps() []string {
-	return []string{"tiers", "tier_parallel"}
+	return []string{"tiers", "tier_parallel", "build"}
 }
 
 // ConfigPerNameMaps returns the gate.yaml keys whose entries are named by the operator and merged name by name:
@@ -68,7 +98,7 @@ func ConfigPerNameMaps() []string {
 
 // ConfigSpec returns gate's layered-load spec.
 // `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
-// `tiers` runs any shell command in a task worktree, so it is executable; the gate lists, the scoper and the refused commands switch off or hollow a guard.
+// `tiers` and `build` run any shell command in a task worktree, so they are executable; the gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
 // `cli_wait_sec`, `go_parallel` and `guard_tier` are retired, so a hub or machine file that still sets one loads and reconcile prunes it.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
@@ -85,6 +115,8 @@ func ConfigSpec() configengine.Spec {
 			"gates":         configengine.CategoryGuard,
 			"scoper":        configengine.CategoryGuard,
 			"refuse_raw":    configengine.CategoryGuard,
+			"build":         configengine.CategoryExecutable,
+			"inert_paths":   configengine.CategoryGuard,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"cli_wait_sec": configengine.CategoryCrossPair,
@@ -207,8 +239,17 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	if file.Scoper != "go" && file.Scoper != "none" {
-		return Config{}, fmt.Errorf("gate config key %q: %q; want go or none", "scoper", file.Scoper)
+	if file.Scoper != "go" && file.Scoper != "none" && file.Scoper != "dotnet" {
+		return Config{}, fmt.Errorf("gate config key %q: %q; want go, none or dotnet", "scoper", file.Scoper)
+	}
+	build, err := decodeBuild(file.Build)
+	if err != nil {
+		return Config{}, err
+	}
+	for _, key := range sortedKeys(tiers) {
+		if tiers[key].SharedBuild && build.Command == "" {
+			return Config{}, fmt.Errorf("gate config key %q: true, but the hub declares no build step; want a build step or shared_build false", "tiers."+key+".shared_build")
+		}
 	}
 	if err := decodeRefuseRaw(file.RefuseRaw); err != nil {
 		return Config{}, err
@@ -225,7 +266,57 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		Scoper:       file.Scoper,
 		RefuseRaw:    file.RefuseRaw,
 		TierParallel: tierParallel,
+		Build:        build,
+		InertPaths:   file.InertPaths,
 	}, nil
+}
+
+// decodeBuild validates the build step and fills its defaults; a build with no key set is no step and decodes to the zero BuildStep.
+func decodeBuild(file buildFile) (BuildStep, error) {
+	if file.About == "" && file.Command == "" && file.Dir == "" && len(file.Env) == 0 && file.TimeoutMin == nil {
+		return BuildStep{}, nil
+	}
+	refuse := func(field, want string) error {
+		return fmt.Errorf("gate config key %q: %s", "build."+field, want)
+	}
+	if strings.TrimSpace(file.Command) == "" {
+		return BuildStep{}, refuse("command", "missing; want the shell command the build runs")
+	}
+	if file.TimeoutMin == nil {
+		return BuildStep{}, refuse("timeout_min", "missing; want at least 1")
+	}
+	if *file.TimeoutMin < 1 {
+		return BuildStep{}, refuse("timeout_min", fmt.Sprintf("%d; want at least 1", *file.TimeoutMin))
+	}
+	step := BuildStep{About: file.About, Command: file.Command, Dir: file.Dir, Env: file.Env, TimeoutMin: *file.TimeoutMin}
+	if step.Dir == "" {
+		step.Dir = "."
+	}
+	return step, nil
+}
+
+// Inert reports whether the worktree-relative slash path rel matches an inert_paths pattern:
+// a pattern without a slash matches the path's base name, a pattern with one matches the whole path.
+// A pattern path.Match rejects matches nothing.
+func (c Config) Inert(rel string) bool {
+	for _, pattern := range c.InertPaths {
+		subject := rel
+		if !strings.Contains(pattern, "/") {
+			subject = path.Base(rel)
+		}
+		if matched, err := path.Match(pattern, subject); err == nil && matched {
+			return true
+		}
+	}
+	return false
+}
+
+// AllInert reports whether paths is non-empty, InertPaths is non-empty and every path is inert.
+func (c Config) AllInert(paths []string) bool {
+	if len(c.InertPaths) == 0 || len(paths) == 0 {
+		return false
+	}
+	return !slices.ContainsFunc(paths, func(rel string) bool { return !c.Inert(rel) })
 }
 
 // guidedError marks a decode refusal that already carries its own way forward, so LoadConfig returns it without the generic clause.

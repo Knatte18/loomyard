@@ -73,6 +73,8 @@ type LandingFailure struct {
 	Kind FailureKind `yaml:"kind"`
 	// Tier is the number of the failing tier of Kind's gate; it is always written, since tier 0 is a real tier, and a record of a retired Kind carries none.
 	Tier int `yaml:"tier"`
+	// Build is set when the gate failed in its build step before any test ran, so Tier names the first tier the build blocked and Tests is empty.
+	Build bool `yaml:"build,omitempty"`
 	// Tests are the failing tests the verify's log names.
 	Tests []FailedTest `yaml:"tests,omitempty"`
 	// LogPath is the failing run's own verify log, which pruning keeps while the record names it.

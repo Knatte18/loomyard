@@ -19,7 +19,7 @@ import (
 type Tier struct {
 	// About is one line saying what the tier tests.
 	About string
-	// Command is the shell command a run executes, with the placeholders {targets}, {parallel} and {args}.
+	// Command is the shell command a run executes, with the placeholders {targets}, {parallel}, {args} and {filter}.
 	Command string
 	// Dir is the run directory relative to the worktree root.
 	Dir string
@@ -41,6 +41,12 @@ type Tier struct {
 	PrebuiltLyx bool
 	// Manual keeps the tier out of a tier range, so it runs only when named by number, such as a tier that spends tokens.
 	Manual bool
+	// Filter is the tier's own test-filter expression, which a run renders into the command's {filter} placeholder.
+	Filter string
+	// SharedBuild makes the tier run after the hub's build step, which the first such tier of a call runs once for all of them.
+	SharedBuild bool
+	// NoCarry keeps a green run of the tier from being carried over an unchanged tree; it is the negative form of the carry key, so a zero Tier carries.
+	NoCarry bool
 }
 
 // tierFile is a tier as gate.yaml spells it, before defaults and validation.
@@ -57,6 +63,9 @@ type tierFile struct {
 	Slots       yaml.Node         `yaml:"slots"`
 	PrebuiltLyx bool              `yaml:"prebuilt_lyx"`
 	Manual      bool              `yaml:"manual"`
+	Filter      string            `yaml:"filter"`
+	SharedBuild bool              `yaml:"shared_build"`
+	Carry       *bool             `yaml:"carry"`
 }
 
 // GateKey is one gate.yaml key: the tier numbers a site runs and the scope form its call runs them over.
@@ -125,6 +134,9 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 		Slots:       1,
 		PrebuiltLyx: file.PrebuiltLyx,
 		Manual:      file.Manual,
+		Filter:      file.Filter,
+		SharedBuild: file.SharedBuild,
+		NoCarry:     file.Carry != nil && !*file.Carry,
 	}
 	if tier.Manual && number == 0 {
 		return Tier{}, refuse("manual", "true; want false, since tier0 is the tier a call with no tier flag runs")
@@ -137,6 +149,9 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 	}
 	if strings.Contains(tier.Command, "{targets}") && tier.AllTargets == "" {
 		return Tier{}, refuse("all_targets", "missing; want the {targets} value of a whole run, since the command holds {targets}")
+	}
+	if tier.Filter != "" && !strings.Contains(tier.Command, "{filter}") {
+		return Tier{}, refuse("filter", "set, but the command holds no {filter}; want {filter} in the command or no filter")
 	}
 	if file.TimeoutMin == nil {
 		return Tier{}, refuse("timeout_min", "missing; want at least 1")

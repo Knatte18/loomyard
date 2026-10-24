@@ -31,6 +31,8 @@ When a change of the parent conflicts with a decision of the record, do not choo
 In `finalize` mode fix the failing tests only.
 Judge no parent change and align nothing.
 
+When the landing failure record holds `build: true`, the gate failed in its build step before any test ran, so in either mode fix the compile error the record's log names, in place of failing tests.
+
 ## Rules
 
 - Fix and commit on the task branch `{{.task_branch}}`, one commit per fix.

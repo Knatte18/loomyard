@@ -201,6 +201,19 @@ func TestVerify_Scenario(t *testing.T) {
 		return
 	}
 
+	if !t.Run("a command printing the build timeout line fails as timed out naming the build", func(t *testing.T) {
+		line := gateslot.BuildTimeoutLine(5 * time.Minute)
+		res := mustVerify(t, p, "echo '"+strings.ReplaceAll(line, "'", `'\''`)+"'; exit 1")
+		if res.Status != StatusFailed || !res.TimedOut || res.ExitCode != 1 {
+			t.Fatalf("Verify = (%q, timedOut %v, %d); want (%q, true, 1)", res.Status, res.TimedOut, res.ExitCode, StatusFailed)
+		}
+		if !strings.Contains(res.Detail, "build") || !strings.Contains(res.Detail, "5m0s") {
+			t.Errorf("Detail = %q; want it to name the build and its timeout", res.Detail)
+		}
+	}) {
+		return
+	}
+
 	if !t.Run("a commit during the run leaves no record", func(t *testing.T) {
 		command := "echo c > c.txt && git add c.txt && git commit -q -m mid-run"
 		if res := mustVerify(t, p, command); res.Status != StatusPassed {

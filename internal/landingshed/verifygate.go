@@ -77,11 +77,14 @@ func (g verifyGate) recordFailure(result verifytree.Result) bool {
 		failure.Head = head
 	}
 	var log string
-	if content, err := os.ReadFile(result.Log); err == nil {
+	content, readErr := os.ReadFile(result.Log)
+	if readErr == nil {
 		log = string(content)
-		if g.recorder.failingTests != nil {
-			failure.Tests = g.recorder.failingTests(log)
-		}
+	}
+	failedTier, build, tierFound := gateslot.FailedTier(log)
+	failure.Build = tierFound && build
+	if readErr == nil && !failure.Build && g.recorder.failingTests != nil {
+		failure.Tests = g.recorder.failingTests(log)
 	}
 	if g.recorder.traceFailure != nil && log != "" && failure.Head != "" {
 		trace, err := g.recorder.traceFailure(log, failure.Head)
@@ -93,8 +96,8 @@ func (g verifyGate) recordFailure(result verifytree.Result) bool {
 			failure.Untraced = trace.Untraced
 		}
 	}
-	if tier, found := gateslot.FailedTier(log); found {
-		failure.Tier = tier
+	if tierFound {
+		failure.Tier = failedTier
 	} else {
 		list, err := g.tiers(g.key)
 		if err != nil || len(list) == 0 {
@@ -267,6 +270,9 @@ func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBran
 	case verifytree.StatusDirty:
 		return dirtyReason("when the "+what+" was about to run", result.Dirty), nil
 	case verifytree.StatusFailed:
+		if result.TimedOut && strings.HasPrefix(result.Detail, "gate build ") {
+			return fmt.Sprintf("%s timed out after merging parent branch %q: %s; output: %s; fix the hanging build, such as a stalled restore or compile, on the task branch, or, for a build that is slow but healthy, rewrite the build whole from the prime with `lyx config gate --set 'build={...}'`, carrying every key of the build and the raised timeout_min, since a dotted key under the build writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it; then resume", what, parentBranch, result.Detail, result.Log), nil
+		}
 		if result.TimedOut {
 			return fmt.Sprintf("%s timed out after merging parent branch %q: %s; output: %s; fix the hanging test on the task branch, or, for a tier that is slow but healthy, rewrite the tier whole from the prime with `lyx config gate --set 'tiers.tier<N>={...}'`, carrying every key of the tier and the raised timeout_min, since a dotted key under the tier writes an entry the loader refuses; a session that is not the prime reports status: FAILED and the orch runs it; then resume", what, parentBranch, result.Detail, result.Log), nil
 		}
