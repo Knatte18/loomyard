@@ -107,6 +107,17 @@ func stepPromote_Refusals(t *testing.T, f *cliFixture) {
 	}
 }
 
+// stepTaskSessionFilesNotesOnly pins that the verbs carry the caller's strand name to the board: a run agent's new task is refused and its note is accepted.
+func stepTaskSessionFilesNotesOnly(t *testing.T, f *cliFixture) {
+	t.Setenv(agentname.StrandNameEnv, "ly:task-a:loom")
+
+	result := runJSON(t, 1, "upsert", `{"slug":"follow-up","title":"F","kind":"task","labels":["bug"]}`)
+	if message, _ := result["error"].(string); !strings.Contains(message, "ly:task-a:loom") || !strings.Contains(message, `"kind":"note"`) {
+		t.Errorf("error %q does not name the session and the note way forward", message)
+	}
+	runJSON(t, 0, "upsert", `{"slug":"follow-up","title":"F","kind":"note","labels":["bug"]}`)
+}
+
 // stepRename pins the rename envelope, the rewritten depends_on and the payload refusals.
 func stepRename(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"before","title":"Before","kind":"task","labels":["bug"]}`)

@@ -45,6 +45,9 @@ type Config struct {
 	// ParentOf names the slug of an entry's parent pair, "" for the prime, so reads and writes resolve an effective owner alike;
 	// nil reads every parent as the prime.
 	ParentOf func(slug string) (string, error) `yaml:"-"`
+	// StrandName is the full agent name of the session making the writes, "" for the operator at a terminal;
+	// a run agent's name makes every write that creates or promotes a task refused.
+	StrandName string `yaml:"-"`
 }
 
 // Label is one configured label with its description, which is empty when board.yaml gives none.

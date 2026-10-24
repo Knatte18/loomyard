@@ -99,6 +99,9 @@ Do not flag any of the following as a finding:
 - **A card that edits the task's own board entry.**
   A card that changes this task's own board entry's body or scope is a finding, because the run's board lock refuses such a change.
   A card writing another entry, the entry's status or its `run_settings`, or changing board-module code is not flagged by this bullet.
+- **A card that files or promotes a task.**
+  A card that files a follow-up as a task, or promotes a note, is a finding, because only the operator decides what becomes a task and the board refuses a run's agent that creates or promotes one.
+  Its fix files the follow-up as a note.
 - **Card order.**
   A card that depends on something a later card does breaks the rule in `{{.specs_dir}}/loom/loom-plan-spec.md`'s "Plan vs. schedule" section; the finding names the card and the later card it depends on.
 - **Verify lines.**
