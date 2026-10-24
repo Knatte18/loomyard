@@ -309,6 +309,23 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 		}
 	})
 
+	t.Run("upsert_project_and_order_fields_allowed_and_persisted", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		for _, fields := range []map[string]any{
+			{"slug": "proj", "kind": "project", "order": []string{"member"}},
+			{"slug": "member", "kind": "task", "project": "proj"},
+		} {
+			if _, err := s.UpsertTask(fields); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		}
+		member, _ := s.GetTask("member")
+		proj, _ := s.GetTask("proj")
+		if member.Project != "proj" || !sliceEqualStrings(proj.Order, []string{"member"}) {
+			t.Errorf("stored member project %q, proj order %v; want proj and [member]", member.Project, proj.Order)
+		}
+	})
+
 	t.Run("upsert_short_name_field_allowed_and_persisted", func(t *testing.T) {
 		s := boardengine.NewStore("")
 		task, err := s.UpsertTask(map[string]any{
@@ -667,6 +684,59 @@ func TestMergeTasks(t *testing.T) {
 		_, found = s.GetTask("b")
 		if !found {
 			t.Errorf("expected task b to still exist")
+		}
+	})
+
+	t.Run("TestMergeTasksCarriesMembership", func(t *testing.T) {
+		seed := func(t *testing.T) *boardengine.Store {
+			t.Helper()
+			s := boardengine.NewStore("")
+			for _, fields := range []map[string]any{
+				{"slug": "p", "kind": "project"},
+				{"slug": "x", "kind": "task", "project": "p"},
+				{"slug": "y", "kind": "task", "project": "p"},
+				{"slug": "p", "order": []string{"x", "y"}},
+			} {
+				if _, err := s.UpsertTask(fields); err != nil {
+					t.Fatal(err)
+				}
+			}
+			return s
+		}
+
+		s := seed(t)
+		merged, err := s.MergeTasks([]string{"x"}, map[string]any{"slug": "z", "kind": "task"}, nil)
+		if err != nil || merged.Project != "p" {
+			t.Fatalf("MergeTasks(x into z) = %+v, %v; want z to take the removed member's project p", merged, err)
+		}
+		if p, _ := s.GetTask("p"); !slices.Equal(p.Order, []string{"z", "y"}) {
+			t.Errorf("order of p = %v; want [z y], the upserted slug in the removed slug's place", p.Order)
+		}
+
+		s = seed(t)
+		if _, err := s.MergeTasks([]string{"x", "y"}, map[string]any{"slug": "z", "kind": "task"}, nil); err != nil {
+			t.Fatalf("MergeTasks(x and y into z) error = %v; want nil", err)
+		}
+		if p, _ := s.GetTask("p"); !slices.Equal(p.Order, []string{"z"}) {
+			t.Errorf("order of p = %v; want [z], the upserted slug once", p.Order)
+		}
+
+		s = seed(t)
+		explicit, err := s.MergeTasks([]string{"x"}, map[string]any{"slug": "y", "body": "merged"}, nil)
+		if err != nil || explicit.Project != "p" {
+			t.Fatalf("MergeTasks(x into y) = %+v, %v; want y to keep p", explicit, err)
+		}
+		if p, _ := s.GetTask("p"); !slices.Equal(p.Order, []string{"y"}) {
+			t.Errorf("order of p = %v; want [y], the upserted slug that the order already names kept once", p.Order)
+		}
+
+		s = seed(t)
+		_, err = s.MergeTasks([]string{"p"}, map[string]any{"slug": "z", "kind": "task"}, nil)
+		if err == nil || !stringContains(err.Error(), `"p"`) || !stringContains(err.Error(), "x, y") {
+			t.Errorf("MergeTasks removing p = %v; want a refusal naming p and the members x, y to move first", err)
+		}
+		if _, found := s.GetTask("p"); !found || len(s.Tasks()) != 3 {
+			t.Errorf("a refused merge changed the store: %+v", s.Tasks())
 		}
 	})
 
@@ -1665,6 +1735,20 @@ func TestPromote(t *testing.T) {
 		}
 	})
 
+	t.Run("a note keeps its project", func(t *testing.T) {
+		s := seed(t)
+		if _, err := s.UpsertTask(map[string]any{"slug": "proj", "kind": "project"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "a", "project": "proj"}); err != nil {
+			t.Fatal(err)
+		}
+		got, _, err := s.Promote("a")
+		if err != nil || got.Project != "proj" {
+			t.Errorf("Promote(a) = %+v, %v; want the promoted task to keep project proj", got, err)
+		}
+	})
+
 	t.Run("a project refused naming lyx beam create", func(t *testing.T) {
 		s := seed(t)
 		if _, err := s.UpsertTask(map[string]any{"slug": "proj", "kind": "project"}); err != nil {
@@ -1729,6 +1813,31 @@ func TestPrune(t *testing.T) {
 	if again := s.Prune(); len(again) != 0 {
 		t.Errorf("second prune removed %v", again)
 	}
+
+	t.Run("a pruned slug leaves every order and a done project a surviving member names stays", func(t *testing.T) {
+		s := boardengine.NewStore("")
+		for _, fields := range []map[string]any{
+			{"slug": "outer", "kind": "project"},
+			{"slug": "inner", "kind": "project", "project": "outer"},
+			{"slug": "kept-member", "kind": "task", "project": "inner"},
+			{"slug": "done-member", "kind": "task", "project": "inner", "status": "done"},
+			{"slug": "empty", "kind": "project", "status": "done"},
+			{"slug": "inner", "order": []string{"done-member", "kept-member"}},
+			{"slug": "outer", "status": "done"},
+			{"slug": "inner", "status": "done"},
+		} {
+			if _, err := s.UpsertTask(fields); err != nil {
+				t.Fatal(err)
+			}
+		}
+		removed := s.Prune()
+		if !sliceEqualStrings(removed, []string{"done-member", "empty"}) {
+			t.Errorf("removed = %v; want [done-member empty], the done projects outer and inner staying for kept-member", removed)
+		}
+		if inner, _ := s.GetTask("inner"); !sliceEqualStrings(inner.Order, []string{"kept-member"}) {
+			t.Errorf("order of inner = %v; want [kept-member]", inner.Order)
+		}
+	})
 }
 
 func TestFind(t *testing.T) {

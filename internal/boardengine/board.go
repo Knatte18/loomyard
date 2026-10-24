@@ -22,6 +22,8 @@ type Board struct {
 	skipPush  bool
 	now       func() time.Time
 	parentOf  func(slug string) (string, error)
+	// pairExists is Config.PairExists, copied onto every store the board builds.
+	pairExists func(slug string) bool
 }
 
 // New returns a Board operating with the given config.
@@ -31,13 +33,14 @@ func New(cfg Config) *Board {
 		now = time.Now
 	}
 	return &Board{
-		boardPath: cfg.Path,
-		out:       cfg.Outputs(),
-		vocab:     cfg.Vocabulary(),
-		skipGit:   cfg.SkipGit,
-		skipPush:  cfg.SkipPush,
-		now:       now,
-		parentOf:  cfg.ParentOf,
+		boardPath:  cfg.Path,
+		out:        cfg.Outputs(),
+		vocab:      cfg.Vocabulary(),
+		skipGit:    cfg.SkipGit,
+		skipPush:   cfg.SkipPush,
+		now:        now,
+		parentOf:   cfg.ParentOf,
+		pairExists: cfg.PairExists,
 	}
 }
 
@@ -77,6 +80,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	store := NewStore(b.boardPath)
 	store.vocab = &b.vocab
 	store.parentOf = b.parentOf
+	store.pairExists = b.pairExists
 	if err := store.Load(); err != nil {
 		return nil, err
 	}
@@ -118,7 +122,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	if err := checkRunLocks(loaded, store.Tasks()); err != nil {
 		return nil, err
 	}
-	if err := checkProjectRules(loaded, store.Tasks(), nil); err != nil {
+	if err := checkProjectRules(loaded, store.Tasks(), store.pairExists); err != nil {
 		return nil, err
 	}
 
@@ -249,6 +253,7 @@ func (b *Board) loadStore() (*Store, error) {
 	store := NewStore(b.boardPath)
 	store.vocab = &b.vocab
 	store.parentOf = b.parentOf
+	store.pairExists = b.pairExists
 	if err := store.Load(); err != nil {
 		return nil, err
 	}

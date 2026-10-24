@@ -45,6 +45,9 @@ type Config struct {
 	// ParentOf names the slug of an entry's parent pair, "" for the prime, so reads and writes resolve an effective owner alike;
 	// nil reads every parent as the prime.
 	ParentOf func(slug string) (string, error) `yaml:"-"`
+	// PairExists reports whether an entry's pair exists on this machine, so a write that moves or renames an entry with a pair is refused;
+	// nil reads every pair as absent.
+	PairExists func(slug string) bool `yaml:"-"`
 }
 
 // Label is one configured label with its description, which is empty when board.yaml gives none.

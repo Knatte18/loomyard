@@ -15,6 +15,19 @@
 // No task depends on a project: a write that sets or changes an entry's depends_on to name one is refused, naming the project's task members as what to depend on, or `lyx board set-deps` to drop the dependency.
 // A dependency on a project that a write leaves unchanged is never judged, so a done task naming a promoted project takes a later write.
 //
+// Membership is the project key on a task or note and the order key on a project, both accepted by an upsert.
+// A write that sets or changes one, an entry new to the board counting as set, is judged.
+// It is refused when project names an absent entry, a non-project, the entry itself, a done project, a project a run holds or a chain of projects with a cycle.
+// It is refused too when order names an entry whose project is not this project or names one entry twice.
+// A change of project on an entry whose pair exists, which Config.PairExists reports and nil reads as absent for every entry, is refused naming `lyx batten cancel <slug> --remove`.
+// Each refusal names the entry, the field and the slug at fault.
+// An entry whose project the write leaves unchanged is never refused, so marking a project done refuses nothing.
+// Prune drops the pruned slugs from every order, and keeps a done project while an entry the same prune does not remove names it in project.
+// MergeTasks gives an upserted entry with no project the first removed entry's.
+// It rewrites every order naming a removed slug to name the upserted slug once in its place.
+// It refuses to remove a project another surviving entry still names, naming those entries as the ones to move first.
+// A promote keeps a note's project.
+//
 // # Labels
 //
 // Each entry carries labels, validated against two maps in board.yaml, each from a label to its one-line description.
@@ -159,10 +172,11 @@
 //
 // # Rename
 //
-// Rename changes one entry's slug in one write: the entry keeps its id, its handle, its position in board.json and every other field, kept keys included, and every other entry's depends_on names the new slug in place of the old one.
-// A dependency on the same entry under a new name is no scope change, so the write critical section judges the dates and the run lock against the loaded entries with the rename applied:
-// the rename revises no entry, and a held task that depends on the renamed entry takes the rewrite.
+// Rename changes one entry's slug in one write: the entry keeps its id, its handle, its position in board.json and every other field, kept keys included, and every other entry's depends_on, project and order name the new slug in place of the old one.
+// A reference to the same entry under a new name is no scope change, so the write critical section judges the dates and the run lock against the loaded entries with the rename applied:
+// the rename revises no entry, and a held task that depends on the renamed entry, or a held project that orders it, takes the rewrite.
 // The renamed entry itself must not be held by a run, and the refusal is the run lock's *RunLockedError.
+// A beam is refused, since its slug stays fixed while it lives and its title is changed with `lyx board upsert`, and so is an entry whose pair exists on this machine, naming `lyx batten cancel <slug> --remove`.
 // A target that is empty, longer than MaxSlugLength or already an entry's slug is refused too.
 // Body and brief text is never rewritten; the result names every entry whose body or brief still holds the old slug with no letter, digit, '-' or '_' beside it.
 // The render after the write drops the old slug's design doc and writes the new one.

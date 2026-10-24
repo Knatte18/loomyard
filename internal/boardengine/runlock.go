@@ -101,12 +101,15 @@ func removedDoneSlugs(loaded, after []Task) map[string]bool {
 
 // scopeChanged reports whether any field but Status, Created and Revised differs between before and now.
 // Slices compare element-wise with nil equal to empty;
-// before's DependsOn is first stripped of the slugs in removedDone.
+// before's DependsOn and Order are first stripped of the slugs in removedDone.
 // Project, Order and Beam are compared, so a held entry takes no membership or beam change.
 // RunSettings, Profile and OwnerMachine are never compared: a run settings, profile or owner change is not a scope change, so a run-held entry takes it.
 // Unknown is never compared either, since this binary cannot change a kept key.
 func scopeChanged(before, now Task, removedDone map[string]bool) bool {
 	dependsOn := slices.DeleteFunc(slices.Clone(before.DependsOn), func(slug string) bool {
+		return removedDone[slug]
+	})
+	order := slices.DeleteFunc(slices.Clone(before.Order), func(slug string) bool {
 		return removedDone[slug]
 	})
 	return before.Title != now.Title ||
@@ -119,7 +122,7 @@ func scopeChanged(before, now Task, removedDone map[string]bool) bool {
 		before.ShortName != now.ShortName ||
 		before.Project != now.Project ||
 		before.Beam != now.Beam ||
-		!slices.Equal(before.Order, now.Order) ||
+		!slices.Equal(order, now.Order) ||
 		!slices.Equal(before.Labels, now.Labels) ||
 		!slices.Equal(before.Issues, now.Issues) ||
 		!slices.Equal(dependsOn, now.DependsOn)
