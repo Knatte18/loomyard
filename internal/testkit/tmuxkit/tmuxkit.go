@@ -11,6 +11,7 @@
 // Reed starts a server itself only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
 // Main runs in the process run directory of `internal/lyxtemp` and points `TMPDIR` at it, so every temp file a test creates lands there.
+// It also sets `GIT_CEILING_DIRECTORIES` to the directory, so no repository discovery from a temp fixture climbs above it.
 // After the run it sweeps the servers, killing every process their panes' sessions still hold, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory on every platform, Windows included.
 // A removal that fails is reported without changing the exit code, and a binary killed before it removes its directory leaves it for the next start's sweep.
 // A test binary re-executed as a helper inherits that environment, and its own run directory is made beside the inherited one, never inside it, so its socket paths do not grow past the limit.
@@ -454,8 +455,10 @@ func checkSocketPath(dir string, uid int) error {
 }
 
 // setTempEnv points every temporary file at dir: `TMPDIR`, and on Windows `TMP` and `TEMP`.
+// It also makes dir the `GIT_CEILING_DIRECTORIES` ceiling, so neither git nor a repository-root walk started from a temp fixture climbs above dir to a stray `.git` the test did not create.
 func setTempEnv(dir string) {
 	os.Setenv("TMPDIR", dir)
+	os.Setenv("GIT_CEILING_DIRECTORIES", dir)
 	if runtime.GOOS == "windows" {
 		os.Setenv("TMP", dir)
 		os.Setenv("TEMP", dir)

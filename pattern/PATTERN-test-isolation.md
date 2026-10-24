@@ -36,6 +36,7 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 ## Private temp directory and leftovers
 
 - `tmuxkit.Main` runs in the process run directory of `internal/lyxtemp` and points `TMPDIR` (and `TMP` and `TEMP` on Windows) at it, as it does `TMUX_TMPDIR`, so every `t.TempDir`, `os.MkdirTemp("")`, `lyxbin` build and child temp file of a test package lands there.
+  `Main` also sets `GIT_CEILING_DIRECTORIES` to that directory on every platform, so neither a repository-root walk nor a spawned git from a temp fixture climbs above it.
   A test binary re-executed as a helper inherits that directory, and its own run directory is made beside it by the temp package's beside-the-parent rule rather than inside it, so nesting never pushes a socket path past the `sun_path` limit.
 - After the run `Main` removes the run directory on every platform, Windows included.
   A removal that fails, such as one a lingering child's cwd blocks on Windows, is reported on stderr and leaves the exit code unchanged.
