@@ -364,14 +364,16 @@ Example:
 
 	profilesCmd := &cobra.Command{
 		Use:         "profiles",
-		Short:       "print the hub's run profiles with their settings, to pick a task's profile",
+		Short:       "print the hub's run profiles with their settings and each recipe's default, to pick a task's profile",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Print every run profile in the hub's profiles.yaml, in name order, with its settings:
-module name to config keys, the shape of a task's run_settings. An empty list prints as []. Takes no payload.
+one block per recipe, each module name to config keys, the shape of a task's run_settings.
+Seed-Child writes only the block of the recipe the task runs. An empty list prints as [].
+defaults maps a recipe to the profile a task of that recipe takes when it names none. Takes no payload.
 Edit the profiles with "lyx config profiles".
 
 Output:
-  {"ok":true,"profiles":[{"name":"light","settings":{"loom":{"plan_max_bounces":1}}}]}
+  {"ok":true,"defaults":{"loom":"light"},"profiles":[{"name":"light","settings":{"loom":{"loom":{"plan_max_bounces":1}}}}]}
 
 Example:
   lyx board profiles`,
@@ -383,9 +385,9 @@ Example:
 			}
 			entries := []map[string]any{}
 			for _, name := range loaded.Names() {
-				entries = append(entries, map[string]any{"name": name, "settings": loaded[name]})
+				entries = append(entries, map[string]any{"name": name, "settings": loaded.ByName[name]})
 			}
-			return output.Ok(out, map[string]any{"profiles": entries})
+			return output.Ok(out, map[string]any{"profiles": entries, "defaults": loaded.Defaults})
 		}),
 	}
 
@@ -469,7 +471,7 @@ Required field:
 Optional fields:
   "title"      string — human-readable title
   "brief"      string — one-line summary shown in board listings
-  "body"       string — full markdown body
+  "body"       string — markdown body
   "depends_on" array  — list of slug strings this task depends on
   "isolated"   bool   — true if the task has no dependencies by design
   "status"     string — lifecycle status (e.g. "active", "done")
@@ -482,13 +484,13 @@ Optional fields:
   "created"    string — RFC 3339 time the entry was added
   "revised"    string — RFC 3339 time its scope last changed
   "run_settings" object — module name to config keys for the pair's local config at Seed-Child; {} clears it
-  "profile"    string — a "lyx board profiles" name, laid under run_settings at Seed-Child; "" clears it
+  "profile"    string — a "lyx board profiles" name, laid under run_settings at Seed-Child; "" takes the recipe's default
   "owner_machine" string — the effective owner only; "lyx adopt" moves it
 
 Flag:
   --body-file <path>  read "body" from the file, or from stdin when the path is "-".
                       Refused when the payload also carries "body",
-                      and when the payload argument is itself "-", since stdin feeds only one.
+                      and when the payload argument is "-", since stdin feeds only one.
 
 Example:
   lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'` + slugLimitNote(),

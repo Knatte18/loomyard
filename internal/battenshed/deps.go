@@ -32,9 +32,11 @@ var ErrUnsupportedChildRecipe = errors.New("battenshed: recipe cannot be a task 
 var ErrInvalidRunSettings = errors.New("battenshed: the board task's run settings do not validate")
 
 // RunSettings is a Board task's run settings as Seed-Child reads them.
-// Profile names the run profile whose settings lie under Settings, empty for none;
+// Recipe is the recipe the task runs, whose block of the run profile lies under Settings;
+// Profile names that run profile, empty for the recipe's default;
 // Settings maps a module name to that module's keys.
 type RunSettings struct {
+	Recipe   string
 	Profile  string
 	Settings map[string]any
 }
@@ -355,10 +357,11 @@ type SeedChildDeps struct {
 	// ChildDriver returns the child's driver for the recipe SeedChild resolved: the prime seed's typed child_driver, else the child recipe's driver_kind, else shed.yaml's.
 	// SeedChild calls it after the local overrides are written, so the recipe's driver_kind is read from the layer just written.
 	ChildDriver func(recipe string) (string, error)
-	// ReadRunSettings returns the Board task's run profile and run settings, evaluated fresh on every Call.
+	// ReadRunSettings returns the Board task's run profile and run settings, evaluated fresh on every Call; SeedChild sets the Recipe it resolved.
 	ReadRunSettings func(ctx context.Context) (RunSettings, error)
-	// PrepareRunSettings returns each module the settings and their profile name as its migrated local-layer document, the task's keys laid over the profile's.
-	// An error wrapping ErrInvalidRunSettings means the profile is unknown or a key does not validate, and SeedChild routes it to Stuck; any other error is a hard error.
+	// PrepareRunSettings returns each module the settings and their profile's block for the recipe name as its migrated local-layer document, the task's keys laid over the profile's;
+	// an empty profile takes the recipe's default profile, and a recipe with none takes the task's settings alone.
+	// An error wrapping ErrInvalidRunSettings means the profile is unknown, holds no block for the recipe, or a key does not validate, and SeedChild routes it to Stuck; any other error is a hard error.
 	PrepareRunSettings func(settings RunSettings) (map[string][]byte, error)
 	// WriteLocalOverride writes one module's local-layer file in the task worktree atomically.
 	WriteLocalOverride func(ctx context.Context, module string, document []byte) error

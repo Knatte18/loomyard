@@ -355,7 +355,7 @@ User-facing modules each get one `lyx <module>` namespace:
   The hub's repository is the one its recorded binding names, else its origin remote, so only the loomyard hub's intake reads LoomYard's issues; intake never goes through selfreport.
   The README renders Tasks split into Running, Ready (waiting on nothing open) and dependency layers whose entries can run in parallel, then Notes grouped by type label, each subsection one numbered table that links each slug to its design doc.
   An entry may carry a priority, `high` or `low`, absent meaning normal, which orders it first or last within its subsection.
-  A task may name a run profile in its `profile` field, and `lyx board profiles` prints the hub's profiles with their settings.
+  A task may name a run profile in its `profile` field, and `lyx board profiles` prints the hub's profiles with their settings and each recipe's default profile.
   Agents use the board through the `ly:board` skill.
   ✅ Implemented.
 - **config** — bare `lyx config` lists modules and verbs, `lyx config menu` picks a module to edit interactively, and `lyx config <module>` edits that module's config;
@@ -369,8 +369,8 @@ User-facing modules each get one `lyx <module>` namespace:
   A hub-wide module's machine keys, such as gate's `slots` and `tier_parallel`, also take a never-tracked machine override at `<BoardDir>/.lyx/config/<module>.machine.yaml`, written from the prime beside the local override.
   `lyx config --layer default|worktree|machine|local` picks the layer a verb addresses, and `lyx config <module> --resolved` prints the merged result with each unit annotated by its layer.
   A board task's `run_settings` reach the pair's local layer at batten's Seed-Child, bounded by `configreg`'s `LocalKeys` and `LocalDenied`.
-  A task's `profile` names a run profile in the hub-wide, seed-only `profiles.yaml`, whose settings Seed-Child writes under the task's `run_settings`;
-  `lyx config profiles --set <name>='<json object>'` adds or replaces one whole profile (see [internal/runprofile](../internal/runprofile/doc.go)). ✅ Implemented.
+  A task's `profile` names a run profile in the hub-wide, seed-only `profiles.yaml`, whose block for the task's recipe Seed-Child writes under the task's `run_settings`, and a task naming none takes its recipe's default profile;
+  the starting profiles are the ladder `speed`, `light`, `solid` and `wide`, plus the darn-only `docs`, and `lyx config profiles --set <name>='<json object>'` adds or replaces one whole profile (see [internal/runprofile](../internal/runprofile/doc.go)). ✅ Implemented.
 - **fabric** — the sole git-coordination module over the code and its records, unified over two `internal/gitrepo.Repo` instances: clone (the hub creator), dual-worktree add/remove, coordinated checkout (switches code and records together + re-points junctions), reconcile, status, prune, cleanup, records content-sync (commit/push/pull/sync/diff; in the prime, push, commit and sync push the records side only and `push` reports an unpushed code branch as `code_push_skipped`), and a merge/conflict lifecycle (`merge-in`/`merge`/`merge-stage`/`merge --continue`/`merge --abort`, mirroring git's own exit codes and surfacing conflicts as unified, worktree-relative paths; `merge-stage` marks resolved paths so `--continue`'s index gate can pass, and is the only route for a conflict under a wired junction name, which git refuses to stage through), all in one command tree (`internal/fabriccli` + `internal/fabricengine`);
   CLI surface is `lyx fabric clone|add|list|remove|checkout|pairs|reconcile|prune|cleanup|unwire|shortname|status|commit|push|pull|sync|diff|merge-in|merge|merge-stage`.
   `clone` takes the records URL first with the code URL optional, derived from the code binding recorded on the records main branch when omitted;

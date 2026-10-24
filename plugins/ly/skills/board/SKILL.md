@@ -44,7 +44,7 @@ Run `lyx board labels` before choosing labels: it prints both maps in file order
 Beside its type label, every entry carries a label for each lyx module it touches; an entry that spans the whole tool takes the modules its work would change first.
 A label in neither map is refused; add it with `lyx config board --set labels.<name>=<description>`, or edit the maps in the `lyx config board` editor.
 A recipe name goes in `recipe`, never in a label: `loom` or `darn`, empty meaning `loom`.
-A run profile goes in `profile`, never in `run_settings`: `lyx board profiles` prints the hub's profiles with their settings, and a task without one runs on the hub's own config.
+A run profile goes in `profile`, never in `run_settings`: `lyx board profiles` prints the hub's profiles with one settings block per recipe, and a task without one takes its recipe's default profile, listed under `defaults`.
 
 ## Verbs
 

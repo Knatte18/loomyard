@@ -1060,7 +1060,7 @@ func assertDarnSaveWritten(t *testing.T, fx hubFixture, hubFile, saved string) {
 func TestDispatchSetProfiles(t *testing.T) {
 	t.Parallel()
 
-	const seeded = "# operator notes\nlight:\n  loom: {plan_max_bounces: 1}\n"
+	const seeded = "# operator notes\nlight:\n  loom:\n    loom: {plan_max_bounces: 1}\n"
 	rows := []struct {
 		name string
 		// absent leaves the hub file unwritten instead of seeded.
@@ -1074,7 +1074,7 @@ func TestDispatchSetProfiles(t *testing.T) {
 	}{
 		{
 			name:     "a local write is refused because no profile key is open to the local layer",
-			setFlag:  `wide={"loom":{"code_max_bounces":2}}`,
+			setFlag:  `broad={"loom":{"loom":{"code_max_bounces":2}}}`,
 			layer:    "local",
 			wantCode: 1,
 			wantFile: seeded,
@@ -1082,19 +1082,26 @@ func TestDispatchSetProfiles(t *testing.T) {
 		},
 		{
 			name:     "a new profile is added beside the existing one",
-			setFlag:  `wide={"loom":{"code_max_bounces":2}}`,
-			wantFile: "# operator notes\nlight:\n    loom: {plan_max_bounces: 1}\nwide:\n    loom: {code_max_bounces: 2}\n",
+			setFlag:  `broad={"loom":{"loom":{"code_max_bounces":2}}}`,
+			wantFile: "# operator notes\nlight:\n    loom:\n        loom: {plan_max_bounces: 1}\nbroad:\n    loom: {loom: {code_max_bounces: 2}}\n",
 		},
 		{
 			name:     "an existing profile is replaced whole",
-			setFlag:  `light={"loom":{"code_max_bounces":1}}`,
-			wantFile: "# operator notes\nlight:\n    loom: {code_max_bounces: 1}\n",
+			setFlag:  `light={"darn":{"loom":{"code_max_bounces":1}}}`,
+			wantFile: "# operator notes\nlight:\n    darn: {loom: {code_max_bounces: 1}}\n",
 		},
 		{
 			name:        "an absent hub file starts from the template's profiles",
 			absent:      true,
-			setFlag:     `wide={"loom":{"code_max_bounces":2}}`,
-			wantContain: []string{"light:", "budget:", "docs:", "wide:\n    loom: {code_max_bounces: 2}"},
+			setFlag:     `broad={"loom":{"loom":{"code_max_bounces":2}}}`,
+			wantContain: []string{"defaults:", "light:", "solid:", "docs:", "broad:\n    loom: {loom: {code_max_bounces: 2}}"},
+		},
+		{
+			name:     "a default naming an unknown profile is refused",
+			setFlag:  `defaults={"loom":"heavy"}`,
+			wantCode: 1,
+			wantFile: seeded,
+			wantErr:  `unknown profile "heavy"`,
 		},
 		{
 			name:     "a value that is not a JSON object is refused",
@@ -1105,10 +1112,10 @@ func TestDispatchSetProfiles(t *testing.T) {
 		},
 		{
 			name:     "a profile key no module takes is refused",
-			setFlag:  `odd={"loom":{"no_such_key":1}}`,
+			setFlag:  `odd={"loom":{"loom":{"no_such_key":1}}}`,
 			wantCode: 1,
 			wantFile: seeded,
-			wantErr:  `run profile "odd"`,
+			wantErr:  `run profile "odd", recipe "loom"`,
 		},
 	}
 	for _, row := range rows {

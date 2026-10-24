@@ -4,7 +4,9 @@ package configreg
 
 import (
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"sort"
 
 	"gopkg.in/yaml.v3"
@@ -140,15 +142,18 @@ func checkLocalDocument(module Module, document []byte) error {
 	return nil
 }
 
-// checkProfiles loads the run profiles under dirs and checks each profile's settings as a task's run settings are checked, naming the profile on a refusal.
+// checkProfiles loads the run profiles under dirs and checks each recipe block of each profile as a task's run settings are checked, naming the profile and the recipe on a refusal.
 func checkProfiles(dirs configengine.Dirs) error {
 	profiles, err := runprofile.Load(dirs)
 	if err != nil {
 		return err
 	}
 	for _, name := range profiles.Names() {
-		if _, err := PrepareRunSettings(profiles[name]); err != nil {
-			return fmt.Errorf("run profile %q: %w", name, err)
+		profile := profiles.ByName[name]
+		for _, recipe := range slices.Sorted(maps.Keys(profile)) {
+			if _, err := PrepareRunSettings(profile[recipe]); err != nil {
+				return fmt.Errorf("run profile %q, recipe %q: %w", name, recipe, err)
+			}
 		}
 	}
 	return nil

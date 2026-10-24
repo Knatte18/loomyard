@@ -172,9 +172,9 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
   Notes are bundled only when the operator promotes them into a task.
 - Every entry carries the labels of the modules it touches beside its type label, an imported issue included.
 - Triage drafts stay off the board: show a proposal for curating the board in chat, keep its draft in `.scratch/`, and change the board only after the operator decides.
-- A task that needs fewer review rounds than its recipe's defaults names a profile, such as `light`, in its board entry's `profile` field through `lyx board upsert`, before its batten run starts;
-  it never gets hand-written `run_settings` for its review bounds.
-  `lyx board profiles` lists the hub's profiles.
+- A task that needs other review rounds than its recipe's default profile names a profile of the ladder, `speed`, `light`, `solid` or `wide`, in its board entry's `profile` field through `lyx board upsert`, before its batten run starts;
+  it gets hand-written `run_settings` for its review bounds only when no profile fits.
+  `lyx board profiles` lists the hub's profiles and each recipe's default.
 
 ## Where a finding goes
 

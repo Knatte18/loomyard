@@ -55,8 +55,8 @@
 // A run_settings change is never a scope change, so the run lock lets a run-held entry take it.
 // `lyx board intake` never sets the field.
 //
-// A task may also carry a profile: the name of a run profile in the hub's `profiles.yaml` (see `internal/runprofile`), whose settings Seed-Child writes under the task's run_settings.
-// A write of an empty string clears it, and the README entry cell names it.
+// A task may also carry a profile: the name of a run profile in the hub's `profiles.yaml` (see `internal/runprofile`), whose block for the task's recipe Seed-Child writes under the task's run_settings.
+// A write of an empty string clears it, and the task then takes its recipe's default profile; the README entry cell names only a profile the task carries.
 // Like run_settings, a profile change is never a scope change.
 //
 // # Owners
