@@ -197,8 +197,14 @@ func (n rowNotifier) send(ctx context.Context, line string) bool {
 			return false
 		}
 	}
+	return n.deliver(ctx, line, n.deps.Notify)
+}
+
+// deliver makes at most noticeMaxAttempts attempts, rowNoticeRetrySpacing apart, to post line through notify, and reports whether it was posted.
+// A line still unposted after the attempts is dropped with a Warn.
+func (n rowNotifier) deliver(ctx context.Context, line string, notify func(ctx context.Context, line string) (bool, error)) bool {
 	for attempt := 1; attempt <= noticeMaxAttempts; attempt++ {
-		queued, err := n.deps.Notify(ctx, line)
+		queued, err := notify(ctx, line)
 		if err == nil && queued {
 			return true
 		}

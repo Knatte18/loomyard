@@ -34,6 +34,8 @@
 // An unreadable merge record is logged and read as absent, so the parent side is measured from the task's merge base, as a darn run with no record is.
 // The merge is large when it needed the conflict session, or when the parent's changes since the merged tip it read touch a file the task changed since its merge base; a parent already holding the task's work is never large.
 // A large merge keeps the merge commit and reroutes with no gate run: a Stuck with Reroute set on the row's on_reroute edge, which spends no bounce budget, and the deferred release frees the lock first, with shed's reroute cap as its bound.
+// A Finalize built with Deps.LargeMergeLands, for a recipe row that declares no reroute edge, neither reroutes a large merge nor writes the overlap note, and goes on to the gate.
+// What that lets through, unseen by any review, is the conflict session's resolution against the parent's newer work and a textually clean merge of the parent's changes to files the task also changed; the `finalize` gate over the merged tree bounds both, and a spent fixer or a change past the caps halts for the orch.
 // Finalize then writes the merge record with the new merged tip and the aligned tip as it was.
 // Next it runs its own gate key, `finalize`, over the merged tree through verifytree, which skips a tree it already verified, so a run that went right holds the lock for one merge, a skipped gate and the landing.
 // A darn Finalize over a diff wholly under `tree_scope` runs the tree-scoped command, since darn's verify source answers it.
@@ -177,6 +179,8 @@
 // the seat engine's geometry for Describe, and Deps.ParentName passed through to the resolver for Merge-In and Finalize.
 // DescribeTable builds a loom run's session, which reads the decision record and the webster run records;
 // DarnDescribeTable builds a darn run's from its own stencil, `landing-template-describe-darn`, which reads the board entry, the decision record beside it, the diff and the review perch's run directory, under the same describe keys, role and skills.
+// NewBeamDescribe is the beam recipe's Describe row and starts no agent: it writes the description from the beam's board entry and the subjects of the commits the beam adds, validates it with the check the Describe gate runs, and commits it.
+// A finding is an error naming the finding and the way out, which is to end the landing with `lyx batten cancel <slug>`, fix the entry with `lyx board upsert` and run `lyx beam land <slug>` again, since the landing's claim holds the entry under the run lock.
 //
 // It takes told absolute paths and has no direct production import of internal/lyxcwd, per the
 // Told-Geometry Invariant: every path this package operates on is handed to it by its caller, and it

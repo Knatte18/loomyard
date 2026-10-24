@@ -4,10 +4,39 @@
 //
 // # Entries
 //
-// Board holds one store, board.json, and every entry in it is a task or a note, named by its kind.
-// Only a task is claimable, and only a task carries depends_on.
+// Board holds one store, board.json, and every entry in it is a task, a note or a project, named by its kind.
+// Only a task is claimable, bar a project that is a beam, and only a task carries depends_on.
 // A note is an idea or observation that is not yet work to run: one note per entry, and a relation between notes is a sentence in a body.
-// Promote turns a note into a task once the operator decides to build it.
+// Promote turns a note into a task once the operator decides to build it, and refuses a project, which is made a beam with `lyx beam create`.
+//
+// A project groups entries.
+// It carries a type label as a task does, and carries no depends_on, recipe, profile, run_settings or priority: a write giving it one is refused naming the entry and the field to drop.
+// Its project, order and beam keys are the membership and the beam flag: a project carries order and beam, no task or note does, and an older binary keeps all three as unknown keys.
+// No task depends on a project: a write that sets or changes an entry's depends_on to name one is refused, naming the project's task members as what to depend on, or `lyx board set-deps` to drop the dependency.
+// A dependency on a project that a write leaves unchanged is never judged, so a done task naming a promoted project takes a later write.
+//
+// Membership is the project key on a task or note and the order key on a project, both accepted by an upsert.
+// A write that sets or changes one, an entry new to the board counting as set, is judged.
+// It is refused when project names an absent entry, a non-project, the entry itself, a done project, a project a run holds or a chain of projects with a cycle.
+// It is refused too when order names an entry whose project is not this project or names one entry twice.
+// A change of project on an entry whose pair exists, which Config.PairExists reports and nil reads as absent for every entry, is refused naming `lyx batten cancel <slug> --remove`.
+// Each refusal names the entry, the field and the slug at fault.
+// An entry whose project the write leaves unchanged is never refused, so marking a project done refuses nothing.
+// Prune drops the pruned slugs from every order, and keeps a done project while an entry the same prune does not remove names it in project.
+// MergeTasks gives an upserted entry with no project the first removed entry's.
+// It rewrites every order naming a removed slug to name the upserted slug once in its place.
+// It refuses to remove a project another surviving entry still names, naming those entries as the ones to move first.
+// A promote keeps a note's project.
+//
+// The beam flag marks a project as a beam, and only the beam verbs write it.
+// An upsert, batch or merge payload may carry beam only as the entry's stored value, false for a new entry, which is dropped as a no-op.
+// Any other value is refused.
+// True names `lyx beam create <slug>` for a project and `lyx beam promote <slug>` for a task.
+// False on a beam says the flag stays set for the beam's life, which ends when `lyx beam land <slug>` lands it and marks the project done.
+// The replay is not routed through that rule, as the owner rule is not, so a hand edit of board.json can still set the flag.
+// SetOwners writes the flag through OwnerRequest.Beam, in the one commit that records the owner.
+// OwnerRequest.ToProject, which needs Beam, also turns each named task into a project in that commit, clearing its depends_on, recipe, profile, run_settings and priority and giving it the lowest free P handle.
+// OwnerEntry carries IsProject and Beam for `lyx adopt`'s beam admission.
 //
 // # Labels
 //
@@ -28,8 +57,8 @@
 // # Handles
 //
 // Every entry carries a handle, a letter and a number such as T4, B2 or E7, stored in board.json as the handle key, so the operator can name an entry without its slug.
-// The letter is T for a task, and for a note the upper-cased first letter of its type label, so the hub's board.yaml types decide the note letters;
-// LoadConfig refuses type labels that do not begin with a letter, that share a first letter, or whose letter is T.
+// The letter is T for a task, P for a project, and for a note the upper-cased first letter of its type label, so the hub's board.yaml types decide the note letters;
+// LoadConfig refuses type labels that do not begin with a letter, that share a first letter, or whose letter is T or P.
 // The board alone assigns handles, and an upsert payload carrying one is refused.
 // One assigner runs over the whole entry list on load, in the write critical section after the mutation and in the replay before its save:
 // an entry keeps a stored handle of its own letter that no entry of lower id holds, and every other entry, in id order, takes the lowest number of its letter not in use.
@@ -61,16 +90,20 @@
 //
 // # Owners
 //
-// A task may carry an owner_machine: the name of the machine that may start, resume and land its run; a note never carries one, and board.json omits the key while none is recorded.
+// A task or a project may carry an owner_machine: the name of the machine that may start, resume and land its run; a note never carries one, and board.json omits the key while none is recorded.
 // The hub's prime has its own record, the top-level prime_owner key of board.json, which the board replay merges with the same origin-wins rule as an entry's owner.
 // The README states it under its render time, and Board.PrimeOwner reads it for the list view.
 // The effective owner of an entry is what Owners.Effective resolves: the recorded owner, else for a run-held entry none, else its parent's owner, the parent pair resolved through Config.ParentOf and the prime's owner when it has none;
 // a board with no prime owner, and a slug the board does not hold, read as owned by no other machine.
 // Board copies Config.ParentOf onto every store it builds, so reads and writes resolve parents alike, and nil reads every parent as the prime.
+// ParentBeam is the board half of the one parent resolver: it walks an entry's project links upward and returns the nearest open project that is a beam, "" meaning the prime.
+// The list view carries it as parent_beam, from Config.ParentOf when that seam is set and from ParentBeam over the board's own entries otherwise, empty when the seam fails;
+// Board.ParentBeamOf answers it for one slug, and ReadTasks reads the entries of a local board.json for a reader outside a Board.
 // An owner change is never a scope change, so the run lock lets a run-held entry take it.
 //
 // SetOwners is the only writer of an owner or the prime owner.
-// It pulls the board level with its upstream, writes one commit "board: owner <machine> for <slugs>" that sets each named task's owner, the prime owner when asked and an optional claim status on its slug, and pushes it.
+// It pulls the board level with its upstream, writes one commit "board: owner <machine> for <slugs>" that sets each named task's or project's owner, the prime owner when asked and an optional claim status on its slug, and pushes it.
+// A claim status lands only on a task or on a project whose beam flag is set; any other project records the owner and keeps its status.
 // Without Takeover it leaves an entry whose effective owner is another machine untouched and reports it in OwnerWrite.Lost; `lyx adopt` alone passes Takeover.
 // A competing write origin already holds wins the replay of a rejected push, and the owners re-read from the local board.json after the push decide Recorded and Lost.
 // An origin that does not answer is ErrOwnerOriginUnreachable, and a push a held lock keeps deferring is refused naming `lyx board sync`.
@@ -80,6 +113,17 @@
 //
 // An upsert payload may carry owner_machine only as the entry's effective owner, which is dropped as a no-op; any other value is refused naming `lyx adopt`.
 // The rule runs from the store's upsert, batch and merge paths, never from the replay, which applies an owner change through its own entry writes.
+//
+// # Slug rule
+//
+// Config.ValidateSlug is the seam through which the board applies the pair slug rule to the task and project slugs a write makes; nil checks nothing, as the detached sync, a batten claim and the owner setter build it.
+// Board copies it, and the write critical section runs it after the mutation.
+// A write makes a slug when it adds an entry of kind task or project, as an upsert, a batch or a merge does, when a promote makes a note a task, and when a rename gives an entry its new slug.
+// A write that leaves an entry's slug and kind as they were is never judged, so a slug the rule now refuses keeps taking writes, and a note is never judged.
+// A task that becomes a project keeps a slug that already names a pair, and the owner setter, which runs outside the critical section, makes no slug and checks none.
+// A refusal names the entry, the rule's own reason and a slug the rule admits: the slug without its records suffix, or the slug with -task appended.
+// That suggestion goes through the seam and against the slugs of the entries the write leaves before it is offered, and none is offered when it fails the rule or names an existing entry, since an upsert under an existing slug edits that entry;
+// the refusal then asks for another slug the rule admits.
 //
 // # Dates
 //
@@ -112,7 +156,12 @@
 //
 // # README
 //
-// Every write renders README.md, opening with the UTC date and time it was rendered, so its ages read as of that moment, then a Tasks section, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
+// Every write renders README.md, opening with the UTC date and time it was rendered, so its ages read as of that moment, then a Projects section when a project is open, a Tasks section, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
+// An open project is in none of the Tasks layers: ComputeLayers puts it in its own Project layer, a run-held one in Running and a done one in the done layer, and RenderOrder places open projects by handle between open tasks and open notes, and a done project between done tasks and done notes.
+// Projects lists each open project as an H3 of its handle and title, its brief, `beam` or `grouping`, and for a beam its effective owner, the recorded owner_machine else the prime owner.
+// A table of its members follows: the entries whose project names it, in the order of its order key, then the members that key leaves out by handle.
+// A member table row gives the handle, the bold title, the kind and where the member stands: its Running place, Ready, its layer, Note or Done.
+// A member keeps its row in the Tasks, Notes and Done sections, and no project is a row of Tasks or Notes; a done project is a row of Done.
 // Every section heading ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)`, never the highest handle number, since handles have gaps.
 // Tasks splits into Running, Ready, the dependency layers A, B and on, and Independent for an isolated task.
 // A task a run holds, by IsRunStatus as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
@@ -161,10 +210,11 @@
 //
 // # Rename
 //
-// Rename changes one entry's slug in one write: the entry keeps its id, its handle, its position in board.json and every other field, kept keys included, and every other entry's depends_on names the new slug in place of the old one.
-// A dependency on the same entry under a new name is no scope change, so the write critical section judges the dates and the run lock against the loaded entries with the rename applied:
-// the rename revises no entry, and a held task that depends on the renamed entry takes the rewrite.
+// Rename changes one entry's slug in one write: the entry keeps its id, its handle, its position in board.json and every other field, kept keys included, and every other entry's depends_on, project and order name the new slug in place of the old one.
+// A reference to the same entry under a new name is no scope change, so the write critical section judges the dates and the run lock against the loaded entries with the rename applied:
+// the rename revises no entry, and a held task that depends on the renamed entry, or a held project that orders it, takes the rewrite.
 // The renamed entry itself must not be held by a run, and the refusal is the run lock's *RunLockedError.
+// A beam is refused, since its slug stays fixed while it lives and its title is changed with `lyx board upsert`, and so is an entry whose pair exists on this machine, naming `lyx batten cancel <slug> --remove`.
 // A target that is empty, longer than MaxSlugLength or already an entry's slug is refused too.
 // Body and brief text is never rewritten; the result names every entry whose body or brief still holds the old slug with no letter, digit, '-' or '_' beside it.
 // The render after the write drops the old slug's design doc and writes the new one.

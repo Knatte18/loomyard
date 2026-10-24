@@ -125,7 +125,7 @@
 // `OwnerReader` builds the owner seam, `OwnerOf`, beside the live-pair, parent-lock and teardown seams: it reads the machine's name, parses a `board.json` with `boardengine.ParseOwners`, takes the slug's effective owner with a parent resolver and reports whether another machine owns it.
 // A name error, an empty hostname included, a parent resolver error and undecodable bytes are returned, so no owner is compared with an empty name.
 // `SeamOptions.Machine` and `SeamOptions.ParentOf` feed it, and a nil `Machine` builds no `OwnerOf`, so a call site that sets none keeps every entry owned here.
-// `HubSeamOptions` fills `HubPaused` from a read of the pause record at each call, `PrimeParentLockFree` from one listing of the parent lock store for the prime's branch, `Machine` with `machinename.Name` and `ParentOf` with `fabricengine.ParentSlug` over the prime's location, and leaves the two wake-hold fields nil, which read as no wake hold.
+// `HubSeamOptions` fills `HubPaused` from a read of the pause record at each call, `PrimeParentLockFree` from one listing of the parent lock store for the prime's branch, `Machine` with `machinename.Name` and `ParentOf` with `hubgeom.ParentOf` over the prime's location, and leaves the two wake-hold fields nil, which read as no wake hold.
 //
 // # Quiet rule
 //

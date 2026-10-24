@@ -29,6 +29,12 @@ func invalidSlug(format string, args ...any) error {
 	return &sentinelError{sentinel: ErrInvalidSlug, msg: fmt.Sprintf(format, args...)}
 }
 
+// ValidatePairSlug reports whether slug may name a pair of the hub, returning the same refusal, matching ErrInvalidSlug, that Add and Remove return.
+// junctionNames is the repo's configured junction name set (Config.Dirs()).
+func ValidatePairSlug(slug string, junctionNames []string) error {
+	return validateWorktreeSlug(slug, junctionNames)
+}
+
 // validateWorktreeSlug reports whether slug may name a warp↔weft worktree pair, returning a
 // specific error when it may not.
 //

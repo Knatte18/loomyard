@@ -39,8 +39,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/orchcli"
-	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/parentreview"
@@ -496,16 +494,24 @@ func childRefusalKind(childOutput string) string {
 	return ""
 }
 
+// boardRecipe returns the recipe Seed-Child seeds for task: beam for a project entry, the entry's own recipe field otherwise.
+func boardRecipe(task boardengine.Task) string {
+	if task.Kind == boardengine.KindProject {
+		return shedrun.RecipeBeam
+	}
+	return task.Recipe
+}
+
 // childRecipeSupported reports whether recipe is one a task worktree's bootstrap verb can run as the child's own run:
-// the two recipes `lyx loom start` serves.
+// the three recipes `lyx loom start` serves.
 func childRecipeSupported(recipe string) bool {
-	return recipe == shedrun.RecipeLoom || recipe == shedrun.RecipeDarn
+	return recipe == shedrun.RecipeLoom || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipeBeam
 }
 
 // unsupportedChildRecipeRefusal is the refusal for a recipe childRecipeSupported rejects.
-// It wraps battenshed.ErrUnsupportedChildRecipe and names both admitted recipes.
+// It wraps battenshed.ErrUnsupportedChildRecipe and names the three admitted recipes.
 func unsupportedChildRecipeRefusal(recipe string) error {
-	return fmt.Errorf("%w: only %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q or empty; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipeLoom, shedrun.RecipeDarn, recipe)
+	return fmt.Errorf("%w: only %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipeBeam, shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipeBeam, recipe)
 }
 
 // childSeedParams returns the seed params recipe's own bootstrap verb will itself write, read from
@@ -513,7 +519,7 @@ func unsupportedChildRecipeRefusal(recipe string) error {
 //
 // shedrun.WriteSeed is idempotent only against a seed agreeing on recipe, driver and params, so a
 // child seeded without a param its own bootstrap writes makes that bootstrap refuse.
-// Params are per-recipe: loom and darn declare one each, params.parent, taken from the pair's recorded origin.
+// Params are per-recipe: loom, darn and beam declare one each, params.parent, taken from the pair's recorded origin, which for a beam is the beam's parent branch.
 // An absent or empty recorded parent yields no param, leaving the bootstrap's own "pass --parent once" refusal as the one an operator sees.
 func childSeedParams(recipe string, childLocation *lyxcwd.Location) (map[string]string, error) {
 	if !childRecipeSupported(recipe) {
@@ -535,27 +541,11 @@ func childSeedFor(recipe, driver string, params map[string]string) shedrun.Seed 
 	return shedrun.Seed{Recipe: recipe, Driver: driver, Params: params}
 }
 
-// noticesReachDriversParent reports whether this batten's notices have a destination that is also the task worktree driver's parent:
-// the pair's parent worktree is the prime batten runs in, and the prime's orch state records a strand.
-// A pair created from another worktree, or with no resolvable parent, has a different parent to message.
+// noticesReachDriversParent reports whether this batten's notices have a destination that is also the task worktree driver's parent, and that destination records an orch strand.
+// The task worktree's driver messages the nearest live orch from the pair's recorded parent, and batten's notices take the walk from the same pair, so the two destinations agree whenever the pair is present;
+// a driver and batten under a live beam orch both reach it.
 func noticesReachDriversParent(prime, taskLocation *lyxcwd.Location) (bool, error) {
-	parent, err := hubgeom.ResolveParent(taskLocation)
-	if err != nil {
-		return false, err
-	}
-	if parent.Worktree != prime.WorktreeName {
-		return false, nil
-	}
-	return orchStrandRecorded(prime)
-}
-
-// orchStrandRecorded reports whether the prime's orch state records a strand to receive notices.
-func orchStrandRecorded(prime *lyxcwd.Location) (bool, error) {
-	orch, err := orchengine.LoadState(orchcli.PrimePaths(prime))
-	if err != nil {
-		return false, err
-	}
-	return orch.Strand != "", nil
+	return runParentRecorded(prime, taskLocation.WorktreeName)
 }
 
 // battenHistoryLen returns the length of batten's own status history for slug, 0 when the status file is absent.
@@ -567,13 +557,13 @@ func battenHistoryLen(location *lyxcwd.Location, slug string) (int, error) {
 	return len(status.History), nil
 }
 
-// rowNotices returns the notice seams of the rows after Run-Shed: notices go to the prime's orch, as Run-Shed's do, and an episode is told apart by batten's own history length.
+// rowNotices returns the notice seams of the rows after Run-Shed: notices go to the nearest live orch above the run, as Run-Shed's do, and an episode is told apart by batten's own history length.
 func rowNotices(location *lyxcwd.Location, slug string) battenshed.RowNoticeDeps {
 	return battenshed.RowNoticeDeps{
 		Notify: func(ctx context.Context, line string) (bool, error) {
-			return orchcli.NotifyPrime(location, battenProgram, line)
+			return notifyRunParent(location, slug, line)
 		},
-		OrchStrandRecorded: func() (bool, error) { return orchStrandRecorded(location) },
+		OrchStrandRecorded: func() (bool, error) { return runParentRecorded(location, slug) },
 		BattenHistoryLen:   func() (int, error) { return battenHistoryLen(location, slug) },
 	}
 }
@@ -823,10 +813,17 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return err
 			}
 
-			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
+			// A beam's landing forks no pair, and work started under the beam after the start guard read it would be lost with the pair, so the refusal runs again after the claim.
+			project, err := c.entryIsProject()
 			if err != nil {
 				return err
 			}
+			if project && c.beam.Refusal != nil {
+				if err := c.beam.Refusal(); err != nil {
+					return err
+				}
+			}
+
 			// The already-complete probe before Add, so the row is idempotent against its own
 			// post-condition -- see taskWorktreeComplete for the crash window this closes.
 			present, complete, incompleteReason, err := taskWorktreeComplete(location, slug)
@@ -836,6 +833,17 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			if complete {
 				logger.Info("battencli: create worktree skipped, the task worktree is already present", "slug", slug)
 				return reconcileTaskPair(location, slug)
+			}
+			if project && !present {
+				// A beam is made by `lyx beam create`, never by a landing, so no path forks an empty pair for it.
+				return &battenshed.PreconditionError{
+					Unmet:      fmt.Sprintf("the beam %s has no pair on this machine", slug),
+					WayForward: fmt.Sprintf("run %q to finish the create, or %q when the beam's branch is on origin, then %q", "lyx beam create "+slug, "lyx adopt "+slug, "lyx batten run "+slug),
+				}
+			}
+			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
+			if err != nil {
+				return err
 			}
 			if present {
 				// A worktree exists but Add never finished it -- see taskWorktreeComplete's own doc
@@ -848,7 +856,12 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			}
 
 			top := fabricengine.NewTopology(cfg)
-			_, err = top.Add(location, slug, fabricengine.AddOptions{})
+			// A member of a beam forks from the beam's pair, whichever worktree started the run; every other task forks from the prime.
+			parent, err := beamForkParent(location, slug, func(beam string) (bool, error) { return top.TaskBranchOnOrigin(location, beam) })
+			if err != nil {
+				return err
+			}
+			_, err = top.Add(location, slug, fabricengine.AddOptions{Parent: parent})
 			logger.Info("battencli: create worktree", "slug", slug)
 			if err != nil {
 				return createRefusal(err, slug, cfg.BranchPrefix+slug)
@@ -898,12 +911,12 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		},
 		Land: landDeps(location, slug, locateTask),
 		InnerRun: battenshed.InnerRunDeps{
-			// Notify posts the notice as creel mail to the prime's orch, the parent of a batten run started from the prime, and reports whether it was posted.
+			// Notify posts the notice as creel mail to the nearest live orch above the run, and reports whether it was posted.
 			Notify: func(ctx context.Context, line string) (bool, error) {
-				return orchcli.NotifyPrime(location, battenProgram, line)
+				return notifyRunParent(location, slug, line)
 			},
-			// OrchStrandRecorded reads the prime orch's state, the same fact the watched marker is kept on.
-			OrchStrandRecorded: func() (bool, error) { return orchStrandRecorded(location) },
+			// OrchStrandRecorded reads whether that orch records a strand, the same fact the watched marker is kept on.
+			OrchStrandRecorded: func() (bool, error) { return runParentRecorded(location, slug) },
 			// StopReport reads the driver's park marker in the task worktree: the stop report path it holds and the time it was written.
 			StopReport: func() (string, time.Time, bool, error) {
 				taskLocation, err := locateTask()
@@ -1206,7 +1219,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			},
 		},
 		SeedChild: battenshed.SeedChildDeps{
-			// ReadBoardType opens the Board fresh on every Call, over fabricengine.BoardDir(location.HubPath), and returns the task's own Recipe field -- never a value captured at wiring time, so a recipe corrected after prime was seeded is still honoured.
+			// ReadBoardType opens the Board fresh on every Call, over fabricengine.BoardDir(location.HubPath), and returns the recipe boardRecipe answers for the entry -- never a value captured at wiring time, so a recipe corrected after prime was seeded is still honoured.
 			ReadBoardType: func(ctx context.Context) (string, error) {
 				b := boardengine.New(boardengine.Config{Path: fabricengine.BoardDir(location.HubPath)})
 				task, found, err := b.GetTask(slug)
@@ -1216,7 +1229,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				if !found {
 					return "", fmt.Errorf("battencli: board task %q not found", slug)
 				}
-				return task.Recipe, nil
+				return boardRecipe(task), nil
 			},
 			// ChildDriver is the "child_driver" param of prime's own seed when the operator typed one, otherwise the child recipe's resolved driver_kind (childDriverFrom).
 			// The kind is read from the task worktree's config layers, and SeedChild calls this after writing that worktree's local layer, so a driver_kind from the run settings is seen.
@@ -1361,6 +1374,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	env.Resume = fmt.Sprintf("lyx batten run %s", slug)
 	env.Command = c.commandDeps(location, slug, executable, locateTask)
 
+	c.beam = hubLandingSeams(location, slug)
 	c.clientAttached = func() (bool, error) {
 		taskLocation, err := locateTask()
 		if err != nil {

@@ -71,6 +71,18 @@ func withOwner(owner string) func(*Task) {
 	return func(task *Task) { task.OwnerMachine = owner }
 }
 
+func asProject(task *Task) { task.Kind = KindProject }
+
+func withProject(project string) func(*Task) {
+	return func(task *Task) { task.Project = project }
+}
+
+func withOrder(slugs ...string) func(*Task) {
+	return func(task *Task) { task.Order = slugs }
+}
+
+func asBeam(task *Task) { task.Beam = true }
+
 // boardJSON encodes tasks as a board.json, numbering the entries by position.
 func boardJSON(t *testing.T, tasks []Task) []byte {
 	t.Helper()
@@ -335,6 +347,28 @@ func TestFabricReplay(t *testing.T) {
 					t.Errorf("owner_machine = %q; want the commit's neve", got["a"].OwnerMachine)
 				}
 			},
+		},
+		{
+			name:        "ProjectAndOrderChangesLand",
+			base:        []Task{replayEntry("p", asProject), replayEntry("a")},
+			origin:      []Task{replayEntry("p", asProject), replayEntry("a")},
+			parent:      []Task{replayEntry("p", asProject), replayEntry("a")},
+			commit:      []Task{replayEntry("p", asProject, withOrder("a")), replayEntry("a", withProject("p"))},
+			wantEntries: map[string]string{"p": "p", "a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				if got["a"].Project != "p" || !reflect.DeepEqual(got["p"].Order, []string{"a"}) {
+					t.Errorf("a.project = %q, p.order = %v; want p and [a]", got["a"].Project, got["p"].Order)
+				}
+			},
+		},
+		{
+			name:        "OrderOrBeamOnATaskOrANoteIsRefusedNamingTheField",
+			base:        []Task{replayEntry("b", withTitle("B"))},
+			origin:      []Task{replayEntry("b", withTitle("B"))},
+			parent:      []Task{replayEntry("b", withTitle("B"))},
+			commit:      []Task{replayEntry("b", withTitle("B2")), replayEntry("task-order", withOrder("b")), replayEntry("note-order", asNote, withOrder("b")), replayEntry("task-beam", asBeam), replayEntry("note-beam", asNote, asBeam)},
+			wantRefused: map[string]string{"task-order": "order", "note-order": "order", "task-beam": "beam", "note-beam": "beam"},
+			wantEntries: map[string]string{"b": "B2", "task-order": "", "note-order": "", "task-beam": "", "note-beam": ""},
 		},
 		{
 			name:        "PrimeOwnerChangedOnBothSidesKeepsOriginsAndReportsItLost",

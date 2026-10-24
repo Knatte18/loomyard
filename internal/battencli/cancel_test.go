@@ -241,7 +241,9 @@ func TestCancelRun(t *testing.T) {
 		noCalls []string
 		// marker is "none" when no marker was taken, "left" when its lock was released and the file kept, and "removed" when removed.
 		marker string
-		check  func(*testing.T, cancelReport, *cancelFake)
+		// rerun, when set, drives endRunPhase then clearRunPhase with this quoted re-run text in place of cancelRun, which is cancelRun minus its notice and its marker removal.
+		rerun string
+		check func(*testing.T, cancelReport, *cancelFake)
 	}
 
 	rows := []row{
@@ -676,6 +678,48 @@ func TestCancelRun(t *testing.T) {
 		})
 	}
 
+	promoteRerun := `"lyx beam promote some-slug"`
+	rows = append(rows,
+		row{
+			name:      "PhasesTogetherDoWhatACancelWithoutRemoveDoes",
+			rerun:     promoteRerun,
+			wantCalls: []string{"HubPaused", "ExemptGate", "TakeMarker", "EndForCancel", "StopTackler", "RemoveRecords", "ClearClaim", "SpawnPush"},
+			noCalls:   []string{"RemovePair", "DiscardTaskBranch", "Notify"},
+			marker:    "removed",
+			setup: func(f *cancelFake) {
+				f.worktreePresent = true
+				f.parts = fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true}
+			},
+			check: func(t *testing.T, r cancelReport, f *cancelFake) {
+				if !r.RecordsRemoved || !r.ClaimCleared || !r.PushSpawned || r.PairRemoved || r.EndOnly {
+					t.Errorf("report = %+v; want the records removed, the claim cleared, the push spawned and the pair kept", r)
+				}
+				if !f.endRequest.Keep {
+					t.Error("EndForCancel request released the pair; want it kept")
+				}
+				if f.locksHeld != 0 || !f.gateRestored {
+					t.Errorf("locks held, gate restored = %d, %v; want 0, true", f.locksHeld, f.gateRestored)
+				}
+			},
+		},
+		row{
+			name:    "EndPhaseRefusalNamesTheRerunItWasGiven",
+			rerun:   promoteRerun,
+			setup:   func(f *cancelFake) { f.hubPaused = true },
+			wantErr: `then "lyx beam promote some-slug" again`,
+			noCalls: append([]string{"ExemptGate", "TakeMarker"}, destructiveCancelCalls...),
+			marker:  "none",
+		},
+		row{
+			name:    "EndPhaseProbeRefusalNamesTheRerunItWasGiven",
+			rerun:   promoteRerun,
+			setup:   func(f *cancelFake) { f.reconcileErr = errors.New("git is gone"); f.worktreePresent = true },
+			wantErr: `git is gone; way forward: fix the cause it names, then run "lyx beam promote some-slug" again`,
+			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
+			marker:  "none",
+		},
+	)
+
 	for _, tt := range rows {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -684,7 +728,13 @@ func TestCancelRun(t *testing.T) {
 				tt.setup(fake)
 			}
 
-			report, err := cancelRun(context.Background(), cancelSlug, tt.remove, fake.deps())
+			var report cancelReport
+			var err error
+			if tt.rerun == "" {
+				report, err = cancelRun(context.Background(), cancelSlug, tt.remove, fake.deps())
+			} else {
+				report, err = runPhases(context.Background(), tt.remove, tt.rerun, fake.deps())
+			}
 
 			switch {
 			case tt.wantErr == "" && err != nil:
@@ -719,6 +769,22 @@ func TestCancelRun(t *testing.T) {
 			}
 		})
 	}
+}
+
+// runPhases drives endRunPhase and clearRunPhase in turn with rerun as the re-run text, which together do what cancelRun does bar its notice and its marker removal, and removes the marker when both ended.
+func runPhases(ctx context.Context, remove bool, rerun string, deps cancelDeps) (cancelReport, error) {
+	report, err := endRunPhase(ctx, cancelSlug, remove, rerun, deps)
+	if err != nil {
+		return report, err
+	}
+	defer report.hold.end(cancelSlug)
+	if report.EndOnly {
+		return report, nil
+	}
+	if err := clearRunPhase(cancelSlug, remove, rerun, &report, deps); err != nil {
+		return report, err
+	}
+	return report, report.hold.finishMarker(true)
 }
 
 // TestChildReachedParent pins which readings of batten's and the child's status say the work reached the parent.

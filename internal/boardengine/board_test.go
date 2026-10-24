@@ -92,13 +92,17 @@ func TestPrimeOwnerReadAndRendered(t *testing.T) {
 	}
 
 	boardPath := t.TempDir()
-	seed := `{"version":1,"prime_owner":"neve","entries":[]}`
+	seed := `{"version":1,"prime_owner":"neve","entries":[{"id":0,"slug":"proj","title":"Proj","kind":"project","labels":["bug"]}]}`
 	if err := os.WriteFile(filepath.Join(boardPath, "board.json"), []byte(seed), 0o644); err != nil {
 		t.Fatalf("seed board.json: %v", err)
 	}
 	w := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
 	if got, err := w.PrimeOwner(); err != nil || got != "neve" {
 		t.Errorf("PrimeOwner() = %q, %v; want neve and no error", got, err)
+	}
+	listed, err := w.ListTasksBrief(nil)
+	if err != nil || len(listed) != 1 || listed[0].Slug != "proj" || listed[0].OwnerMachine != "neve" {
+		t.Errorf("ListTasksBrief() = %+v, %v; want the unowned project listed with the prime owner neve", listed, err)
 	}
 	if _, err := w.UpsertTask(map[string]any{"slug": "test-task", "title": "Test Task", "labels": bugLabels}); err != nil {
 		t.Fatalf("UpsertTask failed: %v", err)

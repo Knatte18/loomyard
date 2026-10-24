@@ -593,8 +593,9 @@
 // and an origin warp branch becomes a local tracking branch whatever its relation to `HEAD`.
 // A true divergence between the local weft branch and origin's is refused with an `*ErrRemoteLeftover`,
 // and nothing on origin is ever force-pushed or deleted for a live pair.
-// An adopted weft worktree that already carries its origin record keeps it, neither rewritten nor committed,
-// so a task moved between machines keeps its recorded parent.
+// An adopted weft worktree that already carries its origin record keeps its parent fields,
+// so a task moved between machines keeps its recorded parent;
+// the record is rewritten and committed only to add the beam mark an `AddOptions.Beam` add asks for.
 // A pair that is not live has a removed pair's leftovers: the archive tag is the orphan proof,
 // and a remote weft tip equal to, or an ancestor of, an `archive/<slug>/*` tag's target on origin is replaceable.
 // The warp side of such a pair is refused unless the remote warp tip is an ancestor of `HEAD`.
@@ -644,6 +645,8 @@
 // `MergeInOnly(since, parentTip)` reports whether every first-parent commit from HEAD back to `since` is a Merge-In: a merge commit whose second parent is an ancestor of `parentTip`, or a commit that is itself such an ancestor, as a fast-forward Merge-In leaves it.
 // `RecordsHeadSHA` returns the commit the weft checkout's HEAD stands at.
 //
+// `ValidatePairSlug` is the one pair slug rule, the one `Add` and `Remove` apply, exported so the board applies it through its seam and refuses a slug with the same reason text, matching `ErrInvalidSlug`.
+//
 // `Add` also drops the parent's shed run records from a pair it forks (forkrecords.go).
 // A weft branch forked from its parent would otherwise carry every committed run directory, including one for the child's own slug, and the child's `Seed-Child` would refuse a disagreeing seed.
 // The fork is `worktree add --no-checkout`, followed by a write-out of the index without the `shedrun.RunsRootRel()` tree, so no run record ever reaches the new worktree's disk and nothing is deleted (an index-only removal after a full checkout would leave the files `shedrun` reads).
@@ -654,6 +657,22 @@
 // The record holds two write-once fields: `parent_branch`, the warp branch the pair was forked from, and `parent_worktree`, the `WorktreeName` of the worktree `Add` ran from.
 // The parent worktree is what a run's parent agent name is resolved from.
 // A record written before `parent_worktree` existed, or by a legacy-worktree repair that cannot know the creator, decodes with it empty.
+// A third field, `beam` (omitted when false), marks the pair as a beam; a record written before it decodes as no beam.
+// `AddOptions.Beam` writes it at creation, and `MarkBeam` writes it into an existing pair's record and commits that one path, reporting false when the mark is already there.
+//
+// With `AddOptions.Parent` naming a pair of the hub, `Add` forks the new pair from that pair instead of from the acting worktree.
+// The warp branch forks from the parent worktree's HEAD (`git worktree add -b <branch> <path> <sha>`) and the weft branch from the parent's records branch,
+// and the origin record carries the parent's branch as `parent_branch` and the parent's slug as `parent_worktree`.
+// The acting worktree keeps every other role, so a caller in any worktree that passes the prime's location forks from the named parent.
+// `resolveAddParent` refuses, before any mutation and naming the way forward, a parent that is no live pair of the hub (`lyx fabric pairs`), the prime itself, a parent on a detached HEAD or unborn branch and a parent whose checked-out branch is not its own pair branch (`lyx fabric checkout <branch>` in the parent).
+// A named parent checks no tracked dirt in either worktree and logs the parent's dirty paths at Info: the fork takes the parent's last commit, never its uncommitted edits.
+// Without `Parent`, `Add` forks from the acting worktree's HEAD and refuses its tracked dirt with `ErrSourceDirty`.
+//
+// With `AddOptions.AdoptLocal`, `Add` makes a pair over an unmarked local warp branch that already exists, instead of refusing `ErrBranchExists`.
+// The branch is checked out into the new worktree (`git worktree add <path> <branch>`) and, like an adopted marked branch, is never deleted by the rollback; the weft side follows the usual rules, adopting a live records branch and otherwise forking from the parent's records branch.
+// Only `lyx fabric add --adopt-local` sets it, so an unattended run never adopts a stale branch left under a reused slug.
+// Before any mutation `refuseAdoptLocalCheckedOut` refuses a warp branch checked out in another worktree (`lyx fabric checkout <other branch>` in it) and a records branch checked out in another records worktree (`git switch` off it in that worktree, or `git switch --detach` when it belongs to no pair).
+// The origin record's parent comes from `Parent` or the acting worktree, except when the adopted branch is the warp's default branch: then `parent_branch` and `parent_worktree` are empty, a root pair, which batten's Land row refuses to land on.
 //
 // # The one-repo illusion at the public API boundary
 //
@@ -871,6 +890,14 @@
 // The one exception is `removeWorktreeLeftover`: it keeps containment through `os.Root`, and takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
 // See `PATTERN-fabric-git` for the rules;
 // this section is the rationale the invariant deliberately omits.
+//
+// **The records reset.** `ResetRecordsToParent(rec, l, slug)` resets the records content of slug's pair to what a fresh fork from its parent's records branch leaves, in one commit on the pair's records branch, never rewriting history.
+// It reads the origin record, refusing a missing record or records worktree (`lyx fabric reconcile`, or restoring the record from the records history in that worktree) and a root pair with no parent (a project entry through `lyx board upsert` and `lyx beam create`);
+// commits the records worktree's uncommitted record content under the record pathspec (`commitPendingRecords`), so the history keeps it;
+// runs the shared pipeline over the records worktree, with the hub as container, ownership as the pair's registered linked worktree of the weft repo and dirtiness `dirtyScopeAll`, so content outside the record pathspec refuses naming its paths and `lyx beam promote`;
+// and replaces the tracked content with the parent tip's tree minus the run-records root, removing the tracked files the parent lacks and restoring the origin record, under the subject `fabric: reset records of <slug> to its parent`.
+// A pair whose content already equals that tree commits nothing and reports `Committed: false`, so a re-run after a stop finishes the reset.
+// `ResetRecordsResult` carries the pre-commit's SHA when one was made, the reset commit's SHA and `Committed`; the caller pushes through the pair's detached push.
 //
 // **The pair-scoped reset.** `ResetPairCode(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`, which refuses on any tracked dirt and accepts the prime checkout.
 // Its request declares the hub as container and the warp worktree as target;
@@ -1126,9 +1153,12 @@
 //
 // # The hub workspace file
 //
-// `RegenerateHubWorkspace` writes `<hub>/<RepoName>.code-workspace`, the one VS Code workspace file of a hub: the prime first, `Bolt` second, then every task pair at its anchor dir, sorted by slug.
-// The file lists every task pair of the hub, and no per-umbrella partition exists.
-// The file is lyx-owned and rewritten from the hub's current worktrees whenever its bytes would change, so a hand edit is overwritten;
+// `RegenerateHubWorkspace` writes `<hub>/<RepoName>.code-workspace`, the hub's own VS Code workspace file: the prime first, `Bolt` second, then every pair whose parent is the prime at its anchor dir, sorted by slug, the beams among them.
+// A pair's parent is the `parent_worktree` of its origin record, read with `ReadOriginFor`; the prime when that is empty, names the prime or names a pair that is gone, and when the record is absent or cannot be read.
+// A pair under a beam is left out of the hub file.
+// Beside it, `BeamWorkspacePath` names `<hub>/<RepoName>-<beam>.code-workspace` for each pair whose origin record carries the beam mark, listing the beam, its parent, `Bolt` and every pair whose parent is the beam; a sub-beam appears there by its own worktree only and has a file of its own.
+// Each beam file carries `lyx.generated: true` as its first key, and a regeneration removes such a file only when its beam pair is gone, through the hub's `os.Root`, so an operator's unmarked file of that name stays.
+// The files are lyx-owned and rewritten from the hub's current worktrees and origin records whenever their bytes would change, so a hand edit is overwritten;
 // settings belong in the prime's `.vscode/settings.json`, which the file splices verbatim.
 // A regeneration runs under `HubWorkspaceLockPath(hub)`, a leaf lock under the hub scratch directory, and lists the folders only after taking it,
 // so a pair created while the regeneration waits is listed.

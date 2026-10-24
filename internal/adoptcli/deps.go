@@ -57,7 +57,7 @@ func hubDepsAs(prime *lyxcwd.Location, machine func() (string, error)) (adoptDep
 		Machine:    machine,
 		ReadOwners: func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
 		ParentOf: func(slug string) (string, error) {
-			return fabricengine.ParentSlug(prime, slug)
+			return hubgeom.ParentOf(prime, slug)
 		},
 		Reconcile: func() (fabricengine.OriginReport, error) {
 			return fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, seams, fabricengine.ReconcileOptions{})

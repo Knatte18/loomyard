@@ -122,6 +122,17 @@ func TestStoreValidatesLabelsWithVocabulary(t *testing.T) {
 		}
 	})
 
+	t.Run("a project without a type label refused", func(t *testing.T) {
+		s := newVocabStore(vocab)
+		_, err := s.UpsertTask(map[string]any{"slug": "p", "kind": KindProject, "labels": []string{"area"}})
+		if err == nil || !strings.Contains(err.Error(), `project "p"`) || !strings.Contains(err.Error(), "board.yaml") {
+			t.Errorf("expected refusal naming project p and board.yaml, got %v", err)
+		}
+		if _, err := s.UpsertTask(map[string]any{"slug": "p", "kind": KindProject, "labels": []string{"bug"}}); err != nil {
+			t.Errorf("a project with a type label refused: %v", err)
+		}
+	})
+
 	t.Run("promote keeps a valid entry valid", func(t *testing.T) {
 		s := newVocabStore(vocab)
 		if _, err := s.UpsertTask(map[string]any{"slug": "x", "labels": []string{"bug"}}); err != nil {

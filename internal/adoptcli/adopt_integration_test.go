@@ -5,6 +5,7 @@
 package adoptcli_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -24,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 )
 
 const (
@@ -155,4 +157,26 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	if err != nil || owners.Entries[taskSlug].Owner != firstMachine {
 		t.Errorf("first clone's owners = %+v, %v; want %s owned by %s again", owners, err, taskSlug, firstMachine)
 	}
+}
+
+func TestCommand_RunsFromABeam(t *testing.T) {
+	t.Parallel()
+	boardkit.InstallReplay(t)
+
+	h := hubforge.NewHub(t, ".")
+	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{Beam: true})
+	hubforge.AddPairWith(t, h, "p", fabricengine.AddOptions{})
+	primeName, err := fabricengine.PrimeName(h.Location)
+	if err != nil {
+		t.Fatalf("prime name: %v", err)
+	}
+
+	run := func(cwd string) string {
+		var out bytes.Buffer
+		adoptcli.RunCLIIn(cwd, &out, []string{"ghost"})
+		return out.String()
+	}
+
+	envelope.RequireErr(t, run(h.PairCodeWorktree("b")), "is not on the board")
+	envelope.RequireErr(t, run(h.PairCodeWorktree("p")), `"`+primeName+`"`)
 }

@@ -21,6 +21,12 @@
 // The group's note-audience annotation names the operator, the audience of every payload-taking board verb, so no other audience's index prints the note.
 // Each parser validates against one `payloadKeys` declared beside its command, a test couples every token to its declaration, and an unknown key is refused.
 // The addressing verbs, `set-deps` and merge's `set_status` included, take exactly one of a `slug`, a numeric `id` or a `handle` such as `B4`, the selector group `entrySelector` declares.
+// The pre-run fills three seams of the board's config from the resolved location, none of them on the `--board-path` path:
+// `ValidateSlug` applies fabric's pair slug rule, with the hub's configured junction names, to every task or project slug a write makes, a promote and a rename included;
+// `PairExists` reports whether a directory stands at the slug's pair worktree path, for the refusal of a project change or rename on an entry with a pair;
+// `ParentOf` is `hubgeom.ParentOf`, the one parent resolver.
+// `get` carries the entry's `parent_beam` beside `task` in its envelope, the slug of the beam above it and empty when the prime is its parent, and gives a project its effective owner as it gives a task's; `list` carries `parent_beam` on each entry that has one.
+//
 // A payload argument that is a bare handle, in either letter case, reads as `{"handle":…}`, so `lyx board get B4` works and a verb that needs further keys refuses it as missing them.
 // `depends_on`, merge's `remove_slugs` and intake's `into` stay slugs.
 // Every verb prints JSON through `internal/output`, one object per line, errors included.

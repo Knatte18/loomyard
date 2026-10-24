@@ -272,6 +272,7 @@ func TestRecipeRouting(t *testing.T) {
 		{shedrun.RecipeLoom, loomshed.NameMergeIn, loomshed.NameDarnWrite},
 		{"", loomshed.NameMergeIn, loomshed.NameDarnWrite},
 		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NameMergeIn},
+		{shedrun.RecipeBeam, "Beam-Describe", loomshed.NameMergeIn},
 	}
 	for _, tt := range tests {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {

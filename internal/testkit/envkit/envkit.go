@@ -101,6 +101,7 @@ var nilLegal = map[string]bool{
 	"InnerRun.ChildDirtyPaths":          true,
 	"Land.Sleep":                        true,
 	"Land.Now":                          true,
+	"Land.ReadyRoutes":                  true,
 	"Land.LandLock.Sleep":               true,
 	"Land.Notices.Notify":               true,
 	"Land.Notices.Sleep":                true,
@@ -311,6 +312,13 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			}, nil
 		},
 		CommitDescription: func() error { return nil },
+		BeamDescribe: landingshed.BeamDescribeDeps{
+			Slug:            "demo",
+			DescriptionPath: filepath.Join(dir, "beam-description.md"),
+			Entry:           func() (string, string, error) { return "Title", "Brief", nil },
+			CommitSubjects:  func() ([]string, error) { return nil, nil },
+			Commit:          func() error { return nil },
+		},
 		PlanTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "plan",

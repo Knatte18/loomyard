@@ -18,6 +18,11 @@ var LoomRecipe []byte
 //go:embed darn-recipe.yaml
 var DarnRecipe []byte
 
+// BeamRecipe is the beam landing recipe's producer graph, in internal/shedbuild's recipe format.
+//
+//go:embed beam-recipe.yaml
+var BeamRecipe []byte
+
 // BattenRecipe is the task-worktree batten's producer graph, in internal/shedbuild's recipe
 // format.
 //

@@ -30,6 +30,9 @@
 // Its envelope carries `local: true`, and `lyx fabric push` from the pair adds `local_skipped`, naming the branches it left unpublished.
 // A `--local` add over a slug whose branch belongs to an ordinary pair is a pre-mutation refusal naming the way forward.
 // A plain `add` over a local pair's kept branches adopts them and clears the marks, listing the cleared branches in `local_mark_cleared`, so the pair becomes ordinary.
+// `lyx fabric add --parent <slug>` forks the pair from that live pair of the hub (`AddOptions.Parent`), and `--adopt-local` makes it over an unmarked local branch that already exists (`AddOptions.AdoptLocal`).
+// `--adopt-local` is the only route that sets `AdoptLocal`, so no unattended run adopts a stale local branch under a reused slug.
+// `--local` with either flag is refused before any mutation, naming the flag to drop.
 //
 // # Remove
 //

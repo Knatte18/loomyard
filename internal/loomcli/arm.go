@@ -219,8 +219,11 @@ func (c *loomCLI) loadRouting() error {
 	return nil
 }
 
-// recipeRouting returns the routing of the run's recipe, the darn recipe's for a darn run and loom's otherwise, with loom.yaml's review bounce budgets applied.
+// recipeRouting returns the routing of the run's recipe: the beam recipe's for a beam run, which has no review segment and so no budget, and otherwise the darn recipe's for a darn run and loom's for the rest, with loom.yaml's review bounce budgets applied.
 func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
+	if c.recipe == shedrun.RecipeBeam {
+		return loomrecipe.BeamRouting()
+	}
 	budgets, err := c.reviewBudget()
 	if err != nil {
 		return shedengine.Routing{}, err
@@ -234,14 +237,18 @@ func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 
 // newShed builds the shed of the run's recipe over c.env and c.shedPaths.
 func (c *loomCLI) newShed() (*shedengine.Shed, error) {
-	if c.recipe == shedrun.RecipeDarn {
+	switch c.recipe {
+	case shedrun.RecipeBeam:
+		return loomrecipe.NewBeam(c.env, c.shedPaths)
+	case shedrun.RecipeDarn:
 		return loomrecipe.NewDarn(c.env, c.shedPaths)
 	}
 
 	return loomrecipe.New(c.env, c.shedPaths)
 }
 
-// verifySource returns the verify source of the run's recipe: darn.yaml's for a darn run, the plan's otherwise.
+// verifySource returns the verify source of the run's recipe: darn.yaml's for a darn run, and the hub's gate-call source otherwise.
+// A beam run reads no plan and no `darn.yaml` tree scope, so its Finalize runs the `finalize` gate key over the whole merged tree.
 func (c *loomCLI) verifySource() verifySource {
 	if c.recipe == shedrun.RecipeDarn {
 		return darnVerifySource(c.location)

@@ -179,6 +179,7 @@ func TestLoadConfig_LabelsRefused(t *testing.T) {
 		{"sequence description", "labels:\n  area: [a, b]\n", "labels"},
 		{"types sharing a first letter", "types:\n  bug: x\n  Build: y\n", `"Build"`},
 		{"a type on the task letter", "types:\n  todo: x\n", `"todo"`},
+		{"a type on the project letter", "types:\n  plan: x\n", `"plan"`},
 		{"a type not beginning with a letter", "types:\n  '1st': x\n", `"1st"`},
 	}
 	for _, tt := range tests {

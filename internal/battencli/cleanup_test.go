@@ -181,7 +181,13 @@ func TestCleanup(t *testing.T) {
 				{slug: "r4", runState: "awaiting", scratchAge: time.Hour},
 				{slug: "r5", runState: "failed", scratchAge: time.Hour},
 			},
-			wantSkipped: map[string]string{"r1": "run is running", "r2": "run is paused", "r3": "run is blocked", "r4": "run is awaiting", "r5": "run is failed"},
+			wantSkipped: map[string]string{
+				"r1": `run is running; way forward: "lyx batten cancel r1" ends it`,
+				"r2": `run is paused; way forward: "lyx batten cancel r2" ends it`,
+				"r3": `run is blocked; way forward: "lyx batten cancel r3" ends it`,
+				"r4": `run is awaiting; way forward: "lyx batten cancel r4" ends it`,
+				"r5": `run is failed; way forward: "lyx batten cancel r5" ends it`,
+			},
 		},
 		{
 			name:        "undecodable status is skipped with the decode error",
@@ -209,7 +215,7 @@ func TestCleanup(t *testing.T) {
 		{
 			name:        "tracked-but-deleted run that is not done is skipped and keeps its scratch",
 			fixtures:    []cleanupFixture{{slug: "half", committedStatus: "running", scratchAge: 48 * time.Hour}},
-			wantSkipped: map[string]string{"half": "committed run is running"},
+			wantSkipped: map[string]string{"half": `committed run is running; way forward: "lyx batten cancel half" ends it, and a later cleanup removes it`},
 		},
 		{
 			name:        "deleted run with a committed seed but no committed status is skipped and keeps its aged scratch",

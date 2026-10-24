@@ -197,12 +197,14 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 	return finish(), nil
 }
 
-// namedEntries resolves the request to the task slugs it adopts and whether it names the prime, refusing a slug the board does not hold as a task that is not done.
-// --all names the prime and every task that is not done and has an owner or a run status.
+// namedEntries resolves the request to the slugs it adopts and whether it names the prime, refusing a slug the board does not hold as a task or a beam project that is not done.
+// --all names the prime, every task that is not done and has an owner or a run status, and every beam project that is not done and has an owner.
 func namedEntries(owners boardengine.Owners, req request) (slugs []string, prime bool, err error) {
 	if req.All {
 		for slug, entry := range owners.Entries {
-			if entry.IsTask && !entry.Done && (entry.Owner != "" || entry.RunHeld) {
+			startedTask := entry.IsTask && (entry.Owner != "" || entry.RunHeld)
+			ownedBeam := entry.IsProject && entry.Beam && entry.Owner != ""
+			if !entry.Done && (startedTask || ownedBeam) {
 				slugs = append(slugs, slug)
 			}
 		}
@@ -214,10 +216,12 @@ func namedEntries(owners boardengine.Owners, req request) (slugs []string, prime
 		switch {
 		case !held:
 			return nil, false, fmt.Errorf("lyx adopt: %q is not on the board: `lyx board list` shows the entries", slug)
-		case !entry.IsTask:
+		case !entry.IsTask && !entry.IsProject:
 			return nil, false, fmt.Errorf("lyx adopt: %q is a note, not a task: `lyx board promote %s` makes it a task first", slug, slug)
 		case entry.Done:
 			return nil, false, fmt.Errorf("lyx adopt: %q is done and already landed, so there is nothing to adopt: `lyx resume %s` lets a run that landed there go on to Land under its owner pause", slug, slug)
+		case entry.IsProject && !entry.Beam:
+			return nil, false, fmt.Errorf("lyx adopt: %q is a grouping project, not a beam, so there is no pair to take over: `lyx beam create %s` makes it a beam", slug, slug)
 		}
 		if !slices.Contains(slugs, slug) {
 			slugs = append(slugs, slug)
@@ -313,6 +317,7 @@ func takeOverSlug(deps adoptDeps, req request, rec *fabricengine.Mutations, repo
 	}
 
 	entry := owners.Entries[slug]
+	// A beam's pair is added the same way as a task's: Add adopts the live branches and their origin record, the beam mark included.
 	if !hasPair && (entry.Owner != "" || entry.RunHeld) {
 		added, err := deps.AddPair(slug)
 		rec.Extend(added.Mutated())

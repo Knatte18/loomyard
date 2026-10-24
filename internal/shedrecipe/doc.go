@@ -29,6 +29,11 @@
 // The row's "gates" key is stamped onto each table the closure returns, so the gate guards the lead whatever table the closure builds.
 // When the gates hold an enabled "parent-review" entry, the producer's fresh-spawn preparation opens the next review round before any stale output is archived and before any seat starts; a resumed live lead continues the latest round.
 //
+// # The BeamDescribe row
+//
+// The BeamDescribe entry builds the beam recipe's description row, a Go producer that writes a beam's change description from its board entry and its commits with no agent.
+// It takes no Config key, and reads Env.BeamDescribe alone, whose every field is required; a zero field refuses when the row is built.
+//
 // # The Implementer row
 //
 // The Implementer entry builds a recipe's implementer row with the engine a setting chooses, the one place a setting picks a row's engine.

@@ -70,6 +70,15 @@ func orchStrand(t *testing.T) string {
 	return strand
 }
 
+func beamOrchStrand(t *testing.T) string {
+	t.Helper()
+	strand, err := agentname.Format("lyx", "b", agentname.RoleOrch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strand
+}
+
 func running(producer string) RunStatus {
 	return RunStatus{State: shedengine.StateRunning, Producer: producer}
 }
@@ -111,11 +120,11 @@ func TestSubmit(t *testing.T) {
 				}
 			}
 		}},
-		{"an agent caller is refused naming the parent session, the orch and an external caller are not", func(t *testing.T) {
+		{"an agent caller is refused naming the parent session, the prime's orch, a beam's orch and an external caller are not", func(t *testing.T) {
 			for _, tc := range []struct {
 				caller  string
 				refused bool
-			}{{agentStrand(t), true}, {"not-a-parsable-name", true}, {orchStrand(t), false}, {"", false}} {
+			}{{agentStrand(t), true}, {"not-a-parsable-name", true}, {orchStrand(t), false}, {beamOrchStrand(t), false}, {"", false}} {
 				w := newFakeWorld(t)
 				w.caller = tc.caller
 

@@ -5,7 +5,7 @@
 //
 // Without `--apply` it is a dry run that lists, per segment, what `--apply` would remove, with `"applied": false`.
 // Every segment computes its candidates with the same function in both modes.
-// It runs from the hub's prime worktree only: after resolving the cwd it applies the batten prime refusal, before any segment runs.
+// It runs from the hub's prime worktree and from any beam, acting on the prime's location in both: after resolving the cwd it applies the batten prime-or-beam guard, before any segment runs.
 //
 // # The origin reconcile
 //
@@ -32,7 +32,7 @@
 //
 //   - batten: `battencli.Cleanup`, the done runs' records and scratch and aged orphan scratch.
 //   - board: `lyx board prune`'s behavior over the hub board.
-//   - orch: `orchengine.CleanupHandoffs`, which removes nothing outside the idle phase.
+//   - orch: `orchengine.CleanupHandoffs` over the prime's orch and each beam's, which removes nothing outside the idle phase; the listing carries one entry per worktree with its kept and removed handoffs.
 //   - scratch: this package's own segment, below.
 //   - logs: `logger.SweepDir` over the prime's anchor and the board directory, with the bounds the exit sweep picks.
 //   - temp: `lyxtemp`'s sweep of the dead owners' run directories, failing when the root fails its checks or the sweep reports a failure.

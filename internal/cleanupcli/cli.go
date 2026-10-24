@@ -24,7 +24,7 @@ func Command() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Without --apply, cleanup is a dry run: it lists, per segment, what --apply would
 remove, prints "applied": false and changes nothing. With --apply it removes it.
-It runs from the hub's prime worktree only and refuses elsewhere.
+It runs from the hub's prime worktree and from any beam, and refuses elsewhere.
 
 Before its segments it reconciles the hub's branches against origin and prints the
 report as "reconcile", beside "mutations" and "partial". The dry run only judges:
@@ -71,7 +71,8 @@ Example:
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			if err := battencli.RefuseUnlessPrime(location); err != nil {
+			location, err = battencli.ResolveBattenPrime(location)
+			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}

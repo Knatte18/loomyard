@@ -156,6 +156,7 @@ func TestValidateRecipe(t *testing.T) {
 		{"loom", RecipeLoom, false},
 		{"batten", RecipeBatten, false},
 		{"darn", RecipeDarn, false},
+		{"beam", RecipeBeam, false},
 		{"unknown", "someday", true},
 	}
 	for _, tt := range tests {
@@ -171,7 +172,7 @@ func TestValidateRecipe(t *testing.T) {
 //testtiming:keep pins the sorted order of the recipe vocabulary, which its covering test does not
 func TestRecipeNames(t *testing.T) {
 	got := RecipeNames()
-	want := []string{RecipeBatten, RecipeDarn, RecipeLoom}
+	want := []string{RecipeBatten, RecipeBeam, RecipeDarn, RecipeLoom}
 	if len(got) != len(want) {
 		t.Fatalf("RecipeNames() = %v; want %v", got, want)
 	}

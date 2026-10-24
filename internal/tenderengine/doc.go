@@ -28,7 +28,8 @@
 // A pane that is not ready, a failed capture and an open rewind picker are reported as refused with the error's message, and a session whose pane still shows a running turn after the second settle as `still_busy`.
 // An entry that is no longer live at a check stops the step, so no Esc follows a resume.
 // The engine sends Esc only, never text; it kills no pane, strand or process and never touches the orch.
-// Under a hub entry the report says whether the orch ran the pause, is left to a live orch watcher, or is not interrupted because no watcher is live.
+// The hub has one orch per worktree that runs one, the prime's and each beam's, and every reading of "the orch" here covers all of them.
+// Under a hub entry the report says whether an orch ran the pause, is left to a live orch watcher of any orch, or is not interrupted because no orch watcher is live.
 //
 // # Resume
 //
@@ -42,7 +43,7 @@
 // the later resume of that entry gives it its line.
 // A claim that finds no covering entry means the pause was lifted since the send, so the line is sent once more, and a second refusal is claimed once more and never sent a third time.
 // A prime session, which has the empty slug, is given its line through the prime pair.
-// The orch's session is left to the orch watcher.
+// Each orch's session is left to its own orch watcher.
 // `Lift` runs the same sequence for the one live entry whose scope, caller and pause time equal an `EntryRef`, and lifts nothing for an entry no longer live.
 //
 // A lift that lifted at least one entry then spawns what a pause deferred, after the resume lines, through the `Deps.PushPair`, `Deps.PushPrimeRecords` and `Deps.SyncBoardIfOwed` seams, each nil spawning nothing.
@@ -62,10 +63,11 @@
 // A send with a turn start seen is `sent`, one that landed with none seen is `sent_no_turn_start`, an unlanded one is `not_landed`, a session that changed state meanwhile is skipped, and any other refusal, such as a draft, operator activity or the rewind picker, is `refused` with its reason.
 // No send is retried.
 //
-// For the hub scope only, Revive then reads the orch's state through `Deps.Prime`, and no other prime session is read, revived or reported.
-// An orch stalled on an API error gets its line as a checked creel inject, injected through `Deps.InjectOrchRevive`.
+// For the hub scope only, Revive then reads the state of each orch `Deps.Orchs` lists, through that orch's own `Pair`, and no other prime session is read, revived or reported.
+// The report carries one `orchs` result per orch, naming its strand.
+// An orch stalled on an API error gets its line as a checked creel inject, injected through its `Orch.InjectRevive`.
 // The pending check and the inject run inside one `pauserecord.Update` that changes no entry, the lock that serialises tender's task-session revive sends:
-// under it a live hub entry answers `paused`, a revive inject of tender's own that has no outcome yet answers `pending` through `Deps.OrchRevivePending`, and otherwise the line is injected and the report says `injected` with the inject's id.
+// under it a live hub entry answers `paused`, a revive inject of tender's own that has no outcome yet answers `pending` through `Orch.RevivePending`, and otherwise the line is injected and the report says `injected` with the inject's id.
 // So two concurrent revives inject at most once.
 // The engine never types into the orch's pane.
 //

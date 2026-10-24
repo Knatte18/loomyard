@@ -438,7 +438,7 @@ func TestRevive(t *testing.T) {
 			report := revive(t, e, "")
 
 			empty := len(report.Sent)+len(report.SentNoTurnStart)+len(report.NotLanded)+len(report.Paused)+len(report.Skipped)+len(report.Refused) == 0
-			if !empty || report.Sent == nil || report.Orch != nil || len(p.conditioned) != 0 {
+			if !empty || report.Sent == nil || len(report.Orchs) != 0 || len(p.conditioned) != 0 {
 				t.Errorf("report %+v, sent to %v; want every list empty, no orch part and nothing sent", report, p.conditioned)
 			}
 		}},
@@ -574,29 +574,48 @@ func TestRevive(t *testing.T) {
 			e.prime, e.orchStrand = prime, "g-orch"
 
 			first := revive(t, e, "")
-			if first.Orch == nil || first.Orch.Result != "injected" || first.Orch.InjectID != 1 || !reflect.DeepEqual(e.creel.injected(), []string{ReviveLine}) {
-				t.Errorf("orch part %+v, injected %v; want one injected line with id 1", first.Orch, e.creel.injected())
+			if len(first.Orchs) != 1 || first.Orchs[0].Strand != primeOrchName || first.Orchs[0].Result != "injected" || first.Orchs[0].InjectID != 1 || !reflect.DeepEqual(e.creel.injected(), []string{ReviveLine}) {
+				t.Errorf("orch part %+v, injected %v; want one injected line with id 1", first.Orchs, e.creel.injected())
 			}
 			if len(prime.conditioned) != 0 || len(first.Sent)+len(first.Skipped)+len(first.Refused) != 0 {
 				t.Errorf("prime sent to %v, report %+v; want no prime session sent to or reported", prime.conditioned, first)
 			}
 
-			if again := revive(t, e, ""); again.Orch == nil || again.Orch.Result != "pending" || len(e.creel.injected()) != 1 {
-				t.Errorf("orch part %+v, injected %v; want pending and no second inject", again.Orch, e.creel.injected())
+			if again := revive(t, e, ""); len(again.Orchs) != 1 || again.Orchs[0].Result != "pending" || len(e.creel.injected()) != 1 {
+				t.Errorf("orch part %+v, injected %v; want pending and no second inject", again.Orchs, e.creel.injected())
 			}
-			if slugScope := revive(t, e, "p1"); slugScope.Orch != nil {
-				t.Errorf("orch part %+v for a slug revive; want none", slugScope.Orch)
+			if slugScope := revive(t, e, "p1"); len(slugScope.Orchs) != 0 {
+				t.Errorf("orch part %+v for a slug revive; want none", slugScope.Orchs)
 			}
 
 			e.creel.settle()
-			if settled := revive(t, e, ""); settled.Orch == nil || settled.Orch.Result != "injected" || settled.Orch.InjectID != 2 || len(e.creel.injected()) != 2 {
-				t.Errorf("orch part %+v, injected %v; want a second inject with id 2 once the first had an outcome", settled.Orch, e.creel.injected())
+			if settled := revive(t, e, ""); len(settled.Orchs) != 1 || settled.Orchs[0].Result != "injected" || settled.Orchs[0].InjectID != 2 || len(e.creel.injected()) != 2 {
+				t.Errorf("orch part %+v, injected %v; want a second inject with id 2 once the first had an outcome", settled.Orchs, e.creel.injected())
 			}
 
 			e.creel.settle()
 			e.seedLive(hubEntry(e.clock.Now()))
-			if covered := revive(t, e, ""); covered.Orch == nil || covered.Orch.Result != "paused" || len(e.creel.injected()) != 2 {
-				t.Errorf("orch part %+v, injected %v; want paused and nothing injected under a hub entry", covered.Orch, e.creel.injected())
+			if covered := revive(t, e, ""); len(covered.Orchs) != 1 || covered.Orchs[0].Result != "paused" || len(e.creel.injected()) != 2 {
+				t.Errorf("orch part %+v, injected %v; want paused and nothing injected under a hub entry", covered.Orchs, e.creel.injected())
+			}
+		}},
+		{"a stalled beam orch is revived beside a healthy prime orch, and both are reported", func(t *testing.T) {
+			prime := newPair("prime", "orch")
+			prime.states["g-orch"] = shuttleengine.SessionState{Name: shuttleengine.SessionBusy, Cause: shuttleengine.SessionCauseTurn}
+			beam := &beamOrch{strand: "g-beam", name: "lyx:b:orch", pair: newPair("b", "orch")}
+			beam.pair.states["g-beam"] = stalled
+			e := newEnv(t, newPair("p1"))
+			e.prime, e.orchStrand = prime, "g-orch"
+			e.beamOrchs = []*beamOrch{beam}
+
+			report := revive(t, e, "")
+
+			want := []OrchRevive{
+				{Strand: primeOrchName, Result: "skipped", Reason: "busy (turn)"},
+				{Strand: "lyx:b:orch", Result: "injected", InjectID: 1},
+			}
+			if !reflect.DeepEqual(report.Orchs, want) || len(e.creel.injected()) != 0 || !reflect.DeepEqual(beam.creel.injected(), []string{ReviveLine}) {
+				t.Errorf("orch part %+v, prime injected %v, beam injected %v; want %+v with only the beam injected", report.Orchs, e.creel.injected(), beam.creel.injected(), want)
 			}
 		}},
 		{"an orch that reads another state is skipped with the state and nothing is injected", func(t *testing.T) {
@@ -607,8 +626,8 @@ func TestRevive(t *testing.T) {
 
 			report := revive(t, e, "")
 
-			if report.Orch == nil || report.Orch.Result != "skipped" || report.Orch.Reason != "busy (turn)" || len(e.creel.injected()) != 0 {
-				t.Errorf("orch part %+v, injected %v; want skipped with the state read and nothing injected", report.Orch, e.creel.injected())
+			if len(report.Orchs) != 1 || report.Orchs[0].Result != "skipped" || report.Orchs[0].Reason != "busy (turn)" || len(e.creel.injected()) != 0 {
+				t.Errorf("orch part %+v, injected %v; want skipped with the state read and nothing injected", report.Orchs, e.creel.injected())
 			}
 		}},
 		{"two concurrent revives over a stalled orch inject exactly once", func(t *testing.T) {
@@ -625,11 +644,11 @@ func TestRevive(t *testing.T) {
 				go func() {
 					defer wg.Done()
 					report, err := Revive(e.deps(), ReviveRequest{})
-					if err != nil || report.Orch == nil {
+					if err != nil || len(report.Orchs) != 1 {
 						t.Errorf("Revive() = %+v, %v; want an orch part", report, err)
 						return
 					}
-					results[i] = report.Orch.Result
+					results[i] = report.Orchs[0].Result
 				}()
 			}
 			wg.Wait()

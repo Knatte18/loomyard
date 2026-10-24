@@ -60,7 +60,9 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	const (
 		runSlug  = "finished-run"
 		taskSlug = "finished-task"
+		beamSlug = "beam-b"
 	)
+	hubforge.AddPairWith(t, h, beamSlug, fabricengine.AddOptions{Beam: true})
 
 	// batten: a done run directory, committed and pushed on the records side.
 	status, err := json.Marshal(shedengine.Status{CurrentProducer: "Worktree-Teardown", State: shedengine.StateDone, History: []shedengine.HistoryEntry{}})
@@ -158,7 +160,25 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 	if refused.OK || code == 0 || !bytes.Contains([]byte(refused.Error), []byte(primeName)) {
 		t.Errorf("cleanup from the task worktree: ok=%v code=%d error=%q, want a refusal naming %q", refused.OK, code, refused.Error, primeName)
 	}
+	if !strings.Contains(refused.Error, "prime worktree or a beam") {
+		t.Errorf("cleanup from the task worktree: error=%q, want the prime-or-beam wording", refused.Error)
+	}
 	assertLeftoversRemain(t, "refusal")
+
+	fromBeam, code := run(h.PairCodeWorktree(beamSlug))
+	if !fromBeam.OK || code != 0 || fromBeam.Raw["applied"] != false {
+		t.Fatalf("dry run from a marked beam: ok=%v code=%d error=%q", fromBeam.OK, code, fromBeam.Error)
+	}
+	for _, item := range fromBeam.Raw["segments"].([]any) {
+		segment := item.(map[string]any)
+		if segment["name"] != "batten" {
+			continue
+		}
+		if removed := segment["listed"].(map[string]any)["removed"].([]any); len(removed) != 1 || removed[0] != runSlug {
+			t.Errorf("dry run from a marked beam lists %v under batten, want the prime's finished run %s", removed, runSlug)
+		}
+	}
+	assertLeftoversRemain(t, "dry run from a beam")
 
 	dry, code := run(h.PrimeWorktree())
 	if !dry.OK || code != 0 || dry.Raw["applied"] != false {

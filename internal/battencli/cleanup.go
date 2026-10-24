@@ -90,13 +90,14 @@ func fabricCleanupDeps(location *lyxcwd.Location) cleanupDeps {
 
 // Cleanup removes, from the hub's prime worktree, the records run directory and scratch contents of every done run, and the scratch contents of every aged orphan.
 // With apply false it changes nothing and reports exactly what apply true removes.
-// It refuses outside the prime worktree.
+// It runs from the prime worktree and from a beam, acting on the prime's location in both, and refuses elsewhere.
 // A records commit error stops the pass with that error; a push spawn error is reported on the result.
 func Cleanup(location *lyxcwd.Location, apply bool) (CleanupReport, error) {
-	if err := RefuseUnlessPrime(location); err != nil {
+	prime, err := ResolveBattenPrime(location)
+	if err != nil {
 		return CleanupReport{}, err
 	}
-	return cleanup(location, apply, fabricCleanupDeps(location))
+	return cleanup(prime, apply, fabricCleanupDeps(prime))
 }
 
 // cleanup is Cleanup over injected deps.
@@ -298,7 +299,7 @@ func judgeRunDirectory(location *lyxcwd.Location, slug string, deps cleanupDeps)
 		if err != nil {
 			return false, false, "read status: " + err.Error()
 		}
-		return judgeStatus(data, "")
+		return judgeStatus(data, "", slug)
 	case !errors.Is(statErr, fs.ErrNotExist):
 		return false, false, "stat run directory: " + statErr.Error()
 	}
@@ -308,7 +309,7 @@ func judgeRunDirectory(location *lyxcwd.Location, slug string, deps cleanupDeps)
 		return false, false, "read committed status: " + err.Error()
 	}
 	if found {
-		return judgeStatus(data, "committed ")
+		return judgeStatus(data, "committed ", slug)
 	}
 	_, seedFound, err := deps.Committed(shedrun.SeedRel(location, slug))
 	if err != nil {
@@ -322,14 +323,15 @@ func judgeRunDirectory(location *lyxcwd.Location, slug string, deps cleanupDeps)
 
 // judgeStatus decodes a status file and answers whether the run is done.
 // A done run is a candidate; every other state and an undecodable status is a skip reason, worded with the given prefix before "status".
+// A run that is not done is skipped with the cancel of slug as its way forward.
 // tracked is set when the prefix is non-empty, which marks a status read from the records HEAD rather than the disk.
-func judgeStatus(data []byte, prefix string) (candidate, tracked bool, reason string) {
+func judgeStatus(data []byte, prefix, slug string) (candidate, tracked bool, reason string) {
 	var st shedengine.Status
 	if err := json.Unmarshal(data, &st); err != nil {
 		return false, false, "decode " + prefix + "status: " + err.Error()
 	}
 	if st.State != shedengine.StateDone {
-		return false, false, fmt.Sprintf("%srun is %s", prefix, st.State)
+		return false, false, fmt.Sprintf("%srun is %s; way forward: \"lyx batten cancel %s\" ends it, and a later cleanup removes it", prefix, st.State, slug)
 	}
 	return true, prefix != "", ""
 }
@@ -400,7 +402,7 @@ func emptyScratch(dir string, apply bool) error {
 	return nil
 }
 
-// cleanupCmd builds "lyx batten cleanup [--apply]", the prime-only dry-run-by-default removal of finished runs' records and scratch.
+// cleanupCmd builds "lyx batten cleanup [--apply]", the dry-run-by-default removal of finished runs' records and scratch, run from the prime or a beam.
 func (c *battenCLI) cleanupCmd() *cobra.Command {
 	var apply bool
 	cmd := &cobra.Command{

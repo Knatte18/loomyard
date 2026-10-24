@@ -220,7 +220,7 @@ func TestStopRecordedTackler(t *testing.T) {
 }
 
 // TestCancelCmd_RefusesBeforeAnything pins that an omitted or reserved slug refuses before any path is resolved, and a named slug outside a repository refuses with the location's resolve error.
-// The prime refusal is RefuseUnlessPrime's, pinned by TestRefuseNonPrime.
+// The prime-or-beam refusal is ResolveBattenPrime's, pinned by TestResolveBattenPrime.
 func TestCancelCmd_RefusesBeforeAnything(t *testing.T) {
 	t.Parallel()
 

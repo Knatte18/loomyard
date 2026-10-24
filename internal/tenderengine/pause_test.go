@@ -243,8 +243,10 @@ type env struct {
 	executable string
 	// orchStrand is the orch strand the prime's state records.
 	orchStrand string
-	// creel is the fake creel journal of tender's orch revive injects.
+	// creel is the fake creel journal of tender's prime orch revive injects.
 	creel fakeCreel
+	// beamOrchs are the beams' orchs beside the prime's.
+	beamOrchs []*beamOrch
 	// pushedPairs, primePushes and boardSyncs record the spawns a lift made through the recording seams.
 	pushedPairs []string
 	primePushes int
@@ -260,6 +262,17 @@ type env struct {
 	// worktrees and worktreesErr are what the registered-worktree reading answers.
 	worktrees    []string
 	worktreesErr error
+}
+
+// primeOrchName is the agent name the test world gives the prime's orch.
+const primeOrchName = "lyx:orch"
+
+// beamOrch is a beam's orch in the test world: its strand guid and agent name, the pair holding its session, its watcher and its own creel journal.
+type beamOrch struct {
+	strand, name string
+	pair         *fakePair
+	watcherLive  bool
+	creel        fakeCreel
 }
 
 // fakeCreel is a mutex-guarded stand-in for the creel journal of tender's orch revive injects, safe for concurrent revives.
@@ -280,6 +293,26 @@ func (c *fakeCreel) injected() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return slices.Clone(c.lines)
+}
+
+// pending reports whether an inject stands with no outcome.
+func (c *fakeCreel) pending() (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.pendingID != 0, c.pendingErr
+}
+
+// inject records line as injected and answers the new inject's id.
+func (c *fakeCreel) inject(line string) (int64, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.injectErr != nil {
+		return 0, c.injectErr
+	}
+	c.lines = append(c.lines, line)
+	c.nextID++
+	c.pendingID = c.nextID
+	return c.nextID, nil
 }
 
 // settle gives the standing inject an outcome.
@@ -307,23 +340,7 @@ func (e *env) deps() Deps {
 		Worktrees:  func() ([]string, error) { return e.worktrees, e.worktreesErr },
 		HubPath:    e.hubPath,
 		Executable: e.executable,
-		OrchStrand: func() (string, error) { return e.orchStrand, nil },
-		OrchRevivePending: func() (bool, error) {
-			e.creel.mu.Lock()
-			defer e.creel.mu.Unlock()
-			return e.creel.pendingID != 0, e.creel.pendingErr
-		},
-		InjectOrchRevive: func(line string) (int64, error) {
-			e.creel.mu.Lock()
-			defer e.creel.mu.Unlock()
-			if e.creel.injectErr != nil {
-				return 0, e.creel.injectErr
-			}
-			e.creel.lines = append(e.creel.lines, line)
-			e.creel.nextID++
-			e.creel.pendingID = e.creel.nextID
-			return e.creel.nextID, nil
-		},
+		Orchs:      e.orchs,
 		PushPair: func(slug string) error {
 			e.pushedPairs = append(e.pushedPairs, slug)
 			return e.pushPairErr
@@ -336,12 +353,11 @@ func (e *env) deps() Deps {
 			e.boardSyncs++
 			return nil
 		},
-		NetOps:          func() ([]pauserecord.NetOp, error) { return e.netOps, nil },
-		Locks:           func() ([]parentlock.Entry, error) { return e.locks, nil },
-		OrchWatcherLive: func() bool { return e.watcherLive },
-		Caller:          e.caller,
-		Now:             e.clock.Now,
-		Sleep:           e.clock.Sleep,
+		NetOps: func() ([]pauserecord.NetOp, error) { return e.netOps, nil },
+		Locks:  func() ([]parentlock.Entry, error) { return e.locks, nil },
+		Caller: e.caller,
+		Now:    e.clock.Now,
+		Sleep:  e.clock.Sleep,
 	}
 	if e.owners != nil || e.ownersErr != nil {
 		deps.Owners = func() ([]PairOwner, error) { return e.owners, e.ownersErr }
@@ -351,6 +367,23 @@ func (e *env) deps() Deps {
 		deps.Prime = e.prime
 	}
 	return deps
+}
+
+// orchs lists the orchs of the test world: the prime's when it records a strand, then each beam's.
+func (e *env) orchs() ([]Orch, error) {
+	var orchs []Orch
+	if e.orchStrand != "" {
+		orch := Orch{Strand: e.orchStrand, Name: primeOrchName, WatcherLive: func() bool { return e.watcherLive }, RevivePending: e.creel.pending, InjectRevive: e.creel.inject}
+		// A nil *fakePair in the interface would read as a pair.
+		if e.prime != nil {
+			orch.Pair = e.prime
+		}
+		orchs = append(orchs, orch)
+	}
+	for _, beam := range e.beamOrchs {
+		orchs = append(orchs, Orch{Strand: beam.strand, Name: beam.name, Pair: beam.pair, WatcherLive: func() bool { return beam.watcherLive }, RevivePending: beam.creel.pending, InjectRevive: beam.creel.inject})
+	}
+	return orchs, nil
 }
 
 func (e *env) record() pauserecord.Record {
@@ -407,6 +440,10 @@ func recorded(slug, strand string) pauserecord.Session {
 
 func TestPause(t *testing.T) {
 	orchStrand, err := agentname.Format("lyx", "", agentname.RoleOrch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beamOrchStrand, err := agentname.Format("lyx", "b", agentname.RoleOrch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -849,21 +886,26 @@ func TestPause(t *testing.T) {
 		}},
 		{"the report names the orch's case under a hub entry and none under a slug entry", func(t *testing.T) {
 			cases := []struct {
-				caller      string
-				watcherLive bool
-				slug        string
-				want        OrchCase
+				caller          string
+				watcherLive     bool
+				beamWatcherLive bool
+				slug            string
+				want            OrchCase
 			}{
-				{orchStrand, true, "", OrchRanPause},
-				{"", true, "", OrchDelegated},
-				{"", false, "", OrchNotInterrupted},
-				{"", true, "p1", ""},
+				{orchStrand, true, false, "", OrchRanPause},
+				{beamOrchStrand, false, false, "", OrchRanPause},
+				{"", true, false, "", OrchDelegated},
+				{"", false, true, "", OrchDelegated},
+				{"", false, false, "", OrchNotInterrupted},
+				{"", true, true, "p1", ""},
 			}
 			for _, tc := range cases {
 				e := newEnv(t, newPair("p1"))
 				e.caller, e.watcherLive = tc.caller, tc.watcherLive
+				e.orchStrand = "g-orch"
+				e.beamOrchs = []*beamOrch{{strand: "g-beam", name: beamOrchStrand, watcherLive: tc.beamWatcherLive}}
 				if got := e.pause(tc.slug, 0).Orch; got != tc.want {
-					t.Errorf("caller %q, watcher %v, slug %q: orch case = %q; want %q", tc.caller, tc.watcherLive, tc.slug, got, tc.want)
+					t.Errorf("caller %q, watcher %v, beam watcher %v, slug %q: orch case = %q; want %q", tc.caller, tc.watcherLive, tc.beamWatcherLive, tc.slug, got, tc.want)
 				}
 			}
 		}},

@@ -34,6 +34,8 @@ const (
 	// readyMarkerLine is the row-notice marker line recording that the landing notice was posted.
 	// It keeps the literal of the earlier ready-only notice, so a row resumed after one was posted sends no second.
 	readyMarkerLine = "ready"
+	// readyRouteMarkerPrefix leads a row-notice marker line recording that a ready route's own notice was posted, followed by the route's key in brackets.
+	readyRouteMarkerPrefix = "route"
 )
 
 // LandingSettings is the part of the hub-wide landing config the Land row reads.
@@ -50,6 +52,19 @@ type DeployResult struct {
 	ExitCode int
 	// TimedOut reports that the command was ended for running past its timeout.
 	TimedOut bool
+}
+
+// ReadyRoute is one destination of the Land row's ready notice and the newly ready tasks that destination may start.
+type ReadyRoute struct {
+	// Key names the destination in the row's marker, so a resumed row posts to it once; the prime's key is the empty string.
+	Key string
+	// Slugs are the newly ready tasks the destination's orch may start.
+	Slugs []string
+	// Walked reports that the landing line, which takes the walk up the run's beam chain, already reaches this destination.
+	// A walked route's slugs ride the landing line and the route posts no line of its own.
+	Walked bool
+	// Notify posts one line to the destination's orch with no walk, and reports whether the line was posted.
+	Notify func(ctx context.Context, line string) (queued bool, err error)
 }
 
 // LandDeps carries every outside effect NewLand needs, each behind a seam so this package imports none of them and every path and command is told.
@@ -70,6 +85,10 @@ type LandDeps struct {
 	RunDeploy func(ctx context.Context, command, logPath string, timeout time.Duration) (DeployResult, error)
 	// ReadyTasks returns the slugs of the board tasks that are ready to start.
 	ReadyTasks func() ([]string, error)
+	// ReadyRoutes splits the newly ready slugs by the orch that may start them.
+	// A nil ReadyRoutes names every newly ready slug on the landing line.
+	// A slug in no route is named in no notice.
+	ReadyRoutes func(ready []string) ([]ReadyRoute, error)
 	// PruneBoard prunes the done tasks off the board.
 	PruneBoard func() error
 	// LandLock is the hub-level lock one landing holds for its whole body, with the same non-blocking acquire shape as the prime lock.
@@ -246,7 +265,24 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
-	p.notifier.ready(ctx, p.slug, ready, recordsStop)
+	landingSlugs := ready
+	var routes []ReadyRoute
+	if p.deps.ReadyRoutes != nil {
+		routes, err = p.deps.ReadyRoutes(ready)
+		if err != nil {
+			return p.failure(ctx, "ready read", err)
+		}
+		if cerr := cancelErr(ctx, p.name); cerr != nil {
+			return "", shedengine.OutputPointer{}, cerr
+		}
+		landingSlugs = nil
+		for _, route := range routes {
+			if route.Walked {
+				landingSlugs = append(landingSlugs, route.Slugs...)
+			}
+		}
+	}
+	p.notifier.ready(ctx, p.slug, landingSlugs, routes, recordsStop)
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
@@ -408,23 +444,36 @@ func (p *landProducer) newlyReady() (ready []string, stuckReason string) {
 	return slices.Compact(ready), ""
 }
 
-// ready posts the landing notice for landed, once per batten run: "landed", with "; newly ready: " and the tasks the landing made ready when there are any, and "; the prime's records did not pull: " and recordsStop when it is non-empty.
-// The marker line is written only once the notice was posted, and a notice that could not be posted is held back or dropped with a Warn, never retried.
-func (n rowNotifier) ready(ctx context.Context, landed string, slugs []string, recordsStop string) {
+// ready posts the landing notice for landed, once per batten run: "landed", with "; newly ready: " and slugs when there are any, and "; the prime's records did not pull: " and recordsStop when it is non-empty.
+// It then posts, once per batten run and route, "<landed>: landed; newly ready: " and the route's slugs to each unwalked route's own orch.
+// A marker line is written only once its notice was posted, and a notice that could not be posted is held back or dropped with a Warn, never retried.
+func (n rowNotifier) ready(ctx context.Context, landed string, slugs []string, routes []ReadyRoute, recordsStop string) {
 	if n.deps.Notify == nil || ctx.Err() != nil {
 		return
 	}
-	if slices.Contains(n.readMarker(), readyMarkerLine) {
-		return
+	if !slices.Contains(n.readMarker(), readyMarkerLine) {
+		line := fmt.Sprintf("%s %s: landed", noticePrefix, landed)
+		if len(slugs) > 0 {
+			line += "; newly ready: " + strings.Join(slugs, ", ")
+		}
+		if recordsStop != "" {
+			line += "; the prime's records did not pull: " + recordsStop
+		}
+		if n.send(ctx, line) {
+			n.setMarkerLine(readyMarkerLine, readyMarkerLine)
+		}
 	}
-	line := fmt.Sprintf("%s %s: landed", noticePrefix, landed)
-	if len(slugs) > 0 {
-		line += "; newly ready: " + strings.Join(slugs, ", ")
-	}
-	if recordsStop != "" {
-		line += "; the prime's records did not pull: " + recordsStop
-	}
-	if n.send(ctx, line) {
-		n.setMarkerLine(readyMarkerLine, readyMarkerLine)
+	for _, route := range routes {
+		if route.Walked || len(route.Slugs) == 0 || ctx.Err() != nil {
+			continue
+		}
+		marker := fmt.Sprintf("%s[%s]", readyRouteMarkerPrefix, route.Key)
+		if slices.Contains(n.readMarker(), marker) {
+			continue
+		}
+		line := fmt.Sprintf("%s %s: landed; newly ready: %s", noticePrefix, landed, strings.Join(route.Slugs, ", "))
+		if n.deliver(ctx, line, route.Notify) {
+			n.setMarkerLine(marker, marker)
+		}
 	}
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubissues"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -75,11 +76,15 @@ func Command() *cobra.Command {
 		},
 		Long: `board manages the task-tracker board for the current lyx worktree.
 
-The board is one store: every entry is a task or a note (its kind) and carries labels. Only a task
-can be claimed and depend on other tasks; a note is an idea or observation. A task carries at least
+The board is one store: every entry is a task, a note or a project (its kind) and carries labels. Only
+a task can be claimed and depend on other tasks; a note is an idea or observation. A project groups
+entries: a task or note joins it through its "project" field, the project lists its members' plan
+order in "order", and its "beam" flag, set only by "lyx beam create" and "lyx beam promote", makes it
+a long-lived pair that runs its members. "get" and "list" carry an entry's "parent_beam", the slug of
+the beam above it, empty when the prime is its parent. A task carries at least
 one type label, a note exactly one, and every label must be configured in board.yaml. Every entry
-carries a handle the board assigns, T and a number for a task, a note's type letter and a number for
-a note, such as T4 or B2. The README renders tasks split into dependency layers and notes grouped by
+carries a handle the board assigns, T and a number for a task, P and a number for a project, a
+note's type letter and a number for a note, such as T4 or B2. The README renders tasks split into dependency layers and notes grouped by
 type, each table sorted by handle. Agents read and write the
 board through "lyx board", never through the JSON files under _board.
 
@@ -138,7 +143,18 @@ available subcommands without requiring a git repo.
 				return nil
 			}
 			cfg.Path = boardDir
-			cfg.ParentOf = func(slug string) (string, error) { return fabricengine.ParentSlug(layout, slug) }
+			cfg.ParentOf = func(slug string) (string, error) { return hubgeom.ParentOf(layout, slug) }
+			cfg.PairExists = func(slug string) bool {
+				info, err := os.Stat(fabricengine.WorktreePath(layout, slug))
+				return err == nil && info.IsDir()
+			}
+			cfg.ValidateSlug = func(slug string) error {
+				fabricConfig, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(layout))
+				if err != nil {
+					return fmt.Errorf("load the fabric config to judge slug %q: %w", slug, err)
+				}
+				return fabricengine.ValidatePairSlug(slug, fabricConfig.Dirs())
+			}
 		}
 
 		cfg = boardengine.ApplySkipEnv(cfg)
@@ -460,7 +476,7 @@ func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Pro
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, owner_machine?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, owner_machine?, project?, order?, beam?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -472,26 +488,28 @@ Required field:
 Optional fields:
   "title"      string — human-readable title
   "brief"      string — one-line summary shown in board listings
-  "body"       string — markdown body
-  "depends_on" array  — list of slug strings this task depends on
+  "body"       string — full markdown body
+  "depends_on" array  — slugs this task depends on
   "isolated"   bool   — true if the task has no dependencies by design
   "status"     string — lifecycle status (e.g. "active", "done")
-  "kind"       string — "task" or "note", default "note"; only a task can be claimed or depend on tasks
+  "kind"       string — "task", "note" or "project", default "note"
   "labels"     array  — configured labels replacing the whole list; a task needs a type label, a note exactly one
-  "recipe"    string — recipe the task's child worktree runs, "loom" or "darn"; empty means "loom"
-  "priority"   string — a note's "high", "normal" or "low"; absent means normal, "normal" clears it, and a task carries none
+  "recipe"    string — child worktree recipe, "loom" or "darn"; empty means "loom"
+  "priority"   string — a note's "high", "normal" or "low"; "normal" clears it
   "short_name" string — short display label; falls back to the slug
-  "issues"     array  — the hub repository's issue numbers it records
-  "created"    string — RFC 3339 time the entry was added
-  "revised"    string — RFC 3339 time its scope last changed
-  "run_settings" object — module name to config keys for the pair's local config at Seed-Child; {} clears it
-  "profile"    string — a "lyx board profiles" name, laid under run_settings at Seed-Child; "" takes the recipe's default
+  "issues"     array  — the hub repository's issue numbers
+  "created"    string — RFC 3339 creation time
+  "revised"    string — RFC 3339 last scope change time
+  "run_settings" object — module name to config keys for the pair's local config; {} clears it
+  "profile"    string — a "lyx board profiles" name laid under run_settings; "" clears it
   "owner_machine" string — the effective owner only; "lyx adopt" moves it
+  "project"    string — slug of the open project the entry belongs to; "" leaves none
+  "order"      array  — a project's member slugs in plan order
+  "beam"       bool   — a project's beam flag; only the "lyx beam" verbs set it
 
 Flag:
-  --body-file <path>  read "body" from the file, or from stdin when the path is "-".
-                      Refused when the payload also carries "body",
-                      and when the payload argument is "-", since stdin feeds only one.
+  --body-file <path>  read "body" from the file, or from stdin when the path is "-";
+                      refused when the payload also carries "body" or is itself "-".
 
 Example:
   lyx board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'` + slugLimitNote(),
@@ -720,14 +738,18 @@ Examples:
 					return 0
 				}
 				if found {
-					if task.OwnerMachine == "" && task.Kind == boardengine.KindTask {
+					if task.OwnerMachine == "" && (task.Kind == boardengine.KindTask || task.Kind == boardengine.KindProject) {
 						if task.OwnerMachine, err = board().EffectiveOwner(task.Slug); err != nil {
 							return outputError(out, err.Error())
 						}
 					}
-					return outputGetTask(out, &task)
+					parentBeam, err := board().ParentBeamOf(task.Slug)
+					if err != nil {
+						return outputError(out, err.Error())
+					}
+					return outputGetTask(out, &task, parentBeam)
 				}
-				return outputGetTask(out, nil) // task: null in JSON output
+				return outputGetTask(out, nil, "") // task: null in JSON output
 			})(cmd, args)
 		},
 	}
@@ -1176,9 +1198,14 @@ func outputSuccessWithTask(out io.Writer, task boardengine.Task, notice string) 
 	return output.Ok(out, envelope)
 }
 
-// outputGetTask writes {"ok":true,"task":{...}} with task as pointer (nil → null).
-func outputGetTask(out io.Writer, task *boardengine.Task) int {
-	return output.Ok(out, map[string]any{"task": task})
+// outputGetTask writes {"ok":true,"task":{...},"parent_beam":"..."} with task as pointer (nil → null, and no parent_beam).
+// parentBeam is the slug of the beam the entry belongs to, empty when the prime is its parent.
+func outputGetTask(out io.Writer, task *boardengine.Task, parentBeam string) int {
+	envelope := map[string]any{"task": task}
+	if task != nil {
+		envelope["parent_beam"] = parentBeam
+	}
+	return output.Ok(out, envelope)
 }
 
 // outputListBrief writes {"ok":true,"tasks":[...]} with BriefTask objects with exit code 0.

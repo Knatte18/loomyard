@@ -21,7 +21,7 @@ Every teardown of a pair goes through `internal/pairteardown`, which ends the pa
 
 A producer that creates or destroys a task worktree never runs from inside that worktree.
 
-- The batten Shed is driven from the hub's prime worktree.
+- The batten Shed is anchored at the prime.
   Its status file is durable under prime's own anchor, and its locks stay ephemeral there, never under the worktree being managed.
 - A teardown row sequences session shutdown before worktree removal, in one producer, never two rows.
 - "Prime" means the warp prime.

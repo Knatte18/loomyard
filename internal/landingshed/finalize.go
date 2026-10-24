@@ -805,6 +805,7 @@ type parentMerge struct {
 // The merge record is written with the new merged tip and the aligned tip as it was.
 // A large merge keeps the merge commit and reroutes, with no gate run and no fixer;
 // a darn Finalize first writes the overlap note naming the parent's changes to the overlapping files since the tip the parent side was measured from.
+// With Deps.LargeMergeLands a large merge is neither rerouted nor noted: the merge record is written and the gate judges the merged tree.
 // done is false when the merge is within bounds and Call goes on to the gate; otherwise the other values are what Call returns at once.
 func (fz *Finalize) mergeParent(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	reason, err := fz.premerge.clear(finalizeName, fz.deps.ParentBranch)
@@ -868,7 +869,7 @@ func (fz *Finalize) mergeParent(ctx context.Context) (shedengine.Outcome, sheden
 	}
 
 	// A darn run's re-entered Code-Bouncer reads the note as its review input; a loom run's Code-Perch reads the fixer's report instead.
-	if (merge.conflicted || len(overlap.Files) > 0) && !fz.deps.ConflictReroutes {
+	if (merge.conflicted || len(overlap.Files) > 0) && !fz.deps.ConflictReroutes && !fz.deps.LargeMergeLands {
 		measured := MergeRecord{ParentBranch: fz.deps.ParentBranch, MergedTip: fz.mergedTipRead(before)}
 		if err := WriteOverlapNote(OverlapNotePath(fz.deps.ScratchDir), measured, overlap.Files); err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err), true
@@ -876,6 +877,8 @@ func (fz *Finalize) mergeParent(ctx context.Context) (shedengine.Outcome, sheden
 	}
 
 	switch {
+	case fz.deps.LargeMergeLands:
+		// A large merge lands: the finalize gate over the merged tree judges it.
 	case merge.conflicted:
 		outcome, out, err := fz.reroute(ctx, fz.rerouteReason(fmt.Sprintf("merging parent branch %q into the task needed the conflict session, so the merge is large", fz.deps.ParentBranch)))
 		return outcome, out, err, true

@@ -1,5 +1,5 @@
 // cli.go builds the cobra command tree for the orch module and the RunCLI seam that wires it into the standard io.Writer-based call contract.
-// The parent "orch" command's PersistentPreRunE resolves cwd -> prime check -> orch, shuttle and reed config -> reed engine -> claude engine -> shuttleengine.Runner -> paths exactly once per invocation, into a receiver every verb closes over, so no verb re-resolves geometry itself.
+// The parent "orch" command's PersistentPreRunE resolves cwd -> prime-or-beam check -> orch, shuttle and reed config -> reed engine -> claude engine -> shuttleengine.Runner -> paths exactly once per invocation, into a receiver every verb closes over, so no verb re-resolves geometry itself.
 
 package orchcli
 
@@ -99,8 +99,10 @@ type orchCLI struct {
 	currentBuild func() (statuspane.BuildIdentity, error)
 	// reconcile judges and moves the hub's branches against origin, which `start` runs before it decides anything about the strand.
 	reconcile func() (fabricengine.OriginReport, error)
+	// beamStart refuses a start in a beam that another machine owns or that its landing holds, which `start` calls before it creates anything; nil in the prime, and in a hand-built harness, skips it.
+	beamStart func() error
 	// claimPrime records this machine as the hub's prime owner when the board records none, which `start` calls first after its reconcile.
-	// claimed names this machine after a claim, lostTo the other machine when its claim won; nil skips the claim.
+	// claimed names this machine after a claim, lostTo the other machine when its claim won; nil skips the claim, as in a beam.
 	claimPrime func() (claimed, lostTo string, err error)
 	// pauseOwned pauses the pair of a run another machine owns, which `start` calls for each owned_elsewhere entry of its reconcile; nil skips the pause.
 	pauseOwned func(location *lyxcwd.Location, slug string) error
@@ -114,10 +116,10 @@ func Command() *cobra.Command {
 		Use:   "orch",
 		Short: "run the hub orchestrator as a reed strand with automatic handoff",
 		Long: `orch hosts the hub orchestrator as an interactive Claude session in a reed
-strand of the hub's prime worktree. A detached watcher reads each turn's
-context usage and, past a threshold and while the session is idle, has the
+strand of the hub's prime worktree or of a beam's. A detached watcher reads each
+turn's context usage and, past a threshold and while the session is idle, has the
 session write a handoff, clears it and resumes it from that handoff.
-Every verb runs from the hub's prime worktree only.`,
+Every verb runs from the hub's prime worktree or from a beam.`,
 		RunE: clihelp.GroupRunE,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// The bare group and its unknown-subcommand path need no repository.
@@ -142,10 +144,18 @@ Every verb runs from the hub's prime worktree only.`,
 			}
 
 			if err := fabricengine.RequireDrivableWorktree(location); err != nil {
-				return fail(fmt.Errorf("orch: lyx orch runs from the hub's prime worktree only: %w", err))
+				return fail(fmt.Errorf("orch: lyx orch runs from the hub's prime worktree or a beam: %w", err))
 			}
 			primeName, primeNameErr := fabricengine.PrimeName(location)
-			if err := refuseNonPrime(location.WorktreeName, primeName, primeNameErr); err != nil {
+			beam := false
+			if primeNameErr == nil && location.WorktreeName != primeName {
+				origin, found, err := fabricengine.ReadOrigin(location)
+				if err != nil {
+					return fail(fmt.Errorf("orch: read the origin record of %q to tell whether it is a beam: %w", location.WorktreeName, err))
+				}
+				beam = found && origin.Beam
+			}
+			if err := refuseNonPrime(location.WorktreeName, primeName, primeNameErr, beam); err != nil {
 				return fail(err)
 			}
 
@@ -208,7 +218,11 @@ Every verb runs from the hub's prime worktree only.`,
 			c.executable = os.Executable
 			c.currentBuild = statuspane.CurrentBuild
 			c.reconcile = func() (fabricengine.OriginReport, error) { return reconcileHub(location) }
-			c.claimPrime = func() (string, string, error) { return claimPrimeFor(location) }
+			if beam {
+				c.beamStart = func() error { return checkBeamStart(location) }
+			} else {
+				c.claimPrime = func() (string, string, error) { return claimPrimeFor(location) }
+			}
 			c.pauseOwned = installedOwnerPause()
 			return nil
 		},

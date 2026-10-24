@@ -4,6 +4,7 @@
 package cleanupcli
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -58,8 +59,13 @@ func battenListed(report battencli.CleanupReport) map[string]any {
 	return map[string]any{"removed": report.Removed, "emptied": report.Emptied, "skipped": report.Skipped, "push_spawned": report.PushSpawned, "push_error": report.PushError}
 }
 
-// primeSegments returns the cleanup of the hub prime at location, in the order the verb runs them: batten, board, orch, scratch, logs and temp.
+// primeSegments returns the cleanup of the hub prime at location and of the handoffs of every orch of the hub, in the order the verb runs them: batten, board, orch, scratch, logs and temp.
 func primeSegments(location *lyxcwd.Location) []segment {
+	return segmentsOver(location, orchcli.HubOrchs)
+}
+
+// segmentsOver is primeSegments with hubOrchs, the lister of the worktrees the orch segment cleans.
+func segmentsOver(location *lyxcwd.Location, hubOrchs func(*lyxcwd.Location) ([]*lyxcwd.Location, error)) []segment {
 	openBoard := func() (*boardengine.Board, error) {
 		return boardengine.OpenHub(location.HubPath)
 	}
@@ -87,11 +93,21 @@ func primeSegments(location *lyxcwd.Location) []segment {
 			return map[string]any{"removed": removed}, nil
 		}},
 		{name: "orch", run: func(apply bool) (any, error) {
-			result, err := orchengine.CleanupHandoffs(orchcli.PrimePaths(location), apply)
+			orchs, err := hubOrchs(location)
 			if err != nil {
 				return nil, err
 			}
-			return map[string]any{"kept": result.Kept, "removed": result.Removed, "reason": result.Reason}, nil
+			worktrees := make([]map[string]any, 0, len(orchs))
+			var failures []error
+			for _, orch := range orchs {
+				result, err := orchengine.CleanupHandoffs(orchcli.PrimePaths(orch), apply)
+				if err != nil {
+					failures = append(failures, fmt.Errorf("%s: %w", orch.WorktreeName, err))
+					continue
+				}
+				worktrees = append(worktrees, map[string]any{"worktree": orch.WorktreeName, "kept": result.Kept, "removed": result.Removed, "reason": result.Reason})
+			}
+			return map[string]any{"worktrees": worktrees}, errors.Join(failures...)
 		}},
 		{name: "scratch", run: func(apply bool) (any, error) {
 			readBoard := func() ([]boardengine.Task, error) {

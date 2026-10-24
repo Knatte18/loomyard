@@ -40,4 +40,4 @@ No hub-level container is ever junctioned into a worktree.
 
 - `_launchers` links point hub-inward only; a per-worktree link to it is banned.
 - `_portals` is retired and stays reserved; `lyx fabric reconcile` sweeps what a hub still holds.
-- The hub workspace file `<RepoName>.code-workspace` sits directly in the hub dir, references hub-inward folders only, and is never written into a worktree.
+- The hub workspace file `<RepoName>.code-workspace` and each beam's file `<RepoName>-<beam>.code-workspace` sit directly in the hub dir, reference hub-inward folders only, and are never written into a worktree.

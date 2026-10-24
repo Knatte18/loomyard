@@ -18,13 +18,17 @@ Every entry carries a `kind`:
 
 - `task`: concrete and claimable; only a task can run, and only a task carries `depends_on`.
 - `note`: an idea or observation that is not yet a task, one note per entry.
+- `project`: a group of entries, with the handle letter `P`.
+  A task or note joins one through its `project` field, naming the project's slug, and a project lists the order of its members in `order`.
+  A project's `beam` field marks it a beam, a long-lived pair that spawns its members from its own worktree; it is set only by `lyx beam create` and `lyx beam promote`, never by a board write.
+  `lyx board list` and `lyx board get` carry an entry's `parent_beam`: the slug of the nearest beam above it, empty when the prime is its parent.
 
 A new entry without `kind` lands as a note, so claimable work must pass `kind: "task"`.
 A note stays as written until the operator decides to build it; then suitable notes are merged into one task, promoted, and removed.
 
 ## Handles
 
-The board gives every entry a short handle, such as `T4`, `B2` or `E7`: `T` for a task, and for a note the first letter of its type label, upper-cased.
+The board gives every entry a short handle, such as `T4`, `P1`, `B2` or `E7`: `T` for a task, `P` for a project, and for a note the first letter of its type label, upper-cased.
 The number is the lowest of its letter not in use, and it stays while the entry lives; a promote or a type change gives the entry a new handle of its new letter.
 The operator names entries by handle, and every verb that takes `slug` or `id` takes `handle` instead, or the bare handle as its whole argument:
 

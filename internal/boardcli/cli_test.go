@@ -45,7 +45,7 @@ func seedCwd(t *testing.T) string {
 	return cwd
 }
 
-// seedHubBoardConfig writes content as the board.yaml in the hub's board dir, the one file every board reader loads.
+// seedHubBoardConfig writes content as the board.yaml in the hub's board dir, the one file every board reader loads, and the default fabric.yaml beside it, which the slug rule of a write reads.
 func seedHubBoardConfig(t *testing.T, hub, content string) {
 	t.Helper()
 	boardDir := fabricengine.BoardDir(hub)
@@ -54,6 +54,9 @@ func seedHubBoardConfig(t *testing.T, hub, content string) {
 	}
 	if err := os.WriteFile(configengine.ConfigFile(boardDir, "board"), []byte(content), 0o644); err != nil {
 		t.Fatalf("failed to write hub board.yaml: %v", err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(boardDir, "fabric"), []byte(fabricengine.ConfigTemplate()), 0o644); err != nil {
+		t.Fatalf("failed to write hub fabric.yaml: %v", err)
 	}
 }
 
@@ -127,6 +130,7 @@ func TestCLI(t *testing.T) {
 		{"RunSettings", stepRunSettings},
 		{"Profiles", stepProfiles},
 		{"SiblingWarning", stepSiblingWarning},
+		{"Projects", stepProjects},
 	}
 	for _, step := range steps {
 		if !t.Run(step.name, func(t *testing.T) {

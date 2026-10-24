@@ -215,7 +215,7 @@ func (c *websterCLI) wireHub(loc *lyxcwd.Location, stencilsDir, planDir, targetD
 	}
 	runner.SetPause(pauseGeom)
 	runner.SetNotifier(func(line string) error {
-		_, err := orchcli.NotifyPrime(loc, websterProgram, line)
+		_, err := orchcli.NotifyParent(loc, websterProgram, line)
 		return err
 	})
 

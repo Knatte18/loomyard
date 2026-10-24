@@ -98,6 +98,26 @@ func assertFolders(t *testing.T, h *hubforge.Hub, path string, names ...string) 
 	}
 }
 
+// requireFolderNames fails the test unless the workspace file at path lists exactly names in order.
+func requireFolderNames(t *testing.T, path string, names ...string) {
+	t.Helper()
+	var got []string
+	for _, f := range readWorkspaceFolders(t, path) {
+		got = append(got, f.Name)
+	}
+	if !slices.Equal(got, names) {
+		t.Errorf("%s folders = %v; want %v", filepath.Base(path), got, names)
+	}
+}
+
+// beamAddOptions are the options of a beam pair added without pushing.
+var beamAddOptions = fabricengine.AddOptions{SkipPush: true, Beam: true}
+
+// memberAddOptions returns the options of a pair forked from the pair parent, added without pushing.
+func memberAddOptions(parent string, beam bool) fabricengine.AddOptions {
+	return fabricengine.AddOptions{SkipPush: true, Parent: parent, Beam: beam}
+}
+
 // addRawWorktree adds slug's warp worktree with a raw git call, so no fabric verb regenerates the workspace file.
 func addRawWorktree(t *testing.T, h *hubforge.Hub, slug string) {
 	t.Helper()
@@ -291,6 +311,120 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 			assertFolders(t, h, path, primeBranch(t, h), "Bolt", "keep")
 		})
 	}
+
+	t.Run("WritesABeamFileAndKeepsItsMembersOutOfTheHubFile", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		hubforge.AddPairWith(t, h, "m", memberAddOptions("b", false))
+
+		path, _ := regenerateHub(t, h)
+
+		prime := primeBranch(t, h)
+		requireFolderNames(t, path, prime, "Bolt", "b")
+		beamPath := fabricengine.BeamWorkspacePath(h.Location, "b")
+		requireFolderNames(t, beamPath, "b", prime, "Bolt", "m")
+		for file, want := range map[string]bool{path: false, beamPath: true} {
+			data, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("read %s: %v", file, err)
+			}
+			var ws map[string]any
+			if err := json.Unmarshal(data, &ws); err != nil {
+				t.Fatalf("%s is not valid JSON: %v\n%s", file, err, data)
+			}
+			if _, marked := ws["lyx.generated"]; marked != want {
+				t.Errorf("%s carries the generated mark = %v; want %v", filepath.Base(file), marked, want)
+			}
+		}
+	})
+
+	t.Run("ListsSubBeamsInTheirParentBeamsFileByThemselvesOnly", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		hubforge.AddPairWith(t, h, "c", memberAddOptions("b", true))
+		hubforge.AddPairWith(t, h, "m", memberAddOptions("b", false))
+		hubforge.AddPairWith(t, h, "n", memberAddOptions("c", false))
+
+		path, _ := regenerateHub(t, h)
+
+		prime := primeBranch(t, h)
+		requireFolderNames(t, path, prime, "Bolt", "b")
+		requireFolderNames(t, fabricengine.BeamWorkspacePath(h.Location, "b"), "b", prime, "Bolt", "c", "m")
+		requireFolderNames(t, fabricengine.BeamWorkspacePath(h.Location, "c"), "c", "b", "Bolt", "n")
+	})
+
+	t.Run("ListsPairsWithAnUnusableParentRecordInTheHubFile", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		hubforge.AddPairWith(t, h, "orphan", memberAddOptions("b", false))
+		hubforge.AddPairWith(t, h, "unrecorded", fabricengine.AddOptions{SkipPush: true})
+		hubforge.AddPairWith(t, h, "emptyparent", fabricengine.AddOptions{SkipPush: true})
+		hubforge.AddPairWith(t, h, "nolock", fabricengine.AddOptions{SkipPush: true})
+		if err := os.RemoveAll(h.PairCodeWorktree("b")); err != nil {
+			t.Fatalf("delete the parent's worktree by hand: %v", err)
+		}
+		if err := os.Remove(fabricengine.OriginRecordPathFor(l, "unrecorded")); err != nil {
+			t.Fatalf("delete the origin record by hand: %v", err)
+		}
+		rec := fabricengine.NewMutations(h.Path)
+		if err := fabricengine.WriteOrigin(rec, l, "emptyparent", fabricengine.Origin{ParentBranch: primeBranch(t, h)}); err != nil {
+			t.Fatalf("rewrite the origin record with an empty parent worktree: %v", err)
+		}
+		if err := os.RemoveAll(filepath.Join(h.PairRecordsSibling("nolock"), ".weft")); err != nil {
+			t.Fatalf("delete the records worktree's lock directory: %v", err)
+		}
+
+		path, _ := regenerateHub(t, h)
+
+		requireFolderNames(t, path, primeBranch(t, h), "Bolt", "emptyparent", "nolock", "orphan", "unrecorded")
+	})
+
+	t.Run("RemovesOnlyAMarkedBeamFileOfAGoneBeam", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		l := h.Location
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		beamPath := fabricengine.BeamWorkspacePath(l, "b")
+		if _, err := os.Stat(beamPath); err != nil {
+			t.Fatalf("beam file missing after adding the beam: %v", err)
+		}
+
+		if _, err := h.Topology.RemoveLocal(l, "b", false); err != nil {
+			t.Fatalf("RemoveLocal: %v", err)
+		}
+		if _, err := os.Lstat(beamPath); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("beam file of a removed beam: stat err = %v; want it gone", err)
+		}
+
+		if err := os.WriteFile(beamPath, []byte("{\"folders\": []}\n"), 0o644); err != nil {
+			t.Fatalf("write an operator's file: %v", err)
+		}
+		regenerateHub(t, h)
+		if _, err := os.Stat(beamPath); err != nil {
+			t.Errorf("an unmarked file of a gone beam: stat err = %v; want it kept", err)
+		}
+	})
+
+	t.Run("GivesABeamMadeByMarkBeamItsFileOnTheNextRegeneration", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "p", fabricengine.AddOptions{SkipPush: true})
+		beamPath := fabricengine.BeamWorkspacePath(h.Location, "p")
+		if _, err := os.Stat(beamPath); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("beam file of a plain pair: stat err = %v; want none", err)
+		}
+		if _, err := fabricengine.MarkBeam(fabricengine.NewMutations(h.Path), h.Location, "p"); err != nil {
+			t.Fatalf("MarkBeam: %v", err)
+		}
+
+		regenerateHub(t, h)
+
+		requireFolderNames(t, beamPath, "p", primeBranch(t, h), "Bolt")
+	})
 
 	t.Run("RecordsAWriteOnlyWhenTheBytesChange", func(t *testing.T) {
 		t.Parallel()

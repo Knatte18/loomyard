@@ -1520,8 +1520,8 @@ func stepRecordsPrimeRefusal(t *testing.T, h *hubforge.Hub) {
 			if !strings.Contains(out.String(), "records sibling") {
 				t.Errorf("%s refusal = %q; want it to name the records sibling", verb, out.String())
 			}
-			if !strings.Contains(out.String(), "prime worktree only") {
-				t.Errorf("%s refusal = %q; want the prime-only wording", verb, out.String())
+			if !strings.Contains(out.String(), "this verb runs from the hub's prime worktree or a beam") {
+				t.Errorf("%s refusal = %q; want the prime-or-beam wording", verb, out.String())
 			}
 		})
 	}
@@ -1605,7 +1605,7 @@ func stepPairDirNamesTheTaskWorktree(t *testing.T, h *hubforge.Hub) {
 
 // stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent drives the watched-marker seam over a real pair:
 // the marker holds batten's pid, scratch directory and row name for a pair created from the prime while the prime's orch state records a strand,
-// and is removed when the strand is gone and when the pair's origin names another worktree.
+// and is removed when the strand is gone; a pair whose origin names a worktree that is absent here walks to the prime, so the marker stays.
 func stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-watched"
 	hubforge.AddPair(t, h, slug)
@@ -1644,7 +1644,7 @@ func stepMarkWatched_HoldsTheMarkerOnlyWhileItsNoticesReachTheDriversParent(t *t
 		wantPidIn bool
 	}{
 		{name: "StrandRecordedAndPairFromThePrime", strand: "orch-strand", parent: origin.ParentWorktree, wantHeld: true, wantPidIn: true},
-		{name: "PairFromAnotherWorktreeRemovesIt", strand: "orch-strand", parent: "another-worktree"},
+		{name: "PairFromAnAbsentWorktreeWalksToThePrimeAndHoldsIt", strand: "orch-strand", parent: "another-worktree", wantHeld: true, wantPidIn: true},
 		{name: "StrandRecordedAgainWritesItAgain", strand: "orch-strand", parent: origin.ParentWorktree, wantHeld: true, wantPidIn: true},
 		{name: "NoStrandRecordedRemovesIt", strand: "", parent: origin.ParentWorktree},
 	}

@@ -21,7 +21,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -196,7 +195,7 @@ func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 				}
 				return battenshed.HandBackNotice(context.Background(), rowNotices(location, slug), slug, c.env.ScratchDir, stop.CurrentProducer, stop.HistoryLength, line), nil
 			},
-			OrchRecorded: func() (bool, error) { return orchStrandRecorded(location) },
+			OrchRecorded: func() (bool, error) { return runParentRecorded(location, slug) },
 			Park: func(reportPath string) error {
 				marker := shedrun.ParkMarker(location, slug)
 				if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
@@ -329,7 +328,7 @@ func (c *battenCLI) loadedTacklerDeps() (sheddriver.TacklerDeps, error) {
 	runner := shuttleengine.NewRunner(reedengine.New(reedConfig, reedGeometry, shuttleengines.EnvScrub()), engines, reedGeometry.AnchorPath, reedGeometry.WorktreeRoot, shuttleConfig)
 	runner.SetPause(pauseGeometry)
 	runner.SetNotifier(func(line string) error {
-		_, err := orchcli.NotifyPrime(location, battenProgram, line)
+		_, err := notifyRunParent(location, c.slug, line)
 		return err
 	})
 	return c.tacklerDepsFor(settings, sheddriver.RunnerShuttle{Runner: runner}), nil

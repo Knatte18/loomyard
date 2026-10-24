@@ -14,8 +14,12 @@ import (
 type OwnerEntry struct {
 	// Owner is the entry's recorded owner machine, empty when none is recorded.
 	Owner string
-	// IsTask reports whether the entry is a task and not a note.
+	// IsTask reports whether the entry is a task and not a note or a project.
 	IsTask bool
+	// IsProject reports whether the entry is a project.
+	IsProject bool
+	// Beam reports whether the entry is a project that is a beam.
+	Beam bool
 	// Done reports whether the entry is marked done.
 	Done bool
 	// RunHeld reports whether a run holds the entry.
@@ -55,10 +59,12 @@ func ownersOf(primeOwner string, tasks []Task) Owners {
 	owners := Owners{Prime: primeOwner, Entries: make(map[string]OwnerEntry, len(tasks))}
 	for _, task := range tasks {
 		owners.Entries[task.Slug] = OwnerEntry{
-			Owner:   task.OwnerMachine,
-			IsTask:  task.Kind == KindTask,
-			Done:    isDone(task),
-			RunHeld: IsRunStatus(task.Status),
+			Owner:     task.OwnerMachine,
+			IsTask:    task.Kind == KindTask,
+			IsProject: task.Kind == KindProject,
+			Beam:      task.Beam,
+			Done:      isDone(task),
+			RunHeld:   IsRunStatus(task.Status),
 		}
 	}
 	return owners

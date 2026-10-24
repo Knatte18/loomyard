@@ -112,11 +112,12 @@ type readmeSection struct {
 
 // The README's Tasks, Notes and Done sections and the Running and Ready subsections of Tasks, declared here alone.
 var (
-	tasksSection   = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
-	runningSection = readmeSection{"Running", "Held by a run; its scope is locked until the run ends."}
-	readySection   = readmeSection{"Ready", "Waits on nothing open; can start now."}
-	notesSection   = readmeSection{"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."}
-	doneSection    = readmeSection{"Done", "Finished, awaiting `lyx board prune --apply`."}
+	projectsSection = readmeSection{"Projects", "Groups of entries; a beam spawns its members from its own worktree."}
+	tasksSection    = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
+	runningSection  = readmeSection{"Running", "Held by a run; its scope is locked until the run ends."}
+	readySection    = readmeSection{"Ready", "Waits on nothing open; can start now."}
+	notesSection    = readmeSection{"Notes", "Not tasks: ideas and observations, merged into a task when one is promoted."}
+	doneSection     = readmeSection{"Done", "Finished, awaiting `lyx board prune --apply`."}
 )
 
 // otherNotesHeading is the Notes subsection for a note whose type label is no longer configured.
@@ -137,8 +138,17 @@ const (
 	columnAt         = "At"
 	columnOwner      = "Owner"
 	columnAfter      = "After"
+	columnMember     = "Member"
+	columnKind       = "Kind"
+	columnStanding   = "Standing"
 	columnAgeRevised = "Age" + cellBreak + "Revised"
 	columnLabels     = "Labels"
+)
+
+// The lines under a project's heading that say whether it is a beam or only a grouping.
+const (
+	projectBeamText     = "beam"
+	projectGroupingText = "grouping"
 )
 
 // cellBreak stacks two lines inside one table cell, where a newline would end the row.
@@ -163,8 +173,11 @@ func countedHeading(level, name string, count int) string {
 
 // kindName is the capitalised display name of an entry kind.
 func kindName(kind string) string {
-	if kind == KindTask {
+	switch kind {
+	case KindTask:
 		return "Task"
+	case KindProject:
+		return "Project"
 	}
 	return "Note"
 }
@@ -207,7 +220,7 @@ type readmeTable struct {
 	priority bool
 }
 
-// renderReadme builds the README: a title, the render time and prime owner, an intro, Tasks split into Running, Ready, dependency layers and Independent, Notes split by type label, then Done when any entry is done.
+// renderReadme builds the README: a title, the render time and prime owner, an intro, Projects when one is open, Tasks split into Running, Ready, dependency layers and Independent, Notes split by type label, then Done when any entry is done.
 func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, types []string, now time.Time) string {
 	lines := []string{
 		"# Board",
@@ -253,6 +266,8 @@ func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, type
 		}
 		return []string{entryCell(t), recipeCell(t), codeList(after)}
 	}}
+
+	lines = append(lines, renderProjects(ordered, finished, primeOwner, designPrefix, types, now)...)
 
 	var tasks []TaskWithLayer
 	for _, twl := range ordered {
@@ -333,6 +348,99 @@ func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, type
 	}
 
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
+}
+
+// renderProjects builds the Projects section: a heading counting the open projects, then per project its handle and title, brief, whether it is a beam or a grouping, a beam's effective owner and a table of its members.
+// A member is an entry whose project names the project; the project's order lists them first, and the members it leaves out follow by handle.
+// It returns no lines when no project is open.
+func renderProjects(ordered []TaskWithLayer, finished map[string]bool, primeOwner, designPrefix string, types []string, now time.Time) []string {
+	var projects []TaskWithLayer
+	for _, twl := range ordered {
+		if !isDone(twl.Task) && twl.Kind == KindProject {
+			projects = append(projects, twl)
+		}
+	}
+	if len(projects) == 0 {
+		return nil
+	}
+
+	lines := []string{countedHeading("##", projectsSection.name, len(projects)), "", projectsSection.meaning, ""}
+	for _, project := range projects {
+		lines = append(lines, "### "+cellText(project.Handle)+" "+cellText(project.Title), "")
+		if project.Brief != "" {
+			lines = append(lines, project.Brief, "")
+		}
+		if !project.Beam {
+			lines = append(lines, projectGroupingText, "")
+		} else {
+			owner := project.OwnerMachine
+			if owner == "" {
+				owner = primeOwner
+			}
+			lines = append(lines, projectBeamText, "", "Owner: "+primeOwnerText(owner)+".", "")
+		}
+
+		members := projectMembers(ordered, project.Task)
+		if len(members) == 0 {
+			lines = append(lines, emptySectionLine, "")
+			continue
+		}
+		header := []string{columnHandle, columnMember, columnKind, columnStanding}
+		lines = append(lines, tableRow(header), tableRow(slices.Repeat([]string{"---"}, len(header))))
+		for _, member := range members {
+			lines = append(lines, tableRow([]string{
+				cellText(member.Handle),
+				"**" + cellText(member.Title) + "**",
+				kindName(member.Kind),
+				standingCell(member, finished[member.Slug]),
+			}))
+		}
+		lines = append(lines, "")
+	}
+	return lines
+}
+
+// projectMembers is the entries of ordered whose project is project, the slugs in project's order first and the rest by handle.
+func projectMembers(ordered []TaskWithLayer, project Task) []TaskWithLayer {
+	var members []TaskWithLayer
+	for _, twl := range ordered {
+		if twl.Project == project.Slug {
+			members = append(members, twl)
+		}
+	}
+	position := func(slug string) int {
+		if index := slices.Index(project.Order, slug); index >= 0 {
+			return index
+		}
+		return len(project.Order)
+	}
+	slices.SortStableFunc(members, func(a, b TaskWithLayer) int {
+		if c := position(a.Slug) - position(b.Slug); c != 0 {
+			return c
+		}
+		if c := compareHandles(a.Handle, b.Handle); c != 0 {
+			return c
+		}
+		return a.ID - b.ID
+	})
+	return members
+}
+
+// standingCell is where a project member stands: Done once finished, the run's place while a run holds it, Ready, Note, or the name of its dependency layer.
+func standingCell(member TaskWithLayer, finished bool) string {
+	switch {
+	case finished:
+		return "Done"
+	case member.Kind == KindNote:
+		return "Note"
+	case member.Layer == runningLayer:
+		return atCell(*member.Status)
+	case member.Layer == readyLayer:
+		return readySection.name
+	case member.Layer == projectLayer:
+		return kindName(KindProject)
+	}
+	return layerSection(member.Layer).name
 }
 
 // primeOwnerText is the README's statement of the prime owner: the machine in a code span, or none recorded.

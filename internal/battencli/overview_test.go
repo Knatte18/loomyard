@@ -560,6 +560,29 @@ func TestOverviewSource_DrawsTheOrchLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("frame 12, an absent state draws no orch line", "runs unreadable")
+
+	beam := locationkit.Location(t.TempDir(), "beam-b", ".")
+	beamPaths := orchcli.PrimePaths(beam)
+	source.orchs = func() ([]orchengine.Paths, []string, error) {
+		return []orchengine.Paths{orchPaths, beamPaths}, []string{"", "b"}, nil
+	}
+	writeState(idle, minutesAgo(5))
+	data, err := json.Marshal(exited)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeOverviewFile(t, beamPaths.StatePath, data, minutesAgo(5))
+	beamExitedLine := "orch b  212k / soft 300k / hard 400k  idle  cycles 3  watcher down"
+	check("frame 13, the prime's orch line then each beam's, labelled", idleLine, beamExitedLine, "runs unreadable")
+
+	writeOverviewFile(t, beamPaths.StatePath, []byte("{not json"), minutesAgo(1))
+	check("frame 14, a beam's first failure keeps its last good line", idleLine, beamExitedLine, "runs unreadable")
+	check("frame 15, a beam's repeated failure marks its own line only", idleLine, "orch b  state unreadable", "runs unreadable")
+
+	source.orchs = func() ([]orchengine.Paths, []string, error) {
+		return nil, nil, errors.New("listing failed")
+	}
+	check("frame 16, an orch list that fails falls back to the prime's line", idleLine, "runs unreadable")
 }
 
 // TestLoadOverviewThresholds does not call t.Parallel: logcapture redirects the process-global logger.

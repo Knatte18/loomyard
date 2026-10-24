@@ -45,6 +45,12 @@ type Config struct {
 	// ParentOf names the slug of an entry's parent pair, "" for the prime, so reads and writes resolve an effective owner alike;
 	// nil reads every parent as the prime.
 	ParentOf func(slug string) (string, error) `yaml:"-"`
+	// PairExists reports whether an entry's pair exists on this machine, so a write that moves or renames an entry with a pair is refused;
+	// nil reads every pair as absent.
+	PairExists func(slug string) bool `yaml:"-"`
+	// ValidateSlug applies the pair slug rule to a task or project slug a write makes, returning the rule's refusal;
+	// nil checks nothing, which is what a Board that makes no slug builds.
+	ValidateSlug func(slug string) error `yaml:"-"`
 	// StrandName is the full agent name of the session making the writes, "" for the operator at a terminal;
 	// a run agent's name makes every write that creates or promotes a task refused.
 	StrandName string `yaml:"-"`

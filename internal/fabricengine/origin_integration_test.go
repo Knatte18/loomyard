@@ -322,6 +322,43 @@ func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 	}
 }
 
+// TestAdd_AdoptedWeftTakesTheBeamMarkOnly adopts a live pair's weft branch, which carries an unmarked origin record, with AddOptions.Beam:
+// the record gains the beam mark in a record commit and keeps its recorded parent.
+func TestAdd_AdoptedWeftTakesTheBeamMarkOnly(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	l := h.Location
+	const slug = "marked-on-adopt"
+	weftBranch := fabricengine.RecordsBranchName(slug)
+
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+	recordedTip := gitkit.RevParse(t, mustRecordsRepoRoot(t, l), "refs/remotes/origin/"+weftBranch)
+	if _, err := h.Topology.Remove(l, slug, false, false); err != nil {
+		t.Fatalf("setup Remove(%q): %v", slug, err)
+	}
+	gitkit.MustRun(t, mustRecordsRepoRoot(t, l), "git", "branch", weftBranch, recordedTip)
+	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", "another-parent")
+
+	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{Beam: true}); err != nil {
+		t.Fatalf("Add(%q, Beam): %v", slug, err)
+	}
+
+	origin, found, err := fabricengine.ReadOriginFor(l, slug)
+	if err != nil || !found {
+		t.Fatalf("ReadOriginFor(%q) = (%+v, %v, %v); want the adopted branch's record", slug, origin, found, err)
+	}
+	if !origin.Beam {
+		t.Errorf("ReadOriginFor(%q).Beam = false; want the beam mark", slug)
+	}
+	if origin.ParentBranch != "main" {
+		t.Errorf("ReadOriginFor(%q).ParentBranch = %q; want the recorded %q", slug, origin.ParentBranch, "main")
+	}
+	if got := gitkit.RevParse(t, fabricengine.RecordsWorktreePath(l, slug), "HEAD"); got == recordedTip {
+		t.Errorf("adopted weft HEAD = %s; want a record commit past the recorded tip", got)
+	}
+}
+
 // TestAdd_OriginRecordMutationEntries asserts the successful AddResult's mutation snapshot contains
 // exactly one KindFileWritten entry for the record and exactly one KindCommitCreated entry for the
 // record's commit, whose target is the new pair's weft worktree and whose detail is the sha the
@@ -439,54 +476,5 @@ func TestAdd_RunLauncherLifecycle(t *testing.T) {
 	}
 	if _, err := os.Stat(fabricengine.LauncherDir(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("launcher dir %s still present after remove", fabricengine.LauncherDir(l, slug))
-	}
-}
-
-// TestParentSlug reads the parent pair of a pair forked from the prime, a pair forked from another pair, a slug with no pair and a pair with no origin record.
-func TestParentSlug(t *testing.T) {
-	t.Parallel()
-
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-
-	const (
-		first      = "parent-first"
-		second     = "parent-second"
-		recordless = "parent-recordless"
-	)
-	hubforge.AddPairWith(t, h, first, fabricengine.AddOptions{SkipPush: true})
-	firstLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, first))
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(first pair): %v", err)
-	}
-	if _, err := h.Topology.Add(firstLayout, second, fabricengine.AddOptions{SkipPush: true}); err != nil {
-		t.Fatalf("Add(%q) from the first pair: %v", second, err)
-	}
-	hubforge.AddPairWith(t, h, recordless, fabricengine.AddOptions{SkipPush: true})
-	if err := os.Remove(fabricengine.OriginRecordPathFor(l, recordless)); err != nil {
-		t.Fatalf("remove the origin record: %v", err)
-	}
-
-	tests := []struct {
-		name string
-		slug string
-		want string
-	}{
-		{"PairForkedFromThePrime", first, ""},
-		{"PairForkedFromAnotherPair", second, first},
-		{"SlugWithNoPair", "parent-ghost", ""},
-		{"PairWithNoOriginRecord", recordless, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got, err := fabricengine.ParentSlug(l, tt.slug)
-			if err != nil {
-				t.Fatalf("ParentSlug(%q) error = %v; want nil", tt.slug, err)
-			}
-			if got != tt.want {
-				t.Errorf("ParentSlug(%q) = %q; want %q", tt.slug, got, tt.want)
-			}
-		})
 	}
 }

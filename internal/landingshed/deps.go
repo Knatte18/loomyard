@@ -141,6 +141,10 @@ type Deps struct {
 	// Told by the caller: true for loom.
 	// False, darn's value, resolves the conflict with the conflict session under the lock, since darn has no other merging row.
 	ConflictReroutes bool
+	// LargeMergeLands lets a merge that needed the conflict session, or whose parent changes touch a file the task changed, go on to the gate instead of rerouting, writing no overlap note.
+	// Told by the caller, for a Finalize whose recipe row declares no reroute edge; it is meant for ConflictReroutes false, since a conflict that aborts the merge still reroutes.
+	// False, the value of loom and darn, reroutes a large merge.
+	LargeMergeLands bool
 
 	// CommitParentRecords commits the parent pair's own run records, which Finalize calls after its merge of the parent branch and before the parent-side merge.
 	// Sibling runs leave their status records uncommitted in the parent pair, and the merge guard refuses any tracked modification there.

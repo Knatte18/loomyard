@@ -12,8 +12,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// RecipeEngines parses recipes.LoomRecipe and recipes.DarnRecipe, collects each row's engine name, de-duplicates, and returns the result sorted.
-// Both recipes are the loom module's, so the set is their union.
+// RecipeEngines parses recipes.LoomRecipe, recipes.DarnRecipe and recipes.BeamRecipe, collects each row's engine name, de-duplicates, and returns the result sorted.
+// All three recipes are the loom module's, so the set is their union.
 // It exists as the input to the cross-consumer coverage guard, which
 // unions every recipe consumer's engine set -- deriving the set from the recipe rather than
 // writing it down is what keeps that union honest without a second hand-maintained table alongside
@@ -25,7 +25,7 @@ import (
 func RecipeEngines() []string {
 	seen := map[string]bool{}
 	var engines []string
-	for _, source := range [][]byte{recipes.LoomRecipe, recipes.DarnRecipe} {
+	for _, source := range [][]byte{recipes.LoomRecipe, recipes.DarnRecipe, recipes.BeamRecipe} {
 		recipe, err := shedbuild.Parse(source)
 		if err != nil {
 			panic(fmt.Sprintf("loomrecipe: RecipeEngines: %v", err))
@@ -52,7 +52,7 @@ type RecipeRow struct {
 	Bouncer bool
 }
 
-// RowNames returns the row names of the named recipe in file order: shedrun.RecipeLoom is the loom recipe, shedrun.RecipeDarn the darn recipe and shedrun.RecipeBatten the batten recipe.
+// RowNames returns the row names of the named recipe in file order: shedrun.RecipeLoom is the loom recipe, shedrun.RecipeDarn the darn recipe, shedrun.RecipeBatten the batten recipe and shedrun.RecipeBeam the beam recipe.
 // Any other recipe name is refused with an error naming it.
 func RowNames(recipe string) ([]string, error) {
 	rows, err := Rows(recipe)
@@ -66,7 +66,7 @@ func RowNames(recipe string) ([]string, error) {
 	return names, nil
 }
 
-// Rows returns the rows of the named recipe in file order: shedrun.RecipeLoom is the loom recipe, shedrun.RecipeDarn the darn recipe and shedrun.RecipeBatten the batten recipe.
+// Rows returns the rows of the named recipe in file order: shedrun.RecipeLoom is the loom recipe, shedrun.RecipeDarn the darn recipe, shedrun.RecipeBatten the batten recipe and shedrun.RecipeBeam the beam recipe.
 // Any other recipe name is refused with an error naming it.
 func Rows(recipe string) ([]RecipeRow, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
@@ -81,7 +81,7 @@ func Rows(recipe string) ([]RecipeRow, error) {
 }
 
 // AmendmentTarget returns the optional `amendment_target` of the named recipe: the row a plan amendment routes to, empty when the recipe sets none.
-// The recipe names are Rows': shedrun.RecipeLoom, shedrun.RecipeDarn and shedrun.RecipeBatten, and any other name is refused with an error naming it.
+// The recipe names are Rows': shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipeBatten and shedrun.RecipeBeam, and any other name is refused with an error naming it.
 func AmendmentTarget(recipe string) (string, error) {
 	parsed, err := parseEmbeddedRecipe(recipe)
 	if err != nil {
@@ -100,6 +100,8 @@ func parseEmbeddedRecipe(recipe string) (shedbuild.Recipe, error) {
 		source = recipes.DarnRecipe
 	case shedrun.RecipeBatten:
 		source = recipes.BattenRecipe
+	case shedrun.RecipeBeam:
+		source = recipes.BeamRecipe
 	default:
 		return shedbuild.Recipe{}, fmt.Errorf("loomrecipe: no embedded recipe named %q", recipe)
 	}

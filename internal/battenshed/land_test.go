@@ -8,6 +8,7 @@ package battenshed
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -48,11 +49,16 @@ type landFixture struct {
 	primeLockBusy       int
 	historyLen          int
 	onSleep             func()
+	// routes are the ready routes the fake ReadyRoutes answers, each given the fixture's recording Notify; nil leaves ReadyRoutes unset.
+	routes []ReadyRoute
+	// routeFails lists the route keys whose Notify reports the line unposted.
+	routeFails []string
 	// orchUnrecorded makes the orch read as having no strand recorded to receive a notice.
 	orchUnrecorded bool
 
 	calls            []string
 	notices          []string
+	routeNotices     map[string][]string
 	slept            []time.Duration
 	now              time.Time
 	primeHeld        bool
@@ -118,6 +124,7 @@ func (f *landFixture) deps() LandDeps {
 			f.calls = append(f.calls, "prune")
 			return f.pruneErr
 		},
+		ReadyRoutes: f.readyRoutes(),
 		LandLock: PrimeLock{
 			Path: "/lock/land",
 			Acquire: func() (func() error, bool, error) {
@@ -145,6 +152,31 @@ func (f *landFixture) deps() LandDeps {
 			OrchStrandRecorded: func() (bool, error) { return !f.orchUnrecorded, nil },
 			Sleep:              func(context.Context, time.Duration) {},
 		},
+	}
+}
+
+// readyRoutes returns the fake ReadyRoutes seam over f.routes, nil when none are set.
+func (f *landFixture) readyRoutes() func([]string) ([]ReadyRoute, error) {
+	if f.routes == nil {
+		return nil
+	}
+	return func([]string) ([]ReadyRoute, error) {
+		routes := make([]ReadyRoute, len(f.routes))
+		for i, route := range f.routes {
+			key := route.Key
+			routes[i] = route
+			routes[i].Notify = func(_ context.Context, line string) (bool, error) {
+				if slices.Contains(f.routeFails, key) {
+					return false, nil
+				}
+				if f.routeNotices == nil {
+					f.routeNotices = map[string][]string{}
+				}
+				f.routeNotices[key] = append(f.routeNotices[key], line)
+				return true, nil
+			}
+		}
+		return routes, nil
 	}
 }
 
@@ -435,7 +467,13 @@ func TestLand_ReadyNotice(t *testing.T) {
 		recordsStop    string
 		wantNotice     string
 		wantHeldWarns  int
+		routes         []ReadyRoute
+		wantRoutes     map[string][]string
 	}{
+		{name: "BeamRouteIsPostedAsItsOwnLineOnce", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, routes: []ReadyRoute{{Key: "beam", Slugs: []string{"b"}}}, wantNotice: "[batten notice] myslug: landed", wantRoutes: map[string][]string{"beam": {"[batten notice] myslug: landed; newly ready: b"}}},
+		{name: "PrimeRouteRidesTheLandingLine", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, routes: []ReadyRoute{{Key: "", Slugs: []string{"b"}, Walked: true}}, wantNotice: "[batten notice] myslug: landed; newly ready: b"},
+		{name: "UnwalkedPrimeRoutePostsToThePrime", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b", "c"}}}, routes: []ReadyRoute{{Key: "", Slugs: []string{"b"}}, {Key: "beam", Slugs: []string{"c"}}}, wantNotice: "[batten notice] myslug: landed", wantRoutes: map[string][]string{"": {"[batten notice] myslug: landed; newly ready: b"}, "beam": {"[batten notice] myslug: landed; newly ready: c"}}},
+		{name: "ASlugInNoRouteIsNamedNowhere", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, routes: []ReadyRoute{{Key: "beam"}}, wantNotice: "[batten notice] myslug: landed"},
 		{name: "NamesARecordsStopAndStillDeploys", recordsStop: "records diverged", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a"}}}, wantNotice: "[batten notice] myslug: landed; the prime's records did not pull: records diverged"},
 		{name: "ReadiesADependant", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, wantNotice: "[batten notice] myslug: landed; newly ready: b"},
 		{name: "ReadiesNothing", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a"}}}, wantNotice: "[batten notice] myslug: landed"},
@@ -451,6 +489,7 @@ func TestLand_ReadyNotice(t *testing.T) {
 			f.ready = tt.ready
 			f.orchUnrecorded = tt.orchUnrecorded
 			f.recordsStop = tt.recordsStop
+			f.routes = tt.routes
 			if tt.snapshot != "" {
 				if err := os.WriteFile(f.scratchDir+"/Land"+readySnapshotFileSuffix, []byte(tt.snapshot), 0o644); err != nil {
 					t.Fatal(err)
@@ -467,6 +506,9 @@ func TestLand_ReadyNotice(t *testing.T) {
 			}
 			if !slices.Equal(f.notices, want) {
 				t.Fatalf("notices = %q; want %q", f.notices, want)
+			}
+			if !maps.EqualFunc(f.routeNotices, tt.wantRoutes, slices.Equal) {
+				t.Fatalf("route notices = %q; want %q", f.routeNotices, tt.wantRoutes)
 			}
 			if tt.recordsStop != "" && !slices.Contains(f.calls, "deploy") {
 				t.Errorf("calls = %v; want the deploy to run after a records stop", f.calls)
@@ -485,6 +527,40 @@ func TestLand_ReadyNotice(t *testing.T) {
 			if !slices.Equal(f.notices, want) {
 				t.Errorf("notices after a re-entry = %q; want %q, none repeated", f.notices, want)
 			}
+			if !maps.EqualFunc(f.routeNotices, tt.wantRoutes, slices.Equal) {
+				t.Errorf("route notices after a re-entry = %q; want %q, none repeated", f.routeNotices, tt.wantRoutes)
+			}
 		})
+	}
+}
+
+// TestLand_ReadyRouteResume asserts a route whose line could not be posted is posted by a resumed row, once, while the landing line already posted is not sent again.
+func TestLand_ReadyRouteResume(t *testing.T) {
+	t.Parallel()
+
+	f := newLandFixture(t)
+	f.ready = []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}
+	f.routes = []ReadyRoute{{Key: "beam", Slugs: []string{"b"}}}
+	f.routeFails = []string{"beam"}
+
+	if outcome, _, err := f.producer().Call(context.Background()); err != nil || outcome != shedengine.Done {
+		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
+	}
+	if len(f.routeNotices["beam"]) != 0 {
+		t.Fatalf("route notices = %q; want none while the route cannot post", f.routeNotices)
+	}
+
+	f.routeFails = nil
+	for range 2 {
+		if outcome, _, err := f.producer().Call(context.Background()); err != nil || outcome != shedengine.Done {
+			t.Fatalf("resumed Call() = %q, %v; want Done, nil", outcome, err)
+		}
+	}
+	wantRoutes := map[string][]string{"beam": {"[batten notice] myslug: landed; newly ready: b"}}
+	if !maps.EqualFunc(f.routeNotices, wantRoutes, slices.Equal) {
+		t.Errorf("route notices = %q; want %q, posted once", f.routeNotices, wantRoutes)
+	}
+	if want := []string{"[batten notice] myslug: landed"}; !slices.Equal(f.notices, want) {
+		t.Errorf("notices = %q; want %q, the landing line once", f.notices, want)
 	}
 }

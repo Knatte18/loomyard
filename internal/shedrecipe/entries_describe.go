@@ -5,6 +5,9 @@
 package shedrecipe
 
 import (
+	"fmt"
+
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -48,4 +51,17 @@ func describeEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 	}
 	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, nil).KeepGateFindings(env.gateFindingsPath(row.Name))
 	return loomshed.NewDiscussionWrite(row.Name, inner, env.CommitDescription), nil
+}
+
+// beamDescribeEntry is the Constructor for the "BeamDescribe" registry row: it rejects every config key and returns landingshed.NewBeamDescribe over Env.BeamDescribe, wrapping that constructor's own error with this package's error-text prefix.
+// A zero Env.BeamDescribe is refused, naming the entry and the Env field, through the constructor's own required-field check.
+func beamDescribeEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	if err := configRejectUnknown(cfg); err != nil {
+		return nil, err
+	}
+	producer, err := landingshed.NewBeamDescribe(row.Name, env.BeamDescribe)
+	if err != nil {
+		return nil, fmt.Errorf("shedrecipe: BeamDescribe: Env.BeamDescribe: %w", err)
+	}
+	return producer, nil
 }

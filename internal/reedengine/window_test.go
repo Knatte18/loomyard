@@ -23,7 +23,9 @@ func TestOpenWindow(t *testing.T) {
 	args := []string{"batten", "run", "my slug"}
 
 	tests := []struct {
-		name   string
+		name string
+		// dir is the working directory handed to OpenWindowIn; empty is OpenWindow's plain form.
+		dir    string
 		script func(f *fakeTmux)
 		// wantPlacement is what follows new-window -d; nil means the plain form, -t on the exact session target.
 		wantPlacement []string
@@ -35,6 +37,13 @@ func TestOpenWindow(t *testing.T) {
 	}{
 		{
 			name:         "OpensADetachedWindow",
+			script:       func(f *fakeTmux) { f.answer("new-window", "@7\n", nil) },
+			want:         WindowResult{WindowID: "@7", Name: name},
+			wantNewCalls: 1,
+		},
+		{
+			name:         "AWorkingDirectoryReachesTheNewWindowCall",
+			dir:          "/work/prime",
 			script:       func(f *fakeTmux) { f.answer("new-window", "@7\n", nil) },
 			want:         WindowResult{WindowID: "@7", Name: name},
 			wantNewCalls: 1,
@@ -133,7 +142,7 @@ func TestOpenWindow(t *testing.T) {
 			fake.answerFormat(windowReadBackFormat, "@7 off\n", nil)
 			tt.script(fake)
 
-			got, err := e.OpenWindow(name, args)
+			got, err := e.OpenWindowIn(name, tt.dir, args)
 
 			switch {
 			case tt.wantCapErr:
@@ -176,7 +185,11 @@ func TestOpenWindow(t *testing.T) {
 				placement = []string{"-t", exactSessionWindowTarget(e.SessionName())}
 			}
 			wantArgv := append(append([]string{"new-window", "-d"}, placement...),
-				"-P", "-F", "#{window_id}", "-n", temporaryName, wantCommand,
+				"-P", "-F", "#{window_id}", "-n", temporaryName)
+			if tt.dir != "" {
+				wantArgv = append(wantArgv, "-c", tt.dir)
+			}
+			wantArgv = append(wantArgv, wantCommand,
 				";", "set-option", "-w", "-t", temporaryTarget, "remain-on-exit", "off",
 				";", "set-option", "-w", "-t", temporaryTarget, "@lyx_hidden", "1",
 				";", "rename-window", "-t", temporaryTarget, name)

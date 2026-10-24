@@ -24,10 +24,14 @@
 // The `Describe` row carries the entry gate `budget.Code-Review`, so a budget of 0 skips it and the writer's own change description stands.
 // DarnRetiredRows maps the writer row's former name, `Darn`, onto `Darn-Write`, so the caller can carry a darn run parked under the old name across with shedengine.RenameProducers.
 //
-// Rows and RowNames serve the loom, darn and batten recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
+// NewBeam is the third builder: it builds the embedded beam recipe, a beam's landing run, and BeamRouting projects that recipe's routing.
+// The recipe reads `Beam-Describe → Finalize`, with no review segment and no reroute edge, so neither takes a budget;
+// a merge Finalize cannot land halts the run for the orch.
+//
+// Rows and RowNames serve the loom, darn, batten and beam recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
 // a review segment is one entry and every other row its own, so a recipe added to Rows is numbered with no change to its readers.
 //
-// AmendmentTarget answers the optional `amendment_target` key of the loom, darn or batten recipe: the row a plan amendment routes to, empty when the recipe sets none.
+// AmendmentTarget answers the optional `amendment_target` key of the loom, darn, batten or beam recipe: the row a plan amendment routes to, empty when the recipe sets none.
 //
 // Every review segment of the loom and darn recipes sets one `role_prefix` on its Bouncer, BurlerReview and BurlerFix rows, and no two segments share a value.
 // A test pins that beside the carry-over check, which pins that each Bouncer row's `carry_over` names the row's own segment.

@@ -33,6 +33,22 @@
 // A missing or unreadable .git entry is the one error of ReedGeometry and of BurlerGeometry, and an unresolvable parent leaves ParentName empty with a warning in all three.
 // hubgeom is still the only reader — no engine resolves a parent, per the Told-Geometry Invariant.
 //
+// ParentOf is the one parent resolver every owner reader is handed: it returns the slug of the pair an entry was forked from, "" for the prime.
+// It reads the slug's origin record over the prime's location, and only when no record is found reads the nearest open beam above the entry on the local board.
+// A found record with no parent worktree reads as the prime and never falls through to the board.
+// A found record's parent is its ParentWorktree, read as the prime when the record names the prime's checked-out branch or the prime's worktree, and never derived by matching the recorded branch against the pairs present here.
+// So a member whose beam pair is absent on this machine still reads the beam as its parent, and the beam's owner as its own.
+// ResolveParent keeps answering the parent pair's orch name for a reader that needs the pair itself:
+// the parent names the driver's prompts carry, and the Discussion-Write parent review, whose reviewer is the recorded parent's own orch and is absent when that orch is not live.
+// The `lyx loom decision add --by parent` guard admits the destination of notices instead, so the orch that receives them can record the call.
+//
+// NearestLiveOrch is the destination of a notice to an orch.
+// It tries the worktree it is told, then walks upward through the origin records' parent worktrees.
+// It answers the nearest worktree whose orch a told predicate reports live, or the prime whatever its state when none is.
+// The predicate is told because the orch's state paths and reed belong to a package that imports hubgeom.
+// The answer's Name is that worktree's orch agent name, formed as ResolveParent forms it, and its Worktree names the worktree, empty for the prime.
+// A worktree with no origin record, an empty parent worktree or a parent worktree that is gone ends the walk at the prime, and so does a cycle; an error from the predicate is returned.
+//
 // Standalone CLIs do not call hubgeom — they have no Location to convert, resolving their own
 // geometry from CLI flags and local paths instead.
 package hubgeom

@@ -5,7 +5,10 @@
 package shedrecipe
 
 import (
+	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/landingshed"
 )
 
 // minimalEntry builds the Env and Config an entry needs to construct successfully.
@@ -36,6 +39,20 @@ func minimalEntries() map[string]minimalEntry {
 		"Describe": {
 			env: newDescribeTestEnv,
 			cfg: func(*testing.T, Env) Config { return gatesCfg("description", 3) },
+		},
+		"BeamDescribe": {
+			env: func(t *testing.T) Env {
+				env := newTestEnv(t)
+				env.BeamDescribe = landingshed.BeamDescribeDeps{
+					Slug:            "demo",
+					DescriptionPath: filepath.Join(t.TempDir(), "summary.md"),
+					Entry:           func() (string, string, error) { return "Title", "Brief", nil },
+					CommitSubjects:  func() ([]string, error) { return nil, nil },
+					Commit:          func() error { return nil },
+				}
+				return env
+			},
+			cfg: emptyConfig,
 		},
 		"PlanWrite": {newTestEnv, emptyConfig},
 		"Stub":      {newTestEnv, emptyConfig},
