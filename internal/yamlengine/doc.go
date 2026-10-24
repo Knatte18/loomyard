@@ -10,6 +10,7 @@
 // [SetEntries] sets whole top-level entries from JSON objects, for a module whose top-level keys are names the operator owns.
 // [RaiseIntFloor] raises one top-level integer key to a floor, carrying every other key and comment through unchanged, for a module's migration hook.
 // [RenameKeys] renames retired top-level keys to their new names with their values and the template's line comment for each new name, for a module's migration hook.
+// [DropKeys] removes retired top-level keys with their values and comments, reporting one line per removed key, for a module's migration hook.
 //
 // # Layer operations
 //

@@ -15,8 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/alignment"
-	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -31,8 +29,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -49,7 +47,6 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		WebsterDir:  "/webster",
 		StencilsDir: "/stencils",
 	}
-	pushBranch := func() error { return nil }
 	registry := modelspec.Registry{"claude/sonnet-5": {}}
 	runner := &shuttleengine.Runner{}
 	recordPath := filepath.Join(t.TempDir(), "pause.json")
@@ -72,10 +69,8 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 			recipe,
 			geom,
 			"task/foo",
-			"https://example.com/origin.git",
 			"main",
 			true,
-			pushBranch,
 			registry,
 			runner,
 			cfg,
@@ -85,7 +80,6 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 			func() (string, error) { return "", nil },
 			planVerifySource(loc),
 			lock,
-			time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 		)
 	}
 	deps := build(shedrun.RecipeLoom)
@@ -93,6 +87,9 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	// A darn run has no plan to trace a failure to.
 	if build(shedrun.RecipeDarn).TraceFailure != nil {
 		t.Error("landingDeps(...).TraceFailure is set for the darn recipe; want nil")
+	}
+	if !deps.ConflictReroutes || build(shedrun.RecipeDarn).ConflictReroutes {
+		t.Error("landingDeps(...).ConflictReroutes is not true for loom and false for darn")
 	}
 
 	// The slug entry stops the verify until the run holds its parent lock, which exempts the slug's entries.
@@ -126,21 +123,91 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 
 	v := reflect.ValueOf(deps)
 	typ := v.Type()
-	// The loom source leaves the Publish skip and failure classifier seams nil, so the walk skips them.
-	if deps.PublishSkip != nil {
-		t.Error("landingDeps(...).PublishSkip is set for loom's verify source; want nil")
-	}
-	if deps.ClassifyVerifyFailure != nil {
-		t.Error("landingDeps(...).ClassifyVerifyFailure is set for loom's verify source; want nil")
+	// FixerSeats is the one field wireLanding fills, from the seat engine wire built.
+	unfilled := map[string]bool{
+		"FixerSeats": true,
 	}
 	for i := 0; i < v.NumField(); i++ {
 		field := v.Field(i)
-		if name := typ.Field(i).Name; name == "PublishSkip" || name == "ClassifyVerifyFailure" {
+		if unfilled[typ.Field(i).Name] {
 			continue
 		}
 		if field.IsZero() {
 			t.Errorf("landingDeps(...).%s is the zero value; want it populated", typ.Field(i).Name)
 		}
+	}
+}
+
+// TestRowEntry asserts rowEntry answers the history index just after the last entry another producer made.
+func TestRowEntry(t *testing.T) {
+	t.Parallel()
+
+	entry := func(producer string) shedengine.HistoryEntry { return shedengine.HistoryEntry{Producer: producer} }
+	tests := []struct {
+		name    string
+		history []shedengine.HistoryEntry
+		want    int
+	}{
+		{"EmptyHistory", nil, 0},
+		{"OwnResumedEntries", []shedengine.HistoryEntry{entry("Webster"), entry("Merge-In"), entry("Merge-In")}, 1},
+		{"ReachedAgainFromAnotherRow", []shedengine.HistoryEntry{entry("Merge-In"), entry("Finalize"), entry("Merge-In")}, 2},
+		{"OnlyOwnEntries", []shedengine.HistoryEntry{entry("Merge-In"), entry("Merge-In")}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := rowEntry(tt.history, "Merge-In"); got != tt.want {
+				t.Errorf("rowEntry(%v, Merge-In) = %d; want %d", tt.history, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFixerTestFileMatcher asserts the matcher a darn run gets is the union over languages, and a loom run's follows the live plan's language.
+func TestFixerTestFileMatcher(t *testing.T) {
+	t.Parallel()
+
+	writePlan := func(t *testing.T, language string) string {
+		t.Helper()
+		planDir := planparser.PlanDir(t.TempDir())
+		plankit.Write(t, planDir, plankit.Plan{
+			Language: language,
+			Cards: []plankit.Card{{
+				Number:        1,
+				Slug:          "first-card",
+				Summary:       "the first card",
+				Groups:        []plankit.Group{{Label: "Edit", Targets: []string{"docs/a.md"}}},
+				Intent:        "change the doc.",
+				ImpactSummary: "none",
+			}},
+		})
+		return planDir
+	}
+	unparseable := t.TempDir()
+
+	tests := []struct {
+		name    string
+		recipe  string
+		planDir string
+		path    string
+		want    bool
+	}{
+		{"DarnUnionGoTest", shedrun.RecipeDarn, "", "a/b_test.go", true},
+		{"DarnUnionCsharpTest", shedrun.RecipeDarn, "", "a/BTests.cs", true},
+		{"DarnUnionSource", shedrun.RecipeDarn, "", "a/b.go", false},
+		{"LoomNoLanguageReadsGo", shedrun.RecipeLoom, writePlan(t, ""), "a/b_test.go", true},
+		{"LoomNoLanguageSourceIsNotATest", shedrun.RecipeLoom, writePlan(t, ""), "a/b.go", false},
+		{"LoomCsharpPlanIgnoresGoTests", shedrun.RecipeLoom, writePlan(t, "csharp"), "a/b_test.go", false},
+		{"LoomCsharpPlanMatchesCsharpTests", shedrun.RecipeLoom, writePlan(t, "csharp"), "a/BTests.cs", true},
+		{"LoomUnparseablePlanCountsEveryFile", shedrun.RecipeLoom, unparseable, "a/b.go", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := fixerTestFileMatcher(tt.recipe, tt.planDir)(tt.path); got != tt.want {
+				t.Errorf("fixerTestFileMatcher(%s, %q)(%q) = %t; want %t", tt.recipe, tt.planDir, tt.path, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -367,126 +434,6 @@ func TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait(t *testing.T) {
 			}
 		})
 	}
-}
-
-// TestLandingAlignmentDeps_Config drives the real Config closure over a temp location with loom.yaml seeded:
-// skip_alignment and a hub with no board dir read Off, and otherwise it reads the resolved settings and alignment_pr_approve.
-// This pins the PR-side half of the criterion that skip_alignment or no board dir leaves both alignment points as before.
-func TestLandingAlignmentDeps_Config(t *testing.T) {
-	t.Parallel()
-
-	recipes := []string{shedrun.RecipeLoom, shedrun.RecipeDarn}
-	depsOf := func(t *testing.T, loc *lyxcwd.Location, recipe string) landingshed.AlignmentDeps {
-		t.Helper()
-		registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(loc))
-		if err != nil {
-			t.Fatal(err)
-		}
-		return landingAlignmentDeps(loc, recipe, t.TempDir(), registry, nil, pauserecord.Geometry{})
-	}
-	configOf := func(t *testing.T, loc *lyxcwd.Location, recipe string) landingshed.AlignmentConfig {
-		t.Helper()
-		cfg, err := depsOf(t, loc, recipe).Config()
-		if err != nil {
-			t.Fatalf("Config() = %v; want nil", err)
-		}
-		return cfg
-	}
-
-	for _, recipe := range recipes {
-		t.Run(recipe+": skip_alignment reads off", func(t *testing.T) {
-			t.Parallel()
-			loc := hubLocation(t, "pair", ".")
-			seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"skip_alignment": "true"})
-			if cfg := configOf(t, loc, recipe); !cfg.Off {
-				t.Errorf("Config() = %+v; want Off", cfg)
-			}
-		})
-	}
-
-	t.Run("no board dir reads off", func(t *testing.T) {
-		t.Parallel()
-		loc := hubLocation(t, "pair", ".")
-		if err := os.RemoveAll(fabricengine.BoardDir(loc.HubPath)); err != nil {
-			t.Fatal(err)
-		}
-		if cfg := configOf(t, loc, shedrun.RecipeLoom); !cfg.Off {
-			t.Errorf("Config() = %+v; want Off", cfg)
-		}
-	})
-
-	t.Run("the template reads on with pr approve and the resolved default settings", func(t *testing.T) {
-		t.Parallel()
-		loc := hubLocation(t, "pair", ".")
-		cfg := configOf(t, loc, shedrun.RecipeLoom)
-		if cfg.Off || !cfg.PRApprove || cfg.Settings.Model == "" || cfg.Settings.Timeout != 20*time.Minute {
-			t.Errorf("Config() = %+v; want on, pr approve and the opus[high] settings with a 20 minute timeout", cfg)
-		}
-	})
-
-	for _, recipe := range recipes {
-		t.Run(recipe+": alignment_pr_approve false reads pr approve false", func(t *testing.T) {
-			t.Parallel()
-			loc := hubLocation(t, "pair", ".")
-			seedLoomConfigWithKeys(t, loc.AnchorPath(), map[string]string{"alignment_pr_approve": "false"})
-			if cfg := configOf(t, loc, recipe); cfg.Off || cfg.PRApprove {
-				t.Errorf("Config() = %+v; want on with pr approve false", cfg)
-			}
-		})
-	}
-
-	t.Run("each recipe tells its own prompt and a record appended while the darn agent runs changes its snapshot", func(t *testing.T) {
-		t.Parallel()
-		loc := &lyxcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "pair", AnchorRel: "."}
-		registry, err := modelspec.LoadRegistry(fabricengine.ConfigDirs(loc))
-		if err != nil {
-			t.Fatal(err)
-		}
-		record, supportLog := loomengine.DiscussionDecisionRecord(loc), loomengine.DiscussionSupportLog(loc)
-
-		loomDeps := landingAlignmentDeps(loc, shedrun.RecipeLoom, t.TempDir(), registry, nil, pauserecord.Geometry{})
-		darnDeps := landingAlignmentDeps(loc, shedrun.RecipeDarn, t.TempDir(), registry, nil, pauserecord.Geometry{})
-		for recipe, prompt := range map[string]alignment.PromptInput{shedrun.RecipeLoom: loomDeps.Prompt, shedrun.RecipeDarn: darnDeps.Prompt} {
-			if prompt.DecisionRecordPath != record || prompt.SupportLogPath != supportLog {
-				t.Errorf("%s prompt paths = %q, %q; want the loomengine accessors' %q, %q", recipe, prompt.DecisionRecordPath, prompt.SupportLogPath, record, supportLog)
-			}
-		}
-		if got, want := loomDeps.Prompt.PlanDir, planparser.PlanDir(loc.AnchorPath()); got != want || loomDeps.Prompt.MeasureStencil != alignment.MeasureLoom {
-			t.Errorf("loom prompt = PlanDir %q, MeasureStencil %q; want %q, %q", got, loomDeps.Prompt.MeasureStencil, want, alignment.MeasureLoom)
-		}
-		if darnDeps.Prompt.PlanDir != "" || darnDeps.Prompt.MeasureStencil != alignment.MeasureDarn {
-			t.Errorf("darn prompt = PlanDir %q, MeasureStencil %q; want an empty plan directory and %q", darnDeps.Prompt.PlanDir, darnDeps.Prompt.MeasureStencil, alignment.MeasureDarn)
-		}
-
-		var sections strings.Builder
-		for _, heading := range []string{"Goal", "Scope", "Decisions", "Constraints", "Auto-mode assumptions", "Open risks", "Acceptance criteria"} {
-			sections.WriteString("## " + heading + "\n\nbody.\n\n")
-		}
-		if err := os.MkdirAll(filepath.Dir(record), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(record, []byte(sections.String()), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(supportLog, []byte("log"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		before, err := darnDeps.Snapshot()
-		if err != nil {
-			t.Fatalf("Snapshot() = %v; want nil", err)
-		}
-		added := discussionparser.AddedDecision{By: "parent", Title: "Keep it", Decision: "Keep it.", Rationale: "It races.", Date: time.Date(2026, 3, 4, 0, 0, 0, 0, time.UTC)}
-		if findings, err := discussionparser.AppendDecision(record, supportLog, added); err != nil || len(findings) != 0 {
-			t.Fatalf("AppendDecision() = %v, %v; want no findings and nil error", findings, err)
-		}
-		after, err := darnDeps.Snapshot()
-		if err != nil {
-			t.Fatalf("Snapshot() = %v; want nil", err)
-		}
-		if before == after {
-			t.Errorf("Snapshot() = %q before and after a recorded decision; want it changed", after)
-		}
-	})
 }
 
 func TestReportOfRunKeepsOnlyTheRunsOwnEntry(t *testing.T) {

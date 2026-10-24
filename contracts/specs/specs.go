@@ -32,6 +32,12 @@ var LoomFinalSummarySpec []byte
 //go:embed loom-discussion-spec.md
 var LoomDiscussionSpec []byte
 
+// LandingFixerReportSpec is the merge fixer's report format contract's shipped-default content.
+// The fixer writes its end-of-turn report against it, and internal/landingshed parses it.
+//
+//go:embed landing-fixer-report-spec.md
+var LandingFixerReportSpec []byte
+
 // registryEntry pairs one spec's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -46,6 +52,7 @@ var entries = []registryEntry{
 	{"loom-plan-spec", &LoomPlanSpec},
 	{"loom-final-summary-spec", &LoomFinalSummarySpec},
 	{"loom-discussion-spec", &LoomDiscussionSpec},
+	{"landing-fixer-report-spec", &LandingFixerReportSpec},
 }
 
 // registry implements stencilstore.Registry over entries.

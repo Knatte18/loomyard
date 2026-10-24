@@ -129,6 +129,21 @@ type MergeResult struct {
 // returns (MergeResult{Conflicts: […]}, nil), leaving the pair mid-merge for resolution via
 // MergeContinue or MergeAbort. MergeIn never squashes.
 func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
+	return f.mergeIn(source, "")
+}
+
+// MergeInAt merges the commit warpSHA into f's current pair's warp checkout, exactly as MergeIn merges source,
+// but the code side takes warpSHA instead of the freshness rule's pick for source.
+// source still names the merge: the merge state records it as the merged branch, so MergeContinue and MergeAbort treat the call as a merge-in of source.
+// A warpSHA that names no commit in the pair's code repository is the source-not-found guard refusal, with nothing merged.
+func (f *Fabric) MergeInAt(source, warpSHA string) (res MergeResult, err error) {
+	return f.mergeIn(source, warpSHA)
+}
+
+// mergeIn is the body MergeIn and MergeInAt share.
+// An empty warpSHA resolves the code side from source through the freshness rule.
+// A set warpSHA replaces that code-side pick after checking it resolves to a commit, while the records side and every other guard still resolve from source.
+func (f *Fabric) mergeIn(source, warpSHA string) (res MergeResult, err error) {
 	rec := NewMutations(filepath.Dir(f.warpPath))
 	defer func() { finalizeMergeResult(&res, rec) }()
 
@@ -180,6 +195,14 @@ func (f *Fabric) MergeIn(source string) (res MergeResult, err error) {
 	reasons = append(reasons, detachedReasons...)
 
 	sources, sourceReasons := resolveMergeSources(f, source)
+	if warpSHA != "" {
+		sourceReasons = nil
+		if _, err := f.code.CommitTree(warpSHA); err != nil {
+			sourceReasons = []string{mergeReasonSourceNotFound}
+		} else {
+			sources.warpSHA = warpSHA
+		}
+	}
 	reasons = append(reasons, sourceReasons...)
 
 	if len(reasons) > 0 {

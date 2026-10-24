@@ -140,7 +140,7 @@ func reasonLabel(state shedengine.State) string {
 	return "waiting"
 }
 
-// haltText renders what the child's state says happened: the state and, when known, the row it stopped at, for example "awaiting at PR-Gate".
+// haltText renders what the child's state says happened: the state and, when known, the row it stopped at, for example "awaiting at Plan-Bouncer".
 func haltText(status shedengine.Status) string {
 	if status.CurrentProducer == "" {
 		return string(status.State)
@@ -323,15 +323,7 @@ func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait) (n
 		return noticeFinding{}, activityStamp{}
 	}
 	if w.status.State != shedengine.StateRunning {
-		// A halt the automatic Publish retry is about to take, or has taken and not finished, is no event for the orch.
-		if w.retry.action != publishRetryNone {
-			return noticeFinding{}, activityStamp{}
-		}
-		// An awaiting child whose parent moved is resumed by this run, which is no event for the orch either.
-		if p.parentMovedUnderGate(w) {
-			return noticeFinding{}, activityStamp{}
-		}
-		return noticeFinding{condition: noticeStateChanged, stamp: p.episode.since.UnixNano(), text: p.publishRetryNoticeText(w)}, activityStamp{}
+		return noticeFinding{condition: noticeStateChanged, stamp: p.episode.since.UnixNano()}, activityStamp{}
 	}
 	// A running child under a pause has no agents at work and no driver to wait for, so none of its conditions is an event.
 	if w.pause.Covered {

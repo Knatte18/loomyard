@@ -13,16 +13,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // wantDarnLandingCall is the landing call gateConfigWithTwoTiers renders over the whole tree.
@@ -46,7 +46,7 @@ func seedDarnHubConfig(t *testing.T, hub, verifyAttempts string, replacements ..
 func TestWire_DarnRecipe(t *testing.T) {
 	t.Parallel()
 
-	darnSeams := []string{"DarnTable", "Darn.ReadRejection", "Darn.ClearRejection", "Darn.Commit", "Darn.LatestOutcome", "Darn.PublishFailure", "Darn.RunStart", "Darn.TaskHead", "Darn.Dirty", "Darn.ParentTips", "Darn.IsAncestor"}
+	darnSeams := []string{"DarnTable", "Darn.Commit", "Darn.LatestOutcome"}
 
 	t.Run("a darn seed fills the darn seams, the verify source and the attempts", func(t *testing.T) {
 		t.Parallel()
@@ -66,9 +66,19 @@ func TestWire_DarnRecipe(t *testing.T) {
 				}
 			}
 		}
-		// envkit.NilSeams skips these two through nilLegal, so direct checks pin that wireDarn tells them.
-		if c.env.RejectReview == nil || c.env.Darn.RecordRejection == nil {
-			t.Errorf("RejectReview nil = %v, Darn.RecordRejection nil = %v after wire() of a darn seed; want both told", c.env.RejectReview == nil, c.env.Darn.RecordRejection == nil)
+		// envkit.NilSeams skips ReviewInput through nilLegal, so a direct check pins that wireDarn tells it the overlap note Finalize writes.
+		if c.env.ReviewInput == nil {
+			t.Fatal("ReviewInput is nil after wire() of a darn seed; want it told")
+		}
+		if path, _, found, err := c.env.ReviewInput(); err != nil || found {
+			t.Errorf("ReviewInput() before a reroute = %q, %v, %v; want not found, nil", path, found, err)
+		}
+		notePath := landingshed.OverlapNotePath(loomengine.LoomScratchDir(loc))
+		if err := landingshed.WriteOverlapNote(notePath, landingshed.MergeRecord{ParentBranch: "main", MergedTip: "p1"}, []string{"b.go"}); err != nil {
+			t.Fatalf("WriteOverlapNote() = %v; want nil", err)
+		}
+		if path, _, found, err := c.env.ReviewInput(); err != nil || !found || path != notePath {
+			t.Errorf("ReviewInput() after a reroute = %q, %v, %v; want %q, found, nil", path, found, err, notePath)
 		}
 		if c.env.VerifyMergeBase == nil {
 			t.Error("c.env.VerifyMergeBase is nil after wire() of a darn seed; want the merge base reader")
@@ -91,14 +101,13 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if command, err := c.env.VerifyCommand(); err != nil || command != wantDarnLandingCall {
 			t.Errorf("c.env.VerifyCommand() = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
 		}
-		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Darn-Write"`) {
-			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Darn-Write row", got)
+		// gateConfigWithTwoTiers lists tiers 0 and 1 for `landing` and tier 0 for `round`, so the landing call tells the told list apart.
+		round, err := c.env.Round()
+		if err != nil {
+			t.Fatalf("c.env.Round() error = %v; want nil", err)
 		}
-		if got := c.verifySource().failureTarget; got != "Darn-Write" {
-			t.Errorf("verifySource().failureTarget = %q; want Darn-Write", got)
-		}
-		if c.verifySource().classify == nil {
-			t.Error("verifySource().classify = nil; want the darn failure classifier")
+		if call := round.Render("--all"); call != wantDarnLandingCall {
+			t.Errorf("c.env.Round().Render(--all) = %q; want the landing call %q", call, wantDarnLandingCall)
 		}
 	})
 
@@ -182,7 +191,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 				Models:         c.env.Segments["Darn-Review"].Models,
 				ReviewKey:      tt.wantReviewKey,
 				FixKey:         tt.wantFixKey,
-				Bouncer:        c.env.Segments["Webster-Review"].Bouncer,
+				Bouncer:        c.env.Segments["Code-Review"].Bouncer,
 				MaxBounces:     1,
 				MaxBouncesKey:  "review_max_bounces",
 				HardMaxBounces: 2, HardMaxBouncesKey: "review_hard_max_bounces",
@@ -246,12 +255,6 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if c.env.DarnTable != nil || c.env.Darn.Commit != nil || c.env.VerifyMergeBase != nil || c.env.VerifyTreeScope != nil || c.env.DarnVerifyAttempts != 0 {
 			t.Errorf("a loom seed filled a darn seam: DarnTable nil = %v, Darn.Commit nil = %v, VerifyMergeBase nil = %v, VerifyTreeScope nil = %v, DarnVerifyAttempts = %d", c.env.DarnTable == nil, c.env.Darn.Commit == nil, c.env.VerifyMergeBase == nil, c.env.VerifyTreeScope == nil, c.env.DarnVerifyAttempts)
-		}
-		if got := c.verifySource().failedWayForward; !strings.Contains(got, `"lyx loom goto --to Webster-Burler-Review"`) {
-			t.Errorf("verifySource().failedWayForward = %q; want it to route back to the Webster-Burler-Review row", got)
-		}
-		if c.verifySource().classify != nil {
-			t.Error("a loom seed set verifySource().classify; want nil")
 		}
 	})
 
@@ -366,9 +369,9 @@ func TestRecipeRouting(t *testing.T) {
 		wantRow string
 		absent  string
 	}{
-		{shedrun.RecipeLoom, loomshed.NamePRRework, loomshed.NameDarnWrite},
-		{"", loomshed.NamePRRework, loomshed.NameDarnWrite},
-		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NamePRRework},
+		{shedrun.RecipeLoom, loomshed.NameMergeIn, loomshed.NameDarnWrite},
+		{"", loomshed.NameMergeIn, loomshed.NameDarnWrite},
+		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NameMergeIn},
 	}
 	for _, tt := range tests {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {
@@ -403,7 +406,7 @@ func TestLatestDarnOutcome(t *testing.T) {
 		{name: "no Darn-Write entry", status: &shedengine.Status{History: []shedengine.HistoryEntry{{Producer: loomshed.NamePreflight, Outcome: shedengine.Done}}}},
 		{
 			name:      "latest Darn-Write entry of a run that moved on carries no reason",
-			status:    &shedengine.Status{CurrentProducer: loomshed.NamePublish, State: shedengine.StateRunning, Error: "stale", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarnWrite, Outcome: shedengine.Done}}},
+			status:    &shedengine.Status{CurrentProducer: loomshed.NameFinalize, State: shedengine.StateRunning, Error: "stale", History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.Stuck}, {Producer: loomshed.NameDarnWrite, Outcome: shedengine.Done}}},
 			wantFound: true,
 			want:      loomshed.DarnOutcome{Outcome: shedengine.Done},
 		},
@@ -452,39 +455,4 @@ func firstNonEmptyState(st shedengine.State) shedengine.State {
 		return shedengine.StateRunning
 	}
 	return st
-}
-
-func TestDarnDeps_PublishFailureNamesThePresentRecord(t *testing.T) {
-	t.Parallel()
-
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-	verifyDir := t.TempDir()
-	deps := darnDeps(loc, shedrun.SelfRunID, verifyDir)
-
-	if path, _, found, err := deps.PublishFailure(); err != nil || found || path != "" {
-		t.Fatalf("PublishFailure() with no record = %q, %v, %v; want empty, false, nil", path, found, err)
-	}
-
-	paths := verifytree.NewPaths(loc.WorktreePath(), verifyDir)
-	if err := verifytree.WritePublishFailure(paths, verifytree.PublishFailure{Kind: verifytree.FailureKindPlanVerify, Head: "abc123"}); err != nil {
-		t.Fatalf("WritePublishFailure() = %v; want nil", err)
-	}
-	path, record, found, err := deps.PublishFailure()
-	if err != nil || !found || path != paths.PublishFailure || record.Head != "abc123" {
-		t.Errorf("PublishFailure() with a record = %q, head %q, %v, %v; want %q, head abc123, true, nil", path, record.Head, found, err, paths.PublishFailure)
-	}
-}
-
-func TestDarnDeps_RejectionSeamsReadAndClearTheRecord(t *testing.T) {
-	t.Parallel()
-
-	loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-	deps := darnDeps(loc, shedrun.SelfRunID, t.TempDir())
-
-	if _, found, err := deps.ReadRejection(); err != nil || found {
-		t.Fatalf("ReadRejection() with no record = found %v, %v; want false, nil", found, err)
-	}
-	if err := deps.ClearRejection(); err != nil {
-		t.Errorf("ClearRejection() with no record = %v; want nil", err)
-	}
 }

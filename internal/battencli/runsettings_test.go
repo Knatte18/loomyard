@@ -15,7 +15,7 @@ import (
 // TestPrepareRunSettings pins how Seed-Child's prepare step lays a task's run settings over its run profile, and that an unknown profile, a profiles file that does not decode, and a refused key each route to Stuck through ErrInvalidRunSettings.
 func TestPrepareRunSettings(t *testing.T) {
 	t.Parallel()
-	const profiles = "light:\n  loom: {plan_max_bounces: 1, merge_max_bounces: 1}\n"
+	const profiles = "light:\n  loom: {plan_max_bounces: 1, code_max_bounces: 1, merge_max_bounces: 1}\n"
 	tests := []struct {
 		name        string
 		profilesYML string
@@ -29,10 +29,10 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"darn": "review_max_bounces: 1\n"},
 		},
 		{
-			name:        "the task's settings lie over the profile's",
+			name:        "the task's settings lie over the profile's, and the profile's retired merge_max_bounces is dropped",
 			profilesYML: profiles,
 			settings:    battenshed.RunSettings{Profile: "light", Settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}}},
-			wantDocs:    map[string]string{"loom": "merge_max_bounces: 1\nplan_max_bounces: 3\n"},
+			wantDocs:    map[string]string{"loom": "code_max_bounces: 1\nplan_max_bounces: 3\n"},
 		},
 		{
 			name:        "an unknown profile is Stuck naming it",

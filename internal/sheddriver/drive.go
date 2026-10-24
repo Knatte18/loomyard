@@ -88,14 +88,14 @@ type Deps struct {
 	Watched func() bool
 	// Arbiter is the stronger agent a tackler escalates to; nil means none is wired.
 	Arbiter *ArbiterSeam
-	// Verify reads the verify halt record; nil means no stop is a verify halt.
-	Verify *VerifySeam
 	// HandOver hands the run to a fresh driver of a newer build; nil means the driver reads no build and never hands over.
 	HandOver *HandOverSeam
 	// Tamper compares the worktree with the snapshot the tackler attempt recorded; nil acts on a tackler verdict without the comparison.
 	Tamper *TamperSeam
 	// StartCheck judges the row a driver finds blocked at its start before it steps anything, and returns a refusal that hands the run back; nil checks nothing.
 	StartCheck func(row string) (refusal string, err error)
+	// HandsBack is the recipe's told check of a blocked stop that goes to the orch, answering for a producer and the error its blocked status persists; nil marks nothing from a status.
+	HandsBack func(producer, reason string) bool
 }
 
 // ArbiterSeam is the stronger agent a tackler escalation, or a stop only it may judge, goes to.
@@ -124,14 +124,6 @@ type ArbiterOutcome struct {
 	Verdict string
 	// Role is the role name the stop report's attempt line quotes.
 	Role string
-}
-
-// VerifySeam reads the verify halt record a blocked stop may match.
-type VerifySeam struct {
-	// Halt reports whether the verify failure record matches the blocked stop, and the row it names.
-	Halt func() (matches bool, target string, err error)
-	// RetrySpentElsewhere reports whether another actor already spent the run's one verify retry; optional, ORed with the settle records.
-	RetrySpentElsewhere func() (bool, error)
 }
 
 // HandOverSeam hands the run to a fresh driver of a newer build.
@@ -294,24 +286,6 @@ func (d *goDriver) settleStop(ctx context.Context, stop Stop) (attempt string, e
 			}
 			stop = moved
 			continue
-		case driveActionVerifyGoto:
-			d.settle(stop, shedrun.SettlerGoRule, shedrun.SettleVerifyRetry, decision.Rule, facts.VerifyTarget)
-			if err := d.deps.Goto(ctx, facts.VerifyTarget); err != nil {
-				logger.Warn("sheddriver: drive: the verify goto was refused; rechecking the run", "run", d.deps.RunID, "target", facts.VerifyTarget, "error", err)
-				moved, movedExit, recheckErr := d.recheck(stop)
-				if recheckErr != nil {
-					return "", true, d.handBackStop(stop, decision, recheckErr)
-				}
-				switch {
-				case movedExit:
-					return "", true, nil
-				case moved.Restep:
-					return "", false, nil
-				}
-				stop = moved
-				continue
-			}
-			return "", false, nil
 		case driveActionHandBack, driveActionRelayHandBack:
 			return "", true, d.handBackStop(stop, decision, nil)
 		case driveActionHandOver:
@@ -641,7 +615,7 @@ func (d *goDriver) checkBlockedStart(status shedengine.Status, statusFound bool)
 	if refusal == "" {
 		return false, nil
 	}
-	return true, d.handBackAs(stopFromStatus(status), driveHandBack{Rules: []string{refusal}}, "the start check refused the blocked stop")
+	return true, d.handBackAs(stopFromStatus(status, d.deps.HandsBack), driveHandBack{Rules: []string{refusal}}, "the start check refused the blocked stop")
 }
 
 // resumeOpenAttempt finds, once before the first step, the stop a halted run left with an agent attempt still open, so a restarted driver reuses the attempt instead of spawning a second agent.
@@ -748,23 +722,6 @@ func (d *goDriver) facts(stop Stop) (driveFacts, error) {
 		}
 	}
 
-	if key.State == string(shedengine.StateBlocked) && d.deps.Verify != nil {
-		matches, target, err := d.deps.Verify.Halt()
-		if err != nil {
-			return driveFacts{}, fmt.Errorf("reading the verify halt: %w", err)
-		}
-		facts.VerifyMatches, facts.VerifyTarget = matches, target
-	}
-	if facts.VerifyMatches {
-		facts.VerifyRetrySpent = GoVerifyRetrySpent(records)
-		if d.deps.Verify.RetrySpentElsewhere != nil {
-			spent, err := d.deps.Verify.RetrySpentElsewhere()
-			if err != nil {
-				return driveFacts{}, fmt.Errorf("reading whether the verify retry was spent elsewhere: %w", err)
-			}
-			facts.VerifyRetrySpent = facts.VerifyRetrySpent || spent
-		}
-	}
 	return facts, nil
 }
 
@@ -802,12 +759,12 @@ func (d *goDriver) recheck(stop Stop) (next Stop, exit bool, err error) {
 
 	if n := len(status.History); n > 0 && status.History[n-1].Outcome == shedengine.OutcomeGoto {
 		d.settle(stop, shedrun.SettlerGoRule, shedrun.SettleMoved, "an orch goto moved the run: re-step", status.CurrentProducer)
-		moved := stopFromStatus(status)
+		moved := stopFromStatus(status, d.deps.HandsBack)
 		moved.Restep = true
 		return moved, false, nil
 	}
 
-	moved := stopFromStatus(status)
+	moved := stopFromStatus(status, d.deps.HandsBack)
 	raw, err := json.Marshal(map[string]any{
 		"state":  moved.State,
 		"reason": "",
@@ -897,7 +854,7 @@ func (d *goDriver) handBackAs(stop Stop, h driveHandBack, outcome string) error 
 func (d *goDriver) handBackFailure(cause error) error {
 	var stop Stop
 	if status, found, err := d.deps.ReadStatus(); err == nil && found {
-		stop = stopFromStatus(status)
+		stop = stopFromStatus(status, d.deps.HandsBack)
 	}
 	rule := "a failure the driver cannot act on: hand back"
 	d.rules = append(d.rules, rule)

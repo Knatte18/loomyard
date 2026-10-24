@@ -1,5 +1,4 @@
 // finalize_owner_test.go covers Finalize's owner checks against scripted reconcile reports and owner seams.
-// Like its sibling, none of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
 
 package landingshed
 

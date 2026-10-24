@@ -190,12 +190,14 @@ func callProducer(t *testing.T, producer string, pm preMerge, res *recordingReso
 		deps.MergeRecordPath = MergeRecordPath(t.TempDir())
 		deps.TaskHead = func() (string, error) { return "head", nil }
 		deps.MergeBase = func(string) (string, error) { return "base", nil }
+		deps.RowEntry = func(string) (int, error) { return 1, nil }
 		deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
 			return fabricengine.ParentTips{Local: "tip", Relation: fabricengine.ParentNoUpstream}, nil
 		}
 		return (&MergeIn{deps: deps, resolver: res, premerge: pm}).Call(context.Background())
 	case finalizeName:
-		return (&Finalize{deps: deps, resolver: res, premerge: pm}).Call(context.Background())
+		merger := &recordingParentMerger{}
+		return (&Finalize{deps: deps, resolver: res, premerge: pm, parentOpener: func() (parentMerger, error) { return merger, nil }}).Call(context.Background())
 	default:
 		t.Fatalf("unknown producer %q", producer)
 		return "", shedengine.OutputPointer{}, nil

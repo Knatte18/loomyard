@@ -1,5 +1,5 @@
-// Package failuretrace traces a failed Merge-In or Publish verify log to the plan cards whose targets hold the failing code.
-// The result is the Publish failure record's `cards`, `later_range` and `untraced`, so a reviewer starts a fix from the commits that wrote the failing members.
+// Package failuretrace traces a failed Merge-In or Finalize verify log to the plan cards whose targets hold the failing code.
+// The result is the landing failure record's `cards`, `later_range` and `untraced`, so a reviewer starts a fix from the commits that wrote the failing members.
 //
 // The package lives apart from the landing and loom producer packages, which link no tree-sitter grammar, because it reaches quarry through internal/planglyph.
 // It is told the worktree root and the anchor path, takes the plan, Webster and scratch directories from the owning packages' own path functions, joins `go.mod` and its existence checks onto the worktree root, and reads plan refs only through internal/planparser.

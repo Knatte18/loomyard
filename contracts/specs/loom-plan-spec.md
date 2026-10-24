@@ -308,12 +308,12 @@ and a half-done card is resumed by discarding uncommitted changes and restarting
 
 A Webster fork, the recovery strand or a verify-gate fixer that departs from its card because a PATTERN entry forbids the card's way records each departure as one trailer line in the departing commit's body, `Pattern-Departure: <PATTERN-entry-id> — <what differs from the card and why>`, in the commit message's last paragraph, where git reads trailers.
 A departure from an entry the task declares changed in the overview's `## PATTERN changes` cites the declared new text, never the old.
-`record-batch` and `recover-batch` read the trailers of the batch's own non-merge first-parent commits into the digest's `departures`, and the verify gate reads the verify-gate fixers'; Webster-Review reads them in the commit messages of its range.
+`record-batch` and `recover-batch` read the trailers of the batch's own non-merge first-parent commits into the digest's `departures`, and the verify gate reads the verify-gate fixers'; Code-Review reads them in the commit messages of its range.
 
 ## verify model
 
 The hub's tests run through `lyx gate test`, which runs the numbered tiers `gate.yaml` declares over a scope lyx computes.
-A gate is a named list of tiers: the `card` gate runs per card, the `batch` gate per batch, the `round` gate between review rounds, the `final` gate once for the whole plan, and the `landing` and `publish` gates at landing.
+A gate is a named list of tiers: the `card` gate runs per card, the `batch` gate per batch, the `round` gate between review rounds, the `final` gate once for the whole plan, and the `landing` gate at Merge-In and Finalize.
 The hub's tiers and gate lists reach the plan writer and the plan reviewer in their prompts, rendered from `gate.yaml`.
 A plan author names no gate, tier list or target list, because the Go-rendered prompts and the gates carry them.
 
@@ -321,9 +321,9 @@ The per-card **`**Verify:**`** field stays the optional, rare escape hatch for w
 A `**Verify:**` line that tests is one `lyx gate test --wait` call with a tier list and a scope form, such as `lyx gate test --wait --tier 1 --card <card id>`, and never a raw test command or a target list.
 The plan-level `## verify:` body section in `00-overview.md` is accepted and ignored: the parser still reads it, and the plan gate reports an informational finding, because the `final` gate has replaced it.
 
-Landing runs the `landing` and `publish` gates in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
-and halts Stuck on failure before anything is pushed or landed.
-Both also halt Stuck on a dirty tree, so only committed content is ever verified, pushed or landed.
+Merge-In and Finalize run the `landing` gate in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
+and, on a failure, run the merge fixer before anything is landed, halting only when the fixer's cap is spent or its change is over the caps.
+Both also halt Stuck on a dirty tree, so only committed content is ever verified or landed.
 
 The tiers below match this repo's own test-tier discipline:
 
@@ -341,7 +341,7 @@ The tiers below match this repo's own test-tier discipline:
 - **Tier 3 (rare, explicit only, never automatic).**
   Tests that drive a real LLM, gated by the `llm` build tag — expensive in both wall-clock and tokens.
   Never swept into an automatic per-card or per-plan gate under any circumstance; a tier that compiles them (`go vet -tags llm`) never runs them.
-  The `tmux` tag is a separate, token-free tier that the `final` gate compiles (`go vet -tags tmux`) and never runs; Publish runs it through the `publish` gate.
+  The `tmux` tag is a separate, token-free tier that the `final` gate compiles (`go vet -tags tmux`); the `final` and `landing` gates run it when their lists name it.
   A card that genuinely needs one is exactly what the optional `Verify:` field is for: an explicit, author-named exception, never something inferred.
 
 The optional per-card `Verify:` field exists for what tier 1's automatic gate cannot catch on its own — a specific CLI smoke test, a targeted tier 2 scenario, or, rarely, a tier 3 case.

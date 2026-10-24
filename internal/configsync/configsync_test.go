@@ -704,14 +704,14 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			primeFile:    "deploy: make deploy-prime\n",
 			wantSeed:     SeedPrime,
 			wantContains: []string{"make deploy-prime"},
-			wantAbsent:   []string{"require_pr_to_base:"},
+			wantAbsent:   []string{"deploy_branches:"},
 		},
 		{
 			name:         "landing absent and no prime copy starts as the header-only base",
 			module:       "landing",
 			wantSeed:     SeedTemplate,
 			wantContains: []string{configengine.SparseBaseHeader},
-			wantAbsent:   []string{"require_pr_to_base:"},
+			wantAbsent:   []string{"deploy_branches:"},
 		},
 		{
 			name:         "fabric absent ignores the prime copy",

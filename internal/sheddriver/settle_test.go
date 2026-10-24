@@ -107,14 +107,4 @@ func TestSettleRecords(t *testing.T) {
 			t.Errorf("ReadSettleRecords() = %+v; want only the first record, not the torn line", got)
 		}
 	})
-
-	t.Run("the verify retry is spent only by a verify-retry record", func(t *testing.T) {
-		t.Parallel()
-		if GoVerifyRetrySpent([]SettleRecord{first}) {
-			t.Error("GoVerifyRetrySpent(restep only) = true; want false")
-		}
-		if !GoVerifyRetrySpent([]SettleRecord{first, second}) {
-			t.Error("GoVerifyRetrySpent(with verify-retry) = false; want true")
-		}
-	})
 }

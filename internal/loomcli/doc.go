@@ -60,7 +60,7 @@
 //   - awaiting at a review segment's Bouncer row with a circling decision recorded: handled as a halted run, so a live, parked driver is woken and its step acts on the decision.
 //   - awaiting at a Bouncer row with no decision: refused, naming the circling verbs and then resume.
 //   - awaiting at a Bouncer row with an unreadable decision: refused naming the file, to fix it or delete it and record the decision again.
-//   - awaiting at any other row: refused, naming `lyx loom approve` or `lyx loom reject`, after which a batten run watching the child resumes it, or `lyx batten run <slug>` from the prime when none does.
+//   - awaiting at any other row: refused, naming the verb the run's waiting note names, after which a batten run watching the child resumes it, or `lyx batten run <slug>` from the prime when none does.
 //   - running: a no-op success when the driver is live or holds the run lock or the driver lock, and refused as a halted run otherwise.
 //   - halted with the run lock or the driver lock held, or with a live driver and no park marker: refused with the kind `driver_not_parked`, to retry shortly; a held driver lock means the Go driver is still settling the stop.
 //   - halted with a live driver and a park marker: resumed, refused with `merge_in_progress` over an unfinished merge under start's Publish and Finalize exception, and with `driver_busy` when the driver's pane would not take the resume line.
@@ -137,7 +137,7 @@
 // The prompt carries `amendment_target`: the run's recipe's `amendment_target` key (loom's `Plan-Burler-Review`; darn and batten set none) once the current generation's plan is approved, and `none` otherwise.
 // It is read at each spawn, since the driver holds its arbiter seams for the whole drive and the plan is approved mid-drive, so a drive that began before approval still routes.
 // The arbiter may then record a plan amendment and name that target as its goto.
-// Each `--amends-plan` call re-admits one goto onto the target, the arbiter's repeats are capped by `arbiter_max_spawns` counted from its attempt records, and scope widening is bounded by the stencil's hand-on rule, since the arbiter's entry joins the answer key Plan-Review and PR-Gate's alignment agent judge against.
+// Each `--amends-plan` call re-admits one goto onto the target, the arbiter's repeats are capped by `arbiter_max_spawns` counted from its attempt records, and scope widening is bounded by the stencil's hand-on rule, since the arbiter's entry joins the answer key Plan-Review judges against.
 //
 // The stop key is the status file's current producer, history length and state.
 // A re-run for a stop key an attempt already arbitrated spawns nothing:
@@ -257,27 +257,19 @@
 // An escalation, a timeout or any failure leaves the gate to deliver to the parent, with the reviewer brief naming the agent's report and the reason.
 // The status commit stages the alignment directory with the run records.
 //
-// # PR-Gate alignment
-//
-// PR-Align runs an `internal/alignment` session rooted at the run's `pr-gate` alignment directory, one agent per pull request head (key `pr-<number>-<head>`), with the alignment note beside it.
-// It reads `skip_alignment`, `alignment`, `alignment_timeout_min` and `alignment_pr_approve` from loom.yaml on each call, for a loom run and a darn run alike.
-// Its decision snapshot covers the decision record and the board notes titled `Decision for <slug>:`, so a decision recorded while the agent runs turns its approve into an escalation to the run's parent.
-// A darn run's prompt names no plan directory and carries darn's pr-gate measure; every other recipe's names the plan directory and loom's measure.
-//
 // The landing wiring reads the run's start from the pair's seed and fails on a seed it cannot decode.
-// `lyx loom approve` and `lyx loom reject` look up the pull request created at or after that start and refuse when the seed cannot be read.
 //
 // # Review subjects
 //
 // The wiring tells each Bouncer row what its segment judges, so a re-entry over an unchanged subject settles without a review and a changed one reviews only the change under `review_amend_max_bounces`.
-// A recipe row names its subject by its `subject` key: Discussion-Bouncer and Plan-Bouncer `document`, Webster-Bouncer and darn's Darn-Bouncer `code`, Merge-Bouncer `merge`.
+// A recipe row names its subject by its `subject` key: Discussion-Bouncer and Plan-Bouncer `document`, Webster-Bouncer and darn's Darn-Bouncer `code`.
 // A document subject hashes the row's artifact paths in order: the decision record through its identity text, a plan directory as its overview's identity text and its top-level card files, and an absent path as absent.
 // Its Base is the commit the run records' checkout stands at.
-// A code subject is the task worktree's change against the merge base with the recorded parent branch, leaving out the run's own state directories and the harness's own files while untracked.
+// A code subject is the task worktree's change against the task's merge base, leaving out the run's own state directories and the harness's own files while untracked.
 // A run with no recorded parent branch tells no code subject, so its code segments write no records.
-// A change confined to the harness's own files reads as an unchanged subject; the verify tiers at Publish, darn's Merge-In and loom's Merge-Review bound it.
-// A merge subject hashes the merge record's merged tip and merge commit.
+// A change confined to the harness's own files reads as an unchanged subject; the landing gate at Merge-In and Finalize bounds it.
 //
-// A loom run tells each Bouncer the findings file and time of the latest PR-Gate reject its rework directory kept.
-// A darn run's Darn-Write row writes them into `reject-review.md` in the landing directory before it clears the pending rejection, and its Commit seam commits that file.
+// The task's merge base is the one commit every reader of the task's diff starts from: the code subject, the Code-Review rubric's range, Describe's diff, and the verify gate's lints and tree scope.
+// It is the merge base of HEAD with the parent tip the merge record names, since the local parent branch can lag a tip the task merged.
+// With no merge record, or one that cannot be decoded and is logged at Warn, it falls back to the merge base with the local parent branch.
 package loomcli

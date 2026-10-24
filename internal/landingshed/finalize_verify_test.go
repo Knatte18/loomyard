@@ -1,5 +1,4 @@
-// finalize_verify_test.go covers the clean-tree checks and the post-merge verify gate as Finalize.mergeInStep wires them around every parent merge-in, against fake verifytree seams, a scripted resolver and the package's fake merger.
-// None of its tests runs in parallel: each builds its Deps through newTestDeps, which swaps the package-level NewGitHubClient.
+// finalize_verify_test.go covers the clean-tree checks and the post-merge verify gate as Finalize.mergeAndGate wires them around every merge of the parent, against fake verifytree seams, a scripted resolver and the package's fake merger.
 
 package landingshed
 
@@ -16,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// The clean-tree checks one mergeInStep makes, by their zero-based position within it.
+// The clean-tree checks one mergeAndGate pass makes, by their zero-based position within it.
 const (
 	finalizeCleanBeforeMergeIn = iota
 	finalizeCleanAfterMergeIn
@@ -28,11 +27,15 @@ const (
 type scriptedResolver struct {
 	results []mergeresolve.Result
 	calls   int
+	sources []string
+	tips    []string
 }
 
-func (r *scriptedResolver) Resolve(ctx context.Context, source string) (mergeresolve.Result, error) {
+func (r *scriptedResolver) Resolve(ctx context.Context, source, tip string) (mergeresolve.Result, error) {
 	idx := r.calls
 	r.calls++
+	r.sources = append(r.sources, source)
+	r.tips = append(r.tips, tip)
 	if idx >= len(r.results) {
 		idx = len(r.results) - 1
 	}
@@ -41,11 +44,10 @@ func (r *scriptedResolver) Resolve(ctx context.Context, source string) (mergeres
 
 // finalizeVerifyFixture is a Finalize over a real gate with fake verifytree seams.
 type finalizeVerifyFixture struct {
-	fz           *Finalize
-	gate         *gateFixture
-	merger       *recordingParentMerger
-	markedDone   int
-	openerCalled int
+	fz         *Finalize
+	gate       *gateFixture
+	merger     *recordingParentMerger
+	markedDone int
 }
 
 func newFinalizeVerifyFixture(t *testing.T, res resolver, results ...mergeCallResult) *finalizeVerifyFixture {
@@ -58,13 +60,10 @@ func newFinalizeVerifyFixture(t *testing.T, res resolver, results ...mergeCallRe
 	}
 	fx.merger = &recordingParentMerger{results: results}
 	fx.fz = &Finalize{
-		deps:     deps,
-		resolver: res,
-		gate:     fx.gate.gate,
-		parentOpener: func() (parentMerger, error) {
-			fx.openerCalled++
-			return fx.merger, nil
-		},
+		deps:         deps,
+		resolver:     res,
+		gate:         fx.gate.gate,
+		parentOpener: func() (parentMerger, error) { return fx.merger, nil },
 	}
 	return fx
 }
@@ -73,11 +72,11 @@ func resolved(alreadyUpToDate bool) mergeresolve.Result {
 	return mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved, AlreadyUpToDate: alreadyUpToDate}
 }
 
-// requireNotLanded fails the test when the parent opener, the parent-side merge, the push or the board update ran.
+// requireNotLanded fails the test when the parent-side merge, the push or the board update ran.
 func (fx *finalizeVerifyFixture) requireNotLanded(t *testing.T) {
 	t.Helper()
-	if fx.openerCalled != 0 || len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
-		t.Errorf("opener calls = %d, merge calls = %d, push calls = %d; want none after a halted gate", fx.openerCalled, len(fx.merger.calls), len(fx.merger.pushCalls))
+	if len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
+		t.Errorf("merge calls = %d, push calls = %d; want none after a halted gate", len(fx.merger.calls), len(fx.merger.pushCalls))
 	}
 	if fx.markedDone != 0 {
 		t.Errorf("MarkTaskDone called %d time(s); want never", fx.markedDone)
@@ -101,8 +100,6 @@ func TestFinalizeVerify_Lands(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(tt.alreadyUpToDate)})
 			fx.gate.fake.result = tt.result
-			// A told publish call must not run here, so the single verify call below is the landing call.
-			fx.fz.gate.publishCommand = func() (string, error) { return "lyx gate test --wait --tier 2 --all", nil }
 			shedfake.RequireOutcome(t, fx.fz, shedengine.Done)
 			if len(fx.merger.calls) != 1 || len(fx.merger.pushCalls) != 1 {
 				t.Errorf("merge calls = %d, push calls = %d; want 1 each", len(fx.merger.calls), len(fx.merger.pushCalls))
@@ -117,25 +114,34 @@ func TestFinalizeVerify_Lands(t *testing.T) {
 	}
 }
 
-// TestFinalizeVerify_Fail pins that a failed verify ends Stuck with a reason naming the exit code and the log, and lands nothing.
+// TestFinalizeVerify_Fail pins that a failed verify spawns the finalize fixer and writes the landing failure record, and that a fixer that spends its attempt without a fix halts naming the log and lands nothing.
 //
-//testtiming:keep pins the reason naming the exit code and the log path, which TestFinalizeVerify_DirtyTreeHalts and the retry cases do not assert
+//testtiming:keep pins the landing failure record's gate kind and row, which TestFinalize_GateAndFixer does not assert
 func TestFinalizeVerify_Fail(t *testing.T) {
-	fx := newFinalizeVerifyFixture(t, &recordingResolver{result: resolved(false)})
-	fx.gate.fake.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
-	writeVerifyLog(t, fx.gate, "verify output")
-	reason := requireFinalizeReason(t, shedfake.RequireOutcome(t, fx.fz, shedengine.Stuck))
-	if log := filepath.Join(fx.gate.paths.Dir, "verify-1.log"); !strings.Contains(reason, "exit code 1") || !strings.Contains(reason, log) {
-		t.Errorf("reason %q lacks the exit code or the log path %s", reason, log)
+	fx := newFinalizeGateFixture(t)
+	fx.fz.deps.Config.FinalizeFixAttempts = 1
+	fx.scriptGate(verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1})
+	fx.seats.turns = []func(){fx.turn(t, fixedReport, "f1")}
+
+	outcome, ptr := fx.call(t)
+
+	// The record names the run of the fixer's own turn, the last verify that failed.
+	log := filepath.Join(fx.gate.paths.Dir, "verify-2.log")
+	requireHalt(t, outcome, ptr, "spent every attempt", log)
+	if len(fx.seats.tables) != 1 {
+		t.Errorf("fixer sessions = %d; want 1", len(fx.seats.tables))
 	}
-	if _, ok, _ := verifytree.ReadPublishFailure(fx.gate.paths); ok {
-		t.Error("Finalize wrote a Publish failure record")
+	failure, found, err := verifytree.ReadLandingFailure(fx.gate.paths)
+	if err != nil || !found || failure.Kind != verifytree.FailureKindLanding || failure.LogPath != log {
+		t.Errorf("landing failure record = %+v, %v, %v; want kind %s naming %s", failure, found, err, verifytree.FailureKindLanding, log)
 	}
-	fx.requireNotLanded(t)
+	if len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
+		t.Errorf("merge calls = %d, push calls = %d; want none after a halted gate", len(fx.merger.calls), len(fx.merger.pushCalls))
+	}
 }
 
 // TestFinalizeVerify_DirtyTreeHalts pins that a dirty tree at each of the three points ends Stuck naming the paths,
-// before the parent opener is called.
+// before the parent-side merge.
 func TestFinalizeVerify_DirtyTreeHalts(t *testing.T) {
 	cases := []struct {
 		name       string

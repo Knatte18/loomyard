@@ -63,7 +63,6 @@ type commitStatusDeps struct {
 	MergeActive func() (bool, error)
 	// Commit commits loom's own status file with msg.
 	// When the reviews directory holds a file, the same commit also carries the review round record.
-	// While a rejection is pending the reviews root and the loom durable directory are left out until PR-Rework's round commit has landed and cleared it, so a status commit never lands half of a rework round; the next status commit sweeps them.
 	// It reports whether it made a commit.
 	Commit func(msg string) (committed bool, err error)
 	// Spawn starts the detached push of the run records and, in a task pair, the task branch.
@@ -94,21 +93,13 @@ type commitStatusDeps struct {
 // The directory pathspec is whole rather than per-file because StageAndCommit runs `git add -- <pathspec>`:
 // an archive commits both the new timestamped sibling and the covered files' removal from the friction directory,
 // and a transition whose commit was skipped mid-merge is caught up by the next one.
-// While a rejection is pending the reviews root and the loom durable directory are held back, so a status commit never lands half of a PR-Rework round:
-// `git add -- <dir>` stages deletions too, and a status commit between the archive step and the round commit would land `round-<N>/` and the review run directories' deletions without the plan's.
-// A classed `record.json` that reached HEAD this way would also make the next step count the round as committed and clear the rejection with no round commit.
-// The pending rejection is the marker because `lyx loom reject` writes it before the archive step and PR-Rework removes it only after its round commit has landed.
-// A stat of it that fails for any reason other than not-exist also holds back, since holding back defers the sweep and sweeping could split the round.
-// The round commit's own pathspec covers both held directories, and the next status commit after the rejection clears sweeps what remained, so nothing is lost, only deferred.
 func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
 	paths := []string{shedrun.StatusRel(location, runID)}
-	if !rejectionPending(location) {
-		if holdsFile(loomengine.LoomReviewsDir(location)) {
-			paths = append(paths, loomengine.LoomReviewsDirRel())
-		}
-		if holdsFile(loomengine.LoomDurableDir(location)) {
-			paths = append(paths, loomengine.LoomDurableDirRel())
-		}
+	if holdsFile(loomengine.LoomReviewsDir(location)) {
+		paths = append(paths, loomengine.LoomReviewsDirRel())
+	}
+	if holdsFile(loomengine.LoomDurableDir(location)) {
+		paths = append(paths, loomengine.LoomDurableDirRel())
 	}
 	if holdsFile(shedrun.DriveReportsDir(location, runID)) {
 		paths = append(paths, shedrun.DriveReportsRel(location, runID))
@@ -123,32 +114,6 @@ func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
 		paths = append(paths, shedrun.AlignmentRel(location, runID))
 	}
 	return paths
-}
-
-// rejectionPending reports whether loomengine.LoomRejectionPath exists, or cannot be ruled out because its stat failed for a reason other than not-exist.
-func rejectionPending(location *lyxcwd.Location) bool {
-	_, err := os.Stat(loomengine.LoomRejectionPath(location))
-	return err == nil || !errors.Is(err, fs.ErrNotExist)
-}
-
-// reworkCommitPathspec returns the pathspec PR-Rework's round commit stages: the plan directory, the rework directory, the reviews root and webster's durable directory,
-// so the moved-from deletions and the archive land in one commit.
-// The reviews root and webster's directory are left out when they match nothing in the index or the working tree, since git refuses such a pathspec (see statusCommitPathspec):
-// that is when neither holds a file now and the round archived no file out of it, so nothing under it was ever tracked for this round to delete.
-// The plan and rework directories always hold files by the time the round commits.
-// The plan amendment record joins when it exists or is tracked, so the archive's removal of it is staged in the round's commit.
-func reworkCommitPathspec(location *lyxcwd.Location) []string {
-	reworkDir := loomengine.LoomReworkDir(location)
-	paths := []string{planparser.PlanDirRel(), loomengine.LoomReworkDirRel()}
-	if holdsFile(loomengine.LoomReviewsDir(location)) || holdsFileAt(loomshed.LatestArchivedReviewsDir(reworkDir)) {
-		paths = append(paths, loomengine.LoomReviewsDirRel())
-	}
-	if holdsFile(websterengine.Dir(location.AnchorPath())) || holdsFileAt(loomshed.LatestArchivedWebsterDir(reworkDir)) {
-		paths = append(paths, websterengine.DirRel())
-	}
-	return append(paths, amendmentPathspec(location, func(rel string) (bool, error) {
-		return fabricengine.PathTracked(location.AnchorPath(), rel)
-	})...)
 }
 
 // planCommitPathspec returns the pathspec the plan commit stages: the plan directory, and webster's durable directory too when it holds a file or git still tracks a path under it.
@@ -191,11 +156,6 @@ func removeSettledAmendment(amendmentPath, planRunDir string) error {
 		return nil
 	}
 	return loomshed.RemoveAmendment(amendmentPath)
-}
-
-// holdsFileAt is holdsFile with an empty dir meaning no directory, hence no file.
-func holdsFileAt(dir string) bool {
-	return dir != "" && holdsFile(dir)
 }
 
 // holdsFile reports whether dir is a directory holding at least one non-directory entry anywhere beneath it, stopping the walk at the first such entry.
@@ -355,25 +315,6 @@ func (c *loomCLI) wireLightweight(location *lyxcwd.Location, cwd string) {
 		c.env.CommitDiscussion = func() error { return commitDiscussion(location) }
 	}
 	c.env.PlanIndex = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), hubgeom.GateSlots(location), gateslot.WaitDir(location.AnchorPath()))
-}
-
-// pendingRejectionReader returns the seam that reads location's pending rejection record, with found false when none is recorded.
-// Building it opens nothing: the record is read on each call.
-func pendingRejectionReader(location *lyxcwd.Location) func() (loomshed.PendingRejection, bool, error) {
-	return func() (loomshed.PendingRejection, bool, error) {
-		r, found, err := landingshed.ReadRejection(loomengine.LoomRejectionPath(location))
-		if err != nil || !found {
-			return loomshed.PendingRejection{}, found, err
-		}
-		return loomshed.PendingRejection{PRNumber: r.PRNumber, HeadSHA: r.HeadSHA, RejectedAt: r.RejectedAt, Findings: r.Findings}, true, nil
-	}
-}
-
-// rejectionClearer returns the seam that removes location's pending rejection record.
-func rejectionClearer(location *lyxcwd.Location) func() error {
-	return func() error {
-		return landingshed.RemoveRecord(loomengine.LoomRejectionPath(location))
-	}
 }
 
 // committedAnchoredReader returns the seam that reads an anchor-relative file as committed at HEAD for location, with found false when HEAD has no such file.
@@ -611,11 +552,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	// ReworkTable resolves again per Call; this resolution fails an unknown rework alias before round 1.
-	if _, err := loomengine.ResolveRework(loomCfg, registry); err != nil {
-		return err
-	}
-
 	reedGeom, err := hubgeom.ReedGeometry(location)
 	if err != nil {
 		return err
@@ -701,25 +637,16 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	statusLockPath := shedrun.StatusLock(location, c.runID)
 
 	// reworkDeps opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
-	// PR-Rework and the Plan-Review skip seam share it.
+	// The Plan-Review skip seam and Plan-Write's rotation share it.
 	reworkDeps := loomshed.PRReworkDeps{
 		PlanDir:       planparser.PlanDir(anchorPath),
 		ReworkDir:     loomengine.LoomReworkDir(location),
 		ReworkDirRel:  loomengine.LoomReworkDirRel(),
 		ReviewsDir:    loomengine.LoomReviewsDir(location),
 		AmendmentPath: loomengine.LoomAmendmentRecord(location),
-		// The run subdirectories are the recipe's own run_subdir values for the Plan-Review and Webster-Review segments, the two reviews a generation owns.
-		ReviewRunSubdirs: []string{"plan", "webster"},
-		ReadCommitted:    committedAnchoredReader(location),
+		ReadCommitted: committedAnchoredReader(location),
 		ArchiveWebster: func(dest string) error {
 			return websterengine.ArchiveRunRecord(websterGeom, dest)
-		},
-		ReadRejection:     pendingRejectionReader(location),
-		ClearRejection:    rejectionClearer(location),
-		KeepReviewRecords: shedadapters.CarryRecords,
-		Commit: func() error {
-			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, reworkCommitPathspec(location), fmt.Sprintf("loom: rework round for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
-			return err
 		},
 	}
 
@@ -737,7 +664,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	// The check only stats, because reading the record would create the records-side lock directory and seed its exclude.
 	var verifyMergeBase func() (string, error)
 	if _, err := os.Stat(fabricengine.OriginRecordPath(location)); err == nil {
-		verifyMergeBase = pairMergeBase(location)
+		verifyMergeBase = taskMergeBase(location)
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("loomcli: stat the origin record: %w", err)
 	}
@@ -755,13 +682,11 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 		VerifyDir:     verifytree.Dir(anchorPath),
 		VerifyCommand: planVerifySource(location).baseCommand,
-		Round:         roundGateSource(fabricengine.ConfigDirs(location)),
-		// VerifyMergeBase is nil for a standalone run, which records no parent branch.
+		Round:         gateListSource(fabricengine.ConfigDirs(location), "landing"),
+		// VerifyMergeBase and ReviewBase are nil for a standalone run, which records no parent branch.
 		VerifyMergeBase: verifyMergeBase,
+		ReviewBase:      verifyMergeBase,
 		VerifyHold:      verifytree.NewPauseHold(pauseGeom, nil),
-		PublishFailure: func() string {
-			return loomshed.PublishFailureNote(location.WorktreePath(), verifytree.Dir(anchorPath), planparser.PlanDir(anchorPath), gateTiersLookup(fabricengine.ConfigDirs(location)))
-		},
 		WebsterRecord: func() string {
 			return loomshed.WebsterRecordNote(anchorPath)
 		},
@@ -788,8 +713,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// directory, so Master's outcome.yaml and summary.md and the verify gate's report land in
 		// git rather than as untracked dirt that refuses the task worktree's removal.
 		// The plan directory rides along because webster rewrites card files during the run
-		// (handle binding, handle canonicalization);
-		// PR-Rework archives the plan at its working-tree state, so a rewrite left uncommitted would be archived without ever having been committed in place.
+		// (handle binding, handle canonicalization).
 		CommitWebster: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{websterengine.DirRel(), planparser.PlanDirRel()}, fmt.Sprintf("loom: webster run record for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
@@ -839,6 +763,10 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 			if err != nil {
 				return seatengine.Table{}, err
 			}
+			mergeBase, err := taskMergeBase(location)()
+			if err != nil {
+				return seatengine.Table{}, err
+			}
 			priorDirs, err := loomshed.ArchivedWebsterDirs(loomengine.LoomReworkDir(location))
 			if err != nil {
 				return seatengine.Table{}, err
@@ -863,6 +791,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 				DescriptionPath:     summaryparser.Path(loomengine.LandingDir(location)),
 				TaskBranch:          taskBranch,
 				ParentBranch:        parentBranch,
+				MergeBase:           mergeBase,
 				Slug:                seedSlug(location.WorktreeName),
 			}, landingCfg, registry)
 		},
@@ -922,36 +851,12 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// Each reads on demand and opens nothing at wire time.
 		DocumentSubject: documentSubjectWithHead(location, recordHead(location)),
 		CodeSubject:     func() (shedadapters.Subject, bool, error) { return codeSubject(location, c.runID) },
-		MergeSubject:    func() (shedadapters.Subject, bool, error) { return mergeSubject(location) },
 		MergeInOnly:     parentMergeInOnly(location),
 		RecordHead:      recordHead(location),
-		// RejectReview is the findings file of the latest PR-Gate reject that PR-Rework kept in its rework directory.
-		RejectReview: func() (string, time.Time, bool, error) {
-			return loomshed.LatestRejectReview(loomengine.LoomReworkDir(location))
-		},
+		// ReviewInput is the merge fixer's latest Merge-In report, so a report newer than the Code-Perch's settled verdict re-opens the perch as an amendment over it.
+		ReviewInput: fixerReportInput(loomengine.LoomScratchDir(location)),
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge; it reads committed state on demand and opens nothing at wire time.
 		SkipPlanReview: func() (bool, error) { return loomshed.PlanReviewSkippable(reworkDeps) },
-		// SkipMergeReview answers from the merge record alone, so an absent or unreadable record reviews the whole merge-in diff.
-		SkipMergeReview: func() (bool, error) {
-			record, found, err := landingshed.ReadMergeRecord(landingshed.MergeRecordPath(loomengine.LoomScratchDir(location)))
-			if err != nil || !found {
-				return false, nil
-			}
-			return record.SkipsReview(), nil
-		},
-		// ApproveMergeReview records the merged tip as reviewed on every approved settle of the Merge-Bouncer, a skip included.
-		ApproveMergeReview: func() error {
-			scratchDir := loomengine.LoomScratchDir(location)
-			return landingshed.RecordMergeReviewed(landingshed.MergeRecordPath(scratchDir), landingshed.MergeReviewedPath(scratchDir))
-		},
-		MergeReview: func() string {
-			return landingshed.MergeReviewNote(landingshed.MergeRecordPath(loomengine.LoomScratchDir(location)))
-		},
-		// ReworkTable is evaluated per Call like PlanTable above, so the stencil is read at call time.
-		// The values the session is told arrive from the PR-Rework producer, which decides them.
-		ReworkTable: func(told loomshed.ReworkTold) (seatengine.Table, error) {
-			return loomengine.ReworkTable(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, told.FirstCard, told.PriorPlanDir)
-		},
 		// Rework opens nothing at wire time: every closure reads or writes on demand, since wire() also runs for status/pause.
 		Rework: reworkDeps,
 		// StencilsDir, SpecsDir, RunRoot, Burler, and Now are filled for both review segments.
@@ -1015,7 +920,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 
 	// A darn run swaps in the darn recipe's verify source and Describe spec and fills the Darn-Write row's seams; a loom run leaves them nil.
 	if c.recipe == shedrun.RecipeDarn {
-		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry, reviewSettings.Models, shedadapters.BouncerModels(judgeSettings.Webster)); err != nil {
+		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, landingCfg, registry, reviewSettings.Models, shedadapters.BouncerModels(judgeSettings.Code)); err != nil {
 			return err
 		}
 	}
@@ -1047,8 +952,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 var loomPerches = map[string]loomengine.Perch{
 	loomshed.NameDiscussionBouncer: loomengine.PerchDiscussion,
 	loomshed.NamePlanBouncer:       loomengine.PerchPlan,
-	loomshed.NameWebsterBouncer:    loomengine.PerchWebster,
-	loomshed.NameMergeBouncer:      loomengine.PerchMerge,
+	loomshed.NameCodeBouncer:       loomengine.PerchCode,
 }
 
 // loomSegmentPerches maps each loom review segment's name to its review perch, the table the segment settings are read through.
@@ -1056,8 +960,7 @@ var loomPerches = map[string]loomengine.Perch{
 var loomSegmentPerches = map[string]loomengine.Perch{
 	"Discussion-Review": loomengine.PerchDiscussion,
 	"Plan-Review":       loomengine.PerchPlan,
-	"Webster-Review":    loomengine.PerchWebster,
-	"Merge-Review":      loomengine.PerchMerge,
+	"Code-Review":       loomengine.PerchCode,
 }
 
 // loomSegmentBudgets maps each loom review segment to its perch's resolved soft bounce cap, the value loomSegmentSettings puts in MaxBounces.
@@ -1072,25 +975,22 @@ func loomSegmentBudgets(cfg loomengine.Config) map[string]int {
 }
 
 // loomSegmentSettings builds one shedrecipe.SegmentSettings per loom review segment.
-// Models and their keys come from review, the Bouncer pair from judge (the Merge segment takes the Webster pair), and the budget and hard cap with their keys from cfg.Caps, which resolves them through reviewbudget.
+// Models and their keys come from review, the Bouncer pair from judge, and the budget and hard cap with their keys from cfg.Caps, which resolves them through reviewbudget.
 func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings, judge loomengine.JudgeSettings) map[string]shedrecipe.SegmentSettings {
 	models := map[loomengine.Perch]burlerengine.RoundModels{
 		loomengine.PerchDiscussion: review.Discussion,
 		loomengine.PerchPlan:       review.Plan,
-		loomengine.PerchWebster:    review.Webster,
-		loomengine.PerchMerge:      review.Merge,
+		loomengine.PerchCode:       review.Code,
 	}
 	keys := map[loomengine.Perch]loomengine.SegmentKeys{
 		loomengine.PerchDiscussion: review.DiscussionKeys,
 		loomengine.PerchPlan:       review.PlanKeys,
-		loomengine.PerchWebster:    review.WebsterKeys,
-		loomengine.PerchMerge:      review.MergeKeys,
+		loomengine.PerchCode:       review.CodeKeys,
 	}
 	bouncers := map[loomengine.Perch]loomengine.BouncerModels{
 		loomengine.PerchDiscussion: judge.Discussion,
 		loomengine.PerchPlan:       judge.Plan,
-		loomengine.PerchWebster:    judge.Webster,
-		loomengine.PerchMerge:      judge.Webster,
+		loomengine.PerchCode:       judge.Code,
 	}
 	settings := make(map[string]shedrecipe.SegmentSettings, len(loomSegmentPerches))
 	for segment, perch := range loomSegmentPerches {
@@ -1138,7 +1038,7 @@ const loomMissingStatusWayForward = "way forward: run \"lyx loom start\" first t
 
 // loomRerouteCapWayForward is the told clause a reroute-cap halt ends with, whichever row's reroute hit the cap.
 // The halt is resumed once the cause its reason quotes is cleared.
-const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a parent-branch reroute, once the parent branch has settled; for a Webster plan conflict, once the run's parent has recorded the fix with \"lyx loom decision add\" and \"--amends-plan\", then run \"lyx loom goto --to Plan-Burler-Review\""
+const loomRerouteCapWayForward = "run \"lyx loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a parent-branch reroute, once the parent branch has settled; for a fixer whose attempts are spent, once the failing tests are fixed on the task branch; for a fixer whose change is over the caps, once the fixer's commits are reviewed and fixed on the task branch; for a Webster plan conflict, once the run's parent has recorded the fix with \"lyx loom decision add\" and \"--amends-plan\", then run \"lyx loom goto --to Plan-Burler-Review\""
 
 // loomBudgetWayForward is the told clause a bounce-budget-exhausted halt ends with, whichever row's budget ran out.
 // Only the resume grants a budget; a goto keeps the spent one.

@@ -31,7 +31,6 @@ func TestBattenDriverDeps(t *testing.T) {
 
 	unwired := map[string]bool{
 		"Arbiter":           deps.Arbiter == nil,
-		"Verify":            deps.Verify == nil,
 		"Watched":           deps.Watched == nil,
 		"HandOver":          deps.HandOver == nil,
 		"Tamper":            deps.Tamper == nil,
@@ -107,10 +106,6 @@ func TestBattenDriverDeps(t *testing.T) {
 	markers, err := filepath.Glob(filepath.Join(c.env.ScratchDir, "*row-notice"))
 	if err != nil || len(markers) > 0 {
 		t.Errorf("Notify(paused stop) left row notice markers %v (glob error %v); want none", markers, err)
-	}
-
-	if got, want := childGotoArgv("Merge-In"), []string{"loom", "goto", "--to", "Merge-In", "--by", "shed"}; !slices.Equal(got, want) {
-		t.Errorf("childGotoArgv(Merge-In) = %v; want %v", got, want)
 	}
 
 	// The goto and step seams label the run shed: the goto on the entry it appends, the step as the label pending before the loop is spawned.

@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -274,9 +272,9 @@ func unmatchedRecords(row RunRow, records []shedrun.SettleRecord, taken []bool, 
 
 // settlerOf names who settled the stop, the first of these that holds:
 // a bounce was settled by the judge;
-// a batten automatic step accounting for it, or a go-rule restep or verify-retry record, make it the shed's;
+// a batten automatic step accounting for it, or a go-rule restep record or a past run's verify-retry record, make it the shed's;
 // a tackler restep record makes it the tackler's;
-// an applied arbiter attempt or alignment verdict spawned after the stop makes it the arbiter's or alignment's;
+// an applied arbiter attempt or a parent-review alignment verdict spawned after the stop makes it the arbiter's or alignment's;
 // else the by label of the first history entry that moved it on, unknown when that entry has none, and open when none follows in a run in flight.
 // A record of any other settler or action settles nothing by itself.
 func settlerOf(stop TimingStop, record *shedrun.SettleRecord, row RunRow, rows []timedRow) string {
@@ -302,11 +300,6 @@ func settlerOf(stop TimingStop, record *shedrun.SettleRecord, row RunRow, rows [
 		for _, attempt := range row.arbiterRecords {
 			if attempt.Applied && attempt.Attempt.StopKey.CurrentProducer == stop.Producer && attempt.Attempt.StopKey.State == stop.State && attempt.Attempt.SpawnedAt.After(*stop.At) {
 				return SettledByArbiter
-			}
-		}
-		for _, attempt := range row.alignmentAttempts {
-			if stop.Producer == loomshed.NamePRGate && attempt.Point == alignment.PointPRGate && attempt.Applied != "" && attempt.SpawnedAt.After(*stop.At) {
-				return SettledByAlignment
 			}
 		}
 		for _, round := range row.parentRounds {

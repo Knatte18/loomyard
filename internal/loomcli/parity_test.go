@@ -1,6 +1,6 @@
 // parity_test.go asserts the Gate Self-Check Parity Invariant for the gate sites the loomshed
 // gate closures cover: NewDiscussionGate and NewDarnDiscussionGate against validate-discussion, NewPlanGate against
-// validate-plan's flag-absent mode, and NewReworkPlanGate against validate-plan --rework. Both the gate closure and its loomcli verb must
+// validate-plan's flag-absent mode. Both the gate closure and its loomcli verb must
 // reach the same three-way verdict over the identical fixture, because both sides call the
 // identical package function per the shared-implementation-is-the-whole-point Shared Decision.
 //
@@ -765,7 +765,6 @@ func TestGateParity_DescriptionGate(t *testing.T) {
 
 // reworkParityFixture writes a one-card language: go plan under anchorPath, a new generation whose card is numbered cardNumber (with first_card: cardNumber above 1) and creates newpkg#Bar, also using uses and editing edit when each is non-empty and carrying verify as its verify: section when that is non-empty, and returns a *loomCLI whose committed-file seam serves a one-card generation (card 1 creating sub#Foo) as the plan at HEAD -- or nothing at all when committed is false.
 // The told number is therefore 2.
-// It is duplicated from internal/loomshed/gates_test.go's seedReworkGlyphPlan.
 func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumber int, uses, edit, verify string, committed bool) *loomCLI {
 	t.Helper()
 	groups := []plankit.Group{{Label: "Create", Targets: []string{"newpkg#Bar"}}}
@@ -830,93 +829,4 @@ func reworkParityFixture(t *testing.T, anchorPath, worktreeRoot string, cardNumb
 			return data, ok, nil
 		}},
 	}}
-}
-
-// TestGateParity_ReworkPlanGate drives NewReworkPlanGate and the validate-plan verb's --rework mode over the same fixture set and asserts the two mapped verdicts agree.
-// The cases are a clean whole new plan numbered from the told card (done), a first_card differing from the told number (stuck), a card using a missing symbol (stuck), a card listing a test file under Edit (stuck), and a plan with nothing committed at HEAD (error).
-func TestGateParity_ReworkPlanGate(t *testing.T) {
-	cases := []struct {
-		name       string
-		cardNumber int
-		uses       string
-		edit       string
-		verify     string
-		committed  bool
-		want       parityVerdict
-		// wantFinding, when set, is a substring both the gate's findings and the verb's envelope must carry.
-		wantFinding string
-	}{
-		{"WholePlanFromToldCard", 2, "", "", "", true, verdictDone, ""},
-		{"FirstCardMismatch", 1, "", "", "", true, verdictStuck, ""},
-		{"CardBlocking", 2, "sub#Missing", "", "", true, verdictStuck, ""},
-		{"FabricReference", 2, "", "", fabricReferenceCommand, true, verdictStuck, "card-fabric-reference"},
-		{"EditTestFile", 2, "", "sub/a_test.go", "", true, verdictStuck, "edit-test-file"},
-		{"NothingCommitted", 2, "", "", "", false, verdictError, ""},
-	}
-	for _, tt := range cases {
-		t.Run(tt.name, func(t *testing.T) {
-			anchorPath := t.TempDir()
-			worktreeRoot := t.TempDir()
-			plankit.WriteTree(t, worktreeRoot, map[string]string{
-				"sub/a.go":      "package sub\n\nfunc Foo() {}\n",
-				"sub/a_test.go": "package sub\n\nimport \"testing\"\n\nfunc TestA(t *testing.T) {}\n",
-			})
-			c := reworkParityFixture(t, anchorPath, worktreeRoot, tt.cardNumber, tt.uses, tt.edit, tt.verify, tt.committed)
-
-			result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted, loomshed.PlanContext{})()
-			pv := producerVerdict(result, err)
-
-			var out bytes.Buffer
-			exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--rework"})
-			cv := cliVerdict(envelope.Decode(t, out.String()))
-
-			if pv != cv {
-				t.Errorf("parity mismatch: gate verdict = %q (result=%+v, err=%v); CLI verdict = %q (exit=%d, raw=%q)", pv, result, err, cv, exitCode, out.String())
-			}
-			if pv != tt.want {
-				t.Errorf("gate verdict = %q; want %q", pv, tt.want)
-			}
-			if tt.wantFinding != "" && (!strings.Contains(result.Findings, tt.wantFinding) || !strings.Contains(out.String(), tt.wantFinding)) {
-				t.Errorf("want %q in both the gate findings %q and the verb output %q", tt.wantFinding, result.Findings, out.String())
-			}
-		})
-	}
-
-	t.Run("SymbolRenameWithNoRenameTool", func(t *testing.T) {
-		anchorPath := t.TempDir()
-		c := symbolRenamePlanFixture(t, anchorPath, t.TempDir())
-		c.location = hubLocationAt(t, anchorPath, "")
-		committed := map[string][]byte{}
-		for name, data := range plankit.Render(plankit.Plan{
-			Approved: true,
-			Language: "none",
-			Cards: []plankit.Card{{
-				Number:  1,
-				Slug:    "first-card",
-				Summary: "placeholder card 1",
-				Groups:  []plankit.Group{{Label: "Create", Targets: []string{"internal/firstcard/new.go"}}},
-				Intent:  "placeholder card.",
-			}},
-		}) {
-			committed[path.Join(planparser.PlanDirRel(), name)] = data
-		}
-		c.env.Rework.ReadCommitted = func(rel string) ([]byte, bool, error) {
-			data, ok := committed[rel]
-			return data, ok, nil
-		}
-
-		result, err := loomshed.NewReworkPlanGate(c.env.AnchorPath, c.env.WorktreeRoot, c.env.RunScratchDir, planglyph.NewIndex(fabricengine.NewReferenceRule()), c.env.Rework.ReadCommitted, loomshed.PlanContext{})()
-		pv := producerVerdict(result, err)
-
-		var out bytes.Buffer
-		exitCode := clihelp.Execute(c.validatePlanCmd(), &out, []string{"--rework"})
-		cv := cliVerdict(envelope.Decode(t, out.String()))
-
-		if pv != cv || pv != verdictStuck {
-			t.Errorf("gate verdict = %q (result=%+v, err=%v); CLI verdict = %q (exit=%d, raw=%q); want both %q", pv, result, err, cv, exitCode, out.String(), verdictStuck)
-		}
-		if !strings.Contains(result.Findings, "rename-tool-missing") || !strings.Contains(out.String(), "rename-tool-missing") {
-			t.Errorf("want rename-tool-missing in both the gate findings %q and the verb output %q", result.Findings, out.String())
-		}
-	})
 }

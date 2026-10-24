@@ -70,10 +70,10 @@ func withAmendConfig(allowance, hardCap int, bounces func() (int, int, bool, err
 	}
 }
 
-// withRejectReview tells the Bouncer a reject review at path that happened offset after the harness's clock when the Call reads it.
-func withRejectReview(path string, offset time.Duration) reentryOption {
+// withReviewInput tells the Bouncer a review input at path that was written offset after the harness's clock when the Call reads it.
+func withReviewInput(path string, offset time.Duration) reentryOption {
 	return func(h *reentry, cfg *BouncerConfig) {
-		cfg.RejectReview = func() (string, time.Time, bool, error) { return path, h.now.Add(offset), true, nil }
+		cfg.ReviewInput = func() (string, time.Time, bool, error) { return path, h.now.Add(offset), true, nil }
 	}
 }
 
@@ -174,20 +174,21 @@ func amendmentRoundsRow(name string, allowance, hardCap int, bounces func() (int
 	}}
 }
 
-// amendmentRejectRow runs a changed subject over a reject that happened offset after the settle, and checks whether the record and the seed prompt name its review file.
-func amendmentRejectRow(name string, offset time.Duration, wantNamed bool) amendmentRow {
-	const rejectPath = "/review/pr-gate-reject.md"
+// amendmentInputRow runs a changed subject over a review input written offset after the settle, and checks whether the record, the seed prompt and the amendment note name it.
+func amendmentInputRow(name string, offset time.Duration, wantNamed bool) amendmentRow {
+	const inputPath = "/review/review-input.md"
 	return amendmentRow{name, func(t *testing.T) {
 		verdict := "CONVERGED"
-		h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withRejectReview(rejectPath, offset))
+		h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInput(inputPath, offset))
 		h.layoutSettledRound1(h.subject, nil)
 		h.subject = amendmentChangedSubject
 		shedfake.RequireOutcome(t, h.b, shedengine.Stuck)
 
-		recorded := h.generation().RejectReview
-		named := strings.Contains(h.seedPrompts()[0], rejectPath)
-		if wantNamed != (recorded == rejectPath) || wantNamed != named {
-			t.Errorf("reject review recorded = %q, named in the seed prompt = %v; want it named: %v", recorded, named, wantNamed)
+		recorded := h.generation().ReviewInput
+		named := strings.Contains(h.seedPrompts()[0], inputPath)
+		noted := strings.Contains(AmendmentNote(h.cfg.RunDir), inputPath)
+		if wantNamed != (recorded == inputPath) || wantNamed != named || wantNamed != noted {
+			t.Errorf("review input recorded = %q, named in the seed prompt = %v, named in the amendment note = %v; want it named: %v", recorded, named, noted, wantNamed)
 		}
 	}}
 }
@@ -210,8 +211,8 @@ func TestBouncer_Amendment(t *testing.T) {
 			if _, err := os.Stat(archivedRunDirPath(h.cfg.RunDir, h.now, "")); err != nil {
 				t.Errorf("archived run directory missing: %v; want the generation archived", err)
 			}
-			if generation := h.generation(); generation.Number != 2 || !generation.Amendment || generation.Base != "base-1" || generation.RejectReview != "" {
-				t.Errorf("generation record = %+v; want generation 2, an amendment on base base-1 with no reject", generation)
+			if generation := h.generation(); generation.Number != 2 || !generation.Amendment || generation.Base != "base-1" || generation.ReviewInput != "" {
+				t.Errorf("generation record = %+v; want generation 2, an amendment on base base-1 with no review input", generation)
 			}
 			h.requireSeedPromptHolds("since commit base-1")
 
@@ -261,7 +262,7 @@ func TestBouncer_Amendment(t *testing.T) {
 			if ptr := shedfake.RequireOutcome(t, h.b, shedengine.Stuck); !ptr.GenerationStart {
 				t.Error("seed Stuck GenerationStart = false; want true")
 			}
-			if generation := h.generation(); generation.Number != 2 || generation.Amendment || generation.Base != "" || generation.RejectReview != "" {
+			if generation := h.generation(); generation.Number != 2 || generation.Amendment || generation.Base != "" || generation.ReviewInput != "" {
 				t.Errorf("generation record = %+v; want generation 2 alone", generation)
 			}
 			h.requireSeedPromptHolds("Amendment: none")
@@ -289,11 +290,11 @@ func TestBouncer_Amendment(t *testing.T) {
 				t.Errorf("stored patch = %q, %v; want it carried into the new generation", patch, err)
 			}
 		}},
-		{"RejectReviewErrorIsReturnedWithNothingArchived", func(t *testing.T) {
-			sentinel := errors.New("reject unreadable")
+		{"ReviewInputErrorIsReturnedWithNothingArchived", func(t *testing.T) {
+			sentinel := errors.New("review input unreadable")
 			verdict := "CONVERGED"
 			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), func(h *reentry, cfg *BouncerConfig) {
-				cfg.RejectReview = func() (string, time.Time, bool, error) { return "", time.Time{}, false, sentinel }
+				cfg.ReviewInput = func() (string, time.Time, bool, error) { return "", time.Time{}, false, sentinel }
 			})
 			h.layoutSettledRound1(h.subject, nil)
 			h.subject = amendmentChangedSubject
@@ -371,8 +372,8 @@ func TestBouncer_Amendment(t *testing.T) {
 		}},
 		{"JudgeSubjectChangeStartsTheAmendmentFromTheJudgeBase", func(t *testing.T) {
 			verdict := "CONVERGED"
-			const rejectPath = "/review/pr-gate-reject.md"
-			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withRejectReview(rejectPath, -time.Hour))
+			const inputPath = "/review/review-input.md"
+			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil), withReviewInput(inputPath, -time.Hour))
 			layoutBouncerRun(t, h.cfg, []bouncerJudgeFixture{{
 				round: 1, report: bouncerReport(1), verdict: bouncerVerdictContent("CONVERGED"), ledger: bouncerLedgerContent(1),
 			}})
@@ -383,16 +384,31 @@ func TestBouncer_Amendment(t *testing.T) {
 			h.subject = amendmentChangedSubject
 
 			shedfake.RequireOutcome(t, h.b, shedengine.Stuck)
-			if generation := h.generation(); generation.Number != 2 || !generation.Amendment || generation.Base != "judge-base" || generation.RejectReview != "" {
-				t.Errorf("generation record = %+v; want generation 2, an amendment on judge-base with no reject older than the judge", generation)
+			if generation := h.generation(); generation.Number != 2 || !generation.Amendment || generation.Base != "judge-base" || generation.ReviewInput != "" {
+				t.Errorf("generation record = %+v; want generation 2, an amendment on judge-base with no review input older than the judge", generation)
 			}
 			h.requireSeedPromptHolds("since commit judge-base")
-			if strings.Contains(h.seedPrompts()[0], rejectPath) {
-				t.Errorf("seed prompt names %q; want a reject older than the judge left out", rejectPath)
+			if strings.Contains(h.seedPrompts()[0], inputPath) {
+				t.Errorf("seed prompt names %q; want a review input older than the judge left out", inputPath)
 			}
 		}},
-		amendmentRejectRow("RejectLaterThanTheSettleIsNamed", time.Hour, true),
-		amendmentRejectRow("RejectEarlierThanTheSettleIsNotNamed", -time.Hour, false),
+		{"RetiredRejectReviewKeyRendersANoteNamingNoInput", func(t *testing.T) {
+			verdict := "CONVERGED"
+			h := newAmendment(t, &verdict, nil, withAmendConfig(2, 0, nil))
+			retired := `{"number":2,"amendment":true,"base":"base-1","reject_review":"/review/retired.md"}`
+			if err := os.MkdirAll(h.cfg.RunDir, 0o755); err != nil {
+				t.Fatalf("create run directory = %v; want nil", err)
+			}
+			if err := os.WriteFile(filepath.Join(h.cfg.RunDir, generationRecordFile), []byte(retired), 0o644); err != nil {
+				t.Fatalf("write generation record = %v; want nil", err)
+			}
+			note := AmendmentNote(h.cfg.RunDir)
+			if !strings.Contains(note, "since commit base-1") || strings.Contains(note, "retired.md") || strings.Contains(note, "review input") {
+				t.Errorf("AmendmentNote() = %q; want the amendment scope and no input named", note)
+			}
+		}},
+		amendmentInputRow("InputWrittenAfterTheSettleIsNamed", time.Hour, true),
+		amendmentInputRow("InputWrittenBeforeTheSettleIsNotNamed", -time.Hour, false),
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -1,4 +1,4 @@
-// parentguard.go — the guard the lock-taking landing rows share: it takes and frees the parent lock and decides whether the parent has moved since Merge-In merged it.
+// parentguard.go — the guard Finalize takes and frees the parent lock through, and re-checks the lock with before it lands.
 
 package landingshed
 
@@ -8,21 +8,15 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 )
 
-// parentGuard holds the lock seams, the parent branch, the tip reads and the merge-record path one row takes the lock and checks the parent through.
+// parentGuard holds the lock seams, the parent branch and the wait mark one row takes the lock through.
 type parentGuard struct {
-	lock            ParentLockDeps
-	parentBranch    string
-	pushSkipped     bool
-	readParentTips  func(fetch bool) (fabricengine.ParentTips, error)
-	holdsWork       func(base, source string) (bool, error)
-	taskHead        func() (string, error)
-	mergeRecordPath string
-	waitMark        func(label string, start time.Time) error
+	lock         ParentLockDeps
+	parentBranch string
+	waitMark     func(label string, start time.Time) error
 	// sleep replaces the queue wait's timer; nil waits on the real one.
 	sleep func(ctx context.Context, d time.Duration) error
 }
@@ -30,14 +24,9 @@ type parentGuard struct {
 // newParentGuard builds a parentGuard from deps' told values.
 func newParentGuard(deps Deps) parentGuard {
 	return parentGuard{
-		lock:            deps.Lock,
-		parentBranch:    deps.ParentBranch,
-		pushSkipped:     deps.PushSkipped,
-		readParentTips:  deps.ReadParentTips,
-		holdsWork:       deps.HoldsWork,
-		taskHead:        deps.TaskHead,
-		mergeRecordPath: deps.MergeRecordPath,
-		waitMark:        deps.VerifyWaitMark,
+		lock:         deps.Lock,
+		parentBranch: deps.ParentBranch,
+		waitMark:     deps.VerifyWaitMark,
 	}
 }
 
@@ -109,55 +98,30 @@ func (g parentGuard) release(producer string) {
 	}
 }
 
-// moved decides whether the parent moved since Merge-In merged it, returning the reroute reason or "" when it has not.
-// A missing or unreadable merge record counts as moved, so the row reroutes to Merge-In, which writes one.
-// The parent has moved when a tip differs from the merge record's merged tip and does not hold the task's work;
-// the upstream tip counts only when one exists and the push is not skipped.
-// A local parent ahead of or diverged from its upstream therefore reads as moved.
-func (g parentGuard) moved(producer string) (string, error) {
-	rec, found, err := ReadMergeRecord(g.mergeRecordPath)
-	if err != nil {
-		logger.Warn("landingshed: merge record unreadable, treating the parent as moved", "producer", producer, "cause", err)
-	}
-	if err != nil || !found {
-		return fmt.Sprintf("no readable merge record from Merge-In for parent branch %q; rerouting to Merge-In", g.parentBranch), nil
-	}
-
-	tips, err := g.readParentTips(!g.pushSkipped)
-	if err != nil {
-		return "", fmt.Errorf("landingshed: %s: read the tips of parent branch %q: %w", producer, g.parentBranch, err)
-	}
-	head, err := g.taskHead()
-	if err != nil {
-		return "", fmt.Errorf("landingshed: %s: read the task head: %w", producer, err)
-	}
-
-	differs := func(tip string) (bool, error) {
-		if tip == "" || tip == rec.MergedTip {
-			return false, nil
-		}
-		holds, err := g.holdsWork(tip, head)
-		if err != nil {
-			return false, fmt.Errorf("landingshed: %s: test whether %s holds the task's work: %w", producer, tip, err)
-		}
-		return !holds, nil
-	}
-	localMoved, err := differs(tips.Local)
-	if err != nil {
-		return "", err
-	}
-	upstream := tips.Upstream
-	if g.pushSkipped {
-		upstream = ""
-	}
-	upstreamMoved, err := differs(upstream)
-	if err != nil {
-		return "", err
-	}
-	if !localMoved && !upstreamMoved {
+// stillHeld re-reads the parent lock record just before a landing and returns "" when it still names this run.
+// A record that no longer names the run, or none, means something released the lock: an owner pause, another machine's ownership of the run or an operator's `lyx batten lock release`.
+// An unreadable record is a reason too, as at ensure.
+// Both reasons open with LandingStopPrefix, so only the orch's `lyx loom resume` lifts the halt they make.
+// A guard with no lock store holds no lock and checks none.
+// Any other failure is returned as an error.
+func (g parentGuard) stillHeld(producer string) (string, error) {
+	if g.lock.Store == nil {
 		return "", nil
 	}
-	return fmt.Sprintf("parent branch %q moved since Merge-In merged %s (local %s, upstream %s); rerouting to Merge-In", g.parentBranch, rec.MergedTip, tips.Local, tips.Upstream), nil
+	owner, err := g.lock.Owner()
+	if err != nil {
+		return "", fmt.Errorf("landingshed: %s: resolve the parent lock owner: %w", producer, err)
+	}
+	record, found, err := g.lock.Store.Read(g.parentBranch)
+	switch {
+	case errors.Is(err, parentlock.ErrUnreadable):
+		return fmt.Sprintf("%sthe parent lock record of %q is unreadable before the landing: %v; nothing was landed; way forward: run \"lyx batten lock release %s\" from the prime, then \"lyx loom resume\" in the task worktree", LandingStopPrefix, g.parentBranch, err, g.parentBranch), nil
+	case err != nil:
+		return "", fmt.Errorf("landingshed: %s: re-read the parent lock on %q: %w", producer, g.parentBranch, err)
+	case found && record.Owner.SameRun(owner):
+		return "", nil
+	}
+	return fmt.Sprintf("%sthe parent lock on %q no longer names this run, so something released it before the landing: an owner pause, another machine's ownership of the run or an operator's `lyx batten lock release`; nothing was landed; way forward: `lyx loom resume` once no owner pause stands and the run is this machine's, which after an operator's release holds already", LandingStopPrefix, g.parentBranch), nil
 }
 
 // pauseRequested reads the told pause seam, which reports a `--after` naming the waiting row; a read error counts as not paused.

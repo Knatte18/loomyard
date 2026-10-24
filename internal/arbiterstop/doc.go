@@ -9,5 +9,6 @@
 //
 // An awaiting stop is eligible only with a pending review escalation of cause `hard-cap` or `circling`;
 // a `budget` escalation, an unknown cause and an unreadable record all go to the run's parent.
+// A blocked stop that is a landing halt, as the landing rows' hand-back predicate reads the status's producer and error, is refused too, since only the run's parent lifts it.
 // Every refusal ends with HandBackWayForward.
 package arbiterstop

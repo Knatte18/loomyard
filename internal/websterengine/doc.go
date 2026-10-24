@@ -525,7 +525,7 @@
 // Both fixers' prompts share one body, webster-body-verify-fix, behind a prefix of their own.
 // The fixer fixes the cause in source, never deletes, skips or weakens a test, never touches the plan directory or `_lyx`, commits each fix as `fix: <summary>` and does not run the plan-level verify; before it reports it runs the hub's `round` gate call over the computed scope, which Run renders from the told Geometry.GateConfig into the prompt's `fix_gate` marker.
 // Its commits skip record-batch's done-checks, drift detection and glyph scope guard.
-// They are bounded by the gate's commit check, the run-exit fork audit, the gate's own verify and Webster-Review, which reviews the committed range.
+// They are bounded by the gate's commit check, the run-exit fork audit, the gate's own verify and the Code-Review perch after Merge-In, which reviews the committed range.
 // The plan directory and `_lyx` sit outside every code commit, so the run-exit fork audit is what catches a fixer write there:
 // forkOwnReport maps a fork transcript outside every batch bracket to the verify-gate report, and CheckFork audits the fixer fork as it audits a batch fork.
 //

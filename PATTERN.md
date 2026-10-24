@@ -42,8 +42,8 @@
 - `PATTERN-gitexec-checked-call` — Running git: `gitexec.Run`/`runChecked`; raw `RunGit`/`r.run` only at pinned `//gitexec:raw` sites.
 - `PATTERN-never-force-add` — Keeping transients unindexed: each repo's `.git/info/exclude`; fabric and gitrepo never run `git add -f`.
 - `PATTERN-origin-reconcile` — Acting on a run or hub after an absence: first `fabricengine`'s origin reconcile, sole judge of branches.
-- `PATTERN-owner-machine` — Starting, resuming or landing a run or acting on wake: only where its entry reads owned by no other machine; owner set only by `boardengine`'s setter; name only from `internal/machinename`. — [background](pattern/PATTERN-owner-machine.md)
-- `PATTERN-parent-lock` — Merging a parent into a task branch, or landing on it: only under that parent's `internal/parentlock` lock; a moved parent reroutes to Merge-In.
+- `PATTERN-owner-machine` — Starting, resuming or landing a run or acting on wake: only where no other machine owns its entry. — [background](pattern/PATTERN-owner-machine.md)
+- `PATTERN-parent-lock` — Moving, merging into or landing on a local parent branch: only in Finalize, under its `internal/parentlock` lock.
 
 ## Shed and loom
 
@@ -56,7 +56,8 @@
 - `PATTERN-shed-run-directory` — Touching run directories or `seed.json`: `internal/shedrun` alone declares paths, ids and `Seed`. — [background](pattern/PATTERN-shed-run-directory.md)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
 - `PATTERN-transient-stop` — Marking failure transient: `internal/shedengine` mark. — [background](pattern/PATTERN-transient-stop.md)
-- `PATTERN-failure-stop-visible` — An `--until-stop` failure as sole lock holder: status is non-running before waiter returns. (test) — [background](pattern/PATTERN-failure-stop-visible.md)
+- `PATTERN-recipe-owns-failures` — A merge or test failure at Merge-In or Finalize: its fixer, a Finalize reroute or a halt to the orch.
+- `PATTERN-failure-stop-visible` — An `--until-stop` failure as sole holder: status is non-running before the waiter returns. (test) — [background](pattern/PATTERN-failure-stop-visible.md)
 - `PATTERN-driver-choice-single-site` — Reading seed driver: once per recipe, in bootstrap verbs. (test) — [background](pattern/PATTERN-driver-choice-single-site.md)
 - `PATTERN-treadle-runner-seam` — Importing into `internal/treadleengine`: only allowlist, never `burlerengine`, `lyxcwd` or an `internal/*cli` package.
 - `PATTERN-plan-generation` — Archiving plan: `_lyx/plan/`'s top-level files hold one generation. — [background](pattern/PATTERN-plan-generation.md)
@@ -79,13 +80,13 @@
 - `PATTERN-friction-capture` — Halting a loom run or refusing in webster: Go writes a note. (test) — [background](pattern/PATTERN-friction-capture.md)
 - `PATTERN-completion-signal` — Finding run unfinished in `internal/shuttleengine`: consult `allOutputFilesExist` first. (test) — [background](pattern/PATTERN-completion-signal.md)
 - `PATTERN-shuttle-provider-seam` — Referencing provider: specifics live only under `internal/shuttleengine/<engine>`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
-- `PATTERN-model-choice-mapping` — Mapping resolved model-spec onto a spawn: only `shuttleengine.NewModelChoice` reads fields. (test) — [background](pattern/PATTERN-model-choice-mapping.md)
+- `PATTERN-model-choice-mapping` — Mapping a model-spec onto a spawn: only via `shuttleengine.NewModelChoice`. (test) — [background](pattern/PATTERN-model-choice-mapping.md)
 - `PATTERN-shuttle-stop` — Stopping shuttle strand from Go outside `internal/shuttleengine`: only via its stop verb. (test) — [background](pattern/PATTERN-shuttle-stop.md)
 - `PATTERN-orch-pane-single-writer` — Typing into orch session from Go: only creel, via `Delivery` seam. — [background](pattern/PATTERN-orch-pane-single-writer.md)
 - `PATTERN-shell-guard-table` — Guarding shell command: only in `internal/shellguard`, every engine rendering every row; engine tool guards stay in-engine.
 - `PATTERN-shell-mechanics-seam` — Building pane-shell command string: only via `internal/shell`, importing only stdlib.
 - `PATTERN-pane-text-injection` — Typing text into agent pane: only reed's guarded paste-submit. — [background](pattern/PATTERN-pane-text-injection.md)
-- `PATTERN-pause-holds-prompts` — Typing a line into covered session: shuttle's send refuses by target's slug; caller holds line or claims session. — [background](pattern/PATTERN-pause-holds-prompts.md)
+- `PATTERN-pause-holds-prompts` — Typing into a covered session: shuttle refuses by slug; caller holds the line or claims the session. — [background](pattern/PATTERN-pause-holds-prompts.md)
 - `PATTERN-guarded-interrupt` — Sending agent pane the interrupt key: only shuttle's two pane guards. — [background](pattern/PATTERN-guarded-interrupt.md)
 - `PATTERN-pane-binary-resolution` — Creating strand pane or detached `lyx` window in reed: resolve `lyx` via `panebin.go` only. (test) — [background](pattern/PATTERN-pane-binary-resolution.md)
 - `PATTERN-role-skills-typed` — Loading spawned session's skill: spawner names it on launch spec, lyx delivers it on launch line or typed; no stencil asks. (test)

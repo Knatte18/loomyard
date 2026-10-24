@@ -63,10 +63,8 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 			shedrun.RecipeDarn,
 			websterengine.Geometry{WebsterDir: "/webster", StencilsDir: "/stencils"},
 			"task/"+slug,
-			"https://example.com/origin.git",
 			"main",
 			true,
-			func() error { return nil },
 			modelspec.Registry{"claude/sonnet-5": {}},
 			&shuttleengine.Runner{},
 			landingshed.Config{},
@@ -76,18 +74,13 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 			func() (string, error) { return "", nil },
 			darnVerifySource(location),
 			parentLockDeps(location, shedrun.SelfRunID, "", ""),
-			time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 		)
 	}
-	assertLanding := func(t *testing.T, deps landingshed.Deps, wantCommand string, wantSkip bool) {
+	assertLanding := func(t *testing.T, deps landingshed.Deps, wantCommand string) {
 		t.Helper()
 		command, err := deps.VerifyCommand()
 		if err != nil || command != wantCommand {
 			t.Errorf("VerifyCommand() = %q, %v; want %q, nil", command, err, wantCommand)
-		}
-		skip, err := deps.PublishSkip()
-		if err != nil || skip != wantSkip {
-			t.Errorf("PublishSkip() = %v, %v; want %v, nil", skip, err, wantSkip)
 		}
 	}
 	assertAnswer := func(t *testing.T, seam func() (string, bool, error), wantCommand string, wantScoped bool) {
@@ -118,7 +111,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 
 	if !t.Run("a pair with no commit of its own is tree-scoped over no targets and runs nothing", func(t *testing.T) {
 		assertAnswer(t, seam, "", true)
-		assertLanding(t, deps, "", true)
+		assertLanding(t, deps, "")
 	}) {
 		return
 	}
@@ -127,7 +120,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.CommitFile(t, worktree, "docs/ä.md", "docs\n", "docs change")
 		gitkit.CommitFile(t, worktree, "tools/a.go", "package tools\n", "tools change")
 		assertAnswer(t, seam, "lyx gate test --wait --tier 1 ./tools/...", true)
-		assertLanding(t, deps, "lyx gate test --wait --tier 1 ./tools/...", true)
+		assertLanding(t, deps, "lyx gate test --wait --tier 1 ./tools/...")
 	}) {
 		return
 	}
@@ -136,7 +129,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.CommitFile(t, prime, "internal/p.go", "package internal\n", "parent production change")
 		gitkit.Git(t, worktree, "merge", "--no-edit", gitkit.CurrentBranch(t, prime))
 		assertAnswer(t, seam, "lyx gate test --wait --tier 1 ./tools/...", true)
-		assertLanding(t, deps, "lyx gate test --wait --tier 1 ./tools/...", true)
+		assertLanding(t, deps, "lyx gate test --wait --tier 1 ./tools/...")
 	}) {
 		return
 	}
@@ -150,7 +143,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.Git(t, worktree, "add", "--", "internal/r.go")
 		gitkit.Git(t, worktree, "commit", "--no-edit")
 		assertAnswer(t, seam, "", false)
-		assertLanding(t, deps, landingCall, false)
+		assertLanding(t, deps, landingCall)
 	}) {
 		return
 	}
@@ -166,7 +159,7 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		gitkit.Git(t, freshWorktree, "mv", "internal/x.go", "tools/x.go")
 		gitkit.Git(t, freshWorktree, "commit", "-m", "move the file into tools")
 		assertAnswer(t, locate(t, freshSlug), "", false)
-		assertLanding(t, landing(t, freshSlug), landingCall, false)
+		assertLanding(t, landing(t, freshSlug), landingCall)
 	}) {
 		return
 	}
@@ -176,15 +169,12 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 		assertRefusal(t, seam, "./tools", "lyx config darn's editor")
 		wantRefusal := []string{"./tools", "lyx config darn's editor", "then re-run the lyx command that refused"}
 		_, commandErr := deps.VerifyCommand()
-		_, skipErr := deps.PublishSkip()
-		for name, err := range map[string]error{"VerifyCommand()": commandErr, "PublishSkip()": skipErr} {
-			if err == nil {
-				t.Errorf("%s error = nil; want a refusal", name)
-				continue
-			}
+		if commandErr == nil {
+			t.Error("VerifyCommand() error = nil; want a refusal")
+		} else {
 			for _, want := range wantRefusal {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("%s error = %q; want it to contain %q", name, err, want)
+				if !strings.Contains(commandErr.Error(), want) {
+					t.Errorf("VerifyCommand() error = %q; want it to contain %q", commandErr, want)
 				}
 			}
 		}
@@ -206,6 +196,6 @@ func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
 	t.Run("an emptied tree_scope_verify turns tree scope off", func(t *testing.T) {
 		seed(t, trees, `tree_scope_verify: ""`)
 		assertAnswer(t, seam, "", false)
-		assertLanding(t, deps, landingCall, false)
+		assertLanding(t, deps, landingCall)
 	})
 }

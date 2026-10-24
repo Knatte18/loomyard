@@ -103,8 +103,8 @@ func (row *RunRow) classifyBatten(records Reader, rev string) error {
 	}
 	record := battenshed.BattenRecord{Snapshots: row.battenSnapshots, Child: row.childHistory}
 	rules := battenshed.NoticeRules{
-		VerifyRows:  []string{loomshed.NameMergeIn, loomshed.NamePublish},
-		GateRow:     loomshed.NamePRGate,
+		VerifyRows:  []string{loomshed.NameMergeIn, retiredPublishRow},
+		GateRow:     retiredPRGateRow,
 		EpisodeRows: []string{battenrecipe.NameLand, battenrecipe.NameWorktreeTeardown},
 	}
 

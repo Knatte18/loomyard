@@ -36,10 +36,10 @@ func peersFakeTasks() []boardengine.Task {
 	status := func(s string) *string { return &s }
 	return []boardengine.Task{
 		{Slug: "running-peer", Title: "Running peer", Status: status("running · Webster-Write")},
-		{Slug: "awaiting-peer", Title: "Awaiting peer", Status: status("awaiting · PR-Gate")},
+		{Slug: "awaiting-peer", Title: "Awaiting peer", Status: status("awaiting · PR-Review")},
 		{Slug: "blocked-peer", Title: "Blocked peer", Status: status("blocked · Plan-Write")},
 		{Slug: "darn-peer", Title: "Darn peer", Status: status("blocked · Darn-Write")},
-		{Slug: "publish-peer", Title: "Publish peer", Status: status("awaiting · Publish")},
+		{Slug: "finalize-peer", Title: "Finalize peer", Status: status("awaiting · Finalize")},
 		{Slug: "idle", Title: "Idle", Status: nil},
 		{Slug: "finished", Title: "Finished", Status: status("done")},
 		{Slug: "hand-set", Title: "Hand set", Status: status("someday")},
@@ -93,15 +93,15 @@ func TestPeersVerb(t *testing.T) {
 		for _, peer := range raw["peers"].([]any) {
 			slugs = append(slugs, peer.(map[string]any)["slug"].(string))
 		}
-		if want := []string{"running-peer", "awaiting-peer", "blocked-peer", "darn-peer", "publish-peer"}; !reflect.DeepEqual(slugs, want) {
+		if want := []string{"running-peer", "awaiting-peer", "blocked-peer", "darn-peer", "finalize-peer"}; !reflect.DeepEqual(slugs, want) {
 			t.Errorf("peers = %v; want %v", slugs, want)
 		}
 		wantRows := map[string]int{
 			"running-peer":  0,
-			"awaiting-peer": loomRowNumber(t, "PR-Gate"),
+			"awaiting-peer": loomRowNumber(t, "PR-Review"),
 			"blocked-peer":  loomRowNumber(t, "Plan-Write"),
 			"darn-peer":     0,
-			"publish-peer":  loomRowNumber(t, "Publish"),
+			"finalize-peer": loomRowNumber(t, "Finalize"),
 		}
 		for _, peer := range raw["peers"].([]any) {
 			line := peer.(map[string]any)

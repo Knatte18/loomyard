@@ -10,11 +10,15 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/runprofile"
+	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
+// renamedCodeMaxBounces is the line loom's Migrate writes for a retired webster_max_bounces of 2, carrying the comment the loom template holds on code_max_bounces.
+const renamedCodeMaxBounces = "code_max_bounces: 2 # bounce budget of the Code-Review perch: N gives N judged Burler rounds, 1 by default; null takes review_max_bounces; 0 runs no review round: the perch's Bouncer settles approved at once; a checkpoint above this budget means the perch never rules CIRCLING and reaches the soft-cap rule, or the accept, instead\n"
+
 // TestPrepareRunSettings pins PrepareRunSettings over the real registry: the documents it returns and the refusals that name the module and key.
+// It is not parallel: its Warn subtest reads the process-global logger, which a parallel top-level test would also write to.
 func TestPrepareRunSettings(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name         string
 		settings     map[string]any
@@ -95,9 +99,19 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantInvalid: true,
 		},
 		{
-			name:     "a retired webster model key is renamed by loom's Migrate and copied onto merge",
+			name:     "a retired webster model key is renamed to its code key by loom's Migrate",
 			settings: map[string]any{"loom": map[string]any{"webster_review": "sonnet[high]"}},
-			wantDocs: map[string]string{"loom": "webster_reviewer_model: sonnet[high] # model-spec for the Webster-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\nmerge_reviewer_model: sonnet[high] # model-spec for the Merge-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\n"},
+			wantDocs: map[string]string{"loom": "code_reviewer_model: sonnet[high] # model-spec for the Code-Review reviewer, sonnet[medium] by default; empty takes reviewer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment\n"},
+		},
+		{
+			name:     "a retired webster_max_bounces is renamed and a retired merge_max_bounces is dropped by loom's Migrate",
+			settings: map[string]any{"loom": map[string]any{"webster_max_bounces": float64(2), "merge_max_bounces": float64(1)}},
+			wantDocs: map[string]string{"loom": renamedCodeMaxBounces},
+		},
+		{
+			name:     "a retired merge_max_bounces is dropped by loom's Migrate and never refused",
+			settings: map[string]any{"loom": map[string]any{"merge_max_bounces": float64(1), "plan_max_bounces": float64(2)}},
+			wantDocs: map[string]string{"loom": "plan_max_bounces: 2\n"},
 		},
 		{
 			name:        "a retired darn fan key is renamed by darn's Migrate and refused as a guard key",
@@ -307,6 +321,31 @@ func TestPrepareRunSettings(t *testing.T) {
 			}
 		})
 	}
+
+	// The logger's output is process-global, so this subtest is not parallel: it runs before the parallel rows above resume.
+	t.Run("each migration line is logged at Warn naming the module, the key and the way forward", func(t *testing.T) {
+		logs := logcapture.Capture(t)
+		settings := map[string]any{"loom": map[string]any{"webster_max_bounces": float64(2), "merge_max_bounces": float64(1)}}
+		if _, err := PrepareRunSettings(settings); err != nil {
+			t.Fatalf("PrepareRunSettings error = %v; want none", err)
+		}
+		const wayForward = "way forward: rename or remove the key in profiles.yaml or in the entry's run_settings"
+		for _, line := range []string{"webster_max_bounces: renamed to code_max_bounces", "merge_max_bounces: retired, removed"} {
+			want := "run_settings for module loom: " + line + "; " + wayForward
+			if got := strings.Count(logs.String(), want); got != 1 {
+				t.Errorf("log holds %d lines %q; want 1; log: %s", got, want, logs.String())
+			}
+		}
+		if _, err := PrepareRunSettings(map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1)}}); err != nil {
+			t.Fatalf("PrepareRunSettings error = %v; want none", err)
+		}
+		if got := strings.Count(logs.String(), "run_settings for module"); got != 2 {
+			t.Errorf("log holds %d migration lines after a document with nothing to migrate; want the 2 from before", got)
+		}
+		if !strings.Contains(logs.String(), "WARN") {
+			t.Errorf("log = %s; want the lines at Warn", logs.String())
+		}
+	})
 }
 
 // TestLayerRunSettings pins how a task's run settings lie over its run profile's: per key, per module, and with each side's refusal naming its source.
@@ -321,9 +360,21 @@ func TestLayerRunSettings(t *testing.T) {
 	}{
 		{
 			name:     "a task key replaces the profile's and a profile key the task lacks stays",
+			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1), "code_max_bounces": float64(1)}},
+			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}},
+			wantDocs: map[string]string{"loom": "code_max_bounces: 1\nplan_max_bounces: 3\n"},
+		},
+		{
+			name:     "a profile's retired merge_max_bounces is dropped rather than refused",
 			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1), "merge_max_bounces": float64(1)}},
 			settings: map[string]any{"loom": map[string]any{"plan_max_bounces": float64(3)}},
-			wantDocs: map[string]string{"loom": "merge_max_bounces: 1\nplan_max_bounces: 3\n"},
+			wantDocs: map[string]string{"loom": "plan_max_bounces: 3\n"},
+		},
+		{
+			name:     "a task's retired webster_max_bounces layers as code_max_bounces and its merge_max_bounces is dropped",
+			profile:  map[string]any{"loom": map[string]any{"plan_max_bounces": float64(1)}},
+			settings: map[string]any{"loom": map[string]any{"webster_max_bounces": float64(2), "merge_max_bounces": float64(1)}},
+			wantDocs: map[string]string{"loom": "plan_max_bounces: 1\n" + renamedCodeMaxBounces},
 		},
 		{
 			name:     "a module only one side names is written as that side has it",
@@ -394,6 +445,7 @@ func TestProfilesCheckLoad(t *testing.T) {
 	}{
 		{name: "the template's starting profiles pass"},
 		{name: "a valid hub file passes", hubFile: "light:\n  loom: {plan_max_bounces: 1}\n"},
+		{name: "a profile holding the retired webster_max_bounces and merge_max_bounces passes", hubFile: "light:\n  loom: {webster_max_bounces: 1, merge_max_bounces: 1}\n"},
 		{name: "an unknown key is refused naming the profile", hubFile: "light:\n  loom: {plan_max_bounces: 1}\nodd:\n  loom: {no_such_key: 1}\n", wantRefusal: []string{`run profile "odd"`, "no_such_key"}},
 		{name: "an unknown module is refused naming the profile", hubFile: "odd:\n  bogus: {x: 1}\n", wantRefusal: []string{`run profile "odd"`, "bogus"}},
 	}

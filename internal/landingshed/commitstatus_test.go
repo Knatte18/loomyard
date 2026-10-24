@@ -23,12 +23,16 @@ import (
 // orderRecordingResolver is a resolver fake that appends "merge" to a shared event slice, so a test
 // can assert the commit seam ran before the merge rather than merely that both ran.
 type orderRecordingResolver struct {
-	events *[]string
-	result mergeresolve.Result
-	err    error
+	events    *[]string
+	result    mergeresolve.Result
+	err       error
+	gotSource string
+	gotTip    string
 }
 
-func (r *orderRecordingResolver) Resolve(_ context.Context, _ string) (mergeresolve.Result, error) {
+func (r *orderRecordingResolver) Resolve(_ context.Context, source, tip string) (mergeresolve.Result, error) {
+	r.gotSource = source
+	r.gotTip = tip
 	*r.events = append(*r.events, "merge")
 	return r.result, r.err
 }
@@ -43,7 +47,6 @@ func commitStatusRecorder(events *[]string, err error) func() error {
 }
 
 // TestFinalize_CommitStatus pins the seam's ordering and disposition in Finalize: it runs before the merge-in, a failure is an error that never merges, and an unwired seam is not an error.
-// It stays serial because newTestDeps swaps the package-level NewGitHubClient.
 func TestFinalize_CommitStatus(t *testing.T) {
 	sentinel := errors.New("git index locked")
 	cases := []struct {

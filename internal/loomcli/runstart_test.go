@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -83,7 +82,7 @@ func TestSeedRunStart(t *testing.T) {
 }
 
 // TestFindRunPullRequest pins that the approve and reject verbs' lookup honours the run's start: a pull request created before it reads as none, one created after it is returned.
-// It never runs in parallel: it swaps the package-level landingshed.NewGitHubClient.
+// It never runs in parallel: it swaps the package-level newGitHubClient.
 func TestFindRunPullRequest(t *testing.T) {
 	since := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	tests := []struct {
@@ -106,9 +105,9 @@ func TestFindRunPullRequest(t *testing.T) {
 				t.Fatalf("url.Parse: %v", err)
 			}
 			client.BaseURL = parsed
-			original := landingshed.NewGitHubClient
-			landingshed.NewGitHubClient = func() (*github.Client, error) { return client, nil }
-			t.Cleanup(func() { landingshed.NewGitHubClient = original })
+			original := newGitHubClient
+			newGitHubClient = func() (*github.Client, error) { return client, nil }
+			t.Cleanup(func() { newGitHubClient = original })
 
 			pr, err := findRunPullRequest(context.Background(), "o", "r", "task", "parent", since)
 			if err != nil {

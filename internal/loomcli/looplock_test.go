@@ -4,6 +4,7 @@ package loomcli
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,10 +14,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/parentlock"
-	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 const lockedBranch = "main"
@@ -45,43 +47,34 @@ func lockOwnerOf(t *testing.T, store *parentlock.Store) (parentlock.Owner, bool)
 	return record.Owner, found
 }
 
-// TestLoopLockExit asserts the exit hook releases the loop's record at every stop, hands it to a live batten at an awaiting PR-Gate, and leaves a record of another process alone.
+// TestLoopLockExit asserts the exit hook releases the loop's record at every stop, an awaiting one included, and leaves a record of another process alone.
 func TestLoopLockExit(t *testing.T) {
 	t.Parallel()
-	battenPID := os.Getpid()
-	battenStart, _ := proc.StartTime(battenPID)
-	handedOff := loopOwner
-	handedOff.PID, handedOff.StartTime = battenPID, battenStart
 	otherProcess := loopOwner
 	otherProcess.PID, otherProcess.StartTime = 200, "200-start"
-	watched := func() (int, bool) { return battenPID, true }
-	unwatched := func() (int, bool) { return 0, false }
 
 	tests := []struct {
 		name      string
 		recordOf  parentlock.Owner
 		stop      shedverbs.LoopStop
 		status    shedengine.Status
-		batten    func() (int, bool)
 		wantOwner parentlock.Owner
 		wantFound bool
 	}{
-		{"blocked", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Webster"}, watched, parentlock.Owner{}, false},
-		{"failed", loopOwner, shedverbs.LoopStopError, shedengine.Status{State: shedengine.StateFailed, CurrentProducer: "Publish"}, watched, parentlock.Owner{}, false},
-		{"paused", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StatePaused, CurrentProducer: "Publish"}, watched, parentlock.Owner{}, false},
-		{"stop condition", loopOwner, shedverbs.LoopStopCondition, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Publish"}, watched, parentlock.Owner{}, false},
-		{"done", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateDone, CurrentProducer: "Finalize"}, watched, parentlock.Owner{}, false},
-		{"awaiting at Describe", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "Describe"}, watched, parentlock.Owner{}, false},
-		{"awaiting at PR-Gate hands off to a live batten", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: loomshed.NamePRGate}, watched, handedOff, true},
-		{"awaiting at PR-Gate releases when no batten watches", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: loomshed.NamePRGate}, unwatched, parentlock.Owner{}, false},
-		{"another process of the run keeps its record", otherProcess, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateDone, CurrentProducer: "Finalize"}, watched, otherProcess, true},
+		{"blocked", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Webster"}, parentlock.Owner{}, false},
+		{"failed", loopOwner, shedverbs.LoopStopError, shedengine.Status{State: shedengine.StateFailed, CurrentProducer: "Publish"}, parentlock.Owner{}, false},
+		{"paused", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StatePaused, CurrentProducer: "Publish"}, parentlock.Owner{}, false},
+		{"stop condition", loopOwner, shedverbs.LoopStopCondition, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Publish"}, parentlock.Owner{}, false},
+		{"done", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateDone, CurrentProducer: "Finalize"}, parentlock.Owner{}, false},
+		{"awaiting at Describe", loopOwner, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: "Describe"}, parentlock.Owner{}, false},
+		{"another process of the run keeps its record", otherProcess, shedverbs.LoopStopHalted, shedengine.Status{State: shedengine.StateDone, CurrentProducer: "Finalize"}, otherProcess, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			store := lockedStore(t, tt.recordOf)
 
-			loopLockExit(store, func() parentlock.Owner { return loopOwner }, tt.batten)(tt.stop, tt.status)
+			loopLockExit(store, func() parentlock.Owner { return loopOwner })(tt.stop, tt.status)
 
 			gotOwner, gotFound := lockOwnerOf(t, store)
 			if gotFound != tt.wantFound || gotOwner != tt.wantOwner {
@@ -170,6 +163,7 @@ func TestIdleReleaseLogLevels(t *testing.T) {
 					return waiting, nil
 				},
 				bound, func() time.Duration { return now },
+				func() bool { return false },
 				func() bool { return false })
 
 			for i, at := range tt.wakeAt {
@@ -194,6 +188,72 @@ func TestIdleReleaseLogLevels(t *testing.T) {
 	}
 }
 
+// TestFinalizeKeepsLock asserts the check holds the lock while the run's status names Finalize running or a verify marker of a live process stands, and on a read that fails, and holds nothing for any other status or no file at all.
+func TestFinalizeKeepsLock(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// status is the producer and state the status file holds; an empty producer writes no file.
+		producer string
+		state    shedengine.State
+		// corruptStatus writes bytes that do not decode in place of the status file.
+		corruptStatus bool
+		// marker is the bytes of the verify marker; empty writes none.
+		marker string
+		want   bool
+	}{
+		{name: "no status and no marker holds nothing"},
+		{name: "Finalize running holds it", producer: loomshed.NameFinalize, state: shedengine.StateRunning, want: true},
+		{name: "Finalize blocked holds nothing", producer: loomshed.NameFinalize, state: shedengine.StateBlocked},
+		{name: "another row running holds nothing", producer: loomshed.NameMergeIn, state: shedengine.StateRunning},
+		{name: "a live verify marker holds it", producer: loomshed.NameMergeIn, state: shedengine.StateRunning, marker: "site: landing\npid: %d\n", want: true},
+		{name: "a verify marker of a dead process holds nothing", producer: loomshed.NameMergeIn, state: shedengine.StateRunning, marker: "site: landing\npid: 2147483646\n"},
+		{name: "a malformed marker holds it", producer: loomshed.NameMergeIn, state: shedengine.StateRunning, marker: "pid: [", want: true},
+		{name: "an undecodable status holds it", corruptStatus: true, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			statusPath := filepath.Join(dir, "status.json")
+			statusLockPath := filepath.Join(dir, "status.lock")
+			verifyDir := filepath.Join(dir, "verify")
+			if err := os.MkdirAll(verifyDir, 0o755); err != nil {
+				t.Fatalf("MkdirAll() error = %v", err)
+			}
+			switch {
+			case tt.corruptStatus:
+				if err := os.WriteFile(statusPath, []byte("{"), 0o644); err != nil {
+					t.Fatalf("WriteFile() error = %v", err)
+				}
+			case tt.producer != "":
+				err := state.UpdateJSON(statusPath, statusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
+					cur.CurrentProducer = tt.producer
+					cur.State = tt.state
+					return cur, nil
+				})
+				if err != nil {
+					t.Fatalf("seed status: %v", err)
+				}
+			}
+			if tt.marker != "" {
+				body := tt.marker
+				if strings.Contains(body, "%d") {
+					body = fmt.Sprintf(body, os.Getpid())
+				}
+				if err := os.WriteFile(verifytree.NewPaths("", verifyDir).Marker, []byte(body), 0o644); err != nil {
+					t.Fatalf("WriteFile() error = %v", err)
+				}
+			}
+
+			if got := finalizeKeepsLock(statusPath, statusLockPath, verifyDir)(); got != tt.want {
+				t.Errorf("finalizeKeepsLock()() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestLoopIdleRelease asserts the wake hook releases the loop's record once every agent has waited past the bound with none busy, and keeps it below the bound, beside a busy agent and on a failed read.
 func TestLoopIdleRelease(t *testing.T) {
 	t.Parallel()
@@ -207,16 +267,20 @@ func TestLoopIdleRelease(t *testing.T) {
 		readErr error
 		wakeAt  []time.Duration
 		// covered reports whether a pause covers the run at the nth wake; nil never covers it.
-		covered      func(wake int) bool
+		covered func(wake int) bool
+		// keep reports whether a landing in flight holds the lock at the nth wake; nil never holds it.
+		keep         func(wake int) bool
 		wantReleased bool
 	}{
-		{"released once the wait passes the bound", waiting, nil, []time.Duration{0, bound}, nil, true},
-		{"kept below the bound", waiting, nil, []time.Duration{0, bound - time.Second}, nil, false},
-		{"kept beside a busy agent", busyBeside, nil, []time.Duration{0, bound}, nil, false},
-		{"kept on a failed read", waiting, errors.New("unreadable"), []time.Duration{0, bound}, nil, false},
-		{"kept while every wake is covered", waiting, nil, []time.Duration{0, bound, 2 * bound}, func(int) bool { return true }, false},
-		{"kept until the bound passes again after the resume", waiting, nil, []time.Duration{0, bound, bound + bound/2}, func(wake int) bool { return wake < 2 }, false},
-		{"released once the bound passed again after the resume", waiting, nil, []time.Duration{0, bound, bound + bound/2, bound + bound/2 + bound}, func(wake int) bool { return wake < 2 }, true},
+		{"released once the wait passes the bound", waiting, nil, []time.Duration{0, bound}, nil, nil, true},
+		{"kept below the bound", waiting, nil, []time.Duration{0, bound - time.Second}, nil, nil, false},
+		{"kept beside a busy agent", busyBeside, nil, []time.Duration{0, bound}, nil, nil, false},
+		{"kept on a failed read", waiting, errors.New("unreadable"), []time.Duration{0, bound}, nil, nil, false},
+		{"kept while every wake is covered", waiting, nil, []time.Duration{0, bound, 2 * bound}, func(int) bool { return true }, nil, false},
+		{"kept until the bound passes again after the resume", waiting, nil, []time.Duration{0, bound, bound + bound/2}, func(wake int) bool { return wake < 2 }, nil, false},
+		{"released once the bound passed again after the resume", waiting, nil, []time.Duration{0, bound, bound + bound/2, bound + bound/2 + bound}, func(wake int) bool { return wake < 2 }, nil, true},
+		{"kept while a landing holds it past the bound", waiting, nil, []time.Duration{0, bound, 2 * bound}, nil, func(int) bool { return true }, false},
+		{"released once the bound passed again after the landing", waiting, nil, []time.Duration{0, bound, bound + bound/2, bound + bound/2 + bound}, nil, func(wake int) bool { return wake < 2 }, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -227,7 +291,8 @@ func TestLoopIdleRelease(t *testing.T) {
 			wake := idleReleaseOn(store, func() parentlock.Owner { return loopOwner },
 				func() ([]parentlock.AgentState, error) { return tt.states, tt.readErr },
 				bound, func() time.Duration { return now },
-				func() bool { return tt.covered != nil && tt.covered(wakeNumber) })
+				func() bool { return tt.covered != nil && tt.covered(wakeNumber) },
+				func() bool { return tt.keep != nil && tt.keep(wakeNumber) })
 
 			for i, at := range tt.wakeAt {
 				now, wakeNumber = at, i

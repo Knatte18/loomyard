@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/runprofile"
 )
 
 // TestConfigOverRealHub drives configuration edits through a real hub with one pair: a per-worktree module edit is synced into the pair's fabric worktree while the code side stays pristine, and a hub-wide module `--set` changes the hub file and commits it in _board with no per-worktree copy written.
@@ -340,15 +341,15 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read the board loom.yaml: %v", err)
 		}
-		// webster_fan holds a value under the old name alone, and merge_fan sits beside the new name it was renamed to.
-		// The hub base is sparse, so the new name is planted for merge_fan to sit beside.
+		// webster_fan holds a value under the old name alone, and plan_fan sits beside the new name it was renamed to.
+		// The hub base is sparse, so the new name is planted for plan_fan to sit beside.
 		var planted []string
 		for _, line := range strings.Split(strings.TrimRight(string(current), "\n"), "\n") {
-			if !strings.HasPrefix(line, "webster_reviewer_fan:") && !strings.HasPrefix(line, "merge_reviewer_fan:") {
+			if !strings.HasPrefix(line, "code_reviewer_fan:") && !strings.HasPrefix(line, "plan_reviewer_fan:") {
 				planted = append(planted, line)
 			}
 		}
-		planted = append(planted, "webster_fan: review-code", "merge_reviewer_fan: review-code", "merge_fan: stale-fan")
+		planted = append(planted, "webster_fan: review-code", "plan_reviewer_fan: review-plan", "plan_fan: stale-fan")
 		before := []byte(strings.Join(planted, "\n") + "\n")
 		if err := os.WriteFile(loomFile, before, 0o644); err != nil {
 			t.Fatalf("plant old keys in the board loom.yaml: %v", err)
@@ -377,7 +378,7 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Errorf("dry-run loom entry = %v; want layer default, seed hub, applied false", loom)
 		}
 		migrated := fmt.Sprint(loom["migrated"])
-		for _, want := range []string{"webster_fan", "merge_fan"} {
+		for _, want := range []string{"webster_fan", "plan_fan"} {
 			if !strings.Contains(migrated, want) {
 				t.Errorf("dry-run loom migrated = %s; want it to name %s", migrated, want)
 			}
@@ -453,12 +454,12 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read the board loom.yaml: %v", err)
 		}
-		for _, want := range []string{"\nwebster_reviewer_fan: review-code", "\nmerge_reviewer_fan:"} {
+		for _, want := range []string{"\ncode_reviewer_fan: review-code", "\nplan_reviewer_fan: review-plan"} {
 			if !strings.Contains(string(after), want) {
 				t.Errorf("applied board loom.yaml lacks %q; got %q", want, after)
 			}
 		}
-		for _, gone := range []string{"\nwebster_fan:", "\nmerge_fan:", "stale-fan"} {
+		for _, gone := range []string{"\nwebster_fan:", "\nwebster_reviewer_fan:", "\nplan_fan:", "stale-fan"} {
 			if strings.Contains(string(after), gone) {
 				t.Errorf("applied board loom.yaml still holds %q; got %q", gone, after)
 			}
@@ -490,6 +491,85 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 		if kept, err := os.ReadFile(machineFile); err != nil || string(kept) != machineBytes {
 			t.Errorf("machine gate file = %q, %v after the apply; want it unchanged", kept, err)
+		}
+	})
+
+	t.Run("reconcile --layer default --apply prunes every retired loom, landing and gate key and leaves the profiles file as written", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, "")
+		appendPlanted := func(module, planted string) {
+			t.Helper()
+			file := configengine.ConfigFile(boardDir, module)
+			current, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("read the board %s.yaml: %v", module, err)
+			}
+			body := strings.TrimRight(string(current), "\n")
+			if body != "" {
+				body += "\n"
+			}
+			if err := os.WriteFile(file, []byte(body+planted), 0o644); err != nil {
+				t.Fatalf("plant retired keys in the board %s.yaml: %v", module, err)
+			}
+		}
+		appendPlanted("loom", "webster_max_bounces: 2\nmerge_max_bounces: 1\nalignment_pr_approve: true\nrework: true\n")
+		appendPlanted("landing", "require_pr_to_base: []\n")
+		gateFile := configengine.ConfigFile(boardDir, "gate")
+		if err := os.WriteFile(gateFile, []byte("gates:\n  round: [0, 1]\n  publish: [0]\n"), 0o644); err != nil {
+			t.Fatalf("plant a publish gate in the board gate.yaml: %v", err)
+		}
+		appendPlanted("profiles", "retired-keys:\n  loom: {webster_max_bounces: 3, merge_max_bounces: 1}\n")
+		profilesFile := configengine.ConfigFile(boardDir, "profiles")
+		profilesBefore, err := os.ReadFile(profilesFile)
+		if err != nil {
+			t.Fatalf("read the board profiles.yaml: %v", err)
+		}
+
+		if code, result := runReconcileCLI(t, primeWorktreePath, "--layer", "default", "--apply"); code != 0 {
+			t.Fatalf("reconcile --layer default --apply = %d; want 0; result: %v", code, result)
+		}
+
+		read := func(module string) string {
+			t.Helper()
+			content, err := os.ReadFile(configengine.ConfigFile(boardDir, module))
+			if err != nil {
+				t.Fatalf("read the board %s.yaml: %v", module, err)
+			}
+			return string(content)
+		}
+		loom := read("loom")
+		if !strings.Contains(loom, "\ncode_max_bounces: 2 ") {
+			t.Errorf("applied board loom.yaml lacks code_max_bounces: 2; got %q", loom)
+		}
+		for _, gone := range []string{"webster_max_bounces", "merge_max_bounces", "alignment_pr_approve", "rework"} {
+			if strings.Contains(loom, gone) {
+				t.Errorf("applied board loom.yaml still holds %q; got %q", gone, loom)
+			}
+		}
+		if landing := read("landing"); !strings.Contains(landing, "\ndeploy_branches: []") || strings.Contains(landing, "require_pr_to_base") {
+			t.Errorf("applied board landing.yaml = %q; want an empty deploy_branches and no require_pr_to_base", landing)
+		}
+		if gate := read("gate"); !strings.Contains(gate, "round: [0, 1]") || strings.Contains(gate, "publish") {
+			t.Errorf("applied board gate.yaml = %q; want the round list kept and no publish", gate)
+		}
+		if profilesAfter := read("profiles"); profilesAfter != string(profilesBefore) {
+			t.Errorf("board profiles.yaml = %q after the apply; want %q, byte for byte", profilesAfter, profilesBefore)
+		}
+
+		// The profile still holding the retired keys seeds a run: the Webster key reads as its Code successor and the Merge key is dropped.
+		profiles, err := runprofile.Load(configengine.Dirs{Board: boardDir})
+		if err != nil {
+			t.Fatalf("runprofile.Load: %v", err)
+		}
+		profile, err := profiles.Lookup("retired-keys")
+		if err != nil {
+			t.Fatalf("Lookup(retired-keys): %v", err)
+		}
+		documents, err := configreg.LayerRunSettings("retired-keys", profile, nil)
+		if err != nil {
+			t.Fatalf("LayerRunSettings(retired-keys): %v", err)
+		}
+		if got, want := string(documents["loom"]), "code_max_bounces: 3 "; !strings.HasPrefix(got, want) || strings.Contains(got, "merge_max_bounces") {
+			t.Errorf("seeded loom layer = %q; want it to start with %q and hold no merge_max_bounces", got, want)
 		}
 	})
 

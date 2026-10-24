@@ -99,6 +99,8 @@ type Config struct {
 	Tackler           string `yaml:"tackler"`
 	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
 	TacklerMaxSpawns  *int   `yaml:"tackler_max_spawns"`
+	// PRReview turns on the PR-Review stub's log line; the stub opens no pull request and acts on nothing either way.
+	PRReview bool `yaml:"pr_review"`
 }
 
 // ShedOverride returns the driver and tackler keys of darn.yaml as the override of shed.yaml's.
@@ -157,6 +159,7 @@ func ConfigSpec() configengine.Spec {
 		"tackler":             configengine.CategoryNone,
 		"tackler_timeout_min": configengine.CategoryNone,
 		"tackler_max_spawns":  configengine.CategoryNone,
+		"pr_review":           configengine.CategoryNone,
 	}
 	for key, category := range reviewbudget.Categories(nil) {
 		categories[key] = category

@@ -24,7 +24,7 @@ const darnStencilName = "darn-template-write"
 // darnRole is the agent-name role the darn writer's spawn carries.
 const darnRole = "darn"
 
-// noneToken is what the stencil renders for a rejection-findings or prior-work value the spawn has nothing to tell for.
+// noneToken is what the stencil renders for a prior-work value the spawn has nothing to tell for.
 const noneToken = "(none)"
 
 // darnSkills are the skills the darn writer's spawn loads, in order.
@@ -48,8 +48,6 @@ type DarnInputs struct {
 	DecisionRecordPath string
 	// SupportLogPath is the absolute path the writer writes the support log to before any code.
 	SupportLogPath string
-	// RejectionFindings is the reviewer's findings this spawn fixes; empty when the spawn answers no rejection.
-	RejectionFindings string
 	// PriorWork names what an earlier spawn left unfinished or broken; empty on a first spawn.
 	PriorWork string
 	// LanguageSkills are the hub's language skills the writer loads after its own; empty for none.
@@ -107,7 +105,6 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 			"decision_record_path": in.DecisionRecordPath,
 			"support_log_path":     in.SupportLogPath,
 			"specs_dir":            in.SpecsDir,
-			"rejection_findings":   orNone(in.RejectionFindings),
 			"prior_work":           orNone(in.PriorWork),
 			"pattern_directive":    patternDirective,
 			friction.MarkerName:    frictionDirective,

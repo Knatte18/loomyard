@@ -150,8 +150,24 @@ func (row *RunRow) readDriveReports(records Reader, tag gitrepo.TagRef) error {
 	return nil
 }
 
+// retiredReviewSubdirs maps a review directory a past run's loom recipe wrote to the segment it is read as;
+// an old Webster-Review's rounds are Code-Review's, and Merge-Review's are dropped, which the empty segment marks.
+var retiredReviewSubdirs = map[string]string{
+	"webster": "code",
+	"merge":   "",
+}
+
+// currentReviewSegment returns the segment a review directory name counts under, and false when the directory counts under none.
+func currentReviewSegment(subdir string) (string, bool) {
+	if segment, retired := retiredReviewSubdirs[subdir]; retired {
+		return segment, segment != ""
+	}
+	return subdir, true
+}
+
 // readSegments counts the review rounds of every review segment, and of the parent review, into Segments.
 // A Bouncer re-seed's archived generation adds its rounds to its segment's and is no segment of its own.
+// A past run's Webster-Review directory is read as the Code-Review segment, and its Merge-Review directory is not read.
 func (row *RunRow) readSegments(records Reader, tag gitrepo.TagRef) error {
 	reviewsDir := filepath.ToSlash(loomengine.LoomReviewsDirRel())
 	subdirs, err := records.SubdirsAtRevision(tag.Commit, reviewsDir)
@@ -170,11 +186,21 @@ func (row *RunRow) readSegments(records Reader, tag gitrepo.TagRef) error {
 			return fmt.Errorf("reportengine: list %s at %s: %w", path.Join(reviewsDir, subdir), tag.Name, err)
 		}
 		summary := shedadapters.ReviewRounds(names)
-		if segment, archived := shedadapters.ArchivedRunDirSegment(subdir); archived {
-			archivedRounds[segment] += summary.Rounds
+		if archivedFrom, archived := shedadapters.ArchivedRunDirSegment(subdir); archived {
+			if segment, counted := currentReviewSegment(archivedFrom); counted {
+				archivedRounds[segment] += summary.Rounds
+			}
 			continue
 		}
-		row.Segments[subdir] = &SegmentRounds{Rounds: summary.Rounds, Outcome: summary.Outcome}
+		segment, counted := currentReviewSegment(subdir)
+		if !counted {
+			continue
+		}
+		if held := row.Segments[segment]; held != nil {
+			held.Rounds += summary.Rounds
+			continue
+		}
+		row.Segments[segment] = &SegmentRounds{Rounds: summary.Rounds, Outcome: summary.Outcome}
 	}
 	for segment, rounds := range archivedRounds {
 		if row.Segments[segment] == nil {

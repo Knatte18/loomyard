@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
-	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -104,8 +104,6 @@ type arbiterFixture struct {
 	escalationCause  shedadapters.EscalationCause
 	escalationErr    error
 	circlingPending  bool
-	verifyRecord     *battenshed.ChildPublishFailure
-	head             string
 	settings         loomengine.ArbiterSettings
 	fake             *arbiterFake
 	envelopePath     string
@@ -137,21 +135,20 @@ func newArbiterFixture(t *testing.T, producer string, state shedengine.State) *a
 		settings:         loomengine.ArbiterSettings{ModelChoice: shuttleengine.ModelChoice{Model: "claude-resolved", Effort: "high", Version: "v1"}, Timeout: 30 * time.Minute, MaxSpawns: 3},
 		fake:             &arbiterFake{runGUID: "guid-1"},
 		interruptPolicy:  map[string]string{},
-		producerRowNames: []string{"Plan-Write", "Plan-Bouncer", loomshed.NamePublish, "PR-Gate"},
+		producerRowNames: []string{"Plan-Write", "Plan-Bouncer", loomshed.NameMergeIn, loomshed.NameFinalize},
 	}
 	f.envelopePath = filepath.Join(root, "stop-envelope.json")
 	f.reportPath = filepath.Join(root, "report.md")
 	return f
 }
 
-// haltAtVerifyRow stops the run at row with a Stuck entry at 11:30 after an entry at 11:00, and leaves a verify record naming a target at HEAD, written at writtenAt.
-func (f *arbiterFixture) haltAtVerifyRow(row, writtenAt string) {
-	f.head = "head-1"
+// haltAtVerifyRow stops the run at row with a Stuck entry at 11:30 after an entry at 11:00, and the status error reason.
+func (f *arbiterFixture) haltAtVerifyRow(row, reason string) {
+	f.status.Error = reason
 	f.status.History = []shedengine.HistoryEntry{
 		{Producer: "Plan-Bouncer", Outcome: shedengine.Done, At: "2026-10-12T11:00:00Z"},
 		{Producer: row, Outcome: shedengine.Stuck, At: "2026-10-12T11:30:00Z"},
 	}
-	f.verifyRecord = &battenshed.ChildPublishFailure{Row: row, Head: f.head, Target: "Webster-Burler-Review", WrittenAt: writtenAt}
 }
 
 func (f *arbiterFixture) arbiterDir() string { return filepath.Join(f.root, "arbiter") }
@@ -189,13 +186,6 @@ func (f *arbiterFixture) deps() arbiterDeps {
 				}
 				return f.escalationCause, f.escalationBrief, f.escalationOpen, nil
 			},
-			VerifyRecord: func() (battenshed.ChildPublishFailure, bool, error) {
-				if f.verifyRecord == nil {
-					return battenshed.ChildPublishFailure{}, false, nil
-				}
-				return *f.verifyRecord, true, nil
-			},
-			Head:            func() (string, error) { return f.head, nil },
 			InterruptPolicy: func(producer string) string { return f.interruptPolicy[producer] },
 		},
 		PendingCirclingDecision: func(string) (bool, error) { return f.circlingPending, nil },
@@ -309,7 +299,15 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 			},
 		},
 		{
-			name: "Publish halt naming no target", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
+			name: "Merge-In halt", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NameMergeIn, "") },
+		},
+		{
+			name: "landing halt at Finalize refused", producer: loomshed.NameFinalize, state: shedengine.StateBlocked,
+			setup: func(f *arbiterFixture) {
+				f.haltAtVerifyRow(loomshed.NameFinalize, landingshed.LandingStopPrefix+"the fixer escalated; way forward: resolve it, then `lyx loom resume`")
+			},
+			wantRefusal: "a landing halt", wantNoSpawn: true,
 		},
 		{
 			name: "awaiting at a Bouncer row with a pending escalation", producer: "Plan-Bouncer", state: shedengine.StateAwaiting, wantBrief: true,
@@ -350,29 +348,7 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 			setup:       func(f *arbiterFixture) { f.interruptPolicy["Plan-Write"] = shedverbs.InterruptPolicyHandback },
 			wantRefusal: "whose policy hands back", wantNoSpawn: true,
 		},
-		{
-			name: "Publish halt naming a target refused", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
-			setup:       func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NamePublish, "2026-10-12T11:15:00Z") },
-			wantRefusal: "verify halt whose failure record names a target", wantNoSpawn: true,
-		},
-		{
-			name: "Merge-In verify halt naming a target refused", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
-			setup:       func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NameMergeIn, "2026-10-12T11:15:00Z") },
-			wantRefusal: "verify halt whose failure record names a target", wantNoSpawn: true,
-		},
-		{
-			name: "Merge-In stop of another cause with an earlier verify's record stays eligible", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NameMergeIn, "2026-10-12T11:00:00Z") },
-		},
-		{
-			name: "Publish stop of another cause with an earlier verify's record is eligible", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NamePublish, "2026-10-12T11:00:00Z") },
-		},
-		{
-			name: "blocked stop at another row with a record naming a target stays eligible", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) { f.haltAtVerifyRow("Plan-Write", "2026-10-12T11:15:00Z") },
-		},
-		{name: "awaiting with a parent notice but no escalation refused", producer: "PR-Gate", state: shedengine.StateAwaiting, wantRefusal: "no pending review escalation", wantNoSpawn: true},
+		{name: "awaiting with a parent notice but no escalation refused", producer: loomshed.NameFinalize, state: shedengine.StateAwaiting, wantRefusal: "no pending review escalation", wantNoSpawn: true},
 		{name: "paused refused", producer: "Plan-Write", state: shedengine.StatePaused, wantRefusal: "a paused run is not a halted stop", wantNoSpawn: true},
 		{name: "done refused", producer: "Plan-Write", state: shedengine.StateDone, wantRefusal: "a done run is not a halted stop", wantNoSpawn: true},
 		{name: "running refused", producer: "Plan-Write", state: shedengine.StateRunning, wantRefusal: "a running run is not a halted stop", wantNoSpawn: true},
@@ -749,7 +725,7 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 			wantRelaunch: "lyx shed step " + arbiterTestRun + " --until-stop --arbiter-attempt 1",
 		},
 		{
-			name: "a resume at a blocked stop with a goto target", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
+			name: "a resume at a blocked stop with a goto target", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
 			verdict:     "verdict: resume\nreason: go back\ngoto: Plan-Write\n",
 			wantVerdict: loomengine.ArbiterVerdictResume, wantGoto: "Plan-Write",
 			wantRelaunch: "lyx shed step " + arbiterTestRun + " --until-stop --arbiter-attempt 1",
@@ -787,11 +763,11 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 		},
 		{
 			name: "a resume naming a goto target past the current row", producer: "Plan-Write", state: shedengine.StateBlocked,
-			verdict:     "verdict: resume\nreason: skip ahead\ngoto: PR-Gate\n",
+			verdict:     "verdict: resume\nreason: skip ahead\ngoto: Finalize\n",
 			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
 		},
 		{
-			name: "a resume naming a goto target the guard refuses", producer: loomshed.NamePublish, state: shedengine.StateBlocked,
+			name: "a resume naming a goto target the guard refuses", producer: loomshed.NameMergeIn, state: shedengine.StateBlocked,
 			verdict: "verdict: resume\nreason: go back\ngoto: Plan-Write\n",
 			setup: func(f *arbiterFixture) {
 				f.gotoGuard = func(string) (string, error) { return "the Plan-Review verdict is settled", nil }

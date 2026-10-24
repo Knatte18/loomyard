@@ -500,7 +500,7 @@ func writeDeclaredPatternRecord(t *testing.T, layout *lyxcwd.Location, body stri
 // malformedDeclaredBullet is a PATTERN changes bullet with an unknown action.
 const malformedDeclaredBullet = "- `PATTERN-example-entry` — frobnicates: nothing"
 
-// newTestSpecsDir returns a real, non-empty directory to pass as the specsDir parameter of PlanTable, ReworkTable and their spec predecessors, alongside newTestStencilsDir.
+// newTestSpecsDir returns a real, non-empty directory to pass as the specsDir parameter of PlanTable and its spec predecessors, alongside newTestStencilsDir.
 // A real directory rather than an empty-string placeholder is required: specs_dir is a required marker, so an empty value fails the table's validation.
 func newTestSpecsDir(t *testing.T) string {
 	t.Helper()

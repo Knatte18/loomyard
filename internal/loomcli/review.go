@@ -1,5 +1,4 @@
 // review.go implements the `review` loom subtree: the verbs through which a run's parent answers the parent-review gate.
-// `notify`, `delivered`, `approve` and `reject` sit under `review` so they never collide with PR-Gate's `lyx loom approve` and `lyx loom reject`.
 //
 // The group carries its own PersistentPreRunE, and the loom parent's pre-run skips the group, so arm never runs for it and never reads a slug as a run-id.
 // The skip is what holds under cmd/lyx's cobra.EnableTraverseRunHooks, which runs every ancestor's pre-run.
@@ -289,8 +288,7 @@ func (c *loomCLI) reviewCmd() *cobra.Command {
 		Use:   "review",
 		Short: "answer a run's parent-review request: notify, delivered, approve or reject",
 		Long: `review holds the verbs through which a run's parent answers the parent-review
-step of Discussion-Write's gate. They sit under review so they never collide
-with PR-Gate's "lyx loom approve" and "lyx loom reject".
+step of Discussion-Write's gate.
 
 Each verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. The verbs check no

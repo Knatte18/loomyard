@@ -5,7 +5,7 @@
 // The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
 // It resolves the target worktree through the same resolver the review group uses.
 //
-// The verbs check no caller identity, like `lyx loom review` and `lyx loom approve`:
+// The verbs check no caller identity, like `lyx loom review`:
 // any shell addressing the run can record a decision, an agent's tmux session in the task worktree included.
 // That is bounded by which stencils name the verbs, the Bouncer escalation brief and the arbiter stencil only;
 // and by the refusal preconditions — the verbs refuse unless the run awaits at a Bouncer row with a pending escalation, the round carries an escalation the Bouncer wrote (a circling, hard-cap or budget escalation), one decision per round, and only while the run awaits at that Bouncer row.

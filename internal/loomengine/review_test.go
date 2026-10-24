@@ -29,12 +29,11 @@ func TestResolveReview(t *testing.T) {
 		ReviewerModel:    burlerengine.ModelSpecList{"opus[effort=high]", "sonnet[medium]"},
 		FixerModel:       burlerengine.ModelSpecList{"opus[effort=low]"},
 		ReviewTimeoutMin: 240,
-		// Discussion sets its fixer list only, Plan and Merge their reviewer list only, and Webster leaves both unset (one empty entry, as the template loads).
+		// Discussion sets its fixer list only, Plan its reviewer list only, and Code leaves both unset (one empty entry, as the template loads).
 		DiscussionFixerModel: burlerengine.ModelSpecList{"sonnet[effort=high]"},
 		PlanReviewerModel:    burlerengine.ModelSpecList{"sonnet[effort=low]", "opus[effort=high]"},
-		WebsterReviewerModel: burlerengine.ModelSpecList{""},
-		WebsterFixerModel:    burlerengine.ModelSpecList{""},
-		MergeReviewerModel:   burlerengine.ModelSpecList{"sonnet[effort=low]"},
+		CodeReviewerModel:    burlerengine.ModelSpecList{""},
+		CodeFixerModel:       burlerengine.ModelSpecList{""},
 	}
 
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
@@ -65,11 +64,8 @@ func TestResolveReview(t *testing.T) {
 	if got := settings.Plan; len(got.Review) != 2 || got.Review[0].Effort != "low" || got.Review[1].Effort != "high" || !reflect.DeepEqual(got.Fix, settings.Models.Fix) {
 		t.Errorf("ResolveReview(...).Plan = %+v; want a two-entry review list (low, high) and the run-wide fix list", got)
 	}
-	if !reflect.DeepEqual(settings.Webster, settings.Models) {
-		t.Errorf("ResolveReview(...).Webster = %+v; want the run-wide %+v", settings.Webster, settings.Models)
-	}
-	if got := settings.Merge; len(got.Review) != 1 || got.Review[0].Effort != "low" || !reflect.DeepEqual(got.Fix, settings.Models.Fix) {
-		t.Errorf("ResolveReview(...).Merge = %+v; want a one-entry low-effort review list and the run-wide fix list", got)
+	if !reflect.DeepEqual(settings.Code, settings.Models) {
+		t.Errorf("ResolveReview(...).Code = %+v; want the run-wide %+v", settings.Code, settings.Models)
 	}
 	wantTimeout := 240 * time.Minute
 	if settings.Timeout != wantTimeout {
@@ -84,8 +80,7 @@ func TestResolveReview(t *testing.T) {
 	}{
 		{"Discussion", settings.DiscussionKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("discussion_fixer_model")}},
 		{"Plan", settings.PlanKeys, SegmentKeys{Review: loomKey("plan_reviewer_model"), Fix: loomKey("fixer_model")}},
-		{"Webster", settings.WebsterKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("fixer_model")}},
-		{"Merge", settings.MergeKeys, SegmentKeys{Review: loomKey("merge_reviewer_model"), Fix: loomKey("fixer_model")}},
+		{"Code", settings.CodeKeys, SegmentKeys{Review: loomKey("reviewer_model"), Fix: loomKey("fixer_model")}},
 	} {
 		if tt.got != tt.want {
 			t.Errorf("ResolveReview(...).%sKeys = %+v; want %+v", tt.segment, tt.got, tt.want)
@@ -108,8 +103,8 @@ func TestResolveReview(t *testing.T) {
 	cfg.DiscussionReviewerFan = lenses.FanList{"standard"}
 	cfg.PlanReviewerFan = lenses.FanList{"", "full"}
 	cfg.DiscussionFixerFan = lenses.FanList{"fix-discussion"}
-	cfg.WebsterReviewerFan = lenses.FanList{"review-code"}
-	cfg.MergeFixerFan = lenses.FanList{"fix-code"}
+	cfg.CodeReviewerFan = lenses.FanList{"review-code"}
+	cfg.CodeFixerFan = lenses.FanList{"fix-code"}
 	fanned, err := ResolveReview(cfg, reg)
 	if err != nil {
 		t.Fatalf("ResolveReview(fanned cfg) = _, %v; want nil error", err)
@@ -139,7 +134,7 @@ func TestResolveReview(t *testing.T) {
 // TestResolveJudge verifies ResolveJudge resolves each segment's judge and seed through the fallback order: a segment's judge key, else judge; a segment's seed key, else seed, else the segment's resolved judge.
 func TestResolveJudge(t *testing.T) {
 	t.Parallel()
-	// segmentModels is the seed and judge model of one segment, in discussion, plan, webster order.
+	// segmentModels is the seed and judge model of one segment, in discussion, plan, code order.
 	type segmentModels struct{ seed, judge string }
 	tests := []struct {
 		name string
@@ -172,8 +167,8 @@ func TestResolveJudge(t *testing.T) {
 			want: [3]segmentModels{{"sonnet", "sonnet"}, {"haiku", "opus"}, {"sonnet", "sonnet"}},
 		},
 		{
-			name: "webster_seed alone moves only webster's seed",
-			cfg:  Config{Judge: "sonnet[medium]", WebsterSeed: "haiku"},
+			name: "code_seed alone moves only code's seed",
+			cfg:  Config{Judge: "sonnet[medium]", CodeSeed: "haiku"},
 			want: [3]segmentModels{{"sonnet", "sonnet"}, {"sonnet", "sonnet"}, {"haiku", "sonnet"}},
 		},
 		{
@@ -182,8 +177,8 @@ func TestResolveJudge(t *testing.T) {
 			want: [3]segmentModels{{"haiku", "sonnet"}, {"opus", "sonnet"}, {"haiku", "sonnet"}},
 		},
 		{
-			name: "discussion_judge and webster_judge move their own segments",
-			cfg:  Config{Judge: "sonnet[medium]", DiscussionJudge: "opus", WebsterJudge: "haiku"},
+			name: "discussion_judge and code_judge move their own segments",
+			cfg:  Config{Judge: "sonnet[medium]", DiscussionJudge: "opus", CodeJudge: "haiku"},
 			want: [3]segmentModels{{"opus", "opus"}, {"sonnet", "sonnet"}, {"haiku", "haiku"}},
 		},
 	}
@@ -199,8 +194,8 @@ func TestResolveJudge(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ResolveJudge(...) = _, %v; want nil error", err)
 			}
-			got := [3]BouncerModels{settings.Discussion, settings.Plan, settings.Webster}
-			for i, segment := range []string{"discussion", "plan", "webster"} {
+			got := [3]BouncerModels{settings.Discussion, settings.Plan, settings.Code}
+			for i, segment := range []string{"discussion", "plan", "code"} {
 				if !strings.Contains(got[i].Seed.Model, tt.want[i].seed) {
 					t.Errorf("ResolveJudge(...).%s seed model = %q; want a %s model", segment, got[i].Seed.Model, tt.want[i].seed)
 				}
@@ -245,7 +240,7 @@ func TestResolveJudge(t *testing.T) {
 	})
 }
 
-// TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review, fix, judge or rework model-spec returns an error naming its role, rather than being silently carried into a producer's spawn site, and that a bad later review entry or a bad fix entry also names its entry index and the way forward.
+// TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review, fix or judge model-spec returns an error naming its role, rather than being silently carried into a producer's spawn site, and that a bad later review entry or a bad fix entry also names its entry index and the way forward.
 func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -285,9 +280,9 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 			},
 		},
 		{
-			name:   "merge_fixer_model entry",
-			role:   "merge_fixer_model",
-			cfg:    Config{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]"}, MergeFixerModel: burlerengine.ModelSpecList{"ghost"}},
+			name:   "code_fixer_model entry",
+			role:   "code_fixer_model",
+			cfg:    Config{ReviewerModel: burlerengine.ModelSpecList{"sonnet[medium]"}, FixerModel: burlerengine.ModelSpecList{"opus[medium]"}, CodeFixerModel: burlerengine.ModelSpecList{"ghost"}},
 			wantIn: []string{"entry 1", "in loom.yaml"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveReview(cfg, reg)
@@ -340,9 +335,9 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 			},
 		},
 		{
-			name: "webster_judge",
-			role: "webster_judge",
-			cfg:  Config{Judge: "sonnet[medium]", WebsterJudge: "opus[medium"},
+			name: "code_judge",
+			role: "code_judge",
+			cfg:  Config{Judge: "sonnet[medium]", CodeJudge: "opus[medium"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
 				return err
@@ -367,20 +362,11 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 			},
 		},
 		{
-			name: "webster_seed",
-			role: "webster_seed",
-			cfg:  Config{Judge: "sonnet[medium]", WebsterSeed: "opus[medium"},
+			name: "code_seed",
+			role: "code_seed",
+			cfg:  Config{Judge: "sonnet[medium]", CodeSeed: "opus[medium"},
 			resolve: func(cfg Config, reg modelspec.Registry) error {
 				_, err := ResolveJudge(cfg, reg)
-				return err
-			},
-		},
-		{
-			name: "rework",
-			role: "rework",
-			cfg:  Config{Rework: "sonnet[medium"},
-			resolve: func(cfg Config, reg modelspec.Registry) error {
-				_, err := ResolveRework(cfg, reg)
 				return err
 			},
 		},

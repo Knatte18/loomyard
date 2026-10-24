@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -200,35 +199,6 @@ func TestDiscussionCommitPathspec_IncludesParentReviewDir(t *testing.T) {
 			tc.setup(t, loc)
 			if got := discussionCommitPathspec(loc); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("discussionCommitPathspec() = %v; want %v", got, tc.want)
-			}
-		})
-	}
-}
-
-// TestReworkCommitPathspec asserts a present amendment record joins PR-Rework's round pathspec, so the archive's removal of it is staged, and an absent untracked one does not.
-func TestReworkCommitPathspec(t *testing.T) {
-	t.Parallel()
-
-	base := []string{planparser.PlanDirRel(), loomengine.LoomReworkDirRel()}
-	for _, tc := range []struct {
-		name    string
-		present bool
-		want    []string
-	}{
-		{"absent untracked record", false, base},
-		{"present record", true, append(append([]string{}, base...), loomengine.LoomAmendmentRecordRel())},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
-			if tc.present {
-				mustMkdir(t, filepath.Dir(loomengine.LoomAmendmentRecord(loc)))
-				if err := os.WriteFile(loomengine.LoomAmendmentRecord(loc), []byte("titles: []\n"), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if got := reworkCommitPathspec(loc); !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("reworkCommitPathspec() = %v; want %v", got, tc.want)
 			}
 		})
 	}

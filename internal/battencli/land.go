@@ -96,7 +96,7 @@ func landDeps(location *lyxcwd.Location, slug string, locateTask func() (*lyxcwd
 			if err != nil {
 				return battenshed.LandingSettings{}, err
 			}
-			return battenshed.LandingSettings{Deploy: cfg.Deploy, RequirePRToBase: cfg.RequirePRToBase}, nil
+			return battenshed.LandingSettings{Deploy: cfg.Deploy, DeployBranches: cfg.DeployBranches}, nil
 		},
 		RunDeploy: func(ctx context.Context, command, logPath string, timeout time.Duration) (battenshed.DeployResult, error) {
 			return runDeploy(ctx, location.WorktreePath(), command, logPath, timeout)

@@ -8,23 +8,23 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 )
 
-// roundGateSource returns the told source of the hub's `round` gate over dirs.
-// The config is loaded at each call, so a gate.yaml edit between two arrivals takes effect, and a config or `round` list refusal is returned with its own way forward.
-func roundGateSource(dirs configengine.Dirs) func() (loomshed.RoundGate, error) {
+// gateListSource returns the told source of the hub's named gate list over dirs, which the verify gate runs narrowed to a diff.
+// The config is loaded at each call, so a gate.yaml edit between two arrivals takes effect, and a config or gate-list refusal is returned with its own way forward.
+func gateListSource(dirs configengine.Dirs, gate string) func() (loomshed.RoundGate, error) {
 	return func() (loomshed.RoundGate, error) {
 		cfg, err := gateslot.LoadConfig(dirs)
 		if err != nil {
 			return loomshed.RoundGate{}, err
 		}
-		tiers, err := cfg.TierList("round")
+		tiers, err := cfg.TierList(gate)
 		if err != nil {
 			return loomshed.RoundGate{}, err
 		}
 		return loomshed.RoundGate{
 			Tiers: tiers,
 			Render: func(scope ...string) string {
-				// TierList accepted the round list above, so GateCall has no refusal left.
-				call, _ := cfg.GateCall("round", scope...)
+				// TierList accepted the list above, so GateCall has no refusal left.
+				call, _ := cfg.GateCall(gate, scope...)
 				return call
 			},
 			GateTiers: cfg.TierList,
@@ -33,7 +33,7 @@ func roundGateSource(dirs configengine.Dirs) func() (loomshed.RoundGate, error) 
 }
 
 // gateCallSource returns a reader of the call of the named gate over the whole tree, rendered from the config loaded over dirs at each call.
-// A config or gate-list refusal is returned with its own way forward, and an empty `publish` list renders "".
+// A config or gate-list refusal is returned with its own way forward.
 func gateCallSource(dirs configengine.Dirs, gate string) func() (string, error) {
 	return func() (string, error) {
 		cfg, err := gateslot.LoadConfig(dirs)

@@ -6,36 +6,29 @@ package loomcli
 import (
 	"fmt"
 	"path/filepath"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// settledGuard is the run's whole goto guard: the Finalize arm first, then the settled-segment arm over its settled review segments, which reads the Publish failure record of the task worktree.
+// settledGuard is the run's whole goto guard: the Finalize arm first, then the settled-segment arm over its settled review segments.
 // It needs a known location.
 func (c *loomCLI) settledGuard() shedengine.GotoGuard {
 	location := c.location
-	verifyPaths := verifytree.NewPaths(location.WorktreePath(), verifytree.Dir(location.AnchorPath()))
-	return composeGotoGuards(c.finalizeGuard(), settledSegmentGuard(c.routing.Producers, loomengine.LoomReviewsDir(location), func() (verifytree.PublishFailure, bool, error) {
-		return verifytree.ReadPublishFailure(verifyPaths)
-	}, func() (loomshed.AmendmentRecord, bool, error) {
+	return composeGotoGuards(c.finalizeGuard(), settledSegmentGuard(c.routing.Producers, loomengine.LoomReviewsDir(location), func() (loomshed.AmendmentRecord, bool, error) {
 		return loomshed.ReadAmendment(loomengine.LoomAmendmentRecord(location))
 	}))
 }
 
 // settledSegmentGuard refuses a goto onto a review or fix row of a review segment whose Bouncer holds a live settle record, since such a goto would re-run a settled review.
-// Two admissions pass a live record.
-// One is a Publish failure record that names the target and was written after the record settled.
-// The other, for Plan-Burler-Review alone, is a plan amendment record written after the judged round started or over a settle with no known round start.
+// One admission passes a live record: for Plan-Burler-Review alone, a plan amendment record written after the judged round started or over a settle with no known round start.
 // Every other target is admitted: the Bouncer, a row outside every review segment, and a segment whose record is not live.
-// A read error of the settle record, the failure record or the amendment record is returned, which Shed turns into a refusal.
+// A read error of the settle record or the amendment record is returned, which Shed turns into a refusal.
 // The guard only decides; it moves no run and writes no file.
-func settledSegmentGuard(producers []shedengine.ProducerDef, reviewsDir string, publishFailure func() (verifytree.PublishFailure, bool, error), amendment func() (loomshed.AmendmentRecord, bool, error)) shedengine.GotoGuard {
+func settledSegmentGuard(producers []shedengine.ProducerDef, reviewsDir string, amendment func() (loomshed.AmendmentRecord, bool, error)) shedengine.GotoGuard {
 	return func(target string) (string, error) {
 		var segment string
 		for _, producer := range producers {
@@ -52,27 +45,9 @@ func settledSegmentGuard(producers []shedengine.ProducerDef, reviewsDir string, 
 			return "", err
 		}
 
-		settledAt, live, err := shedadapters.SettleLive(filepath.Join(reviewsDir, subdir))
+		_, live, err := shedadapters.SettleLive(filepath.Join(reviewsDir, subdir))
 		if err != nil || !live {
 			return "", err
-		}
-
-		failure, failureFound, err := publishFailure()
-		if err != nil {
-			return "", err
-		}
-		if failureFound && failure.Target == target {
-			// A record an older binary wrote carries no write time, and its goto is admitted as before.
-			if failure.WrittenAt == "" {
-				return "", nil
-			}
-			writtenAt, err := time.Parse(time.RFC3339, failure.WrittenAt)
-			if err != nil {
-				return "", fmt.Errorf("loom: publish failure record: written_at %q: %w", failure.WrittenAt, err)
-			}
-			if writtenAt.After(settledAt) {
-				return "", nil
-			}
 		}
 
 		if target == loomshed.NamePlanBurlerReview {

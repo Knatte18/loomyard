@@ -5,7 +5,7 @@
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillWith requires every marker except pattern_directive, friction_directive and parent_directive non-empty, and there are no {{if}}/{{range}} conditionals anywhere in this file.
      decision_record_path and support_log_path are required markers, naming the two discussion files the writer writes before any code.
-     rejection_findings and prior_work are never empty: DarnTable fills each with (none) when it has nothing to tell.
+     prior_work is never empty: DarnTable fills it with (none) when it has nothing to tell.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
 
 # Darn — make the change a board entry asks for, in one session
@@ -28,17 +28,12 @@ It names the docs and the checks a change to this repository carries.
 
 ## Step 2 — This spawn's work
 
-Rejection findings, which are this spawn's work when they are not `(none)`:
-
-{{.rejection_findings}}
-
 Prior work, which you continue from when it is not `(none)`:
 
 {{.prior_work}}
 
-When the rejection findings are not `(none)`, they come from a reviewer who rejected the change already on the task branch: fix every one of them with new commits.
 When the prior work is not `(none)`, the commits already on the task branch are yours from an earlier spawn: continue from them and fix what the prior work names, never restart the change.
-When both are `(none)`, this is the first spawn and the branch holds no work of yours yet.
+When it is `(none)`, this is the first spawn and the branch holds no work of yours yet.
 
 ## Step 3 — Write the decision record before any code
 

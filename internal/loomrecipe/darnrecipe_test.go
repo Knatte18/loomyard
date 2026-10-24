@@ -24,10 +24,7 @@ var wantDarnProducerTable = []wantProducerRow{
 	{loomshed.NameDarnBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameDarnBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
-	{loomshed.NameMergeIn, "MergeIn", reflect.TypeOf(&landingshed.MergeIn{})},
-	{loomshed.NamePublish, "Publish", reflect.TypeOf(&landingshed.Publish{})},
-	{loomshed.NamePRAlign, "PRAlign", reflect.TypeOf(&landingshed.PRAlign{})},
-	{loomshed.NamePRGate, "PRGate", reflect.TypeOf(&landingshed.PRGate{})},
+	{loomshed.NamePRReview, "PRReview", reflect.TypeOf(&landingshed.PRReview{})},
 	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},
 	{loomshed.NameFrictionReflect, "FrictionReflect", frictionReflectProducerType()},
 }
@@ -87,7 +84,7 @@ func setDarnBudget(env *shedrecipe.Env, budget int) {
 	env.Segments["Darn-Review"] = settings
 }
 
-// TestNewDarn_Routing pins PR-Gate's bounce to Darn-Write inside PR-Review, the Darn-Review perch, then Describe and Merge-In between Darn-Write and Publish with the review budget on all three perch rows, PR-Align between Publish and PR-Gate with no segment and no on_stuck, the reroute edge of Darn-Write and the three landing rows back to Merge-In, and a review budget of 0 routing Darn-Write straight to Merge-In.
+// TestNewDarn_Routing pins the darn tail: the Darn-Review perch, then Describe, PR-Review and Finalize after Darn-Write with the review budget on all three perch rows, Finalize's reroute to Darn-Bouncer, no Merge-In row, and a review budget of 0 routing Darn-Write's Done and Finalize's reroute straight to PR-Review.
 func TestNewDarn_Routing(t *testing.T) {
 	build := func(t *testing.T, reviewBudget int) map[string]shedengine.ProducerDef {
 		t.Helper()
@@ -104,49 +101,43 @@ func TestNewDarn_Routing(t *testing.T) {
 		return rows
 	}
 
-	t.Run("PR-Gate bounces to Darn-Write inside its segment and the perch and Describe sit before Publish", func(t *testing.T) {
+	t.Run("the perch and Describe sit between Darn-Write and PR-Review, and Finalize reroutes to the perch", func(t *testing.T) {
 		rows := build(t, 4)
-		gate, darn := rows[loomshed.NamePRGate], rows[loomshed.NameDarnWrite]
-		if gate.OnStuck != loomshed.NameDarnWrite || gate.OnDone != loomshed.NameFinalize {
-			t.Errorf("PR-Gate OnDone/OnStuck = %q/%q; want %q/%q", gate.OnDone, gate.OnStuck, loomshed.NameFinalize, loomshed.NameDarnWrite)
-		}
-		if gate.Segment != "PR-Review" || darn.Segment != gate.Segment {
-			t.Errorf("segments PR-Gate/Darn-Write = %q/%q; want both PR-Review", gate.Segment, darn.Segment)
-		}
-		if darn.OnDone != loomshed.NameDarnBouncer || darn.OnStuck != "" {
-			t.Errorf("Darn-Write OnDone/OnStuck = %q/%q; want %q/empty", darn.OnDone, darn.OnStuck, loomshed.NameDarnBouncer)
+		darn := rows[loomshed.NameDarnWrite]
+		if darn.OnDone != loomshed.NameDarnBouncer || darn.OnStuck != "" || darn.OnReroute != "" || darn.Segment != "" {
+			t.Errorf("Darn-Write OnDone/OnStuck/OnReroute/Segment = %q/%q/%q/%q; want %q/empty/empty/empty", darn.OnDone, darn.OnStuck, darn.OnReroute, darn.Segment, loomshed.NameDarnBouncer)
 		}
 		bouncer, review, fix := rows[loomshed.NameDarnBouncer], rows[loomshed.NameDarnBurlerReview], rows[loomshed.NameDarnBurlerFix]
 		if bouncer.OnDone != loomshed.NameDescribe || bouncer.OnStuck != loomshed.NameDarnBurlerReview || review.OnStuck != loomshed.NameDarnBurlerFix || fix.OnStuck != loomshed.NameDarnBouncer {
 			t.Errorf("Darn-Bouncer OnDone/OnStuck = %q/%q, review OnStuck = %q, fix OnStuck = %q; want %q/%q, %q, %q", bouncer.OnDone, bouncer.OnStuck, review.OnStuck, fix.OnStuck, loomshed.NameDescribe, loomshed.NameDarnBurlerReview, loomshed.NameDarnBurlerFix, loomshed.NameDarnBouncer)
 		}
-		if describe := rows[loomshed.NameDescribe]; describe.OnDone != loomshed.NameMergeIn || describe.OnStuck != "" {
-			t.Errorf("Describe OnDone/OnStuck = %q/%q; want %q/empty", describe.OnDone, describe.OnStuck, loomshed.NameMergeIn)
+		if describe := rows[loomshed.NameDescribe]; describe.OnDone != loomshed.NamePRReview || describe.OnStuck != "" {
+			t.Errorf("Describe OnDone/OnStuck = %q/%q; want %q/empty", describe.OnDone, describe.OnStuck, loomshed.NamePRReview)
 		}
-		if mergeIn := rows[loomshed.NameMergeIn]; mergeIn.OnDone != loomshed.NamePublish || mergeIn.OnStuck != "" {
-			t.Errorf("Merge-In OnDone/OnStuck = %q/%q; want %q/empty, with no merge perch", mergeIn.OnDone, mergeIn.OnStuck, loomshed.NamePublish)
+		if prReview := rows[loomshed.NamePRReview]; prReview.OnDone != loomshed.NameFinalize || prReview.OnStuck != "" || prReview.Segment != "" {
+			t.Errorf("PR-Review OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", prReview.OnDone, prReview.OnStuck, prReview.Segment, loomshed.NameFinalize)
 		}
-		publish, align := rows[loomshed.NamePublish], rows[loomshed.NamePRAlign]
-		if publish.OnDone != loomshed.NamePRAlign || align.OnDone != loomshed.NamePRGate || align.OnStuck != "" || align.Segment != "" {
-			t.Errorf("Publish OnDone = %q, PR-Align OnDone/OnStuck/Segment = %q/%q/%q; want %q, %q/empty/empty", publish.OnDone, align.OnDone, align.OnStuck, align.Segment, loomshed.NamePRAlign, loomshed.NamePRGate)
+		if _, ok := rows[loomshed.NameMergeIn]; ok {
+			t.Errorf("darn recipe has a %s row; want none", loomshed.NameMergeIn)
 		}
-		for _, row := range []string{loomshed.NameDarnWrite, loomshed.NamePublish, loomshed.NamePRGate, loomshed.NameFinalize} {
-			if got := rows[row].OnReroute; got != loomshed.NameMergeIn {
-				t.Errorf("%s OnReroute = %q; want %q", row, got, loomshed.NameMergeIn)
-			}
+		if finalize := rows[loomshed.NameFinalize]; finalize.OnReroute != loomshed.NameDarnBouncer || finalize.OnDone != loomshed.NameFrictionReflect || finalize.OnStuck != "" {
+			t.Errorf("Finalize OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/empty/%q", finalize.OnDone, finalize.OnStuck, finalize.OnReroute, loomshed.NameFrictionReflect, loomshed.NameDarnBouncer)
 		}
 		if bouncer.Segment != "Darn-Review" || review.Segment != bouncer.Segment || fix.Segment != bouncer.Segment {
 			t.Errorf("segments Darn-Bouncer/review/fix = %q/%q/%q; want all Darn-Review", bouncer.Segment, review.Segment, fix.Segment)
 		}
-		if bouncer.MaxBounces != 4 || review.MaxBounces != 4 || fix.MaxBounces != 4 || gate.MaxBounces != 5 {
-			t.Errorf("MaxBounces Darn-Bouncer/review/fix/PR-Gate = %d/%d/%d/%d; want 4/4/4/5", bouncer.MaxBounces, review.MaxBounces, fix.MaxBounces, gate.MaxBounces)
+		if bouncer.MaxBounces != 4 || review.MaxBounces != 4 || fix.MaxBounces != 4 {
+			t.Errorf("MaxBounces Darn-Bouncer/review/fix = %d/%d/%d; want 4/4/4", bouncer.MaxBounces, review.MaxBounces, fix.MaxBounces)
 		}
 	})
 
-	t.Run("a review budget of 0 routes Darn-Write straight to Merge-In", func(t *testing.T) {
+	t.Run("a review budget of 0 routes Darn-Write's Done and Finalize's reroute straight to PR-Review", func(t *testing.T) {
 		rows := build(t, 0)
-		if got := rows[loomshed.NameDarnWrite].OnDone; got != loomshed.NameMergeIn {
-			t.Errorf("Darn-Write OnDone = %q; want %q", got, loomshed.NameMergeIn)
+		if got := rows[loomshed.NameDarnWrite].OnDone; got != loomshed.NamePRReview {
+			t.Errorf("Darn-Write OnDone = %q; want %q", got, loomshed.NamePRReview)
+		}
+		if got := rows[loomshed.NameFinalize].OnReroute; got != loomshed.NamePRReview {
+			t.Errorf("Finalize OnReroute = %q; want %q", got, loomshed.NamePRReview)
 		}
 	})
 }
@@ -188,7 +179,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 		if err := applyVerifyAttempts(&recipe, "No-Such-Row", 2); err == nil {
 			t.Error("applyVerifyAttempts() on a missing row: error = nil; want non-nil")
 		}
-		if err := applyVerifyAttempts(&recipe, loomshed.NamePublish, 2); err == nil {
+		if err := applyVerifyAttempts(&recipe, loomshed.NameFinalize, 2); err == nil {
 			t.Error("applyVerifyAttempts() on a row with no gates: error = nil; want non-nil")
 		}
 	})
@@ -245,7 +236,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 	})
 }
 
-// TestDarnRouting pins the projection's rows and its review budget applied as NewDarn applies it, Darn-Write's route to Merge-In under a budget of 0, and the refusal of a budget below 0.
+// TestDarnRouting pins the projection's rows and its review budget applied as NewDarn applies it, the routes to PR-Review under a budget of 0, and the refusal of a budget below 0.
 func TestDarnRouting(t *testing.T) {
 	t.Run("rows and the review budget on the perch", func(t *testing.T) {
 		routing, err := DarnRouting(map[string]int{"Darn-Review": 2})
@@ -272,14 +263,17 @@ func TestDarnRouting(t *testing.T) {
 		}
 	})
 
-	t.Run("a review budget of 0 routes Darn-Write straight to Merge-In", func(t *testing.T) {
+	t.Run("a review budget of 0 routes Darn-Write's Done and Finalize's reroute straight to PR-Review", func(t *testing.T) {
 		routing, err := DarnRouting(map[string]int{"Darn-Review": 0})
 		if err != nil {
 			t.Fatalf("DarnRouting() error = %v; want nil", err)
 		}
 		for _, p := range routing.Producers {
-			if p.Name == loomshed.NameDarnWrite && p.OnDone != loomshed.NameMergeIn {
-				t.Errorf("Darn-Write OnDone = %q; want %q", p.OnDone, loomshed.NameMergeIn)
+			if p.Name == loomshed.NameDarnWrite && p.OnDone != loomshed.NamePRReview {
+				t.Errorf("Darn-Write OnDone = %q; want %q", p.OnDone, loomshed.NamePRReview)
+			}
+			if p.Name == loomshed.NameFinalize && p.OnReroute != loomshed.NamePRReview {
+				t.Errorf("Finalize OnReroute = %q; want %q", p.OnReroute, loomshed.NamePRReview)
 			}
 		}
 	})

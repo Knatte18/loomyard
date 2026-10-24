@@ -20,7 +20,7 @@
 //
 // Once the entry is committed, the verb sends one creel notice to each live shuttle run of the target worktree but the tackler's, the arbiter's and the caller's own, so the LLM agent working for the run re-reads the record.
 // The line names the record and the entry's heading and carries no decision text, since the committed record is the authority.
-// With no live run nothing is sent: a later producer reads the record when it starts, and PR-Gate's alignment agent judges the run against it.
+// With no live run nothing is sent: a later producer reads the record when it starts.
 // A failed listing or post is reported on the success envelope and never fails the verb, since the entry is already committed.
 
 package loomcli

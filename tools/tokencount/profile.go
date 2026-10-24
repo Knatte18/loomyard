@@ -1,5 +1,5 @@
 // profile.go reports each batcher profile's cost and quality from finished runs: a per-batch cost table, one row per run and one summary line per profile.
-// Everything but the transcripts' tokens comes from the one repository the tool is pointed at: the runs' webster records and the Webster-Review files committed beside them, read through gitrepo's read side only.
+// Everything but the transcripts' tokens comes from the one repository the tool is pointed at: the runs' webster records and the Code-Review files committed beside them, read through gitrepo's read side only.
 
 package main
 
@@ -25,8 +25,12 @@ type RunRecords interface {
 	FilesInDirAtRevision(rev, dir string) ([]string, error)
 }
 
-// websterReviewSubdir is the Webster-Review segments' run subdirectory under the reviews directory, the loom recipe's run_subdir value.
-const websterReviewSubdir = "webster"
+// The run subdirectories under the reviews directory that hold the code review's round files:
+// codeReviewSubdir is the loom recipe's run_subdir value of the Code-Review segment, and websterReviewSubdir is the one an older run's Webster-Review segment wrote.
+const (
+	codeReviewSubdir    = "code"
+	websterReviewSubdir = "webster"
+)
 
 // identityProfile is the profile of a run that recorded no partition: one batch per card.
 const identityProfile = "identity"
@@ -53,7 +57,7 @@ type RunProfile struct {
 	Mark string
 	// Batches are the run's batches, empty when Mark is set.
 	Batches []BatchProfile
-	// Findings counts the findings of the run's Webster-Review files, valid when FindingsMark is empty.
+	// Findings counts the findings of the run's Code-Review files, valid when FindingsMark is empty.
 	Findings int
 	// FindingsMark is why the findings were not read, empty when they were.
 	FindingsMark string
@@ -266,11 +270,33 @@ func readRecordedState(records RunRecords, rev string) (*websterengine.State, er
 	return &state, nil
 }
 
-// countFindings sums the findings of every round-<n>-review.md file directly in the webster review directory at rev.
+// reviewDirOf returns the first of the code and the webster review directories at rev that holds a round review file, with its file names.
+// It returns no directory when neither does, and the first read error when a directory could not be listed.
+func reviewDirOf(records RunRecords, rev string) (string, []string, error) {
+	reviewsDir := filepath.ToSlash(loomengine.LoomReviewsDirRel())
+	var firstErr error
+	for _, subdir := range []string{codeReviewSubdir, websterReviewSubdir} {
+		dir := path.Join(reviewsDir, subdir)
+		names, err := records.FilesInDirAtRevision(rev, dir)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		for _, name := range names {
+			if _, ok := shedadapters.ParseRoundReviewName(name); ok {
+				return dir, names, nil
+			}
+		}
+	}
+	return "", nil, firstErr
+}
+
+// countFindings sums the findings of every round-<n>-review.md file directly in the code review directory at rev, or in the webster one of an older run.
 // It returns a mark instead when there is no such file or one cannot be read or parsed.
 func countFindings(records RunRecords, rev string) (int, string) {
-	dir := path.Join(filepath.ToSlash(loomengine.LoomReviewsDirRel()), websterReviewSubdir)
-	names, err := records.FilesInDirAtRevision(rev, dir)
+	dir, names, err := reviewDirOf(records, rev)
 	if err != nil {
 		return 0, fmt.Sprintf("review directory unreadable: %v", err)
 	}

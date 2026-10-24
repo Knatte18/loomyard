@@ -66,7 +66,7 @@ func newLandFixture(t *testing.T) *landFixture {
 		scratchDir: t.TempDir(),
 		parent:     "main",
 		prime:      "main",
-		landing:    LandingSettings{Deploy: "deploy.sh", RequirePRToBase: []string{"main"}},
+		landing:    LandingSettings{Deploy: "deploy.sh", DeployBranches: []string{"main"}},
 		ready:      []readyAnswer{{}},
 		now:        time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
@@ -181,9 +181,10 @@ func TestLand_Dispositions(t *testing.T) {
 	}{
 		{name: "ParentIsPrimeBranch", configure: func(f *landFixture) {}, wantCalls: []string{"dirty", "pull", "deploy", "prune"}},
 		{name: "OtherParentSkipsPullAndDeploy", configure: func(f *landFixture) { f.parent = "feature" }, wantCalls: []string{"prune"}},
-		{name: "ParentOutsideRequirePRToBase", configure: func(f *landFixture) {
+		{name: "ParentOutsideDeployBranches", configure: func(f *landFixture) {
 			f.parent, f.prime = "dev", "dev"
 		}, wantCalls: []string{"dirty", "pull", "prune"}},
+		{name: "EmptyDeployBranchesDeploysNothing", configure: func(f *landFixture) { f.landing.DeployBranches = []string{} }, wantCalls: []string{"dirty", "pull", "prune"}},
 		{name: "EmptyDeployRunsNothing", configure: func(f *landFixture) { f.landing.Deploy = "" }, wantCalls: []string{"dirty", "pull", "prune"}},
 	}
 	for _, tt := range tests {

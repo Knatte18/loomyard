@@ -21,13 +21,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
 // Config represents the resolved landing.yaml configuration.
 type Config struct {
-	// RequirePRToBase is the list of base branch names Publish requires a pull request against.
-	RequirePRToBase []string `yaml:"require_pr_to_base"`
+	// DeployBranches is the list of base branch names a landing into which batten's Land row deploys.
+	// An empty list deploys nothing.
+	DeployBranches []string `yaml:"deploy_branches"`
 	// Squash selects whether Finalize's parent-side merge squashes.
 	Squash bool `yaml:"squash"`
 	// Conflict is the model-spec string selecting the model both producers' conflict-resolution
@@ -47,9 +49,20 @@ type Config struct {
 	// Deploy is the shell command batten's Land row runs in the prime after a landing into the prime's branch.
 	// Empty runs nothing.
 	Deploy string `yaml:"deploy"`
-	// ParentLockIdleReleaseMin is the minutes a waiting run, or an undecided PR-Gate hand-off, keeps its parent lock before the lock is released.
+	// ParentLockIdleReleaseMin is the minutes a waiting run keeps its parent lock before the lock is released.
+	// A run at Finalize and running, or with a live verify, keeps the lock past it.
 	// A value below 1 reads as the default.
 	ParentLockIdleReleaseMin int `yaml:"parent_lock_idle_release_min"`
+	// Fixer is the model-spec string selecting the model the merge fixer session runs under.
+	Fixer string `yaml:"fixer"`
+	// FixerTimeoutMin is the minutes one fixer turn may run.
+	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
+	// MergeFixAttempts is the fixer turns one Merge-In row entry may spend.
+	MergeFixAttempts int `yaml:"merge_fix_attempts"`
+	// FinalizeFixAttempts is the fixer turns one Finalize row entry may spend.
+	FinalizeFixAttempts int `yaml:"finalize_fix_attempts"`
+	// FinalizeFixMaxLines is the added plus deleted lines a fixer change may hold before it is over the cap.
+	FinalizeFixMaxLines int `yaml:"finalize_fix_max_lines"`
 }
 
 // defaultIdleReleaseMin is the idle bound in minutes that a missing or non-positive parent_lock_idle_release_min reads as.
@@ -98,7 +111,7 @@ func ConfigSpec() configengine.Spec {
 		HubWide:  true,
 		OpenMaps: ConfigOpenMaps(),
 		Categories: map[string]configengine.Category{
-			"require_pr_to_base":   configengine.CategoryCrossPair,
+			"deploy_branches":      configengine.CategoryCrossPair,
 			"squash":               configengine.CategoryCrossPair,
 			"conflict":             configengine.CategoryNone,
 			"conflict_timeout_min": configengine.CategoryNone,
@@ -109,6 +122,12 @@ func ConfigSpec() configengine.Spec {
 			"deploy":               configengine.CategoryExecutable,
 			// The idle bound decides when one pair's parent lock frees for the next pair waiting on it.
 			"parent_lock_idle_release_min": configengine.CategoryCrossPair,
+			"fixer":                        configengine.CategoryNone,
+			"fixer_timeout_min":            configengine.CategoryNone,
+			// The attempt caps and the line cap bound what the fixer lands on the parent unreviewed.
+			"merge_fix_attempts":     configengine.CategoryCrossPair,
+			"finalize_fix_attempts":  configengine.CategoryCrossPair,
+			"finalize_fix_max_lines": configengine.CategoryCrossPair,
 		},
 		// publish_verify moved to the hub's publish gate; a file still holding it loads and reconcile prunes it.
 		RetiredKeys: map[string]configengine.Category{
@@ -118,7 +137,7 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads and unmarshals configuration for the landing module strictly through the hub-wide layer stack under dirs.
-// It validates the conflict and describe keys' model-spec grammar at load time, and refuses an engine_trailers entry whose key names no engine.
+// It validates the conflict, describe and fixer keys' model-spec grammar at load time, refuses a fixer timeout, fixer attempt cap or fixer line cap below 1, and refuses an engine_trailers entry whose key names no engine.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -142,6 +161,23 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	if _, err := modelspec.Parse(cfg.Describe); err != nil {
 		return Config{}, fmt.Errorf("landing config key %q: %w", "describe", err)
 	}
+
+	if _, err := modelspec.Parse(cfg.Fixer); err != nil {
+		return Config{}, fmt.Errorf("landing config key %q: %w", "fixer", err)
+	}
+	for _, positive := range []struct {
+		key   string
+		value int
+	}{
+		{"fixer_timeout_min", cfg.FixerTimeoutMin},
+		{"merge_fix_attempts", cfg.MergeFixAttempts},
+		{"finalize_fix_attempts", cfg.FinalizeFixAttempts},
+		{"finalize_fix_max_lines", cfg.FinalizeFixMaxLines},
+	} {
+		if positive.value < 1 {
+			return Config{}, fmt.Errorf("landing config key %q: %d is below 1; way forward: lyx config landing --set %s=<n> from the prime", positive.key, positive.value, positive.key)
+		}
+	}
 	engines := modelspec.EngineNames()
 	for name := range cfg.EngineTrailers {
 		if !slices.Contains(engines, name) {
@@ -152,21 +188,35 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	return cfg, nil
 }
 
+// retiredKeyRenames maps each retired landing.yaml key onto the key that replaced it.
+var retiredKeyRenames = []yamlengine.KeyRename{
+	{From: "require_pr_to_base", To: "deploy_branches"},
+}
+
 // MigrateConfig rewrites a landing.yaml document for lyx config reconcile and returns the rewritten bytes with one line per rewrite.
 // It moves a retired co_authored_by value into engine_trailers as the claude entry `Co-Authored-By: <value>`;
 // a document already holding engine_trailers keeps it and drops co_authored_by,
 // and an empty or non-scalar co_authored_by is dropped without an entry, as empty means off.
-// A document without co_authored_by is returned unchanged, so a migrated file is unchanged on a second pass.
+// It then renames the retired require_pr_to_base key to deploy_branches, keeping its value, an empty list included;
+// a document already holding deploy_branches keeps it and drops the old key.
+// A document without a retired key is returned unchanged, so a migrated file is unchanged on a second pass.
 // A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {
 	migrated, line, err := migrateCoAuthoredBy(existing)
 	if err != nil {
 		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate landing config: %w", err))
 	}
+	var rewrites []string
 	if line == "" {
-		return existing, nil, nil
+		migrated = existing
+	} else {
+		rewrites = append(rewrites, line)
 	}
-	return migrated, []string{line}, nil
+	migrated, renameLines, err := yamlengine.RenameKeys([]byte(ConfigTemplate()), migrated, retiredKeyRenames)
+	if err != nil {
+		return nil, nil, configengine.MarkInvalid(fmt.Errorf("migrate landing config: %w", err))
+	}
+	return migrated, append(rewrites, renameLines...), nil
 }
 
 // migrateCoAuthoredBy rewrites a top-level co_authored_by key in place into an engine_trailers mapping holding its claude line, or drops it beside an existing engine_trailers.

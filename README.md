@@ -2,7 +2,7 @@
 
 LoomYard is an autonomous software-development pipeline built on [Claude Code](https://claude.ai/code).
 You hand it a task, and it can discuss the task with you before it writes a plan.
-It then implements the plan batch by batch, has independent agents review every artifact, opens a pull request, and lands it once you approve.
+It then implements the plan batch by batch, has independent agents review every artifact, and lands the result on the parent branch itself.
 Each task runs in its own isolated git worktree pair, and many tasks can run at once.
 
 At its center is **`lyx`**, a single Go binary (LoomYard eXecutable) that owns the task board, the git topology, every phase transition, and every agent launch.
@@ -50,12 +50,11 @@ The list is data, not code — [`contracts/recipes/loom-recipe.yaml`](contracts/
 Preflight → Loom-Preflight
   → Discussion-Write → [Discussion review]
   → Plan-Write       → [Plan review]
-  → Webster → [Webster review]
-  → Describe → Merge-In → [Merge review] → Publish → PR-Gate ⇄ PR-Rework
-  → Finalize → Friction-Reflect
+  → Webster → Merge-In → [Code review]
+  → Describe → PR-Review → Finalize → Friction-Reflect
 ```
 
-A smaller task can run the `darn` recipe instead ([`contracts/recipes/darn-recipe.yaml`](contracts/recipes/darn-recipe.yaml)): one writer that edits, tests, and commits, one review segment over the committed diff, then the same landing rows.
+A smaller task can run the `darn` recipe instead ([`contracts/recipes/darn-recipe.yaml`](contracts/recipes/darn-recipe.yaml)): one writer that edits, tests, and commits, one review segment over the committed diff, then `Describe`, `PR-Review` and the same `Finalize`.
 
 - **Discussion** — an agent turns the task into a decision record: scope, decisions taken, what is out of scope.
   It can stop and ask you when a decision is yours to make.
@@ -67,9 +66,10 @@ A smaller task can run the `darn` recipe instead ([`contracts/recipes/darn-recip
   The judge approves or sends the artifact back for another round, within a bounce budget;
   an exhausted budget halts the run for a human rather than looping.
   The judge and the reviewer are fresh agents, independent of the one that wrote the artifact, so no agent ever reviews its own work.
-- **Landing** — `Describe` writes the change description, `Merge-In` merges the parent in, `Publish` opens the pull request, and `PR-Gate` waits for the operator.
-  `lyx loom approve` lands it;
-  `lyx loom reject <review-file>` sends the operator's findings to `PR-Rework`, which archives the built plan as a generation, plans and implements a new one, and comes back to the gate.
+- **Landing** — `Merge-In` merges the parent's upstream tip in with no lock, and a merge fixer settles a conflict or a failing merged tree and aligns the task to what the parent brought in.
+  The `Code review` perch then reviews the code, `Describe` writes the change description, and `PR-Review` is a stub for a human pull-request review that is not built.
+  `Finalize` takes the parent lock first, merges the parent again, runs the landing gate and lands on the parent.
+  A conflict or a merge too large to land reroutes to `Merge-In`, and a halt at `Merge-In` or `Finalize` is handed back to the orchestrator.
 - **Friction-Reflect** — the agents' own notes on what was hard or broken in the tooling are reflected on and can be filed as issues against LoomYard itself (`selfreport`).
 
 Routing is explicit per row (`on_done`, `on_stuck`), never positional, and the engine's validator refuses a recipe whose edges cross a review segment's boundary.
@@ -190,7 +190,7 @@ Commands print a JSON envelope: `{"ok":true, ...}` or `{"ok":false,"error":"..."
 | `burler` | one review+fix round over an artifact |
 | `webster` | the batch implementer |
 | `shed` | the generic `seed`/`run`/`step`/`status`/`pause` verbs over any recipe |
-| `loom` | the task pipeline, plus `approve`/`reject` at the PR gate and the standalone validators its gates use |
+| `loom` | the task pipeline, plus the standalone validators its gates use |
 | `batten` | a task worktree's whole lifecycle as one run |
 | `orch` | the self-cycling hub orchestrator session |
 | `quarry` | glyph lookups against the worktree's own code, the planner's source of symbol spellings |
@@ -220,7 +220,7 @@ The [sandbox Hub](docs/sandbox-howto.md) is a bench for running the real binary 
 - Go (the version in `go.mod`) and a C toolchain — `lyx` links quarry's tree-sitter grammars through cgo
 - Git 2.42+
 - tmux (on Windows, psmux)
-- A GitHub token for `Publish` and `selfreport`: `GH_TOKEN`, `GITHUB_TOKEN`, or an authenticated `gh` CLI
+- A GitHub token for `selfreport` and the board's issue intake: `GH_TOKEN`, `GITHUB_TOKEN`, or an authenticated `gh` CLI
 
 ## Plugins
 

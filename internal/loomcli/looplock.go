@@ -1,8 +1,10 @@
-// looplock.go builds the loop's parent lock hooks: the exit hook that releases or hands off the lock a loop owns, and the wake hook that releases it when the run's agents have all waited past the idle bound.
+// looplock.go builds the loop's parent lock hooks: the exit hook that releases the lock a loop owns, and the wake hook that releases it when the run's agents have all waited past the idle bound.
 
 package loomcli
 
 import (
+	"errors"
+	"io/fs"
 	"sync"
 	"time"
 
@@ -18,6 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // runLockIdentity returns the run part of a parent lock owner for the run runID of the worktree loc: the slug, the pair path and the resolved run id.
@@ -39,13 +43,6 @@ func selfLockOwner(loc *lyxcwd.Location, runID string) func() parentlock.Owner {
 		owner.PID = process.PID
 		owner.StartTime = process.StartTime
 		return owner
-	}
-}
-
-// battenWatcher returns the reading of the run's batten-watched marker: the pid of the live batten watching the run, and false when none does.
-func battenWatcher(loc *lyxcwd.Location, runID string) func() (int, bool) {
-	return func() (int, bool) {
-		return liveBattenPID(shedrun.BattenWatchedMarker(loc, runID), proc.IsAlive)
 	}
 }
 
@@ -96,10 +93,9 @@ func ownedLockBranches(locks *parentlock.Store, self parentlock.Owner) ([]string
 }
 
 // loopLockExit returns the loop's exit hook: it settles every parent lock record this loop owns, by run and by process, once the stop is final.
-// An awaiting stop at PR-Gate with a live batten watching the run hands each record to that batten's process, so the lock is kept while the orch reviews.
-// Every other stop releases the records.
-// Both are compare-and-swap on the loop's own process, so a record batten or a newer loop owns is left alone, and a store error is logged and changes no stop.
-func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner, batten func() (int, bool)) func(stop shedverbs.LoopStop, st shedengine.Status) {
+// Every stop releases the records.
+// The release is a compare-and-swap on the loop's own process, so a record batten or a newer loop owns is left alone, and a store error is logged and changes no stop.
+func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner) func(stop shedverbs.LoopStop, st shedengine.Status) {
 	return func(stop shedverbs.LoopStop, st shedengine.Status) {
 		owner := self()
 		branches, err := ownedLockBranches(locks, owner)
@@ -110,24 +106,9 @@ func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner, batten 
 		if len(branches) == 0 {
 			return
 		}
-		successor, handOff := parentlock.Owner{}, false
-		if st.State == shedengine.StateAwaiting && st.CurrentProducer == loomshed.NamePRGate {
-			if pid, watched := batten(); watched {
-				successor = owner
-				successor.PID = pid
-				successor.StartTime, _ = proc.StartTime(pid)
-				handOff = true
-			}
-		}
 		for _, branch := range branches {
-			var err error
-			if handOff {
-				_, err = locks.HandOff(branch, owner, successor)
-			} else {
-				_, err = locks.Release(branch, owner)
-			}
-			if err != nil {
-				logger.Warn("loomcli: could not settle the parent lock at the loop's exit", "branch", branch, "stop", string(stop), "handOff", handOff, "cause", err)
+			if _, err := locks.Release(branch, owner); err != nil {
+				logger.Warn("loomcli: could not release the parent lock at the loop's exit", "branch", branch, "stop", string(stop), "cause", err)
 			}
 		}
 	}
@@ -139,16 +120,17 @@ func loopLockExit(locks *parentlock.Store, self func() parentlock.Owner, batten 
 // A failed agent read counts as not waiting and releases nothing.
 // A list or agent read failure that repeats on every wake logs a Warn at its first wake, Debug while it lasts and an Info at recovery.
 // While covered reports true, a pause holds the run: the record is kept and the watch restarts, so the bound is measured afresh after the resume.
-func loopIdleRelease(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, covered func() bool) func() {
-	return idleReleaseOn(locks, self, agents, bound, pauserecord.MonotonicAwake(), covered)
+// While keep reports true, a landing in flight holds the run and the hook does the same.
+func loopIdleRelease(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, covered func() bool, keep func() bool) func() {
+	return idleReleaseOn(locks, self, agents, bound, pauserecord.MonotonicAwake(), covered, keep)
 }
 
 // idleReleaseOn is loopIdleRelease over an awake clock, which must not advance while the host is suspended.
-func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, awake func() time.Duration, covered func() bool) func() {
+func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents func() ([]parentlock.AgentState, error), bound time.Duration, awake func() time.Duration, covered func() bool, keep func() bool) func() {
 	watch := &parentlock.IdleWatch{Bound: bound}
 	var listFailures, agentFailures logger.Episode
 	return func() {
-		if covered() {
+		if covered() || keep() {
 			watch = &parentlock.IdleWatch{Bound: bound}
 			return
 		}
@@ -183,5 +165,26 @@ func idleReleaseOn(locks *parentlock.Store, self func() parentlock.Owner, agents
 			}
 		}
 		watch = &parentlock.IdleWatch{Bound: bound}
+	}
+}
+
+// finalizeKeepsLock returns the reading that tells whether the run holds its parent lock for a landing in flight: its status names Finalize running, or a verify marker of the run is live.
+// A status directory that does not exist yet reads as no status; any other failed read of either file keeps the lock for as long as it fails, and logs a Warn at its first failure, Debug while it lasts and an Info at recovery.
+func finalizeKeepsLock(statusPath, statusLockPath, verifyDir string) func() bool {
+	markerPath := verifytree.NewPaths("", verifyDir).Marker
+	var failures logger.Episode
+	return func() bool {
+		status, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			failures.Fail("loomcli: could not read the run's status for the parent lock's idle rule; keeping the lock", "cause", err)
+			return true
+		}
+		_, live, err := verifytree.ReadMarker(markerPath)
+		if err != nil {
+			failures.Fail("loomcli: could not read the verify marker for the parent lock's idle rule; keeping the lock", "cause", err)
+			return true
+		}
+		failures.Recover("loomcli: the run's status and verify marker read again for the parent lock's idle rule")
+		return live || (found && status.CurrentProducer == loomshed.NameFinalize && status.State == shedengine.StateRunning)
 	}
 }
