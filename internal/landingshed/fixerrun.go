@@ -150,12 +150,12 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 	switch {
 	case session.end != "":
 		outcome.end = session.end
-	case !session.reached && result.Chair.Outcome == shuttleengine.OutcomeTimeout:
-		outcome.end = fixerEndTimeout
-	case !session.reached:
-		outcome.end = fixerEndNoReport
-	default:
+	case session.decided != nil && session.decided.Passed:
 		outcome.end = fixerEndFixed
+	case result.Chair.Outcome == shuttleengine.OutcomeTimeout:
+		outcome.end = fixerEndTimeout
+	default:
+		outcome.end = fixerEndNoReport
 	}
 
 	remoteAfter, err := f.deps.TaskRemoteTip()
@@ -199,11 +199,10 @@ type fixerSession struct {
 	turnStart    time.Time
 	outcome      fixerOutcome
 
-	// reached is set once the closure has run, which a turn that never returned to the gate leaves false.
-	reached bool
 	// end is the halting end the closure decided, "" while the run is fixed or undecided.
 	end fixerEnd
 	// decided holds the closure's last terminal answer, so a second evaluation of a finished run answers the same without charging again.
+	// A passed answer is what makes the run fixed; nil means no turn has ended the run yet.
 	decided *shuttleengine.GateResult
 	// err is an infrastructure error the closure met, which the run returns after the seat run ends.
 	err error
@@ -240,7 +239,6 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 	if s.decided != nil {
 		return *s.decided, nil
 	}
-	s.reached = true
 	gate := s.run.gate
 	if gate.now().Sub(s.turnStart) > s.turnLimit {
 		return s.halt(fixerEndTimeout, "the fixer's turn ran past fixer_timeout_min")

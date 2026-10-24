@@ -30,6 +30,9 @@ type fakeFixerSeats struct {
 	startErr error
 	// sessionTimeout makes the session end on the table's timeout without reaching the gate closure.
 	sessionTimeout bool
+	// hangAfter, when above zero, makes the turn at that index run its callback and then end the session with hangOutcome, never reaching the gate closure.
+	hangAfter   int
+	hangOutcome shuttleengine.Outcome
 
 	// tables records every table Run was given.
 	tables []seatengine.Table
@@ -53,6 +56,9 @@ func (f *fakeFixerSeats) Run(table seatengine.Table) (seatengine.Result, error) 
 		f.turnsRun++
 		if turn < len(f.turns) {
 			f.turns[turn]()
+		}
+		if f.hangAfter > 0 && turn == f.hangAfter {
+			return seatengine.Result{Chair: shuttleengine.Result{Outcome: f.hangOutcome, RunDir: fakeFixerRunDir}}, nil
 		}
 		result, err := entry.Gate()
 		if err != nil {
@@ -193,6 +199,28 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.sessionTimeout = true
 			},
 			wantEnd: fixerEndTimeout, wantSpent: 1,
+			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lyx loom resume`"},
+		},
+		{
+			name: "a later turn that hangs after a failing gate is the timeout end, not fixed",
+			setup: func(t *testing.T, fx *fixerRunFixture) {
+				fx.gate.fake.result = failing
+				fx.seats.turns = []func(){func() { fx.writeReport(t, fixedReport) }}
+				fx.seats.hangAfter = 1
+				fx.seats.hangOutcome = shuttleengine.OutcomeTimeout
+			},
+			wantEnd: fixerEndTimeout, wantSpent: fixerTestCap, wantTurns: 2,
+			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lyx loom resume`"},
+		},
+		{
+			name: "a later turn that dies after a failing gate is the no-report end, not fixed",
+			setup: func(t *testing.T, fx *fixerRunFixture) {
+				fx.gate.fake.result = failing
+				fx.seats.turns = []func(){func() { fx.writeReport(t, fixedReport) }}
+				fx.seats.hangAfter = 1
+				fx.seats.hangOutcome = shuttleengine.OutcomeDone
+			},
+			wantEnd: fixerEndNoReport, wantSpent: fixerTestCap, wantTurns: 2,
 			wantReason: []string{LandingStopPrefix, fakeFixerRunDir, "`lyx loom resume`"},
 		},
 		{
