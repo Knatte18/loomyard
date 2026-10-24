@@ -48,6 +48,9 @@ type Config struct {
 	// PairExists reports whether an entry's pair exists on this machine, so a write that moves or renames an entry with a pair is refused;
 	// nil reads every pair as absent.
 	PairExists func(slug string) bool `yaml:"-"`
+	// ValidateSlug applies the pair slug rule to a task or project slug a write makes, returning the rule's refusal;
+	// nil checks nothing, which is what a Board that makes no slug builds.
+	ValidateSlug func(slug string) error `yaml:"-"`
 }
 
 // Label is one configured label with its description, which is empty when board.yaml gives none.

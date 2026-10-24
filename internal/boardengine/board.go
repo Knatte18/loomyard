@@ -24,6 +24,8 @@ type Board struct {
 	parentOf  func(slug string) (string, error)
 	// pairExists is Config.PairExists, copied onto every store the board builds.
 	pairExists func(slug string) bool
+	// validateSlug is Config.ValidateSlug, applied to the task and project slugs a write makes.
+	validateSlug func(slug string) error
 }
 
 // New returns a Board operating with the given config.
@@ -33,14 +35,15 @@ func New(cfg Config) *Board {
 		now = time.Now
 	}
 	return &Board{
-		boardPath:  cfg.Path,
-		out:        cfg.Outputs(),
-		vocab:      cfg.Vocabulary(),
-		skipGit:    cfg.SkipGit,
-		skipPush:   cfg.SkipPush,
-		now:        now,
-		parentOf:   cfg.ParentOf,
-		pairExists: cfg.PairExists,
+		boardPath:    cfg.Path,
+		out:          cfg.Outputs(),
+		vocab:        cfg.Vocabulary(),
+		skipGit:      cfg.SkipGit,
+		skipPush:     cfg.SkipPush,
+		now:          now,
+		parentOf:     cfg.ParentOf,
+		pairExists:   cfg.PairExists,
+		validateSlug: cfg.ValidateSlug,
 	}
 }
 
@@ -102,8 +105,10 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		result = p.task
 	}
 	// A renamed slug is the same entry, so the loaded entries are judged under the new slug.
+	renamedTo := ""
 	if r, ok := result.(RenameResult); ok {
 		renameSlug(loaded, r.From, r.Task.Slug)
+		renamedTo = r.Task.Slug
 	}
 	stampDates(loaded, store.tasks, now, promotedSlug)
 	assignHandles(store.tasks, store.vocab)
@@ -123,6 +128,9 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		return nil, err
 	}
 	if err := checkProjectRules(loaded, store.Tasks(), store.pairExists); err != nil {
+		return nil, err
+	}
+	if err := checkNewSlugs(loaded, store.Tasks(), renamedTo, b.validateSlug); err != nil {
 		return nil, err
 	}
 

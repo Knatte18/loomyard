@@ -114,6 +114,17 @@
 // An upsert payload may carry owner_machine only as the entry's effective owner, which is dropped as a no-op; any other value is refused naming `lyx adopt`.
 // The rule runs from the store's upsert, batch and merge paths, never from the replay, which applies an owner change through its own entry writes.
 //
+// # Slug rule
+//
+// Config.ValidateSlug is the seam through which the board applies the pair slug rule to the task and project slugs a write makes; nil checks nothing, as the detached sync, a batten claim and the owner setter build it.
+// Board copies it, and the write critical section runs it after the mutation.
+// A write makes a slug when it adds an entry of kind task or project, as an upsert, a batch or a merge does, when a promote makes a note a task, and when a rename gives an entry its new slug.
+// A write that leaves an entry's slug and kind as they were is never judged, so a slug the rule now refuses keeps taking writes, and a note is never judged.
+// A task that becomes a project keeps a slug that already names a pair, and the owner setter, which runs outside the critical section, makes no slug and checks none.
+// A refusal names the entry, the rule's own reason and a slug the rule admits: the slug without its records suffix, or the slug with -task appended.
+// That suggestion goes through the seam and against the slugs of the entries the write leaves before it is offered, and none is offered when it fails the rule or names an existing entry, since an upsert under an existing slug edits that entry;
+// the refusal then asks for another slug the rule admits.
+//
 // # Dates
 //
 // An entry carries two dates, created, when it was added, and revised, when its scope last changed, each in whole UTC seconds, and board.json names neither while it is unknown.
