@@ -264,11 +264,11 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				"## Tasks\n" +
+				"## Tasks (3)\n" +
 				"\n" +
 				"Concrete and claimable; only a task can run.\n" +
 				"\n" +
-				"### Ready\n" +
+				"### Ready (1)\n" +
 				"\n" +
 				"Waits on nothing open; can start now.\n" +
 				"\n" +
@@ -276,7 +276,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T1 | **Base work**<br>• The foundation.<br>• `loom: review_hard_max_bounces 3`<br>• `loom: review_max_bounces 2` | `base` | loom |  | 5w<br>3d |  |\n" +
 				"\n" +
-				"### Layer A\n" +
+				"### Layer A (1)\n" +
 				"\n" +
 				"Waits only on Running or Ready entries.\n" +
 				"\n" +
@@ -284,7 +284,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T2 | **Top \\| work**<br>• Builds on base. Second brief line.<br>• `darn: models.writer opus\\|fast`<br>• `` darn: note use `x` ``<br>• `darn: skip [\"a&b\",\"<c>\"]` | [`top`](design-top.md) | loom | `base` |  | area |\n" +
 				"\n" +
-				"### Independent\n" +
+				"### Independent (1)\n" +
 				"\n" +
 				"Depends on nothing and nothing depends on it, by design.\n" +
 				"\n" +
@@ -292,30 +292,30 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T3 | **Alone work**<br>• `profile: docs`<br>• `darn: review_max_bounces 1` | `alone` | darn |  |  |  |\n" +
 				"\n" +
-				"## Notes\n" +
+				"## Notes (4)\n" +
 				"\n" +
 				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
 				"\n" +
-				"### Bugs\n" +
+				"### Bugs (1)\n" +
 				"\n" +
 				"| # | P | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
 				"| B1 | H | **Dropped idea**<br>• No longer wanted. | `dropped` |  |  |\n" +
 				"\n" +
-				"### Enhancements\n" +
+				"### Enhancements (2)\n" +
 				"\n" +
 				"| # | P | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
 				"| E1 |  | **Plain idea** | `plain` |  |  |\n" +
 				"| E2 | L | **An idea** | `idea` |  | undecided |\n" +
 				"\n" +
-				"### Other\n" +
+				"### Other (1)\n" +
 				"\n" +
 				"| # | P | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
 				"| R1 |  | **Stray note** | `stray` |  | retired |\n" +
 				"\n" +
-				"## Done\n" +
+				"## Done (1)\n" +
 				"\n" +
 				"Finished, awaiting `lyx board prune --apply`.\n" +
 				"\n" +
@@ -334,21 +334,21 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				"## Tasks\n" +
+				"## Tasks (0)\n" +
 				"\n" +
 				"Concrete and claimable; only a task can run.\n" +
 				"\n" +
-				"### Ready\n" +
+				"### Ready (0)\n" +
 				"\n" +
 				"Waits on nothing open; can start now.\n" +
 				"\n" +
 				"_None._\n" +
 				"\n" +
-				"## Notes\n" +
+				"## Notes (1)\n" +
 				"\n" +
 				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
 				"\n" +
-				"### Enhancements\n" +
+				"### Enhancements (1)\n" +
 				"\n" +
 				"| # | P | Note | Slug | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- |\n" +
@@ -372,11 +372,11 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"Tasks are grouped by dependency layer and notes by type.\n" +
 				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 				"\n" +
-				"## Tasks\n" +
+				"## Tasks (5)\n" +
 				"\n" +
 				"Concrete and claimable; only a task can run.\n" +
 				"\n" +
-				"### Running\n" +
+				"### Running (2)\n" +
 				"\n" +
 				"Held by a run; its scope is locked until the run ends.\n" +
 				"\n" +
@@ -385,7 +385,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| T2 | **Halted work** | `halted` | darn | paused · Plan-Write |  |  |  |\n" +
 				"| T5 | **Held work** | `held` | loom | Webster | box |  | area |\n" +
 				"\n" +
-				"### Ready\n" +
+				"### Ready (1)\n" +
 				"\n" +
 				"Waits on nothing open; can start now.\n" +
 				"\n" +
@@ -393,7 +393,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T1 | **Base work** | `base` | loom |  |  |  |\n" +
 				"\n" +
-				"### Layer A\n" +
+				"### Layer A (1)\n" +
 				"\n" +
 				"Waits only on Running or Ready entries.\n" +
 				"\n" +
@@ -401,7 +401,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T3 | **Next work** | `next` | loom | `held` |  |  |\n" +
 				"\n" +
-				"### Layer B\n" +
+				"### Layer B (1)\n" +
 				"\n" +
 				"Starts when every entry it names under After is done.\n" +
 				"\n" +
@@ -409,7 +409,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- | --- | --- |\n" +
 				"| T4 | **Last work** | `last` | loom | `next` |  |  |\n" +
 				"\n" +
-				"## Notes\n" +
+				"## Notes (0)\n" +
 				"\n" +
 				"Not tasks: ideas and observations, merged into a task when one is promoted.\n",
 		},

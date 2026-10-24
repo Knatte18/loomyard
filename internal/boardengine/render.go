@@ -156,6 +156,11 @@ const runningState = "running"
 // cellBullet starts one detail line under the title inside one table cell; a markdown list does not render in a table cell.
 const cellBullet = cellBreak + "• "
 
+// countedHeading is a README heading of the given markdown level, its name followed by the number of entries the section lists.
+func countedHeading(level, name string, count int) string {
+	return fmt.Sprintf("%s %s (%d)", level, name, count)
+}
+
 // kindName is the capitalised display name of an entry kind.
 func kindName(kind string) string {
 	if kind == KindTask {
@@ -249,13 +254,13 @@ func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, type
 		return []string{entryCell(t), recipeCell(t), codeList(after)}
 	}}
 
-	lines = append(lines, "## "+tasksSection.name, "", tasksSection.meaning, "")
 	var tasks []TaskWithLayer
 	for _, twl := range ordered {
 		if !isDone(twl.Task) && twl.Kind == KindTask {
 			tasks = append(tasks, twl)
 		}
 	}
+	lines = append(lines, countedHeading("##", tasksSection.name, len(tasks)), "", tasksSection.meaning, "")
 	byLayer := func(layer string) []TaskWithLayer {
 		var entries []TaskWithLayer
 		for _, twl := range tasks {
@@ -266,13 +271,14 @@ func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, type
 		return entries
 	}
 	if running := byLayer(runningLayer); len(running) > 0 {
-		lines = append(lines, "### "+runningSection.name, "", runningSection.meaning, "")
+		lines = append(lines, countedHeading("###", runningSection.name, len(running)), "", runningSection.meaning, "")
 		writeTable(running, readmeTable{columns: []string{columnTask, columnRecipe, columnAt, columnOwner}, cells: func(t Task) []string {
 			return []string{entryCell(t), recipeCell(t), atCell(*t.Status), cellText(t.OwnerMachine)}
 		}})
 	}
-	lines = append(lines, "### "+readySection.name, "", readySection.meaning, "")
-	if ready := byLayer(readyLayer); len(ready) > 0 {
+	ready := byLayer(readyLayer)
+	lines = append(lines, countedHeading("###", readySection.name, len(ready)), "", readySection.meaning, "")
+	if len(ready) > 0 {
 		writeTable(ready, waitTable)
 	} else {
 		lines = append(lines, emptySectionLine, "")
@@ -285,20 +291,22 @@ func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, type
 		}
 		if layer := tasks[start].Layer; layer != runningLayer && layer != readyLayer {
 			section := layerSection(layer)
-			lines = append(lines, "### "+section.name, "", section.meaning, "")
+			lines = append(lines, countedHeading("###", section.name, end-start), "", section.meaning, "")
 			writeTable(tasks[start:end], waitTable)
 		}
 		start = end
 	}
 
-	lines = append(lines, "## "+notesSection.name, "", notesSection.meaning, "")
 	byType := make(map[string][]TaskWithLayer)
+	noteCount := 0
 	for _, twl := range ordered {
 		if !isDone(twl.Task) && twl.Kind == KindNote {
 			typeLabel := noteType(twl.Task, types)
 			byType[typeLabel] = append(byType[typeLabel], twl)
+			noteCount++
 		}
 	}
+	lines = append(lines, countedHeading("##", notesSection.name, noteCount), "", notesSection.meaning, "")
 	noteTable := readmeTable{columns: []string{columnNote}, cells: func(t Task) []string { return []string{entryCell(t)} }, priority: true}
 	for _, typeLabel := range append(slices.Clone(types), "") {
 		entries := byType[typeLabel]
@@ -309,7 +317,7 @@ func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, type
 		if typeLabel != "" {
 			heading = typeHeading(typeLabel)
 		}
-		lines = append(lines, "### "+heading, "")
+		lines = append(lines, countedHeading("###", heading, len(entries)), "")
 		writeTable(entries, noteTable)
 	}
 
@@ -320,7 +328,7 @@ func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, type
 		}
 	}
 	if len(done) > 0 {
-		lines = append(lines, "## "+doneSection.name, "", doneSection.meaning, "")
+		lines = append(lines, countedHeading("##", doneSection.name, len(done)), "", doneSection.meaning, "")
 		writeTable(done, readmeTable{columns: []string{columnEntry}, cells: func(t Task) []string { return []string{entryCell(t)} }})
 	}
 
