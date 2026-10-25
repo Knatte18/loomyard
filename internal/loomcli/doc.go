@@ -175,7 +175,7 @@
 //
 // `lyx loom drive` is the hidden role verb that drives a go-seeded run, spawned by `lyx loom start`, by `lyx loom resume` for a halted go run and by a hand-over.
 // It mounts `internal/sheddriver` with loom's seams, and serves darn runs as well as loom runs; the loop, rule table, hand-back and tackler below are that package's.
-// It takes the run's driver lock without blocking and holds it for its whole life, so a settling driver reads as live while the run lock is free between steps, and a second driver refuses at once.
+// It takes the run's driver lock, waiting a short grace for a momentary probe to let go, and holds it for its whole life, so a settling driver reads as live while the run lock is free between steps, and a second driver refuses once the grace runs out.
 // On start it removes the park marker and the resume report.
 //
 // The driver registers itself in the owner record under the run's slug with the role `driver`, before it takes the driver lock, and the run's step loop registers itself with the role `loop` once its pid file is written, through the loop's `OnStart` hook;

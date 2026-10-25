@@ -210,6 +210,7 @@ When the operator asks:
 
 Act and fix without asking: release the tasks the operator approved, un-wedge stuck runs, and handle a Land or Worktree-Teardown failure notice.
 `lyx orch start` starts every dobby this machine owns first, and warns with `lyx beam start` when that fails.
+`lyx beam status` shows each local dobby alive or not, the runs it drives and why each released task it has not started waits.
 Ask the operator only about what to build, its priority, design choices, and the questions a review escalation or the arbiter hands on.
 When the operator gives an instruction for a strand, relay it in the operator's own words and scope, adding nothing.
 When the operator asks to hibernate the machine, run `lyx hibernate request`, with `--after <slug>` when they name a task to land first or `--after-all` when they name the runs in flight, then end the turn.

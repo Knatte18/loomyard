@@ -17,7 +17,7 @@
 // Without --remove the pair is kept and the cancel names "lyx batten cancel <slug> --remove" as the step before the slug runs again.
 // An unreachable origin ends only the processes and strands, leaves the marker and posts a notice naming the cancel to run once origin answers.
 //
-// "lyx batten overview" (overview.go) is the hidden pane verb the orch start runs in the prime's runs strand.
+// "lyx batten overview" (overview.go) is the hidden pane verb the orch start runs in the runs strand of the prime and of each beam.
 // The first line is the orch session's: its latest context tokens against the soft and hard thresholds, its cycle phase and cycle count, with `watcher down` appended once the watcher has exited; no state file draws no orch line, and a state file unreadable on two polls in a row shows `orch  state unreadable`.
 // Below it come the batten runs in flight, one line each: the slug, batten's state, the stage, the time in that stage, the run's age and the pair's reed session.
 // A run shows while batten's state is not done and its pair exists or is being created; a run with a seed and no status shows as `starting`; the stage is the task worktree's current producer while batten is in Run-Shed and that status is found, and batten's own producer otherwise.
@@ -26,7 +26,15 @@
 // Runs are ordered by the seed's start time and then slug, those with no readable start last.
 // The pane polls each second and backs off while nothing changes, which holds because every time renders in whole minutes.
 // A status file unreadable on two polls in a row shows the slug and `status unreadable`; one failed poll keeps the line of the previous status.
-// It only reads the orch state file, the orch config (loaded once at start), the run records and the status files, without their locks, so it never blocks or slows a run.
+// After a blank line come the lines of the dobby of the worktree the pane runs in (overviewdobby.go), rendered by `DobbyLines` from the `dobbyengine.View` a `DobbyViewReader` reads:
+// a header saying whether the dobby is alive, with its `max_runs`, or not running with `lyx beam start` as the way forward;
+// one line per run it drives that is not done, with batten's state, the stage and the pass cell: a pass in flight while the driver lock is held, else the minutes since the last pass exited, then a full pass owed, an owner elsewhere and a failing count from the dobby's state record;
+// and one line per released task it has not started, `ready to start` or `waits on` each of open dependencies, another machine's ownership, a pause, a refused start with its text and the minutes to its retry, and `max_runs`.
+// A dobby view that does not read shows `dobby <label>: unreadable`.
+// It only reads the orch state file, the orch config (loaded once at start), the run records, the status files, the board, beam.yaml and the dobby's state record, without the records' locks.
+// It learns whether the dobby and each driver is live by taking its lock for an instant and releasing it; the acquirers wait `lock.ProbeGrace`, so a poll never refuses one and never slows a run.
+//
+// dobbyreads.go holds the reads of what a worktree's dobby drives, exported for the dobby's own wiring and for the overview: `DobbyRuns`, `DobbyLandings` and `DobbyTasks` over a `DobbyParents` cache, and `DobbyViewReader`, which builds the dobby's view from outside its process.
 //
 // "lyx batten run <slug>" is one pass: it runs the run to its next halt or yield and exits, started by its parent worktree's dobby or by hand.
 // After the pass it makes sure the parent worktree's dobby is live.

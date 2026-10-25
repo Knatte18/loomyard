@@ -13,10 +13,11 @@
 //     It records this machine as the prime owner first when none is recorded, and reports per worktree; it is idempotent.
 //   - Config is beam.yaml, loaded strictly because dobby only ever runs inside a hub.
 //   - Run is the daemon loop, with every seam it reads in Deps.
+//   - BuildView is the View of one dobby a reader outside its process sees, built from what it is told: its liveness, its state record, beam.yaml, its runs and the board.
 //
 // The loop:
 //
-//   - It takes the lock at Geometry.LockPath without blocking, and returns ErrDobbyRunning at once when another dobby holds it.
+//   - It waits lock.ProbeGrace for the lock at Geometry.LockPath, and returns ErrDobbyRunning when another dobby still holds it.
 //   - It reads its beam's owner at start and on each probe tick, and exits with a logged reason when another machine owns it.
 //   - A state record holding the process's own pid is a re-exec and owes no new full pass; any other pid, or no record, is a start.
 //     A start, a machine sleep the sleep watch sees, and a tick that finds the record without a pid each owe every run a full pass until a tick succeeds.
@@ -25,6 +26,7 @@
 //     Where the watch does not open, as on WSL or through a junction, the timer alone drives the loop at the probe cadence, and no wake is shorter than a second.
 //   - Between ticks it calls the binary check, which re-execs onto a changed lyx binary.
 //   - A tick's failure is logged once per episode and the loop goes on; a cancelled context ends it after the tick in flight.
+//   - Each task start and each pass spawned writes one line through the Log seam: the time, `start <slug>` or `pass <slug> <kind>`, the kind being `continue`, `full` or `full-no-reopen`.
 //
 // The passes:
 //
@@ -53,7 +55,7 @@
 //   - Starting is the run's first pass, a full pass, which claims the task as batten does; a slug with a pass in flight is never started twice.
 //     A first pass refused for a covering pause is no refused start: no notice, no marker and no backoff, and the start waits for the lift.
 //     Any other first pass that exits non-zero and leaves no status file, a refusal as owned elsewhere included, is a refused start: one notice per refusal text, and a retry from one probe interval, doubling up to an hour, or at once when the entry changes.
-//     The backoff and the noticed texts are kept in the state record, and cleared when a pass claims the task or its board entry changes.
+//     The backoff, the last refusal text and the noticed texts are kept in the state record, and cleared when a pass claims the task or its board entry changes.
 //   - A task is started only from an empty status, by its parent's dobby or a hand-run `lyx batten run`, and never twice while a pass of it is in flight.
 //     Across machines only the owner machine's dobby of the parent runs, and a release written on another machine reaches this dobby when this machine's board is next pulled.
 //   - Bound: per run at most one pass per probe interval plus one per write of the child's status file, and at most one in flight.
@@ -70,6 +72,14 @@
 //     Past `board_tidy_timeout_min` it ends the agent the same way, posts a no-report line naming the slugs, and keeps them in the state record for the next tidy.
 //   - Bound: a fresh record loses a tidy in flight and the slugs landed since the last tidy, and the next tidy may spawn while the old agent runs until its timeout.
 //     A landing whose run records `lyx batten cleanup --apply` removed before dobby read them is not counted.
+//
+// The view:
+//
+//   - The runs are the listed ones that are not done, each with batten's state and producer, a pass in flight while its driver lock is held, and its last pass exit, owed full pass, owner mark and failing count from the state record.
+//   - A task waits while it is released to the worktree, a task with an empty status whose parent is the worktree, and not started.
+//     Its reasons are the start step's own conditions: the dependencies not done, another machine's ownership, a covering pause, a refused start whose backoff has not run out for the entry as it reads now, and `max_runs`.
+//     The `max_runs` reason falls, in board order as the start step walks, on the tasks nothing else holds once the runs that take a slot fill it; a task with no reason starts on the dobby's next tick.
+//   - Bound: a first pass in flight that has left no status file is in no file, so its task reads as ready and its slot as free until the status appears.
 //
 // Told-geometry tier: the package takes every absolute path from its caller and imports neither internal/lyxcwd nor any CLI package, per PATTERN-cwd-resolution.
 // Its seam_enforcement_test.go enforces that membership mechanically.

@@ -4,15 +4,13 @@ package beamcli
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -28,7 +26,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
@@ -39,7 +36,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
-	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/tendercli"
@@ -69,9 +65,9 @@ func registerDobby(runProcDir string, geom dobbyengine.Geometry) error {
 	return runproc.Register(runProcDir, owner, runproc.SelfRecord(runproc.RoleDobby))
 }
 
-// hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom.
+// hubDobbyDeps fills every seam of dobbyengine.Run over the hub of prime, for the dobby of geom, with its log lines written to logOut.
 // The dobby's own working directory is the hub root, so every path comes from prime and geom, and only the pass spawn starts its process in the prime's anchor.
-func hubDobbyDeps(prime *lyxcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error) {
+func hubDobbyDeps(prime *lyxcwd.Location, geom dobbyengine.Geometry, logOut io.Writer) (dobbyengine.Deps, error) {
 	worktree, err := lyxcwd.ResolveWorktree(geom.WorktreeRoot)
 	if err != nil {
 		return dobbyengine.Deps{}, err
@@ -86,14 +82,14 @@ func hubDobbyDeps(prime *lyxcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 	}
 	dirs := fabricengine.ConfigDirs(worktree)
 	boardDir := geom.BoardDir
-	parents := &parentCache{prime: prime, known: map[string]string{}}
+	parents := battencli.NewDobbyParents(prime)
 	owners := func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) }
 	slugOwner := func(slug string) (string, error) {
 		read, err := owners()
 		if err != nil {
 			return "", err
 		}
-		return read.Effective(slug, parents.of)
+		return read.Effective(slug, parents.Of)
 	}
 	deps := dobbyengine.Deps{
 		Now:   time.Now,
@@ -113,9 +109,11 @@ func hubDobbyDeps(prime *lyxcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			if geom.Slug == "" {
 				return read.Prime, nil
 			}
-			return read.Effective(geom.Slug, parents.of)
+			return read.Effective(geom.Slug, parents.Of)
 		},
-		Runs: func() ([]dobbyengine.RunView, error) { return dobbyRuns(prime, geom, parents, pause.RecordPath) },
+		Runs: func() ([]dobbyengine.RunView, error) {
+			return battencli.DobbyRuns(prime, geom, parents, pause.RecordPath)
+		},
 		SpawnPass: func(slug string, continuePass, noReopen bool) (<-chan dobbyengine.PassExit, error) {
 			return spawnPass(geom, slug, continuePass, noReopen)
 		},
@@ -137,7 +135,7 @@ func hubDobbyDeps(prime *lyxcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		LiftOwnerPause: func(_ context.Context, slug string) error {
 			return liftOwnerPause(prime, pause.RecordPath, slug)
 		},
-		Tasks:      func() ([]dobbyengine.TaskView, error) { return dobbyTasks(prime, boardDir, parents) },
+		Tasks:      func() ([]dobbyengine.TaskView, error) { return battencli.DobbyTasks(prime, boardDir, parents) },
 		LoadConfig: func() (dobbyengine.Config, error) { return dobbyengine.LoadConfig(dirs) },
 		StatusExists: func(slug string) (bool, error) {
 			return fileExists(shedrun.StatusFile(prime, slug))
@@ -146,7 +144,8 @@ func hubDobbyDeps(prime *lyxcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			coverage, err := pauserecord.ReadCoverage(pause.RecordPath, slug, time.Now())
 			return coverage.Covered, err
 		},
-		Landings:    func() ([]string, error) { return dobbyLandings(prime, geom, parents) },
+		Landings:    func() ([]string, error) { return battencli.DobbyLandings(prime, geom, parents) },
+		Log:         func(line string) { _, _ = fmt.Fprintln(logOut, line) },
 		StencilsDir: fabricengine.StencilsDir(prime.HubPath),
 		NearestOrch: func() (string, error) {
 			parent, err := hubgeom.NearestLiveOrch(worktree, orchcli.OrchLive)
@@ -205,231 +204,9 @@ func fileExists(path string) (bool, error) {
 	return true, nil
 }
 
-// parentCache answers hubgeom.ParentOf once per slug, since a run's parent never changes and the answer reads the worktree list.
-type parentCache struct {
-	prime *lyxcwd.Location
-	mu    sync.Mutex
-	known map[string]string
-}
-
-// of returns the slug of the pair slug was forked from, "" for the prime.
-func (c *parentCache) of(slug string) (string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if parent, ok := c.known[slug]; ok {
-		return parent, nil
-	}
-	parent, err := hubgeom.ParentOf(c.prime, slug)
-	if err != nil {
-		return "", err
-	}
-	c.known[slug] = parent
-	return parent, nil
-}
-
 // pairLocation returns slug's task pair as a location built from the prime's, with no git call.
 func pairLocation(prime *lyxcwd.Location, slug string) *lyxcwd.Location {
 	return &lyxcwd.Location{HubPath: prime.HubPath, WorktreeName: slug, AnchorRel: prime.AnchorRel}
-}
-
-// readStatus reads the status file at path, reporting false when it does not exist.
-func readStatus(path string) (shedengine.Status, bool, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return shedengine.Status{}, false, nil
-	}
-	if err != nil {
-		return shedengine.Status{}, false, err
-	}
-	status, err := shedengine.ParseStatusTolerant(data)
-	if err != nil {
-		return shedengine.Status{}, false, fmt.Errorf("decode %s: %w", path, err)
-	}
-	return status, true, nil
-}
-
-// modTime returns the modification time of path, the zero time when it does not exist.
-func modTime(path string) (time.Time, error) {
-	info, err := os.Stat(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return time.Time{}, nil
-	}
-	if err != nil {
-		return time.Time{}, err
-	}
-	return info.ModTime(), nil
-}
-
-// lockHeld reports whether the lock at path is held, tried without blocking and released at once when it was free.
-// A lock whose directory does not exist has never been taken.
-func lockHeld(path string) (bool, error) {
-	if _, err := os.Stat(filepath.Dir(path)); errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	}
-	held, acquired, err := lock.TryAcquireWriteLock(path)
-	if err != nil {
-		return false, err
-	}
-	if !acquired {
-		return true, nil
-	}
-	return false, held.Release()
-}
-
-// parentRun is one batten run whose parent worktree is the dobby's own, with its status as last written.
-type parentRun struct {
-	slug   string
-	status shedengine.Status
-}
-
-// parentRuns lists the batten runs of the prime whose parent worktree is geom's, read from the prime's local status files whatever each run's state.
-// A run whose seed or parent cannot be read is left out with one Warn, so one broken run never stops the rest.
-func parentRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *parentCache) ([]parentRun, error) {
-	slugs, err := shedrun.List(prime)
-	if err != nil {
-		return nil, err
-	}
-	var runs []parentRun
-	for _, slug := range slugs {
-		seed, found, err := shedrun.ReadSeed(prime, slug)
-		if err != nil {
-			logger.Warn("beamcli: a run's seed is unreadable and the run is left out", "slug", slug, "error", err)
-			continue
-		}
-		if !found || seed.Recipe != shedrun.RecipeBatten {
-			continue
-		}
-		parent, err := parents.of(slug)
-		if err != nil {
-			logger.Warn("beamcli: a run's parent is unreadable and the run is left out", "slug", slug, "error", err)
-			continue
-		}
-		if parent != geom.Slug {
-			continue
-		}
-		status, found, err := readStatus(shedrun.StatusFile(prime, slug))
-		if err != nil {
-			logger.Warn("beamcli: a run's status is unreadable and the run is left out", "slug", slug, "error", err)
-			continue
-		}
-		if found {
-			runs = append(runs, parentRun{slug: slug, status: status})
-		}
-	}
-	return runs, nil
-}
-
-// dobbyRuns builds the RunView of every batten run whose parent worktree is geom's.
-func dobbyRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *parentCache, pauseRecord string) ([]dobbyengine.RunView, error) {
-	runs, err := parentRuns(prime, geom, parents)
-	if err != nil {
-		return nil, err
-	}
-	record, err := pauserecord.Read(pauseRecord)
-	if err != nil {
-		return nil, err
-	}
-	now := time.Now()
-	views := make([]dobbyengine.RunView, 0, len(runs))
-	for _, run := range runs {
-		slug := run.slug
-		view := dobbyengine.RunView{
-			Slug:     slug,
-			State:    string(run.status.State),
-			Producer: run.status.CurrentProducer,
-			Covered:  record.CoverageOf(slug, now).Covered,
-		}
-		pair := pairLocation(prime, slug)
-		reads := []func() error{
-			func() (err error) { view.StatusModified, err = modTime(shedrun.StatusFile(prime, slug)); return },
-			func() (err error) {
-				view.ChildStatusModified, err = modTime(shedrun.StatusFile(pair, shedrun.SelfRunID))
-				return
-			},
-			func() (err error) { view.CancelMarker, err = fileExists(shedrun.CancelMarker(prime, slug)); return },
-			func() (err error) { view.OriginOwed, err = fileExists(shedrun.OriginOwedMarker(prime, slug)); return },
-			func() (err error) { view.DriverLockHeld, err = lockHeld(shedrun.DriverLock(prime, slug)); return },
-		}
-		for _, read := range reads {
-			if err := read(); err != nil {
-				return nil, fmt.Errorf("read the run %s: %w", slug, err)
-			}
-		}
-		views = append(views, view)
-	}
-	return views, nil
-}
-
-// dobbyLandings lists the slugs of the runs of geom's parent worktree whose batten history holds a Land that finished.
-func dobbyLandings(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *parentCache) ([]string, error) {
-	runs, err := parentRuns(prime, geom, parents)
-	if err != nil {
-		return nil, err
-	}
-	var landed []string
-	for _, run := range runs {
-		if slices.ContainsFunc(run.status.History, func(entry shedengine.HistoryEntry) bool {
-			return entry.Producer == battenrecipe.NameLand && entry.Outcome == shedengine.Done
-		}) {
-			landed = append(landed, run.slug)
-		}
-	}
-	return landed, nil
-}
-
-// dobbyTasks reads the local board as TaskViews.
-// Only a task a dobby could start, one with an empty status and every dependency done, gets its parent worktree read; the others carry none.
-// A dependency no longer on the board was pruned as done.
-func dobbyTasks(prime *lyxcwd.Location, boardDir string, parents *parentCache) ([]dobbyengine.TaskView, error) {
-	tasks, err := boardengine.ReadTasks(boardDir)
-	if err != nil {
-		return nil, err
-	}
-	owners, err := boardengine.ReadOwners(boardDir)
-	if err != nil {
-		return nil, err
-	}
-	here, err := machinename.Name()
-	if err != nil {
-		return nil, err
-	}
-	statusOf := make(map[string]*string, len(tasks))
-	for _, task := range tasks {
-		statusOf[task.Slug] = task.Status
-	}
-	views := make([]dobbyengine.TaskView, 0, len(tasks))
-	for _, task := range tasks {
-		view := dobbyengine.TaskView{Slug: task.Slug, Kind: task.Kind, Status: task.Status, DependenciesDone: true}
-		for _, dep := range task.DependsOn {
-			if status, present := statusOf[dep]; present && (status == nil || *status != "done") {
-				view.DependenciesDone = false
-				break
-			}
-		}
-		if task.Kind == boardengine.KindTask && boardengine.IsEmptyStatus(task.Status) && view.DependenciesDone {
-			parent, err := parents.of(task.Slug)
-			if err != nil {
-				return nil, fmt.Errorf("read the parent of %s: %w", task.Slug, err)
-			}
-			if parent == "" {
-				parent = prime.WorktreeName
-			}
-			view.Parent = parent
-			owner, err := owners.Effective(task.Slug, parents.of)
-			if err != nil {
-				return nil, fmt.Errorf("read the owner of %s: %w", task.Slug, err)
-			}
-			view.OwnedElsewhere = boardengine.OwnedElsewhere(owner, here)
-		}
-		encoded, err := json.Marshal(task)
-		if err != nil {
-			return nil, err
-		}
-		sum := sha256.Sum256(encoded)
-		view.Fingerprint = hex.EncodeToString(sum[:8])
-		views = append(views, view)
-	}
-	return views, nil
 }
 
 // liftOwnerPause lifts the live pause entry of slug's own scope that carries the owner caller.

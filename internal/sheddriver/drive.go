@@ -369,7 +369,7 @@ type DriveLock struct {
 }
 
 // DriveVerb runs a driver under its driver lock and returns the exit code.
-// It takes the lock without blocking and refuses at once when another driver holds it, so a second driver never stacks.
+// It waits lock.ProbeGrace for the lock and refuses when another driver still holds it, so a second driver never stacks and a momentary probe never refuses one.
 // With the lock held it removes each stale file, ignoring an absent one, and calls run, handing it the release that lets a hand-over free the lock early.
 // The lock is released exactly once, whether run released it early or not.
 // run returns the fields of the success envelope; a recipe whose verb prints its own envelope reuses the lock handling.
@@ -378,7 +378,7 @@ func DriveVerb(out io.Writer, driveLock DriveLock, run func(release func() error
 	if err := os.MkdirAll(filepath.Dir(driveLock.Path), 0o755); err != nil {
 		return output.Err(out, "sheddriver: drive: create the driver lock directory: "+err.Error()+transient)
 	}
-	held, acquired, err := lock.TryAcquireWriteLock(driveLock.Path)
+	held, acquired, err := lock.AcquireWriteLockWithin(driveLock.Path, lock.ProbeGrace)
 	if err != nil {
 		return output.Err(out, "sheddriver: drive: take the driver lock: "+err.Error()+transient)
 	}

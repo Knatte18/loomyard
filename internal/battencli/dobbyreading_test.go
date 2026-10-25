@@ -8,10 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 )
 
@@ -76,5 +78,41 @@ func writeDobbyState(pid int, sleeps ...pauserecord.Interval) func(t *testing.T,
 		if err != nil {
 			t.Fatalf("write dobby state: %v", err)
 		}
+	}
+}
+
+func TestDobbyTasks_ReadsDependenciesAndParentOfAReleasedTask(t *testing.T) {
+	t.Parallel()
+	boardDir := t.TempDir()
+	entries := strings.Join([]string{
+		`{"id":0,"slug":"released","title":"R","kind":"task","labels":["bug"],"depends_on":["open-dep","done-dep","pruned-dep"]}`,
+		`{"id":1,"slug":"open-dep","title":"O","kind":"task","labels":["bug"],"status":"draft"}`,
+		`{"id":2,"slug":"done-dep","title":"D","kind":"task","labels":["bug"],"status":"done"}`,
+	}, ",")
+	content := `{"version":1,"entries":[` + entries + `]}`
+	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(content), 0o644); err != nil {
+		t.Fatalf("write board.json: %v", err)
+	}
+	prime := &lyxcwd.Location{WorktreeName: "main"}
+	parents := NewDobbyParents(prime)
+	parents.known["released"] = "beam-a"
+
+	views, err := DobbyTasks(prime, boardDir, parents)
+	if err != nil {
+		t.Fatalf("DobbyTasks() error = %v; want nil", err)
+	}
+	bySlug := map[string]dobbyengine.TaskView{}
+	for _, view := range views {
+		bySlug[view.Slug] = view
+	}
+	released := bySlug["released"]
+	if want := []string{"open-dep"}; !slices.Equal(released.PendingDependencies, want) {
+		t.Errorf("DobbyTasks() released PendingDependencies = %v; want %v", released.PendingDependencies, want)
+	}
+	if released.Parent != "beam-a" {
+		t.Errorf("DobbyTasks() released Parent = %q; want %q", released.Parent, "beam-a")
+	}
+	if draft := bySlug["open-dep"]; draft.Parent != "" {
+		t.Errorf("DobbyTasks() draft Parent = %q; want none read for a task with a status", draft.Parent)
 	}
 }

@@ -197,6 +197,35 @@ func (h *passHarness) stateRecord() State {
 	return record
 }
 
+func TestLog_OneLinePerStartAndPass(t *testing.T) {
+	t.Parallel()
+	owed := runningRun("o")
+	owed.OriginOwed = true
+	h := newPassHarness(t, runningRun("r"), runningRun("c"), owed)
+	h.fake.maxRuns = 4
+	var lines []string
+	h.d.deps.Log = func(line string) { lines = append(lines, line) }
+	h.fake.tasks = []TaskView{readyTask("a")}
+	if err := UpdateState(h.d.geom.StatePath, func(s *State) error {
+		s.Runs = map[string]RunState{"r": {FullPassOwed: true}, "o": {FullPassOwed: true}}
+		return nil
+	}); err != nil {
+		t.Fatalf("UpdateState() = %v; want nil", err)
+	}
+
+	h.tick(true)
+
+	want := []string{
+		"2026-10-25T12:00:10Z pass r full",
+		"2026-10-25T12:00:10Z pass c continue",
+		"2026-10-25T12:00:10Z pass o full-no-reopen",
+		"2026-10-25T12:00:10Z start a",
+	}
+	if strings.Join(lines, "\n") != strings.Join(want, "\n") {
+		t.Errorf("log lines = %q; want %q", lines, want)
+	}
+}
+
 func runningRun(slug string) RunView {
 	return RunView{Slug: slug, State: runStateRunning, Producer: producerRunShed}
 }

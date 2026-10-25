@@ -60,6 +60,8 @@ type StartState struct {
 	Interval time.Duration `json:"interval,omitempty"`
 	// Noticed holds the refusal texts already noticed.
 	Noticed []string `json:"noticed,omitempty"`
+	// Refusal is the text of the last refused start.
+	Refusal string `json:"refusal,omitempty"`
 	// EntryFingerprint is the fingerprint of the board entry the last attempt read.
 	EntryFingerprint string `json:"entry_fingerprint,omitempty"`
 }
