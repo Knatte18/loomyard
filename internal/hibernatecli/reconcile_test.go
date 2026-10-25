@@ -37,10 +37,10 @@ func TestWakeReconcileFromReport(t *testing.T) {
 		{
 			"A busy records branch's push lock becomes the run's parked-push flag",
 			fabricengine.OriginReport{
-				Branches: []fabricengine.BranchOutcome{{Branch: "p1", Repo: "records", Slug: "p1", State: fabricengine.BranchBusy, PushLockHeld: true, WayForward: "`lyx resume p1`"}},
-				Entries:  []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryStopped, WayForward: "`lyx resume p1`"}},
+				Branches: []fabricengine.BranchOutcome{{Branch: "p1", Repo: "records", Slug: "p1", State: fabricengine.BranchBusy, PushLockHeld: true, WayForward: "`lyx tender resume p1`"}},
+				Entries:  []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryStopped, WayForward: "`lyx tender resume p1`"}},
 			},
-			hibernateengine.WakeReconcile{Runs: []hibernateengine.WakeRun{{Slug: "p1", WayForward: "`lyx resume p1`", Busy: true, ParkedPush: true}}},
+			hibernateengine.WakeReconcile{Runs: []hibernateengine.WakeRun{{Slug: "p1", WayForward: "`lyx tender resume p1`", Busy: true, ParkedPush: true}}},
 		},
 		{
 			"A busy branch holding another lock is busy without a parked push",

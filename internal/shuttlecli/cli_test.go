@@ -565,8 +565,8 @@ func TestSendCmd_AppendsMessageTail(t *testing.T) {
 				if ok, _ := envelope["ok"].(bool); ok {
 					t.Fatalf("envelope ok = true; want a refusal; output: %s", out.String())
 				}
-				if msg, _ := envelope["error"].(string); !strings.Contains(msg, "lyx resume s1") {
-					t.Errorf("refusal = %q; want it to name %q", msg, "lyx resume s1")
+				if msg, _ := envelope["error"].(string); !strings.Contains(msg, "lyx tender resume s1") {
+					t.Errorf("refusal = %q; want it to name %q", msg, "lyx tender resume s1")
 				}
 				if len(reed.SendTextCalls) != 0 {
 					t.Errorf("typed texts = %+v; want none", reed.SendTextCalls)
@@ -604,7 +604,7 @@ func TestInterruptAndSendCmd_FailWithTheGuardsMessage(t *testing.T) {
 		{"interrupt on a pane with no running turn fails naming lyx shuttle send", false, false, "lyx shuttle send", nil, "", "", ""},
 		{"interrupt on an open picker closes it once and fails", true, false, "rewind picker was open", []string{"Escape"}, "", "", ""},
 		{"send on an open picker closes it once, fails and types nothing", true, true, "rewind picker was open", []string{"Escape"}, "", "", ""},
-		{"send into a strand another slug's pause covers is refused naming the resume and the retry", false, true, "lyx resume p1", nil, "p1", "ly:p1:impl", "lyx shuttle send"},
+		{"send into a strand another slug's pause covers is refused naming the resume and the retry", false, true, "lyx tender resume p1", nil, "p1", "ly:p1:impl", "lyx shuttle send"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

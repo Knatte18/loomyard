@@ -58,7 +58,7 @@ func refuseCaller(c caller, slug string) error {
 	if !c.agent || (slug != "" && slug == c.slug) {
 		return nil
 	}
-	return errors.New(`pause: an agent may pause, resume or revive only its own pair; way forward: ask your parent session, which runs "lyx pause", "lyx resume" or "lyx tender revive" for you`)
+	return errors.New(`pause: an agent may pause, resume or revive only its own pair; way forward: ask your parent session, which runs "lyx tender pause", "lyx tender resume" or "lyx tender revive" for you`)
 }
 
 // refuseReapCaller refuses an agent's reap: only the orch and an external caller end orphaned processes.
@@ -78,7 +78,7 @@ func Command() *cobra.Command {
 pause holds it, resume lifts the hold, revive gives a carry-on line to sessions
 stalled on an API error, status shows the live entries, the holds and what
 runs, and reap ends the run processes no run owns any more.
-"lyx pause" and "lyx resume" are shortcuts for the first two.`,
+"lyx p" and "lyx r" are shortcuts for the first two.`,
 		RunE: clihelp.GroupRunE,
 	}
 	tender.AddCommand(pauseCmd(), resumeCmd(), reviveCmd(), statusCmd(), reapCmd())
@@ -95,7 +95,7 @@ func pauseCmd() *cobra.Command {
 		Long: `pause records a pause, waits a short grace for busy agent sessions and network
 operations to finish, interrupts every covered session still in a running turn
 with Esc, and holds every path that would start agent or network work until
-"lyx resume".
+"lyx tender resume".
 
 A second Esc goes only after the provider's settle time, and only into a pane
 still showing a running turn. A session whose turn ended with background work
@@ -107,8 +107,8 @@ orchestrator is interrupted by its own watcher at the grace end, not by pause.
 
 --grace sets the grace in seconds, 0 to 60.
 
-Lift it with "lyx resume", which gives each interrupted session one line to
-carry on.
+Lift it with "lyx tender resume", which gives each interrupted session one
+line to carry on.
 
 Example:
   lyx tender pause
@@ -169,7 +169,8 @@ func resumeCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `resume lifts the live pause entries. With no slug it lifts every entry; with a
 slug it lifts that pair's own entry. A slug covered only by a hub-wide pause is
-refused: run "lyx resume" to lift the hub pause. Resuming nothing is a no-op.
+refused: run "lyx tender resume" to lift the hub pause. Resuming nothing is a
+no-op.
 
 Each session the pause interrupted gets one line to carry on, unless its strand
 is not live or its guarded send is refused, as for a running turn, a draft, a
@@ -184,8 +185,8 @@ pushed. The report's "spawned" lists the spawns and "spawn_failed" the ones that
 failed; neither fails the resume.
 
 Example:
-  lyx resume
-  lyx resume my-task`,
+  lyx tender resume
+  lyx tender resume my-task`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -235,7 +236,7 @@ func reviveCmd() *cobra.Command {
 		Long: `revive types one fixed carry-on line into each session whose last turn stopped
 on an API error, the case a network outage without a machine sleep leaves
 behind. A session in any other state is skipped with the state read, and a
-session a live pause covers is left to "lyx resume".
+session a live pause covers is left to "lyx tender resume".
 
 With no slug it covers the whole hub, the orchestrator included: the orch gets
 the line as a checked creel inject, reported with its id. With a slug it covers that pair. Every send is refused at once when

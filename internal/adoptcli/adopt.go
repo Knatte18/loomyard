@@ -261,7 +261,7 @@ func namedEntries(owners boardengine.Owners, req request) (slugs []string, prime
 		case !entry.IsTask && !entry.IsProject:
 			return nil, false, fmt.Errorf("lyx adopt: %q is a note, not a task: `lyx board promote %s` makes it a task first", slug, slug)
 		case entry.Done:
-			return nil, false, fmt.Errorf("lyx adopt: %q is done and already landed, so there is nothing to adopt: `lyx resume %s` lets a run that landed there go on to Land under its owner pause", slug, slug)
+			return nil, false, fmt.Errorf("lyx adopt: %q is done and already landed, so there is nothing to adopt: `lyx tender resume %s` lets a run that landed there go on to Land under its owner pause", slug, slug)
 		case entry.IsProject && !entry.Beam:
 			return nil, false, fmt.Errorf("lyx adopt: %q is a grouping project, not a beam, so there is no pair to take over: `lyx beam create %s` makes it a beam", slug, slug)
 		}
@@ -465,9 +465,9 @@ func liftOwnerPauses(deps adoptDeps, out *slugOutcome) error {
 	}
 	if entry, covered := record.Covering(out.Slug); covered {
 		if entry.Scope == pauserecord.ScopeHub {
-			out.PauseStanding = "a hub pause covers it: `lyx resume` lifts it"
+			out.PauseStanding = "a hub pause covers it: `lyx tender resume` lifts it"
 		} else {
-			out.PauseStanding = fmt.Sprintf("a pause of its own scope by %s covers it: `lyx resume %s` lifts it", entry.Caller, out.Slug)
+			out.PauseStanding = fmt.Sprintf("a pause of its own scope by %s covers it: `lyx tender resume %s` lifts it", entry.Caller, out.Slug)
 		}
 	}
 	return nil

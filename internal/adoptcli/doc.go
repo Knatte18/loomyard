@@ -6,7 +6,7 @@
 // It runs from the hub's prime and from any beam, by `battencli.ResolveBattenPrime`, and acts on the prime's location in both.
 // `request` holds the slugs, `Prime`, `All`, `KeepLocal` and `DropLocal`; `adoptDeps` holds every step's seam, which `hubDeps` fills over the hub and `TestAdopt` fakes.
 //
-// Before anything runs, `adopt` reads the local Bolt and refuses an unknown slug (naming `lyx board list`), a note (naming `lyx board promote`), a done task (naming that it already landed, and `lyx resume <slug>` to let a run that landed there go on to Land under its owner pause), `--keep-local` with `--drop-local`, and no slug without `--prime` or `--all`.
+// Before anything runs, `adopt` reads the local Bolt and refuses an unknown slug (naming `lyx board list`), a note (naming `lyx board promote`), a done task (naming that it already landed, and `lyx tender resume <slug>` to let a run that landed there go on to Land under its owner pause), `--keep-local` with `--drop-local`, and no slug without `--prime` or `--all`.
 // `--all` names the prime, every task that is not done and has an owner or a run status, and every beam project (a project entry whose `beam` is true) that is not done and has an owner, passing over a done entry.
 //
 // A beam project is admitted as a started task is: adopt takes over its owner and adds its pair when its branches are on origin.
@@ -53,7 +53,7 @@
 // # Steps 4 and 5: the pause and the run
 //
 // Step 4 lifts, through `tenderengine.Lift`, each live entry carrying `pauserecord.OwnerCaller` whose scope is an adopted slug, by its scope, caller and pause time.
-// A slug still covered by another entry gets an envelope line naming it and `lyx resume <slug>` for an entry of its own scope or `lyx resume` for a hub entry.
+// A slug still covered by another entry gets an envelope line naming it and `lyx tender resume <slug>` for an entry of its own scope or `lyx tender resume` for a hub entry.
 //
 // Step 5 resumes each adopted task whose batten run record is not done as a detached first pass through `battencli.StartFirstPass`, driven on by the parent's dobby, so the run's own driver lock refuses a second driver.
 // A resume failure is the slug's error and the other slugs go on; a task with no run record gets its owner and no run.

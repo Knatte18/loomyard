@@ -101,10 +101,10 @@ func WaitUncovered(ctx context.Context, path, slug string, w Waiter) error {
 
 // heldLine renders the line a wait writes when it starts, naming the pause and the resume that lifts it.
 func heldLine(entry Entry) string {
-	pause, resume := "a hub-wide pause", `"lyx resume"`
+	pause, resume := "a hub-wide pause", `"lyx tender resume"`
 	if entry.Scope != ScopeHub {
 		pause = fmt.Sprintf("the pause of %s", entry.Scope)
-		resume += fmt.Sprintf(` or "lyx resume %s"`, entry.Scope)
+		resume += fmt.Sprintf(` or "lyx tender resume %s"`, entry.Scope)
 	}
 	return fmt.Sprintf("lyx: held by %s since %s; it continues after %s", pause, entry.PausedAt.Format(time.RFC3339), resume)
 }

@@ -314,7 +314,7 @@ func (b BranchOutcome) stopWayForward() string {
 		return b.dirtyWayForward()
 	case BranchBusy:
 		if b.PushLockHeld && b.Slug != "" {
-			return fmt.Sprintf("`lyx resume %s`", b.Slug)
+			return fmt.Sprintf("`lyx tender resume %s`", b.Slug)
 		}
 		return fmt.Sprintf("wait for the holder of the %s lock to end", b.BusyLock)
 	case BranchLive:

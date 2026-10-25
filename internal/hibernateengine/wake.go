@@ -54,7 +54,7 @@ func reconcileAtWake(deps Deps, r Request) (lift bool, notice string, err error)
 			continue
 		}
 		if r.Owned == nil || entry.Caller != r.Owned.Caller || !entry.PausedAt.Equal(r.Owned.PausedAt) {
-			return true, fmt.Sprintf("the hub pause of %s stands, so the origin reconcile was skipped; lift it with `lyx resume`, and then `lyx orch start` or `lyx cleanup --apply` runs the reconcile.", entry.Caller), nil
+			return true, fmt.Sprintf("the hub pause of %s stands, so the origin reconcile was skipped; lift it with `lyx tender resume`, and then `lyx orch start` or `lyx cleanup --apply` runs the reconcile.", entry.Caller), nil
 		}
 		exempt = r.Owned
 	}
@@ -69,7 +69,7 @@ func reconcileAtWake(deps Deps, r Request) (lift bool, notice string, err error)
 	case wake.Unreachable:
 		return true, "origin was unreachable through the retry bound, so nothing was reconciled; run `lyx cleanup --apply` to reconcile once the network is back.", nil
 	case wake.Stop != "":
-		return false, fmt.Sprintf("the origin reconcile stopped: %s; settle it, and then `lyx resume` lifts the hub pause.", wake.Stop), nil
+		return false, fmt.Sprintf("the origin reconcile stopped: %s; settle it, and then `lyx tender resume` lifts the hub pause.", wake.Stop), nil
 	}
 	return true, holdRuns(deps, wake.Runs), nil
 }
@@ -118,7 +118,7 @@ func holdRuns(deps Deps, runs []WakeRun) string {
 // runStep names what an operator does for one held run.
 // A parked push is cleared by the resume alone; a pair stopped as gone, which no resume can carry on, and an ended one are cleared by the cleanup.
 func runStep(run WakeRun) string {
-	resume := fmt.Sprintf("`lyx resume %s`", run.Slug)
+	resume := fmt.Sprintf("`lyx tender resume %s`", run.Slug)
 	switch {
 	case run.Owner != "":
 		return fmt.Sprintf("%s is owned by machine %s: `lyx adopt %s` from this machine's prime takes it over here", run.Slug, run.Owner, run.Slug)

@@ -52,7 +52,7 @@ func coverRunBy(t *testing.T, c *loomCLI, scope, caller string) string {
 }
 
 // TestStartCmd_RefusesWhileAPauseCoversTheRun drives startCmd over a receiver whose hub holds a live pause entry:
-// the refusal names `lyx resume` and nothing is seeded, and once the entry is lifted the same call no longer refuses on the pause.
+// the refusal names `lyx tender resume` and nothing is seeded, and once the entry is lifted the same call no longer refuses on the pause.
 func TestStartCmd_RefusesWhileAPauseCoversTheRun(t *testing.T) {
 	t.Parallel()
 
@@ -74,8 +74,8 @@ func TestStartCmd_RefusesWhileAPauseCoversTheRun(t *testing.T) {
 	}
 
 	refusal := start()
-	if !strings.Contains(refusal, "lyx resume") {
-		t.Errorf("start under a pause answered %q; want it to name %q", refusal, "lyx resume")
+	if !strings.Contains(refusal, "lyx tender resume") {
+		t.Errorf("start under a pause answered %q; want it to name %q", refusal, "lyx tender resume")
 	}
 	if _, found, err := shedrun.ReadSeed(c.location, seedSlug(c.location.WorktreeName)); err != nil || found {
 		t.Errorf("ReadSeed after the refusal = (found=%v, err=%v); want (false, nil), nothing seeded", found, err)
@@ -87,7 +87,7 @@ func TestStartCmd_RefusesWhileAPauseCoversTheRun(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("pauserecord.Update: %v", err)
 	}
-	if lifted := start(); strings.Contains(lifted, "lyx resume") {
+	if lifted := start(); strings.Contains(lifted, "lyx tender resume") {
 		t.Errorf("start after the pause was lifted answered %q; want no pause refusal", lifted)
 	}
 }

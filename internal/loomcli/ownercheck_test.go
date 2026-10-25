@@ -56,7 +56,7 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 			statusExists: true,
 			verdict:      ownerVerdict{Owner: "there", Elsewhere: true},
 			ownerPause:   true,
-			wantMessage:  []string{"pause:", `"lyx resume`},
+			wantMessage:  []string{"pause:", `"lyx tender resume`},
 		},
 		{
 			name:         "VerdictErrorRefusesNamingTheRerun",

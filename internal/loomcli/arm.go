@@ -577,7 +577,7 @@ func (c *loomCLI) loomBarePause(st shedengine.Status) error {
 	if c.location != nil {
 		slug = c.location.WorktreeName
 	}
-	return errors.New("loom: a bare pause no longer stops a loom run; way forward: run \"lyx pause " + slug + "\" to stop its agents now, or \"" + c.pauseAfterCommand(st.CurrentProducer) + "\" to halt it at its next producer boundary")
+	return errors.New("loom: a bare pause no longer stops a loom run; way forward: run \"lyx tender pause " + slug + "\" to stop its agents now, or \"" + c.pauseAfterCommand(st.CurrentProducer) + "\" to halt it at its next producer boundary")
 }
 
 // loomStatusExtras implements the StatusExtras hook for loom's spec: loom's own three status keys

@@ -111,9 +111,9 @@ func TestShortcuts_FileAndRootListing(t *testing.T) {
 	if code := run([]string{"--help"}, &help); code != 0 {
 		t.Fatalf("run(--help) = %d, output:\n%s", code, help.String())
 	}
-	heading, attach, prime, additional := strings.Index(help.String(), "Shortcuts:"), strings.Index(help.String(), "\n  attach "), strings.Index(help.String(), "\n  prime "), strings.Index(help.String(), "Additional Commands:")
+	heading, attach, prime, additional := strings.Index(help.String(), "Shortcuts:"), strings.Index(help.String(), "\n  a "), strings.Index(help.String(), "\n  prime "), strings.Index(help.String(), "Additional Commands:")
 	if heading < 0 || attach < heading || prime < attach || additional < prime {
-		t.Errorf("lyx --help lacks the Shortcuts: heading with attach and prime before Additional Commands:\n%s", help.String())
+		t.Errorf("lyx --help lacks the Shortcuts: heading with a and prime before Additional Commands:\n%s", help.String())
 	}
 
 	var index strings.Builder
@@ -122,9 +122,7 @@ func TestShortcuts_FileAndRootListing(t *testing.T) {
 	}
 	for _, line := range []string{
 		"- `prime [<args>...]`: shortcut: lyx orch start, then lyx reed attach",
-		"- `attach [<args>...]`: shortcut: lyx reed attach",
-		"- `pause [<args>...]`: shortcut: lyx tender pause",
-		"- `resume [<args>...]`: shortcut: lyx tender resume",
+		"- `a [<args>...]`: shortcut: lyx reed attach",
 		"- `p [<args>...]`: shortcut: lyx tender pause",
 		"- `r [<args>...]`: shortcut: lyx tender resume",
 	} {

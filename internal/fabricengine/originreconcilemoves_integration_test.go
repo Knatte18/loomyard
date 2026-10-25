@@ -417,7 +417,7 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 			wantPushHeld                             bool
 		}{
 			{"write lock", weftWriteLockName, "weft write", "wait for the holder of the weft write lock to end", false},
-			{"push lock", weftPushLockName, "weft push", "`lyx resume task`", true},
+			{"push lock", weftPushLockName, "weft push", "`lyx tender resume task`", true},
 		} {
 			pair := newMovesPair(t)
 			originCommitFile(t, pair.RecordsBare, pair.recordsName, "notes/up.md", "up\n")
