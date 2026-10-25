@@ -318,7 +318,7 @@ func (b BranchOutcome) stopWayForward() string {
 		}
 		return fmt.Sprintf("wait for the holder of the %s lock to end", b.BusyLock)
 	case BranchLive:
-		return "no step now: the run's own Merge-In judges and moves its pair, and `lyx cleanup --apply` re-judges it once the run has ended"
+		return "no step now: the run's own Parent-Align judges and moves its pair, and `lyx cleanup --apply` re-judges it once the run has ended"
 	}
 	return ""
 }

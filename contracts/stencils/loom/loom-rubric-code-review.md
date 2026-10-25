@@ -115,7 +115,7 @@ When the note above is not `none`, this round reviews an amendment: review only 
 
 ## Review input
 
-When the amendment note names a review input, that file is a report written after this perch last settled: the merge fixer's report of the latest Merge-In, or the overlap note of a Finalize reroute.
+When the amendment note names a review input, that file is a report written after this perch last settled: the merge fixer's report of the latest Parent-Align, or the overlap note of a Finalize reroute.
 Read it as an input besides the diff: judge from it whether the alignment it reports, and the parent changes it names, keep the code consistent with the answer key.
 A finding about the report itself is never raised; each finding is about the code.
 

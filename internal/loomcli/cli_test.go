@@ -24,25 +24,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestResolvePersistentPreRun_SkipsReviewGroup asserts the loom parent's pre-run never arms the review group or its verbs.
-// cmd/lyx sets cobra.EnableTraverseRunHooks, so cobra calls that pre-run for a review verb too;
+// TestResolvePersistentPreRun_SkipsSlugGroups asserts the loom parent's pre-run never arms the circling, decision or peers group or their verbs, and that loom has no review group.
+// cmd/lyx sets cobra.EnableTraverseRunHooks, so cobra calls that pre-run for a group verb too;
 // over a non-git cwd an arm would write an error envelope and abort, so silence proves the skip.
-func TestResolvePersistentPreRun_SkipsReviewGroup(t *testing.T) {
+func TestResolvePersistentPreRun_SkipsSlugGroups(t *testing.T) {
 	parent := Command()
-	review, _, err := parent.Find([]string{"review"})
-	if err != nil || review.Name() != "review" {
-		t.Fatalf(`Find("review") = %v, %v; want the review group`, review, err)
-	}
-	for _, cmd := range append([]*cobra.Command{review}, review.Commands()...) {
-		ctx, _ := clihelp.NewExitContext(lyxcwd.WithCwd(t.Context(), t.TempDir()))
-		cmd.SetContext(ctx)
-		var out bytes.Buffer
-		cmd.SetOut(&out)
-		if err := parent.PersistentPreRunE(cmd, []string{"some-slug"}); err != nil {
-			t.Errorf("loom pre-run for %q = %v; want nil", cmd.Name(), err)
+	for _, child := range parent.Commands() {
+		if child.Name() == "review" {
+			t.Fatal(`loom has a "review" child; want "lyx loom review" to be no command`)
 		}
-		if out.Len() != 0 || clihelp.ShouldAbort(ctx) {
-			t.Errorf("loom pre-run for %q wrote %q (abort %v); want it skipped", cmd.Name(), out.String(), clihelp.ShouldAbort(ctx))
+	}
+	for _, name := range []string{"circling", decisionGroup, peersGroup} {
+		group, _, err := parent.Find([]string{name})
+		if err != nil || group.Name() != name {
+			t.Fatalf("Find(%q) = %v, %v; want the %s group", name, group, err, name)
+		}
+		for _, cmd := range append([]*cobra.Command{group}, group.Commands()...) {
+			ctx, _ := clihelp.NewExitContext(lyxcwd.WithCwd(t.Context(), t.TempDir()))
+			cmd.SetContext(ctx)
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			if err := parent.PersistentPreRunE(cmd, []string{"some-slug"}); err != nil {
+				t.Errorf("loom pre-run for %s %q = %v; want nil", name, cmd.Name(), err)
+			}
+			if out.Len() != 0 || clihelp.ShouldAbort(ctx) {
+				t.Errorf("loom pre-run for %s %q wrote %q (abort %v); want it skipped", name, cmd.Name(), out.String(), clihelp.ShouldAbort(ctx))
+			}
 		}
 	}
 }

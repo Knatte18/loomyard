@@ -309,7 +309,7 @@ func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
 			shed.Producers[0].Producer = fakeAlwaysDoneProducer{}
 			for i := range shed.Producers {
 				switch shed.Producers[i].Name {
-				case loomshed.NameMergeIn:
+				case loomshed.NameParentAlign:
 					shed.Producers[i].Producer = fakeAlwaysDoneProducer{}
 				case loomshed.NamePRReview:
 					shed.Producers[i].Producer = &haltingProducer{}

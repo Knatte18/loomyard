@@ -45,7 +45,7 @@ func TestFixerTable(t *testing.T) {
 
 	cfg := Config{Fixer: "claude:opus[effort=high]", FixerTimeoutMin: 9}
 
-	for _, mode := range []FixerMode{FixerModeMergeIn, FixerModeFinalize} {
+	for _, mode := range []FixerMode{FixerModeParentAlign, FixerModeFinalize} {
 		t.Run("Table_"+string(mode), func(t *testing.T) {
 			t.Parallel()
 			in := newFixerInputs(t, mode)
@@ -114,7 +114,7 @@ func TestFixerTable(t *testing.T) {
 
 	t.Run("MergeInOptionals", func(t *testing.T) {
 		t.Parallel()
-		in := newFixerInputs(t, FixerModeMergeIn)
+		in := newFixerInputs(t, FixerModeParentAlign)
 		in.PlanDir = ""
 		in.FailureRecordPath = ""
 
@@ -129,7 +129,7 @@ func TestFixerTable(t *testing.T) {
 
 	t.Run("MissingStencil", func(t *testing.T) {
 		t.Parallel()
-		in := newFixerInputs(t, FixerModeMergeIn)
+		in := newFixerInputs(t, FixerModeParentAlign)
 		if err := os.Remove(filepath.Join(in.StencilsDir, "landing", "landing-template-fixer.md")); err != nil {
 			t.Fatalf("os.Remove(fixer stencil) = %v; want nil", err)
 		}
@@ -145,17 +145,17 @@ func TestFixerTable(t *testing.T) {
 		mode    FixerMode
 		wantErr string
 	}{
-		{"EmptyStencilsDir", func(in *FixerInputs) { in.StencilsDir = "" }, FixerModeMergeIn, "StencilsDir is empty"},
-		{"EmptyMode", func(in *FixerInputs) { in.Mode = "" }, FixerModeMergeIn, "Mode is empty"},
-		{"EmptyDecisionRecordPath", func(in *FixerInputs) { in.DecisionRecordPath = "" }, FixerModeMergeIn, "DecisionRecordPath is empty"},
+		{"EmptyStencilsDir", func(in *FixerInputs) { in.StencilsDir = "" }, FixerModeParentAlign, "StencilsDir is empty"},
+		{"EmptyMode", func(in *FixerInputs) { in.Mode = "" }, FixerModeParentAlign, "Mode is empty"},
+		{"EmptyDecisionRecordPath", func(in *FixerInputs) { in.DecisionRecordPath = "" }, FixerModeParentAlign, "DecisionRecordPath is empty"},
 		{"EmptyMergeRecordPath", func(in *FixerInputs) { in.MergeRecordPath = "" }, FixerModeFinalize, "MergeRecordPath is empty"},
 		{"EmptyMergedTip", func(in *FixerInputs) { in.MergedTip = "" }, FixerModeFinalize, "MergedTip is empty"},
-		{"EmptyReportPath", func(in *FixerInputs) { in.ReportPath = "" }, FixerModeMergeIn, "ReportPath is empty"},
-		{"EmptyTaskBranch", func(in *FixerInputs) { in.TaskBranch = "" }, FixerModeMergeIn, "TaskBranch is empty"},
-		{"EmptyParentBranch", func(in *FixerInputs) { in.ParentBranch = "" }, FixerModeMergeIn, "ParentBranch is empty"},
-		{"EmptySlug", func(in *FixerInputs) { in.Slug = "" }, FixerModeMergeIn, "Slug is empty"},
-		{"UnknownMode", func(in *FixerInputs) { in.Mode = "other" }, FixerModeMergeIn, `unknown Mode "other"`},
-		{"MergeInEmptyAlignedTip", func(in *FixerInputs) { in.AlignedTip = "" }, FixerModeMergeIn, "aligned_tip"},
+		{"EmptyReportPath", func(in *FixerInputs) { in.ReportPath = "" }, FixerModeParentAlign, "ReportPath is empty"},
+		{"EmptyTaskBranch", func(in *FixerInputs) { in.TaskBranch = "" }, FixerModeParentAlign, "TaskBranch is empty"},
+		{"EmptyParentBranch", func(in *FixerInputs) { in.ParentBranch = "" }, FixerModeParentAlign, "ParentBranch is empty"},
+		{"EmptySlug", func(in *FixerInputs) { in.Slug = "" }, FixerModeParentAlign, "Slug is empty"},
+		{"UnknownMode", func(in *FixerInputs) { in.Mode = "other" }, FixerModeParentAlign, `unknown Mode "other"`},
+		{"MergeInEmptyAlignedTip", func(in *FixerInputs) { in.AlignedTip = "" }, FixerModeParentAlign, "aligned_tip"},
 	}
 	for _, tt := range errTests {
 		t.Run(tt.name, func(t *testing.T) {

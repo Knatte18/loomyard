@@ -132,7 +132,7 @@ func TestZeroBudget_BouncerSettlesAtOnce(t *testing.T) {
 				for write, bouncer := range map[string]string{
 					loomshed.NameDiscussionWrite: loomshed.NameDiscussionBouncer,
 					loomshed.NamePlanWrite:       loomshed.NamePlanBouncer,
-					loomshed.NameMergeIn:         loomshed.NameCodeBouncer,
+					loomshed.NameParentAlign:     loomshed.NameCodeBouncer,
 				} {
 					if got := rows[write].OnDone; got != bouncer {
 						t.Errorf("%s: %s OnDone = %q; want %q", name, write, got, bouncer)

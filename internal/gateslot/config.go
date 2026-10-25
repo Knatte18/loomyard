@@ -387,15 +387,22 @@ type gateTarget struct {
 	scope string
 }
 
+// The gate key of loom's Parent-Align row and the key it carried before its rename.
+const (
+	parentAlignGateKey    = "parent-align"
+	retiredMergeInGateKey = "merge-in"
+)
+
 // retiredGateLists maps each retired gate list to the keys it becomes.
 var retiredGateLists = map[string][]gateTarget{
-	"landing": {{"merge-in", scopeAll}, {"finalize", scopeAll}, {"darn-write", scopeDiff}, {"code-burler-fix", scopeDiff}},
+	"landing": {{parentAlignGateKey, scopeAll}, {"finalize", scopeAll}, {"darn-write", scopeDiff}, {"code-burler-fix", scopeDiff}},
 	"final":   {{"webster", scopeAll}},
 	"round":   {{"webster-fix", scopeDiff}},
 }
 
 // MigrateConfig migrates a gate.yaml document's retired gates and keys and returns one line per rewrite.
 // The retired gates.publish list and the retired guard_tier key are pruned, a landing, final or round list becomes the keys retiredGateLists names, and a card or batch list becomes a mapping with scope card.
+// A gates.merge-in key is renamed to gates.parent-align, keeping its value.
 // A key the file already holds in the new shape keeps its value, and every comment and other key is carried through yaml node editing.
 // A document with nothing to migrate is returned unchanged, so a migrated file is unchanged on a second pass.
 // A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
@@ -418,6 +425,7 @@ func MigrateConfig(existing []byte) ([]byte, []string, error) {
 			lines = append(lines, "gates.publish: retired, removed")
 		}
 		lines = append(lines, migrateGateLists(gates)...)
+		lines = append(lines, renameGateKeys(gates)...)
 	}
 	if at := mappingKeyIndex(root, "guard_tier"); at >= 0 {
 		root.Content = append(root.Content[:at], root.Content[at+2:]...)
@@ -486,6 +494,21 @@ func migrateGateLists(gates *yaml.Node) []string {
 	}
 	gates.Content = content
 	return lines
+}
+
+// renameGateKeys renames the gates mapping's retired merge-in key to parent-align, carrying its value and comments, and returns one line per rewrite.
+// When the mapping already holds parent-align, that key keeps its value and the retired key is dropped.
+func renameGateKeys(gates *yaml.Node) []string {
+	at := mappingKeyIndex(gates, retiredMergeInGateKey)
+	if at < 0 {
+		return nil
+	}
+	if mappingKeyIndex(gates, parentAlignGateKey) >= 0 {
+		gates.Content = append(gates.Content[:at], gates.Content[at+2:]...)
+		return []string{fmt.Sprintf("gates.%s: retired, removed", retiredMergeInGateKey)}
+	}
+	gates.Content[at].Value = parentAlignGateKey
+	return []string{fmt.Sprintf("gates.%s: renamed to gates.%s", retiredMergeInGateKey, parentAlignGateKey)}
 }
 
 // gateMapping returns a flow mapping node holding a copy of the tiers list and the scope.

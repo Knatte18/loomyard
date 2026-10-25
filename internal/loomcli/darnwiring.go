@@ -155,25 +155,25 @@ func darnDeps(l *lyxcwd.Location, runID string) loomshed.DarnDeps {
 	}
 }
 
-// renameRetiredDarnRows rewrites each retired darn row name the run's status file carries onto the row's current name, so a run parked under an old name resumes.
+// renameRetiredRows rewrites each retired row name of renames that the run's status file carries onto the row's current name, so a run parked under an old name resumes.
 // A live driver holding the run lock is left alone with a warning, since that driver runs the binary that wrote the old name; a later verb renames once it has stopped.
-func (c *loomCLI) renameRetiredDarnRows() error {
+func (c *loomCLI) renameRetiredRows(renames map[string]string) error {
 	renamed, err := shedengine.RenameProducers(shedengine.RenameRequest{
 		StatusPath:     c.shedPaths.StatusPath,
 		LockPath:       c.shedPaths.LockPath,
 		StatusLockPath: c.shedPaths.StatusLockPath,
-		Renames:        loomrecipe.DarnRetiredRows(),
+		Renames:        renames,
 		RunID:          c.runID,
 	})
 	if errors.Is(err, shedengine.ErrShedBusy) {
-		logger.Warn("loom: a live driver holds the run lock; left the retired darn row names in its status file", "status", c.shedPaths.StatusPath)
+		logger.Warn("loom: a live driver holds the run lock; left the retired row names in its status file", "status", c.shedPaths.StatusPath)
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 	if renamed {
-		logger.Info("loom: renamed retired darn rows in the status file", "status", c.shedPaths.StatusPath)
+		logger.Info("loom: renamed retired rows in the status file", "status", c.shedPaths.StatusPath)
 	}
 
 	return nil

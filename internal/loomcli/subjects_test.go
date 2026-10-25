@@ -137,7 +137,10 @@ func TestReviewInputSeams(t *testing.T) {
 		path func(scratchDir string) string
 	}{
 		{"FixerReport", fixerReportInput, func(scratchDir string) string {
-			return filepath.Join(scratchDir, loomshed.NameMergeIn+"-fixer-report.md")
+			return filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md")
+		}},
+		{"FixerReportUnderRetiredName", fixerReportInput, func(scratchDir string) string {
+			return filepath.Join(scratchDir, "Merge-In-fixer-report.md")
 		}},
 		{"OverlapNote", overlapNoteInput, landingshed.OverlapNotePath},
 	}
@@ -164,4 +167,18 @@ func TestReviewInputSeams(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("FixerReportBothNames_NewWins", func(t *testing.T) {
+		t.Parallel()
+		scratchDir := t.TempDir()
+		current := filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md")
+		for _, path := range []string{current, filepath.Join(scratchDir, "Merge-In-fixer-report.md")} {
+			if err := os.WriteFile(path, []byte("input\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+			}
+		}
+		if path, _, found, err := fixerReportInput(scratchDir)(); err != nil || !found || path != current {
+			t.Errorf("fixerReportInput() = %q, %v, %v; want %q, found, nil", path, found, err, current)
+		}
+	})
 }

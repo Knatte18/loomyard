@@ -45,14 +45,14 @@ func wantWake(kind, producer string, n int) Wake {
 func TestClassifyRecords(t *testing.T) {
 	t.Parallel()
 	rules := NoticeRules{
-		VerifyRows:  []string{"Merge-In", "Publish"},
+		VerifyRows:  []string{"Parent-Align", "Publish"},
 		GateRow:     "PR-Gate",
 		EpisodeRows: []string{"Land", "Worktree-Teardown"},
 	}
 	escalating := rules
 	escalating.Escalations = map[string]int{"Plan-Bouncer": 1}
 	retryRecord := func(blocks ...shedengine.HistoryEntry) BattenRecord {
-		return changesRecord([]shedengine.HistoryEntry{childEntry(2, "Merge-In", shedengine.OutcomeGoto)}, blocks...)
+		return changesRecord([]shedengine.HistoryEntry{childEntry(2, "Parent-Align", shedengine.OutcomeGoto)}, blocks...)
 	}
 
 	tests := []struct {
@@ -97,8 +97,8 @@ func TestClassifyRecords(t *testing.T) {
 			rules: rules,
 			record: retryRecord(
 				changeEntry(1, "child running → blocked at Publish"),
-				changeEntry(3, "child blocked → paused at Merge-In"),
-				changeEntry(4, "child paused → running at Merge-In"),
+				changeEntry(3, "child blocked → paused at Parent-Align"),
+				changeEntry(4, "child paused → running at Parent-Align"),
 			),
 			wantAutomatic: []AutomaticStep{{Kind: AutomaticKindVerifyRetry, Producer: "Publish", At: parseEntryTime(minuteText(1))}},
 			wantAccounted: []int{0},
@@ -107,7 +107,7 @@ func TestClassifyRecords(t *testing.T) {
 			name:  "a child skip before the goto is no change and no accounted entry",
 			rules: rules,
 			record: changesRecord(
-				[]shedengine.HistoryEntry{childEntry(2, "Describe", shedengine.OutcomeSkipped), childEntry(3, "Merge-In", shedengine.OutcomeGoto)},
+				[]shedengine.HistoryEntry{childEntry(2, "Describe", shedengine.OutcomeSkipped), childEntry(3, "Parent-Align", shedengine.OutcomeGoto)},
 				changeEntry(1, "child running → blocked at Publish"),
 			),
 			wantAutomatic: []AutomaticStep{{Kind: AutomaticKindVerifyRetry, Producer: "Publish", At: parseEntryTime(minuteText(1))}},
@@ -117,13 +117,13 @@ func TestClassifyRecords(t *testing.T) {
 			name:  "a second blocked at the same verify row is a wake",
 			rules: rules,
 			record: retryRecord(
-				changeEntry(1, "child running → blocked at Merge-In"),
-				changeEntry(3, "child blocked → paused at Merge-In"),
-				changeEntry(4, "child paused → running at Merge-In"),
-				changeEntry(6, "child running → blocked at Merge-In"),
+				changeEntry(1, "child running → blocked at Parent-Align"),
+				changeEntry(3, "child blocked → paused at Parent-Align"),
+				changeEntry(4, "child paused → running at Parent-Align"),
+				changeEntry(6, "child running → blocked at Parent-Align"),
 			),
-			wantWakes:     []Wake{wantWake("blocked", "Merge-In", 6)},
-			wantAutomatic: []AutomaticStep{{Kind: AutomaticKindVerifyRetry, Producer: "Merge-In", At: parseEntryTime(minuteText(1))}},
+			wantWakes:     []Wake{wantWake("blocked", "Parent-Align", 6)},
+			wantAutomatic: []AutomaticStep{{Kind: AutomaticKindVerifyRetry, Producer: "Parent-Align", At: parseEntryTime(minuteText(1))}},
 			wantAccounted: []int{0},
 		},
 		{

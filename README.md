@@ -50,7 +50,7 @@ The list is data, not code — [`contracts/recipes/loom-recipe.yaml`](contracts/
 Preflight → Loom-Preflight
   → Discussion-Write → [Discussion review]
   → Plan-Write       → [Plan review]
-  → Webster → Merge-In → [Code review]
+  → Webster → Parent-Align → [Code review]
   → Describe → PR-Review → Finalize → Friction-Reflect
 ```
 
@@ -66,10 +66,10 @@ A smaller task can run the `darn` recipe instead ([`contracts/recipes/darn-recip
   The judge approves or sends the artifact back for another round, within a bounce budget;
   an exhausted budget halts the run for a human rather than looping.
   The judge and the reviewer are fresh agents, independent of the one that wrote the artifact, so no agent ever reviews its own work.
-- **Landing** — `Merge-In` merges the parent's upstream tip in with no lock, and a merge fixer settles a conflict or a failing merged tree and aligns the task to what the parent brought in.
+- **Landing** — `Parent-Align` merges the parent's upstream tip in with no lock, and a merge fixer settles a conflict or a failing merged tree and aligns the task to what the parent brought in.
   The `Code review` perch then reviews the code, `Describe` writes the change description, and `PR-Review` is a stub for a human pull-request review that is not built.
   `Finalize` takes the parent lock first, merges the parent again, runs the landing gate and lands on the parent.
-  A conflict or a merge too large to land reroutes to `Merge-In`, and a halt at `Merge-In` or `Finalize` is handed back to the orchestrator.
+  A conflict or a merge too large to land reroutes to `Parent-Align`, and a halt at `Parent-Align` or `Finalize` is handed back to the orchestrator.
 - **Friction-Reflect** — the agents' own notes on what was hard or broken in the tooling are reflected on and can be filed as issues against LoomYard itself (`selfreport`).
 
 Routing is explicit per row (`on_done`, `on_stuck`), never positional, and the engine's validator refuses a recipe whose edges cross a review segment's boundary.

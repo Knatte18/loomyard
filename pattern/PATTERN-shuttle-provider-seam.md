@@ -20,7 +20,7 @@ A later engine then takes a role by its model key alone, since the engine, model
 
 - Outside `internal/modelspec` and `NewModelChoice`, nothing reads `Resolved.Engine`, `Resolved.Model` or `Resolved.Params`.
 - Every function that resolves a model key returns a `shuttleengine.ModelChoice`, or a list or map of them, built by `NewModelChoice`.
-  The resolvers it binds are the seat resolvers, burler's per-round lists and the Bouncer pair, the driver, arbiter, alignment and tackler settings, treadle's profile and webster's roles.
+  The resolvers it binds are the seat resolvers, burler's per-round lists and the Bouncer pair, the driver, arbiter and tackler settings, treadle's profile and webster's roles.
 - A timeout or spawn budget the same resolver also resolves stays beside the choice, never inside it.
 
 ### Enforcement

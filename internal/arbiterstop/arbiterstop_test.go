@@ -23,8 +23,12 @@ func TestCheck_RefusesLandingHalts(t *testing.T) {
 		producer string
 		reason   string
 		wantErr  bool
+		// wantHandsBack is HandsBack's answer over producer and reason.
+		wantHandsBack bool
 	}{
-		{name: "landing halt at Finalize", producer: "Finalize", reason: landingshed.LandingStopPrefix + "the fixer escalated; way forward: resolve it, then `lyx loom resume`", wantErr: true},
+		{name: "landing halt at Finalize", producer: "Finalize", reason: landingshed.LandingStopPrefix + "the fixer escalated; way forward: resolve it, then `lyx loom resume`", wantErr: true, wantHandsBack: true},
+		{name: "decision halt at Discussion-Bouncer", producer: "Discussion-Bouncer", reason: shedadapters.DecisionHaltPrefix + "bouncer Discussion-Bouncer: round 2's recorded accept is held by a refusal; way forward: x", wantErr: true, wantHandsBack: true},
+		{name: "blocked halt at Discussion-Bouncer without the prefix", producer: "Discussion-Bouncer", reason: "a plain halt"},
 		{name: "reroute-cap halt at Webster", producer: "Webster", reason: shedengine.ReasonRerouteCapReached + ": Webster rerouted to Plan-Write 3 times; way forward: x"},
 		{name: "ordinary blocked halt", producer: "Plan-Write", reason: "a plain halt"},
 	}
@@ -45,11 +49,15 @@ func TestCheck_RefusesLandingHalts(t *testing.T) {
 			if tt.wantErr && !strings.HasSuffix(err.Error(), HandBackWayForward) {
 				t.Errorf("Check() error = %q; want it to end with %q", err, HandBackWayForward)
 			}
+			if got := HandsBack(tt.producer, tt.reason); got != tt.wantHandsBack {
+				t.Errorf("HandsBack(%q, %q) = %v; want %v", tt.producer, tt.reason, got, tt.wantHandsBack)
+			}
 		})
 	}
 }
 
 // TestEscalationEligible pins EscalationEligible over fake readers: only a pending hard-cap or circling escalation is eligible.
+// Every refused row also runs Check over an awaiting status and wants the refusal to end with HandBackWayForward.
 func TestEscalationEligible(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -64,6 +72,7 @@ func TestEscalationEligible(t *testing.T) {
 		{name: "pending hard-cap", cause: shedadapters.EscalationHardCap, pending: true, want: true},
 		{name: "pending circling", cause: shedadapters.EscalationCircling, pending: true, want: true},
 		{name: "pending budget", cause: shedadapters.EscalationBudget, pending: true},
+		{name: "pending decision", cause: shedadapters.EscalationDecision, pending: true},
 		{name: "malformed record", err: fmt.Errorf("record: %w", shedadapters.ErrEscalationMalformed)},
 		{name: "plain read failure", err: errors.New("disk gone")},
 		{name: "nothing pending at a Bouncer"},
@@ -84,6 +93,13 @@ func TestEscalationEligible(t *testing.T) {
 			}
 			if got := EscalationEligible(producer, readers); got != tt.want {
 				t.Errorf("EscalationEligible = %v; want %v", got, tt.want)
+			}
+			if !tt.want {
+				status := shedengine.Status{State: shedengine.StateAwaiting, CurrentProducer: producer}
+				_, err := Check(status, "", "", readers)
+				if err == nil || !strings.HasSuffix(err.Error(), HandBackWayForward) {
+					t.Errorf("Check(awaiting) error = %v; want a refusal ending with %q", err, HandBackWayForward)
+				}
 			}
 		})
 	}

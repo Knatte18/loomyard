@@ -39,7 +39,7 @@ type verifyGate struct {
 	dirty  func(worktree string) ([]string, error)
 	verify func(ctx context.Context, p verifytree.Paths, site verifytree.Site, command string) (verifytree.Result, error)
 	now    func() time.Time
-	// recorder is set by Merge-In and Finalize: nil leaves a failed verify unrecorded.
+	// recorder is set by Parent-Align and Finalize: nil leaves a failed verify unrecorded.
 	recorder *failureRecorder
 }
 

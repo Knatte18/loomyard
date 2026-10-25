@@ -57,7 +57,7 @@
 // The told command is the key's own call in every case, so a pass keeps its record entry and a later arrival on the same tree and command skips.
 // That form has no skip path: an empty told command, a command read error, a merge base read error and a tree scope read error are each the gate's returned error.
 // An impact-scoped pass lets through a break only the whole module shows;
-// Merge-In's whole run catches it for every diff touching production code.
+// Parent-Align's whole run catches it for every diff touching production code.
 //
 // The Plan-Write rotation archives the prior plan and appends a prior-plan block naming that archive to the respawned session's prompt.
 // It first archives webster's run record into the archive's `webster` subdirectory through a told seam, so the next Webster run starts a new run over the new plan instead of refusing the old record's plan drift.

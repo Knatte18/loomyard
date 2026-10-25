@@ -23,12 +23,11 @@ var allowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/haltnote",
 	"github.com/Knatte18/loomyard/internal/loomengine",
 	"github.com/Knatte18/loomyard/internal/loomrecipe",
-	"github.com/Knatte18/loomyard/internal/alignment",
-	"github.com/Knatte18/loomyard/internal/parentreview",
 	"github.com/Knatte18/loomyard/internal/shedadapters",
 	"github.com/Knatte18/loomyard/internal/discussionparser",
 	"github.com/Knatte18/loomyard/internal/boardengine",
 	"github.com/Knatte18/loomyard/internal/durfmt",
+	"gopkg.in/yaml.v3",
 }
 
 // TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, which excludes internal/lyxcwd, and that no allowed path goes unused.

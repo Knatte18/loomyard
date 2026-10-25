@@ -1,4 +1,4 @@
-// fixer.go builds the merge fixer's session table, the one cold session Merge-In and Finalize spawn to fix a merge or test failure inside their row.
+// fixer.go builds the merge fixer's session table, the one cold session Parent-Align and Finalize spawn to fix a merge or test failure inside their row.
 // FixerTable is the pure builder that turns the row's told values into a seatengine.Table; it derives no path of its own (Told-Geometry Invariant).
 
 package landingshed
@@ -18,8 +18,8 @@ import (
 type FixerMode string
 
 const (
-	// FixerModeMergeIn is the fixer of Merge-In: it also judges what the parent brought in against the decision record.
-	FixerModeMergeIn FixerMode = "merge-in"
+	// FixerModeParentAlign is the fixer of Parent-Align: it also judges what the parent brought in against the decision record.
+	FixerModeParentAlign FixerMode = "parent-align"
 	// FixerModeFinalize is the fixer of Finalize: it fixes failing tests only.
 	FixerModeFinalize FixerMode = "finalize"
 )
@@ -31,7 +31,7 @@ const fixerStencilName = "landing-template-fixer"
 const fixerRole = "fixer"
 
 // FixerInputs carries the told values one merge fixer session needs.
-// Every field is required except PlanDir, FailureRecordPath and LanguageSkills; AlignedTip is required in merge-in mode only.
+// Every field is required except PlanDir, FailureRecordPath and LanguageSkills; AlignedTip is required in parent-align mode only.
 type FixerInputs struct {
 	// StencilsDir is the absolute directory the landing stencils are read from.
 	StencilsDir string
@@ -64,7 +64,7 @@ type FixerInputs struct {
 
 // FixerTable builds the seatengine.Table of the merge fixer session: one lead that fixes on the task branch and writes the report at in.ReportPath.
 // An empty required input field is an error naming the field, and so is an unknown mode and a stencil missing from in.StencilsDir, so a mis-wired closure fails before the row runs rather than rendering a blank path into the prompt.
-// PlanDir and FailureRecordPath are optional values in both modes, and AlignedTip is optional in finalize mode only, so an empty AlignedTip in merge-in mode is refused by name.
+// PlanDir and FailureRecordPath are optional values in both modes, and AlignedTip is optional in finalize mode only, so an empty AlignedTip in parent-align mode is refused by name.
 // The table's timeout is one turn's, cfg.FixerTimeoutMin; the caller sets the gate and stretches the timeout over the turns it may spend.
 func FixerTable(in FixerInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	required := []struct{ name, value string }{
@@ -85,7 +85,7 @@ func FixerTable(in FixerInputs, cfg Config, reg modelspec.Registry) (seatengine.
 	}
 	optional := []string{"plan_dir", "failure_record_path"}
 	switch in.Mode {
-	case FixerModeMergeIn:
+	case FixerModeParentAlign:
 	case FixerModeFinalize:
 		optional = append(optional, "aligned_tip")
 	default:

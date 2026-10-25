@@ -85,7 +85,7 @@ func (b *Bouncer) amendment() (generationRecord, bool) {
 // It is `none` outside an amendment.
 // For a document the note limits the review to the artifacts' change since the commit the record's base names.
 // For a code segment the settled side is the stored settle-record.patch and the current side is the working-tree diff against the current merge base, untracked files outside the exclusion set included,
-// so a change already uncommitted at the settle is never shown as new and parent changes a Merge-In brought are left out.
+// so a change already uncommitted at the settle is never shown as new and parent changes a Parent-Align brought are left out.
 // The note also names the review input file when the record holds one, as an input the amendment reviews besides the change.
 func AmendmentNote(runDir string) string {
 	generation, found, err := readGenerationRecord(runDir)
@@ -102,7 +102,7 @@ func AmendmentNote(runDir string) string {
 		fmt.Fprintf(&note, "This generation is an amendment: the task's change was reviewed and settled before, so review only what changed since.\n")
 		fmt.Fprintf(&note, "The settled side is the diff stored at %s, taken at merge base %s.\n", filepath.Join(runDir, settlePatchFile), generation.Base)
 		note.WriteString("The current side is the working-tree diff against the current merge base, untracked files outside the exclusion set included.\n")
-		note.WriteString("A change already uncommitted at the settle is not new, and parent changes a Merge-In brought are left out.")
+		note.WriteString("A change already uncommitted at the settle is not new, and parent changes a Parent-Align brought are left out.")
 	} else {
 		fmt.Fprintf(&note, "This generation is an amendment: the artifacts were reviewed and settled before, so review only the artifacts' change since commit %s.", generation.Base)
 	}

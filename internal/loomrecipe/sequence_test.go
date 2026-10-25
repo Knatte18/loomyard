@@ -4,6 +4,10 @@ package loomrecipe
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -70,7 +74,7 @@ func deriveSequenceOrder() []wantSequenceEntry {
 				wantSequenceEntry{row.name, shedengine.Done},
 			)
 		case row.producerType == burlerReviewType, row.producerType == burlerFixType:
-		case row.name == loomshed.NameMergeIn:
+		case row.name == loomshed.NameParentAlign:
 			return append(order, wantSequenceEntry{row.name, shedengine.Stuck})
 		default:
 			order = append(order, wantSequenceEntry{row.name, shedengine.Done})
@@ -90,7 +94,7 @@ func deriveSequenceOrder() []wantSequenceEntry {
 // the trailing planparser.ParsePlan check below is the ONLY standing guard left anywhere that
 // Plan-Bouncer's approve seam genuinely ran.
 func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
-	_, env, paths := buildSequenceFixture(t)
+	anchorPath, env, paths := buildSequenceFixture(t)
 
 	var commitDiscussionCalls, commitPlanCalls int
 	env.CommitDiscussion = func() error {
@@ -115,8 +119,8 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 	if result.Outcome != shedengine.RunBlocked {
 		t.Fatalf("Run() outcome = %q; want %q (reason: %s)", result.Outcome, shedengine.RunBlocked, result.Reason)
 	}
-	if result.HaltedProducer != loomshed.NameMergeIn {
-		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameMergeIn)
+	if result.HaltedProducer != loomshed.NameParentAlign {
+		t.Errorf("Run() HaltedProducer = %q; want %q", result.HaltedProducer, loomshed.NameParentAlign)
 	}
 
 	if len(result.History) != len(wantSequenceOrder) {
@@ -132,6 +136,24 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 		}
 	}
 
+	// The fixture's open parent-review round, as an older binary left it, no longer holds Discussion-Write:
+	// the row is Done straight to Discussion-Bouncer, and the round directory stays on disk unchanged.
+	for i, entry := range result.History {
+		if entry.Producer != loomshed.NameDiscussionWrite {
+			continue
+		}
+		if entry.Outcome != shedengine.Done || i+1 >= len(result.History) || result.History[i+1].Producer != loomshed.NameDiscussionBouncer {
+			t.Errorf("Discussion-Write history = %+v; want Done handing on to %s", result.History[i:], loomshed.NameDiscussionBouncer)
+		}
+	}
+	roundRequest, err := os.ReadFile(filepath.Join(anchorPath, parentReviewRoundRel))
+	if err != nil || string(roundRequest) != openParentReviewRequest {
+		t.Errorf("open parent-review request = %q, %v; want it left on disk unchanged as %q", roundRequest, err, openParentReviewRequest)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(filepath.Join(anchorPath, parentReviewRoundRel)), "verdict.json")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("parent-review verdict stat error = %v; want no verdict written", err)
+	}
+
 	got, found, err := state.ReadJSONNoMkdir[shedengine.Status](paths.StatusPath, paths.StatusLockPath)
 	if err != nil {
 		t.Fatalf("ReadJSONNoMkdir() error = %v; want nil", err)
@@ -142,8 +164,8 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 	if got.State != shedengine.StateBlocked {
 		t.Errorf("persisted State = %q; want %q", got.State, shedengine.StateBlocked)
 	}
-	if got.CurrentProducer != loomshed.NameMergeIn {
-		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must name the row the run blocked on", got.CurrentProducer, loomshed.NameMergeIn)
+	if got.CurrentProducer != loomshed.NameParentAlign {
+		t.Errorf("persisted CurrentProducer = %q; want %q -- current_producer must name the row the run blocked on", got.CurrentProducer, loomshed.NameParentAlign)
 	}
 
 	// This is the scenario proof that the Discussion-Bouncer commit_seam is genuinely reached through
@@ -162,7 +184,7 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 	for _, entry := range seats.GotTables[0].Gate {
 		gateNames = append(gateNames, entry.Name)
 	}
-	if want := []string{"discussion", "parent-review"}; !reflect.DeepEqual(gateNames, want) {
+	if want := []string{"discussion"}; !reflect.DeepEqual(gateNames, want) {
 		t.Errorf("table gate = %v; want the row's gates %v", gateNames, want)
 	}
 	if spawns := countRole(env.Shuttle.(*shedfake.Shuttle), "discussion"); spawns != 0 {

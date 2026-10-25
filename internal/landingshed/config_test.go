@@ -81,8 +81,8 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if cfg.FixerTimeoutMin != 60 {
 		t.Errorf("cfg.FixerTimeoutMin = %d; want 60", cfg.FixerTimeoutMin)
 	}
-	if cfg.MergeFixAttempts != 2 {
-		t.Errorf("cfg.MergeFixAttempts = %d; want 2", cfg.MergeFixAttempts)
+	if cfg.ParentAlignFixAttempts != 2 {
+		t.Errorf("cfg.ParentAlignFixAttempts = %d; want 2", cfg.ParentAlignFixAttempts)
 	}
 	if cfg.FinalizeFixAttempts != 2 {
 		t.Errorf("cfg.FinalizeFixAttempts = %d; want 2", cfg.FinalizeFixAttempts)
@@ -164,18 +164,22 @@ func TestMigrateConfig(t *testing.T) {
 		wantLines    int
 		// wantDeploy is deploy_branches as fmt.Sprint renders the decoded value; empty skips the check.
 		wantDeploy string
+		// wantAttempts is parent_align_fix_attempts as fmt.Sprint renders the decoded value; empty skips the check.
+		wantAttempts string
 	}{
-		{"MovesToClaudeLine", "squash: true\nco_authored_by: Someone <s@x>\n", map[string]string{"claude": "Co-Authored-By: Someone <s@x>"}, 1, ""},
-		{"ExistingEngineTrailersWins", "co_authored_by: Someone <s@x>\nengine_trailers: {}\n", map[string]string{}, 1, ""},
-		{"ExistingEntriesKept", "co_authored_by: Someone <s@x>\nengine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 1, ""},
-		{"EmptyValueDroppedWithoutEntry", "squash: true\nco_authored_by: \"  \"\n", nil, 1, ""},
-		{"NonScalarValueDroppedWithoutEntry", "co_authored_by: [a, b]\n", nil, 1, ""},
-		{"NoRetiredKeyUnchanged", "engine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 0, ""},
-		{"RetiredPublishVerifyLeftToReconcilesPrune", "publish_verify: go test -tags tmux ./...\n", nil, 0, ""},
-		{"RequirePRToBaseListMovesToDeployBranches", "require_pr_to_base: [main, develop]\nsquash: true\n", nil, 1, "[main develop]"},
-		{"RequirePRToBaseEmptyListStaysEmpty", "require_pr_to_base: []\nsquash: true\n", nil, 1, "[]"},
-		{"ExistingDeployBranchesWins", "require_pr_to_base: [old]\ndeploy_branches: [main]\n", nil, 1, "[main]"},
-		{"CoAuthoredByAndRequirePRToBaseBothMove", "co_authored_by: Someone <s@x>\nrequire_pr_to_base: [main]\n", map[string]string{"claude": "Co-Authored-By: Someone <s@x>"}, 2, "[main]"},
+		{"MovesToClaudeLine", "squash: true\nco_authored_by: Someone <s@x>\n", map[string]string{"claude": "Co-Authored-By: Someone <s@x>"}, 1, "", ""},
+		{"ExistingEngineTrailersWins", "co_authored_by: Someone <s@x>\nengine_trailers: {}\n", map[string]string{}, 1, "", ""},
+		{"ExistingEntriesKept", "co_authored_by: Someone <s@x>\nengine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 1, "", ""},
+		{"EmptyValueDroppedWithoutEntry", "squash: true\nco_authored_by: \"  \"\n", nil, 1, "", ""},
+		{"NonScalarValueDroppedWithoutEntry", "co_authored_by: [a, b]\n", nil, 1, "", ""},
+		{"NoRetiredKeyUnchanged", "engine_trailers:\n  claude: \"Co-Authored-By: Kept <k@x>\"\n", map[string]string{"claude": "Co-Authored-By: Kept <k@x>"}, 0, "", ""},
+		{"RetiredPublishVerifyLeftToReconcilesPrune", "publish_verify: go test -tags tmux ./...\n", nil, 0, "", ""},
+		{"RequirePRToBaseListMovesToDeployBranches", "require_pr_to_base: [main, develop]\nsquash: true\n", nil, 1, "[main develop]", ""},
+		{"RequirePRToBaseEmptyListStaysEmpty", "require_pr_to_base: []\nsquash: true\n", nil, 1, "[]", ""},
+		{"ExistingDeployBranchesWins", "require_pr_to_base: [old]\ndeploy_branches: [main]\n", nil, 1, "[main]", ""},
+		{"CoAuthoredByAndRequirePRToBaseBothMove", "co_authored_by: Someone <s@x>\nrequire_pr_to_base: [main]\n", map[string]string{"claude": "Co-Authored-By: Someone <s@x>"}, 2, "[main]", ""},
+		{"MergeFixAttemptsMovesToParentAlignFixAttempts", "merge_fix_attempts: 5\nsquash: true\n", nil, 1, "", "5"},
+		{"ExistingParentAlignFixAttemptsWins", "merge_fix_attempts: 5\nparent_align_fix_attempts: 3\n", nil, 1, "", "3"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -197,6 +201,14 @@ func TestMigrateConfig(t *testing.T) {
 			if _, ok := got["require_pr_to_base"]; ok {
 				t.Errorf("migrated document %q still holds require_pr_to_base", migrated)
 			}
+			if _, ok := got["merge_fix_attempts"]; ok {
+				t.Errorf("migrated document %q still holds merge_fix_attempts", migrated)
+			}
+			if tt.wantAttempts != "" {
+				if gotAttempts := fmt.Sprint(got["parent_align_fix_attempts"]); gotAttempts != tt.wantAttempts {
+					t.Errorf("migrated parent_align_fix_attempts = %s; want %s", gotAttempts, tt.wantAttempts)
+				}
+			}
 			if tt.wantDeploy != "" {
 				if gotDeploy := fmt.Sprint(got["deploy_branches"]); gotDeploy != tt.wantDeploy {
 					t.Errorf("migrated deploy_branches = %s; want %s", gotDeploy, tt.wantDeploy)
@@ -217,6 +229,14 @@ func TestMigrateConfig(t *testing.T) {
 			}
 		})
 	}
+	t.Run("MergeFixAttemptsRenameLine", func(t *testing.T) {
+		t.Parallel()
+		_, lines, err := MigrateConfig([]byte("merge_fix_attempts: 5\n"))
+		const want = "merge_fix_attempts: renamed to parent_align_fix_attempts"
+		if err != nil || len(lines) != 1 || lines[0] != want {
+			t.Errorf("MigrateConfig() lines = %q, %v; want [%q]", lines, err, want)
+		}
+	})
 }
 
 // TestMigrateConfig_InvalidDocument verifies an unparsable document and a non-mapping root return an error marked configengine.ErrInvalid.
@@ -245,7 +265,7 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 	t.Parallel()
 
 	const wellFormed = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
-		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nfixer: opus[high]\nfixer_timeout_min: 60\nmerge_fix_attempts: 2\n" +
+		"describe: sonnet[medium]\ndescribe_timeout_min: 30\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
 		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\nengine_trailers:\n  claude: \"Co-Authored-By: Claude <noreply@anthropic.com>\"\n"
 	cases := []struct {
 		name, valid, invalid, key string
@@ -255,7 +275,7 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 		{"engine_trailers key naming no engine", "  claude:", "  claud:", "engine_trailers.claud"},
 		{"malformed fixer", "fixer: opus[high]", "fixer: \"opus[high\"", "fixer"},
 		{"fixer timeout below 1", "fixer_timeout_min: 60", "fixer_timeout_min: 0", "fixer_timeout_min"},
-		{"merge fix attempts below 1", "merge_fix_attempts: 2", "merge_fix_attempts: 0", "merge_fix_attempts"},
+		{"parent align fix attempts below 1", "parent_align_fix_attempts: 2", "parent_align_fix_attempts: 0", "parent_align_fix_attempts"},
 		{"finalize fix attempts below 1", "finalize_fix_attempts: 2", "finalize_fix_attempts: 0", "finalize_fix_attempts"},
 		{"finalize fix max lines below 1", "finalize_fix_max_lines: 40", "finalize_fix_max_lines: 0", "finalize_fix_max_lines"},
 	}

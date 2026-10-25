@@ -63,6 +63,31 @@ func TestLoad(t *testing.T) {
 		}
 	})
 
+	t.Run("a hub lens keeps its own text over the template's while a sibling lens of the fan resolves the template's", func(t *testing.T) {
+		boardDir, anchor := t.TempDir(), t.TempDir()
+		writeLensesYAML(t, boardDir, "lenses:\n  goal-scope: tuned goal-scope prose\n")
+
+		cfg, err := Load(configengine.Dirs{Anchor: anchor, Board: boardDir})
+		if err != nil {
+			t.Fatalf("Load() returned unexpected error: %v", err)
+		}
+		lenses, err := ResolveFan(cfg, "review-discussion")
+		if err != nil {
+			t.Fatalf("ResolveFan(review-discussion) returned unexpected error: %v", err)
+		}
+		template := loadTemplateConfig(t)
+		texts := map[string]string{}
+		for _, lens := range lenses {
+			texts[lens.Name] = lens.Text
+		}
+		if texts["goal-scope"] != "tuned goal-scope prose" {
+			t.Errorf("ResolveFan(review-discussion) goal-scope text = %q; want the hub's own text", texts["goal-scope"])
+		}
+		if texts["board-fit"] != template.Lenses["board-fit"] {
+			t.Errorf("ResolveFan(review-discussion) board-fit text = %q; want the template's", texts["board-fit"])
+		}
+	})
+
 	t.Run("a hub-only lens loads and logs no unknown-keys warning", func(t *testing.T) {
 		boardDir, anchor := t.TempDir(), t.TempDir()
 		writeLensesYAML(t, boardDir, "lenses:\n  hub-only: hub prose\nfans:\n  hub-fan: [hub-only]\n")
@@ -240,7 +265,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 			}
 		}
 	}
-	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 7, "twill-plan": 5, "review-discussion": 4, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4, "review-code": 4, "fix-code": 4} {
+	for fanName, wantEntries := range map[string]int{"standard": 5, "full": 8, "discussion": 5, "plan": 5, "twill-discussion": 7, "twill-plan": 5, "review-discussion": 6, "review-plan": 3, "fix-discussion": 4, "fix-plan": 4, "review-code": 4, "fix-code": 4} {
 		entries, ok := cfg.Fans[fanName]
 		if !ok {
 			t.Errorf("seeded template is missing fan %q", fanName)
@@ -254,7 +279,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 		"plan":              {"generic", "decision-coverage", "card-structure", "verify-tests", "pattern-fit"},
 		"twill-discussion":  {"interactions", "existing-paths", "bound-breaker", "walkthrough", "goal-scope", "board-fit", "leanness"},
 		"twill-plan":        {"coverage", "row-validity", "forced-edits", "guard-reach", "way-forward"},
-		"review-discussion": {"interactions", "existing-paths", "bound-breaker", "walkthrough"},
+		"review-discussion": {"interactions", "existing-paths", "bound-breaker", "walkthrough", "goal-scope", "board-fit"},
 		"review-plan":       {"affected-set", "guard-reach", "way-forward"},
 		"fix-discussion":    {"fix-consistency", "fix-claims", "fix-proposal", "fix-way-forward"},
 		"fix-plan":          {"fix-consistency", "fix-claims", "fix-proposal", "fix-affected-set"},

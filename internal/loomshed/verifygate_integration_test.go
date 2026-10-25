@@ -143,7 +143,7 @@ gates:
   card: {tiers: [0], scope: card}
   batch: {tiers: [0, 1], scope: card}
   webster: {tiers: [0], scope: all}
-  merge-in: {tiers: [0, 1], scope: all}
+  parent-align: {tiers: [0, 1], scope: all}
   finalize: {tiers: [0, 1], scope: all}
   webster-fix: {tiers: [0, 1], scope: diff}
   darn-write: {tiers: [0, 1], scope: diff}

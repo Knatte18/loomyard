@@ -35,7 +35,7 @@ func haltedStatus(state shedengine.State, historyLen int) statusResult {
 	}
 }
 
-// TestInnerRun_HaltedStatesWaitExemptWithoutSpawning asserts a halted child is a budget-exempt wait that spawns nothing, and that a child blocked at Merge-In or Finalize gets one state-changed notice like every other halt.
+// TestInnerRun_HaltedStatesWaitExemptWithoutSpawning asserts a halted child is a budget-exempt wait that spawns nothing, and that a child blocked at Parent-Align or Finalize gets one state-changed notice like every other halt.
 func TestInnerRun_HaltedStatesWaitExemptWithoutSpawning(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -46,7 +46,7 @@ func TestInnerRun_HaltedStatesWaitExemptWithoutSpawning(t *testing.T) {
 		{name: "Paused", state: shedengine.StatePaused, producer: "loom-side-producer"},
 		{name: "Blocked", state: shedengine.StateBlocked, producer: "loom-side-producer"},
 		{name: "Failed", state: shedengine.StateFailed, producer: "loom-side-producer"},
-		{name: "BlockedAtMergeIn", state: shedengine.StateBlocked, producer: "Merge-In", wantNotices: 1},
+		{name: "BlockedAtMergeIn", state: shedengine.StateBlocked, producer: "Parent-Align", wantNotices: 1},
 		{name: "BlockedAtFinalize", state: shedengine.StateBlocked, producer: "Finalize", wantNotices: 1},
 	}
 	for _, tt := range tests {

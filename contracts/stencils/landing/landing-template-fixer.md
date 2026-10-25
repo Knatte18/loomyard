@@ -24,7 +24,7 @@ The task branch is `{{.task_branch}}` and it lands on `{{.parent_branch}}`.
 
 ## What to do in each mode
 
-In `merge-in` mode the parent has moved since the task was aligned, and its changes are in the tree now.
+In `parent-align` mode the parent has moved since the task was aligned, and its changes are in the tree now.
 Read what the parent brought in since the aligned tip `{{.aligned_tip}}` up to the merged tip `{{.merged_tip}}`, judge each change against the decision record, and fix what follows from the record and from the failing tests.
 When a change of the parent conflicts with a decision of the record, do not choose between them: escalate, and name the conflict in your report.
 

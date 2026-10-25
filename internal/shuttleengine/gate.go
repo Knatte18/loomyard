@@ -74,7 +74,7 @@ type GateEntry struct {
 	// MayHold lets a must-pass entry return Pending and set Final, which evaluateGate otherwise refuses on an entry that is not PassOnCap.
 	// It lifts those two guards and nothing else: the entry stays must-pass, a failure sets GateOutcome.Passed false, and a Pending result never counts as passed, so finalize never reads a held entry as a pass.
 	// A Pending result at a turn boundary holds the run exactly as a PassOnCap entry's does.
-	// Only the parent-review wiring sets it.
+	// No shipped gate sets it.
 	MayHold bool
 	// Reprompt, when non-nil, renders the re-prompt line the wait loop sends after this entry fails with budget remaining, in place of the default line; nil keeps the default.
 	// It receives the findings file's path.

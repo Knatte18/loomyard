@@ -42,6 +42,7 @@ func peersFakeTasks() []boardengine.Task {
 		{Slug: "blocked-peer", Title: "Blocked peer", Status: status("blocked · Plan-Write")},
 		{Slug: "darn-peer", Title: "Darn peer", Status: status("blocked · Darn-Write")},
 		{Slug: "finalize-peer", Title: "Finalize peer", Status: status("awaiting · Finalize")},
+		{Slug: "retired-row-peer", Title: "Retired row peer", Status: status("blocked · Merge-In")},
 		{Slug: "idle", Title: "Idle", Status: nil},
 		{Slug: "finished", Title: "Finished", Status: status("done")},
 		{Slug: "hand-set", Title: "Hand set", Status: status("someday")},
@@ -95,7 +96,7 @@ func TestPeersVerb(t *testing.T) {
 		for _, peer := range raw["peers"].([]any) {
 			slugs = append(slugs, peer.(map[string]any)["slug"].(string))
 		}
-		if want := []string{"running-peer", "awaiting-peer", "blocked-peer", "darn-peer", "finalize-peer"}; !reflect.DeepEqual(slugs, want) {
+		if want := []string{"running-peer", "awaiting-peer", "blocked-peer", "darn-peer", "finalize-peer", "retired-row-peer"}; !reflect.DeepEqual(slugs, want) {
 			t.Errorf("peers = %v; want %v", slugs, want)
 		}
 		wantRows := map[string]int{
@@ -104,6 +105,8 @@ func TestPeersVerb(t *testing.T) {
 			"blocked-peer":  loomRowNumber(t, "Plan-Write"),
 			"darn-peer":     0,
 			"finalize-peer": loomRowNumber(t, "Finalize"),
+			// A peer parked on the row's name before its rename is listed at the renamed row's position.
+			"retired-row-peer": loomRowNumber(t, "Parent-Align"),
 		}
 		for _, peer := range raw["peers"].([]any) {
 			line := peer.(map[string]any)

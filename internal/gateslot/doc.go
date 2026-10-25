@@ -56,7 +56,7 @@
 // The tier keys are `tiers`, `gates`, `scoper`, `refuse_raw`, `tier_parallel`, `build` and `inert_paths`.
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lyx config gate --set 'tiers.tierN={...}'` flow mapping;
 // `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`, so a hub file that sets one key keeps the template's value for every other, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
-// The keys lyx reads are `card` and `batch` (scope `card`), `webster`, `merge-in` and `finalize` (scope `all`), and `webster-fix`, `darn-write` and `code-burler-fix` (scope `diff`).
+// The keys lyx reads are `card` and `batch` (scope `card`), `webster`, `parent-align` and `finalize` (scope `all`), and `webster-fix`, `darn-write` and `code-burler-fix` (scope `diff`).
 // `tiers` and `build` are executable keys, since a tier or build command runs any shell command in a task worktree, and `gates`, `scoper`, `refuse_raw` and `inert_paths` are guard keys, so all of them are hub-file only.
 // `build` is an open map, so its sub-keys travel whole through the layer stack and reconcile never prunes a hub's build.
 // A tier may also hold `filter`, its own test-filter expression, `shared_build: true`, which makes the tier depend on the build step, and `carry: false`, which keeps a green run from being carried over an unchanged tree; Tier.NoCarry is the negative form, so a zero Tier carries.
@@ -81,7 +81,8 @@
 // Each refusal names `lyx config gate` and closes with the clause that a session that is not the prime reports status: FAILED and the orch takes the steps.
 // Config.GateCall renders the one `lyx gate test --wait --gate <key>` call a site runs, followed by one `--card <id>` per card given.
 // MigrateConfig prunes the retired `gates.publish` list and the retired `guard_tier` key from a gate.yaml document and migrates the retired lists, so reconcile rewrites the hub file:
-// `landing` becomes `merge-in` and `finalize` with scope `all` and `darn-write` and `code-burler-fix` with scope `diff`, `final` becomes `webster` with scope `all`, `round` becomes `webster-fix` with scope `diff`, and a `card` or `batch` list becomes a mapping with scope `card`.
+// `landing` becomes `parent-align` and `finalize` with scope `all` and `darn-write` and `code-burler-fix` with scope `diff`, `final` becomes `webster` with scope `all`, `round` becomes `webster-fix` with scope `diff`, and a `card` or `batch` list becomes a mapping with scope `card`.
+// A `merge-in` key is renamed to `parent-align` with its value, and dropped beside an existing `parent-align`.
 // A key the file already holds in the new shape keeps its value, and a second pass changes nothing.
 // Config.TiersValue renders the tier lines and the Go-read gate keys a prompt takes, or `none` when no tier is declared.
 //
@@ -94,7 +95,7 @@
 //	loom        Webster, per batch                      batch            card
 //	loom        Webster, verify fixers                  webster-fix      diff
 //	loom        Webster, end gate                       webster          all
-//	loom        Merge-In                                merge-in         all
+//	loom        Parent-Align                            parent-align     all
 //	loom, darn  Code-Burler-Fix                         code-burler-fix  diff
 //	loom, darn  Finalize                                finalize         all
 //	darn        Darn-Write                              darn-write       diff

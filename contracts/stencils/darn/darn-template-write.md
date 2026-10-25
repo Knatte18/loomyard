@@ -37,7 +37,24 @@ When it is `(none)`, this is the first spawn and the branch holds no work of you
 
 ## Step 3 — Write the decision record before any code
 
-When `{{.decision_record_path}}` or `{{.support_log_path}}` is absent, or `lyx loom validate-discussion` reports findings, write both from the board entry and a coarse reading of the code.
+When `{{.decision_record_path}}` or `{{.support_log_path}}` is absent, or `lyx loom validate-discussion` reports findings, check the entry first and then write both.
+
+Check the entry before you write:
+
+- Read `lyx board list`, every entry that touches the task and every board note titled `Decision for {{.slug}}:` for it, and `lyx loom peers` for the runs in flight and the parent's commits since the fork.
+- When the entry is plainly outdated, because landed work overtook it or another board entry or run contradicts it, and no decision note answers it, send your parent a message by `SendMessage` naming what overtook or contradicts the entry.
+  Ask it to write its answer as a `Decision for {{.slug}}:` board note and then reply by `SendMessage`, since a note alone wakes nothing; then end your turn to wait.
+  On any message from your parent, re-read the board for the note.
+- Write the answer into the decision record as a Decision citing the parent.
+- Once the record is committed, ask your parent to record the same answer with `lyx loom decision add`.
+  Until the record carries that `Added after Discussion` entry, name the answer in the change description's design decisions as an unrecorded parent correction, as the scope-correction section below does.
+- With no parent, do not wait and change nothing: write the change description, your one output file, as a stop report naming the outdated entry, what overtook or contradicts it, and the way forward, a `Decision for {{.slug}}:` board note that answers it and then `lyx loom resume`; then end your turn.
+  When the handoff's `discussion` gate re-prompts you, first re-read the board for a `Decision for {{.slug}}:` note.
+  On finding one, write its answer into the record as a Decision citing the note and carry on, naming the answer in the change description's design decisions as an unrecorded parent correction, since there is no parent to ask for `lyx loom decision add`.
+  While the stop still holds, end your turn with the stop report unchanged, so the gate exhausts and halts the run with its findings kept.
+- An ordinary misalignment you settle yourself.
+
+Then write both from the board entry and a coarse reading of the code.
 Write them in the format `{{.specs_dir}}/loom/loom-discussion-spec.md` defines.
 Read that spec for the format; it is authoritative and this prompt does not restate it.
 

@@ -96,7 +96,7 @@
     <text x="422" y="443" text-anchor="middle" class="s">implementation</text>
 
     <rect x="505" y="400" width="137" height="58" rx="8" fill="#bee3f8" stroke="#3182ce"/>
-    <text x="573" y="423" text-anchor="middle" class="t">Merge-In</text>
+    <text x="573" y="423" text-anchor="middle" class="t">Parent-Align</text>
     <text x="573" y="443" text-anchor="middle" class="s">take in the parent</text>
 
     <rect x="656" y="400" width="137" height="58" rx="8" fill="#e2e8f0" stroke="#718096"/>

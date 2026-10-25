@@ -60,9 +60,9 @@ func hubLocation(t *testing.T, hub, worktreeName, anchorRel string) *lyxcwd.Loca
 	return loc
 }
 
-// seedLoomConfigWithFriction writes <anchorPath>/_lyx/config/loom.yaml with a full eleven-key
-// literal whose friction key is the caller-chosen value -- empty to mean Tier 2 is off.
-// All eleven keys are written explicitly so the literal pins every value rather than relying on template fills.
+// seedLoomConfigWithFriction writes <anchorPath>/_lyx/config/loom.yaml with a full literal.
+// Its friction key is the caller-chosen value -- empty to mean Tier 2 is off.
+// Every key is written explicitly so the literal pins every value rather than relying on template fills.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
 	configDir := filepath.Join(anchorPath, "_lyx", "config")
@@ -80,7 +80,6 @@ review_timeout_min: 240
 friction: %s
 friction_timeout_min: 30
 driver: ""
-parent_review_wait_min: 60
 `, friction)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)

@@ -57,8 +57,8 @@ type Config struct {
 	Fixer string `yaml:"fixer"`
 	// FixerTimeoutMin is the minutes one fixer turn may run.
 	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
-	// MergeFixAttempts is the fixer turns one Merge-In row entry may spend.
-	MergeFixAttempts int `yaml:"merge_fix_attempts"`
+	// ParentAlignFixAttempts is the fixer turns one Parent-Align row entry may spend.
+	ParentAlignFixAttempts int `yaml:"parent_align_fix_attempts"`
 	// FinalizeFixAttempts is the fixer turns one Finalize row entry may spend.
 	FinalizeFixAttempts int `yaml:"finalize_fix_attempts"`
 	// FinalizeFixMaxLines is the added plus deleted lines a fixer change may hold before it is over the cap.
@@ -125,9 +125,9 @@ func ConfigSpec() configengine.Spec {
 			"fixer":                        configengine.CategoryNone,
 			"fixer_timeout_min":            configengine.CategoryNone,
 			// The attempt caps and the line cap bound what the fixer lands on the parent unreviewed.
-			"merge_fix_attempts":     configengine.CategoryCrossPair,
-			"finalize_fix_attempts":  configengine.CategoryCrossPair,
-			"finalize_fix_max_lines": configengine.CategoryCrossPair,
+			"parent_align_fix_attempts": configengine.CategoryCrossPair,
+			"finalize_fix_attempts":     configengine.CategoryCrossPair,
+			"finalize_fix_max_lines":    configengine.CategoryCrossPair,
 		},
 		// publish_verify moved to the hub's publish gate; a file still holding it loads and reconcile prunes it.
 		RetiredKeys: map[string]configengine.Category{
@@ -170,7 +170,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		value int
 	}{
 		{"fixer_timeout_min", cfg.FixerTimeoutMin},
-		{"merge_fix_attempts", cfg.MergeFixAttempts},
+		{"parent_align_fix_attempts", cfg.ParentAlignFixAttempts},
 		{"finalize_fix_attempts", cfg.FinalizeFixAttempts},
 		{"finalize_fix_max_lines", cfg.FinalizeFixMaxLines},
 	} {
@@ -191,6 +191,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 // retiredKeyRenames maps each retired landing.yaml key onto the key that replaced it.
 var retiredKeyRenames = []yamlengine.KeyRename{
 	{From: "require_pr_to_base", To: "deploy_branches"},
+	{From: "merge_fix_attempts", To: "parent_align_fix_attempts"},
 }
 
 // MigrateConfig rewrites a landing.yaml document for lyx config reconcile and returns the rewritten bytes with one line per rewrite.
@@ -199,6 +200,8 @@ var retiredKeyRenames = []yamlengine.KeyRename{
 // and an empty or non-scalar co_authored_by is dropped without an entry, as empty means off.
 // It then renames the retired require_pr_to_base key to deploy_branches, keeping its value, an empty list included;
 // a document already holding deploy_branches keeps it and drops the old key.
+// It likewise renames the retired merge_fix_attempts key to parent_align_fix_attempts, keeping its value;
+// a document already holding parent_align_fix_attempts keeps it and drops the old key.
 // A document without a retired key is returned unchanged, so a migrated file is unchanged on a second pass.
 // A document that does not parse, or whose root is not a mapping, returns an error marked configengine.ErrInvalid.
 func MigrateConfig(existing []byte) ([]byte, []string, error) {

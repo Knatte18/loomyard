@@ -39,7 +39,7 @@ var InterruptPolicies = map[string]string{
 	NameWebster:           shedverbs.InterruptPolicyHandback,
 	NameCodeBouncer:       shedverbs.InterruptPolicyReinvoke,
 	NameDescribe:          shedverbs.InterruptPolicyReinvoke,
-	NameMergeIn:           shedverbs.InterruptPolicyReinvoke, // spawns only the conflict session the resolver reattaches
+	NameParentAlign:       shedverbs.InterruptPolicyReinvoke, // spawns only the conflict session the resolver reattaches
 	NamePRReview:          shedverbs.InterruptPolicyReinvoke, // spawns nothing
 	NameDarnWrite:         shedverbs.InterruptPolicyReinvoke, // the single-session adapter reattaches rather than double-spawns
 	NameFinalize:          shedverbs.InterruptPolicyReinvoke,

@@ -99,6 +99,16 @@ func TestRecordCirclingDecision_WritesPendingFile(t *testing.T) {
 			wantRound: 1,
 			wantCause: EscalationHardCap,
 		},
+		{
+			name:     "accept over a decision escalation record",
+			decision: CirclingAccept,
+			layout: func(t *testing.T, dir string) {
+				layoutCirclingRun(t, dir, 1, "CONVERGED")
+				writeEscalationRecord(t, dir, EscalationDecision)
+			},
+			wantRound: 1,
+			wantCause: EscalationDecision,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

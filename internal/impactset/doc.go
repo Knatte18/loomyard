@@ -43,5 +43,5 @@
 //
 // Bound: a narrower run skips only packages the import graph shows unreachable.
 // What the graph cannot see, such as a test reading another package's files, is caught by the whole runs at the sites that keep them.
-// A binary-driving test that reaches a change only through a subcommand its own package does not import leaves the narrowed run, and the whole runs at Merge-In, Publish and Finalize still run it.
+// A binary-driving test that reaches a change only through a subcommand its own package does not import leaves the narrowed run, and the whole runs at Parent-Align, Publish and Finalize still run it.
 package impactset

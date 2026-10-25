@@ -219,7 +219,7 @@ func readCirclingFile(runDir string, round int) (decision CirclingDecision, caus
 		cause = EscalationCircling
 	}
 	if !cause.valid() {
-		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision cause must be %q, %q or %q, got %q", EscalationCircling, EscalationBudget, EscalationHardCap, parsed.Cause)
+		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision cause must be %q, %q, %q or %q, got %q", EscalationCircling, EscalationBudget, EscalationHardCap, EscalationDecision, parsed.Cause)
 	}
 	if parsed.Settled && decision != CirclingAccept {
 		return "", "", false, false, true, fmt.Errorf("bouncer: circling decision %q cannot be settled; only an accept settles", parsed.Decision)

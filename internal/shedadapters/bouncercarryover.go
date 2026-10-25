@@ -70,6 +70,12 @@ func (b *Bouncer) buildCarryOver(round int, closing discussionparser.CarryOverCl
 			Rounds:   histories[e.Key].openRounds,
 		})
 	}
+	if b.closesDecisionAccept(round) {
+		findings, err = b.addDecisionAcceptFindings(round, findings)
+		if err != nil {
+			return discussionparser.CarryOver{}, err
+		}
+	}
 	sort.Slice(findings, func(i, j int) bool { return findings[i].Key < findings[j].Key })
 
 	return discussionparser.CarryOver{
@@ -80,6 +86,69 @@ func (b *Bouncer) buildCarryOver(round int, closing discussionparser.CarryOverCl
 		FixerReportPath: fixerReportPath,
 		Findings:        findings,
 	}, nil
+}
+
+// closesDecisionAccept reports whether round's escalation has cause decision and its decision is an accept.
+func (b *Bouncer) closesDecisionAccept(round int) bool {
+	cause, _, escalated, err := readEscalation(b.cfg.RunDir, round)
+	if err != nil || !escalated || cause != EscalationDecision {
+		return false
+	}
+	decision, _, _, exists, err := readCirclingDecision(b.cfg.RunDir, round)
+	return err == nil && exists && decision == CirclingAccept
+}
+
+// addDecisionAcceptFindings adds to findings, the ledger's carried entries, what a decision accept passes the round over, whatever the ledger says.
+// Every decision-class finding of round's review is added at any severity, keyed by its id, with the `Added after Discussion` titles recorded since the escalation;
+// a ledger entry of the same key carries those titles instead of being repeated.
+// Every other BLOCKING finding of the review not already carried by key is added too, so one the judge closed still reaches `## Open risks`.
+// Both match the ledger by exact key only, since a ledger entry records no review id.
+func (b *Bouncer) addDecisionAcceptFindings(round int, findings []discussionparser.CarryOverFinding) ([]discussionparser.CarryOverFinding, error) {
+	reviewFindings, err := b.reviewFindings(round)
+	if err != nil {
+		return nil, fmt.Errorf("read round %d's review: %w", round, err)
+	}
+	addedSince, err := addedSinceSnapshot(b.cfg.RunDir, round, b.cfg.DecisionRecordPath)
+	if err != nil {
+		return nil, err
+	}
+	carried := make(map[string]int, len(findings))
+	for i, finding := range findings {
+		carried[finding.Key] = i
+	}
+	for _, finding := range reviewFindings {
+		if finding.Class != burlerengine.ClassDecision {
+			continue
+		}
+		if i, ok := carried[finding.ID]; ok {
+			findings[i].AddedSince = addedSince
+			continue
+		}
+		carried[finding.ID] = len(findings)
+		findings = append(findings, discussionparser.CarryOverFinding{
+			Key:        finding.ID,
+			Class:      labelOrUnlabelled(string(finding.Class)),
+			Severity:   labelOrUnlabelled(string(finding.Severity)),
+			Rounds:     []int{round},
+			AddedSince: addedSince,
+		})
+	}
+	for _, finding := range reviewFindings {
+		if finding.Severity != burlerengine.SeverityBlocking {
+			continue
+		}
+		if _, ok := carried[finding.ID]; ok {
+			continue
+		}
+		carried[finding.ID] = len(findings)
+		findings = append(findings, discussionparser.CarryOverFinding{
+			Key:      finding.ID,
+			Class:    labelOrUnlabelled(string(finding.Class)),
+			Severity: labelOrUnlabelled(string(finding.Severity)),
+			Rounds:   []int{round},
+		})
+	}
+	return findings, nil
 }
 
 // carriesOver reports whether an open ledger entry belongs in the carry-over: MEDIUM or BLOCKING, or missing a class or severity label.

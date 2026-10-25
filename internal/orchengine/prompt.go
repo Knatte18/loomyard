@@ -16,7 +16,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -80,7 +79,14 @@ func RenderRoleFile(stencilsDir, path, index, hubRulesPath, ownRulesPath string)
 	if err != nil {
 		return err
 	}
-	return renderFile(stencilsDir, roleStencilName, path, map[string]string{commandIndexMarker: index, hubRulesMarker: hubRules, orchRulesMarker: ownRules, decisionNoteTitleMarker: alignment.DecisionNoteTitle("<slug>")})
+	return renderFile(stencilsDir, roleStencilName, path, map[string]string{commandIndexMarker: index, hubRulesMarker: hubRules, orchRulesMarker: ownRules, decisionNoteTitleMarker: DecisionNoteTitle("<slug>")})
+}
+
+// DecisionNoteTitle returns the title prefix a decision note for the held task slug starts with: "Decision for <slug>:".
+// It is the one declaration of the form: the orch role render and the no-record way forward of "lyx loom decision add" both call it.
+// The colon keeps a slug from matching a longer slug that starts with it, and the match is case-sensitive.
+func DecisionNoteTitle(slug string) string {
+	return "Decision for " + slug + ":"
 }
 
 // readRules returns the content of the rules file at path, as it stands.

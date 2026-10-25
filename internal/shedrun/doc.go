@@ -27,7 +27,6 @@
 // ArbiterDir is the durable directory of a run's arbiter attempts, and ArbiterRel its anchor-relative form.
 // ArbiterAttemptDir is one attempt's directory (attempt-<N>, 1-based).
 // ArbiterMarker is the ephemeral in-flight marker under ScratchDir.
-// AlignmentDir is the durable directory of a run's alignment attempts at one point, and AlignmentRel the anchor-relative form of the directory holding every point's.
 //
 // The Go driver and its tackler have paths here too.
 // DriverLock is the ephemeral Go-driver lock under ScratchDir, distinct from the run lock and the status lock.

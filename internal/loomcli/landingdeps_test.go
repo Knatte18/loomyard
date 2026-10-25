@@ -154,15 +154,15 @@ func TestRowEntry(t *testing.T) {
 		want    int
 	}{
 		{"EmptyHistory", nil, 0},
-		{"OwnResumedEntries", []shedengine.HistoryEntry{entry("Webster"), entry("Merge-In"), entry("Merge-In")}, 1},
-		{"ReachedAgainFromAnotherRow", []shedengine.HistoryEntry{entry("Merge-In"), entry("Finalize"), entry("Merge-In")}, 2},
-		{"OnlyOwnEntries", []shedengine.HistoryEntry{entry("Merge-In"), entry("Merge-In")}, 0},
+		{"OwnResumedEntries", []shedengine.HistoryEntry{entry("Webster"), entry("Parent-Align"), entry("Parent-Align")}, 1},
+		{"ReachedAgainFromAnotherRow", []shedengine.HistoryEntry{entry("Parent-Align"), entry("Finalize"), entry("Parent-Align")}, 2},
+		{"OnlyOwnEntries", []shedengine.HistoryEntry{entry("Parent-Align"), entry("Parent-Align")}, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := rowEntry(tt.history, "Merge-In"); got != tt.want {
-				t.Errorf("rowEntry(%v, Merge-In) = %d; want %d", tt.history, got, tt.want)
+			if got := rowEntry(tt.history, "Parent-Align"); got != tt.want {
+				t.Errorf("rowEntry(%v, Parent-Align) = %d; want %d", tt.history, got, tt.want)
 			}
 		})
 	}

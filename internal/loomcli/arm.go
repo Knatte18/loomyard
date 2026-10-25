@@ -37,12 +37,12 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/arbiterstop"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/frictionengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -192,7 +192,11 @@ func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (
 	}
 
 	if c.recipe == shedrun.RecipeDarn {
-		if err := c.renameRetiredDarnRows(); err != nil {
+		if err := c.renameRetiredRows(loomrecipe.DarnRetiredRows()); err != nil {
+			return shedverbs.Spec{}, err
+		}
+	} else if c.recipe != shedrun.RecipeBeam {
+		if err := c.renameRetiredRows(loomrecipe.LoomRetiredRows()); err != nil {
 			return shedverbs.Spec{}, err
 		}
 	}
@@ -304,8 +308,8 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 			RefuseMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; run \"lyx loom start\" first to bootstrap this task",
 		},
 		PauseAbsentMessage: "loom: no status file at " + c.shedPaths.StatusPath + "; there is nothing running to pause -- run \"lyx loom start\" first to bootstrap this task",
-		// The landing halts go to the orch on loom and darn runs alike, so both tell the one predicate.
-		HandBack: landingshed.HandsBack,
+		// The landing halts and the decision halt go to the orch on loom and darn runs alike, so both tell the one predicate.
+		HandBack: arbiterstop.HandsBack,
 		Hooks: shedverbs.Hooks{
 			PreRun:             c.loomPreRun,
 			PostRun:            c.loomPostRun,

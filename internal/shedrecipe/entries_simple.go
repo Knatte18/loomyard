@@ -1,5 +1,5 @@
 // entries_simple.go implements the registry entries that take an empty Config and validate only the
-// Env fields they read: preflightEntry, mergeInEntry, finalizeEntry, frictionReflectEntry,
+// Env fields they read: preflightEntry, parentAlignEntry, finalizeEntry, frictionReflectEntry,
 // loomPreflightEntry, stubEntry, and websterEntry, the webster implementer.
 
 package shedrecipe
@@ -46,22 +46,22 @@ func landingRowDeps(entry string, row RowIdentity, cfg Config, env Env) (landing
 	return deps, nil
 }
 
-// mergeInEntry is the Constructor for the "MergeIn" registry row: it returns landingshed.NewMergeIn over a copy of env.Landing whose GateKey is the row's, wrapping that constructor's own error with this package's error-text prefix rather than surfacing it raw.
+// parentAlignEntry is the Constructor for the "ParentAlign" registry row: it returns landingshed.NewParentAlign over a copy of env.Landing whose GateKey is the row's, wrapping that constructor's own error with this package's error-text prefix rather than surfacing it raw.
 //
 // The optional "gate_key" string names the key of the hub's gate.yaml the row runs after its merge-in, else the row name in lower case.
 //
-// It validates no Env field of its own: landingshed.NewMergeIn already rejects the nil seams and the empty merge record path it requires.
-func mergeInEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
+// It validates no Env field of its own: landingshed.NewParentAlign already rejects the nil seams and the empty merge record path it requires.
+func parentAlignEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	if err := configRejectUnknown(cfg, "gate_key"); err != nil {
 		return nil, err
 	}
-	deps, err := landingRowDeps("MergeIn", row, cfg, env)
+	deps, err := landingRowDeps("ParentAlign", row, cfg, env)
 	if err != nil {
 		return nil, err
 	}
-	m, err := landingshed.NewMergeIn(deps)
+	m, err := landingshed.NewParentAlign(deps)
 	if err != nil {
-		return nil, fmt.Errorf("shedrecipe: MergeIn: %w", err)
+		return nil, fmt.Errorf("shedrecipe: ParentAlign: %w", err)
 	}
 	return m, nil
 }

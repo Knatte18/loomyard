@@ -29,7 +29,7 @@ func nilFabricOpener() (*fabricengine.Fabric, error) {
 }
 
 // validLandingDeps returns a landingshed.Deps filled with a synthetic-but-valid told value for
-// every field NewMergeIn/NewFinalize require, deriving every path from t.TempDir().
+// every field NewParentAlign/NewFinalize require, deriving every path from t.TempDir().
 func validLandingDeps(t *testing.T) landingshed.Deps {
 	t.Helper()
 	dir := t.TempDir()
@@ -126,8 +126,8 @@ func simpleEntryCases() []simpleEntryCase {
 			unreadField:     "AnchorPath",
 		},
 		{
-			registryKey: "MergeIn",
-			entry:       mergeInEntry,
+			registryKey: "ParentAlign",
+			entry:       parentAlignEntry,
 			buildEnv: func(t *testing.T) Env {
 				env := newTestEnv(t)
 				env.Landing = validLandingDeps(t)
@@ -200,11 +200,11 @@ func TestSimpleEntries_HappyPath(t *testing.T) {
 		wantKey string
 		wantErr []string
 	}{
-		{name: "MergeIn defaults to its row name", entry: mergeInEntry, row: "Merge-In", cfg: Config{}, wantKey: "merge-in"},
+		{name: "ParentAlign defaults to its row name", entry: parentAlignEntry, row: "Parent-Align", cfg: Config{}, wantKey: "parent-align"},
 		{name: "Finalize defaults to its row name", entry: finalizeEntry, row: "Finalize", cfg: Config{}, wantKey: "finalize"},
-		{name: "MergeIn takes gate_key", entry: mergeInEntry, row: "Merge-In", cfg: Config{"gate_key": "custom"}, wantKey: "custom"},
+		{name: "ParentAlign takes gate_key", entry: parentAlignEntry, row: "Parent-Align", cfg: Config{"gate_key": "custom"}, wantKey: "custom"},
 		{name: "Finalize takes gate_key", entry: finalizeEntry, row: "Finalize", cfg: Config{"gate_key": "custom"}, wantKey: "custom"},
-		{name: "MergeIn refuses a non-string gate_key", entry: mergeInEntry, row: "Merge-In", cfg: Config{"gate_key": 3}, wantErr: []string{`"Merge-In"`, `"gate_key"`, "way forward"}},
+		{name: "ParentAlign refuses a non-string gate_key", entry: parentAlignEntry, row: "Parent-Align", cfg: Config{"gate_key": 3}, wantErr: []string{`"Parent-Align"`, `"gate_key"`, "way forward"}},
 		{name: "Finalize refuses a non-string gate_key", entry: finalizeEntry, row: "Finalize", cfg: Config{"gate_key": 3}, wantErr: []string{`"Finalize"`, `"gate_key"`, "way forward"}},
 	}
 	for _, tt := range landingRows {

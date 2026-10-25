@@ -37,7 +37,7 @@
 // Before anything else, start and resume refuse a run whose status file exists and that another machine owns, with the kind `owned_elsewhere` and the owner's name, naming `lyx adopt <slug>`;
 // the owner is judged by a judge-only run-scope origin reconcile from the hub's prime, or from the local board when origin is unreachable, and nothing is written.
 // Before spawning or resuming a driver, start refuses with the kind `merge_in_progress` over an unfinished merge, naming the conflicted paths and the remedy, the fabric verbs for a fabric merge and git for one fabric did not start.
-// The exception is a run whose current producer is Merge-In or Finalize, which goes through over a parked fabric merge-in of its own parent branch, since that row aborts and redoes it.
+// The exception is a run whose current producer is Parent-Align or Finalize, which goes through over a parked fabric merge-in of its own parent branch, since that row aborts and redoes it.
 // A loom driver strand reed marked retiring is never adopted: start removes it and spawns a fresh driver.
 //
 // start returns once the driver's readiness signal confirms it is up, and for a parked loom driver once delivery of the resume line is verified.
@@ -125,7 +125,7 @@
 // It spawns a cold arbiter agent on the `arbiter` model through shuttle, waits for its verdict file and prints the validated verdict.
 // It is a role verb, so the orch's command index leaves it out.
 //
-// A stop is eligible only if the verb's closed list admits it: an error stop of kind `producer` or `bootstrap`, an `interrupted` stop under the `reinvoke` policy or with a transient class, a halted `blocked` stop other than a Merge-In or Publish verify halt whose own failure record names a target, and a halted `awaiting` stop whose Bouncer row has a pending escalation of cause `hard-cap` or `circling`, so a `budget` escalation goes to the run's parent.
+// A stop is eligible only if the verb's closed list admits it: an error stop of kind `producer` or `bootstrap`, an `interrupted` stop under the `reinvoke` policy or with a transient class, a halted `blocked` stop other than a Parent-Align or Publish verify halt whose own failure record names a target, and a halted `awaiting` stop whose Bouncer row has a pending escalation of cause `hard-cap` or `circling`, so a `budget` escalation goes to the run's parent.
 // The rule lives in `internal/arbiterstop`, which batten's hold shares.
 // Every other stop, a missing status file, an unreadable envelope, `arbiter_max_spawns` of 0 and a spent budget are refused with the hand-back to the run's parent as the way forward.
 //
@@ -254,14 +254,6 @@
 // the amendment record without the entry, or a HEAD that cannot be read, keeps both files and names `lyx fabric commit`;
 // a HEAD that differs restores both files and names the re-run of the verb, never `lyx fabric commit`.
 //
-// # Parent-review alignment
-//
-// The wiring sets the parent-review gate's Aligner to an adapter over an `internal/alignment` session rooted at the run's `parent-review` alignment directory, one agent per round (key `round-<N>`).
-// Alignment is off, and the gate delivers straight to the run's parent, when `skip_alignment` is set or the hub has no board dir.
-// The decision snapshot taken at spawn covers the decision record and the board notes titled `Decision for <slug>:`; an agent approve is turned into an escalation when the snapshot has changed by the time it is polled, so a decision recorded during the review is never passed over.
-// An escalation, a timeout or any failure leaves the gate to deliver to the parent, with the reviewer brief naming the agent's report and the reason.
-// The status commit stages the alignment directory with the run records.
-//
 // The landing wiring reads the run's start from the pair's seed and fails on a seed it cannot decode.
 //
 // # Review subjects
@@ -272,7 +264,7 @@
 // Its Base is the commit the run records' checkout stands at.
 // A code subject is the task worktree's change against the task's merge base, leaving out the run's own state directories and the harness's own files while untracked.
 // A run with no recorded parent branch tells no code subject, so its code segments write no records.
-// A change confined to the harness's own files reads as an unchanged subject; the landing gate at Merge-In and Finalize bounds it.
+// A change confined to the harness's own files reads as an unchanged subject; the landing gate at Parent-Align and Finalize bounds it.
 //
 // The task's merge base is the one commit every reader of the task's diff starts from: the code subject, the Code-Review rubric's range, Describe's diff, and the verify gate's lints and tree scope.
 // It is the merge base of HEAD with the parent tip the merge record names, since the local parent branch can lag a tip the task merged.

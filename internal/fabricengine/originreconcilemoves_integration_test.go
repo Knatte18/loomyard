@@ -25,7 +25,7 @@ import (
 )
 
 // liveWayForward is the line a pair kept live names, which ends in no re-entry.
-const liveWayForward = "no step now: the run's own Merge-In judges and moves its pair, and `lyx cleanup --apply` re-judges it once the run has ended"
+const liveWayForward = "no step now: the run's own Parent-Align judges and moves its pair, and `lyx cleanup --apply` re-judges it once the run has ended"
 
 // The lock files a pair weft's lock directory holds.
 const (

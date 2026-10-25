@@ -145,7 +145,7 @@ func TestDiscussionTable(t *testing.T) {
 				if !slices.Equal(chair.Skills, discussionSkills) || chair.Engine != "claude" || chair.Model == "" || chair.Effort != "high" || chair.Stencil != discussionChairStencil {
 					t.Errorf("chair skills/engine/model/effort/stencil = %v/%q/%q/%q/%q; want %v, claude, a model, high and %q", chair.Skills, chair.Engine, chair.Model, chair.Effort, chair.Stencil, discussionSkills, discussionChairStencil)
 				}
-				if role := seatengine.SeatRole(table.RolePrefix, chair.Name); chair.Name != "" || role != "discussion" || role != DiscussionWriterRole() {
+				if role := seatengine.SeatRole(table.RolePrefix, chair.Name); chair.Name != "" || role != "discussion" {
 					t.Errorf("lead name %q and role %q; want no name and the role discussion", chair.Name, role)
 				}
 				if want := (shuttleengine.ModelKey{Module: "loom", Key: "discussion"}); chair.ModelKey != want {

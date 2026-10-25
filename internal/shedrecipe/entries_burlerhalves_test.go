@@ -743,32 +743,49 @@ func TestBurlerHalfEntries_RunDirectory(t *testing.T) {
 }
 
 // TestBurlerFixEntry_RoutesDecisionFindingsThroughEnvNotifyParent proves a BurlerFix row built under an Env carrying a NotifyParent posts the accepted review's decision-class finding through it and routes the finding out of the fixer's work.
+// It proves a row with decisions_escalated set posts nothing and still routes the finding out of the fixer's work.
 func TestBurlerFixEntry_RoutesDecisionFindingsThroughEnvNotifyParent(t *testing.T) {
-	env := newTestEnv(t)
-	var lines []string
-	env.NotifyParent = func(line string) error {
-		lines = append(lines, line)
-		return nil
+	tests := []struct {
+		name      string
+		extra     Config
+		wantLines int
+	}{
+		{name: "a notifier posts the decision finding", wantLines: 1},
+		{name: "decisions_escalated posts nothing", extra: Config{"decisions_escalated": true}},
 	}
-	producer, err := burlerFixEntry(reviewRow("fix-row"), minimalFixConfig(), env)
-	if err != nil {
-		t.Fatalf("burlerFixEntry() error = %v; want nil", err)
-	}
-	runDir := filepath.Join(env.RunRoot, "review-segment")
-	writeFixRound(t, runDir)
-	review := "---\nverdict: APPROVED\nfindings:\n  - id: D1\n    severity: LOW\n    class: decision\n    location: plan.md:4\n    summary: cache scope left open\n    fix: ask the parent to record the cache scope\n---\n### [LOW] cache scope left open\n"
-	if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte(review), 0o644); err != nil {
-		t.Fatalf("write the round-1 review: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := newTestEnv(t)
+			var lines []string
+			env.NotifyParent = func(line string) error {
+				lines = append(lines, line)
+				return nil
+			}
+			cfg := minimalFixConfig()
+			for key, value := range tt.extra {
+				cfg[key] = value
+			}
+			producer, err := burlerFixEntry(reviewRow("fix-row"), cfg, env)
+			if err != nil {
+				t.Fatalf("burlerFixEntry() error = %v; want nil", err)
+			}
+			runDir := filepath.Join(env.RunRoot, "review-segment")
+			writeFixRound(t, runDir)
+			review := "---\nverdict: APPROVED\nfindings:\n  - id: D1\n    severity: LOW\n    class: decision\n    location: plan.md:4\n    summary: cache scope left open\n    fix: ask the parent to record the cache scope\n---\n### [LOW] cache scope left open\n"
+			if err := os.WriteFile(filepath.Join(runDir, "round-1-review.md"), []byte(review), 0o644); err != nil {
+				t.Fatalf("write the round-1 review: %v", err)
+			}
 
-	_, _, _ = producer.Call(context.Background())
+			_, _, _ = producer.Call(context.Background())
 
-	if len(lines) != 1 || !strings.Contains(lines[0], "D1: cache scope left open") {
-		t.Errorf("parent lines = %q; want one line carrying D1", lines)
-	}
-	fake := env.Burler.(*shedfake.BurlerHalfRunner)
-	if len(fake.GotFixOpts) != 1 || !fake.GotFixOpts[0].DecisionsRouted {
-		t.Errorf("Fix opts = %+v; want one call with DecisionsRouted set", fake.GotFixOpts)
+			if len(lines) != tt.wantLines || (tt.wantLines == 1 && !strings.Contains(lines[0], "D1: cache scope left open")) {
+				t.Errorf("parent lines = %q; want %d, carrying D1 when one", lines, tt.wantLines)
+			}
+			fake := env.Burler.(*shedfake.BurlerHalfRunner)
+			if len(fake.GotFixOpts) != 1 || !fake.GotFixOpts[0].DecisionsRouted {
+				t.Errorf("Fix opts = %+v; want one call with DecisionsRouted set", fake.GotFixOpts)
+			}
+		})
 	}
 }
 

@@ -6,7 +6,7 @@ package loomshed
 // the durable on-disk identity in current_producer; a later rename breaks resume for any in-flight
 // task, so every row below is built from these constants, never a repeated string literal.
 //
-// NameMergeIn and NameFinalize are not loom's own producers -- both are generic ShedProducers
+// NameParentAlign and NameFinalize are not loom's own producers -- both are generic ShedProducers
 // shared by reference with Hardener's own list (see internal/landingshed's own package
 // documentation) -- but the name constants live here regardless, same as every other row, because
 // loom's own producer table names them, and the table is now the recipe's:
@@ -26,7 +26,7 @@ const (
 	NamePlanBouncer       = "Plan-Bouncer"
 	NameWebster           = "Webster"
 	NameDescribe          = "Describe"
-	NameMergeIn           = "Merge-In"
+	NameParentAlign       = "Parent-Align"
 	NameDarnWrite         = "Darn-Write"
 	NameFinalize          = "Finalize"
 	NameFrictionReflect   = "Friction-Reflect"

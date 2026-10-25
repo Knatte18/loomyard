@@ -27,7 +27,7 @@ func rolePrefixKey(entry string, cfg Config) (string, error) {
 	return prefix, nil
 }
 
-// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer, BurlerReview and BurlerFix rows share, resolves artifact_paths against env.AnchorPath, takes the row's seed and judge models from its segment's Bouncer pair and its hard cap from the segment's HardMaxBounces, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to env.ApprovePlan, resolves the optional skip_seam key to env.SkipPlanReview, reads the optional boolean zero_rounds key (default false; true makes the Bouncer settle approved at once over any skip_seam, and the recipe declares it on no row because loomrecipe stamps it), reads the optional boolean blocking_escalates key (default false) and the optional color_segment and role_prefix keys, reads the optional carry_over key, the segment name that selects env.CarryOver, resolves the optional subject key ("document" or "code") to the Env subject seams it names and tells the Bouncer the segment's amendment allowance, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner BurlerReview row has a cluster fan, reads the optional reviewer_fan_setting key, a module.key setting reference whose list is the per-round fan list when it names a fan, reads the optional auto_accept_setting key, a module.key setting reference whose bool is the auto-accept flag (false for an absent key or a null), and returns shedadapters.NewBouncer(cfg).
+// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer, BurlerReview and BurlerFix rows share, resolves artifact_paths against env.AnchorPath, takes the row's seed and judge models from its segment's Bouncer pair and its hard cap from the segment's HardMaxBounces, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to env.ApprovePlan, resolves the optional skip_seam key to env.SkipPlanReview, reads the optional boolean zero_rounds key (default false; true makes the Bouncer settle approved at once over any skip_seam, and the recipe declares it on no row because loomrecipe stamps it), reads the optional boolean blocking_escalates key (default false), the optional boolean escalate_decisions key (default false; true makes a judged round whose review holds a decision-class finding escalate to the run's parent) and the optional color_segment and role_prefix keys, reads the optional carry_over key, the segment name that selects env.CarryOver, resolves the optional subject key ("document" or "code") to the Env subject seams it names and tells the Bouncer the segment's amendment allowance, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner BurlerReview row has a cluster fan, reads the optional reviewer_fan_setting key, a module.key setting reference whose list is the per-round fan list when it names a fan, reads the optional auto_accept_setting key, a module.key setting reference whose bool is the auto-accept flag (false for an absent key or a null), and returns shedadapters.NewBouncer(cfg).
 func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -69,6 +69,10 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
+	escalateDecisions, err := configBool(cfg, "escalate_decisions", false)
+	if err != nil {
+		return nil, err
+	}
 	zeroRounds, err := configBool(cfg, "zero_rounds", false)
 	if err != nil {
 		return nil, err
@@ -85,7 +89,7 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "commit_seam", "approve_seam", "skip_seam", "carry_over", "subject", "cluster_excludes", "blocking_escalates", "zero_rounds", "color_segment", "role_prefix", "reviewer_fan_setting", "auto_accept_setting"); err != nil {
+	if err := configRejectUnknown(cfg, "run_subdir", "artifact_paths", "rubric_stencil", "commit_seam", "approve_seam", "skip_seam", "carry_over", "subject", "cluster_excludes", "blocking_escalates", "escalate_decisions", "zero_rounds", "color_segment", "role_prefix", "reviewer_fan_setting", "auto_accept_setting"); err != nil {
 		return nil, err
 	}
 	segment, err := rowSegment("Bouncer", row, env)
@@ -303,6 +307,7 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		ReviewInput:       reviewInput,
 
 		BlockingEscalates: blockingEscalates,
+		EscalateDecisions: escalateDecisions,
 		ColorSegment:      colorSegment,
 		RolePrefix:        rolePrefix,
 

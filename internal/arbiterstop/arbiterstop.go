@@ -5,6 +5,7 @@ package arbiterstop
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -39,13 +40,21 @@ type Stop struct {
 	EscalationErr error
 	// LandingHalt reports whether the stop is a blocked landing halt that only the run's parent lifts.
 	LandingHalt bool
+	// DecisionHalt reports whether the stop is a blocked decision halt that only the run's parent lifts.
+	DecisionHalt bool
+}
+
+// HandsBack reports whether a blocked stop at producer with the persisted reason goes to the run's parent rather than to a recipe row or the arbiter.
+// It is true for a landing halt and for a decision halt, whose reason opens with the decision halt prefix.
+func HandsBack(producer, reason string) bool {
+	return landingshed.HandsBack(producer, reason) || strings.HasPrefix(reason, shedadapters.DecisionHaltPrefix)
 }
 
 // Eligibility returns nil when the arbiter may settle stop and a refusal otherwise.
 // Eligible are an error stop of kind producer or bootstrap, of kind interrupted under the reinvoke policy or with a non-empty transient class.
-// Eligible too is a halted blocked stop, bar a landing halt.
+// Eligible too is a halted blocked stop, bar a landing halt or a decision halt.
 // Eligible too is a halted awaiting stop with a pending escalation of cause `hard-cap` or `circling`.
-// Every other stop is refused, a landing halt included, since only the run's parent lifts it, and the refusal ends with HandBackWayForward.
+// Every other stop is refused, a landing halt, a decision halt and a `decision` escalation included, since only the run's parent lifts them, and the refusal ends with HandBackWayForward.
 func Eligibility(stop Stop) error {
 	refuse := func(reason string) error {
 		return fmt.Errorf("arbiter: stop not eligible: %s; %s", reason, HandBackWayForward)
@@ -66,6 +75,9 @@ func Eligibility(stop Stop) error {
 	case shedengine.StateBlocked:
 		if stop.LandingHalt {
 			return refuse(fmt.Sprintf("the halt at %q is a landing halt, which only the run's parent lifts", stop.Producer))
+		}
+		if stop.DecisionHalt {
+			return refuse(fmt.Sprintf("the halt at %q is a decision halt only the run's parent lifts", stop.Producer))
 		}
 		return nil
 	case shedengine.StateAwaiting:
@@ -105,6 +117,7 @@ func Check(status shedengine.Status, kind, transient string, readers Readers) (b
 		Transient:       transient,
 		InterruptPolicy: readers.InterruptPolicy(status.CurrentProducer),
 		LandingHalt:     status.State == shedengine.StateBlocked && landingshed.HandsBack(status.CurrentProducer, status.Error),
+		DecisionHalt:    status.State == shedengine.StateBlocked && strings.HasPrefix(status.Error, shedadapters.DecisionHaltPrefix),
 	}
 	var escalationBrief string
 	if status.State == shedengine.StateAwaiting {

@@ -67,10 +67,10 @@
 //  1. Create the task worktree with `lyx fabric add <slug>`, then start its run from inside it with `lyx loom start`.
 //     The run's status file is `_lyx/shed/<slug>/status.json` under the worktree, and its `state` is one of running, awaiting, blocked, failed or done.
 //  2. Keep no watch loop of your own: a batten notice posted as batten's program arrives in full as its own `[creel] #<id> from <shortname>:BATTEN: …` line, one posted under a strand claim as mail announced by creel's reminder that you read, and on either you check the run with `lyx batten status <slug>`.
-//  3. The run's own tail merges, reviews and lands without an approval step: Merge-In and its fixer, the Code-Review ring, Describe and a Finalize that takes the parent lock first and lands on the parent.
-//     No approval step follows; a landing halt at Merge-In or Finalize is the orchestrator's to read.
+//  3. The run's own tail merges, reviews and lands without an approval step: Parent-Align and its fixer, the Code-Review ring, Describe and a Finalize that takes the parent lock first and lands on the parent.
+//     No approval step follows; a landing halt at Parent-Align or Finalize is the orchestrator's to read.
 //  4. On blocked or failed, read `error` in the status file and rerun the failing tests to tell a flaky failure from a real one.
-//     A landing halt at Merge-In or Finalize reaches the orchestrator as it stands, since no driver, batten or arbiter routes it to another row, and the status marks it handed back.
+//     A landing halt at Parent-Align or Finalize reaches the orchestrator as it stands, since no driver, batten or arbiter routes it to another row, and the status marks it handed back.
 //     A real regression in the task is fixed in the task worktree by a background subagent, with code commits only, no `lyx fabric`, no `_lyx` or `.lyx` edits and no push, and the run is started again.
 //     A lyx bug is fixed on `main`, deployed, and the run is started again.
 //     Never merge the parent into a task while webster is mid-batch, because record-batch then refuses the batch; a merge-in is safe only once every batch is recorded, for example at a blocked integration verify.

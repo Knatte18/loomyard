@@ -15,7 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// resolver is the single-method seam both Merge-In and Finalize hold their constructed
+// resolver is the single-method seam both Parent-Align and Finalize hold their constructed
 // *mergeresolve.Resolver behind. It is unexported deliberately: production has exactly one way to
 // obtain a resolver -- the constructors build it from Deps' told values -- and the seam exists so
 // this package's own in-package tests can substitute a fake without a second public construction
@@ -69,8 +69,8 @@ type Deps struct {
 	// PushSkipped is the told skip decision, which Finalize's parent push honours by skipping its push.
 	PushSkipped bool
 
-	// OpenFabric and OpenParentFabric are the two lazy opener closures Merge-In and Finalize hold,
-	// respectively -- Merge-In's over the task worktree's own pair, Finalize's over the parent
+	// OpenFabric and OpenParentFabric are the two lazy opener closures Parent-Align and Finalize hold,
+	// respectively -- Parent-Align's over the task worktree's own pair, Finalize's over the parent
 	// branch's pair. Laziness is required, not stylistic: the constructor each closure wraps
 	// stat-checks the paired layout, so opening eagerly would fail before the run's own preflight
 	// has confirmed anything is wired -- a constraint that holds regardless of which layer fills
@@ -102,7 +102,7 @@ type Deps struct {
 	CommitStatus func() error
 
 	// Reconcile runs the origin reconcile over the run's own scope and returns its report, which both producers read before they act on the parent.
-	// Merge-In calls it after the status commit and before it takes the parent lock, and Finalize at entry under the parent lock the run already holds.
+	// Parent-Align calls it after the status commit and before it takes the parent lock, and Finalize at entry under the parent lock the run already holds.
 	// A reconcile that judges the run ended or stopped is a Stuck, an unreachable origin proceeds, and a returned error is returned from Call.
 	//
 	// Nil means "no reconcile", following CommitStatus's nil-is-absent convention.
@@ -137,7 +137,7 @@ type Deps struct {
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	ParentCommitsOriginLacks func() ([]string, error)
 
-	// ConflictReroutes reports whether a conflict in Finalize's merge of the parent branch into the task aborts the merge and reroutes, which leaves the merge and its conflict session to Merge-In outside the parent lock.
+	// ConflictReroutes reports whether a conflict in Finalize's merge of the parent branch into the task aborts the merge and reroutes, which leaves the merge and its conflict session to Parent-Align outside the parent lock.
 	// Told by the caller: true for loom.
 	// False, darn's value, resolves the conflict with the conflict session under the lock, since darn has no other merging row.
 	ConflictReroutes bool
@@ -167,7 +167,7 @@ type Deps struct {
 	StopConflictSession func() (guid string, err error)
 
 	// TaskHead returns the task branch's local HEAD SHA.
-	// Merge-In's constructor refuses a nil TaskHead.
+	// Parent-Align's constructor refuses a nil TaskHead.
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	TaskHead func() (string, error)
 
@@ -200,10 +200,10 @@ type Deps struct {
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	Notify func(line string) error
 
-	// GateKey is the key of the hub's gate.yaml the row runs after a merge-in: `merge-in` for Merge-In, `finalize` for Finalize.
+	// GateKey is the key of the hub's gate.yaml the row runs after a merge-in: `parent-align` for Parent-Align, `finalize` for Finalize.
 	// The row's registry entry sets it on its own copy of Deps, and the producer reads it as set, with no default for an empty one.
 	GateKey string
-	// VerifyCommand returns the call of the named gate key, which Merge-In and Finalize run in the task worktree after a merge-in, each with its own GateKey.
+	// VerifyCommand returns the call of the named gate key, which Parent-Align and Finalize run in the task worktree after a merge-in, each with its own GateKey.
 	// A darn run with a tree-scoped diff returns the tree-scoped command in its place.
 	// The clean-tree checks around the merge-in run whether or not a command is wired.
 	// It is read each time the gate runs rather than once at construction,
@@ -285,7 +285,7 @@ type Deps struct {
 	MergeRecordPath string
 
 	// FixerSeats is the seat runner the merge fixer session runs on, which `*seatengine.Engine` satisfies.
-	// Merge-In and Finalize run the fixer through it, and the fixer loop refuses to run without it.
+	// Parent-Align and Finalize run the fixer through it, and the fixer loop refuses to run without it.
 	FixerSeats fixerSeats
 	// DecisionRecordPath is the run's decision record, which the fixer session reads.
 	DecisionRecordPath string
@@ -300,7 +300,7 @@ type Deps struct {
 	// TaskRemoteTip reads the task branch's remote-tracking tip, `origin/<task branch>`, without a fetch, and answers "" when there is none.
 	// A push the fixer session makes from the task pair updates that ref, so a changed tip shows the push.
 	TaskRemoteTip func() (string, error)
-	// CodeReviewOff reports whether the Code-Perch's effective review budget is 0, so no review follows Merge-In and its fixer's change is judged against the caps instead.
+	// CodeReviewOff reports whether the Code-Perch's effective review budget is 0, so no review follows Parent-Align and its fixer's change is judged against the caps instead.
 	// A nil CodeReviewOff reads as the budget being 0, and a returned error is an error stop of the row.
 	CodeReviewOff func() (bool, error)
 	// RerouteReviewed reports whether a review follows Finalize's reroute, so a fixer change it keeps is seen before the run lands.

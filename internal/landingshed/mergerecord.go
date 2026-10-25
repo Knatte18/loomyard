@@ -1,4 +1,4 @@
-// mergerecord.go — the merge record Merge-In writes.
+// mergerecord.go — the merge record Parent-Align writes.
 //
 // The record lives in the run's told scratch directory, so it stays under `.lyx` and is never committed.
 // This package derives no path of its own beyond the fixed file name joined onto that directory.

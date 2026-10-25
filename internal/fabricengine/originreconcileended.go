@@ -89,7 +89,7 @@ func pairHasLocalPart(l *lyxcwd.Location, slug string) (bool, error) {
 // busyWayForward names what lets a removal that found its pair busy go through at the next run.
 func busyWayForward(busyOn string) string {
 	if busyOn == BusyOnDriver {
-		return "wait for the pair's driver to end, which the run's next Merge-In or Finalize makes certain by stopping it with Halt, then re-run `lyx cleanup --apply`"
+		return "wait for the pair's driver to end, which the run's next Parent-Align or Finalize makes certain by stopping it with Halt, then re-run `lyx cleanup --apply`"
 	}
 	return "wait for the holder of the pair's teardown or weft write lock to release it, then re-run `lyx cleanup --apply`"
 }

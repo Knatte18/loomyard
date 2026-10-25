@@ -781,7 +781,7 @@ type parentMergeBefore struct {
 	taskBase string
 	// taskHead is the task head before the merge.
 	taskHead string
-	// earlier is the merge record the last Merge-In or Finalize wrote, zero when none is readable.
+	// earlier is the merge record the last Parent-Align or Finalize wrote, zero when none is readable.
 	earlier MergeRecord
 }
 
@@ -797,7 +797,7 @@ type parentMerge struct {
 
 // mergeParent merges the parent branch into the task worktree and judges the merge, which are Finalize's steps 2 and 3 under the parent lock it already holds.
 // It clears a parked merge-in, checks the tree clean and merges.
-// A loom Finalize merges through taskMerger and, on a conflict, aborts the merge and reroutes, leaving the merge and its conflict session to Merge-In outside the lock.
+// A loom Finalize merges through taskMerger and, on a conflict, aborts the merge and reroutes, leaving the merge and its conflict session to Parent-Align outside the lock.
 // A darn Finalize merges through its resolver, which resolves a conflict with the conflict session under the lock, since darn has no other merging row.
 //
 // The merge is large when it needed the conflict session, or when the parent's changes since the merged tip the merge record names touch a file the task changed.

@@ -208,10 +208,10 @@ func TestFinalizeKeepsLock(t *testing.T) {
 		{name: "no status and no marker holds nothing"},
 		{name: "Finalize running holds it", producer: loomshed.NameFinalize, state: shedengine.StateRunning, want: true},
 		{name: "Finalize blocked holds nothing", producer: loomshed.NameFinalize, state: shedengine.StateBlocked},
-		{name: "another row running holds nothing", producer: loomshed.NameMergeIn, state: shedengine.StateRunning},
-		{name: "a live verify marker holds it", producer: loomshed.NameMergeIn, state: shedengine.StateRunning, marker: "site: landing\npid: %d\n", want: true},
-		{name: "a verify marker of a dead process holds nothing", producer: loomshed.NameMergeIn, state: shedengine.StateRunning, marker: "site: landing\npid: 2147483646\n"},
-		{name: "a malformed marker holds it", producer: loomshed.NameMergeIn, state: shedengine.StateRunning, marker: "pid: [", want: true},
+		{name: "another row running holds nothing", producer: loomshed.NameParentAlign, state: shedengine.StateRunning},
+		{name: "a live verify marker holds it", producer: loomshed.NameParentAlign, state: shedengine.StateRunning, marker: "site: landing\npid: %d\n", want: true},
+		{name: "a verify marker of a dead process holds nothing", producer: loomshed.NameParentAlign, state: shedengine.StateRunning, marker: "site: landing\npid: 2147483646\n"},
+		{name: "a malformed marker holds it", producer: loomshed.NameParentAlign, state: shedengine.StateRunning, marker: "pid: [", want: true},
 		{name: "an undecodable status holds it", corruptStatus: true, want: true},
 	}
 	for _, tt := range tests {

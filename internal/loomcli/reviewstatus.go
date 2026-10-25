@@ -1,4 +1,4 @@
-// reviewstatus.go fills shedverbs.Hooks.Waiting for loom, so `lyx loom status` reports a run that waits on its reviewer.
+// reviewstatus.go fills shedverbs.Hooks.Waiting for loom, so `lyx loom status` reports a run that waits on a gate slot, the parent lock, a verify or a shuttle.
 
 package loomcli
 
@@ -14,27 +14,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
-	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
-
-// reviewWaitPrefix leads the note so a status reader sees which wait it is.
-const reviewWaitPrefix = "parent review: "
-
-// reviewWaiting returns the Waiting hook over a parent-review store rooted at root, with its lock files under lockDir.
-// Only the latest round is reported, and an absent root yields an empty note rather than an error.
-func reviewWaiting(root, lockDir string) func() (string, error) {
-	store := parentreview.Store{Root: root, LockDir: lockDir}
-	return func() (string, error) {
-		note, err := store.WaitNote()
-		if err != nil || note == "" {
-			return "", err
-		}
-		return reviewWaitPrefix + note, nil
-	}
-}
 
 // formatElapsed renders d as whole seconds under a minute, whole minutes under an hour and hours with minutes beyond: `45s`, `6m`, `1h12m`.
 func formatElapsed(d time.Duration) string {
@@ -176,13 +159,12 @@ func parentLockWaiting(waitPath string, alive func(pid int, startTime string) bo
 }
 
 // reviewWaitingFor builds the Waiting hook for loc's worktree, or nil when no location is wired.
-// A gate wait is reported first and never hides the rest; after it come a parent lock wait, a verify, a shuttle wait and the parent-review note, of which the first live one wins.
+// A gate wait is reported first and never hides the rest; after it come a parent lock wait, a verify and a shuttle wait, of which the first live one wins.
 func reviewWaitingFor(loc *lyxcwd.Location) func(st shedengine.Status) (string, error) {
 	if loc == nil {
 		return nil
 	}
-	reviewNote := reviewWaiting(loomengine.LoomParentReviewDir(loc), loomengine.LoomParentReviewLockDir(loc))
-	review := func(shedengine.Status) (string, error) { return reviewNote() }
+	noWait := func(shedengine.Status) (string, error) { return "", nil }
 	readShuttleMarker := func() (shuttleengine.WaitMarker, bool, error) {
 		cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(loc), "shuttle")
 		if err != nil {
@@ -192,7 +174,7 @@ func reviewWaitingFor(loc *lyxcwd.Location) func(st shedengine.Status) (string, 
 	}
 	markerPath := verifytree.NewPaths(loc.WorktreePath(), verifytree.Dir(loc.AnchorPath())).Marker
 	holders := hubgeom.GateSlots(loc).Holders
-	verify := verifyWaiting(markerPath, holders, time.Now, shuttleWaiting(readShuttleMarker, time.Now, review))
+	verify := verifyWaiting(markerPath, holders, time.Now, shuttleWaiting(readShuttleMarker, time.Now, noWait))
 	parentLock := parentLockWaiting(parentlock.WaitRecordPath(loomengine.LoomScratchDir(loc)), parentlock.ProcessAlive, time.Now, verify)
 	return gateWaiting(gateslot.WaitDir(loc.AnchorPath()), holders, time.Now, parentLock)
 }

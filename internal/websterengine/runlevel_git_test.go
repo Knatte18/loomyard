@@ -67,7 +67,7 @@ func (s *gateScenario) restart(t *testing.T, verify string) (*runFixture, string
 			"card":            map[string]any{"tiers": []int{0}, "scope": "card"},
 			"batch":           map[string]any{"tiers": []int{0}, "scope": "card"},
 			"webster":         map[string]any{"tiers": []int{0}, "scope": "all"},
-			"merge-in":        map[string]any{"tiers": []int{0}, "scope": "all"},
+			"parent-align":    map[string]any{"tiers": []int{0}, "scope": "all"},
 			"finalize":        map[string]any{"tiers": []int{0}, "scope": "all"},
 			"webster-fix":     map[string]any{"tiers": []int{0}, "scope": "diff"},
 			"darn-write":      map[string]any{"tiers": []int{0}, "scope": "diff"},

@@ -66,7 +66,7 @@
 // With origin answering, the resume first records this machine as the hub's prime owner when none is recorded, and as the owner of a run-held entry that has none; a failed write refuses, naming the re-run once origin answers or the push's own way forward.
 // With origin unreachable the resume reads the local board instead, refuses a task it shows owned elsewhere, and writes no owner.
 // A reconcile error refuses, with fixing its cause and then the re-run as the way forward.
-// A fresh start runs no reconcile: creating the pair probes origin for it, and a parent behind origin costs only Merge-In's merge.
+// A fresh start runs no reconcile: creating the pair probes origin for it, and a parent behind origin costs only Parent-Align's merge.
 // It pulls the board instead, which needs origin, and refuses a task another machine owns before anything is seeded or claimed.
 //
 // Between Seed-Child and Run-Shed, three Command rows run one shell command each: Open-Window opens the operator's terminal window attached to the pair's reed session, Seed-IDE writes the pair's VS Code colour and .vscode/ config, and Open-IDE opens VS Code on the pair.
@@ -127,7 +127,7 @@
 // a revive that fails, and a child with no driver strand, make the reason also name "lyx loom start" in the task worktree.
 // The wait has no time limit and spends no bounce budget; "lyx batten pause" stops it within one check, and the row reads the child as running again once the operator resumes it.
 //
-// A run halted at Merge-In or Finalize gets one state-changed notice like every other halt, and no goto: the recipe's own rows fix or hand back those failures.
+// A run halted at Parent-Align or Finalize gets one state-changed notice like every other halt, and no goto: the recipe's own rows fix or hand back those failures.
 //
 // A halted go child is also re-stepped once per halt and per lyx build (innerrun_binaryrestep.go), so a fix deployed after a Go driver handed back lands without a parent turn.
 // The child is re-stepped, through the same Spawn seam as every bootstrap, only when it is blocked or failed, its reed state holds no driver strand, neither its run lock nor its driver lock is held;

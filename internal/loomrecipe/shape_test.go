@@ -73,7 +73,7 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePlanBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NamePlanBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NameWebster, "Implementer", reflect.TypeOf(loomshed.NewWebsterProducer("", configengine.Dirs{}, nil, websterengine.RunDeps{}, nil))},
-	{loomshed.NameMergeIn, "MergeIn", reflect.TypeOf(&landingshed.MergeIn{})},
+	{loomshed.NameParentAlign, "ParentAlign", reflect.TypeOf(&landingshed.ParentAlign{})},
 	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},
 	{loomshed.NameCodeBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameCodeBurlerFix, "BurlerFix", burlerFixType},
@@ -92,7 +92,6 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 	env := envkit.FullEnv(t)
 	dir := filepath.Dir(env.StatusPath)
 	stencilkit.SeedInto(t, env.StencilsDir)
-	env.ParentReview = testParentReviewConfig(dir, env.DecisionRecordPath, env.SupportLogPath)
 	env.WebsterRun = (&fakeWebsterRun{}).run
 	env.Shuttle = newLoomShuttle("", false)
 	env.Seats = newLoomSeats("", false)
@@ -130,7 +129,7 @@ func TestNew_ToldShedFields(t *testing.T) {
 	}
 }
 
-// TestNew_MergeInAndFinalizeAreRealProducers asserts the row named Merge-In and the row named
+// TestNew_MergeInAndFinalizeAreRealProducers asserts the row named Parent-Align and the row named
 // Finalize are each backed by the real landingshed producer type, not the stub type, and both keep
 // their escalate-on-stuck setting.
 func TestNew_MergeInAndFinalizeAreRealProducers(t *testing.T) {
@@ -143,27 +142,27 @@ func TestNew_MergeInAndFinalizeAreRealProducers(t *testing.T) {
 	var mergeInRow, finalizeRow *shedengine.ProducerDef
 	for i := range shed.Producers {
 		switch shed.Producers[i].Name {
-		case loomshed.NameMergeIn:
+		case loomshed.NameParentAlign:
 			mergeInRow = &shed.Producers[i]
 		case loomshed.NameFinalize:
 			finalizeRow = &shed.Producers[i]
 		}
 	}
 	if mergeInRow == nil {
-		t.Fatalf("New() producer list has no row named %q", loomshed.NameMergeIn)
+		t.Fatalf("New() producer list has no row named %q", loomshed.NameParentAlign)
 	}
 	if finalizeRow == nil {
 		t.Fatalf("New() producer list has no row named %q", loomshed.NameFinalize)
 	}
 
-	if _, ok := mergeInRow.Producer.(*landingshed.MergeIn); !ok {
-		t.Errorf("row %q Producer = %T; want *landingshed.MergeIn, not the stub", loomshed.NameMergeIn, mergeInRow.Producer)
+	if _, ok := mergeInRow.Producer.(*landingshed.ParentAlign); !ok {
+		t.Errorf("row %q Producer = %T; want *landingshed.ParentAlign, not the stub", loomshed.NameParentAlign, mergeInRow.Producer)
 	}
 	if _, ok := finalizeRow.Producer.(*landingshed.Finalize); !ok {
 		t.Errorf("row %q Producer = %T; want *landingshed.Finalize, not the stub", loomshed.NameFinalize, finalizeRow.Producer)
 	}
 	if mergeInRow.OnStuck != "" {
-		t.Errorf("row %q OnStuck = %q; want \"\" (escalate, never bounce)", loomshed.NameMergeIn, mergeInRow.OnStuck)
+		t.Errorf("row %q OnStuck = %q; want \"\" (escalate, never bounce)", loomshed.NameParentAlign, mergeInRow.OnStuck)
 	}
 	if finalizeRow.OnStuck != "" {
 		t.Errorf("row %q OnStuck = %q; want \"\" (escalate, never bounce)", loomshed.NameFinalize, finalizeRow.OnStuck)
@@ -172,7 +171,7 @@ func TestNew_MergeInAndFinalizeAreRealProducers(t *testing.T) {
 
 // TestNew_MissingLandingClosureReturnsError asserts that an Env whose landing passthrough is
 // missing a required closure makes New return an error rather than a list that panics at call
-// time: New surfaces landingshed.NewMergeIn's own construction failure instead of discarding it.
+// time: New surfaces landingshed.NewParentAlign's own construction failure instead of discarding it.
 func TestNew_MissingLandingClosureReturnsError(t *testing.T) {
 	env, paths := testEnv(t)
 	env.Landing.MergeBase = nil
@@ -184,8 +183,8 @@ func TestNew_MissingLandingClosureReturnsError(t *testing.T) {
 	if shed != nil {
 		t.Errorf("New() shed = %+v; want nil alongside a non-nil error", shed)
 	}
-	if !strings.Contains(err.Error(), "MergeIn") {
-		t.Errorf("New() error = %q; want it to name the offending row %q", err.Error(), "MergeIn")
+	if !strings.Contains(err.Error(), "ParentAlign") {
+		t.Errorf("New() error = %q; want it to name the offending row %q", err.Error(), "ParentAlign")
 	}
 }
 

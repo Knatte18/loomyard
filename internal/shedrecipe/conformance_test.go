@@ -29,7 +29,7 @@ func minimalEntries() map[string]minimalEntry {
 	}
 	return map[string]minimalEntry{
 		"Preflight":       {newTestEnv, emptyConfig},
-		"MergeIn":         {withLanding, emptyConfig},
+		"ParentAlign":     {withLanding, emptyConfig},
 		"DarnWrite":       {darnTestEnv, emptyConfig},
 		"Finalize":        {withLanding, emptyConfig},
 		"FrictionReflect": {newTestEnv, emptyConfig},

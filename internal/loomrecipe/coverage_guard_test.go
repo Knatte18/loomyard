@@ -109,7 +109,7 @@ func TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger(t *testing.T) {
 	})
 }
 
-// TestCoverageGuard_MergeInAndFinalizeRowNamesMatchTheirProducerIdentity asserts the rows named loomshed.NameMergeIn and loomshed.NameFinalize exist in the recipe's built list.
+// TestCoverageGuard_MergeInAndFinalizeRowNamesMatchTheirProducerIdentity asserts the rows named loomshed.NameParentAlign and loomshed.NameFinalize exist in the recipe's built list.
 //
 // Both underlying constructors discard the name argument because their identity is a package constant carried by their log lines and error text -- mergeInName and finalizeName in internal/landingshed.
 // A renamed row would therefore produce a producer whose logged identity disagrees with its row name.
@@ -125,8 +125,8 @@ func TestCoverageGuard_MergeInAndFinalizeRowNamesMatchTheirProducerIdentity(t *t
 		rowNames[p.Name] = true
 	}
 
-	if !rowNames[loomshed.NameMergeIn] {
-		t.Errorf("New() has no row named %q", loomshed.NameMergeIn)
+	if !rowNames[loomshed.NameParentAlign] {
+		t.Errorf("New() has no row named %q", loomshed.NameParentAlign)
 	}
 	if !rowNames[loomshed.NameFinalize] {
 		t.Errorf("New() has no row named %q", loomshed.NameFinalize)

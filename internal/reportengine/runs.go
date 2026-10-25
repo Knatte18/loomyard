@@ -8,13 +8,11 @@ import (
 	"slices"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -98,11 +96,11 @@ type RunRow struct {
 	Landing *Landing `json:"landing"`
 
 	// parentRounds are the parent-review rounds that decoded, and arbiterRecords the arbiter attempts that did.
-	parentRounds   []parentreview.Round
+	parentRounds   []parentReviewRound
 	arbiterRecords []loomengine.ArbiterRecord
 
 	// alignmentAttempts are the alignment attempts that decoded, each with Dir set to its tree-relative directory.
-	alignmentAttempts []alignment.Attempt
+	alignmentAttempts []alignmentAttempt
 }
 
 // PartialRun is a tag that names a run which did not finish as a full run of a selected recipe, with the reason.

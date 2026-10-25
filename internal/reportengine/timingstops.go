@@ -9,7 +9,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
-	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -303,7 +302,7 @@ func settlerOf(stop TimingStop, record *shedrun.SettleRecord, row RunRow, rows [
 			}
 		}
 		for _, round := range row.parentRounds {
-			if round.Alignment != nil && round.Alignment.State == parentreview.AlignmentApplied && round.Alignment.SpawnedAt.After(*stop.At) {
+			if round.Alignment != nil && round.Alignment.State == parentReviewAlignmentApplied && round.Alignment.SpawnedAt.After(*stop.At) {
 				return SettledByAlignment
 			}
 		}

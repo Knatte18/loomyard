@@ -314,7 +314,7 @@ A departure from an entry the task declares changed in the overview's `## PATTER
 
 The hub's tests run through `lyx gate test`, which runs the numbered tiers `gate.yaml` declares over a scope lyx computes.
 A gate key names a site's tiers and its scope, `card`, `diff` or `all`, and every site runs `lyx gate test --wait --gate <key>`:
-the `card` key runs per card and the `batch` key per batch, both over the cards' packages, `webster-fix` in Webster's verify fixers, `webster` once for the whole plan, and `merge-in` and `finalize` at Merge-In and Finalize.
+the `card` key runs per card and the `batch` key per batch, both over the cards' packages, `webster-fix` in Webster's verify fixers, `webster` once for the whole plan, and `parent-align` and `finalize` at Parent-Align and Finalize.
 The hub's tiers and gate keys reach the plan writer and the plan reviewer in their prompts, rendered from `gate.yaml`.
 A plan author names no gate, tier list or target list, because the Go-rendered prompts and the gates carry them.
 
@@ -322,7 +322,7 @@ The per-card **`**Verify:**`** field stays the optional, rare escape hatch for w
 A `**Verify:**` line that tests is one `lyx gate test --wait` call with a gate key or a tier list and a scope form, such as `lyx gate test --wait --tier 1 --card <card id>`, and never a raw test command or a target list.
 The plan-level `## verify:` body section in `00-overview.md` is accepted and ignored: the parser still reads it, and the plan gate reports an informational finding, because the `webster` gate key has replaced it.
 
-Merge-In and Finalize run their own gate keys, `merge-in` and `finalize`, in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
+Parent-Align and Finalize run their own gate keys, `parent-align` and `finalize`, in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
 and, on a failure, run the merge fixer before anything is landed, halting only when the fixer's cap is spent or its change is over the caps.
 Both also halt Stuck on a dirty tree, so only committed content is ever verified or landed.
 

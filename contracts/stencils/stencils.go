@@ -63,16 +63,6 @@ var LoomTemplatePlan []byte
 //go:embed loom/loom-template-arbiter.md
 var LoomTemplateArbiter []byte
 
-// LoomTemplateAlignment is the alignment agent's shipped-default opening prompt: the cold session that settles one parent review, or escalates it to the run's parent.
-//
-//go:embed loom/loom-template-alignment.md
-var LoomTemplateAlignment []byte
-
-// LoomFragmentPRGateLoom is loom's measure, filled into the alignment stencil's pr_gate_measure marker.
-//
-//go:embed loom/loom-fragment-pr-gate-loom.md
-var LoomFragmentPRGateLoom []byte
-
 // LoomRubricDiscussionReview is the Discussion-Review rubric, read by both rows of the
 // Discussion-Review perch.
 //
@@ -93,21 +83,6 @@ var LoomRubricCodeReview []byte
 //
 //go:embed loom/loom-template-prior-plan.md
 var LoomTemplatePriorPlan []byte
-
-// LoomTemplateParentReviewDelivery is the one-line prompt that tells the live Discussion-Write session to send its parent a review request.
-//
-//go:embed loom/loom-template-parent-review-delivery.md
-var LoomTemplateParentReviewDelivery []byte
-
-// LoomTemplateParentReviewBrief is the reviewer brief the parent's one-shot fork reads.
-//
-//go:embed loom/loom-template-parent-review-brief.md
-var LoomTemplateParentReviewBrief []byte
-
-// LoomTemplateParentReviewKeepalive is the one-line prompt that keeps the live Discussion-Write session's prompt cache warm while the parent's review is pending.
-//
-//go:embed loom/loom-template-parent-review-keepalive.md
-var LoomTemplateParentReviewKeepalive []byte
 
 // BurlerStep1Explore is burler's shipped-default step-1 (explore) instruction prompt.
 //
@@ -195,6 +170,11 @@ var BouncerFragmentDecideOpen []byte
 //
 //go:embed bouncer/bouncer-fragment-decide-capped.md
 var BouncerFragmentDecideCapped []byte
+
+// BouncerFragmentDecision is the Bouncer's shipped-default decision detail of the escalation brief for cause decision, filled into the brief's cause_detail marker.
+//
+//go:embed bouncer/bouncer-fragment-decision.md
+var BouncerFragmentDecision []byte
 
 // BouncerTemplateParentNotice is the Bouncer's shipped-default one-line parent notice, which
 // points the parent at the escalation brief.
@@ -455,15 +435,10 @@ var entries = []registryEntry{
 	{"loom-template-discussion-advisor", &LoomTemplateDiscussionAdvisor},
 	{"loom-template-plan", &LoomTemplatePlan},
 	{"loom-template-arbiter", &LoomTemplateArbiter},
-	{"loom-template-alignment", &LoomTemplateAlignment},
-	{"loom-fragment-pr-gate-loom", &LoomFragmentPRGateLoom},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
 	{"loom-rubric-code-review", &LoomRubricCodeReview},
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
-	{"loom-template-parent-review-delivery", &LoomTemplateParentReviewDelivery},
-	{"loom-template-parent-review-brief", &LoomTemplateParentReviewBrief},
-	{"loom-template-parent-review-keepalive", &LoomTemplateParentReviewKeepalive},
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-template-reviewer", &BurlerTemplateReviewer},
 	{"burler-template-fixer", &BurlerTemplateFixer},
@@ -481,6 +456,7 @@ var entries = []registryEntry{
 	{"bouncer-template-escalation", &BouncerTemplateEscalation},
 	{"bouncer-fragment-decide-open", &BouncerFragmentDecideOpen},
 	{"bouncer-fragment-decide-capped", &BouncerFragmentDecideCapped},
+	{"bouncer-fragment-decision", &BouncerFragmentDecision},
 	{"bouncer-template-parent-notice", &BouncerTemplateParentNotice},
 	{"treadle-template-judge-circling", &TreadleTemplateJudgeCircling},
 	{"treadle-template-judge-milestone", &TreadleTemplateJudgeMilestone},
@@ -537,7 +513,6 @@ var roleOpeningStencils = map[string][]string{
 	"driver":             {"shed-template-driver"},
 	"arbiter":            {"loom-template-arbiter"},
 	"tackler":            {"shed-template-tackler"},
-	"alignment":          {"loom-template-alignment"},
 	"discussion":         {"loom-template-discussion-chair"},
 	"discussion-advisor": {"loom-template-discussion-advisor"},
 	"plan":               {"loom-template-plan"},

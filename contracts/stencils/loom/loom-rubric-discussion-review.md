@@ -63,4 +63,9 @@ Every finding carries one class: `design`, `scope`, `decision` or `consistency`.
 Their generic meanings are in burler's review step; this section does not restate them.
 In this segment, `design` means the design is wrong: a wrong or missing decision, or a false premise.
 A recurring enumeration gap is filed once as a `design` finding about the method, not once per missing item.
-Class never changes whether a finding is fixed.
+In this segment, `decision` means a question only the run's parent can settle:
+the board entry plainly outdated by landed work or contradicted by another entry or run, a design conflict with another run, a landed parent commit that contradicts a decision or makes one the writer cannot settle by citing or dropping it, or doubt about what the task is for.
+A choice the writer can make is never `decision`.
+Neither is a question an `Added after Discussion` entry or a board note titled `Decision for <slug>:` already answers;
+a writer's `## Open risks` line that such an answer settles is a `consistency` finding whose fix drops the line.
+Every class is fixed by the fixer except `decision`, which goes to the run's parent and never to the fixer.

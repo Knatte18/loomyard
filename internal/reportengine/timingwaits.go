@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -205,7 +204,7 @@ func runAttempts(row RunRow, rows []timedRow, span Interval, sleeps []Interval) 
 	for _, record := range row.arbiterRecords {
 		spawns = append(spawns, spawn{kind: attemptKindArbiter, spawnedAt: record.Attempt.SpawnedAt, label: fmt.Sprintf("arbiter attempt %d", record.Attempt.Number), file: arbiterDir})
 	}
-	parentDir := filepath.ToSlash(loomengine.LoomParentReviewDirRel())
+	parentDir := filepath.ToSlash(parentReviewDirRel())
 	for _, round := range row.parentRounds {
 		if round.Alignment == nil {
 			continue

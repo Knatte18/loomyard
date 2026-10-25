@@ -58,6 +58,9 @@ type BurlerHalfDeps struct {
 	// NotifyParent posts one line to the run's parent, read by the fix producer, which sends a round's decision-class findings through it and keeps them out of the fixer's work.
 	// Nil sends nothing and keeps every finding as fixer work.
 	NotifyParent func(line string) error
+	// DecisionsEscalated marks a fix row whose segment's Bouncer escalates the round's decision-class findings to the run's parent itself, read by the fix producer.
+	// Such a row keeps the findings out of the fixer's work and posts no notice of its own.
+	DecisionsEscalated bool
 }
 
 // checkHalfProducerArgs returns the constructor error of a half producer named name under label, or nil.

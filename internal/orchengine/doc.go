@@ -211,7 +211,7 @@
 // When the gate passes, the watcher renders the focus stencil first, so a stencil failure fails the tick, changes nothing and leaves the gate to the next tick.
 // It then moves LastHandoff to the note, persists compacting, and injects `/compact` with the focus as its argument.
 // A later fresh `start` therefore resumes from the newest note in either mode.
-// The focus tells the summary to keep runs in flight, open parent-review forks, operator requests and decisions pending, and work half done.
+// The focus tells the summary to keep runs in flight, open stop-investigation forks, operator requests and decisions pending, and work half done.
 //
 // A compaction ends without a turn end, so the compacting phase searches the transcript of State.ReadingTurnEnd, the turn end the current reading was taken through, which every stored reading records, for a compaction boundary every tick.
 // The boundary is searched for rather than read off the newest entry, because a message answered right after the boundary hides it there.

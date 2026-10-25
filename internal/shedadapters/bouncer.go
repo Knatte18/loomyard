@@ -155,6 +155,11 @@ type BouncerConfig struct {
 	// BlockingEscalates sends a spent budget to the soft-cap rule, instead of auto-accepting, when the round's ledger holds an open BLOCKING entry or cannot be read.
 	// It only turns some auto-accepts into rule runs: it never accepts what the rule would not, and it has no effect while AutoAccept is false.
 	BlockingEscalates bool
+	// EscalateDecisions makes a judged round whose accepted review holds a finding of class decision escalate to the run's parent with cause decision, whatever the judge ruled.
+	// The parent's recorded accept passes the round over those findings and carries them into the carry-over;
+	// a recorded continue runs another round.
+	// False is the default and leaves every path behaving exactly as before.
+	EscalateDecisions bool
 	// CirclingCheckpoint is the first round a CIRCLING verdict is legal in.
 	// The judge prompt offers CIRCLING only from this round on, and settle reads an earlier CIRCLING as CONTINUE.
 	// It must be positive.
@@ -822,6 +827,7 @@ func (b *Bouncer) judged(round int) bool {
 // settledGeneration reports whether round's verdict on disk is the durable record of an earlier Call settling the segment:
 // CONVERGED, or any verdict whose decision is a settled accept.
 // A malformed decision file is not a settled one, so settle reports it.
+// A round whose decision escalation no settled accept has closed is not settled, even over a CONVERGED verdict.
 //
 // What a Call does over such a verdict depends on the records a Bouncer told a Subject seam keeps beside it:
 // 1. A live settle record over an unchanged subject re-settles with no spawn, checked at Call entry before any round is resolved.
@@ -833,6 +839,9 @@ func (b *Bouncer) judged(round int) bool {
 func (b *Bouncer) settledGeneration(round int) bool {
 	verdict, _, ok := recordedVerdict(b.cfg.RunDir, round)
 	if !ok {
+		return false
+	}
+	if b.decisionEscalationOpen(round) {
 		return false
 	}
 	if verdict == verdictConverged {
@@ -998,8 +1007,12 @@ func (b *Bouncer) retireLegacyVerdict(ctx context.Context, round int) (shedengin
 }
 
 // settleUnlessRefused settles round's judgment unless judgmentRefusal rejects it, in which case the round is re-judged.
+// A round routeDecisions takes is settled there instead, ahead of the refusal.
 // verdict and ledger are round's judgment as the caller's verdict read parsed them.
 func (b *Bouncer) settleUnlessRefused(ctx context.Context, round int, verdict bouncerVerdict, ledger ledgerFile, spawned bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if outcome, ptr, err, handled := b.routeDecisions(ctx, round, verdict, ledger, spawned); handled {
+		return outcome, ptr, err
+	}
 	if cause := b.judgmentRefusal(round, verdict, ledger); cause != "" {
 		return b.rejudge(ctx, round, verdict, cause)
 	}
@@ -1009,7 +1022,11 @@ func (b *Bouncer) settleUnlessRefused(ctx context.Context, round int, verdict bo
 // standsAsRecorded reports whether round has been handed to the parent or decided by it:
 // an escalation record or a circling decision file is on disk.
 // Such a round's judgment is what the parent's decision settles over, so a replay never refuses it.
+// A round whose decision escalation no settled accept has closed stands as recorded no longer, so a replay routes it again.
 func (b *Bouncer) standsAsRecorded(round int) bool {
+	if b.decisionEscalationOpen(round) {
+		return false
+	}
 	_, _, escalated, _ := readEscalation(b.cfg.RunDir, round)
 	_, _, _, decided, _ := readCirclingDecision(b.cfg.RunDir, round)
 	return escalated || decided
@@ -1021,9 +1038,15 @@ func (b *Bouncer) standsAsRecorded(round int) bool {
 // A previous ledger that cannot be read or parsed is warned about and skips that check.
 // It reads only on-disk state under the run directory, so a harvest and a later replay of the same round agree.
 func (b *Bouncer) judgmentRefusal(round int, verdict bouncerVerdict, ledger ledgerFile) string {
+	return b.refusalLeavingOut(round, verdict, ledger, "")
+}
+
+// refusalLeavingOut is judgmentRefusal's check with the findings and open ledger entries of class leftOut not counted by either BLOCKING check.
+// An empty leftOut counts every class, and an open BLOCKING entry with no class is always counted.
+func (b *Bouncer) refusalLeavingOut(round int, verdict bouncerVerdict, ledger ledgerFile, leftOut burlerengine.Class) string {
 	if verdict == verdictConverged {
 		for _, entry := range ledger.Entries {
-			if entry.Status == "open" && entry.Severity == burlerengine.SeverityBlocking {
+			if entry.Status == "open" && entry.Severity == burlerengine.SeverityBlocking && (leftOut == "" || entry.Class != leftOut) {
 				return fmt.Sprintf("ledger key %q is open at severity BLOCKING", entry.Key)
 			}
 		}
@@ -1036,12 +1059,20 @@ func (b *Bouncer) judgmentRefusal(round int, verdict bouncerVerdict, ledger ledg
 			return fmt.Sprintf("the review does not parse: %v", err)
 		}
 		for _, finding := range findings {
-			if finding.Severity == burlerengine.SeverityBlocking {
+			if finding.Severity == burlerengine.SeverityBlocking && (leftOut == "" || finding.Class != leftOut) {
 				return fmt.Sprintf("review finding %q is BLOCKING", finding.ID)
 			}
 		}
 	}
+	return b.droppedKeyRefusal(round, ledger)
+}
 
+// droppedKeyRefusalPrefix opens the refusal droppedKeyRefusal returns.
+const droppedKeyRefusalPrefix = "the ledger drops key "
+
+// droppedKeyRefusal returns why a ledger of round that drops a key of the previous round's ledger does not stand, or "" when it keeps every key.
+// Only keys are compared, and a previous ledger that cannot be read or parsed is warned about and skips the check.
+func (b *Bouncer) droppedKeyRefusal(round int, ledger ledgerFile) string {
 	if round < 2 {
 		return ""
 	}
@@ -1060,7 +1091,7 @@ func (b *Bouncer) judgmentRefusal(round int, verdict bouncerVerdict, ledger ledg
 	}
 	for _, entry := range previous.Entries {
 		if !kept[entry.Key] {
-			return fmt.Sprintf("the ledger drops key %q of round %d's ledger", entry.Key, round-1)
+			return fmt.Sprintf("%s%q of round %d's ledger", droppedKeyRefusalPrefix, entry.Key, round-1)
 		}
 	}
 	return ""
@@ -1402,12 +1433,17 @@ func (b *Bouncer) budgetReached(round int) bool {
 	return ok && count >= budget
 }
 
-// escalate hands round to the run's parent and returns Awaiting with the ledger pointer and the parent notice.
+// escalate hands round to the run's parent with no cause detail, as escalateWith does.
+func (b *Bouncer) escalate(round int, cause EscalationCause, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	return b.escalateWith(round, cause, "", ptr)
+}
+
+// escalateWith hands round to the run's parent and returns Awaiting with the ledger pointer and the parent notice.
 // A round that already carries an escalation record rewrites nothing and returns the same Awaiting from the record's cause and notice.
-// Otherwise it renders the brief and the one-line notice and writes the record through writeEscalation;
+// Otherwise it renders the brief, carrying detail in the brief's cause_detail marker, and the one-line notice, and writes the record through writeEscalation;
 // a failed render warns and degrades to the plain Reason with no notice, while the record frontmatter is still written.
 // It calls ensureFocus(round + 1) so a continue resumes into a prepared round.
-func (b *Bouncer) escalate(round int, cause EscalationCause, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (b *Bouncer) escalateWith(round int, cause EscalationCause, detail string, ptr shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	recordedCause, notice, exists, err := readEscalation(b.cfg.RunDir, round)
 	if err != nil {
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("shedadapters: bouncer escalation record for round %d is unreadable: %v; way forward: fix or delete the file the error names, then run `lyx loom start`, which re-escalates the round", round, err)}, nil
@@ -1418,7 +1454,7 @@ func (b *Bouncer) escalate(round int, cause EscalationCause, ptr shedengine.Outp
 		cause = recordedCause
 		briefPath = escalationPath(b.cfg.RunDir, round)
 	} else {
-		brief, renderedNotice, rerr := b.renderEscalation(round, cause)
+		brief, renderedNotice, rerr := b.renderEscalation(round, cause, detail)
 		if rerr != nil {
 			logger.Warn("shedadapters: bouncer escalation render failed; escalating with the plain Reason", "producer", b.cfg.Name, "engine", bouncerEngineLabel, "round", round, "cause", rerr)
 		}
@@ -1437,8 +1473,9 @@ func (b *Bouncer) escalate(round int, cause EscalationCause, ptr shedengine.Outp
 
 // renderEscalation renders round's escalation brief and parent notice stencils.
 // The brief's decide step is the capped fragment at or past the hard cap and the open one otherwise.
+// The brief's cause_detail marker carries detail and renders as nothing when detail is empty.
 // The notice interpolates only the slug and the brief path.
-func (b *Bouncer) renderEscalation(round int, cause EscalationCause) (brief, notice string, err error) {
+func (b *Bouncer) renderEscalation(round int, cause EscalationCause, detail string) (brief, notice string, err error) {
 	briefTemplate, err := stencilstore.Read(b.cfg.StencilsDir, "bouncer-template-escalation")
 	if err != nil {
 		return "", "", fmt.Errorf("read escalation brief stencil: %w", err)
@@ -1459,11 +1496,12 @@ func (b *Bouncer) renderEscalation(round int, cause EscalationCause) (brief, not
 	if err != nil {
 		return "", "", fmt.Errorf("read parent notice stencil: %w", err)
 	}
-	briefBytes, err := stencil.Fill(briefTemplate, map[string]string{
+	briefBytes, err := stencil.FillOptional(briefTemplate, map[string]string{
 		"segment":              b.cfg.Name,
 		"slug":                 b.cfg.Slug,
 		"round":                strconv.Itoa(round),
 		"cause":                string(cause),
+		"cause_detail":         detail,
 		"review_path":          filepath.Join(b.cfg.RunDir, b.cfg.ReportName(round)),
 		"ledger_path":          ledgerPath(b.cfg.RunDir, round),
 		"verdict_path":         verdictPath(b.cfg.RunDir, round),
@@ -1471,7 +1509,7 @@ func (b *Bouncer) renderEscalation(round int, cause EscalationCause) (brief, not
 		"worktree":             b.cfg.WorktreeRoot,
 		"decide_options":       strings.TrimSpace(string(decideBytes)),
 		"judge_stencil_path":   stencilstore.Path(b.cfg.StencilsDir, "bouncer-template-judge"),
-	})
+	}, []string{"cause_detail"})
 	if err != nil {
 		return "", "", fmt.Errorf("fill escalation brief stencil: %w", err)
 	}
@@ -1489,6 +1527,7 @@ func (b *Bouncer) renderEscalation(round int, cause EscalationCause) (brief, not
 // the segment, the round and the cause, the brief path when one was rendered, the verbs that record the decision, and the resume command.
 // The circling verbs take the slug, while the resume command addresses the cwd worktree's own run.
 // At or past the hard cap, whatever the cause, the decide clause names accept alone.
+// For cause decision the decide clause opens with recording the answer through `lyx loom decision add`.
 func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath string) string {
 	verbSuffix := ""
 	if b.cfg.Slug != "" {
@@ -1498,10 +1537,14 @@ func (b *Bouncer) escalationReason(round int, cause EscalationCause, briefPath s
 	if briefPath != "" {
 		reason += fmt.Sprintf("; brief at %s", briefPath)
 	}
-	if b.atHardCap(round) {
-		return reason + fmt.Sprintf("; the round is at or past the perch's hard cap, so it can only be accepted: decide with `lyx loom circling accept%s`, then run `lyx loom resume` in the task worktree to resume", verbSuffix)
+	recordAnswer := ""
+	if cause == EscalationDecision {
+		recordAnswer = fmt.Sprintf("record the answer with `lyx loom decision add%s`, then ", verbSuffix)
 	}
-	return reason + fmt.Sprintf("; decide with `lyx loom circling accept%s` or `lyx loom circling continue%s`, then run `lyx loom resume` in the task worktree to resume", verbSuffix, verbSuffix)
+	if b.atHardCap(round) {
+		return reason + fmt.Sprintf("; the round is at or past the perch's hard cap, so it can only be accepted: %sdecide with `lyx loom circling accept%s`, then run `lyx loom resume` in the task worktree to resume", recordAnswer, verbSuffix)
+	}
+	return reason + fmt.Sprintf("; %sdecide with `lyx loom circling accept%s` or `lyx loom circling continue%s`, then run `lyx loom resume` in the task worktree to resume", recordAnswer, verbSuffix, verbSuffix)
 }
 
 // seedCall runs the Bouncer's seed pass for round 1: archive round 1's stale focus file, attempt

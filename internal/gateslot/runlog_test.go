@@ -24,7 +24,7 @@ func TestWriteRunRecord(t *testing.T) {
 
 		dir := RunLogDir(t.TempDir())
 		want := RunRecord{
-			Worktree: "/hub/slug", Slug: "slug", TierList: []int{0, 1}, GateKey: "merge-in", Tier: 1,
+			Worktree: "/hub/slug", Slug: "slug", TierList: []int{0, 1}, GateKey: "parent-align", Tier: 1,
 			Command: "go test ./...", RunDir: "/hub/slug/internal/x", ScopeForm: "--all", Slots: 2,
 			WaitStart: now.Add(-time.Minute), Start: now.Add(-30 * time.Second), End: now, WallSec: 30,
 			ExitCode: 1, TimedOut: false, Outcome: "failed", GuardStep: true, Carried: true,

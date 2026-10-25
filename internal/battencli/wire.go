@@ -34,14 +34,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
-	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -970,9 +968,9 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				}
 				return sheddriver.RestepRecorded(records, status), nil
 			},
-			// HandBack marks a blocked landing halt over the child status's current producer and error, so the binary re-step leaves it to the orch.
+			// HandBack marks a blocked landing halt or decision halt over the child status's current producer and error, so the binary re-step leaves it to the orch.
 			HandBack: func(status shedengine.Status) bool {
-				return status.State == shedengine.StateBlocked && landingshed.HandsBack(status.CurrentProducer, status.Error)
+				return status.State == shedengine.StateBlocked && arbiterstop.HandsBack(status.CurrentProducer, status.Error)
 			},
 			// PauseRequested reads batten's own status file, the one `lyx batten pause` writes, so the in-call wait notices a pause within one check.
 			PauseRequested: pauseRequested(location, slug),
@@ -999,19 +997,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				}
 				return taskLocation.AnchorPath(), nil
 			},
-			// ReadDecision, DriverAlive and ReviewWait resolve the task worktree on Call like every seam here, never at wiring time.
-			ReviewWait: func() (string, error) {
-				taskLocation, err := locateTask()
-				if err != nil {
-					return "", err
-				}
-				store := parentreview.Store{Root: loomengine.LoomParentReviewDir(taskLocation), LockDir: loomengine.LoomParentReviewLockDir(taskLocation)}
-				note, err := store.WaitNote()
-				if err != nil || note == "" {
-					return "", err
-				}
-				return "parent review: " + note, nil
-			},
+			// ReadDecision and DriverAlive resolve the task worktree on Call like every seam here, never at wiring time.
 			// No verb writes an approval or rejection record any more, so an awaiting child is never resumed on an operator decision.
 			ReadDecision: func() (battenshed.ChildDecision, bool, error) {
 				return battenshed.ChildDecision{}, false, nil

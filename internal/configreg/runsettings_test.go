@@ -214,22 +214,15 @@ func TestPrepareRunSettings(t *testing.T) {
 		},
 		{
 			name:        "D4-closed key of a per-worktree module",
-			settings:    map[string]any{"loom": map[string]any{"parent_review_wait_min": float64(0)}},
-			wantRefusal: "parent_review_wait_min",
+			settings:    map[string]any{"loom": map[string]any{"discussion_advisors": []any{}}},
+			wantRefusal: "discussion_advisors",
 			wantModule:  "loom",
 			wantInvalid: true,
 		},
 		{
-			name:        "guard key skip_alignment is closed to run settings",
-			settings:    map[string]any{"loom": map[string]any{"skip_alignment": true}},
-			wantRefusal: "skip_alignment",
-			wantModule:  "loom",
-			wantInvalid: true,
-		},
-		{
-			name:     "alignment_timeout_min is open to run settings",
-			settings: map[string]any{"loom": map[string]any{"alignment_timeout_min": float64(10)}},
-			wantDocs: map[string]string{"loom": "alignment_timeout_min: 10\n"},
+			name:     "a retired loom key migrates away at read time",
+			settings: map[string]any{"loom": map[string]any{"skip_alignment": true, "plan_max_bounces": float64(2)}},
+			wantDocs: map[string]string{"loom": "plan_max_bounces: 2\n"},
 		},
 		{
 			name:        "driver_kind outside llm and go is refused by loom's CheckValues",

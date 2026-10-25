@@ -102,11 +102,20 @@ lenses:
     renamed symbols, and examples that would no longer compile or run as
     written. Report anything else you notice too — emphasis, never exclusion.
   goal-scope: |
-    Focus on the record against its board entry: whether the stated goal is
-    met, scope boundaries are explicit, nothing the entry asks for is missing,
-    nothing unlicensed was added, no deferral or MVP phase hides in the text,
-    and whether this is the right thing to build at all. Report anything else
-    you notice too — emphasis, never exclusion.
+    Own the record's fit with its board entry. Read `lyx board list` once and
+    `lyx board get` for this task, then up to four board notes titled
+    `Decision for <slug>:` for this task, newest first, by `lyx board get`;
+    that is at most six tool calls. A board note titled `Decision for <slug>:`
+    for this task, and the record's `Added after Discussion` entries, are
+    parent decisions and win over the entry body. Check the record against the
+    entry: a goal point left out, work that belongs to another entry, a
+    direction the entry rules out, unlicensed work, or a deferral. Each is an
+    ordinary finding for the fixer when the writer could settle it. Report
+    doubt about what the task is for as a finding of class `decision`, phrased
+    as a question for the run's parent. A question an `Added after Discussion`
+    entry or a decision note already settles is no finding. Your list: each
+    goal point of the entry and whether the record meets it, and each decision
+    note you read and any the list names that you could not reach.
   pattern-fit: |
     Focus on fit with the repo's rules: check every decision or card against
     the repository's own rules it touches, the PATTERN.md entries and pattern/
@@ -133,9 +142,32 @@ lenses:
     process a cited piece leans on. Report anything else you notice too —
     emphasis, never exclusion.
   board-fit: |
-    Focus on the record against every other board entry: planned work it
-    duplicates or contradicts, and a dependency it leaves unnamed. Report
-    anything else you notice too — emphasis, never exclusion.
+    Own the record's fit with the rest of the hub. Read `lyx board list` and
+    `lyx loom peers`, then up to four reads, nearest first, of: `lyx board get`
+    for a touching entry or for a `Decision for <slug>:` note for this task,
+    `lyx loom peers show <slug> --record decision` or `--record plan` for a
+    close peer, and a read-only `git show` of a parent commit that
+    `lyx loom peers` lists; that is at most six tool calls. Name this task's
+    decision notes from the `lyx board list` titles you already hold, and spend
+    one of your four reads on a note before raising a parent question that
+    note's title touches. A board note titled `Decision for <slug>:` for this
+    task, and the record's `Added after Discussion` entries, are parent
+    decisions and win over the entry body. Report as a `decision` finding,
+    phrased as a question for the run's parent: the entry plainly outdated,
+    because landed work overtook it or another board entry or run contradicts
+    it; a design conflict with another run, where both change the same
+    behaviour or the same PATTERN entry in different ways, or a decision in one
+    contradicts or duplicates one in the other; or a landed parent commit that
+    contradicts one of the record's decisions, or already makes one in a way
+    the writer cannot settle by citing or dropping the decision. A landed
+    commit that already makes a decision the writer can cite or drop is an
+    ordinary finding, and so is any ordinary misalignment the writer could
+    settle. A text-only overlap (the same file or package at different places)
+    and a shared bookkeeping line (a module-table line, a PATTERN index line)
+    are no finding, and neither is a question an `Added after Discussion` entry
+    or a decision note already settles. Your list: each entry, peer and parent
+    commit you checked, with overlap, conflict or none, and each decision note
+    you read and any you could not reach.
   decision-coverage: |
     Focus on the plan against the decision record: apply the Plan-Review
     rubric's "Fidelity to the answer key". Report anything else you notice
@@ -374,6 +406,8 @@ fans:
     - existing-paths
     - bound-breaker
     - walkthrough
+    - goal-scope
+    - board-fit
   review-plan:
     - affected-set
     - guard-reach
