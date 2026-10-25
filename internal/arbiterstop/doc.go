@@ -13,4 +13,10 @@
 // So is a decision halt, a blocked stop whose error opens with the decision halt prefix.
 // HandsBack is the one predicate of a blocked stop that goes to the run's parent: a landing halt or a decision halt.
 // Every refusal ends with HandBackWayForward.
+//
+// The rule is per recipe.
+// Readers.Batten, set by NewBattenReaders, selects batten's rule: a stop the tackler escalated is eligible, error stops of any kind and blocked stops included, unless it is a hand-back to the run's parent.
+// The hand-backs are a spent bounce budget, an unmet precondition and a blocked Land stop that honours a pause, and each is refused with a refusal ending in BattenHandBackWayForward.
+// Batten has no landing halt, so no batten stop is refused as one.
+// Every other reader set answers by the loom rule above, which loom and darn share.
 package arbiterstop

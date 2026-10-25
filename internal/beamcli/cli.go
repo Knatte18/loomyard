@@ -4,10 +4,19 @@ package beamcli
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
@@ -17,15 +26,149 @@ import (
 func Command() *cobra.Command {
 	beam := &cobra.Command{
 		Use:   "beam",
-		Short: "make, promote and land beams, the long-lived pairs that group board work",
+		Short: "make, promote, land and start beams, the long-lived pairs that group board work",
 		Long: `A beam is a long-lived pair that groups board work: its tasks fork from the
-beam's own branch and land back into it, and it can run an orch of its own.
-Every verb runs from the hub's prime worktree and from any beam, and acts on the
-prime's location.`,
+beam's own branch and land back into it, it can run an orch of its own, and its
+dobby drives the runs of its tasks. Every verb runs from the hub's prime worktree
+and from any beam, and acts on the prime's location.`,
 		RunE: clihelp.GroupRunE,
 	}
-	beam.AddCommand(createCmd(), promoteCmd(), landCmd())
+	beam.AddCommand(createCmd(), promoteCmd(), landCmd(), startCmd(), dobbyCmd())
 	return beam
+}
+
+// startResult is the envelope of `beam start`: the outcome per worktree.
+type startResult struct {
+	Dobbies []startEntry `json:"dobbies"`
+}
+
+// startEntry is one worktree's outcome of `beam start`: started or live, else why the dobby was refused or failed.
+type startEntry struct {
+	Worktree string `json:"worktree"`
+	Outcome  string `json:"outcome"`
+	Detail   string `json:"detail,omitempty"`
+}
+
+// startCmd returns the `beam start` verb.
+func startCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "start",
+		Short:       "start the dobby of the prime and of every beam this machine owns",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Starts the dobby, the daemon that starts a beam's released tasks and drives their
+batten runs, for the hub's prime and for every local beam this machine owns. A dobby
+that is live already is left alone, so the verb is idempotent. A prime no owner is
+recorded for is claimed for this machine first; a prime another machine owns is
+reported with its owner, and "lyx adopt --prime" takes it over.
+
+It runs from the prime and from any beam, and prints "started" or "live" per worktree.
+
+Example:
+  lyx beam start`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runVerb(cmd, func(_ context.Context, _ string, prime *lyxcwd.Location) (any, error) {
+				report, err := dobbyengine.EnsureLive(hubgeom.DobbyStart(prime))
+				result := startResult{Dobbies: make([]startEntry, 0, len(report.Entries))}
+				for _, entry := range report.Entries {
+					result.Dobbies = append(result.Dobbies, startEntry{Worktree: entry.Worktree, Outcome: entry.Outcome, Detail: entry.Detail})
+				}
+				if err != nil {
+					return result, fmt.Errorf("lyx beam start: %w; way forward: fix the cause each names, then run `lyx beam start` again", err)
+				}
+				return result, nil
+			})
+		},
+	}
+}
+
+// dobbyCmd returns the hidden `beam dobby` verb, which `lyx beam start` launches as a detached process.
+func dobbyCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "dobby <worktree-root>",
+		Short:       "run the dobby daemon of the worktree at <worktree-root>",
+		Hidden:      true,
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
+		Long: `Runs the dobby of the hub's prime or of a local beam until it is signalled or another
+machine owns the beam. It is launched by "lyx beam start", never by hand.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			clihelp.SetExit(cmd.Context(), runDobby(ctx, cmd.OutOrStdout(), args[0]))
+			return nil
+		},
+	}
+}
+
+// runDobby places the worktree at root, registers this process as its dobby and runs it until ctx ends, and prints the outcome.
+// A worktree dobby cannot be placed is refused before anything is registered or locked, and a dobby that is live already ends the call at once.
+func runDobby(ctx context.Context, out io.Writer, root string) int {
+	prime, geom, err := placeDobby(root)
+	if err != nil {
+		return output.Err(out, err.Error())
+	}
+	if live, err := dobbyengine.Live(geom); err == nil && live {
+		return output.Ok(out, map[string]any{"already_running": true})
+	}
+	if err := registerDobby(fabricengine.RunProcDir(prime.HubPath), geom); err != nil {
+		return output.Err(out, fmt.Sprintf("lyx beam dobby: register the dobby: %v", err))
+	}
+	deps, err := hubDobbyDeps(prime, geom)
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("lyx beam dobby: wire the dobby over the hub: %v", err))
+	}
+	switch err := dobbyengine.Run(ctx, geom, deps); {
+	case errors.Is(err, dobbyengine.ErrDobbyRunning):
+		return output.Ok(out, map[string]any{"already_running": true})
+	case err != nil:
+		return output.Err(out, fmt.Sprintf("lyx beam dobby: %v", err))
+	}
+	return output.Ok(out, map[string]any{"stopped": true})
+}
+
+// placeDobby resolves the worktree at root into the prime's location and the dobby's geometry.
+// Only the prime and a local pair whose origin record carries the beam mark are placed, as `lyx beam start` reads them; any other directory is refused naming that verb.
+func placeDobby(root string) (*lyxcwd.Location, dobbyengine.Geometry, error) {
+	refuse := func(format string, args ...any) error {
+		return fmt.Errorf("lyx beam dobby: "+format+"; way forward: run `lyx beam start`, which starts the dobby of the prime and of each beam this machine owns", args...)
+	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return nil, dobbyengine.Geometry{}, refuse("resolve %s: %v", root, err)
+	}
+	location, err := lyxcwd.ResolveWorktree(absolute)
+	if err != nil {
+		return nil, dobbyengine.Geometry{}, refuse("%s is not a worktree of a hub: %v", absolute, err)
+	}
+	if err := fabricengine.RequireDrivableWorktree(location); err != nil {
+		return nil, dobbyengine.Geometry{}, refuse("%s is not a worktree a dobby drives: %v", absolute, err)
+	}
+	primeName, err := fabricengine.PrimeName(location)
+	if err != nil {
+		return nil, dobbyengine.Geometry{}, refuse("cannot tell the prime of the hub of %s: %v", absolute, err)
+	}
+	prime := location
+	if location.WorktreeName != primeName {
+		origin, found, err := fabricengine.ReadOrigin(location)
+		if err != nil {
+			return nil, dobbyengine.Geometry{}, refuse("cannot read the origin record of %s: %v", location.WorktreeName, err)
+		}
+		if !found || !origin.Beam {
+			return nil, dobbyengine.Geometry{}, refuse("%s is neither the prime nor a beam", location.WorktreeName)
+		}
+		if prime, err = lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName)); err != nil {
+			return nil, dobbyengine.Geometry{}, refuse("resolve the prime of the hub: %v", err)
+		}
+	}
+	geom, err := hubgeom.DobbyGeometry(prime, location.WorktreeName)
+	if err != nil {
+		return nil, dobbyengine.Geometry{}, refuse("%v", err)
+	}
+	return prime, geom, nil
 }
 
 // createCmd returns the `beam create` verb.
@@ -72,8 +215,8 @@ func landCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Ends the beam <slug> with a landing run over batten and the beam recipe: the run
 writes the beam's description, merges the beam into its parent worktree's branch,
-and removes the beam's pair, whose board entry is then done. The window of the run
-opens in the beam's parent worktree's session.
+and removes the beam's pair, whose board entry is then done. The landing starts as a
+detached first pass, driven on by the beam's parent worktree's dobby.
 
 It runs from the prime and from any beam but the beam itself, whose pair the landing
 removes, and refuses while work remains under the beam:

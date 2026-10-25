@@ -1,6 +1,6 @@
 //go:build tier0
 
-// innerrun_wait_test.go covers the inner-run watch's in-call wait: what ends it, what it ignores, and when it decodes the child's status file.
+// innerrun_wait_test.go covers the inner-run's one check per pass: what ends it, what it ignores, and when it decodes the child's status file.
 // The subtest that captures log output replaces the process-global logger output, so the test does not run in parallel.
 
 package battenshed
@@ -10,15 +10,17 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// waitChild is a fake child whose status the test rewrites between checks.
+// waitChild is a fake child whose status the test rewrites between passes.
 type waitChild struct {
 	current shedengine.Status
 	reads   int
@@ -29,12 +31,12 @@ func (c *waitChild) read(string, string) (shedengine.Status, bool, error) {
 	return c.current, true, nil
 }
 
-// TestInnerRun_WaitEndsOnlyOnAnEvent drives one running child through the events that end the wait and the writes it must notice.
+// TestInnerRun_WaitEndsOnlyOnAnEvent drives one running child through the events that end a pass and the writes it must notice.
 func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 	running := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Review"}
 	blocked := shedengine.Status{State: shedengine.StateBlocked, Error: "halted", CurrentProducer: "Plan-Review"}
 
-	// newWait builds the deps of a running fake child whose clock advances one second per check, and returns a constructor of its producer, to be called once the test has adjusted the deps.
+	// newWait builds the deps of a running fake child whose clock advances one second per pass, and returns a constructor of its producer, to be called once the test has adjusted the deps.
 	newWait := func(t *testing.T, probe time.Duration) (*fakeClock, *waitChild, *InnerRunDeps, func() shedengine.ShedProducer) {
 		t.Helper()
 		clock := &fakeClock{}
@@ -44,7 +46,7 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 		deps.NoticeProbe = probe
 		clock.pauseAtSleep = 0
 		scratchDir := t.TempDir()
-		// The spawn is already confirmed, so the start read is the only one before the first check.
+		// The spawn is already confirmed, so the start read is the only one in a pass before its check.
 		if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), pidMarker(os.Getpid()), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -61,9 +63,9 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 		return ptr
 	}
 
-	t.Run("RunningReturnsNothingUntilTheStateChanges", func(t *testing.T) {
+	t.Run("RunningYieldsUntilTheStateChanges", func(t *testing.T) {
 		clock, child, _, build := newWait(t, time.Hour)
-		p := build()
+		p := clock.passes(build, time.Second)
 		clock.onSleep = func(call int) {
 			if call == 50 {
 				child.current = blocked
@@ -72,10 +74,10 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 		}
 		first := call(t, p)
 		if clock.sleepCalls != 50 || first.Path != "child running → blocked at Plan-Review" {
-			t.Fatalf("returned after %d checks with Path %q; want the change at check 50 named in its Path", clock.sleepCalls, first.Path)
+			t.Fatalf("returned after %d passes with Path %q; want the change at pass 50 named in its Path", clock.sleepCalls, first.Path)
 		}
-		if child.reads != 2 {
-			t.Errorf("status reads = %d; want one at the start and one for the change, none between", child.reads)
+		if child.reads != 51 {
+			t.Errorf("status reads = %d; want one per pass and none besides", child.reads)
 		}
 
 		clock.onSleep = func(call int) {
@@ -90,9 +92,20 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 		}
 	})
 
-	t.Run("AWriteBetweenTheStartReadAndTheFirstCheckIsSeen", func(t *testing.T) {
+	t.Run("ACheckThatEndsNothingYieldsWithAnEmptyPointerAndNoSleep", func(t *testing.T) {
+		clock, _, _, build := newWait(t, time.Hour)
+		outcome, ptr, err := build().Call(context.Background())
+		if outcome != shedengine.Yield || !reflect.DeepEqual(ptr, shedengine.OutputPointer{}) || err != nil {
+			t.Fatalf("Call() = %v %+v %v; want a Yield with an empty pointer and no error", outcome, ptr, err)
+		}
+		if clock.sleepCalls != 0 {
+			t.Errorf("sleep calls = %d; want a pass to wait for nothing", clock.sleepCalls)
+		}
+	})
+
+	t.Run("AWriteBetweenTheStartReadAndTheCheckIsSeen", func(t *testing.T) {
 		clock, child, deps, build := newWait(t, time.Hour)
-		// The write lands while the start read is returning: after the baseline stat, before the first check.
+		// The write lands while the start read is returning: after the baseline stat, before the check.
 		deps.ReadStatus = func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 			status, found, err := child.read(statusPath, statusLockPath)
 			if child.reads == 1 {
@@ -102,29 +115,29 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 			return status, found, err
 		}
 		ptr := call(t, build())
-		if clock.sleepCalls != 1 || ptr.Path != "child running → blocked at Plan-Review" {
-			t.Errorf("returned after %d checks with Path %q; want the racing write seen at the first check", clock.sleepCalls, ptr.Path)
+		if clock.sleepCalls != 0 || ptr.Path != "child running → blocked at Plan-Review" {
+			t.Errorf("returned after %d sleeps with Path %q; want the racing write seen by the first pass's own check", clock.sleepCalls, ptr.Path)
 		}
 	})
 
-	t.Run("AWriteThatKeepsTheModificationTimeIsSeenWithinTheNoticeProbe", func(t *testing.T) {
+	t.Run("AWriteThatKeepsTheModificationTimeIsSeenAtTheNextPass", func(t *testing.T) {
 		clock, child, _, build := newWait(t, 3*time.Second)
 		clock.onSleep = func(call int) {
 			if call == 1 {
 				child.current = blocked
 			}
 		}
-		ptr := call(t, build())
-		if clock.sleepCalls != 3 || ptr.Path != "child running → blocked at Plan-Review" {
-			t.Errorf("returned after %d checks with Path %q; want the unstamped write seen at the probe, the third check", clock.sleepCalls, ptr.Path)
+		ptr := call(t, clock.passes(build, time.Second))
+		if clock.sleepCalls != 1 || ptr.Path != "child running → blocked at Plan-Review" {
+			t.Errorf("returned after %d sleeps with Path %q; want the unstamped write seen at the pass after it", clock.sleepCalls, ptr.Path)
 		}
 	})
 
-	t.Run("APauseReturnsWithinOneCheckAndEachPauseIsItsOwnPath", func(t *testing.T) {
+	t.Run("APauseReturnsAtThePassItWasSetAndEachPauseIsItsOwnPath", func(t *testing.T) {
 		clock, _, deps, build := newWait(t, time.Hour)
 		paused := false
 		deps.PauseRequested = func() (bool, error) { return paused, nil }
-		p := build()
+		p := clock.passes(build, time.Second)
 		clock.onSleep = func(call int) {
 			if call == 5 {
 				paused = true
@@ -132,7 +145,7 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 		}
 		first := call(t, p)
 		if clock.sleepCalls != 5 || first.Path != "pause requested at 2026-01-01T12:00:05Z" {
-			t.Fatalf("returned after %d checks with Path %q; want the pause seen at the check it was set", clock.sleepCalls, first.Path)
+			t.Fatalf("returned after %d sleeps with Path %q; want the pause seen at the pass after it was set", clock.sleepCalls, first.Path)
 		}
 
 		paused = false
@@ -147,7 +160,7 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 		}
 	})
 
-	t.Run("APauseFlagReadErrorIsWarnedOnceAndReadsAsNotPaused", func(t *testing.T) {
+	t.Run("APauseFlagReadErrorIsWarnedOnceAcrossPassesAndReadsAsNotPaused", func(t *testing.T) {
 		var buf bytes.Buffer
 		logger.SetOutput(&buf)
 		t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
@@ -160,9 +173,9 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 				clock.bumpStatus()
 			}
 		}
-		call(t, build())
+		call(t, clock.passes(build, time.Second))
 		if got := strings.Count(buf.String(), "could not read batten's own pause flag"); got != 1 {
-			t.Errorf("pause flag warnings over four checks = %d; want 1\nlog: %s", got, buf.String())
+			t.Errorf("pause flag warnings over four passes = %d; want 1\nlog: %s", got, buf.String())
 		}
 	})
 
@@ -175,16 +188,17 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 				}
 			}
 		}
-		ptr := call(t, build())
+		ptr := call(t, clock.passes(build, time.Second))
 		if clock.sleepCalls != 2 || !strings.Contains(ptr.Path, clock.statusPath) {
-			t.Errorf("returned after %d checks with Path %q; want the failed stat at check 2 naming %s", clock.sleepCalls, ptr.Path, clock.statusPath)
+			t.Errorf("returned after %d sleeps with Path %q; want the failed stat at pass 3 naming %s", clock.sleepCalls, ptr.Path, clock.statusPath)
 		}
 	})
 }
 
-// TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker asserts the wait keeps the batten-watched marker's answer: asked at the start of a Call and at most once per notice probe after that, an error read as not held with one Warn per change of answer, and a nil seam read as not held.
+// TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker asserts the producer keeps the batten-watched marker's answer: asked once at the start of every pass, an error read as not held with one Warn per change of answer across passes, and a nil seam read as not held.
 func TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker(t *testing.T) {
-	build := func(t *testing.T, probe time.Duration, markWatched func(context.Context) (bool, error), pauseAt int) (*fakeClock, *innerRunProducer) {
+	// passesUntilPause runs one fresh producer per pass until the pause ends the run, and returns the last producer.
+	passesUntilPause := func(t *testing.T, probe time.Duration, markWatched func(context.Context) (bool, error), pauseAt int) *innerRunProducer {
 		t.Helper()
 		clock := &fakeClock{}
 		_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
@@ -195,17 +209,24 @@ func TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker(t *testing.T) {
 		deps.NoticeProbe = probe
 		deps.MarkWatched = markWatched
 		clock.pauseAtSleep = pauseAt
-		return clock, NewInnerRun("innerrun", "myslug", deps, 10*time.Second, scratchDir, testGrace).(*innerRunProducer)
+		for {
+			p := NewInnerRun("innerrun", "myslug", deps, 10*time.Second, scratchDir, testGrace).(*innerRunProducer)
+			outcome, _, err := p.Call(context.Background())
+			if err != nil {
+				t.Fatalf("Call() error = %v", err)
+			}
+			if outcome != shedengine.Yield {
+				return p
+			}
+			clock.Sleep(context.Background(), 10*time.Second)
+		}
 	}
 
-	t.Run("AsksAtTheStartAndOncePerNoticeProbe", func(t *testing.T) {
+	t.Run("AsksAtTheStartOfEveryPass", func(t *testing.T) {
 		asks := 0
-		_, p := build(t, 30*time.Second, func(context.Context) (bool, error) { asks++; return true, nil }, 7)
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v", err)
-		}
-		if asks != 3 || !p.watched {
-			t.Errorf("asked %d times and recorded held=%v over seven 10s checks; want 3 asks (the start, 30s, 60s) and held", asks, p.watched)
+		p := passesUntilPause(t, 30*time.Second, func(context.Context) (bool, error) { asks++; return true, nil }, 7)
+		if asks != 8 || !p.watched {
+			t.Errorf("asked %d times and recorded held=%v over eight passes; want one ask per pass and held", asks, p.watched)
 		}
 	})
 
@@ -215,16 +236,13 @@ func TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker(t *testing.T) {
 		t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
 
 		asks := 0
-		_, p := build(t, 0, func(context.Context) (bool, error) {
+		p := passesUntilPause(t, 0, func(context.Context) (bool, error) {
 			asks++
 			if asks == 4 {
 				return true, nil
 			}
 			return false, errors.New("task worktree gone")
 		}, 3)
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v", err)
-		}
 		if got := strings.Count(buf.String(), "could not write or remove the batten-watched marker"); got != 1 {
 			t.Errorf("warnings over three failed asks = %d; want 1\nlog: %s", got, buf.String())
 		}
@@ -234,12 +252,66 @@ func TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker(t *testing.T) {
 	})
 
 	t.Run("ANilSeamReadsAsNotHeld", func(t *testing.T) {
-		_, p := build(t, 0, nil, 2)
-		if _, _, err := p.Call(context.Background()); err != nil {
-			t.Fatalf("Call() error = %v", err)
-		}
+		p := passesUntilPause(t, 0, nil, 2)
 		if p.watched {
 			t.Error("recorded held = true with no seam; want false")
 		}
 	})
+}
+
+// TestInnerRun_SpawnHoldYields asserts a pass at Run-Shed under a covering pause yields at once with the pause reason and spawns nothing, and that a pause lifted between two Calls lets the second one spawn.
+func TestInnerRun_SpawnHoldYields(t *testing.T) {
+	t.Parallel()
+	covering := pauserecord.Coverage{Covered: true, Entry: pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: time.Date(2026, 1, 1, 11, 0, 0, 0, time.UTC)}}
+	running := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Review"}
+
+	tests := []struct {
+		name string
+		// covered is the pause record's reading at each Call, the last one holding once exhausted.
+		covered []bool
+		// wantSpawns is the number of spawns after each Call.
+		wantSpawns []int
+		// wantReason is the prefix of the reason file after the last Call; empty skips the check.
+		wantReason string
+	}{
+		{name: "a covered absent-status child yields at once with the pause reason and no spawn", covered: []bool{true}, wantSpawns: []int{0}, wantReason: "held by the pause of hub since 2026-01-01T11:00:00Z"},
+		{name: "a pause lifted between two Calls spawns once at the second", covered: []bool{true, false}, wantSpawns: []int{0, 1}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			clock := &fakeClock{}
+			// The child has no status until the spawn, so every Call meets the spawn hold first.
+			spawned := false
+			_, spawns, deps := newInnerRunDeps(t, nil, nil, []statusResult{{found: false}}, clock)
+			deps.Spawn = func(context.Context) error { *spawns++; spawned = true; return nil }
+			deps.ReadStatus = func(string, string) (shedengine.Status, bool, error) { return running, spawned, nil }
+			call := 0
+			deps.Pause = func() (pauserecord.Coverage, error) {
+				if tt.covered[min(call, len(tt.covered)-1)] {
+					return covering, nil
+				}
+				return pauserecord.Coverage{}, nil
+			}
+			scratchDir := t.TempDir()
+			producer := NewInnerRun("innerrun", "myslug", deps, time.Second, scratchDir, testGrace)
+
+			for call = 0; call < len(tt.wantSpawns); call++ {
+				outcome, pointer, err := producer.Call(context.Background())
+				if err != nil || outcome != shedengine.Yield || !reflect.DeepEqual(pointer, shedengine.OutputPointer{}) {
+					t.Fatalf("Call %d = %q %+v %v; want a Yield with an empty pointer", call, outcome, pointer, err)
+				}
+				if *spawns != tt.wantSpawns[call] {
+					t.Errorf("Spawn calls after Call %d = %d; want %d", call, *spawns, tt.wantSpawns[call])
+				}
+			}
+			if tt.wantReason == "" {
+				return
+			}
+			reason, err := os.ReadFile(StuckReasonFile(scratchDir, "innerrun"))
+			if err != nil || !strings.HasPrefix(string(reason), tt.wantReason) {
+				t.Errorf("reason file = %q, %v; want it to start with %q", reason, err, tt.wantReason)
+			}
+		})
+	}
 }

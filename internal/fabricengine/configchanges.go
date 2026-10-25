@@ -23,6 +23,13 @@ type ConfigChanges struct {
 	Tip string
 	// ParentTip is the SHA of the parent's weft branch tip.
 	ParentTip string
+	// Contents holds, per file in Files, the file's bytes at each of the three revisions.
+	Contents map[string]ConfigFileContents
+}
+
+// ConfigFileContents is one config file's bytes at the task's fork point, the task's tip and the parent's tip; a file absent at a revision is nil there.
+type ConfigFileContents struct {
+	Base, Tip, Parent []byte
 }
 
 // ReadConfigChanges reports which of configRels changed on taskBranch's weft branch away from both its fork point from parentBranch's weft branch and the parent's current tip.
@@ -30,6 +37,7 @@ type ConfigChanges struct {
 // an empty configRels returns an empty ConfigChanges without running git.
 // A file is reported only when the task tip differs from the merge-base and from the parent's tip,
 // so a parent-side change the task never took, one it took through a sync, and a task edit the parent holds identically all drop out.
+// For each reported file it also reads the bytes at the fork point, the task tip and the parent tip, so the caller can compare the files key by key.
 // A failure is wrapped naming both branches compared.
 // It writes nothing.
 func ReadConfigChanges(l *lyxcwd.Location, taskBranch, parentBranch string, configRels []string) (ConfigChanges, error) {
@@ -81,7 +89,37 @@ func ReadConfigChanges(l *lyxcwd.Location, taskBranch, parentBranch string, conf
 			files = append(files, name)
 		}
 	}
-	return ConfigChanges{Files: files, Base: base, Tip: tip, ParentTip: parentTip}, nil
+
+	contents := make(map[string]ConfigFileContents, len(files))
+	for _, name := range files {
+		var file ConfigFileContents
+		for _, read := range []struct {
+			rev string
+			dst *[]byte
+		}{{base, &file.Base}, {tip, &file.Tip}, {parentTip, &file.Parent}} {
+			if *read.dst, err = showFile(weftRepoRoot, read.rev, name); err != nil {
+				return fail("read "+name+" at "+read.rev, err)
+			}
+		}
+		contents[name] = file
+	}
+	return ConfigChanges{Files: files, Base: base, Tip: tip, ParentTip: parentTip, Contents: contents}, nil
+}
+
+// showFile returns the bytes of path at rev in the repo at dir, or nil when rev holds no such file.
+func showFile(dir, rev, path string) ([]byte, error) {
+	listed, err := gitexec.Run([]string{"ls-tree", "--name-only", rev, "--", path}, dir)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(listed) == "" {
+		return nil, nil
+	}
+	out, err := gitexec.Run([]string{"show", rev + ":" + path}, dir)
+	if err != nil {
+		return nil, err
+	}
+	return []byte(out), nil
 }
 
 // diffNames lists the sorted paths `git diff --name-only from to` reports in the repo at dir, limited by pathspec.

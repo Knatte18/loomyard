@@ -19,6 +19,26 @@ type IdleWatch struct {
 	firstSeenWaiting map[string]time.Duration
 }
 
+// Waiting returns a copy of the awake time each waiting agent was first seen waiting at, by agent name.
+// The readings mean something only against the same awake clock, which a caller restoring them keeps across processes.
+func (w *IdleWatch) Waiting() map[string]time.Duration {
+	waiting := make(map[string]time.Duration, len(w.firstSeenWaiting))
+	for name, first := range w.firstSeenWaiting {
+		waiting[name] = first
+	}
+	return waiting
+}
+
+// RestoreIdleWatch returns a watch with bound and the first-seen-waiting readings of waiting, which its next Observe treats as the earlier sightings.
+// The readings are copied, and are on the same awake clock as the Observe calls that follow.
+func RestoreIdleWatch(bound time.Duration, waiting map[string]time.Duration) *IdleWatch {
+	restored := make(map[string]time.Duration, len(waiting))
+	for name, first := range waiting {
+		restored[name] = first
+	}
+	return &IdleWatch{Bound: bound, firstSeenWaiting: restored}
+}
+
 // Observe records one reading taken at awake and reports whether no agent is busy and at least one has been waiting for at least Bound since Observe first saw it waiting.
 // An agent no longer waiting, or absent, drops its first-seen time; read false, an unreadable state, counts every agent as not waiting.
 // Awake is the caller's reading of a clock that does not run while the host is suspended, so suspended time never counts as waiting.

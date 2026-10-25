@@ -1,9 +1,8 @@
 //go:build tier0
 
-package loomcli
+package shedarbiter
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,17 +10,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// TestConsumeArbiterAttempt covers the re-launch hook over a temp status file and attempt directory with the real shedengine.Relaunch.
-// Rows with a refusal assert its message and the absent applied mark; success rows assert the applied mark and where the run stands; the numeric rows drive the hook's own parse of the attempt number.
-func TestConsumeArbiterAttempt(t *testing.T) {
+// TestConsumeAttempt covers the re-launch consumption over a temp status file and attempt directory with the real shedengine.Relaunch.
+// Rows with a refusal assert its message and the absent applied mark; success rows assert the applied mark and where the run stands.
+func TestConsumeAttempt(t *testing.T) {
 	t.Parallel()
 
 	const blocked = "Plan-Write"
@@ -32,8 +28,8 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 	}
 	resumeEnvelope := loomengine.ArbiterEnvelope{Verdict: loomengine.ArbiterVerdictResume, Reason: "safe"}
 	gotoPlanWriteEnvelope := loomengine.ArbiterEnvelope{Verdict: loomengine.ArbiterVerdictResume, Reason: "safe", Goto: blocked}
-	// arbiterVerdictInEffect leaves the run as the verdict's own goto to Plan-Write would.
-	arbiterVerdictInEffect := func(st *shedengine.Status) {
+	// verdictInEffect leaves the run as the verdict's own goto to Plan-Write would.
+	verdictInEffect := func(st *shedengine.Status) {
 		st.History = append(st.History, shedengine.HistoryEntry{Producer: "Plan-Write", Outcome: shedengine.OutcomeGoto})
 		st.CurrentProducer = "Plan-Write"
 		st.State = shedengine.StatePaused
@@ -51,9 +47,7 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 		// spawn changes the attempt record before it is written.
 		spawn func(a *loomengine.ArbiterAttempt)
 		// guard is the base request's goto guard.
-		guard shedengine.GotoGuard
-		// attemptArg drives loomConsumeAttempt with this argument instead of consumeArbiterAttempt.
-		attemptArg  string
+		guard       shedengine.GotoGuard
 		wantErr     string
 		wantProduce string
 		// wantHistory is the history length asserted on a success row when non-zero.
@@ -70,7 +64,7 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 		{
 			name:        "verdict file says resume under a precondition hand-on envelope",
 			envelope:    &loomengine.ArbiterEnvelope{Verdict: loomengine.ArbiterVerdictHandOn, Cause: sheddriver.CausePrecondition, Reason: "r", Question: "q"},
-			verdictYAML: arbiterResumeVerdict, wantErr: "not a resume",
+			verdictYAML: resumeVerdict, wantErr: "not a resume",
 		},
 		{name: "already applied", envelope: &resumeEnvelope, applied: true, wantErr: "already applied"},
 		{
@@ -107,17 +101,17 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 		},
 		{
 			name: "verdict already in effect is consumed with no second goto", envelope: &gotoPlanWriteEnvelope,
-			mutate: arbiterVerdictInEffect, wantProduce: "Plan-Write", wantHistory: 3,
+			mutate: verdictInEffect, wantProduce: "Plan-Write", wantHistory: 3,
 		},
 		{
 			name: "a pause the goto cleared does not refuse the in-effect admit", envelope: &gotoPlanWriteEnvelope,
 			spawn:  func(a *loomengine.ArbiterAttempt) { a.PauseBefore = "Plan-Bouncer" },
-			mutate: arbiterVerdictInEffect, wantProduce: "Plan-Write", wantHistory: 3,
+			mutate: verdictInEffect, wantProduce: "Plan-Write", wantHistory: 3,
 		},
 		{
 			name: "a pause added since the spawn refuses the in-effect admit", envelope: &gotoPlanWriteEnvelope,
 			mutate: func(st *shedengine.Status) {
-				arbiterVerdictInEffect(st)
+				verdictInEffect(st)
 				st.PauseAfter = "Plan-Write"
 			},
 			wantErr: "paused since the arbiter spawned",
@@ -149,9 +143,6 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 			wantErr: "the run moved",
 		},
 		{name: "a plain pause written after the call survives", envelope: &resumeEnvelope, wantProduce: "Plan-Bouncer", pauseAfterCall: true},
-		{name: "attempt number 0", attemptArg: "0", wantErr: "not a positive integer"},
-		{name: "attempt number -1", attemptArg: "-1", wantErr: "not a positive integer"},
-		{name: "attempt number x", attemptArg: "x", wantErr: "not a positive integer"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -186,7 +177,7 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 				}
 			}
 			if tt.verdictYAML != "" {
-				writeArbiterVerdictFile(t, attemptDir, tt.verdictYAML)
+				writeVerdictFile(t, attemptDir, tt.verdictYAML)
 			}
 			if tt.applied {
 				if err := loomengine.MarkArbiterApplied(attemptDir); err != nil {
@@ -207,26 +198,15 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 				t.Fatal(readErr)
 			}
 
-			var err error
-			if tt.attemptArg != "" {
-				c := &loomCLI{
-					location:  &lyxcwd.Location{HubPath: root, WorktreeName: "pair", AnchorRel: "."},
-					runID:     shedrun.SelfRunID,
-					shedPaths: shedbuild.ShedPaths{StatusPath: statusPath, LockPath: runLock, StatusLockPath: statusLock},
-					routing:   shedengine.Routing{Producers: producers},
-				}
-				err = c.loomConsumeAttempt(context.Background(), tt.attemptArg)
-			} else {
-				err = consumeArbiterAttempt(attemptDir, request)
-			}
+			err := ConsumeAttempt(attemptDir, request)
 
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("consume error = %v; want it to contain %q", err, tt.wantErr)
+					t.Fatalf("ConsumeAttempt() error = %v; want it to contain %q", err, tt.wantErr)
 				}
 				// A guard's refusal comes from Shed with the guard's own way forward, not the attempt's.
-				if tt.attemptArg == "" && tt.guard == nil && !strings.Contains(err.Error(), loomengine.ArbiterVerdictPath(attemptDir)) {
-					t.Errorf("consume error = %v; want it to name the verdict path", err)
+				if tt.guard == nil && !strings.Contains(err.Error(), loomengine.ArbiterVerdictPath(attemptDir)) {
+					t.Errorf("ConsumeAttempt() error = %v; want it to name the verdict path", err)
 				}
 				if applied, _ := loomengine.ArbiterApplied(attemptDir); applied != tt.applied {
 					t.Errorf("applied mark = %v after a refusal; want %v, as before the call", applied, tt.applied)
@@ -238,7 +218,7 @@ func TestConsumeArbiterAttempt(t *testing.T) {
 			}
 
 			if err != nil {
-				t.Fatalf("consume error = %v; want nil", err)
+				t.Fatalf("ConsumeAttempt() error = %v; want nil", err)
 			}
 			if applied, _ := loomengine.ArbiterApplied(attemptDir); !applied {
 				t.Error("applied mark is absent after a consumed attempt; want it written")

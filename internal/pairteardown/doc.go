@@ -63,8 +63,10 @@
 // An entry with no status, a done status or a status without the run form is kept.
 // A landed run's entry is marked done.
 // Otherwise an entry whose run batten never seeded, or whose batten run is paused, blocked, failed or awaiting, is cleared; a batten run that is done marks it done; a running one holds it, and the settle only warns, naming `lyx batten status <slug>` and `lyx batten pause <slug>`.
-// A running record holds the claim that way only while a registered batten process of the slug is alive;
-// with none alive the claim is kept all the same and the warning names `lyx batten cancel <slug>` instead, to end the run and release the claim, since batten's own pause has no process to reach.
+// A running record holds the claim that way only while the run has a live lifecycle owner:
+// a registered batten process of the slug, or, between two passes, a live dobby registered under the run's parent (the parent beam's slug, or the hub owner for the prime) with batten's status reading running and no cancel marker of the slug standing, which is the gap dobby drives.
+// Every reader of that liveness, the claim settlement, the session end and the driver checks, reads the gap between passes as alive, and a halted status as settled.
+// With no owner alive the claim is kept all the same and the warning names `lyx batten cancel <slug>` instead, to end the run and release the claim, since batten's own pause has no process to reach.
 // A board or status read failure warns and writes nothing, and a failed removal settles nothing.
 // A removal with Request.LeaveClaim set, in origin mode, reads no landed answer and settles no claim, leaving the claim to the caller, which clears it under its own locks.
 // A run whose Finalize merged but failed its done mark and stopped on its push holds no Finalize Done, so its entry ends cleared, for the operator to mark done with `lyx board set-status`.
@@ -141,7 +143,8 @@
 // It reads only local state and makes no network call, in this order and stopping at the first that holds:
 // a live pause entry covers the slug, the local board entry reads done, the status history holds a Finalize Done with no registered batten alive, or the run is not running.
 // Not running is no Go-driver lock held, the loop lock free, no live driver strand and no registered batten alive; there is no stopped reading, since that is a reconcile verdict.
-// It then waits for the run lock as a skipped teardown does, with the retry step `lyx reed down`, and ends the slug's registered processes.
+// It then waits for the run lock as a skipped teardown does, with the retry step `lyx reed down`, and ends the slug's registered processes with the dobby role spared:
+// a beam's dobby runs from the hub root outside the session, and its member runs still need it, so it stays live, while a teardown's own end ends a landed beam's dobby.
 // A run that holds none of the readings is running and unpaused, and is refused with an error wrapping ErrRunRunning that names `lyx tender pause <slug>` and then `lyx reed down` again, with nothing ended.
 // A refusal of the run-lock wait is returned as it is, and survivors of the end are returned wrapped, each named by pid.
 //

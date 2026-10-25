@@ -1,6 +1,6 @@
 //go:build tier0
 
-// pausehold_test.go pins that `lyx batten run` refuses a slug a live pause entry covers, with and without --window, before it seeds a status file or opens a window.
+// pausehold_test.go pins that `lyx batten run` refuses a slug a live pause entry covers before it seeds a status file.
 
 package battencli
 
@@ -16,15 +16,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
-	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/spf13/cobra"
 )
 
-// TestBattenRun_RefusesWhileAPauseCoversTheSlug runs battenPreRun and runInWindow over a prime whose record holds a live entry:
-// an entry covering the slug refuses both naming `lyx resume <slug>` with nothing seeded and no window opened, and an entry for another slug seeds as before.
+// TestBattenRun_RefusesWhileAPauseCoversTheSlug runs the run verb's driveRun over a prime whose record holds a live entry:
+// an entry covering the slug refuses naming `lyx resume <slug>` with nothing seeded, the run verb exiting with the covered code, and an entry for another slug seeds as before.
 func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 	t.Parallel()
 
@@ -56,43 +55,42 @@ func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 			}); err != nil {
 				t.Fatalf("pauserecord.Update: %v", err)
 			}
-			windowOpened := false
-			c.windowOpener = func(string, []string) (reedengine.WindowResult, error) {
-				windowOpened = true
-				return reedengine.WindowResult{}, nil
+			// A run past the pre-run yields at once.
+			c.untilStop = func(context.Context, string) ([]byte, error) {
+				return stopEnvelope(t, map[string]any{"ok": true, "outcome": string(shedengine.Yield)}, string(shedengine.StateRunning), battenrecipe.NameRunShed, 0), nil
 			}
-			c.terminalLauncher = func() (string, error) { return "konsole", nil }
-
-			preRunErr := c.battenPreRun(context.Background())
-
-			cmd := &cobra.Command{Use: "run", RunE: func(cmd *cobra.Command, args []string) error { return c.runInWindow(cmd) }}
-			var out bytes.Buffer
-			clihelp.Execute(cmd, &out, []string{})
-			var envelope map[string]any
-			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
-				t.Fatalf("envelope %q is not one JSON object: %v", out.String(), err)
-			}
+			var driveOut bytes.Buffer
+			driveExit := clihelp.Execute(runCommand(c), &driveOut, []string{c.slug})
 
 			_, statErr := os.Stat(c.shedPaths.StatusPath)
 			if !tt.wantCover {
-				if preRunErr != nil || envelope["ok"] != true || !windowOpened || statErr != nil {
-					t.Fatalf("battenPreRun = %v, envelope %v, window opened = %v, status file stat = %v; want a normal run", preRunErr, envelope, windowOpened, statErr)
+				if driveExit != 0 || statErr != nil {
+					t.Fatalf("run exit = %d, output %q, status file stat = %v; want a normal run", driveExit, driveOut.String(), statErr)
 				}
 				return
 			}
-			if preRunErr == nil || !strings.Contains(preRunErr.Error(), "lyx resume") {
-				t.Errorf("battenPreRun = %v; want a refusal naming %q", preRunErr, "lyx resume")
-			}
-			if msg, _ := envelope["error"].(string); envelope["ok"] != false || !strings.Contains(msg, "lyx resume") {
-				t.Errorf("runInWindow envelope = %v; want a refusal naming %q", envelope, "lyx resume")
-			}
-			if windowOpened {
-				t.Error("a window was opened for a covered slug")
+			if driveExit != dobbyengine.PassExitCovered || !strings.Contains(driveOut.String(), "lyx resume") {
+				t.Errorf("run exit = %d, output %q; want exit %d and a refusal naming %q", driveExit, driveOut.String(), dobbyengine.PassExitCovered, "lyx resume")
 			}
 			if !os.IsNotExist(statErr) {
 				t.Errorf("status file stat = %v; want it absent, nothing seeded", statErr)
 			}
 		})
+	}
+}
+
+// TestBattenRun_LostWorktreeCreateClaimExitsWithTheDriversCode asserts a Worktree-Create row that fails with an OwnedElsewhereError ends in the driver's own error envelope and exit, since the owned-elsewhere code is set only for a refusal before the step loop.
+func TestBattenRun_LostWorktreeCreateClaimExitsWithTheDriversCode(t *testing.T) {
+	t.Parallel()
+
+	c := newFakeReceiver(t, nil)
+	c.env.CreateWorktree = func(context.Context) error { return ownedElsewhereRefusal(c.slug, "there") }
+
+	var out bytes.Buffer
+	exitCode := clihelp.Execute(runCommand(c), &out, []string{c.slug})
+
+	if exitCode != 0 || !strings.Contains(out.String(), `"outcome":"blocked"`) || !strings.Contains(out.String(), "lyx adopt "+c.slug) {
+		t.Errorf("run exit = %d, output %q; want exit 0 and a blocked envelope carrying the refusal's way forward", exitCode, out.String())
 	}
 }
 

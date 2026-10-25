@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
@@ -288,12 +289,11 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 	return nil
 }
 
-// registerSeededRun registers the calling process in the hub's owner record under runID with the role batten, for verb "run" without --window only:
-// a window opener only opens the window and exits, and the in-window run it opens registers itself.
+// registerSeededRun registers the calling process in the hub's owner record under runID with the role batten, for verb "run" only.
 // It is called once armSeed has found an agreeing seed or written one, so a start refused before or at the seed registers nothing.
 // A failed registration is logged and the run goes on.
 func (c *battenCLI) registerSeededRun(location *lyxcwd.Location, runID, verb string) {
-	if verb != "run" || c.windowFlag {
+	if verb != "run" {
 		return
 	}
 	if err := runproc.Register(fabricengine.RunProcDir(location.HubPath), runID, runproc.SelfRecord(runproc.RoleBatten)); err != nil {
@@ -493,6 +493,7 @@ func (c *battenCLI) specFor(verb string) shedverbs.Spec {
 	}
 	spec.Routing = c.routing
 	spec.Hooks.InterruptPolicyFor = battenInterruptPolicy
+	spec.Hooks.ConsumeAttempt = c.battenConsumeAttempt
 	if c.location != nil {
 		spec.Loop = battenLoopSpec(c.location, c.slug)
 	}
@@ -590,6 +591,76 @@ func (c *battenCLI) checkRunStatus() (found bool, err error) {
 	}
 }
 
+// coveredRefusal is the refusal of a run a live pause covers, which a pass exits on with its own code.
+type coveredRefusal struct {
+	err error
+}
+
+// Error returns the wrapped refusal's text unchanged.
+func (r *coveredRefusal) Error() string { return r.err.Error() }
+
+// Unwrap returns the wrapped refusal.
+func (r *coveredRefusal) Unwrap() error { return r.err }
+
+// continueRefusal is the refusal of a continue pass for a run dobby may not continue, which a pass exits on with its own code and dobby reads as a full pass owed.
+type continueRefusal struct {
+	// reason says which condition of a continue pass the run does not meet.
+	reason string
+	// slug is the run, for the way forward.
+	slug string
+}
+
+// Error returns the refusal text, naming the unmet condition and the full pass that settles it.
+func (r *continueRefusal) Error() string {
+	return fmt.Sprintf("battencli: %q is not a run a continue pass may continue: %s; way forward: run `lyx batten run %s`", r.slug, r.reason, r.slug)
+}
+
+// refuseContinuePass refuses a continue pass unless batten's status reads running at Run-Shed, the state record of the run's parent worktree's dobby names the run as one it drives with no full pass owed, and no origin-owed marker stands.
+// It reads the dobby's state record through the parent worktree's geometry, and a record that is absent or does not name the run reads as a run dobby does not drive.
+func (c *battenCLI) refuseContinuePass() error {
+	refuse := func(reason string) error { return &continueRefusal{reason: reason, slug: c.slug} }
+
+	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
+	if err != nil {
+		return errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
+	}
+	if !found {
+		return refuse("it has no status file")
+	}
+	if status.State != shedengine.StateRunning || status.CurrentProducer != battenrecipe.NameRunShed {
+		return refuse(fmt.Sprintf("its status reads %s at %s, not running at %s", status.State, status.CurrentProducer, battenrecipe.NameRunShed))
+	}
+
+	parent, err := parentWorktree(c.location, c.slug)
+	if err != nil {
+		return refuse(fmt.Sprintf("its parent worktree does not resolve: %v", err))
+	}
+	geometry, err := hubgeom.DobbyGeometry(c.location, parent)
+	if err != nil {
+		return refuse(fmt.Sprintf("its parent's dobby geometry does not resolve: %v", err))
+	}
+	dobbyState, _, err := dobbyengine.ReadState(geometry.StatePath)
+	if err != nil {
+		return refuse(fmt.Sprintf("its parent's dobby state does not read: %v", err))
+	}
+	run, driven := dobbyState.Runs[c.slug]
+	if !driven {
+		return refuse("its parent's dobby does not name it as a run it drives")
+	}
+	if run.FullPassOwed {
+		return refuse("its parent's dobby owes it a full pass")
+	}
+
+	owed, err := OriginOwed(c.location, c.slug)
+	if err != nil {
+		return refuse(fmt.Sprintf("its origin-owed marker does not read: %v", err))
+	}
+	if owed {
+		return refuse("a resume judged it without origin and origin has not been reached since")
+	}
+	return nil
+}
+
 // refuseCovered returns the refusal naming "lyx resume" when a live pause entry covers this run's slug, and nil otherwise.
 // A geometry or record that cannot be read refuses nothing and logs one Warn, so a corrupt file never blocks a run.
 func (c *battenCLI) refuseCovered() error {
@@ -606,7 +677,7 @@ func (c *battenCLI) refuseCovered() error {
 	if !coverage.Covered {
 		return nil
 	}
-	return pauserecord.CoveredError(coverage.Entry, c.slug, fmt.Sprintf(`run "lyx batten run %s" again`, c.slug))
+	return &coveredRefusal{err: pauserecord.CoveredError(coverage.Entry, c.slug, fmt.Sprintf(`run "lyx batten run %s" again`, c.slug))}
 }
 
 // pausedExtras returns the status keys a live pause entry covering this run's slug adds: paused_since (the entry's time, RFC 3339) and paused_by (its scope).
@@ -637,12 +708,17 @@ func (c *battenCLI) pausedExtras() map[string]any {
 // battenPreRun implements the PreRun hook for batten's spec: run's whole existing pre-flight, in today's order: checkRunStatus, then seeding a fresh status when absent.
 // Each step's error becomes a returned error the generic body reports on the error envelope exactly as run's own inline handling did.
 // A found status file is resumed only after the owner pre-flight (ownerPreflight) lets it, which is the run-scope origin reconcile (reconcileResume) bar a run still at Worktree-Create whose pair is absent; a fresh start runs no reconcile, and armAt has already run its owner check.
-// Once the owner pre-flight lets a found status resume, reopenWindow reopens the terminal window when no client is attached.
+// Once the owner pre-flight lets a found status resume, reopenWindow reopens the terminal window when no client is attached, unless --no-reopen is set.
+// Under --continue-pass, refuseContinuePass runs first, and a run it lets through skips the pause refusal, the owner pre-flight and the reopening: the run is one dobby already drives, and the pass is not a resume.
 //
 // This seed-when-absent behaviour is batten's alone and must not leak into the generic body:
 // loom refuses in exactly the situation batten seeds here, because only "lyx loom start" may seed loom's own status file.
 func (c *battenCLI) battenPreRun(ctx context.Context) error {
-	if err := c.refuseCovered(); err != nil {
+	if c.continuePass {
+		if err := c.refuseContinuePass(); err != nil {
+			return err
+		}
+	} else if err := c.refuseCovered(); err != nil {
 		return err
 	}
 	found, err := c.checkRunStatus()
@@ -650,8 +726,14 @@ func (c *battenCLI) battenPreRun(ctx context.Context) error {
 		return err
 	}
 	if found {
+		if c.continuePass {
+			return nil
+		}
 		if err := c.preflightRunOwner(); err != nil {
 			return err
+		}
+		if c.noReopen {
+			return nil
 		}
 		status, _, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 		if err != nil {
@@ -708,7 +790,7 @@ func (c *battenCLI) preDriveCheck() error {
 		return err
 	}
 	if !found {
-		return fmt.Errorf("battencli: %s has no seed, so its run was cancelled or never started; way forward: run \"lyx batten run %s\" for a fresh start", c.slug, c.slug)
+		return fmt.Errorf("battencli: %s has no seed, so its run was cancelled or never started; way forward: run %s and \"lyx batten run %s\" for a fresh start", c.slug, releaseCommand(c.slug), c.slug)
 	}
 	return nil
 }

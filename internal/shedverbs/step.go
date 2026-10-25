@@ -107,7 +107,7 @@ func childArgv(cmd *cobra.Command, args []string) []string {
 //   - next: res.Next
 //   - state: string(res.State)
 //   - reason: res.Reason
-//   - continue: derived as res.State == shedengine.StateRunning
+//   - continue: derived as res.State == shedengine.StateRunning && res.Outcome != shedengine.Yield
 //   - history_length: len(res.History)
 //   - next_interrupt_policy: nextPolicy
 //   - status_file: statusFile
@@ -120,8 +120,8 @@ func childArgv(cmd *cobra.Command, args []string) []string {
 //   - progress: the compact form of progress -- step, steps and name, without the remaining steps and without any empty key -- or nil
 //   - parent_notice: res.ParentNotice, present only when it is non-empty (an awaiting halt that carries one)
 //
-// "continue" is derived here, rather than left to the caller, so a thin external supervisor skill
-// never carries its own copy of the State vocabulary -- it only ever branches on this one boolean.
+// "continue" is derived here, rather than left to the caller, so a thin external supervisor skill never carries its own copy of the State vocabulary -- it only ever branches on this one boolean.
+// A yielded step reports state running and continue false: the run is left as it was, and the loop that stepped it ends without a halt.
 func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile, friction string, loc StepLocations, progress *shedengine.Progress) map[string]any {
 	var progressValue any
 	if compact := compactProgress(progress); compact != nil {
@@ -134,7 +134,7 @@ func StepEnvelope(res shedengine.StepResult, nextPolicy, statusFile, friction st
 		"next":                  res.Next,
 		"state":                 string(res.State),
 		"reason":                res.Reason,
-		"continue":              res.State == shedengine.StateRunning,
+		"continue":              res.State == shedengine.StateRunning && res.Outcome != shedengine.Yield,
 		"history_length":        len(res.History),
 		"next_interrupt_policy": nextPolicy,
 		"status_file":           statusFile,

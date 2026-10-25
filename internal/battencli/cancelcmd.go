@@ -448,7 +448,7 @@ func liftSlugPauses(location *lyxcwd.Location, slug, recordPath string) ([]strin
 	return lifted, nil
 }
 
-// clearRunClaim clears the board entry's status through write when read shows a run-form status.
+// clearRunClaim releases the run's claim on the board entry by writing the draft status through write when read shows a run-form status.
 // A done status, any other non-run status and an absent entry write nothing; found reports whether the entry exists.
 func clearRunClaim(read func() (status *string, found bool, err error), write func(status *string) error) (cleared, found bool, err error) {
 	status, found, err := read()
@@ -458,7 +458,8 @@ func clearRunClaim(read func() (status *string, found bool, err error), write fu
 	if !boardengine.IsRunStatus(status) {
 		return false, true, nil
 	}
-	if err := write(nil); err != nil {
+	draft := boardengine.StatusDraft
+	if err := write(&draft); err != nil {
 		return false, true, err
 	}
 	return true, true, nil

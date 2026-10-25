@@ -1,6 +1,6 @@
 //go:build tier0
 
-// innerrun_owner_test.go covers the inner-run watch's owner check over a fake clock and fake seams:
+// innerrun_owner_test.go covers the inner-run's owner check over a fake clock and fake seams:
 // when the check runs, what an owned-elsewhere verdict does to the parent lock, the pause and the notice, and how a spawn refused as owned elsewhere is held.
 
 package battenshed
@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
@@ -29,13 +30,22 @@ func (h *lockHarness) ownerNotices() int {
 	return count
 }
 
+// seedOwnerDue writes a memory record whose owner check is due, the state a full pass leaves for the next check.
+func (h *lockHarness) seedOwnerDue() {
+	h.t.Helper()
+	if err := state.WriteJSON(innerRunMemoryFile(h.scratchDir, "innerrun"), innerRunMemoryLockFile(h.scratchDir, "innerrun"), innerRunMemory{OwnerDue: true}); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
 // elsewhereVerdict reads every check as the run owned by machine m2.
 func elsewhereVerdict(int) (OwnerVerdict, error) {
 	return OwnerVerdict{Owner: "m2", Elsewhere: true}, nil
 }
 
-// TestInnerRun_OwnerCheck asserts the owner check runs after a sleep of a minute or more and after a pause hold ends, and that an owned-elsewhere verdict releases the child's parent lock record, pauses with the owner and sends one notice.
+// TestInnerRun_OwnerCheck asserts the owner check runs when the memory holds it due and after a pause hold ends, and that an owned-elsewhere verdict releases the child's parent lock record, pauses with the owner and sends one notice.
 // It asserts a Finalize past its parent-side merge keeps the record, an unreachable verdict or a check error is retried at the next check, a done child waits out an owner hold, and a spawn refused as owned elsewhere pauses, writes no marker and spawns nothing more while the owner stands.
+// A machine wake does not trigger the check here: it reaches the verdict through the full pass the scheduling dobby owes.
 func TestInnerRun_OwnerCheck(t *testing.T) {
 	t.Parallel()
 	running := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Webster"}
@@ -46,9 +56,10 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 		return pauserecord.Coverage{Covered: true, OwnerHeld: true, Entry: pauserecord.Entry{Scope: "myslug", Caller: pauserecord.OwnerCaller}}
 	}
 	tests := []struct {
-		name     string
-		status   shedengine.Status
-		sleepFor time.Duration
+		name   string
+		status shedengine.Status
+		// due seeds the memory record with the owner check due, as a full pass leaves it.
+		due bool
 		// configure sets the harness's seams before the Call.
 		configure    func(h *lockHarness)
 		wantChecks   int
@@ -57,23 +68,23 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 		wantPauses  int
 		wantNotices int
 	}{
-		{name: "a sleep of a minute runs the check once", status: running, sleepFor: 2 * time.Minute, wantChecks: 1},
-		{name: "a shorter sleep does not run it", status: running, sleepFor: 30 * time.Second},
+		{name: "a due check runs once", status: running, due: true, wantChecks: 1},
+		{name: "no trigger runs no check", status: running},
 		{name: "a pause hold ending runs it", status: running, configure: func(h *lockHarness) { h.coveredThrough = 3 }, wantChecks: 1},
 		{
-			name: "an owned-elsewhere verdict releases the record, pauses with the owner and sends one notice", status: running, sleepFor: 2 * time.Minute,
+			name: "an owned-elsewhere verdict releases the record, pauses with the owner and sends one notice", status: running, due: true,
 			configure:  func(h *lockHarness) { h.verdict = elsewhereVerdict },
 			wantChecks: 1, wantReleased: true, wantPauses: 1, wantNotices: 1,
 		},
 		{
-			name: "an unreachable verdict retries at the next check and pauses nothing", status: running, sleepFor: 2 * time.Minute,
+			name: "an unreachable verdict retries at the next check and pauses nothing", status: running, due: true,
 			configure: func(h *lockHarness) {
 				h.verdict = func(n int) (OwnerVerdict, error) { return OwnerVerdict{Unreachable: n <= 2}, nil }
 			},
 			wantChecks: 3,
 		},
 		{
-			name: "a check error retries at the next check", status: running, sleepFor: 2 * time.Minute,
+			name: "a check error retries at the next check", status: running, due: true,
 			configure: func(h *lockHarness) {
 				h.verdict = func(n int) (OwnerVerdict, error) {
 					if n == 1 {
@@ -85,7 +96,7 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 			wantChecks: 2,
 		},
 		{
-			name: "a failed owner pause is retried at the next probe", status: running, sleepFor: 2 * time.Minute,
+			name: "a failed owner pause is retried at the next probe", status: running, due: true,
 			configure: func(h *lockHarness) {
 				h.verdict = elsewhereVerdict
 				h.pauseErr = func(n int) error {
@@ -103,41 +114,41 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 			wantReleased: true,
 		},
 		{
-			name: "a running Finalize with the parent holding the work keeps the record", status: finalize(shedengine.StateRunning, ""), sleepFor: 2 * time.Minute,
+			name: "a running Finalize with the parent holding the work keeps the record", status: finalize(shedengine.StateRunning, ""), due: true,
 			configure:  func(h *lockHarness) { h.verdict, h.parentHolds = elsewhereVerdict, true },
 			wantChecks: 1, wantPauses: 1, wantNotices: 1,
 		},
 		{
-			name: "a failed transient Finalize with no re-step keeps the record", status: finalize(shedengine.StateFailed, "git-transport"), sleepFor: 2 * time.Minute,
+			name: "a failed transient Finalize with no re-step keeps the record", status: finalize(shedengine.StateFailed, "git-transport"), due: true,
 			configure:  func(h *lockHarness) { h.verdict, h.parentHolds = elsewhereVerdict, true },
 			wantChecks: 1, wantPauses: 1, wantNotices: 1,
 		},
 		{
-			name: "a failed Finalize with a re-step recorded releases the record", status: finalize(shedengine.StateFailed, "git-transport"), sleepFor: 2 * time.Minute,
+			name: "a failed Finalize with a re-step recorded releases the record", status: finalize(shedengine.StateFailed, "git-transport"), due: true,
 			configure: func(h *lockHarness) {
 				h.verdict, h.parentHolds, h.restepped = elsewhereVerdict, true, true
 			},
 			wantChecks: 1, wantReleased: true, wantPauses: 1, wantNotices: 1,
 		},
 		{
-			name: "a blocked Finalize with the parent holding the work releases the record", status: finalize(shedengine.StateBlocked, ""), sleepFor: 2 * time.Minute,
+			name: "a blocked Finalize with the parent holding the work releases the record", status: finalize(shedengine.StateBlocked, ""), due: true,
 			configure:  func(h *lockHarness) { h.verdict, h.parentHolds = elsewhereVerdict, true },
 			wantChecks: 1, wantReleased: true, wantPauses: 1, wantNotices: 1,
 		},
 		{
-			name: "a running Finalize whose parent lacks the work releases the record", status: finalize(shedengine.StateRunning, ""), sleepFor: 2 * time.Minute,
+			name: "a running Finalize whose parent lacks the work releases the record", status: finalize(shedengine.StateRunning, ""), due: true,
 			configure:  func(h *lockHarness) { h.verdict = elsewhereVerdict },
 			wantChecks: 1, wantReleased: true, wantPauses: 1, wantNotices: 1,
 		},
 		{
-			name: "an unreadable parent read at a running Finalize keeps the record", status: finalize(shedengine.StateRunning, ""), sleepFor: 2 * time.Minute,
+			name: "an unreadable parent read at a running Finalize keeps the record", status: finalize(shedengine.StateRunning, ""), due: true,
 			configure: func(h *lockHarness) {
 				h.verdict, h.parentHoldsErr = elsewhereVerdict, errors.New("branch unreadable")
 			},
 			wantChecks: 1, wantPauses: 1, wantNotices: 1,
 		},
 		{
-			name: "an unreadable re-step read at a failed Finalize keeps the record", status: finalize(shedengine.StateFailed, "git-transport"), sleepFor: 2 * time.Minute,
+			name: "an unreadable re-step read at a failed Finalize keeps the record", status: finalize(shedengine.StateFailed, "git-transport"), due: true,
 			configure: func(h *lockHarness) {
 				h.verdict, h.restepErr = elsewhereVerdict, errors.New("settle records unreadable")
 			},
@@ -151,12 +162,8 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 			h.record = loopRecord()
 			// A confirmed spawn keeps a running child out of the spawn hold, so the checks themselves meet the coverage.
 			recordSpawnConfirmed("innerrun", "myslug", h.scratchDir, SpawnConfirmedFile(h.scratchDir, "innerrun"))
-			if tt.sleepFor > 0 {
-				h.clock.onSleep = func(call int) {
-					if call == 2 {
-						h.sleep(tt.sleepFor)
-					}
-				}
+			if tt.due {
+				h.seedOwnerDue()
 			}
 			if tt.configure != nil {
 				tt.configure(h)
@@ -207,12 +214,10 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 			}
 			return count
 		}
+		h.seedOwnerDue()
 		coveredNotices := -1
 		h.clock.onSleep = func(call int) {
-			switch call {
-			case 2:
-				h.sleep(2 * time.Minute)
-			case 4:
+			if call == 4 {
 				coveredNotices = driverDeadNotices()
 			}
 		}
@@ -303,21 +308,87 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 			t.Fatalf("first Call() = %q, %+v, %v; want a budget-exempt Stuck naming m2", outcome, pointer, err)
 		}
 
-		clock.pauseAtSleep = 50
-		if _, _, err := producer.Call(context.Background()); err != nil {
-			t.Fatalf("second Call() error = %v", err)
+		for pass := 0; pass < 5 && *spawns < 2; pass++ {
+			clock.advance(deps.NoticeProbe)
+			if outcome, _, err := producer.Call(context.Background()); err != nil || (outcome != shedengine.Yield && outcome != shedengine.Stuck) {
+				t.Fatalf("pass %d Call() = %q, %v; want a Yield or Stuck", pass, outcome, err)
+			}
 		}
 		if *spawns != 2 || checks != 3 {
 			t.Errorf("Spawn calls = %d, owner checks = %d; want 2 and 3: the spawn waits for the owned-here reading", *spawns, checks)
 		}
 	})
 
+	spawnHoldTests := []struct {
+		name string
+		// probeDue is whether the memory's last probe is older than the notice probe.
+		probeDue bool
+		verdict  OwnerVerdict
+		// pauseCovers is whether an owner pause covers the slug.
+		pauseCovers bool
+		wantChecks  int
+		wantSpawns  int
+		// wantOwner is the owner the memory holds after the pass.
+		wantOwner string
+		// wantReason is the prefix of the wait reason after the pass.
+		wantReason string
+	}{
+		{name: "an owner standing with no probe due yields with the owner reason and runs no check", wantSpawns: 0, wantOwner: "m2", wantReason: "held: the run is owned by machine m2"},
+		{name: "a probe due and an owned-here verdict spawns in the same pass", probeDue: true, wantChecks: 1, wantSpawns: 1, wantReason: ""},
+		{name: "a probe due and an owned-elsewhere verdict yields and spawns nothing", probeDue: true, verdict: OwnerVerdict{Owner: "m2", Elsewhere: true}, wantChecks: 1, wantOwner: "m2", wantReason: "held: the run is owned by machine m2"},
+		{name: "an owner pause covering the slug still re-checks, clears the owner on an owned-here verdict and yields on the pause", probeDue: true, pauseCovers: true, wantChecks: 1, wantReason: "held by the pause of myslug"},
+	}
+	for _, tt := range spawnHoldTests {
+		t.Run("the spawn hold: "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			clock := &fakeClock{}
+			_, spawns, deps := newInnerRunDeps(t, nil, nil, []statusResult{{found: false}, {status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
+			deps.NoticeProbe = time.Minute
+			checks := 0
+			deps.OwnerCheck = func(context.Context) (OwnerVerdict, error) {
+				checks++
+				return tt.verdict, nil
+			}
+			if tt.pauseCovers {
+				deps.Pause = func() (pauserecord.Coverage, error) {
+					return pauserecord.Coverage{Covered: true, OwnerHeld: true, Entry: pauserecord.Entry{Scope: "myslug", Caller: pauserecord.OwnerCaller}}, nil
+				}
+			}
+			scratchDir := t.TempDir()
+			lastProbe := clock.Now()
+			if tt.probeDue {
+				lastProbe = lastProbe.Add(-time.Hour)
+			}
+			memory := innerRunMemory{OwnedBy: "m2", OwnerNoticed: true, LastProbe: lastProbe}
+			if err := state.WriteJSON(innerRunMemoryFile(scratchDir, "innerrun"), innerRunMemoryLockFile(scratchDir, "innerrun"), memory); err != nil {
+				t.Fatal(err)
+			}
+			producer := NewInnerRun("innerrun", "myslug", deps, time.Second, scratchDir, testGrace)
+
+			outcome, _, err := producer.Call(context.Background())
+
+			if err != nil || outcome != shedengine.Yield {
+				t.Fatalf("Call() = %q, %v; want a Yield", outcome, err)
+			}
+			if checks != tt.wantChecks || *spawns != tt.wantSpawns {
+				t.Errorf("owner checks = %d, Spawn calls = %d; want %d and %d", checks, *spawns, tt.wantChecks, tt.wantSpawns)
+			}
+			after, _, err := state.ReadJSON[innerRunMemory](innerRunMemoryFile(scratchDir, "innerrun"), innerRunMemoryLockFile(scratchDir, "innerrun"))
+			if err != nil || after.OwnedBy != tt.wantOwner {
+				t.Errorf("remembered owner = %q, %v; want %q", after.OwnedBy, err, tt.wantOwner)
+			}
+			if !strings.HasPrefix(after.Reason, tt.wantReason) {
+				t.Errorf("remembered reason = %q; want it to start with %q", after.Reason, tt.wantReason)
+			}
+		})
+	}
+
 	t.Run("a binary re-step refused as owned elsewhere pauses, writes no marker and does not spawn again", func(t *testing.T) {
 		t.Parallel()
 		h := newRestepHarness(t)
 		h.spawnErrs = []error{&ChildOwnedElsewhereError{Owner: "m2"}}
 
-		h.call(h.producer(), 6)
+		h.call(6)
 
 		if h.spawns != 1 || h.marker() != "" {
 			t.Errorf("spawns = %d, marker = %q; want 1 and none", h.spawns, h.marker())

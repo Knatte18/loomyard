@@ -14,6 +14,7 @@
 // Each step prints one stop envelope; the driver saves it under the run's drive-reports directory and decides it.
 // Before it acts on a stop it re-reads the status: a run another process is running, or whose run lock is held, ends the driver, and a run that moved to another stop is decided afresh from its status.
 // A driver that starts at a blocked stop with no open agent attempt first asks `Deps.StartCheck` about the stop's row, once, before its first step, and a refusal hands the run back quoting it with nothing stepped.
+// A step that yielded, whose envelope reports outcome `yield` with the run still running, ends the driver with `ExitYield` and nothing decided: no rule row, settle record, report, repair, bounce or tackler budget applies, and the run is left as it was.
 // A pause covering the run holds the driver before it spawns or re-steps anything.
 // A failure the driver cannot act on is handed back; only a failed hand-back or a cancelled context is returned as an error.
 // `DriveVerb` holds the run's driver lock for the driver's life, removes the stale park marker and resume report, and refuses a second driver for the run at once.
@@ -65,6 +66,7 @@
 //
 // A stop a removed row would have caught meets the later rows unchanged, so it ends in the tackler under its spawn budget, a re-step under the repair cap, or a hand-back.
 // No unwired seam adds a resume path: a tackler escalation with no arbiter hands back, naming the tackler's case brief.
+// Loom's, darn's and batten's drivers all wire the arbiter after the tackler, batten's with `batten.yaml`'s arbiter overrides of `shed.yaml`.
 //
 // # The hand-back
 //
@@ -87,10 +89,10 @@
 //
 // # The shed config module
 //
-// `shed.yaml` holds the defaults every shed-driven recipe inherits: `driver_kind`, `tackler`, `tackler_timeout_min` and `tackler_max_spawns`.
-// A module's own keys of the same names are an `Override` of them: an empty string, a zero and a null inherit, and a set `tackler_max_spawns`, zero included, wins, since zero turns the tackler off.
-// `ResolveDriverKind` and `ResolveTackler` take each key from the override, else `shed.yaml`, else the default: the `llm` driver, the `haiku` model-spec and a ten minute timeout.
-// `ResolveTackler` returns `TacklerSettings`, which carry a model choice, engine included, beside the timeout and the spawn budget.
+// `shed.yaml` holds the defaults every shed-driven recipe inherits: `driver_kind`, `tackler`, `tackler_timeout_min`, `tackler_max_spawns`, `arbiter`, `arbiter_timeout_min` and `arbiter_max_spawns`.
+// A module's own keys of the same names are an `Override` of them: an empty string, a zero and a null inherit, and a set `tackler_max_spawns` or `arbiter_max_spawns`, zero included, wins, since zero turns that role off.
+// `ResolveDriverKind`, `ResolveTackler` and `ResolveArbiter` take each key from the override, else `shed.yaml`, else the default: the `llm` driver, the `haiku` and `opus[high]` model-specs, and a ten and a thirty minute timeout.
+// `ResolveTackler` and `ResolveArbiter` return `TacklerSettings` and `ArbiterSettings`, which carry a model choice, engine included, beside the timeout and the spawn budget; `ArbiterLimits` returns the arbiter's timeout and spawn budget alone.
 // `loomengine.RecipeOverride` picks the module override by recipe, `darn.yaml`'s for a darn run and `loom.yaml`'s otherwise; batten's tackler keys sit in `batten.yaml`.
 // `CheckOverride` and `CheckLocalOverride` refuse a bad value in any layer, naming the module, the key and the way to set it.
 package sheddriver

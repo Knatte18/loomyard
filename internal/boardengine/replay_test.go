@@ -92,16 +92,23 @@ func boardJSON(t *testing.T, tasks []Task) []byte {
 // boardJSONWithPrime encodes tasks as a board.json that records prime as the hub's prime owner, none when empty.
 func boardJSONWithPrime(t *testing.T, tasks []Task, prime string) []byte {
 	t.Helper()
+	return boardJSONWithDraft(t, tasks, prime, false)
+}
+
+// boardJSONWithDraft encodes tasks like boardJSONWithPrime, with the top-level draft_status key set when draft is true.
+func boardJSONWithDraft(t *testing.T, tasks []Task, prime string, draft bool) []byte {
+	t.Helper()
 	numbered := make([]Task, len(tasks))
 	for i, task := range tasks {
 		task.ID = i
 		numbered[i] = task
 	}
 	data, err := json.Marshal(struct {
-		Version    int    `json:"version"`
-		Entries    []Task `json:"entries"`
-		PrimeOwner string `json:"prime_owner,omitempty"`
-	}{1, numbered, prime})
+		Version     int    `json:"version"`
+		Entries     []Task `json:"entries"`
+		PrimeOwner  string `json:"prime_owner,omitempty"`
+		DraftStatus bool   `json:"draft_status,omitempty"`
+	}{1, numbered, prime, draft})
 	if err != nil {
 		t.Fatalf("marshal board.json: %v", err)
 	}
@@ -134,8 +141,10 @@ type replayRow struct {
 	designs     []fabricengine.BoardDesignFile
 	// originPrime, basePrime, parentPrime and commitPrime are the prime_owner each side records, and wantPrime the one the board holds afterwards.
 	originPrime, basePrime, parentPrime, commitPrime, wantPrime string
-	wantEmpty                                                   bool
-	wantLost                                                    []fabricengine.BoardReplayFinding
+	// commitDraft is whether the commit's board.json records draft_status, and wantDraft whether the board holds it afterwards.
+	commitDraft, wantDraft bool
+	wantEmpty              bool
+	wantLost               []fabricengine.BoardReplayFinding
 	// wantRefused maps an entry to a substring of its refusal reason.
 	wantRefused map[string]string
 	// wantEntries maps a slug to the title the board holds afterwards, "" meaning the entry is absent.
@@ -399,6 +408,16 @@ func TestFabricReplay(t *testing.T) {
 			wantEntries: map[string]string{"a": "a"},
 		},
 		{
+			name:        "DraftStatusMarkSetByTheCommitLandsOnOrigin",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a")},
+			commitDraft: true,
+			wantDraft:   true,
+			wantEntries: map[string]string{"a": "a"},
+		},
+		{
 			name:        "DesignFileChangedOnBothSidesKeepsOriginsFile",
 			base:        []Task{replayEntry("a")},
 			origin:      []Task{replayEntry("a")},
@@ -459,7 +478,7 @@ func TestFabricReplay(t *testing.T) {
 				BoardDir:        dir,
 				BaseBoardJSON:   boardJSONWithPrime(t, tt.base, tt.basePrime),
 				ParentBoardJSON: boardJSONWithPrime(t, tt.parent, tt.parentPrime),
-				CommitBoardJSON: boardJSONWithPrime(t, tt.commit, tt.commitPrime),
+				CommitBoardJSON: boardJSONWithDraft(t, tt.commit, tt.commitPrime, tt.commitDraft),
 				DesignFiles:     tt.designs,
 			})
 			if err != nil {
@@ -512,6 +531,9 @@ func TestFabricReplay(t *testing.T) {
 			}
 			if stored.primeOwner != tt.wantPrime {
 				t.Errorf("prime_owner = %q; want %q", stored.primeOwner, tt.wantPrime)
+			}
+			if stored.draftStatus != tt.wantDraft {
+				t.Errorf("draft_status = %v; want %v", stored.draftStatus, tt.wantDraft)
 			}
 			if !tt.wantEmpty {
 				readme, err := os.ReadFile(filepath.Join(dir, "README.md"))

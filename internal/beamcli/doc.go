@@ -1,5 +1,5 @@
-// Package beamcli is the beam module: `lyx beam create <slug>`, the making of a beam from a board project entry, `lyx beam promote <slug>`, the turning of a spawned task into one, and `lyx beam land <slug>`, the landing of a beam into its parent.
-// It only calls each owning module's function in-process, so no module learns another's state, and it has no engine package of its own.
+// Package beamcli is the beam module: `lyx beam create <slug>`, the making of a beam from a board project entry, `lyx beam promote <slug>`, the turning of a spawned task into one, `lyx beam land <slug>`, the landing of a beam into its parent, `lyx beam start`, the start of every dobby this machine owns, and the hidden `lyx beam dobby`, the dobby process itself.
+// The verbs only call each owning module's function in-process, so no module learns another's state; the daemon's engine is `internal/dobbyengine`, and this package wires its seams over the hub.
 //
 // # The verbs
 //
@@ -20,10 +20,11 @@
 //     A parent beam whose pair is absent here is refused naming `lyx beam create <parent>`, or `lyx adopt <parent>` when its branch is on origin.
 //  3. `fabricengine.SpawnPairPush` spawns the pair's push.
 //  4. `fabricengine.RegenerateHubWorkspace` rewrites the workspace files.
+//  5. The `StartDobby` seam starts the beam's dobby when it is not live, and the envelope reports `dobby_started`; a failure is a step failure naming `lyx beam start`.
 //
 // Writing the flag first makes a member started mid-create stop at Worktree-Create and resume into the beam rather than fork from the prime for good.
 // Members already spawned under the grouping project keep the prime as their parent.
-// The envelope names the beam's worktree and `lyx orch start` there as the way to give it an orch; the verb starts none.
+// The envelope names the beam's worktree and `lyx orch start` there as the way to give it an orch; the verb starts no orch.
 //
 // # promote
 //
@@ -46,6 +47,7 @@
 //     Its refusal of uncommitted content outside the record pathspec names the paths and a re-run; promote takes no force flag.
 //  5. `boardengine.SetOwners` records this machine as the owner with `Beam` and `ToProject` in one Bolt write, turning the entry into a beam project and clearing its `depends_on`, `recipe`, `profile` and `run_settings`.
 //  6. `fabricengine.RegenerateHubWorkspace` rewrites the workspace files.
+//  7. The `StartDobby` seam starts the beam's dobby, as create's last step does.
 //
 // Bound: promote ends a running run for good; nothing of the loom run survives in the pair's checkouts but its code commits, and its discussion, plan and run records stay reachable in the records history behind step 4's commit, on the beam's records branch and every member's forked from it.
 // A promote stopped before step 2 leaves the run claimed with its processes ended, as an interrupted cancel does: a resume would restart it, and a re-run of promote ends it again.
@@ -56,7 +58,7 @@
 //
 // `land <slug>` ends a beam with a short landing run over batten and the `beam` recipe.
 // It runs from the prime or a beam, and refuses when the acting worktree is the beam itself, since the landing removes the pair, naming the beam's parent worktree as where to run it.
-// It refuses an entry that is not a beam project of this machine with a pair that carries the mark, then applies `battencli.BeamLandRefusal`, then starts the landing with `battencli.ResumeInWindow`, whose window opens in the beam's parent worktree's session.
+// It refuses an entry that is not a beam project of this machine with a pair that carries the mark, then applies `battencli.BeamLandRefusal`, then starts the landing as a detached first pass through `battencli.StartFirstPass`, driven on by the beam's parent worktree's dobby.
 //
 // `BeamLandRefusal` refuses, each with its way forward:
 //   - any open entry whose `hubgeom.ParentOf` is the beam, through any depth of grouping projects, naming landing it, `lyx batten cancel <slug> --remove`, or, for an entry with no pair, moving its `project` off the beam;
@@ -68,4 +70,32 @@
 // A marked beam pair passes the guard's dirty-source and left-pair checks, so the landing reaches Worktree-Create, which finds the pair complete and skips; a landing forks no pair, and Worktree-Create never calls `Add` for a project.
 //
 // Bound: a pair on another machine whose origin names the beam is not seen when its entry no longer names the beam, as for a pair made by hand there with `--parent <beam>` and no board entry.
+//
+// # start
+//
+// `start` runs `dobbyengine.EnsureLive` over `hubgeom.DobbyStart` from the prime or any beam, and prints `started` or `live` per worktree, with the owner of a prime another machine owns.
+// It is idempotent.
+//
+// # dobby
+//
+// `dobby <worktree root>` is hidden and internal: `dobbyengine.SpawnDetached` launches it, with the hub root as its working directory.
+// It resolves the prime, registers this process through `registerDobby`, which writes `runproc.SelfRecord(runproc.RoleDobby)` under the beam's slug, or `runproc.HubOwner` for the prime, so the pair teardown of a landed beam ends that beam's dobby, and runs `dobbyengine.Run` over `hubDobbyDeps` under a SIGINT/SIGTERM context.
+// It prints `already_running` when the lock is held.
+//
+// A path that is neither the prime nor a local pair whose origin record carries the beam mark, read as `hubgeom.DobbyStart` reads it, is refused naming `lyx beam start`, before anything is registered or locked.
+// `hubgeom.DobbyGeometry` alone places any worktree with a directory, a task pair's included, so a hand invocation can do no more than `lyx beam start` does: a second invocation exits on the held lock, and one on a worktree another machine owns exits on the loop's owner read.
+//
+// Bound: `runproc.End` of the beam's own slug, from a cancel or an owner pause of the beam's landing run, also ends its dobby; by then `BeamLandRefusal` has left the beam no members, so it drives nothing, and `lyx beam start` brings it back if the beam stays.
+//
+// # The dobby's seams
+//
+// `hubDobbyDeps` fills every seam of the engine from told paths, the dobby's working directory being the hub root and never a worktree:
+//   - the local batten status files of the prime, and each run's parent through `hubgeom.ParentOf`;
+//   - the board and the owners through `boardengine`, and the pause record through `pauserecord`;
+//   - the file watch through `internal/fswatch`, one watcher per directory merged into the loop's one channel;
+//   - the pass spawn of `lyx batten run`, started in the prime's anchor;
+//   - the owner pause and the parent lock release through `tendercli` and `battencli`;
+//   - the notice through `orchcli.NotifyFromScoped`, signed `ly:DOBBY` for the prime and `ly:<slug>:DOBBY` for a beam;
+//   - `beam.yaml` through `dobbyengine.LoadConfig`, and the binary check through `internal/selfexec`;
+//   - the board-tidy agent's shuttle runner from the worktree's own reed geometry, its model `sonnet[medium]` resolved through the model registry, and the stencils directory.
 package beamcli

@@ -126,7 +126,9 @@
 //
 // `lyx loom arbiter <run-id> --envelope <path> [--report <path>]` is run only by the run's driver, at a stop it cannot settle.
 // It spawns a cold arbiter agent on the `arbiter` model through shuttle, waits for its verdict file and prints the validated verdict.
+// The arbiter's model, timeout and spawn budget are `shed.yaml`'s `arbiter`, `arbiter_timeout_min` and `arbiter_max_spawns` under the run's recipe override, `darn.yaml`'s for a darn run and `loom.yaml`'s otherwise.
 // It is a role verb, so the orch's command index leaves it out.
+// The verb's body is `internal/shedarbiter`'s: the call, the prompt, the launch spec, the verdict gate and the consumption of a resume are that package's, and this package fills its deps with loom's seams.
 //
 // A stop is eligible only if the verb's closed list admits it: an error stop of kind `producer` or `bootstrap`, an `interrupted` stop under the `reinvoke` policy or with a transient class, a halted `blocked` stop other than a Parent-Align or Publish verify halt whose own failure record names a target, and a halted `awaiting` stop whose Bouncer row has a pending escalation of cause `hard-cap` or `circling`, so a `budget` escalation goes to the run's parent.
 // The rule lives in `internal/arbiterstop`, which batten's hold shares.

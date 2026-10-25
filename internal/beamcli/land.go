@@ -1,4 +1,4 @@
-// land.go is the "lyx beam land" sequence: it judges the named beam, applies the refusal that stops a landing while work remains under it, and starts the landing run in a window.
+// land.go is the "lyx beam land" sequence: it judges the named beam, applies the refusal that stops a landing while work remains under it, and starts the landing run as a detached first pass.
 
 package beamcli
 
@@ -12,7 +12,7 @@ import (
 // landDeps holds the seam of every land step, which hubLandDeps fills over the hub and TestLand fakes.
 // ParentWorktree names the worktree the beam's pair was forked from, the prime's name when its record names none.
 // Refusal is the landing's refusal of a beam with work remaining under it.
-// StartLanding runs "lyx batten run <slug> --window" and returns the envelope that verb prints.
+// StartLanding starts the landing run as a detached first pass, driven on by the parent worktree's dobby, and returns the envelope of that start.
 type landDeps struct {
 	ReadOwners     func() (boardengine.Owners, error)
 	PairPresent    func(slug string) bool

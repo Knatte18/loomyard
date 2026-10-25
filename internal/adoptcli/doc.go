@@ -24,6 +24,19 @@
 // `--keep-local` records the owner over those local commits and over a live pair.
 // `--drop-local` refuses a live pair naming `--keep-local`, and otherwise calls `fabricengine.DropLocal`, which keeps each local tip origin lacks under an `archive/<slug>/<tip>` tag before it moves the branch, and records into adopt's mutation record.
 //
+// # The refusals before any write
+//
+// `wouldStop` answers, from the read-only part of step 1 alone, whether an entry would stop there; `adopt` collects the entries step 1 does not stop and calls `adoptRefusal` ahead of the first mutation, so a refused call drops no local commits, adds no pair and writes no owner.
+// It refuses, each with a way forward, since this machine's dobby drives only runs whose parent is its own worktree:
+//   - an entry it records an owner for, a task or a beam, whose parent reads owned by another machine, unless the same call adopts the parent: the parent is among the entries going on, or the prime is named for the prime;
+//   - an adopted beam, the prime included, while a member that is not done records another machine as its owner, naming those members, unless the call adopts them too.
+//
+// A parent or member the same call stops at step 1, as a diverged or live pair, does not count as adopted.
+// Each refusal names one call that meets both rules: `lyx adopt` with every slug the two rules reach from the entry, followed to a fixed point, and `--prime` when the prime is among them.
+// When an entry the rules reach would itself stop at step 1, the named call also carries `--keep-local`, which answers local commits and a live pair alike, so following the call meets no second refusal.
+//
+// Bound: a parent the batched owner write loses to a race while it records the child is not seen by the refusal, and the child keeps the warning naming `lyx adopt <parent>`.
+//
 // # Step 2: the pair
 //
 // Through `Topology.Add` from the prime, adopt adds the pair of each named task or beam that holds an owner or a run status and that this machine has no pair for.
@@ -42,15 +55,18 @@
 // Step 4 lifts, through `tenderengine.Lift`, each live entry carrying `pauserecord.OwnerCaller` whose scope is an adopted slug, by its scope, caller and pause time.
 // A slug still covered by another entry gets an envelope line naming it and `lyx resume <slug>` for an entry of its own scope or `lyx resume` for a hub entry.
 //
-// Step 5 resumes each adopted task whose batten run record is not done through `battencli.ResumeInWindow`, so the run's own driver lock refuses a second driver.
+// Step 5 resumes each adopted task whose batten run record is not done as a detached first pass through `battencli.StartFirstPass`, driven on by the parent's dobby, so the run's own driver lock refuses a second driver.
 // A resume failure is the slug's error and the other slugs go on; a task with no run record gets its owner and no run.
+//
+// Last, after the resumes, `StartDobbies` starts the dobby of the prime and of every beam this machine owns that is not live, through `dobbyengine.EnsureLive`, so a dobby runs wherever the adopted runs' parent now is.
+// A failure is the envelope's `dobby_warning`, naming `lyx beam start`.
 //
 // A child halted at Finalize's owner halt, read as a blocked child status whose error opens with `landingshed.OwnerHaltPrefix`, is resumed with `lyx loom resume` spawned in its task worktree, the spawn logged through `logger`.
 // That holds both when the child's own slug is adopted and when `--prime` or a parent slug adopts its parent while this machine owns the child's run; a child halted for any other reason stays halted.
 //
 // # The envelope
 //
-// It carries `reconcile`, `mutations` and `partial`, and per slug what happened: a stop with its branches, pair added, owner recorded, pause lifted or standing, run resumed or none, the error, and a warning when this machine does not own the slug's parent, since that run halts at Finalize here.
+// It carries `reconcile`, `mutations` and `partial`, `dobby_warning` when a dobby did not start, and per slug what happened: a stop with its branches, pair added, owner recorded, pause lifted or standing, run resumed or none, the error, and a warning when this machine does not own the slug's parent, since that run halts at Finalize here.
 //
 // # The bounds
 //

@@ -16,11 +16,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
@@ -486,28 +488,56 @@ func (fz *Finalize) parkedMergeWayForward(checkout string) string {
 		gotoResumeWayForward, checkout)
 }
 
-// configChangeNotice composes the one-line notice about the task's per-worktree config changes, or "" when there is nothing to report or no seam is wired.
+// configChangeNotice composes the one-line notice about the task's per-worktree config changes, key by key, or "" when there is nothing to report or no seam is wired.
+// Per changed file and its module it names each key whose tip value differs from both the fork point and the parent, with the three values;
+// a file that changes no key, such as a comments-only edit, and a key the parent already holds are not named.
 // Finalize never carries those files to the parent,
 // so the notice tells the orchestrator to re-apply each change meant for the parent.
-// A read failure is logged and reported in the notice instead of stopping the landing.
+// A read or parse failure is logged and reported in the notice instead of stopping the landing.
 func (fz *Finalize) configChangeNotice() string {
 	if fz.deps.ConfigChanges == nil {
 		return ""
 	}
 	changes, err := fz.deps.ConfigChanges()
-	var line string
-	switch {
-	case err != nil:
+	if err != nil {
 		logger.Warn("landingshed: read config changes failed", "producer", finalizeName, "cause", err)
-		line = fmt.Sprintf("loom: the config changes of task branch %q could not be read: %v; diff its config files against the parent branch %q by hand",
+		line := fmt.Sprintf("loom: the config changes of task branch %q could not be read: %v; diff its config files against the parent branch %q by hand",
 			fz.deps.TaskBranch, err, fz.deps.ParentBranch)
-	case len(changes.Files) > 0:
-		line = fmt.Sprintf("loom: task branch %q changed per-worktree config files since it forked from %q: %s (base %s, tip %s, parent tip %s); landing does not carry them to the parent branch, so re-apply each change meant for the parent on the parent's copy of the same file",
-			fz.deps.TaskBranch, fz.deps.ParentBranch, strings.Join(changes.Files, ", "), changes.Base, changes.Tip, changes.ParentTip)
-	default:
+		return strings.Join(strings.Fields(line), " ")
+	}
+
+	var keyed, unread []string
+	for _, file := range changes.Files {
+		contents := changes.Contents[file]
+		module := strings.TrimSuffix(path.Base(file), path.Ext(file))
+		keys, err := configengine.ChangedKeys(contents.Base, contents.Tip, contents.Parent)
+		if err != nil {
+			logger.Warn("landingshed: compare config keys failed", "producer", finalizeName, "file", file, "cause", err)
+			unread = append(unread, fmt.Sprintf("%s (module %s): %v", file, module, err))
+			continue
+		}
+		var named []string
+		for _, key := range keys {
+			named = append(named, fmt.Sprintf("%s.%s: base %s, tip %s, parent %s", module, key.Key, key.Base, key.Tip, key.Parent))
+		}
+		if len(named) > 0 {
+			keyed = append(keyed, fmt.Sprintf("%s (module %s): %s", file, module, strings.Join(named, "; ")))
+		}
+	}
+
+	var parts []string
+	if len(keyed) > 0 {
+		parts = append(parts, fmt.Sprintf("task branch %q changed per-worktree config keys since it forked from %q: %s; landing does not carry them to the parent branch, so re-apply each change meant for the parent on the parent's copy of the same file",
+			fz.deps.TaskBranch, fz.deps.ParentBranch, strings.Join(keyed, "; ")))
+	}
+	if len(unread) > 0 {
+		parts = append(parts, fmt.Sprintf("the config files of task branch %q changed since it forked from %q could not be compared key by key: %s; diff them against the parent branch by hand",
+			fz.deps.TaskBranch, fz.deps.ParentBranch, strings.Join(unread, "; ")))
+	}
+	if len(parts) == 0 {
 		return ""
 	}
-	return strings.Join(strings.Fields(line), " ")
+	return strings.Join(strings.Fields("loom: "+strings.Join(parts, "; also, ")), " ")
 }
 
 // markTaskDone marks the task's board entry done right after a parent-side merge succeeds, ahead of

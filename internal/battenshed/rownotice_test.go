@@ -66,13 +66,19 @@ func TestRowNotifierSend_DeliveryBound(t *testing.T) {
 	}
 }
 
-// TestClearRunMarkers_RemovesEveryRunMarkerSuffixOnly asserts ClearRunMarkers removes a marker for every suffix in runMarkerSuffixes, leaves any other file, and accepts an absent directory.
+// TestClearRunMarkers_RemovesEveryRunMarkerSuffixOnly asserts ClearRunMarkers removes a marker for every suffix in runMarkerSuffixes, the run's memory record and its lock file among them, leaves any other file, and accepts an absent directory.
 func TestClearRunMarkers_RemovesEveryRunMarkerSuffixOnly(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
+	memory := []string{innerRunMemoryFile(dir, "Row"), innerRunMemoryLockFile(dir, "Row")}
 	for _, suffix := range runMarkerSuffixes {
 		if err := os.WriteFile(filepath.Join(dir, "Row"+suffix), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range memory {
+		if err := os.WriteFile(path, []byte("x\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -87,6 +93,11 @@ func TestClearRunMarkers_RemovesEveryRunMarkerSuffixOnly(t *testing.T) {
 	for _, suffix := range runMarkerSuffixes {
 		if _, err := os.Stat(filepath.Join(dir, "Row"+suffix)); !os.IsNotExist(err) {
 			t.Errorf("marker for suffix %q stat error = %v; want it removed", suffix, err)
+		}
+	}
+	for _, path := range memory {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("memory file %s stat error = %v; want it removed", filepath.Base(path), err)
 		}
 	}
 	if _, err := os.Stat(other); err != nil {

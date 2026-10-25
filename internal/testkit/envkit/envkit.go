@@ -80,10 +80,10 @@ var nilLegal = map[string]bool{
 	"WebsterDeps.Geom.Git":             true,
 	"WebsterDeps.Geom.GateSlots":       true,
 	"WebsterDeps.Geom.GateConfig":      true,
-	"InnerRun.Sleep":                   true,
-	"InnerRun.ReviewWait":              true,
+	"InnerRun.ReviveAPIError":          true,
 	"InnerRun.Now":                     true,
 	"InnerRun.Awake":                   true,
+	"InnerRun.Sleeps":                  true,
 	"InnerRun.Pause":                   true,
 	"InnerRun.Notify":                  true,
 	"InnerRun.PairDir":                 true,
@@ -94,12 +94,9 @@ var nilLegal = map[string]bool{
 	"InnerRun.ChildDirtyPaths":         true,
 	"Land.Sleep":                       true,
 	"Land.Now":                         true,
-	"Land.ReadyRoutes":                 true,
 	"Land.LandLock.Sleep":              true,
 	"Land.Notices.Notify":              true,
 	"Land.Notices.Sleep":               true,
-	"Teardown.Notices.Notify":          true,
-	"Teardown.Notices.Sleep":           true,
 	"PrimeLock.Sleep":                  true,
 	"SegmentBounces":                   true,
 	"Segments":                         true,
@@ -393,10 +390,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: func(context.Context) (string, error) { return "", nil },
 			Remove:   func(context.Context) error { return nil },
-			Notices: battenshed.RowNoticeDeps{
-				OrchStrandRecorded: func() (bool, error) { return true, nil },
-				BattenHistoryLen:   func() (int, error) { return 0, nil },
-			},
 		},
 		Land: battenshed.LandDeps{
 			ParentBranch: func() (string, error) { return "main", nil },
@@ -407,7 +400,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			RunDeploy: func(context.Context, string, string, time.Duration) (battenshed.DeployResult, error) {
 				return battenshed.DeployResult{}, nil
 			},
-			ReadyTasks:     func() ([]string, error) { return nil, nil },
 			PruneBoard:     func() error { return nil },
 			PauseRequested: func() (bool, error) { return false, nil },
 			LandLock: battenshed.PrimeLock{

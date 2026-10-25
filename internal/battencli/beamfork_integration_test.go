@@ -42,6 +42,12 @@ func seedBeamBoard(t *testing.T, h *hubforge.Hub) {
 		if _, err := board.UpsertTask(entry); err != nil {
 			t.Fatalf("seed board entry %v: %v", entry["slug"], err)
 		}
+		// A new task is a draft, which a fresh run refuses.
+		if entry["kind"] == "task" {
+			if err := board.SetStatus(entry["slug"].(string), nil); err != nil {
+				t.Fatalf("release board task %v: %v", entry["slug"], err)
+			}
+		}
 	}
 	machine, err := machinename.Name()
 	if err != nil {

@@ -127,6 +127,14 @@ func TestEndBeforeSessionDown(t *testing.T) {
 			if calls := strings.Join(f.calls, ","); calls != tt.wantCalls {
 				t.Errorf("calls = %q, want %q", calls, tt.wantCalls)
 			}
+			// The end of a bare session leaves a beam's dobby live, so every row that reaches the owned-process end spares it.
+			wantSpared := []string(nil)
+			if strings.Contains(tt.wantCalls, "endOwned") {
+				wantSpared = []string{runproc.RoleDobby}
+			}
+			if !reflect.DeepEqual(f.spared, wantSpared) {
+				t.Errorf("owned-process end spared %v, want %v", f.spared, wantSpared)
+			}
 			if f.awaitSeen != tt.wantAwait {
 				t.Errorf("run-lock wait saw %+v, want %+v", f.awaitSeen, tt.wantAwait)
 			}

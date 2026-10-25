@@ -211,7 +211,7 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 	return written, append([]string{boardFile}, rendered...), nil
 }
 
-// turnIntoProject makes the task t a project, clearing the fields only a task carries.
+// turnIntoProject makes the task t a project, clearing the fields only a task carries, a draft status included.
 func turnIntoProject(t *Task) {
 	t.Kind = KindProject
 	t.DependsOn = []string{}
@@ -219,6 +219,9 @@ func turnIntoProject(t *Task) {
 	t.Profile = ""
 	t.RunSettings = nil
 	t.Priority = ""
+	if t.Status != nil && *t.Status == StatusDraft {
+		t.Status = nil
+	}
 }
 
 // renderOwnerWrite renders the board's output files when its config loads, and returns the paths the render wrote or removed.

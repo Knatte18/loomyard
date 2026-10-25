@@ -35,7 +35,7 @@ type notifyClients struct {
 // A prime with no orch strand recorded is not an error: the notice is logged and nothing is posted.
 // A refusal or failure comes back as an error carrying the full line, and the notice is not retried.
 func NotifyPrime(location *lyxcwd.Location, program, line string) (posted bool, err error) {
-	return postNotice(location, program, line, func() (string, bool, error) { return PrimeOrchStrand(location) })
+	return postNotice(location, "", program, line, func() (string, bool, error) { return PrimeOrchStrand(location) })
 }
 
 // NotifyParent sends line as creel mail, signed as the module's program, to the nearest live orch up the beam chain of the pair's parent, and reports whether it was posted.
@@ -43,13 +43,18 @@ func NotifyPrime(location *lyxcwd.Location, program, line string) (posted bool, 
 // A destination with no orch strand recorded is not an error: the notice is logged and nothing is posted.
 // A refusal or failure comes back as an error carrying the full line, and the notice is not retried.
 func NotifyParent(pair *lyxcwd.Location, program, line string) (posted bool, err error) {
-	return postNotice(pair, program, line, func() (string, bool, error) { return parentOrchStrand(pair, OrchLive) })
+	return postNotice(pair, "", program, line, func() (string, bool, error) { return parentOrchStrand(pair, OrchLive) })
 }
 
 // NotifyFrom sends line like NotifyParent, with the walk to the nearest live orch starting at from itself.
 // It serves a notice of a run whose pair is absent, which the run's beam worktree stands in for.
 func NotifyFrom(from *lyxcwd.Location, program, line string) (posted bool, err error) {
-	return postNotice(from, program, line, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
+	return postNotice(from, "", program, line, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
+}
+
+// NotifyFromScoped sends line like NotifyFrom, signed as the program scoped to the beam slug, as "<shortname>:<slug>:<NAME>".
+func NotifyFromScoped(from *lyxcwd.Location, slug, program, line string) (posted bool, err error) {
+	return postNotice(from, slug, program, line, func() (string, bool, error) { return nearestOrchStrand(from, OrchLive) })
 }
 
 // NotifyOrchAt sends line as creel mail to the orch strand of worktree itself, signed as the module's program, and reports whether it was posted.
@@ -57,7 +62,7 @@ func NotifyFrom(from *lyxcwd.Location, program, line string) (posted bool, err e
 // A worktree whose orch state records no strand is not an error: the notice is logged and nothing is posted.
 // A refusal or failure comes back as an error carrying the full line, and the notice is not retried.
 func NotifyOrchAt(worktree *lyxcwd.Location, program, line string) (posted bool, err error) {
-	return postNotice(worktree, program, line, func() (string, bool, error) { return OrchStrandOf(worktree) })
+	return postNotice(worktree, "", program, line, func() (string, bool, error) { return OrchStrandOf(worktree) })
 }
 
 // ParentOrchRecorded reports whether the destination NotifyParent resolves for pair records an orch strand, which is what decides a run's driver to be watched or silent.
@@ -66,14 +71,15 @@ func ParentOrchRecorded(pair *lyxcwd.Location) (bool, error) {
 	return recorded, err
 }
 
-// postNotice posts line through creel to the orch strand orch answers, signing the call as program from location.
-func postNotice(location *lyxcwd.Location, program, line string, orch func() (string, bool, error)) (bool, error) {
+// postNotice posts line through creel to the orch strand orch answers, signing the call as program scoped to slug from location.
+// An empty slug signs as the unscoped program.
+func postNotice(location *lyxcwd.Location, slug, program, line string, orch func() (string, bool, error)) (bool, error) {
 	clients := notifyClients{
 		strand: func(strandClaim string) (notifyPoster, error) {
 			return creelcli.NewStrandClient(location, strandClaim)
 		},
 		program: func() (notifyPoster, error) {
-			return creelcli.NewProgramClient(location, program)
+			return creelcli.NewScopedProgramClient(location, slug, program)
 		},
 	}
 	return notifyPrime(orch, line, os.Getenv(agentname.StrandNameEnv), clients)

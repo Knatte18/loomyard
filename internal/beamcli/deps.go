@@ -1,4 +1,4 @@
-// deps.go fills the verbs' deps over a real hub: the board reads and the owner write, the pair add, mark and records reset, the pair's push, the run's end and clear, and the workspace regeneration.
+// deps.go fills the verbs' deps over a real hub: the board reads and the owner write, the pair add, mark and records reset, the pair's push, the run's end and clear, the workspace regeneration and the dobby start.
 
 package beamcli
 
@@ -8,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -56,8 +57,25 @@ func hubCreateDeps(prime *lyxcwd.Location) (createDeps, error) {
 			return fabricengine.RegenerateHubWorkspace(rec, prime)
 		},
 		WorktreePath: func(slug string) string { return fabricengine.WorktreePath(prime, slug) },
+		StartDobby:   func(slug string) (bool, error) { return startBeamDobby(prime, slug) },
 		HubPath:      prime.HubPath,
 	}, nil
+}
+
+// startBeamDobby starts the dobby of the beam slug unless it is live already, and reports whether it started one.
+func startBeamDobby(prime *lyxcwd.Location, slug string) (bool, error) {
+	geom, err := hubgeom.DobbyGeometry(prime, slug)
+	if err != nil {
+		return false, err
+	}
+	live, err := dobbyengine.Live(geom)
+	if err != nil || live {
+		return false, err
+	}
+	if err := dobbyengine.SpawnDetached(geom); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // hubPromoteDeps fills promoteDeps over the hub the prime belongs to.
@@ -112,7 +130,7 @@ func hubLandDeps(prime *lyxcwd.Location) (landDeps, error) {
 		},
 		Refusal: func(slug string) error { return battencli.BeamLandRefusal(prime, slug) },
 		StartLanding: func(slug string) (map[string]any, error) {
-			return battencli.ResumeInWindow(prime, slug)
+			return battencli.StartFirstPass(prime, slug)
 		},
 	}, nil
 }

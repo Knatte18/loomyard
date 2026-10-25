@@ -122,8 +122,8 @@ func TestCancelIntegration_BlockedRunWithNoPair(t *testing.T) {
 	if _, found, err := fabricengine.CommittedAnchoredFile(h.Location, shedrun.StatusRel(h.Location, slug)); err != nil || found {
 		t.Errorf("committed status found=%v err=%v; want it gone from the records HEAD", found, err)
 	}
-	if status, found := boardStatusOf(t, h, slug); !found || status != nil {
-		t.Errorf("board entry status = %v, found %v; want the entry kept with no status", status, found)
+	if status, found := boardStatusOf(t, h, slug); !found || status == nil || *status != boardengine.StatusDraft {
+		t.Errorf("board entry status = %v, found %v; want the entry kept as a draft", status, found)
 	}
 	if overviewListsSlug(h, slug) {
 		t.Error("the overview still draws a line for the cancelled run")
@@ -193,8 +193,8 @@ func TestCancelIntegration_KeptPairJudgeOnly(t *testing.T) {
 	if !pathExists(h.PairCodeWorktree(slug)) {
 		t.Error("the task worktree is gone after a cancel without --remove")
 	}
-	if status, _ := boardStatusOf(t, h, slug); status != nil {
-		t.Errorf("board entry status = %q; want it cleared", *status)
+	if status, _ := boardStatusOf(t, h, slug); status == nil || *status != boardengine.StatusDraft {
+		t.Errorf("board entry status = %v; want draft", status)
 	}
 }
 
@@ -253,8 +253,8 @@ func TestCancelIntegration_RemoveTearsDownPairAndBranch(t *testing.T) {
 	if tags := strings.Fields(gitkit.Git(t, h.CodeBare, "tag", "--list", fabricengine.ArchiveTagPrefix+slug+"/*")); !slices.Contains(tags, wantTag) {
 		t.Errorf("archive tags on origin = %v; want %s", tags, wantTag)
 	}
-	if status, _ := boardStatusOf(t, h, slug); status != nil {
-		t.Errorf("board entry status = %q; want it cleared", *status)
+	if status, _ := boardStatusOf(t, h, slug); status == nil || *status != boardengine.StatusDraft {
+		t.Errorf("board entry status = %v; want draft", status)
 	}
 }
 

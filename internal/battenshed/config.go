@@ -20,33 +20,39 @@ func ConfigTemplate() string {
 	return configTemplate
 }
 
-// Config is the resolved batten.yaml's tackler keys, which a batten run passes through.
+// Config is the resolved batten.yaml's tackler and arbiter keys, which a batten run passes through.
 // The Command rows' entry-gate and command keys are read one at a time through the setting lookups, so Config holds none of them.
 type Config struct {
-	// Tackler, TacklerTimeoutMin and TacklerMaxSpawns override shed.yaml's keys of the same names for a batten run;
-	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns of 0 turns the tackler off.
+	// Tackler, TacklerTimeoutMin, TacklerMaxSpawns, Arbiter, ArbiterTimeoutMin and ArbiterMaxSpawns override shed.yaml's keys of the same names for a batten run;
+	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns or ArbiterMaxSpawns of 0 turns that role off.
 	Tackler           string `yaml:"tackler"`
 	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
 	TacklerMaxSpawns  *int   `yaml:"tackler_max_spawns"`
+	Arbiter           string `yaml:"arbiter"`
+	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
+	ArbiterMaxSpawns  *int   `yaml:"arbiter_max_spawns"`
 }
 
-// ShedOverride returns the tackler keys of batten.yaml as the override of shed.yaml's.
+// ShedOverride returns the tackler and arbiter keys of batten.yaml as the override of shed.yaml's.
 // DriverKind stays empty: batten's own driver is always go, so batten.yaml holds no driver_kind.
 func (c Config) ShedOverride() sheddriver.Override {
 	return sheddriver.Override{
 		Tackler:           c.Tackler,
 		TacklerTimeoutMin: c.TacklerTimeoutMin,
 		TacklerMaxSpawns:  c.TacklerMaxSpawns,
+		Arbiter:           c.Arbiter,
+		ArbiterTimeoutMin: c.ArbiterTimeoutMin,
+		ArbiterMaxSpawns:  c.ArbiterMaxSpawns,
 	}
 }
 
-// ValidateLocalValues checks the tackler keys a local-layer document sets, and leaves every other key to LoadConfig.
+// ValidateLocalValues checks the tackler and arbiter keys a local-layer document sets, and leaves every other key to LoadConfig.
 // A refusal is marked configengine.ErrInvalid and names the key.
 func ValidateLocalValues(document []byte) error {
 	return sheddriver.CheckLocalOverride("batten", document)
 }
 
-// ConfigSpec returns batten's layered-load spec: a per-worktree module whose Command-row entry-gate and tackler keys a local override, and so a task's run settings, may set.
+// ConfigSpec returns batten's layered-load spec: a per-worktree module whose Command-row entry-gate, tackler and arbiter keys a local override, and so a task's run settings, may set.
 // The Command rows' command keys are executable, so the local layer, and so a task's run settings, refuses them.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
@@ -64,6 +70,9 @@ func ConfigSpec() configengine.Spec {
 			"tackler":             configengine.CategoryNone,
 			"tackler_timeout_min": configengine.CategoryNone,
 			"tackler_max_spawns":  configengine.CategoryNone,
+			"arbiter":             configengine.CategoryNone,
+			"arbiter_timeout_min": configengine.CategoryNone,
+			"arbiter_max_spawns":  configengine.CategoryNone,
 		},
 	}
 }

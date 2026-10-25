@@ -17,6 +17,15 @@ Starting, resuming or landing a run, bar the rest of a Finalize already past its
 
 Acting on a run or a hub after an absence starts with `fabricengine`'s origin reconcile, so every verdict above reads the state origin holds.
 
+## Passes
+
+A run is driven in passes, one `lyx batten run` each, and a pass is either full or a continue pass.
+
+- A continue pass is the one dobby schedules into a run it already drives, and it is not a resume: it needs no origin verdict, so it skips the resume's origin reconcile, the Open-Window re-run and the pre-run pause refusal.
+- The first pass of a run after a dobby start or a machine wake, every pass while a full pass is owed, and every hand pass is a resume and gets the origin reconcile, which every full pass keeps first.
+- A continue pass is refused unless batten's status reads `running` at Run-Shed, the parent worktree's dobby state names the run as one it drives with no full pass owed, and no origin-owed marker stands; the refusal reads to dobby as a full pass owed.
+- A resume that judged its owner without origin leaves the origin-owed marker, which stays until a pass that reached origin exits 0, so the passes stay full until origin has been reached.
+
 ## Enforcement
 
 - `internal/machinename`'s sole-source scan fails on a production file outside the package that reads the hostname.

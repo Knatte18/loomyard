@@ -10,9 +10,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
 // TestCheck_RefusesLandingHalts pins that Check refuses a blocked landing halt with a refusal ending in HandBackWayForward, and admits a Webster reroute-cap halt and an ordinary blocked halt.
@@ -51,6 +54,45 @@ func TestCheck_RefusesLandingHalts(t *testing.T) {
 			}
 			if got := HandsBack(tt.producer, tt.reason); got != tt.wantHandsBack {
 				t.Errorf("HandsBack(%q, %q) = %v; want %v", tt.producer, tt.reason, got, tt.wantHandsBack)
+			}
+		})
+	}
+}
+
+// TestEligibility_BattenRule pins batten's rule through Check: a tackler-escalated stop is eligible unless it is a spent budget, an unmet precondition or a pause-honoured Land stop, which end in BattenHandBackWayForward, while loom-shaped readers keep loom's answer for the budget and precondition stops.
+func TestEligibility_BattenRule(t *testing.T) {
+	t.Parallel()
+	loomReaders := Readers{
+		PendingEscalation: func(string) (shedadapters.EscalationCause, string, bool, error) { return "", "", false, nil },
+		InterruptPolicy:   func(string) string { return "" },
+	}
+	tests := []struct {
+		name     string
+		readers  Readers
+		status   shedengine.Status
+		kind     string
+		wantErr  bool
+		wantWays string
+	}{
+		{name: "blocked Land with a deploy error", readers: NewBattenReaders(), status: shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: battenrecipe.NameLand, Error: "deploy failed"}},
+		{name: "failed Worktree-Teardown of kind producer", readers: NewBattenReaders(), status: shedengine.Status{State: shedengine.StateFailed, CurrentProducer: battenrecipe.NameWorktreeTeardown, Error: "teardown failed"}, kind: shedverbs.KindProducer},
+		{name: "spent budget", readers: NewBattenReaders(), status: shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Code-Write", Error: shedengine.ReasonBounceBudgetExhausted + ": x"}, wantErr: true, wantWays: BattenHandBackWayForward},
+		{name: "unmet precondition", readers: NewBattenReaders(), status: shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Code-Write", Error: shedengine.ReasonPreconditionUnmet + ": x"}, wantErr: true, wantWays: BattenHandBackWayForward},
+		{name: "pause-honoured Land stop", readers: NewBattenReaders(), status: shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: battenrecipe.NameLand, Error: battenshed.PauseHonouredPrefix + ": a pause was requested"}, wantErr: true, wantWays: BattenHandBackWayForward},
+		{name: "loom keeps a spent budget eligible", readers: loomReaders, status: shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Code-Write", Error: shedengine.ReasonBounceBudgetExhausted + ": x"}},
+		{name: "loom keeps an unmet precondition eligible", readers: loomReaders, status: shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: "Code-Write", Error: shedengine.ReasonPreconditionUnmet + ": x"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := Check(tt.status, tt.kind, "", tt.readers)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Check() error = %v; want an error: %v", err, tt.wantErr)
+			}
+			if tt.wantErr && !strings.HasSuffix(err.Error(), tt.wantWays) {
+				t.Errorf("Check() error = %q; want it to end with %q", err, tt.wantWays)
 			}
 		})
 	}

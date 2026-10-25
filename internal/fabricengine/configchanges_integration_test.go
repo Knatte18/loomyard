@@ -8,6 +8,7 @@
 package fabricengine_test
 
 import (
+	"bytes"
 	"cmp"
 	"path/filepath"
 	"slices"
@@ -34,6 +35,8 @@ func TestReadConfigChanges(t *testing.T) {
 		rels []string
 		// taskFiles are anchor-relative files committed on the pair's weft branch, one commit each.
 		taskFiles []string
+		// baseFile is an anchor-relative file committed on the parent's weft branch before the pair is forked, so the fork point holds it as "base content".
+		baseFile string
 		// outsideAnchorFile is a repository-root-relative file also committed on the pair's weft branch.
 		outsideAnchorFile string
 		// parentFileAfterFork is an anchor-relative file committed on the parent's weft branch after the fork.
@@ -60,6 +63,15 @@ func TestReadConfigChanges(t *testing.T) {
 			name:         "a listed config file changed is reported",
 			anchor:       ".",
 			rels:         []string{loomRel},
+			taskFiles:    []string{loomRel},
+			parentBranch: "main",
+			wantFiles:    []string{loomRel},
+		},
+		{
+			name:         "a file present at the fork point carries its base bytes",
+			anchor:       ".",
+			rels:         []string{loomRel},
+			baseFile:     loomRel,
 			taskFiles:    []string{loomRel},
 			parentBranch: "main",
 			wantFiles:    []string{loomRel},
@@ -137,6 +149,9 @@ func TestReadConfigChanges(t *testing.T) {
 			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: tc.anchor})
 			l := h.Location
 			weftRoot := mustRecordsRepoRoot(t, l)
+			if tc.baseFile != "" {
+				gitkit.CommitFile(t, weftRoot, filepath.Join(l.AnchorRel, tc.baseFile), "base content", "base config")
+			}
 			forkPoint := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName("main"))
 
 			hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -185,6 +200,29 @@ func TestReadConfigChanges(t *testing.T) {
 			}
 			if !slices.Equal(got.Files, want) {
 				t.Errorf("Files = %v; want %v", got.Files, want)
+			}
+			if len(got.Contents) != len(got.Files) {
+				t.Errorf("Contents holds %d files; want one per reported file %v", len(got.Contents), got.Files)
+			}
+			for _, rel := range tc.wantFiles {
+				contents := got.Contents[filepath.ToSlash(filepath.Join(l.AnchorRel, rel))]
+				wantBase := []byte(nil)
+				if tc.baseFile == rel {
+					wantBase = []byte("base content")
+				}
+				if !bytes.Equal(contents.Base, wantBase) || (contents.Base == nil) != (wantBase == nil) {
+					t.Errorf("Contents[%s].Base = %q; want %q (nil when the fork point holds no such file)", rel, contents.Base, wantBase)
+				}
+				if want := "task change"; string(contents.Tip) != want {
+					t.Errorf("Contents[%s].Tip = %q; want %q", rel, contents.Tip, want)
+				}
+				wantParent := wantBase
+				if tc.parentFileAfterFork == rel {
+					wantParent = []byte(cmp.Or(tc.parentContent, "parent change"))
+				}
+				if !bytes.Equal(contents.Parent, wantParent) || (contents.Parent == nil) != (wantParent == nil) {
+					t.Errorf("Contents[%s].Parent = %q; want %q", rel, contents.Parent, wantParent)
+				}
 			}
 			if got.Base != forkPoint {
 				t.Errorf("Base = %s; want the fork point %s", got.Base, forkPoint)

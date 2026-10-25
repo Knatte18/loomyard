@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
@@ -103,12 +104,16 @@ type Teardown struct {
 	gone    func(slug string) (bool, error)
 	quiet   func(slug string) (quietState, error)
 	refusal func(slug string, force bool) error
-	// endOwned ends the pair's registered processes, sparing the calling process and its ancestors.
-	endOwned func(slug string) ([]runproc.Ended, error)
+	// endOwned ends the pair's registered processes, sparing the calling process and its ancestors and every process of a role in spare.
+	endOwned func(slug string, spare ...string) ([]runproc.Ended, error)
 	// driverLockHeld reports whether the present task worktree's Go-driver lock is held.
 	driverLockHeld func(slug string) (bool, error)
-	// battenAlive reports whether a registered batten process of the slug is alive.
+	// battenAlive reports whether the slug's run has a live lifecycle owner: a registered batten process, or a dobby driving the run between its passes.
 	battenAlive func(slug string) (bool, error)
+	// parentOf names the slug of the pair's parent, or "" for the prime.
+	parentOf func(slug string) (string, error)
+	// cancelMarked reports whether a batten cancel marker of the slug stands.
+	cancelMarked func(slug string) bool
 	// driverPID returns the pid of the slug's live registered driver; found is false when there is none.
 	driverPID func(slug string) (pid int, found bool)
 	// paused reports whether a live pause entry covers the slug, and whether a hub entry is among those covering it.
@@ -164,6 +169,8 @@ func New(prime *lyxcwd.Location) (*Teardown, error) {
 	t.endOwned = t.endOwnedProcesses
 	t.driverLockHeld = t.driverLockHeldIn
 	t.battenAlive = t.registeredBattenAlive
+	t.parentOf = func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) }
+	t.cancelMarked = func(slug string) bool { return fileExists(shedrun.CancelMarker(prime, slug)) }
 	t.driverPID = t.driverRecordPID
 	t.paused = t.pausedIn
 	t.awaitOrPass = t.awaitRunLockOrPass
@@ -564,9 +571,9 @@ func sessionsOfOtherPairs(live, pairSessions []string) []string {
 }
 
 // endOwnedProcesses ends the pair's registered processes through the hub's owner record.
-// The calling process and its ancestors are spared, so batten's own teardown, run inside a registered batten, never ends itself.
-func (t *Teardown) endOwnedProcesses(slug string) ([]runproc.Ended, error) {
-	return runproc.End(fabricengine.RunProcDir(t.prime.HubPath), slug, os.Getpid())
+// The calling process and its ancestors are spared, so batten's own teardown, run inside a registered batten, never ends itself, and so is every process of a role in spare.
+func (t *Teardown) endOwnedProcesses(slug string, spare ...string) ([]runproc.Ended, error) {
+	return runproc.EndSparing(fabricengine.RunProcDir(t.prime.HubPath), slug, os.Getpid(), spare...)
 }
 
 // driverLockHeldIn reports whether the present task worktree's Go-driver lock is held.
@@ -579,18 +586,42 @@ func (t *Teardown) driverLockHeldIn(slug string) (bool, error) {
 	return !free, err
 }
 
-// registeredBattenAlive reports whether a live record of the slug carries the batten role.
+// registeredBattenAlive reports whether the slug's run has a live lifecycle owner:
+// a live record of the slug carries the batten role, or batten's status reads running with no cancel marker and a live dobby record stands under the run's parent, the gap between two passes dobby drives.
 func (t *Teardown) registeredBattenAlive(slug string) (bool, error) {
-	records, err := runproc.List(fabricengine.RunProcDir(t.prime.HubPath), slug)
+	records, err := t.ownedProcesses(slug)
 	if err != nil {
 		return false, err
 	}
+	if hasRole(records, runproc.RoleBatten) {
+		return true, nil
+	}
+	_, state, err := t.battenRun(slug)
+	if err != nil || state != string(shedengine.StateRunning) || t.cancelMarked(slug) {
+		return false, err
+	}
+	parent, err := t.parentOf(slug)
+	if err != nil {
+		return false, err
+	}
+	if parent == "" {
+		parent = runproc.HubOwner
+	}
+	dobbies, err := t.ownedProcesses(parent)
+	if err != nil {
+		return false, err
+	}
+	return hasRole(dobbies, runproc.RoleDobby), nil
+}
+
+// hasRole reports whether any record carries the role.
+func hasRole(records []runproc.Record, role string) bool {
 	for _, record := range records {
-		if record.Role == runproc.RoleBatten {
-			return true, nil
+		if record.Role == role {
+			return true
 		}
 	}
-	return false, nil
+	return false
 }
 
 // driverRecordPID returns the pid of a live record of the slug with the driver role.

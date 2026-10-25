@@ -32,14 +32,19 @@ Steps, in order:
      with its branches and both ways forward; --keep-local records the owner over them,
      --drop-local keeps each local tip under an archive/<slug>/<tip> tag and moves the
      branches to origin's (refused for a live pair)
-  3. the pair of a task this machine lacks is added from the prime
-  4. one owner write for every entry not stopped, pushed to origin
-  5. each owner pause of an adopted task is lifted
-  6. each adopted task whose batten run is not done is resumed in its window; a child
-     halted at Finalize's owner check is resumed in its worktree
+  3. a refusal, before any step writes, of an entry whose parent another machine owns,
+     and of a beam or the prime while a member another machine owns is left out; each
+     names the call that adopts them together, because this machine's dobby drives only
+     runs whose parent is its own worktree
+  4. the pair of a task this machine lacks is added from the prime
+  5. one owner write for every entry not stopped, pushed to origin
+  6. each owner pause of an adopted task is lifted
+  7. each adopted task whose batten run is not done is resumed as a detached first pass;
+     a child halted at Finalize's owner check is resumed in its worktree
+  8. the dobby of the prime and of every beam this machine owns is started when it is not live
 
-The envelope carries reconcile, mutations and partial, and per slug what happened.
-A slug's error never stops the other slugs.
+The envelope carries reconcile, mutations and partial, and per slug what happened, and
+dobby_warning when a dobby did not start. A slug's error never stops the other slugs.
 
 Example:
   lyx adopt fix-parser
@@ -84,6 +89,9 @@ Example:
 			}
 			if result.PrimeLost != "" {
 				fields["prime_lost_to"] = result.PrimeLost
+			}
+			if result.DobbyWarning != "" {
+				fields["dobby_warning"] = result.DobbyWarning
 			}
 			if err != nil {
 				clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), fields))

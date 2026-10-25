@@ -42,6 +42,8 @@ const (
 	ExitBusy Exit = "busy"
 	// ExitRunningElsewhere is a recheck that found the run running or its run lock held.
 	ExitRunningElsewhere Exit = "running-elsewhere"
+	// ExitYield is a pass that ended on a step that yielded, with nothing decided and the run left as it was.
+	ExitYield Exit = "yield"
 )
 
 // Deps is the shed driver's whole surface to the world.
@@ -211,6 +213,13 @@ func (d *goDriver) run(ctx context.Context) error {
 			d.rules, d.attempts = nil, nil
 		}
 		resumed = false
+
+		// A yield decides nothing: no rule row, report, repair or budget applies, and the pass ends with the run as it was.
+		if stop.OK && stop.LoopState == string(shedengine.StateRunning) && stop.Outcome == string(shedengine.Yield) {
+			logger.Debug("sheddriver: drive: the step yielded; ending the pass", "run", d.deps.RunID, "producer", stop.CurrentProducer)
+			d.exit = ExitYield
+			return nil
+		}
 
 		next, exit, err := d.settleStop(ctx, stop)
 		if err != nil || exit {

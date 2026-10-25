@@ -104,7 +104,6 @@ func lifecycleEntryCases() []lifecycleEntryCase {
 				{"Land.Pull", func(env Env) Env { env.Land.Pull = nil; return env }},
 				{"Land.Landing", func(env Env) Env { env.Land.Landing = nil; return env }},
 				{"Land.RunDeploy", func(env Env) Env { env.Land.RunDeploy = nil; return env }},
-				{"Land.ReadyTasks", func(env Env) Env { env.Land.ReadyTasks = nil; return env }},
 				{"Land.PruneBoard", func(env Env) Env { env.Land.PruneBoard = nil; return env }},
 				{"Land.PauseRequested", func(env Env) Env { env.Land.PauseRequested = nil; return env }},
 			},
@@ -198,22 +197,6 @@ func TestLifecycleEntries_RejectsNilSeams(t *testing.T) {
 				})
 			}
 		})
-	}
-}
-
-// TestInnerRunEntry_NilSleepIsAccepted asserts innerRunEntry does not validate Env.InnerRun.Sleep:
-// its nil value is legitimate and selects the production sleep inside battenshed.NewInnerRun.
-func TestInnerRunEntry_NilSleepIsAccepted(t *testing.T) {
-	env := newTestEnv(t)
-	if env.InnerRun.Sleep != nil {
-		t.Fatalf("newTestEnv(t).InnerRun.Sleep is non-nil; want nil by default")
-	}
-	producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{}, env)
-	if err != nil {
-		t.Fatalf("innerRunEntry() error = %v; want nil", err)
-	}
-	if producer == nil {
-		t.Fatalf("innerRunEntry() = nil producer; want non-nil")
 	}
 }
 

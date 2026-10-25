@@ -155,6 +155,7 @@ func TestEnd(t *testing.T) {
 		records       []Record
 		process       *Record
 		ancestors     []int
+		spare         []string
 		caller        int
 		ignoreTerm    []int
 		immortal      []int
@@ -224,6 +225,21 @@ func TestEnd(t *testing.T) {
 			caller:      41,
 			wantSignals: []string{"term pid 42"},
 			wantEnded:   []Ended{{42, RoleLoop}},
+		},
+		{
+			name:        "a spared role is left alone with the processes below it",
+			table:       []proc.StatEntry{entry(66, 1, 5, "660"), entry(67, 1, 5, "670"), entry(68, 67, 5, "680")},
+			records:     []Record{{PID: 66, StartTime: "660", Role: RoleBatten}, {PID: 67, StartTime: "670", Role: RoleDobby}},
+			spare:       []string{RoleDobby},
+			wantSignals: []string{"term pid 66"},
+			wantEnded:   []Ended{{66, RoleBatten}},
+		},
+		{
+			name:        "an owner ended with no spared role reaches its dobby and the processes below it",
+			table:       []proc.StatEntry{entry(66, 1, 5, "660"), entry(67, 1, 5, "670"), entry(68, 67, 5, "680")},
+			records:     []Record{{PID: 66, StartTime: "660", Role: RoleBatten}, {PID: 67, StartTime: "670", Role: RoleDobby}},
+			wantSignals: []string{"term pid 66", "term pid 67", "term pid 68"},
+			wantEnded:   []Ended{{66, RoleBatten}, {67, RoleDobby}, {68, "descendant of dobby"}},
 		},
 		{
 			name:    "a recorded pid whose start time differs is left alone",
@@ -404,7 +420,7 @@ func TestEnd(t *testing.T) {
 			if tt.process != nil {
 				ended, err = e.endProcess(tt.process.PID, tt.process.StartTime, tt.process.Role)
 			} else {
-				ended, err = e.end(dir, "slug", tt.caller)
+				ended, err = e.end(dir, "slug", tt.caller, tt.spare...)
 			}
 
 			var survivors *SurvivorsError

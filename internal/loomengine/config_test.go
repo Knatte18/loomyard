@@ -121,9 +121,9 @@ func templateConfig() Config {
 		FrictionTimeoutMin:       30,
 		Driver:                   "haiku[medium]",
 		StepIdleTimeoutMin:       60,
-		Arbiter:                  "opus[high]",
-		ArbiterTimeoutMin:        30,
-		ArbiterMaxSpawns:         3,
+		Arbiter:                  "",
+		ArbiterTimeoutMin:        0,
+		ArbiterMaxSpawns:         nil,
 		DriverKind:               "",
 		Tackler:                  "",
 		TacklerTimeoutMin:        0,
@@ -304,12 +304,12 @@ review_timeout_min: 240
 		{
 			name:   "explicit arbiter keys",
 			values: map[string]string{"arbiter": "sonnet[low]", "arbiter_timeout_min": "45", "arbiter_max_spawns": "5"},
-			mutate: func(c *Config) { c.Arbiter, c.ArbiterTimeoutMin, c.ArbiterMaxSpawns = "sonnet[low]", 45, 5 },
+			mutate: func(c *Config) { c.Arbiter, c.ArbiterTimeoutMin, c.ArbiterMaxSpawns = "sonnet[low]", 45, intPtr(5) },
 		},
 		{
-			name:   "zero and empty arbiter keys load as their off and default meanings",
+			name:   "an arbiter_max_spawns of 0 reads as a set 0 that turns the arbiter off",
 			values: map[string]string{"arbiter": `""`, "arbiter_timeout_min": "0", "arbiter_max_spawns": "0"},
-			mutate: func(c *Config) { c.Arbiter, c.ArbiterTimeoutMin, c.ArbiterMaxSpawns = "", 0, 0 },
+			mutate: func(c *Config) { c.Arbiter, c.ArbiterTimeoutMin, c.ArbiterMaxSpawns = "", 0, intPtr(0) },
 		},
 		{
 			name:   "driver_kind go and explicit tackler keys, a tackler_max_spawns of 0 read as a set 0",

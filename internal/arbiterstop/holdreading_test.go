@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -51,14 +52,28 @@ func newHoldFixture(t *testing.T, producer string, state shedengine.State) *hold
 // writeConfig writes content as loom.yaml in both the board dir and the anchor, as a seeded hub holds it.
 func (f *holdFixture) writeConfig(content string) {
 	f.t.Helper()
+	f.writeModuleConfig("loom.yaml", content)
+}
+
+// writeModuleConfig writes content as the config file name in both the board dir and the anchor.
+func (f *holdFixture) writeModuleConfig(name, content string) {
+	f.t.Helper()
 	for _, base := range []string{fabricengine.BoardDir(f.location.HubPath), f.location.AnchorPath()} {
 		dir := filepath.Join(base, "_lyx", "config")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			f.t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "loom.yaml"), []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 			f.t.Fatal(err)
 		}
+	}
+}
+
+// seedRecipe writes the child's seed for recipe, as the run's start leaves it.
+func (f *holdFixture) seedRecipe(recipe string) {
+	f.t.Helper()
+	if err := shedrun.WriteSeed(f.location, shedrun.SelfRunID, shedrun.Seed{Recipe: recipe, Driver: shedrun.DriverGo}); err != nil {
+		f.t.Fatal(err)
 	}
 }
 
@@ -173,9 +188,17 @@ func TestHoldReading(t *testing.T) {
 			want:  eligible,
 		},
 		{
-			name: "arbiter_max_spawns of 0 reads off", producer: "Plan-Write", state: shedengine.StateBlocked,
+			name: "loom.yaml's arbiter_max_spawns of 0 reads off", producer: "Plan-Write", state: shedengine.StateBlocked,
 			setup: func(f *holdFixture, _ sheddriver.StopKey) {
-				f.writeConfig(strings.Replace(loomengine.ConfigTemplate(), "arbiter_max_spawns: 3", "arbiter_max_spawns: 0", 1))
+				f.writeConfig(strings.Replace(loomengine.ConfigTemplate(), "arbiter_max_spawns: ~", "arbiter_max_spawns: 0", 1))
+			},
+			want: battenshed.ChildArbiterStop{Eligible: true, Timeout: timeout},
+		},
+		{
+			name: "a darn child reads darn.yaml's override, not loom.yaml's", producer: "Plan-Write", state: shedengine.StateBlocked,
+			setup: func(f *holdFixture, _ sheddriver.StopKey) {
+				f.seedRecipe(shedrun.RecipeDarn)
+				f.writeModuleConfig("darn.yaml", strings.Replace(darnengine.ConfigTemplate(), "arbiter_max_spawns: ~", "arbiter_max_spawns: 0", 1))
 			},
 			want: battenshed.ChildArbiterStop{Eligible: true, Timeout: timeout},
 		},

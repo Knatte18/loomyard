@@ -50,7 +50,7 @@ func TestPreDriveCheck(t *testing.T) {
 	t.Parallel()
 
 	const markerWayForward = "way forward: wait for the cancel"
-	const freshStartWayForward = `way forward: run "lyx batten run some-slug" for a fresh start`
+	const freshStartWayForward = `way forward: run "lyx board set-status '{"slug":"some-slug","status":null}'" and "lyx batten run some-slug" for a fresh start`
 
 	t.Run("SeededRunWithNoMarkerSeedsTheStatusAndClearsTheRunMarkers", func(t *testing.T) {
 		t.Parallel()

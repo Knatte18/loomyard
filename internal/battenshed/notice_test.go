@@ -19,11 +19,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
-// noticeHarness drives producers whose status, driver liveness, stop report and orch strand a test sets between and during Calls.
-// Every producer it builds shares the scratch directory, so a second one models a batten restart.
+// noticeHarness drives passes of the Run-Shed row whose status, driver liveness, stop report and orch strand a test sets between them.
+// Every pass is a new producer over the harness's one scratch directory, so only the memory record carries state from one pass to the next.
 type noticeHarness struct {
 	t          *testing.T
 	scratch    string
@@ -73,9 +74,13 @@ type noticeHarness struct {
 	// pause is what the fake Pause seam reports.
 	pause pauserecord.Coverage
 
-	// started is the fake clock's time when the harness was built, and asleep the time suspend has taken out of the awake clock since.
-	started time.Time
-	asleep  time.Duration
+	// reviveAPI wires the fake ReviveAPIError seam, reviveAPIErr is what it reports, and revives counts its calls.
+	reviveAPI    bool
+	reviveAPIErr error
+	revives      int
+
+	// sleeps are the machine sleeps suspend has recorded, which the fake Sleeps seam reports.
+	sleeps []pauserecord.Interval
 }
 
 func newNoticeHarness(t *testing.T) *noticeHarness {
@@ -93,15 +98,25 @@ func newNoticeHarness(t *testing.T) *noticeHarness {
 		quiet:        45 * time.Minute,
 		poll:         time.Second,
 	}
-	h.started = h.clock.Now()
-	h.touch(h.started)
+	h.touch(h.clock.Now())
 	return h
 }
 
-// suspend moves the fake wall clock forward by d without moving the awake clock, as a machine sleeping for d does.
+// suspend moves the fake wall clock forward by d and records the machine sleep of d it stands for, as the scheduling dobby would.
 func (h *noticeHarness) suspend(d time.Duration) {
+	start := h.clock.Now()
 	h.clock.advance(d)
-	h.asleep += d
+	h.sleeps = append(h.sleeps, pauserecord.Interval{Start: start, End: h.clock.Now()})
+}
+
+// memory reads the memory record the passes left in the scratch directory.
+func (h *noticeHarness) memory() innerRunMemory {
+	h.t.Helper()
+	memory, found, err := state.ReadJSON[innerRunMemory](innerRunMemoryFile(h.scratch, "Run-Shed"), innerRunMemoryLockFile(h.scratch, "Run-Shed"))
+	if err != nil || !found {
+		h.t.Fatalf("memory record = %v found=%v; want it written", err, found)
+	}
+	return memory
 }
 
 // touch sets the status file's modification time, creating the file when absent.
@@ -147,17 +162,21 @@ func (h *noticeHarness) writeReport(at time.Time) {
 	h.reportPath, h.reportAt, h.reportFound = "/wt/task/_lyx/stop-report.md", at, true
 }
 
-// producer builds a fresh producer over the harness's scratch directory, so a second one models a restart.
+// producer returns a producer whose every Call is one pass, run by a producer built anew over the harness's scratch directory.
 func (h *noticeHarness) producer() shedengine.ShedProducer {
+	return freshPerCall(h.newProducer)
+}
+
+// newProducer builds a producer over the harness's scratch directory.
+func (h *noticeHarness) newProducer() shedengine.ShedProducer {
 	deps := InnerRunDeps{
 		Spawn:         func(context.Context) error { return nil },
 		ResolveStatus: func() (string, string, error) { return h.statusPath, "", nil },
 		ReadStatus: func(string, string) (shedengine.Status, bool, error) {
 			return h.status, true, nil
 		},
-		Sleep:          h.clock.Sleep,
 		Now:            h.clock.Now,
-		Awake:          func() time.Duration { return h.clock.Now().Sub(h.started) - h.asleep },
+		Sleeps:         func() ([]pauserecord.Interval, error) { return h.sleeps, nil },
 		PauseRequested: h.clock.pauseRequested,
 		Pause:          func() (pauserecord.Coverage, error) { return h.pause, nil },
 		NoticeProbe:    h.probe,
@@ -197,36 +216,82 @@ func (h *noticeHarness) producer() shedengine.ShedProducer {
 		},
 		PairDir: func() (string, error) { return "/wt/task", nil },
 	}
+	if h.reviveAPI {
+		deps.ReviveAPIError = func(context.Context) error {
+			h.revives++
+			return h.reviveAPIErr
+		}
+	}
 	return NewInnerRun("Run-Shed", "task", deps, h.poll, h.scratch, testGrace)
 }
 
-// run makes one Call whose wait ends after checks checks unless something else ends it first, and requires it to end as a Stuck.
-func (h *noticeHarness) run(p shedengine.ShedProducer, checks int) {
+// drive runs passes of p, one poll interval apart, until one ends with a Stuck, which it requires to be a Stuck whatever the notice step did.
+// A change of state the child made before the first pass ends that pass at once, as the change back into the state the memory left; it counts as no check and the passes go on at the same time.
+func (h *noticeHarness) drive(p shedengine.ShedProducer) {
 	h.t.Helper()
-	h.clock.pauseAtSleep = h.clock.sleepCalls + checks
-	outcome, _, err := p.Call(context.Background())
-	if err != nil || outcome != shedengine.Stuck {
-		h.t.Fatalf("Call() = %v, %v; want a Stuck whatever the notice step did", outcome, err)
+	for first := true; ; first = false {
+		outcome, ptr, err := p.Call(context.Background())
+		switch {
+		case err != nil:
+			h.t.Fatalf("Call() error = %v", err)
+		case outcome == shedengine.Yield:
+			h.clock.Sleep(context.Background(), h.poll)
+		case outcome == shedengine.Stuck && first && isStateChange(ptr.Path):
+		case outcome == shedengine.Stuck:
+			return
+		default:
+			h.t.Fatalf("Call() = %v %+v; want a Yield or a Stuck", outcome, ptr)
+		}
 	}
 }
 
-// call makes one Call whose wait ends at its first check.
+// isStateChange reports whether path names a change of the child's state.
+func isStateChange(path string) bool {
+	_, ok := ParseStateChange(path)
+	return ok
+}
+
+// untilEnd runs passes of p, one poll interval apart, and returns the first that does not yield.
+func (h *noticeHarness) untilEnd(p shedengine.ShedProducer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	for {
+		outcome, ptr, err := p.Call(context.Background())
+		if outcome != shedengine.Yield || err != nil {
+			return outcome, ptr, err
+		}
+		h.clock.Sleep(context.Background(), h.poll)
+	}
+}
+
+// run drives passes that end after checks checks unless something else ends them first.
+func (h *noticeHarness) run(p shedengine.ShedProducer, checks int) {
+	h.t.Helper()
+	h.clock.pauseAtSleep = h.clock.sleepCalls + checks
+	h.drive(p)
+}
+
+// call drives passes that end at the first check after the first pass.
 func (h *noticeHarness) call(p shedengine.ShedProducer) { h.t.Helper(); h.run(p, 1) }
 
-// leaveRunning drives one Call over a running child that turns into status at its first check, so the Call returns on the state change before the new state's notice has had a wait of its own.
+// leaveRunning drives passes over a running child that turns into status at the first check, so the run ends on the state change before the new state's notice has had a pass of its own.
 func (h *noticeHarness) leaveRunning(p shedengine.ShedProducer, status shedengine.Status) {
 	h.t.Helper()
 	h.setStatus(shedengine.Status{State: shedengine.StateRunning})
 	h.clock.pauseAtSleep = 0
 	h.clock.onSleep = func(int) { h.setStatus(status) }
 	defer func() { h.clock.onSleep = nil }()
-	_, ptr, err := p.Call(context.Background())
-	if err != nil || !strings.HasPrefix(ptr.Path, "child running → ") {
-		h.t.Fatalf("Call() = %+v, %v; want the return for the change out of running", ptr, err)
+	for {
+		outcome, ptr, err := h.untilEnd(p)
+		if err != nil || outcome != shedengine.Stuck {
+			h.t.Fatalf("Call() = %v %+v, %v; want the return for the change out of running", outcome, ptr, err)
+		}
+		if strings.HasPrefix(ptr.Path, "child running → ") {
+			return
+		}
+		// The change into running from the state the memory left ends the first pass; the child leaves running at the next.
 	}
 }
 
-// secondCheck runs fn at the second check of the Call the test makes next, after the first check has had its chance to send, and ends that Call after four checks.
+// secondCheck runs fn at the second check of the passes the test drives next, after the first check has had its chance to send, and ends them after four checks.
 // It returns a function reporting how many notices had gone when fn ran.
 func (h *noticeHarness) secondCheck(fn func()) (sentBefore func() int) {
 	h.t.Helper()
@@ -414,6 +479,23 @@ func TestNotice_DeadDriverWhileRunning(t *testing.T) {
 			t.Fatalf("notified = %v; want none while a pause covers the child", h.notified)
 		}
 	})
+
+	t.Run("AFailedReviveOfAHaltedChildSendsTheDriverDeadNoticeAfterTheHaltsOwn", func(t *testing.T) {
+		h := newNoticeHarness(t)
+		p := h.producer()
+		h.setStatus(parked(shedengine.StateBlocked))
+		h.writeReport(h.clock.Now())
+		h.call(p)
+		if err := os.WriteFile(revivedFile(h.scratch, "Run-Shed"), []byte("1234 failed\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		h.call(p)
+		h.call(p)
+		want := `blocked at Publish; driver strand could not be revived; run "lyx loom start" in the task worktree to bring a driver back`
+		if len(h.notified) != 2 || !strings.Contains(h.notified[0], "blocked at Publish; error: stuck") || !strings.Contains(h.notified[1], want) {
+			t.Fatalf("notified = %q; want the halt's own notice, then one driver-dead notice reading %q", h.notified, want)
+		}
+	})
 }
 
 func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
@@ -559,7 +641,7 @@ func TestNotice_QuietOnlyForRunningChildWithLiveDriver(t *testing.T) {
 		}
 	})
 
-	// The sleep subtests run one Call, since the suspended time is kept per Call: onCheck runs fn at the nth check's sleep, before that check judges.
+	// The sleep subtests record the suspended time through the Sleeps seam, as the scheduling dobby does: onCheck runs fn at the nth check's sleep, before that check judges.
 	onCheck := func(h *noticeHarness, fns map[int]func()) {
 		h.clock.onSleep = func(call int) {
 			if fn := fns[call]; fn != nil {
@@ -703,7 +785,7 @@ func TestNotice_APIErrorStall(t *testing.T) {
 		}
 	})
 
-	// A sleep after the stall is not time the error has stood: the notice waits for the awake idle time, within one Call.
+	// A sleep after the stall is not time the error has stood: the notice waits for the awake idle time.
 	t.Run("ASleepGapRaisesNoNoticeUntilTheAwakeIdleTimeReachesTheIdle", func(t *testing.T) {
 		h := newNoticeHarness(t)
 		p := h.producer()
@@ -721,6 +803,85 @@ func TestNotice_APIErrorStall(t *testing.T) {
 		h.run(p, 6)
 		if sentBefore != 0 || len(h.notified) != 1 || !strings.Contains(h.notified[0], "API error") {
 			t.Fatalf("notified = %v, %d before the idle time; want one api-error notice, none during the sleep", h.notified, sentBefore)
+		}
+	})
+
+	// With the revive seam wired, each pass below is one Call, and an episode is a stall at a new newest activity.
+	t.Run("WithTheReviveWired", func(t *testing.T) {
+		newRevivingHarness := func(t *testing.T) (*noticeHarness, shedengine.ShedProducer, func()) {
+			h := newNoticeHarness(t)
+			h.reviveAPI = true
+			h.setStatus(shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Write"})
+			p := h.producer()
+			// newEpisode stalls an agent at the clock's time and lets the error stand long enough to be judged.
+			newEpisode := func() {
+				h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now(), APIError: true, APIErrorText: "overloaded"}}
+				h.clock.advance(noticeAPIErrorIdle)
+			}
+			return h, p, newEpisode
+		}
+		pass := func(t *testing.T, h *noticeHarness, p shedengine.ShedProducer) {
+			t.Helper()
+			h.clock.advance(h.poll)
+			if outcome, ptr, err := p.Call(context.Background()); outcome != shedengine.Yield || err != nil {
+				t.Fatalf("Call() = %v %+v, %v; want a Yield", outcome, ptr, err)
+			}
+		}
+
+		t.Run("TheFirstSightRevivesAndTheEpisodeStillStandingAtTheNextProbeNotices", func(t *testing.T) {
+			h, p, newEpisode := newRevivingHarness(t)
+			h.reviveAPIErr = errors.New("tender unavailable")
+			newEpisode()
+
+			pass(t, h, p)
+			if h.revives != 1 || len(h.notified) != 0 {
+				t.Fatalf("revives = %d, notified = %v; want one revive, errored or not, and no notice at the first sight", h.revives, h.notified)
+			}
+			pass(t, h, p)
+			pass(t, h, p)
+			if h.revives != 1 || len(h.notified) != 1 || !strings.Contains(h.notified[0], "API error") {
+				t.Fatalf("revives = %d, notified = %v; want the one revive and one api-error notice", h.revives, h.notified)
+			}
+		})
+
+		t.Run("AnEpisodeThatEndsAfterTheReviveNoticesNothing", func(t *testing.T) {
+			h, p, newEpisode := newRevivingHarness(t)
+			newEpisode()
+			pass(t, h, p)
+			h.runs = []AgentActivity{{Producer: "t:task:impl", LastActivity: h.clock.Now()}}
+			pass(t, h, p)
+			pass(t, h, p)
+			if h.revives != 1 || len(h.notified) != 0 {
+				t.Fatalf("revives = %d, notified = %v; want one revive and no notice once the session was active again", h.revives, h.notified)
+			}
+		})
+
+		tests := []struct {
+			name string
+			// writeAfter is the number of revived episodes after which the child's status file is written.
+			writeAfter  int
+			wantNotices int
+		}{
+			{name: "ThreeRevivedEpisodesWithNoStatusWriteNoticeOnTheThird", wantNotices: 1},
+			{name: "AStatusWriteBetweenThemResetsTheCount", writeAfter: 2, wantNotices: 0},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				h, p, newEpisode := newRevivingHarness(t)
+				for episode := 1; episode <= apiErrorReviveStreak; episode++ {
+					newEpisode()
+					pass(t, h, p)
+					if tt.writeAfter == episode {
+						h.touch(h.clock.Now())
+					}
+					if sent := episode == apiErrorReviveStreak && tt.wantNotices > 0; sent != (len(h.notified) > 0) {
+						t.Fatalf("after episode %d: notified = %v; want a notice only at the last episode of an unbroken streak", episode, h.notified)
+					}
+				}
+				if h.revives != apiErrorReviveStreak || len(h.notified) != tt.wantNotices {
+					t.Errorf("revives = %d, notified = %v; want %d revives and %d notices", h.revives, h.notified, apiErrorReviveStreak, tt.wantNotices)
+				}
+			})
 		}
 	})
 }
@@ -743,7 +904,6 @@ func TestNotice_NilNotifyRunsNoStep(t *testing.T) {
 		Spawn:          func(context.Context) error { return nil },
 		ResolveStatus:  func() (string, string, error) { return h.statusPath, "", nil },
 		ReadStatus:     func(string, string) (shedengine.Status, bool, error) { return h.status, true, nil },
-		Sleep:          h.clock.Sleep,
 		Now:            h.clock.Now,
 		PauseRequested: h.clock.pauseRequested,
 		ReadDecision:   func() (ChildDecision, bool, error) { return ChildDecision{}, false, nil },
@@ -758,7 +918,7 @@ func TestNotice_NilNotifyRunsNoStep(t *testing.T) {
 
 // TestNotice_ParkedStopWaitsForTheStopReport covers when the state-changed notice of a parked stop goes:
 // once the driver's report exists, once the driver strand has ended or three minutes passed since the stop without one, never carrying a report older than the stop,
-// and always sent by the wait of the Call that begins in the new state, never by the Call that saw the change.
+// and always sent by the pass that begins in the new state, never by the pass that saw the change.
 func TestNotice_ParkedStopWaitsForTheStopReport(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -820,9 +980,7 @@ func TestNotice_ParkedStopWaitsForTheStopReport(t *testing.T) {
 					tt.at(h, since)
 				}
 			})
-			if _, _, err := p.Call(context.Background()); err != nil {
-				t.Fatalf("Call() error = %v", err)
-			}
+			h.drive(p)
 			if sentBefore() != 0 || len(h.notified) != 1 {
 				t.Fatalf("notices before the second check = %d, in all = %v; want none, then exactly one", sentBefore(), h.notified)
 			}
@@ -856,7 +1014,7 @@ func TestNotice_SameStateRewriteMovesNeitherSinceNorTheKey(t *testing.T) {
 	if len(h.notified) != 1 {
 		t.Errorf("notified = %v after a same-state rewrite; want nothing more", h.notified)
 	}
-	if got := p.(*innerRunProducer).episode.since; !got.Equal(since) {
+	if got := h.memory().Episode.Since; !got.Equal(since) {
 		t.Errorf("since = %s after the rewrite; want it left at %s", got, since)
 	}
 }
@@ -892,7 +1050,14 @@ func TestNotice_DoneChildSendsNoNotice(t *testing.T) {
 					h.alive = false
 				}
 			}
-			outcome, _, err := h.producer().Call(context.Background())
+			p := h.producer()
+			if tt.priorBlocked {
+				// The pass that sees the child done ends on the change of state, with no notice of its own.
+				if outcome, _, err := p.Call(context.Background()); err != nil || outcome != shedengine.Stuck {
+					t.Fatalf("first Call() = %v, %v; want the Stuck of the change to done", outcome, err)
+				}
+			}
+			outcome, _, err := h.untilEnd(p)
 			if err != nil || outcome != shedengine.Done {
 				t.Fatalf("Call() = %v, %v; want Done once the driver ended", outcome, err)
 			}
@@ -949,9 +1114,7 @@ func TestNotice_AwaitingLeavesTheRelayToTheDriver(t *testing.T) {
 			since := h.touched
 
 			h.secondCheck(func() { tt.at(h, since) })
-			if _, _, err := p.Call(context.Background()); err != nil {
-				t.Fatalf("Call() error = %v", err)
-			}
+			h.drive(p)
 			if got := len(h.notified) == 1; got != tt.wantNotice {
 				t.Errorf("notified = %v; want a notice = %v", h.notified, tt.wantNotice)
 			}
@@ -1017,9 +1180,7 @@ func TestNotice_LiveArbiterHoldsTheStateChange(t *testing.T) {
 					h.alive = false
 					tt.at(h)
 				})
-				if _, _, err := p.Call(context.Background()); err != nil {
-					t.Fatalf("Call() error = %v", err)
-				}
+				h.drive(p)
 				if got := len(h.notified); got != btoi(tt.wantNotice) {
 					t.Errorf("notified = %v; want %d notice", h.notified, btoi(tt.wantNotice))
 				}
@@ -1122,9 +1283,10 @@ func TestNotice_DeliveryIsRecordedOnlyWhenQueuedAndRetriedWithinItsCaps(t *testi
 		h.strand = false
 		h.run(h.producer(), 3)
 		h.strand = true
-		h.run(h.producer(), 1)
+		// The retry spacing outlives the producer: the unsent notice goes at the first pass a notice probe after the last try.
+		h.run(h.producer(), 3)
 		if len(h.notified) != 1 {
-			t.Errorf("notified = %v; want the unsent notice sent by the restarted producer", h.notified)
+			t.Errorf("notified = %v; want the unsent notice sent by a later pass", h.notified)
 		}
 	})
 }

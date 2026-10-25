@@ -58,7 +58,6 @@ type worktreeTeardownProducer struct {
 	deps       TeardownDeps
 	primeLock  PrimeLock
 	scratchDir string
-	notifier   rowNotifier
 }
 
 var _ shedengine.ShedProducer = (*worktreeTeardownProducer)(nil)
@@ -66,7 +65,7 @@ var _ shedengine.ShedProducer = (*worktreeTeardownProducer)(nil)
 // NewWorktreeTeardown returns a shedengine.ShedProducer that acquires primeLock, calls
 // deps.Shutdown, and -- only on Shutdown's success -- calls deps.Remove, for the task worktree
 // identified by slug.
-// Every failure it returns also posts one orch notice per failure episode through deps.Notices.
+// It posts no notice of a failure: the driver's hand-back tells the orch of a stop the stop chain did not settle.
 func NewWorktreeTeardown(name, slug string, deps TeardownDeps, primeLock PrimeLock, scratchDir string) shedengine.ShedProducer {
 	return &worktreeTeardownProducer{
 		name:       name,
@@ -74,7 +73,6 @@ func NewWorktreeTeardown(name, slug string, deps TeardownDeps, primeLock PrimeLo
 		deps:       deps,
 		primeLock:  primeLock,
 		scratchDir: scratchDir,
-		notifier:   newRowNotifier(name, slug, scratchDir, deps.Notices),
 	}
 }
 
@@ -90,8 +88,6 @@ func NewWorktreeTeardown(name, slug string, deps TeardownDeps, primeLock PrimeLo
 // It then calls deps.Remove. A Remove error is Stuck naming worktree removal as the failed half
 // and stating that session shutdown already succeeded, so the two halves are distinguishable in
 // the reason text. On success the row returns Done.
-//
-// Every Stuck and every hard error returned under a live context calls the row notifier with the failed step: prime lock, session shutdown or worktree removal.
 func (p *worktreeTeardownProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -99,12 +95,10 @@ func (p *worktreeTeardownProducer) Call(ctx context.Context) (shedengine.Outcome
 
 	release, reason, err := acquirePrimeLock(ctx, p.name, p.slug, p.primeLock)
 	if err != nil {
-		p.notifier.failed(ctx, "prime lock", err.Error())
 		return "", shedengine.OutputPointer{}, err
 	}
 	if release == nil {
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-		p.notifier.failed(ctx, "prime lock", reason)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 	defer func() {
@@ -120,7 +114,6 @@ func (p *worktreeTeardownProducer) Call(ctx context.Context) (shedengine.Outcome
 		}
 		reason := fmt.Sprintf("session shutdown failed: %s", shutdownErr.Error())
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-		p.notifier.failed(ctx, "session shutdown", reason)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 	recordAbandonedSession(p.name, p.slug, abandonedSession, p.scratchDir)
@@ -131,7 +124,6 @@ func (p *worktreeTeardownProducer) Call(ctx context.Context) (shedengine.Outcome
 		}
 		reason := fmt.Sprintf("worktree removal failed (session shutdown already succeeded): %s", err.Error())
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-		p.notifier.failed(ctx, "worktree removal", reason)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
 

@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/shedarbiter"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -264,37 +265,9 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 			_, alive := readBattenWatch(shedrun.BattenWatchedMarker(location, c.runID), proc.IsAlive)
 			return alive
 		},
-		Arbiter: &sheddriver.ArbiterSeam{
-			EscalationPending: func(producer string) (bool, error) {
-				return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop), nil
-			},
-			Judge: func(envelopePath, reportPath, caseBriefPath string) (sheddriver.ArbiterOutcome, error) {
-				call, err := newArbiterCall(arbiterDeps, arbiterInput{RunID: runID, EnvelopePath: envelopePath, ReportPath: reportPath, CaseBriefPath: caseBriefPath})
-				if err != nil {
-					return sheddriver.ArbiterOutcome{}, err
-				}
-				envelope, err := call.settle()
-				if err != nil {
-					return sheddriver.ArbiterOutcome{}, err
-				}
-				return sheddriver.ArbiterOutcome{
-					Resume:      envelope.Verdict == loomengine.ArbiterVerdictResume,
-					Reason:      envelope.Reason,
-					Question:    envelope.Question,
-					Goto:        envelope.Goto,
-					Cause:       envelope.Cause,
-					Attempt:     envelope.Attempt,
-					AttemptDir:  envelope.AttemptDir,
-					VerdictPath: envelope.VerdictPath,
-					Verdict:     envelope.Verdict,
-					Role:        loomengine.ArbiterRole,
-				}, nil
-			},
-			AttemptEnvelope: func(attemptDir string) (string, error) {
-				attempt, err := loomengine.ReadArbiterAttempt(attemptDir)
-				return attempt.EnvelopePath, err
-			},
-		},
+		Arbiter: shedarbiter.Seam(arbiterDeps, runID, func(producer string) bool {
+			return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop)
+		}),
 		HandOver: &sheddriver.HandOverSeam{
 			OnDiskBuild: func() (buildvcs.Identity, error) { return buildvcs.OfFile(executable) },
 			BuildChanged: func(onDisk buildvcs.Identity) bool {

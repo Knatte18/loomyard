@@ -21,7 +21,7 @@ import (
 )
 
 // TestArmAt_StartGuardRefusesBeforeAnyWrite asserts the guard refuses a start before armAt pulls the board, claims the prime or writes a seed:
-// a dirty source refuses naming the path, a cancel marker refuses a step, and "run --window" on the dirty source refuses on the envelope with no seed, so no window was opened.
+// a dirty source refuses naming the path, a cancel marker refuses a step, and "run" on the dirty source refuses on the envelope with no seed.
 func TestArmAt_StartGuardRefusesBeforeAnyWrite(t *testing.T) {
 	t.Parallel()
 
@@ -86,9 +86,9 @@ func TestArmAt_StartGuardRefusesBeforeAnyWrite(t *testing.T) {
 		assertNoRunWritten(t, h.Location, "own-beam")
 	})
 
-	t.Run("RunWindowOnTheDirtySourceRefusesOnTheEnvelopeWithNoSeed", func(t *testing.T) {
+	t.Run("RunOnTheDirtySourceRefusesOnTheEnvelopeWithNoSeed", func(t *testing.T) {
 		var out bytes.Buffer
-		RunCLIIn(h.PrimeWorktree(), &out, []string{"run", slug, "--window"})
+		RunCLIIn(h.PrimeWorktree(), &out, []string{"run", slug})
 
 		envelope.RequireErr(t, out.String(), "README")
 		assertNoRunWritten(t, h.Location, slug)

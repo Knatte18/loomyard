@@ -381,15 +381,15 @@ func TestRun_TeardownScenario(t *testing.T) {
 			}
 			_ = held.Release()
 		}},
-		{"BoardClaimIsClearedWhenBattenNeverSeededTheRun", func(t *testing.T) {
+		{"BoardClaimIsLeftDraftWhenBattenNeverSeededTheRun", func(t *testing.T) {
 			p := addLivePair(t, h, cfg.Tmux, "pt-claim-clear")
 			board := holdBoardEntry(t, h, p.slug)
 
 			if _, err := p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug}); err != nil {
 				t.Fatalf("Run: %v", err)
 			}
-			if status := boardStatus(t, board, p.slug); status != nil {
-				t.Errorf("board status after Run = %q, want it cleared", *status)
+			if status := boardStatus(t, board, p.slug); status == nil || *status != boardengine.StatusDraft {
+				t.Errorf("board status after Run = %v, want draft", status)
 			}
 		}},
 		{"BoardEntryIsMarkedDoneWhenTheChildHistoryHoldsAFinalizeDone", func(t *testing.T) {

@@ -1,4 +1,4 @@
-// promote.go is the "lyx beam promote" sequence: it judges the named entry, then ends a task's run, marks its pair as a beam, clears the run's records and claim, resets the pair's records to its parent's, turns the entry into a beam project and regenerates the workspace files.
+// promote.go is the "lyx beam promote" sequence: it judges the named entry, then ends a task's run, marks its pair as a beam, clears the run's records and claim, resets the pair's records to its parent's, turns the entry into a beam project, regenerates the workspace files and starts the beam's dobby.
 
 package beamcli
 
@@ -35,7 +35,7 @@ type promoteResult struct {
 
 // promote turns the entry slug into a beam on this machine, and returns what each step did.
 // A project entry is made a beam by create's steps, or by the workspace step alone when its beam stands with a marked pair.
-// A task goes through the six steps in order, each skipped when its result is already there; the end of the run repeats while the claim stands, since ending an ended run changes nothing.
+// A task goes through the seven steps in order, each skipped when its result is already there; the end of the run repeats while the claim stands, since ending an ended run changes nothing.
 func promote(ctx context.Context, deps promoteDeps, slug string) (promoteResult, error) {
 	result := promoteResult{createResult: createResult{Slug: slug, Worktree: deps.WorktreePath(slug)}}
 
@@ -87,6 +87,9 @@ func promoteProject(deps promoteDeps, owners boardengine.Owners, here, slug stri
 			}
 			result.Workspace = workspace
 			result.Promoted = true
+			if err := startDobby(deps.createDeps, slug, &result.DobbyStarted); err != nil {
+				return result, err
+			}
 			result.WayForward = orchWayForward(result.Worktree)
 			return result, nil
 		}
@@ -154,7 +157,7 @@ func openDependents(tasks []boardengine.Task, slug string) []string {
 	return dependents
 }
 
-// promoteSteps runs the six steps in order, each skipped when its result stands, and records what it did on result.
+// promoteSteps runs the seven steps in order, each skipped when its result stands, and records what it did on result.
 func promoteSteps(ctx context.Context, deps promoteDeps, rec *fabricengine.Mutations, entry boardengine.OwnerEntry, here, slug string, result *promoteResult) error {
 	rerun := "run `lyx beam promote " + slug + "` again"
 	fail := func(step string, err error) error {
@@ -219,6 +222,9 @@ func promoteSteps(ctx context.Context, deps promoteDeps, rec *fabricengine.Mutat
 		return fail("regenerate the workspace files", err)
 	}
 	result.Workspace = workspace
+	if err := startDobby(deps.createDeps, slug, &result.DobbyStarted); err != nil {
+		return err
+	}
 	result.WayForward = orchWayForward(result.Worktree)
 	return nil
 }

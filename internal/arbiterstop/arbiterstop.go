@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
@@ -19,6 +21,9 @@ import (
 
 // HandBackWayForward is the way-forward clause every arbiter refusal ends with: today's hand-back to the run's parent.
 const HandBackWayForward = "way forward: report the stop to the run's parent in the stop report, and `lyx loom status <run-id>` shows the stop"
+
+// BattenHandBackWayForward is the way-forward clause a batten arbiter refusal ends with: the hand-back to the run's parent, which finds the stop through the batten status.
+const BattenHandBackWayForward = "way forward: report the stop to the run's parent in the stop report, and `lyx batten status <slug>` shows the stop"
 
 // Stop is what Go reads off the status file, the stop envelope and the review run directory to decide whether the arbiter may settle a stop.
 type Stop struct {
@@ -42,6 +47,14 @@ type Stop struct {
 	LandingHalt bool
 	// DecisionHalt reports whether the stop is a blocked decision halt that only the run's parent lifts.
 	DecisionHalt bool
+	// Batten reports whether the stop belongs to a batten run, which Eligibility judges by batten's own rule.
+	Batten bool
+	// BudgetExhausted reports whether the stop is a blocked stop whose error starts with shedengine.ReasonBounceBudgetExhausted.
+	BudgetExhausted bool
+	// PreconditionUnmet reports whether the stop is a blocked stop whose error starts with shedengine.ReasonPreconditionUnmet.
+	PreconditionUnmet bool
+	// PauseHonoured reports whether the stop is a blocked Land stop whose reason starts with battenshed.PauseHonouredPrefix.
+	PauseHonoured bool
 }
 
 // HandsBack reports whether a blocked stop at producer with the persisted reason goes to the run's parent rather than to a recipe row or the arbiter.
@@ -51,11 +64,16 @@ func HandsBack(producer, reason string) bool {
 }
 
 // Eligibility returns nil when the arbiter may settle stop and a refusal otherwise.
-// Eligible are an error stop of kind producer or bootstrap, of kind interrupted under the reinvoke policy or with a non-empty transient class.
+// For a loom or darn stop, eligible are an error stop of kind producer or bootstrap, of kind interrupted under the reinvoke policy or with a non-empty transient class.
 // Eligible too is a halted blocked stop, bar a landing halt or a decision halt.
 // Eligible too is a halted awaiting stop with a pending escalation of cause `hard-cap` or `circling`.
 // Every other stop is refused, a landing halt, a decision halt and a `decision` escalation included, since only the run's parent lifts them, and the refusal ends with HandBackWayForward.
+// For a batten stop every stop is eligible, error stops of any kind and blocked stops included, bar a spent bounce budget, an unmet precondition and a pause-honoured Land stop;
+// those three are refused with a refusal ending in BattenHandBackWayForward.
 func Eligibility(stop Stop) error {
+	if stop.Batten {
+		return battenEligibility(stop)
+	}
 	refuse := func(reason string) error {
 		return fmt.Errorf("arbiter: stop not eligible: %s; %s", reason, HandBackWayForward)
 	}
@@ -98,12 +116,39 @@ func Eligibility(stop Stop) error {
 	}
 }
 
+// battenEligibility is Eligibility's rule for a batten stop: the tackler escalated it, so it is eligible unless it is a hand-back to the run's parent.
+func battenEligibility(stop Stop) error {
+	refuse := func(reason string) error {
+		return fmt.Errorf("arbiter: stop not eligible: %s; %s", reason, BattenHandBackWayForward)
+	}
+	switch {
+	case stop.BudgetExhausted:
+		return refuse(fmt.Sprintf("the bounce budget at %q is spent, which goes to the run's parent", stop.Producer))
+	case stop.PreconditionUnmet:
+		return refuse(fmt.Sprintf("a precondition at %q is unmet, which goes to the run's parent", stop.Producer))
+	case stop.PauseHonoured:
+		return refuse(fmt.Sprintf("the halt at %q honours a pause, which the arbiter never relaunches over", stop.Producer))
+	}
+	return nil
+}
+
 // Readers holds the disk reads Check makes.
 type Readers struct {
 	// PendingEscalation reports, at a Bouncer row, whether the latest round awaits a decision on its escalation, with the cause and the path of its brief; not pending elsewhere.
+	// It may be nil when Batten is set, since a batten stop has no review escalation.
 	PendingEscalation func(producer string) (cause shedadapters.EscalationCause, briefPath string, pending bool, err error)
 	// InterruptPolicy returns the interrupt policy of a row.
 	InterruptPolicy func(producer string) string
+	// Batten selects batten's eligibility rule for every stop Check judges.
+	Batten bool
+}
+
+// NewBattenReaders builds the readers of a batten run: Batten set, no pending-escalation read and the hand-back interrupt policy for every row.
+func NewBattenReaders() Readers {
+	return Readers{
+		Batten:          true,
+		InterruptPolicy: func(string) string { return shedverbs.InterruptPolicyHandback },
+	}
 }
 
 // Check builds the Stop for status, the envelope's kind and transient class from readers, and returns Eligibility's answer.
@@ -118,9 +163,15 @@ func Check(status shedengine.Status, kind, transient string, readers Readers) (b
 		InterruptPolicy: readers.InterruptPolicy(status.CurrentProducer),
 		LandingHalt:     status.State == shedengine.StateBlocked && landingshed.HandsBack(status.CurrentProducer, status.Error),
 		DecisionHalt:    status.State == shedengine.StateBlocked && strings.HasPrefix(status.Error, shedadapters.DecisionHaltPrefix),
+		Batten:          readers.Batten,
+	}
+	if status.State == shedengine.StateBlocked {
+		stop.BudgetExhausted = strings.HasPrefix(status.Error, shedengine.ReasonBounceBudgetExhausted)
+		stop.PreconditionUnmet = strings.HasPrefix(status.Error, shedengine.ReasonPreconditionUnmet)
+		stop.PauseHonoured = status.CurrentProducer == battenrecipe.NameLand && strings.HasPrefix(status.Error, battenshed.PauseHonouredPrefix)
 	}
 	var escalationBrief string
-	if status.State == shedengine.StateAwaiting {
+	if status.State == shedengine.StateAwaiting && readers.PendingEscalation != nil {
 		stop.EscalationCause, escalationBrief, stop.EscalationPending, stop.EscalationErr = readers.PendingEscalation(status.CurrentProducer)
 	}
 	if err := Eligibility(stop); err != nil {

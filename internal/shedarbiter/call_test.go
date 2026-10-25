@@ -1,10 +1,8 @@
 //go:build tier0
 
-package loomcli
+package shedarbiter
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -25,8 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// arbiterFake is a scripted sheddriver.AgentShuttle: it records every call and runs the scripted hooks inside Wait and AttachIfLive, where the real arbiter would write its verdict.
-type arbiterFake struct {
+// fakeShuttle is a scripted sheddriver.AgentShuttle: it records every call and runs the scripted hooks inside Wait and AttachIfLive, where the real arbiter would write its verdict.
+type fakeShuttle struct {
 	starts       []shuttleengine.Spec
 	attaches     []shuttleengine.Spec
 	gates        []shuttleengine.GateSpec
@@ -45,16 +43,16 @@ type arbiterFake struct {
 	onAttach     func(spec shuttleengine.Spec)
 }
 
-func (f *arbiterFake) Start(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (sheddriver.AgentRun, error) {
+func (f *fakeShuttle) Start(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (sheddriver.AgentRun, error) {
 	if f.startErr != nil {
 		return nil, f.startErr
 	}
 	f.starts = append(f.starts, spec)
 	f.gates = append(f.gates, gate)
-	return &arbiterFakeRun{fake: f, spec: spec}, nil
+	return &fakeRun{fake: f, spec: spec}, nil
 }
 
-func (f *arbiterFake) AttachIfLive(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
+func (f *fakeShuttle) AttachIfLive(spec shuttleengine.Spec, gate shuttleengine.GateSpec) (shuttleengine.Result, bool, error) {
 	f.attaches = append(f.attaches, spec)
 	f.gates = append(f.gates, gate)
 	if f.onAttach != nil {
@@ -63,17 +61,17 @@ func (f *arbiterFake) AttachIfLive(spec shuttleengine.Spec, gate shuttleengine.G
 	return f.attachResult, f.attachFound, f.attachErr
 }
 
-func (f *arbiterFake) StopStrand(guid string) error {
+func (f *fakeShuttle) StopStrand(guid string) error {
 	f.stoppedGUIDs = append(f.stoppedGUIDs, guid)
 	return nil
 }
 
-type arbiterFakeRun struct {
-	fake *arbiterFake
+type fakeRun struct {
+	fake *fakeShuttle
 	spec shuttleengine.Spec
 }
 
-func (r *arbiterFakeRun) Wait() (shuttleengine.Result, error) {
+func (r *fakeRun) Wait() (shuttleengine.Result, error) {
 	if r.fake.onWait != nil {
 		r.fake.onWait(r.spec)
 	}
@@ -84,15 +82,15 @@ func (r *arbiterFakeRun) Wait() (shuttleengine.Result, error) {
 	return result, r.fake.waitErr
 }
 
-func (r *arbiterFakeRun) Stop() error {
+func (r *fakeRun) Stop() error {
 	r.fake.runStops++
 	return nil
 }
 
-func (r *arbiterFakeRun) StrandGUID() string { return r.fake.runGUID }
+func (r *fakeRun) StrandGUID() string { return r.fake.runGUID }
 
-// arbiterFixture is one temp run directory with the arbiter verb's seams over it.
-type arbiterFixture struct {
+// callFixture is one temp run directory with the call's seams over it.
+type callFixture struct {
 	t    *testing.T
 	root string
 	now  time.Time
@@ -106,8 +104,8 @@ type arbiterFixture struct {
 	escalationCause  shedadapters.EscalationCause
 	escalationErr    error
 	circlingPending  bool
-	settings         loomengine.ArbiterSettings
-	fake             *arbiterFake
+	settings         sheddriver.ArbiterSettings
+	fake             *fakeShuttle
 	envelopePath     string
 	removeEnvelope   bool
 	reportPath       string
@@ -116,14 +114,15 @@ type arbiterFixture struct {
 	producerRowNames []string
 	gotoGuard        shedengine.GotoGuard
 	amendmentTarget  func() string
+	wayForward       string
 }
 
-const arbiterTestRun = "operator-surface"
+const testRun = "operator-surface"
 
-func newArbiterFixture(t *testing.T, producer string, state shedengine.State) *arbiterFixture {
+func newCallFixture(t *testing.T, producer string, state shedengine.State) *callFixture {
 	t.Helper()
 	root := t.TempDir()
-	f := &arbiterFixture{
+	f := &callFixture{
 		t:    t,
 		root: root,
 		now:  time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC),
@@ -134,8 +133,8 @@ func newArbiterFixture(t *testing.T, producer string, state shedengine.State) *a
 		},
 		stopEnvelope:     `{"ok":false,"kind":"","transient":""}`,
 		escalationCause:  shedadapters.EscalationCircling,
-		settings:         loomengine.ArbiterSettings{ModelChoice: shuttleengine.ModelChoice{Model: "claude-resolved", Effort: "high", Version: "v1"}, Timeout: 30 * time.Minute, MaxSpawns: 3},
-		fake:             &arbiterFake{runGUID: "guid-1"},
+		settings:         sheddriver.ArbiterSettings{ModelChoice: shuttleengine.ModelChoice{Model: "claude-resolved", Effort: "high", Version: "v1"}, Timeout: 30 * time.Minute, MaxSpawns: 3},
+		fake:             &fakeShuttle{runGUID: "guid-1"},
 		interruptPolicy:  map[string]string{},
 		producerRowNames: []string{"Plan-Write", "Plan-Bouncer", loomshed.NameParentAlign, loomshed.NameFinalize},
 	}
@@ -145,7 +144,7 @@ func newArbiterFixture(t *testing.T, producer string, state shedengine.State) *a
 }
 
 // haltAtVerifyRow stops the run at row with a Stuck entry at 11:30 after an entry at 11:00, and the status error reason.
-func (f *arbiterFixture) haltAtVerifyRow(row, reason string) {
+func (f *callFixture) haltAtVerifyRow(row, reason string) {
 	f.status.Error = reason
 	f.status.History = []shedengine.HistoryEntry{
 		{Producer: "Plan-Bouncer", Outcome: shedengine.Done, At: "2026-10-12T11:00:00Z"},
@@ -153,22 +152,22 @@ func (f *arbiterFixture) haltAtVerifyRow(row, reason string) {
 	}
 }
 
-func (f *arbiterFixture) arbiterDir() string { return filepath.Join(f.root, "arbiter") }
-func (f *arbiterFixture) markerPath() string { return filepath.Join(f.root, "scratch", "arbiter.json") }
-func (f *arbiterFixture) attemptDir(n int) string {
+func (f *callFixture) arbiterDir() string { return filepath.Join(f.root, "arbiter") }
+func (f *callFixture) markerPath() string { return filepath.Join(f.root, "scratch", "arbiter.json") }
+func (f *callFixture) attemptDir(n int) string {
 	return filepath.Join(f.arbiterDir(), "attempt-"+string(rune('0'+n)))
 }
 
-func (f *arbiterFixture) deps() arbiterDeps {
+func (f *callFixture) deps() Deps {
 	producers := make([]shedengine.ProducerDef, len(f.producerRowNames))
 	for i, name := range f.producerRowNames {
 		producers[i] = shedengine.ProducerDef{Name: name}
 	}
 	amendmentTarget := f.amendmentTarget
 	if amendmentTarget == nil {
-		amendmentTarget = func() string { return arbiterAbsentPath }
+		amendmentTarget = func() string { return AbsentPath }
 	}
-	return arbiterDeps{
+	return Deps{
 		ReadStatus: func() (shedengine.Status, bool, error) {
 			if f.statusErr != nil {
 				return shedengine.Status{}, false, f.statusErr
@@ -191,39 +190,38 @@ func (f *arbiterFixture) deps() arbiterDeps {
 			InterruptPolicy: func(producer string) string { return f.interruptPolicy[producer] },
 		},
 		PendingCirclingDecision: func(string) (bool, error) { return f.circlingPending, nil },
-		Prompt: arbiterPromptInput{
+		Prompt: PromptInput{
 			Slug:               "operator-surface-task",
 			Worktree:           f.root,
 			DecisionRecordPath: filepath.Join(f.root, "decision-record.md"),
 			SupportLogPath:     filepath.Join(f.root, "support-log.md"),
 		},
-		StencilsDir:     seededStencils(f.t),
-		AmendmentTarget: amendmentTarget,
-		Shuttle:         f.fake,
-		Now:             func() time.Time { return f.now },
-		RelaunchRunID:   arbiterTestRun,
+		StencilsDir:        seededStencils(f.t),
+		AmendmentTarget:    amendmentTarget,
+		Shuttle:            f.fake,
+		Now:                func() time.Time { return f.now },
+		RelaunchRunID:      testRun,
+		HandBackWayForward: f.wayForward,
 	}
 }
 
-// run writes the stop envelope and runs the verb, returning its exit code and decoded output.
-func (f *arbiterFixture) run() (int, map[string]any) {
+// run writes the stop envelope and settles the stop, returning the verdict envelope and the call's error.
+func (f *callFixture) run() (loomengine.ArbiterEnvelope, error) {
 	f.t.Helper()
 	if !f.removeEnvelope {
 		if err := os.WriteFile(f.envelopePath, []byte(f.stopEnvelope), 0o644); err != nil {
 			f.t.Fatal(err)
 		}
 	}
-	var out bytes.Buffer
-	code := arbiterVerb(&out, f.deps(), arbiterInput{RunID: arbiterTestRun, EnvelopePath: f.envelopePath, ReportPath: f.reportPath, CaseBriefPath: f.caseBriefPath})
-	var fields map[string]any
-	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &fields); err != nil {
-		f.t.Fatalf("arbiterVerb output %q is not one JSON object: %v", out.String(), err)
+	call, err := NewCall(f.deps(), Input{RunID: testRun, EnvelopePath: f.envelopePath, ReportPath: f.reportPath, CaseBriefPath: f.caseBriefPath})
+	if err != nil {
+		return loomengine.ArbiterEnvelope{}, err
 	}
-	return code, fields
+	return call.Settle()
 }
 
 // priorAttempt writes an attempt for the fixture's current stop, with its deadline offset from now.
-func (f *arbiterFixture) priorAttempt(number int, deadlineIn time.Duration) loomengine.ArbiterAttempt {
+func (f *callFixture) priorAttempt(number int, deadlineIn time.Duration) loomengine.ArbiterAttempt {
 	f.t.Helper()
 	attempt := loomengine.ArbiterAttempt{
 		Number:     number,
@@ -239,7 +237,7 @@ func (f *arbiterFixture) priorAttempt(number int, deadlineIn time.Duration) loom
 	return attempt
 }
 
-func writeArbiterVerdictFile(t *testing.T, dir, text string) {
+func writeVerdictFile(t *testing.T, dir, text string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -250,13 +248,13 @@ func writeArbiterVerdictFile(t *testing.T, dir, text string) {
 }
 
 const (
-	arbiterResumeVerdict = "verdict: resume\nreason: the repair is safe\nverbs:\n  - lyx loom circling accept operator-surface-task\n"
-	arbiterHandOnVerdict = "verdict: hand-on\nreason: the design is wrong\nquestion: should the parent widen the task?\n"
+	resumeVerdict = "verdict: resume\nreason: the repair is safe\nverbs:\n  - lyx loom circling accept operator-surface-task\n"
+	handOnVerdict = "verdict: hand-on\nreason: the design is wrong\nquestion: should the parent widen the task?\n"
 )
 
-// TestArbiterVerb_SpawnPath covers the verb for a stop no attempt has arbitrated yet, including card 9's eligibility list.
+// TestCall_SpawnPath covers the call for a stop no attempt has arbitrated yet, including the eligibility list.
 // Each eligible stop spawns exactly one run whose spec, attempt record, prompt and marker carry the expected values; every refused stop spawns nothing and writes no attempt directory.
-func TestArbiterVerb_SpawnPath(t *testing.T) {
+func TestCall_SpawnPath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -264,9 +262,11 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		producer    string
 		state       shedengine.State
 		envelope    string
-		setup       func(f *arbiterFixture)
+		setup       func(f *callFixture)
 		wantBrief   bool
 		wantRefusal string
+		// wantSuffix is the clause the refusal must end with when non-empty.
+		wantSuffix  string
 		wantNoSpawn bool
 		// wantPromptHas is a fragment the spawned prompt must carry.
 		wantPromptHas string
@@ -277,17 +277,17 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		{name: "bootstrap error", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"bootstrap"}`},
 		{
 			name: "interrupted under reinvoke", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"interrupted"}`,
-			setup: func(f *arbiterFixture) { f.interruptPolicy["Plan-Write"] = shedverbs.InterruptPolicyReinvoke },
+			setup: func(f *callFixture) { f.interruptPolicy["Plan-Write"] = shedverbs.InterruptPolicyReinvoke },
 		},
 		{name: "transient failure that failed twice", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"busy","transient":"network"}`},
 		{name: "blocked stop", producer: "Plan-Write", state: shedengine.StateBlocked},
 		{
 			// The target answers only once the attempt record exists, so the prompt naming it pins the read at the spawn, after settleFresh writes the record.
 			name: "amendment target read at the spawn", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) {
+			setup: func(f *callFixture) {
 				f.amendmentTarget = func() string {
 					if _, err := loomengine.ReadArbiterAttempt(f.attemptDir(1)); err != nil {
-						return arbiterAbsentPath
+						return AbsentPath
 					}
 					return "Plan-Burler-Review"
 				}
@@ -296,31 +296,31 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		},
 		{
 			name: "blocked stop carrying a tackler case brief", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) {
+			setup: func(f *callFixture) {
 				f.caseBriefPath = filepath.Join(f.root, "tackler", "attempt-1", "case-brief.md")
 			},
 		},
 		{
 			name: "Parent-Align halt", producer: loomshed.NameParentAlign, state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) { f.haltAtVerifyRow(loomshed.NameParentAlign, "") },
+			setup: func(f *callFixture) { f.haltAtVerifyRow(loomshed.NameParentAlign, "") },
 		},
 		{
 			name: "landing halt at Finalize refused", producer: loomshed.NameFinalize, state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) {
+			setup: func(f *callFixture) {
 				f.haltAtVerifyRow(loomshed.NameFinalize, landingshed.LandingStopPrefix+"the fixer escalated; way forward: resolve it, then `lyx loom resume`")
 			},
 			wantRefusal: "a landing halt", wantNoSpawn: true,
 		},
 		{
 			name: "awaiting at a Bouncer row with a pending escalation", producer: "Plan-Bouncer", state: shedengine.StateAwaiting, wantBrief: true,
-			setup: func(f *arbiterFixture) {
+			setup: func(f *callFixture) {
 				f.escalationOpen = true
 				f.escalationBrief = filepath.Join(f.root, "round-2-escalation.md")
 			},
 		},
 		{
 			name: "awaiting at a hard-cap escalation", producer: "Plan-Bouncer", state: shedengine.StateAwaiting, wantBrief: true,
-			setup: func(f *arbiterFixture) {
+			setup: func(f *callFixture) {
 				f.escalationOpen = true
 				f.escalationCause = shedadapters.EscalationHardCap
 				f.escalationBrief = filepath.Join(f.root, "round-2-escalation.md")
@@ -328,7 +328,7 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		},
 		{
 			name: "awaiting at a budget escalation refused", producer: "Plan-Bouncer", state: shedengine.StateAwaiting,
-			setup: func(f *arbiterFixture) {
+			setup: func(f *callFixture) {
 				f.escalationOpen = true
 				f.escalationCause = shedadapters.EscalationBudget
 			},
@@ -336,7 +336,7 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		},
 		{
 			name: "awaiting with an unreadable escalation record refused", producer: "Plan-Bouncer", state: shedengine.StateAwaiting,
-			setup: func(f *arbiterFixture) {
+			setup: func(f *callFixture) {
 				f.escalationErr = fmt.Errorf("record: %w", shedadapters.ErrEscalationMalformed)
 			},
 			wantRefusal: "unreadable", wantNoSpawn: true,
@@ -347,7 +347,7 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		{name: "error envelope with no kind refused", producer: "Plan-Write", state: shedengine.StateFailed, wantRefusal: "carries no kind", wantNoSpawn: true},
 		{
 			name: "interrupted under handback refused", producer: "Plan-Write", state: shedengine.StateFailed, envelope: `{"kind":"interrupted"}`,
-			setup:       func(f *arbiterFixture) { f.interruptPolicy["Plan-Write"] = shedverbs.InterruptPolicyHandback },
+			setup:       func(f *callFixture) { f.interruptPolicy["Plan-Write"] = shedverbs.InterruptPolicyHandback },
 			wantRefusal: "whose policy hands back", wantNoSpawn: true,
 		},
 		{name: "awaiting with a parent notice but no escalation refused", producer: loomshed.NameFinalize, state: shedengine.StateAwaiting, wantRefusal: "no pending review escalation", wantNoSpawn: true},
@@ -357,27 +357,35 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 		{name: "invalid state refused", producer: "Plan-Write", state: "bogus", wantRefusal: "not a halted stop", wantNoSpawn: true},
 		{
 			name: "missing status file refused", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup:       func(f *arbiterFixture) { f.statusMissing = true },
+			setup:       func(f *callFixture) { f.statusMissing = true },
 			wantRefusal: "status or envelope unreadable", wantNoSpawn: true,
 		},
 		{
 			name: "status that does not parse refused", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup:       func(f *arbiterFixture) { f.statusErr = errors.New("invalid character") },
+			setup:       func(f *callFixture) { f.statusErr = errors.New("invalid character") },
 			wantRefusal: "status or envelope unreadable", wantNoSpawn: true,
 		},
 		{
 			name: "unreadable envelope path refused", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup:       func(f *arbiterFixture) { f.removeEnvelope = true },
+			setup:       func(f *callFixture) { f.removeEnvelope = true },
 			wantRefusal: "status or envelope unreadable", wantNoSpawn: true,
 		},
 		{
 			name: "budget of 0 refused", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup:       func(f *arbiterFixture) { f.settings.MaxSpawns = 0 },
+			setup:       func(f *callFixture) { f.settings.MaxSpawns = 0 },
 			wantRefusal: "arbiter: off", wantNoSpawn: true,
 		},
 		{
+			name: "a refusal ends with the deps' way forward", producer: "Plan-Write", state: shedengine.StateBlocked,
+			setup: func(f *callFixture) {
+				f.settings.MaxSpawns = 0
+				f.wayForward = "way forward: read the stop with `lyx batten status`"
+			},
+			wantRefusal: "arbiter: off", wantSuffix: "way forward: read the stop with `lyx batten status`", wantNoSpawn: true,
+		},
+		{
 			name: "spent budget refused, counted from the attempt records on disk", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) {
+			setup: func(f *callFixture) {
 				f.settings.MaxSpawns = 1
 				other := loomengine.ArbiterAttempt{Number: 1, StopKey: sheddriver.StopKey{CurrentProducer: "Plan-Bouncer", HistoryLength: 1, State: "awaiting"}}
 				if err := loomengine.WriteArbiterAttempt(f.attemptDir(1), other); err != nil {
@@ -390,7 +398,7 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := newArbiterFixture(t, tt.producer, tt.state)
+			f := newCallFixture(t, tt.producer, tt.state)
 			if tt.envelope != "" {
 				f.stopEnvelope = tt.envelope
 			}
@@ -407,18 +415,21 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 				captured.attempt, _ = loomengine.ReadArbiterAttempt(f.attemptDir(1))
 				data, _ := os.ReadFile(loomengine.ArbiterPromptPath(f.attemptDir(1)))
 				captured.prompt = string(data)
-				writeArbiterVerdictFile(t, f.attemptDir(1), arbiterHandOnVerdict)
+				writeVerdictFile(t, f.attemptDir(1), handOnVerdict)
 			}
 
-			code, fields := f.run()
+			_, err := f.run()
 
 			if tt.wantNoSpawn {
-				if code == 0 {
-					t.Fatalf("arbiterVerb() exit = 0, output %v; want a refusal containing %q", fields, tt.wantRefusal)
+				if err == nil {
+					t.Fatalf("Settle() error = nil; want a refusal containing %q", tt.wantRefusal)
 				}
-				message, _ := fields["error"].(string)
+				message := err.Error()
 				if !strings.Contains(message, tt.wantRefusal) || !strings.Contains(message, "way forward:") {
 					t.Errorf("refusal = %q; want it to contain %q and a way forward", message, tt.wantRefusal)
+				}
+				if tt.wantSuffix != "" && !strings.HasSuffix(message, tt.wantSuffix) {
+					t.Errorf("refusal = %q; want it to end with %q", message, tt.wantSuffix)
 				}
 				if len(f.fake.starts) != 0 {
 					t.Errorf("starts = %d; want none", len(f.fake.starts))
@@ -432,8 +443,8 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 				return
 			}
 
-			if code != 0 {
-				t.Fatalf("arbiterVerb() exit = %d, output %v; want 0", code, fields)
+			if err != nil {
+				t.Fatalf("Settle() error = %v; want nil", err)
 			}
 			if len(f.fake.starts) != 1 {
 				t.Fatalf("starts = %d; want exactly one", len(f.fake.starts))
@@ -472,19 +483,19 @@ func TestArbiterVerb_SpawnPath(t *testing.T) {
 				t.Errorf("marker = %+v; want %+v", captured.marker, want)
 			}
 			if _, found, _ := loomengine.ReadArbiterMarker(f.markerPath()); found {
-				t.Error("marker still present after the verb finished; want it removed")
+				t.Error("marker still present after the call finished; want it removed")
 			}
 		})
 	}
 }
 
-// TestArbiterVerb_Rerun covers the verb for a stop an attempt already arbitrated: it spawns nothing and returns or awaits that attempt's verdict.
-func TestArbiterVerb_Rerun(t *testing.T) {
+// TestCall_Rerun covers the call for a stop an attempt already arbitrated: it spawns nothing and returns or awaits that attempt's verdict.
+func TestCall_Rerun(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name            string
-		setup           func(f *arbiterFixture, attempt loomengine.ArbiterAttempt)
+		setup           func(f *callFixture, attempt loomengine.ArbiterAttempt)
 		deadlineIn      time.Duration
 		wantStarts      int
 		wantAttaches    int
@@ -496,19 +507,19 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 	}{
 		{
 			name: "a live attempt is attached without starting", deadlineIn: 20 * time.Minute,
-			setup: func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {
+			setup: func(f *callFixture, attempt loomengine.ArbiterAttempt) {
 				marker := loomengine.ArbiterMarker{Attempt: 1, StrandGUID: "old-guid", Deadline: attempt.Deadline}
 				if err := loomengine.WriteArbiterMarker(f.markerPath(), marker); err != nil {
 					t.Fatal(err)
 				}
 				f.fake.attachFound = true
-				f.fake.onAttach = func(shuttleengine.Spec) { writeArbiterVerdictFile(t, attempt.Dir, arbiterHandOnVerdict) }
+				f.fake.onAttach = func(shuttleengine.Spec) { writeVerdictFile(t, attempt.Dir, handOnVerdict) }
 			},
 			wantAttaches: 1, wantAttachAfter: 20 * time.Minute, wantVerdict: loomengine.ArbiterVerdictHandOn,
 		},
 		{
 			name: "a marker past its deadline stops the strand without attaching", deadlineIn: -time.Minute,
-			setup: func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {
+			setup: func(f *callFixture, attempt loomengine.ArbiterAttempt) {
 				marker := loomengine.ArbiterMarker{Attempt: 1, StrandGUID: "old-guid", Deadline: attempt.Deadline}
 				if err := loomengine.WriteArbiterMarker(f.markerPath(), marker); err != nil {
 					t.Fatal(err)
@@ -518,7 +529,7 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 		},
 		{
 			name: "an attach error stops the strand and reads died", deadlineIn: 20 * time.Minute,
-			setup: func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {
+			setup: func(f *callFixture, attempt loomengine.ArbiterAttempt) {
 				marker := loomengine.ArbiterMarker{Attempt: 1, StrandGUID: "old-guid", Deadline: attempt.Deadline}
 				if err := loomengine.WriteArbiterMarker(f.markerPath(), marker); err != nil {
 					t.Fatal(err)
@@ -529,7 +540,7 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 		},
 		{
 			name: "a marked attempt with no live strand reads died", deadlineIn: 20 * time.Minute,
-			setup: func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {
+			setup: func(f *callFixture, attempt loomengine.ArbiterAttempt) {
 				marker := loomengine.ArbiterMarker{Attempt: 1, StrandGUID: "old-guid", Deadline: attempt.Deadline}
 				if err := loomengine.WriteArbiterMarker(f.markerPath(), marker); err != nil {
 					t.Fatal(err)
@@ -539,33 +550,33 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 		},
 		{
 			name: "an attempt with no marker whose strand is live attaches and waits", deadlineIn: 5 * time.Minute,
-			setup: func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {
+			setup: func(f *callFixture, attempt loomengine.ArbiterAttempt) {
 				f.fake.attachFound = true
-				f.fake.onAttach = func(shuttleengine.Spec) { writeArbiterVerdictFile(t, attempt.Dir, arbiterHandOnVerdict) }
+				f.fake.onAttach = func(shuttleengine.Spec) { writeVerdictFile(t, attempt.Dir, handOnVerdict) }
 			},
 			wantAttaches: 1, wantAttachAfter: 5 * time.Minute, wantVerdict: loomengine.ArbiterVerdictHandOn,
 		},
 		{
 			name: "an attempt with no marker, no live strand and no verdict reads missing", deadlineIn: 5 * time.Minute,
-			setup:        func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {},
+			setup:        func(f *callFixture, attempt loomengine.ArbiterAttempt) {},
 			wantAttaches: 1, wantAttachAfter: 5 * time.Minute, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseMissing,
 		},
 		{
 			name: "an attempt past its deadline with no marker reads missing without attaching", deadlineIn: -time.Minute,
-			setup:       func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {},
+			setup:       func(f *callFixture, attempt loomengine.ArbiterAttempt) {},
 			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseMissing,
 		},
 		{
 			name: "a finished unapplied verdict returns without starting", deadlineIn: -time.Minute,
-			setup: func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {
-				writeArbiterVerdictFile(t, attempt.Dir, arbiterHandOnVerdict)
+			setup: func(f *callFixture, attempt loomengine.ArbiterAttempt) {
+				writeVerdictFile(t, attempt.Dir, handOnVerdict)
 			},
 			wantVerdict: loomengine.ArbiterVerdictHandOn,
 		},
 		{
 			name: "an applied resume is refused", deadlineIn: -time.Minute,
-			setup: func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {
-				writeArbiterVerdictFile(t, attempt.Dir, arbiterResumeVerdict)
+			setup: func(f *callFixture, attempt loomengine.ArbiterAttempt) {
+				writeVerdictFile(t, attempt.Dir, resumeVerdict)
 				if err := loomengine.MarkArbiterApplied(attempt.Dir); err != nil {
 					t.Fatal(err)
 				}
@@ -574,12 +585,12 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 		},
 		{
 			name: "an attempt for another stop key does not match", deadlineIn: 20 * time.Minute,
-			setup: func(f *arbiterFixture, attempt loomengine.ArbiterAttempt) {
+			setup: func(f *callFixture, attempt loomengine.ArbiterAttempt) {
 				attempt.StopKey.HistoryLength++
 				if err := loomengine.WriteArbiterAttempt(attempt.Dir, attempt); err != nil {
 					t.Fatal(err)
 				}
-				f.fake.onWait = func(shuttleengine.Spec) { writeArbiterVerdictFile(t, f.attemptDir(2), arbiterHandOnVerdict) }
+				f.fake.onWait = func(shuttleengine.Spec) { writeVerdictFile(t, f.attemptDir(2), handOnVerdict) }
 			},
 			wantStarts: 1, wantVerdict: loomengine.ArbiterVerdictHandOn,
 		},
@@ -587,23 +598,22 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := newArbiterFixture(t, "Plan-Write", shedengine.StateBlocked)
+			f := newCallFixture(t, "Plan-Write", shedengine.StateBlocked)
 			attempt := f.priorAttempt(1, tt.deadlineIn)
 			tt.setup(f, attempt)
 
-			code, fields := f.run()
+			envelope, err := f.run()
 
 			if tt.wantRefusal != "" {
-				message, _ := fields["error"].(string)
-				if code == 0 || !strings.Contains(message, tt.wantRefusal) || !strings.Contains(message, "way forward:") {
-					t.Fatalf("arbiterVerb() = exit %d, %v; want a refusal containing %q and a way forward", code, fields, tt.wantRefusal)
+				if err == nil || !strings.Contains(err.Error(), tt.wantRefusal) || !strings.Contains(err.Error(), "way forward:") {
+					t.Fatalf("Settle() error = %v; want a refusal containing %q and a way forward", err, tt.wantRefusal)
 				}
 			} else {
-				if code != 0 {
-					t.Fatalf("arbiterVerb() exit = %d, output %v; want 0", code, fields)
+				if err != nil {
+					t.Fatalf("Settle() error = %v; want nil", err)
 				}
-				if fields["verdict"] != tt.wantVerdict || fields["cause"] != tt.wantCause {
-					t.Errorf("verdict, cause = %v, %v; want %q, %q", fields["verdict"], fields["cause"], tt.wantVerdict, tt.wantCause)
+				if envelope.Verdict != tt.wantVerdict || envelope.Cause != tt.wantCause {
+					t.Errorf("verdict, cause = %q, %q; want %q, %q", envelope.Verdict, envelope.Cause, tt.wantVerdict, tt.wantCause)
 				}
 			}
 			if len(f.fake.starts) != tt.wantStarts {
@@ -622,8 +632,8 @@ func TestArbiterVerb_Rerun(t *testing.T) {
 	}
 }
 
-// TestArbiterVerb_VerdictGate covers the gate the arbiter's started and attached runs carry: it fails a verdict file that does not read, such as a verbs item whose ": " makes it a map, and passes an absent file and one written in block scalars.
-func TestArbiterVerb_VerdictGate(t *testing.T) {
+// TestVerdictGate covers the gate the arbiter's started and attached runs carry: it fails a verdict file that does not read, such as a verbs item whose ": " makes it a map, and passes an absent file and one written in block scalars.
+func TestVerdictGate(t *testing.T) {
 	t.Parallel()
 
 	const title = `--title "D6 refined: card 9's scope"`
@@ -632,10 +642,10 @@ func TestArbiterVerb_VerdictGate(t *testing.T) {
 
 	paths := []struct {
 		name  string
-		setup func(f *arbiterFixture)
+		setup func(f *callFixture)
 	}{
-		{name: "Start", setup: func(f *arbiterFixture) {}},
-		{name: "Attach", setup: func(f *arbiterFixture) {
+		{name: "Start", setup: func(f *callFixture) {}},
+		{name: "Attach", setup: func(f *callFixture) {
 			f.priorAttempt(1, 20*time.Minute)
 			f.fake.attachFound = true
 		}},
@@ -653,10 +663,10 @@ func TestArbiterVerb_VerdictGate(t *testing.T) {
 	for _, path := range paths {
 		t.Run(path.name, func(t *testing.T) {
 			t.Parallel()
-			f := newArbiterFixture(t, "Plan-Write", shedengine.StateBlocked)
+			f := newCallFixture(t, "Plan-Write", shedengine.StateBlocked)
 			path.setup(f)
 
-			f.run()
+			_, _ = f.run()
 
 			if len(f.fake.gates) != 1 || len(f.fake.gates[0]) != 1 {
 				t.Fatalf("gates = %v; want one run carrying one entry", f.fake.gates)
@@ -671,7 +681,7 @@ func TestArbiterVerb_VerdictGate(t *testing.T) {
 					t.Fatal(err)
 				}
 				if file.verdict != "" {
-					writeArbiterVerdictFile(t, f.attemptDir(1), file.verdict)
+					writeVerdictFile(t, f.attemptDir(1), file.verdict)
 				}
 				result, err := entry.Gate()
 				if err != nil {
@@ -690,8 +700,8 @@ func TestArbiterVerb_VerdictGate(t *testing.T) {
 	}
 }
 
-// TestArbiterVerb_VerdictOutcomes covers how a spawned arbiter's end becomes the printed envelope.
-func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
+// TestCall_VerdictOutcomes covers how a spawned arbiter's end becomes the settled envelope.
+func TestCall_VerdictOutcomes(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -700,20 +710,20 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 		state        shedengine.State
 		verdict      string
 		waitResult   shuttleengine.Result
-		setup        func(f *arbiterFixture)
+		setup        func(f *callFixture)
 		wantVerdict  string
 		wantCause    string
 		wantGoto     string
 		wantRelaunch string
 		wantRunStops int
-		// wantReason is a substring of the printed reason, asserted when non-empty.
+		// wantReason is a substring of the settled reason, asserted when non-empty.
 		wantReason string
-		// wantError is set for a run the verb refuses after the arbiter started.
+		// wantError is set for a run the call refuses after the arbiter started.
 		wantError bool
 	}{
 		{
 			name: "a marker that cannot be written stops the started arbiter and refuses", producer: "Plan-Write", state: shedengine.StateBlocked,
-			setup: func(f *arbiterFixture) {
+			setup: func(f *callFixture) {
 				if err := os.WriteFile(filepath.Dir(f.markerPath()), []byte("not a directory"), 0o644); err != nil {
 					t.Fatal(err)
 				}
@@ -722,29 +732,29 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 		},
 		{
 			name: "a valid resume carries its relaunch line", producer: "Plan-Write", state: shedengine.StateFailed,
-			verdict: arbiterResumeVerdict, setup: func(f *arbiterFixture) { f.stopEnvelope = `{"kind":"producer"}` },
+			verdict: resumeVerdict, setup: func(f *callFixture) { f.stopEnvelope = `{"kind":"producer"}` },
 			wantVerdict:  loomengine.ArbiterVerdictResume,
-			wantRelaunch: "lyx shed step " + arbiterTestRun + " --until-stop --arbiter-attempt 1",
+			wantRelaunch: "lyx shed step " + testRun + " --until-stop --arbiter-attempt 1",
 		},
 		{
 			name: "a resume at a blocked stop with a goto target", producer: loomshed.NameParentAlign, state: shedengine.StateBlocked,
 			verdict:     "verdict: resume\nreason: go back\ngoto: Plan-Write\n",
 			wantVerdict: loomengine.ArbiterVerdictResume, wantGoto: "Plan-Write",
-			wantRelaunch: "lyx shed step " + arbiterTestRun + " --until-stop --arbiter-attempt 1",
+			wantRelaunch: "lyx shed step " + testRun + " --until-stop --arbiter-attempt 1",
 		},
 		{
 			name: "a resume at an escalation with its decision recorded", producer: "Plan-Bouncer", state: shedengine.StateAwaiting,
-			verdict: arbiterResumeVerdict,
-			setup: func(f *arbiterFixture) {
+			verdict: resumeVerdict,
+			setup: func(f *callFixture) {
 				f.escalationOpen = true
 				f.circlingPending = true
 			},
 			wantVerdict:  loomengine.ArbiterVerdictResume,
-			wantRelaunch: "lyx shed step " + arbiterTestRun + " --until-stop --arbiter-attempt 1",
+			wantRelaunch: "lyx shed step " + testRun + " --until-stop --arbiter-attempt 1",
 		},
 		{
 			name: "a hand-on carries its question", producer: "Plan-Write", state: shedengine.StateBlocked,
-			verdict: arbiterHandOnVerdict, wantVerdict: loomengine.ArbiterVerdictHandOn,
+			verdict: handOnVerdict, wantVerdict: loomengine.ArbiterVerdictHandOn,
 		},
 		{
 			name: "no verdict file reads missing", producer: "Plan-Write", state: shedengine.StateBlocked,
@@ -756,12 +766,12 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 		},
 		{
 			name: "a resume at an escalation with no pending decision", producer: "Plan-Bouncer", state: shedengine.StateAwaiting,
-			verdict: arbiterResumeVerdict, setup: func(f *arbiterFixture) { f.escalationOpen = true },
+			verdict: resumeVerdict, setup: func(f *callFixture) { f.escalationOpen = true },
 			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
 		},
 		{
 			name: "a resume at a blocked stop with no goto target", producer: "Plan-Write", state: shedengine.StateBlocked,
-			verdict: arbiterResumeVerdict, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
+			verdict: resumeVerdict, wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
 		},
 		{
 			name: "a resume naming a goto target past the current row", producer: "Plan-Write", state: shedengine.StateBlocked,
@@ -771,7 +781,7 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 		{
 			name: "a resume naming a goto target the guard refuses", producer: loomshed.NameParentAlign, state: shedengine.StateBlocked,
 			verdict: "verdict: resume\nreason: go back\ngoto: Plan-Write\n",
-			setup: func(f *arbiterFixture) {
+			setup: func(f *callFixture) {
 				f.gotoGuard = func(string) (string, error) { return "the Plan-Review verdict is settled", nil }
 			},
 			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CausePrecondition,
@@ -791,48 +801,44 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := newArbiterFixture(t, tt.producer, tt.state)
+			f := newCallFixture(t, tt.producer, tt.state)
 			if tt.setup != nil {
 				tt.setup(f)
 			}
 			f.fake.waitResult = tt.waitResult
 			f.fake.onWait = func(shuttleengine.Spec) {
 				if tt.verdict != "" {
-					writeArbiterVerdictFile(t, f.attemptDir(1), tt.verdict)
+					writeVerdictFile(t, f.attemptDir(1), tt.verdict)
 				}
 			}
 
-			code, fields := f.run()
+			envelope, err := f.run()
 
 			if tt.wantError {
-				if code == 0 {
-					t.Fatalf("arbiterVerb() exit = 0, output %v; want an error", fields)
+				if err == nil {
+					t.Fatalf("Settle() error = nil, envelope %+v; want an error", envelope)
 				}
 				if f.fake.runStops != tt.wantRunStops {
 					t.Errorf("run stops = %d; want %d", f.fake.runStops, tt.wantRunStops)
 				}
 				return
 			}
-			if code != 0 {
-				t.Fatalf("arbiterVerb() exit = %d, output %v; want 0", code, fields)
+			if err != nil {
+				t.Fatalf("Settle() error = %v; want nil", err)
 			}
-			if fields["verdict"] != tt.wantVerdict || fields["cause"] != tt.wantCause || fields["goto"] != tt.wantGoto {
-				t.Errorf("verdict, cause, goto = %v, %v, %v; want %q, %q, %q", fields["verdict"], fields["cause"], fields["goto"], tt.wantVerdict, tt.wantCause, tt.wantGoto)
+			if envelope.Verdict != tt.wantVerdict || envelope.Cause != tt.wantCause || envelope.Goto != tt.wantGoto {
+				t.Errorf("verdict, cause, goto = %q, %q, %q; want %q, %q, %q", envelope.Verdict, envelope.Cause, envelope.Goto, tt.wantVerdict, tt.wantCause, tt.wantGoto)
 			}
-			if reason, _ := fields["reason"].(string); !strings.Contains(reason, tt.wantReason) {
-				t.Errorf("reason = %q; want it to contain %q", reason, tt.wantReason)
+			if !strings.Contains(envelope.Reason, tt.wantReason) {
+				t.Errorf("reason = %q; want it to contain %q", envelope.Reason, tt.wantReason)
 			}
-			relaunch, hasRelaunch := fields["relaunch"]
-			if tt.wantRelaunch == "" && hasRelaunch {
-				t.Errorf("relaunch = %v on a hand-on; want the key absent", relaunch)
+			if envelope.Relaunch != tt.wantRelaunch {
+				t.Errorf("relaunch = %q; want %q", envelope.Relaunch, tt.wantRelaunch)
 			}
-			if tt.wantRelaunch != "" && relaunch != tt.wantRelaunch {
-				t.Errorf("relaunch = %v; want %q", relaunch, tt.wantRelaunch)
+			if envelope.Attempt != 1 || envelope.AttemptDir != f.attemptDir(1) || envelope.VerdictPath != loomengine.ArbiterVerdictPath(f.attemptDir(1)) {
+				t.Errorf("attempt, attempt_dir, verdict_path = %v, %v, %v; want 1 and the attempt's paths", envelope.Attempt, envelope.AttemptDir, envelope.VerdictPath)
 			}
-			if fields["attempt"] != float64(1) || fields["attempt_dir"] != f.attemptDir(1) || fields["verdict_path"] != loomengine.ArbiterVerdictPath(f.attemptDir(1)) {
-				t.Errorf("attempt, attempt_dir, verdict_path = %v, %v, %v; want 1 and the attempt's paths", fields["attempt"], fields["attempt_dir"], fields["verdict_path"])
-			}
-			if tt.wantVerdict == loomengine.ArbiterVerdictHandOn && fields["question"] == "" {
+			if tt.wantVerdict == loomengine.ArbiterVerdictHandOn && envelope.Question == "" {
 				t.Error("hand-on question is empty; want the question for the parent")
 			}
 			if f.fake.runStops != tt.wantRunStops {
@@ -840,7 +846,7 @@ func TestArbiterVerb_VerdictOutcomes(t *testing.T) {
 			}
 			saved, found, err := loomengine.ReadArbiterEnvelope(loomengine.ArbiterEnvelopePath(f.attemptDir(1)))
 			if err != nil || !found || saved.Verdict != tt.wantVerdict || saved.Cause != tt.wantCause || saved.Relaunch != tt.wantRelaunch {
-				t.Errorf("envelope.json = %+v, found %v, err %v; want the printed verdict, cause and relaunch", saved, found, err)
+				t.Errorf("envelope.json = %+v, found %v, err %v; want the settled verdict, cause and relaunch", saved, found, err)
 			}
 		})
 	}

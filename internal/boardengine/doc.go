@@ -153,6 +153,9 @@
 // A note's former depends_on moves into the body as a closing line, and a task's dependency on an entry that became a note is dropped.
 // A board directory that still holds the pre-upgrade tasks.json and notes.json migrates the same way and persists to board.json on the first write,
 // and a pre-upgrade binary's later done marks are folded into the store, so a long-running old driver keeps working until the legacy files are retired.
+// A board without the top-level `draft_status` key is marked once: the next write sets `draft` on every open task whose status is empty and writes the key `draft_status: true` in the same save, and a board holding the key is never migrated again.
+// The store's on-disk version stays 1, an older binary keeps the key as an unknown one, and a replayed commit that set it sets it on origin's board, so a replay cannot leave origin to migrate released tasks again.
+// The accepted bound: a task an older binary creates after the migration has no status and starts without a release until every machine runs the new binary.
 //
 // # README
 //
@@ -165,6 +168,7 @@
 // Every section heading ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)`, never the highest handle number, since handles have gaps.
 // Tasks splits into Running, Ready, the dependency layers A, B and on, and Independent for an isolated task.
 // A task a run holds, by IsRunStatus as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
+// A draft task keeps its Ready or layer section and its After column, and its title cell opens with a `draft` code span before the bold title.
 // Ready holds the open tasks with no open dependency, and is always written, as `_None._` when empty.
 // A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
 // Layer A holds the tasks that wait only on Running or Ready entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lyx board list`.
@@ -188,7 +192,7 @@
 // # Run lock
 //
 // A run holds a board entry while the entry's status has the run-status form "<state> · <producer>", which RunStatus composes and IsRunStatus recognizes.
-// Nil, empty, "done", "abandoned" and a hand-set word are not run statuses, and lock nothing.
+// Nil, empty, "draft", "done", "abandoned" and a hand-set word are not run statuses, and lock nothing.
 // A held entry is the scope its run executes, so the write critical section refuses, before the save, any write whose net change on it removes it or touches a field other than status.
 // The net change runs from the entries as loaded under the board file lock to the entries after the whole mutation,
 // so a batch or merge that clears the status early and then edits the entry is still refused, and nothing reaches disk.
@@ -197,6 +201,15 @@
 // Prune passes, since a held entry's dependency on a done entry that the same write removes is not a change; every other depends_on change is refused.
 // The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
 // Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run is ended with `lyx batten cancel <slug>` from the prime, which clears the status.
+//
+// # Draft
+//
+// Every new task is `draft` (StatusDraft), by one rule at the write critical section: after the mutation, each entry of kind task whose status is empty (IsEmptyStatus: nil or the empty string) is given `draft`.
+// So a create of any verb, a batch or merge create, a note or project upserted to a task and a promoted note are `draft` even when the payload sets `status` to null.
+// An entry that was a task before the write keeps an empty status the write left untouched, so an edit of a released task leaves it released.
+// A task is released by a null status: `lyx board set-status '{"slug":"<slug>","status":null}'`, an upsert setting `status` to null on a task, or a merge whose `set_status` sets null.
+// An empty string written to a task whose loaded status differs is `draft`, not a release.
+// The owner write and the replay of a local commit run no draft rule: the first never makes a task, and the second copies entries a critical-section write already normalised.
 //
 // # Run agents file notes, never tasks
 //
@@ -275,6 +288,7 @@
 // A change passes the board's own checks, the run lock included, against the board as the kept changes before it left it, and an added entry takes the next id of origin's board.json and a handle free there, never its local one.
 // Where both sides changed the same field or design file since the merge base, or origin removed the entry, origin's side is kept and the local value is reported lost;
 // a change a check refuses is reported refused, and so is a later change depending on an entry a refused change added.
+// A commit that set `draft_status` sets it on origin's board too, and neither side ever clears it.
 // It takes neither the board lock nor the push lock, spawns no sync, and writes nothing when no change survives.
 //
 // # loomyard's own area labels

@@ -1,6 +1,6 @@
 //go:build tier0
 
-// promote_test.go drives the promote sequence over fake deps: each refusal with its text and no step run, the six steps in order for a running task, a re-run finishing the rest after a stop at each step, and a project made a beam by create's steps.
+// promote_test.go drives the promote sequence over fake deps: each refusal with its text and no step run, the steps in order for a running task with the dobby start last, a re-run finishing the rest after a stop at each step, and a project made a beam by create's steps.
 
 package beamcli
 
@@ -136,9 +136,18 @@ func TestPromote(t *testing.T) {
 			wantCalls: []string{"end"},
 		},
 		{
-			name:      "RunningTaskRunsTheSixStepsInOrder",
+			name:      "RunningTaskRunsTheSevenStepsInOrderAndStartsTheDobbyLast",
 			slug:      "run1",
-			wantCalls: []string{"end", "mark", "push", "clear", "reset", "push", "owner", "workspace"},
+			wantCalls: []string{"end", "mark", "push", "clear", "reset", "push", "owner", "workspace", "dobby"},
+		},
+		{
+			name: "FailedDobbyStartNamesBeamStart",
+			slug: "run1",
+			setup: func(w *promoteWorld) {
+				w.dobbyErr = errors.New("spawn failed")
+			},
+			wantErr:   []string{"spawn failed", "lyx beam start"},
+			wantCalls: []string{"end", "mark", "push", "clear", "reset", "push", "owner", "workspace", "dobby"},
 		},
 		{
 			name: "RerunAfterStepTwoFinishesTheRest",
@@ -146,7 +155,7 @@ func TestPromote(t *testing.T) {
 			setup: func(w *promoteWorld) {
 				w.marked["run1"] = true
 			},
-			wantCalls: []string{"clear", "reset", "push", "owner", "workspace"},
+			wantCalls: []string{"clear", "reset", "push", "owner", "workspace", "dobby"},
 		},
 		{
 			name: "RerunAfterStepThreeFinishesTheRest",
@@ -155,7 +164,7 @@ func TestPromote(t *testing.T) {
 				w.marked["run1"] = true
 				w.owners.Entries["run1"] = boardengine.OwnerEntry{Owner: here, IsTask: true}
 			},
-			wantCalls: []string{"reset", "push", "owner", "workspace"},
+			wantCalls: []string{"reset", "push", "owner", "workspace", "dobby"},
 		},
 		{
 			name: "RerunAfterStepFourSpawnsNoPushForAnUnchangedReset",
@@ -165,21 +174,21 @@ func TestPromote(t *testing.T) {
 				w.owners.Entries["run1"] = boardengine.OwnerEntry{Owner: here, IsTask: true}
 				w.resetCommits = false
 			},
-			wantCalls: []string{"reset", "owner", "workspace"},
+			wantCalls: []string{"reset", "owner", "workspace", "dobby"},
 		},
 		{
-			name: "RerunAfterStepFiveFinishesTheWorkspaceStepAlone",
+			name: "RerunAfterStepFiveFinishesTheWorkspaceAndDobbySteps",
 			slug: "run1",
 			setup: func(w *promoteWorld) {
 				w.marked["run1"] = true
 				w.owners.Entries["run1"] = boardengine.OwnerEntry{Owner: here, IsProject: true, Beam: true}
 			},
-			wantCalls: []string{"workspace"},
+			wantCalls: []string{"workspace", "dobby"},
 		},
 		{
 			name:      "GroupingProjectRunsCreatesSteps",
 			slug:      "group",
-			wantCalls: []string{"owner", "add", "push", "workspace"},
+			wantCalls: []string{"owner", "add", "push", "workspace", "dobby"},
 		},
 	}
 	for _, tt := range tests {

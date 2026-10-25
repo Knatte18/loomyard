@@ -406,6 +406,11 @@ var TwillJudgeCritical []byte
 //go:embed twill/twill-judge-plain.md
 var TwillJudgePlain []byte
 
+// BeamTemplateBoardTidy is the board-tidy agent's shipped-default opening prompt: the cold session dobby spawns every few landings to bring the board's notes in line with what the landings built.
+//
+//go:embed beam/beam-template-board-tidy.md
+var BeamTemplateBoardTidy []byte
+
 // SeatDirectiveChair is the chair seat block's shipped default: the channel rules a multi-seat step's chair works under, pulled into a seat stencil as an include.
 //
 //go:embed seat/seat-directive-chair.md
@@ -504,6 +509,7 @@ var entries = []registryEntry{
 	{"twill-judge-plain", &TwillJudgePlain},
 	{"seat-directive-chair", &SeatDirectiveChair},
 	{"seat-directive-advisor", &SeatDirectiveAdvisor},
+	{"beam-template-board-tidy", &BeamTemplateBoardTidy},
 }
 
 // roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.
@@ -530,6 +536,7 @@ var roleOpeningStencils = map[string][]string{
 	"friction":           {"friction-template-reflection"},
 	"describe":           {"landing-template-describe", "landing-template-describe-darn"},
 	"darn":               {"darn-template-write"},
+	"board-tidy":         {"beam-template-board-tidy"},
 }
 
 // askOperatorPhrases is the closed list of phrases that tell an agent to put a question to the operator in its pane.

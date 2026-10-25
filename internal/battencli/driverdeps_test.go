@@ -5,12 +5,17 @@
 package battencli
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/arbiterstop"
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -32,7 +37,6 @@ func TestBattenDriverDeps(t *testing.T) {
 	}
 
 	unwired := map[string]bool{
-		"Arbiter":           deps.Arbiter == nil,
 		"Watched":           deps.Watched == nil,
 		"HandOver":          deps.HandOver == nil,
 		"Tamper":            deps.Tamper == nil,
@@ -57,6 +61,7 @@ func TestBattenDriverDeps(t *testing.T) {
 		"Tackler":               deps.Tackler != nil,
 		"ConsumeTackler":        deps.ConsumeTackler != nil,
 		"OpenAttempts":          deps.OpenAttempts != nil,
+		"Arbiter":               deps.Arbiter != nil,
 		"Now":                   deps.Now != nil,
 		"HandBack.Notify":       deps.HandBack.Notify != nil,
 		"HandBack.OrchRecorded": deps.HandBack.OrchRecorded != nil,
@@ -67,6 +72,21 @@ func TestBattenDriverDeps(t *testing.T) {
 		if !isSet {
 			t.Errorf("driverDepsFor() leaves %s nil; the driver calls it", seam)
 		}
+	}
+
+	if pending, err := deps.Arbiter.EscalationPending(battenrecipe.NameRunShed); pending || err != nil {
+		t.Errorf("Arbiter.EscalationPending() = (%v, %v); want (false, nil), since a batten stop never awaits a review escalation", pending, err)
+	}
+	key := sheddriver.StopKey{CurrentProducer: battenrecipe.NameLand, HistoryLength: 3, State: string(shedengine.StateBlocked)}
+	arbiterDir := shedrun.ArbiterAttemptDir(c.location, c.slug, 1)
+	if err := loomengine.WriteArbiterAttempt(arbiterDir, loomengine.ArbiterAttempt{Number: 1, StopKey: key}); err != nil {
+		t.Fatalf("WriteArbiterAttempt: %v", err)
+	}
+	if _, arbiter, _, err := deps.OpenAttempts(key); arbiter != arbiterDir || err != nil {
+		t.Errorf("OpenAttempts(%+v) arbiter = %q, %v; want %q", key, arbiter, err, arbiterDir)
+	}
+	if _, arbiter, _, err := deps.OpenAttempts(sheddriver.StopKey{CurrentProducer: battenrecipe.NameLand, HistoryLength: 4, State: string(shedengine.StateBlocked)}); arbiter != "" || err != nil {
+		t.Errorf("OpenAttempts(another stop) arbiter = %q, %v; want none", arbiter, err)
 	}
 
 	if want := shedrun.SettleRecords(c.location, c.slug); deps.SettlePath != want {
@@ -143,6 +163,19 @@ func TestBattenDriverDeps(t *testing.T) {
 		}
 		return st
 	}
+	atLand := shedengine.Status{CurrentProducer: battenrecipe.NameLand, State: shedengine.StateBlocked, History: []shedengine.HistoryEntry{}}
+	if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, atLand); err != nil {
+		t.Fatalf("seed status at Land: %v", err)
+	}
+	guard := c.haltedRowGuard()
+	wantRefusal := "goto target " + battenrecipe.NameSeedChild + " is not the halted row " + battenrecipe.NameLand + "; batten's arbiter resumes only the halted row; way forward: the run's parent runs lyx batten goto " + c.slug + " --to " + battenrecipe.NameSeedChild
+	if refused, err := guard(battenrecipe.NameSeedChild); refused != wantRefusal || err != nil {
+		t.Errorf("GotoGuard(%s) = %q, %v; want %q", battenrecipe.NameSeedChild, refused, err, wantRefusal)
+	}
+	if refused, err := guard(battenrecipe.NameLand); refused != "" || err != nil {
+		t.Errorf("GotoGuard(%s) = %q, %v; want the halted row admitted", battenrecipe.NameLand, refused, err)
+	}
+
 	seedBlocked()
 	if err := deps.Goto(t.Context(), first); err != nil {
 		t.Fatalf("deps.Goto(%s) = %v; want nil", first, err)
@@ -156,5 +189,90 @@ func TestBattenDriverDeps(t *testing.T) {
 	}
 	if st := readStatus(); st.PendingBy != shedengine.CallerShed {
 		t.Errorf("PendingBy = %q; want %q", st.PendingBy, shedengine.CallerShed)
+	}
+}
+
+// TestBattenConsumeAttempt asserts the consume hook refuses an attempt that is no positive number, naming the hand-back to the run's parent, before it reads any attempt directory.
+func TestBattenConsumeAttempt(t *testing.T) {
+	t.Parallel()
+
+	c := &battenCLI{slug: "a-slug"}
+	for _, attempt := range []string{"abc", "0"} {
+		t.Run(attempt, func(t *testing.T) {
+			t.Parallel()
+
+			err := c.battenConsumeAttempt(t.Context(), attempt)
+			if err == nil {
+				t.Fatalf("battenConsumeAttempt(%q) = nil; want a refusal", attempt)
+			}
+			if want := "is not a positive integer; " + arbiterstop.BattenHandBackWayForward; !strings.Contains(err.Error(), want) {
+				t.Errorf("battenConsumeAttempt(%q) = %q; want it to carry %q", attempt, err, want)
+			}
+		})
+	}
+}
+
+// TestBattenHandBackNotice asserts the hand-back router posts the row-stop line for a failed Land or Worktree-Teardown stop, nothing for a paused stop or a Land stop that honoured a pause, and the hand-back's own line for a stop at Run-Shed.
+func TestBattenHandBackNotice(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		stop     sheddriver.Stop
+		wantSent bool
+		wantLine string
+	}{
+		{
+			name:     "AFailedLandStopPostsTheRowStopLine",
+			stop:     sheddriver.Stop{State: "blocked", CurrentProducer: battenrecipe.NameLand, HistoryLength: 3, Reason: "pull failed: boom"},
+			wantSent: true,
+			wantLine: "Land failed: pull failed: boom; report /reports/stop.md; way forward: fix the cause, then run \"lyx batten run a-slug\"",
+		},
+		{
+			name:     "AFailedTeardownStopPostsTheRowStopLine",
+			stop:     sheddriver.Stop{State: "blocked", CurrentProducer: battenrecipe.NameWorktreeTeardown, HistoryLength: 4, Reason: "session shutdown failed: boom"},
+			wantSent: true,
+			wantLine: "Worktree-Teardown failed: session shutdown failed: boom; report /reports/stop.md; way forward: fix the cause, then run \"lyx batten run a-slug\"",
+		},
+		{
+			name: "APauseHonouredLandStopPostsNothing",
+			stop: sheddriver.Stop{State: "blocked", CurrentProducer: battenrecipe.NameLand, HistoryLength: 3, Reason: battenshed.PauseHonouredPrefix + ": a pause was requested"},
+		},
+		{
+			name: "APausedStopPostsNothing",
+			stop: sheddriver.Stop{State: "paused", CurrentProducer: battenrecipe.NameLand, HistoryLength: 3},
+		},
+		{
+			name:     "AStopAtRunShedPostsTheHandBackLine",
+			stop:     sheddriver.Stop{State: "blocked", CurrentProducer: battenrecipe.NameRunShed, HistoryLength: 2, Reason: "x"},
+			wantSent: true,
+			wantLine: "the hand-back line",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var lines []string
+			deps := battenshed.RowNoticeDeps{
+				Notify: func(_ context.Context, line string) (bool, error) {
+					lines = append(lines, line)
+					return true, nil
+				},
+			}
+			sent := battenHandBackNotice(deps, "a-slug", t.TempDir(), tt.stop, "the hand-back line", "/reports/stop.md")
+			if sent != tt.wantSent {
+				t.Errorf("battenHandBackNotice() = %v; want %v", sent, tt.wantSent)
+			}
+			if !tt.wantSent {
+				if len(lines) != 0 {
+					t.Errorf("notices = %q; want none", lines)
+				}
+				return
+			}
+			if len(lines) != 1 || !strings.HasSuffix(lines[0], tt.wantLine) {
+				t.Errorf("notices = %q; want one ending in %q", lines, tt.wantLine)
+			}
+		})
 	}
 }

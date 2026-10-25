@@ -39,6 +39,8 @@ type startGuard struct {
 	PairMark func() (marked, found bool, err error)
 	// LandRefusal refuses the landing of the slug as a beam while work remains under it.
 	LandRefusal func() error
+	// Draft reports whether the slug is a task whose board status is draft.
+	Draft func() (bool, error)
 }
 
 // hubStartGuard builds the startGuard over the hub of location: the cancel marker, the prime's tracked dirty paths, the slug's pair parts and its beam, all local reads with no network call.
@@ -83,6 +85,18 @@ func hubStartGuard(location *lyxcwd.Location, slug string) startGuard {
 			return origin.Beam, found, nil
 		},
 		LandRefusal: func() error { return BeamLandRefusal(location, slug) },
+		Draft: func() (bool, error) {
+			tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
+			if err != nil {
+				return false, err
+			}
+			for _, task := range tasks {
+				if task.Slug == slug {
+					return task.Status != nil && *task.Status == boardengine.StatusDraft, nil
+				}
+			}
+			return false, nil
+		},
 		PairParts: func() (fabricengine.PairParts, error) {
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
 			if err != nil {
@@ -98,6 +112,7 @@ func hubStartGuard(location *lyxcwd.Location, slug string) startGuard {
 // A run or step of a task whose pair carries the beam mark refuses, with or without a status file, since only a stopped promote leaves one.
 // A run or step with no status file, or one whose status is at Worktree-Create while the task worktree is absent, refuses on tracked dirty paths of the source worktree, unless the task forks from a beam, whose pair forks from the beam's last commit and not from the source worktree.
 // A run or step of a project entry is judged by refuseProject alone, which refuses a grouping project and a beam that cannot be landed, and passes a marked beam pair over the next two checks.
+// A run or step with no status file of a task whose board status is draft refuses, naming the release that makes it startable.
 // A run or step with no status file refuses when a task worktree, records worktree or local records branch is left from an earlier run.
 // A probe error refuses naming the probe and the verb's re-run.
 // found and status describe the run's status file, and taskWorktreePresent whether the task worktree is there, which only a status at Worktree-Create reads.
@@ -134,6 +149,16 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 		}
 	}
 
+	if !found && g.Draft != nil {
+		draft, err := g.Draft()
+		if err != nil {
+			return probeRefusal("the board entry's status", slug, rerun, err)
+		}
+		if draft {
+			return fmt.Errorf("%s is a draft task, which no run starts; way forward: run `%s` to release it, then `lyx batten %s %s`", slug, releaseCommandText(slug), verb, slug)
+		}
+	}
+
 	atWorktreeCreate := found && status.CurrentProducer == battenrecipe.NameWorktreeCreate && !taskWorktreePresent
 	if (!found || atWorktreeCreate) && g.SourceDirty != nil {
 		fromPrime, err := g.forksFromPrime()
@@ -157,8 +182,8 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 			return probeRefusal("the pair's parts", slug, rerun, err)
 		}
 		if left := leftPartNames(parts); len(left) > 0 {
-			return fmt.Errorf("%s left a pair from an earlier run (%s); run \"lyx batten cancel %s --remove\" from the prime, which removes it, then %s",
-				slug, strings.Join(left, ", "), slug, rerun)
+			return fmt.Errorf("%s left a pair from an earlier run (%s); run \"lyx batten cancel %s --remove\" from the prime, which removes it, then %s and %s",
+				slug, strings.Join(left, ", "), slug, releaseCommand(slug), rerun)
 		}
 	}
 	return nil
@@ -235,6 +260,16 @@ func leftPartNames(parts fabricengine.PairParts) []string {
 		names = append(names, "records branch")
 	}
 	return names
+}
+
+// releaseCommandText words the command that releases the draft task slug, with the slug filled in so a way forward naming it runs as typed.
+func releaseCommandText(slug string) string {
+	return fmt.Sprintf(`lyx board set-status '{"slug":"%s","status":null}'`, slug)
+}
+
+// releaseCommand quotes releaseCommandText for a way forward that names it between double quotes.
+func releaseCommand(slug string) string {
+	return `"` + releaseCommandText(slug) + `"`
 }
 
 // probeRefusal words the refusal of a guard probe that failed with err, naming the probe and the step to run again.

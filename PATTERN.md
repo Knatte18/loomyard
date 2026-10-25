@@ -23,7 +23,7 @@
 - `PATTERN-push-both-sides` — Pushing run records from Go: code branch goes along; a push refused after retry leaves a failed-push record and creel notice. (test) — [background](pattern/PATTERN-push-both-sides.md)
 - `PATTERN-pair-teardown` — Tearing down a pair: only via `internal/pairteardown`; a producer creating or destroying a task worktree never runs inside it. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-parent-lock` — Moving, merging into or landing on a local parent branch: only in a run's Finalize, under `internal/parentlock`'s lock for that parent.
-- `PATTERN-owner-machine` — Starting, resuming or landing a run or acting on wake: `fabricengine`'s origin reconcile first, then only where no other machine owns it. — [background](pattern/PATTERN-owner-machine.md)
+- `PATTERN-owner-machine` — a continue pass dobby schedules into a run it already drives is not a resume and needs no origin verdict; the first pass of a run after a dobby start or a machine wake, every pass while a full pass is owed, and every hand pass, is a resume and gets one. — [background](pattern/PATTERN-owner-machine.md)
 - `PATTERN-pair-parent` — Picking a new pair's parent for a board entry or reading an entry's owner through its parent: only `ParentBeam` and hubgeom's one `ParentOf`, never the acting worktree.
 - `PATTERN-github-auth` — Calling GitHub: auth only via `internal/githubclient`, no other production package runs `gh`, and only `lyx selfreport create` files an issue. (test)
 
@@ -31,6 +31,8 @@
 
 - `PATTERN-shed-recipe-registry` — Adding producer or recipe row: one `Constructor` map in `internal/shedrecipe`, bar `Implementer`'s; a row's value looked up by key, a side action a `Command` row, a config-off row its `entry_gate`. — [background](pattern/PATTERN-shed-recipe-registry.md)
 - `PATTERN-shed-driver` — Driving a shed run: generic verb bodies only in `internal/shedverbs`, the step-until-stop loop only in `internal/sheddriver`, run paths, ids and `Seed` only in `internal/shedrun`. (test) — [background](pattern/PATTERN-shed-driver.md)
+- `PATTERN-shed-stop-chain` — A shed run's stop: rule table, tackler, arbiter, then parent, for every recipe; arbiter keys in shed.yaml with module overrides.
+- `PATTERN-dobby-starts-runs` — Starting or driving a board task's run: its parent's dobby, from an empty status, in batten passes; a hand `lyx batten run` is one pass.
 - `PATTERN-transient-stop` — Marking a failure transient: only `internal/shedengine`'s mark, translated by `internal/shedtransient` at a producer or step-bootstrap boundary; never on a gate verdict.
 - `PATTERN-friction-capture` — Halting or crash-resuming a loom run, or refusing in webster: Go writes a note via `internal/friction`; none is archived before a reflection covers it. (test)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)

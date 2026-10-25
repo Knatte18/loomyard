@@ -616,6 +616,10 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		if len(result.Overwritten) > 0 {
 			m["overwritten"] = result.Overwritten
 		}
+		// copied is exceptional too: only a declared key copy sets it.
+		if len(result.Copied) > 0 {
+			m["copied"] = result.Copied
+		}
 		// keptExtra is exceptional too: only a module with per-name maps whose file holds a name the template lacks sets it.
 		if len(result.KeptExtra) > 0 {
 			m["keptExtra"] = result.KeptExtra

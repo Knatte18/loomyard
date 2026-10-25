@@ -1,0 +1,3 @@
+max_runs: 3  # the most runs of this beam's tasks dobby drives at once; 0 starts none
+board_tidy_every: 5  # dobby starts the board-tidy agent after this many landings; 0 never tidies
+board_tidy_timeout_min: 30  # the minutes the board-tidy agent may run before dobby gives up on it

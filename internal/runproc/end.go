@@ -57,6 +57,12 @@ func End(dir, owner string, callerPID int) ([]Ended, error) {
 	return productionEnder().end(dir, owner, callerPID)
 }
 
+// EndSparing ends like End, leaving alone every live process registered under owner with a role in spare, and the processes below it.
+// It serves an end of a session that is not a teardown of the owner's run.
+func EndSparing(dir, owner string, callerPID int, spare ...string) ([]Ended, error) {
+	return productionEnder().end(dir, owner, callerPID, spare...)
+}
+
 // EndProcess ends one process that is registered nowhere, by the same SIGTERM, grace, SIGKILL and bound as End, once its start time still matches startTime.
 // It returns a *SurvivorsError when the process is alive after the bound.
 func EndProcess(pid int, startTime, role string) ([]Ended, error) {
@@ -106,7 +112,8 @@ type unit struct {
 	members   []watched
 }
 
-func (e ender) end(dir, owner string, callerPID int) ([]Ended, error) {
+// end is the sequence behind End and EndSparing: a live record whose role is in spare is treated like the caller, left out of every signalled set with the processes below it.
+func (e ender) end(dir, owner string, callerPID int, spare ...string) ([]Ended, error) {
 	if e.goos == "windows" {
 		return nil, nil
 	}
@@ -119,9 +126,15 @@ func (e ender) end(dir, owner string, callerPID int) ([]Ended, error) {
 			return ended, err
 		}
 		var todo []Record
+		spared := map[int]bool{}
+		for _, record := range records {
+			if slices.Contains(spare, record.Role) {
+				spared[record.PID] = true
+			}
+		}
 		for _, record := range records {
 			key := strconv.Itoa(record.PID) + "-" + record.StartTime
-			if record.PID == callerPID || e.isAncestor(record.PID) || attempted[key] {
+			if record.PID == callerPID || e.isAncestor(record.PID) || spared[record.PID] || attempted[key] {
 				continue
 			}
 			attempted[key] = true
@@ -137,7 +150,7 @@ func (e ender) end(dir, owner string, callerPID int) ([]Ended, error) {
 		if err != nil {
 			return ended, fmt.Errorf("runproc: read processes: %w", err)
 		}
-		skip := func(pid int) bool { return pid == callerPID || e.isAncestor(pid) }
+		skip := func(pid int) bool { return pid == callerPID || e.isAncestor(pid) || spared[pid] }
 		passEnded, passSurvivors, err := e.runUnits(planRecords(todo, stats, skip), stats)
 		ended = append(ended, passEnded...)
 		for _, survivor := range passSurvivors {

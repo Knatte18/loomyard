@@ -33,6 +33,9 @@ const tacklerDirName = "tackler"
 // tacklerMarkerFileName is the filename of the tackler in-flight marker, whose path TacklerMarker returns.
 const tacklerMarkerFileName = "tackler-inflight.json"
 
+// originOwedMarkerFileName is the filename of the origin-owed marker, whose path OriginOwedMarker returns.
+const originOwedMarkerFileName = "origin-owed.json"
+
 // driverLockFileName is the filename of the Go-driver lock, whose path DriverLock returns.
 const driverLockFileName = "driver.lock"
 
@@ -270,6 +273,12 @@ func TacklerAttemptDir(l *lyxcwd.Location, runID string, attempt int) string {
 // TacklerMarker returns the path to the ephemeral tackler in-flight marker, tacklerMarkerFileName under ScratchDir(l, runID).
 func TacklerMarker(l *lyxcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), tacklerMarkerFileName)
+}
+
+// OriginOwedMarker returns the path to the ephemeral marker of a resume that judged its owner without origin, originOwedMarkerFileName under ScratchDir(l, runID).
+// While it stands, the run's passes stay full until one reaches origin.
+func OriginOwedMarker(l *lyxcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), originOwedMarkerFileName)
 }
 
 // CancelMarker returns the path to the ephemeral batten cancel marker, <run segment>.cancel.json directly under ScratchRoot(l).

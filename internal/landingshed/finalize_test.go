@@ -690,7 +690,25 @@ func TestFinalize_ReconcileProceedsOrErrors(t *testing.T) {
 
 // TestFinalize_ConfigChangeNotice pins the one notice Finalize queues about the task's config changes: at Done only, one line carrying what the operator needs to re-apply them, a read error reported instead of stopping, and neither a failing nor an absent Notify changing the verdict.
 func TestFinalize_ConfigChangeNotice(t *testing.T) {
-	changed := fabricengine.ConfigChanges{Files: []string{"loom.yaml", "shuttle.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333"}
+	changed := fabricengine.ConfigChanges{
+		Files: []string{"loom.yaml", "shuttle.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
+		Contents: map[string]fabricengine.ConfigFileContents{
+			"loom.yaml":    {Base: []byte("code_max_bounces: 2\n"), Tip: []byte("code_max_bounces: 1\n"), Parent: []byte("code_max_bounces: 2\n")},
+			"shuttle.yaml": {Tip: []byte("model: x\n")},
+		},
+	}
+	commentsOnly := fabricengine.ConfigChanges{
+		Files: []string{"loom.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
+		Contents: map[string]fabricengine.ConfigFileContents{
+			"loom.yaml": {Base: []byte("a: 1\n"), Tip: []byte("# note\na: 1\n"), Parent: []byte("a: 1\n")},
+		},
+	}
+	unparseable := fabricengine.ConfigChanges{
+		Files: []string{"loom.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
+		Contents: map[string]fabricengine.ConfigFileContents{
+			"loom.yaml": {Base: []byte("a: 1\n"), Tip: []byte("a: [1\n"), Parent: []byte("a: 1\n")},
+		},
+	}
 	tests := []struct {
 		name        string
 		changes     fabricengine.ConfigChanges
@@ -703,14 +721,25 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 		wantInNotice []string
 	}{
 		{
-			name:         "changed files queue one notice naming the branch, files, SHAs and the re-apply instruction",
+			name:         "changed keys queue one notice naming the branch, each file and module, each key with its base, tip and parent values, absent included, and the re-apply instruction",
 			changes:      changed,
 			wantOutcome:  shedengine.Done,
-			wantInNotice: []string{"loom:", `"task-branch"`, "loom.yaml", "shuttle.yaml", "base111", "tip222", "parent tip parent333", "does not carry them", "re-apply"},
+			wantInNotice: []string{"loom:", `"task-branch"`, "loom.yaml (module loom)", "loom.code_max_bounces: base 2, tip 1, parent 2", "shuttle.yaml (module shuttle)", "shuttle.model: base absent, tip x, parent absent", "does not carry them", "re-apply"},
 		},
 		{
 			name:        "an empty diff queues none",
 			wantOutcome: shedengine.Done,
+		},
+		{
+			name:        "a comments-only change queues none",
+			changes:     commentsOnly,
+			wantOutcome: shedengine.Done,
+		},
+		{
+			name:         "a file that does not parse is reported as not compared and still reaches Done",
+			changes:      unparseable,
+			wantOutcome:  shedengine.Done,
+			wantInNotice: []string{"loom:", "could not be compared key by key", "loom.yaml (module loom)", "parse the tip config"},
 		},
 		{
 			name:         "a read error still reaches Done and queues a notice carrying the error text on one line",
@@ -723,7 +752,7 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 			changes:      changed,
 			notifyErr:    errors.New("queue unavailable"),
 			wantOutcome:  shedengine.Done,
-			wantInNotice: []string{"loom.yaml"},
+			wantInNotice: []string{"loom.code_max_bounces"},
 		},
 		{
 			name:        "a failed parent-side merge is Stuck and queues none",

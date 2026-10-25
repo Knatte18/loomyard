@@ -110,6 +110,20 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 			wantContinue: true,
 		},
 		{
+			name: "Yield",
+			res: shedengine.StepResult{
+				Producer: "Run-Shed",
+				Outcome:  shedengine.Yield,
+				Next:     "Run-Shed",
+				State:    shedengine.StateRunning,
+			},
+			wantProducer: "Run-Shed",
+			wantOutcome:  string(shedengine.Yield),
+			wantNext:     "Run-Shed",
+			wantState:    string(shedengine.StateRunning),
+			wantContinue: false,
+		},
+		{
 			name: "Blocked",
 			res: shedengine.StepResult{
 				Producer: "Discussion-Bouncer",

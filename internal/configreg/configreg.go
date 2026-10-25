@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -118,6 +119,7 @@ func Modules() []Module {
 	modules := []Module{
 		{Name: "batcher", Template: batcher.ConfigTemplate, PerNameMaps: batcher.ConfigPerNameMaps(), Migrate: batcher.MigrateConfig, CheckLoad: checkLoad(batcher.Active), Spec: batcher.ConfigSpec},
 		{Name: "batten", Template: battenshed.ConfigTemplate, CheckValues: battenshed.ValidateLocalValues, CheckLoad: checkLoad(battenshed.LoadConfig), Spec: battenshed.ConfigSpec},
+		{Name: "beam", Template: dobbyengine.ConfigTemplate, CheckLoad: checkLoad(dobbyengine.LoadConfig), Spec: dobbyengine.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, Migrate: darnengine.MigrateConfig, CheckValues: darnengine.ValidateLocalValues, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(fabricengine.LoadConfig), Spec: fabricengine.ConfigSpec},

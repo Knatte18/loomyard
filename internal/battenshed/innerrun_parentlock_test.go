@@ -1,7 +1,7 @@
 //go:build tier0
 
-// innerrun_parentlock_test.go covers the inner-run watch's parent lock duties over a fake clock and fake seams:
-// keeping or releasing the lock of the child's run on every probe check.
+// innerrun_parentlock_test.go covers the inner-run's parent lock duties over a fake clock and fake seams:
+// keeping or releasing the lock of the child's run on every probe check, with the idle watch carried from pass to pass in the memory record.
 
 package battenshed
 
@@ -23,8 +23,8 @@ const (
 	lockCheckGap = time.Minute
 )
 
-// lockHarness holds the fake child, the fake lock seams of the InnerRun wait and what they recorded.
-// Every check advances the fake clock by lockCheckGap and is a probe check.
+// lockHarness holds the fake child, the fake lock seams of InnerRun and what they recorded.
+// Every pass is a new producer over one scratch directory; each advances the fake clock by lockCheckGap and is a probe check.
 type lockHarness struct {
 	t     *testing.T
 	clock *fakeClock
@@ -47,8 +47,6 @@ type lockHarness struct {
 	coverage func(call int) pauserecord.Coverage
 	// scratchDir is the producer's scratch directory.
 	scratchDir string
-	// asleep is how far the awake clock trails the wall clock, which sleep advances to stage a machine sleep.
-	asleep time.Duration
 
 	// verdict is the fake owner check's answer to its nth call, counted from one; nil reads as owned here.
 	verdict    func(n int) (OwnerVerdict, error)
@@ -66,13 +64,9 @@ type lockHarness struct {
 	// spawnErr is what the fake spawn returns.
 	spawnErr error
 
-	producer shedengine.ShedProducer
-}
-
-// sleep advances the wall clock by d without the awake clock, which the owner check reads as a machine sleep of d.
-func (h *lockHarness) sleep(d time.Duration) {
-	h.clock.advance(d)
-	h.asleep += d
+	// newProducer builds the producer of one pass, and producer runs passes of it until one ends with something other than a Yield.
+	newProducer func() shedengine.ShedProducer
+	producer    shedengine.ShedProducer
 }
 
 func loopRecord() *parentlock.Record {
@@ -87,7 +81,7 @@ func newLockHarness(t *testing.T, status shedengine.Status) *lockHarness {
 	_, spawns, deps := newInnerRunDeps(t, nil, nil, []statusResult{{found: true}}, h.clock)
 	h.spawns = spawns
 	deps.NoticeProbe = lockCheckGap
-	deps.Awake = func() time.Duration { return h.clock.Now().Sub(started) - h.asleep }
+	deps.Awake = func() time.Duration { return h.clock.Now().Sub(started) }
 	deps.Spawn = func(context.Context) error {
 		*h.spawns++
 		return h.spawnErr
@@ -158,11 +152,14 @@ func newLockHarness(t *testing.T, status shedengine.Status) *lockHarness {
 		},
 	}
 	h.scratchDir = t.TempDir()
-	h.producer = NewInnerRun("innerrun", "myslug", deps, lockCheckGap, h.scratchDir, testGrace)
+	h.newProducer = func() shedengine.ShedProducer {
+		return NewInnerRun("innerrun", "myslug", deps, lockCheckGap, h.scratchDir, testGrace)
+	}
+	h.producer = h.clock.passes(h.newProducer, lockCheckGap)
 	return h
 }
 
-// runChecks runs one Call that ends at check n, the pause the fake batten status raises.
+// runChecks runs passes, one check gap apart, up to the pass that ends at check n, the pause the fake batten status raises.
 func (h *lockHarness) runChecks(n int) {
 	h.t.Helper()
 	h.clock.pauseAtSleep = n

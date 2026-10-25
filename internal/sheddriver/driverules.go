@@ -30,6 +30,9 @@ type Stop struct {
 	EnvelopePath string
 	Error        string
 
+	// Outcome is the stepped producer's outcome as the step envelope reports it; a stop built from a status or a resumed attempt carries none.
+	Outcome string
+
 	Stop            string
 	CurrentProducer string
 	HistoryLength   int
@@ -52,6 +55,7 @@ type Stop struct {
 func parseDriveStop(envelope []byte) (Stop, error) {
 	var decoded struct {
 		OK           bool   `json:"ok"`
+		Outcome      string `json:"outcome"`
 		State        string `json:"state"`
 		Reason       string `json:"reason"`
 		Kind         string `json:"kind"`
@@ -77,6 +81,7 @@ func parseDriveStop(envelope []byte) (Stop, error) {
 	}
 	return Stop{
 		OK:              decoded.OK,
+		Outcome:         decoded.Outcome,
 		State:           decoded.State,
 		Reason:          decoded.Reason,
 		Kind:            decoded.Kind,

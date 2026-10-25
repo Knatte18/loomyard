@@ -203,7 +203,6 @@ func newTestEnv(t *testing.T) Env {
 			RunDeploy: func(context.Context, string, string, time.Duration) (battenshed.DeployResult, error) {
 				return battenshed.DeployResult{}, nil
 			},
-			ReadyTasks:     func() ([]string, error) { return nil, nil },
 			PruneBoard:     func() error { return nil },
 			PauseRequested: func() (bool, error) { return false, nil },
 			LandLock: battenshed.PrimeLock{

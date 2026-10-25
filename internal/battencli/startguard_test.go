@@ -48,8 +48,13 @@ func TestStartGuard_Refuse(t *testing.T) {
 		project, beam, marked, unreadable bool
 		projectErr                        error
 		landRefusal                       error
+		// draft is what the Draft seam reads: a task whose board status is draft.
+		draft    bool
+		draftErr error
 		// noSeams leaves every seam nil.
 		noSeams bool
+		// wantExact is the refusal's whole text, "{verb}" standing for the verb under test.
+		wantExact string
 		// wantErrors are substrings the refusal carries; "{verb}" stands for the verb under test.
 		wantErrors []string
 	}{
@@ -85,6 +90,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			wantErrors: []string{"a.txt, dir/b.txt", "commit or revert", `run "lyx batten {verb} some-slug" again`},
 		},
 		{
+			// A released task reads a nil status, so the Draft seam reads false.
 			name:  "CleanStartPasses",
 			verbs: []string{"run", "step"},
 		},
@@ -145,7 +151,26 @@ func TestStartGuard_Refuse(t *testing.T) {
 			name:       "LeftTaskWorktreeRefusesAStart",
 			verbs:      []string{"run", "step"},
 			parts:      fabricengine.PairParts{TaskWorktree: true},
-			wantErrors: []string{"some-slug left a pair from an earlier run (task worktree)", `run "lyx batten cancel some-slug --remove" from the prime`, `then "lyx batten {verb} some-slug"`},
+			wantErrors: []string{"some-slug left a pair from an earlier run (task worktree)", `run "lyx batten cancel some-slug --remove" from the prime`, `then "lyx board set-status '{"slug":"some-slug","status":null}'" and "lyx batten {verb} some-slug"`},
+		},
+		{
+			name:      "DraftTaskRefusesAFreshStartNamingTheRelease",
+			verbs:     []string{"run", "step"},
+			draft:     true,
+			wantExact: "some-slug is a draft task, which no run starts; way forward: run `lyx board set-status '{\"slug\":\"some-slug\",\"status\":null}'` to release it, then `lyx batten {verb} some-slug`",
+		},
+		{
+			name:     "DraftTaskWithARunStatusFileResumes",
+			verbs:    []string{"run", "step"},
+			draft:    true,
+			found:    true,
+			producer: battenrecipe.NameRunShed,
+		},
+		{
+			name:       "DraftProbeErrorRefusesNamingTheProbeAndTheRerun",
+			verbs:      []string{"run", "step"},
+			draftErr:   errors.New("board unreadable"),
+			wantErrors: []string{"the board entry's status", "board unreadable", `run "lyx batten {verb} some-slug" again`},
 		},
 		{
 			name:       "LeftRecordsWorktreeRefusesAStart",
@@ -318,11 +343,19 @@ func TestStartGuard_Refuse(t *testing.T) {
 						Project:     func() (bool, bool, error) { return tt.project, tt.beam, tt.projectErr },
 						PairMark:    func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
 						LandRefusal: func() error { return tt.landRefusal },
+						Draft:       func() (bool, error) { return tt.draft, tt.draftErr },
 					}
 				}
 
 				err := guard.refuse(slug, verb, shedengine.Status{CurrentProducer: tt.producer}, tt.found, tt.taskPresent)
 
+				if tt.wantExact != "" {
+					want := strings.ReplaceAll(tt.wantExact, "{verb}", verb)
+					if err == nil || err.Error() != want {
+						t.Errorf("refuse(%s) = %v; want %q", verb, err, want)
+					}
+					return
+				}
 				if len(tt.wantErrors) == 0 {
 					if err != nil {
 						t.Fatalf("refuse(%s) = %v; want nil", verb, err)

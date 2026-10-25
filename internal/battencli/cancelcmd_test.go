@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
@@ -176,8 +177,8 @@ func TestClearRunClaim(t *testing.T) {
 			if len(written) != tt.wantWrites {
 				t.Fatalf("clearRunClaim() wrote %d statuses; want %d", len(written), tt.wantWrites)
 			}
-			if tt.wantWrites == 1 && written[0] != nil {
-				t.Errorf("clearRunClaim() wrote %q; want nil, which clears the status", *written[0])
+			if tt.wantWrites == 1 && (written[0] == nil || *written[0] != boardengine.StatusDraft) {
+				t.Errorf("clearRunClaim() wrote %v; want %q", written[0], boardengine.StatusDraft)
 			}
 		})
 	}

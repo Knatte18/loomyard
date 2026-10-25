@@ -7,21 +7,23 @@ package battencli
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-	"github.com/Knatte18/loomyard/internal/termwindow"
 	"github.com/spf13/cobra"
 )
 
@@ -162,198 +164,201 @@ func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
 	walk(Command())
 }
 
-// TestRunInWindow covers the run verb's --window body with a fake window opener and terminal launcher: the envelope of a fresh and of an already-live window, what the opener is asked for, the terminal window the envelope reports, the way forward each refusal names, and that a done slug is refused before the opener is ever called.
-// Every opened run carries --open-terminal unless the case has no launcher.
-func TestRunInWindow(t *testing.T) {
+// TestStartFirstPass covers the detached first pass over a hand-populated receiver with fake pass, dobby-liveness, dobby-spawn and parent-owner seams:
+// a done slug and a slug a pause covers return an envelope whose ok is false naming their way forward and start nothing;
+// a startable slug starts one pass with the prime's anchor as its working directory and starts its parent's dobby once when that reads not live and never when it reads live;
+// a failed dobby spawn still returns the started pass's envelope with a warning naming `lyx beam start`;
+// a parent another machine owns starts no dobby and warns naming `lyx adopt` for the parent, or `lyx adopt --prime` for the prime.
+func TestStartFirstPass(t *testing.T) {
 	t.Parallel()
 
+	const (
+		beam      = "some-beam"
+		otherHost = "elsewhere"
+	)
 	tests := []struct {
-		name         string
-		status       shedengine.State
-		driverSet    bool
-		childSet     bool
-		noLauncher   bool
-		owned        bool
-		opened       reedengine.WindowResult
-		openErr      error
-		wantNoOpen   bool
-		wantArgs     []string
-		wantExisting bool
-		wantNote     string
-		wantTerminal string
-		wantErr      []string
+		name           string
+		status         shedengine.State
+		pauseCovers    bool
+		driverSet      bool
+		childSet       bool
+		beamParent     bool
+		dobbyLive      bool
+		dobbySpawnErr  error
+		parentOwner    string
+		wantRefusal    []string
+		wantPassArgs   []string
+		wantDobbySpawn int
+		wantWarning    []string
+		wantParent     string
 	}{
 		{
-			name:         "FreshWindowPrintsItsId",
-			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
-			wantArgs:     []string{"batten", "run", "some-slug"},
-			wantTerminal: "open_window_command, whose default opens through konsole",
+			name:           "StartableSlugStartsItsPassAndTheDobbyOnce",
+			wantPassArgs:   []string{"batten", "run", "some-slug"},
+			wantDobbySpawn: 1,
+			wantParent:     "hub-repo",
 		},
 		{
-			name:         "NoLauncherStartsTheRunWithoutATerminal",
-			noLauncher:   true,
-			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
-			wantArgs:     []string{"batten", "run", "some-slug"},
-			wantTerminal: "none opened: no terminal window launcher known here: no launcher for plan9",
+			name:         "LiveDobbyIsLeftAlone",
+			dobbyLive:    true,
+			wantPassArgs: []string{"batten", "run", "some-slug"},
+			wantParent:   "hub-repo",
 		},
 		{
-			name:         "ExistingLiveWindowStartsNothing",
-			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug", Existing: true},
-			wantArgs:     []string{"batten", "run", "some-slug"},
-			wantExisting: true,
-			wantNote:     "already running; nothing started",
+			name:           "TypedDriversAreCarriedThrough",
+			driverSet:      true,
+			childSet:       true,
+			wantPassArgs:   []string{"batten", "run", "some-slug", "--driver", "go", "--child-driver", "go"},
+			wantDobbySpawn: 1,
+			wantParent:     "hub-repo",
 		},
 		{
-			name:         "TypedDriversAreCarriedThrough",
-			driverSet:    true,
-			childSet:     true,
-			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
-			wantArgs:     []string{"batten", "run", "some-slug", "--driver", "go", "--child-driver", "go"},
-			wantTerminal: "open_window_command, whose default opens through konsole",
+			name:           "BlockedStatusResumesAsAPass",
+			status:         shedengine.StateBlocked,
+			wantPassArgs:   []string{"batten", "run", "some-slug"},
+			wantDobbySpawn: 1,
+			wantParent:     "hub-repo",
 		},
 		{
-			name:     "NoSessionNamesOrchStartOrATerminal",
-			openErr:  fmt.Errorf("wrapped: %w", reedengine.ErrNoSession),
-			wantArgs: []string{"batten", "run", "some-slug"},
-			wantErr:  []string{"lyx orch start", "lyx batten run some-slug"},
+			name:           "BeamParentGetsItsOwnDobby",
+			beamParent:     true,
+			wantPassArgs:   []string{"batten", "run", "some-slug"},
+			wantDobbySpawn: 1,
+			wantParent:     beam,
 		},
 		{
-			name:     "MissingCapabilityNamesATerminal",
-			openErr:  &reedengine.CapabilityError{Reason: "missing new-window"},
-			wantArgs: []string{"batten", "run", "some-slug"},
-			wantErr:  []string{"lyx batten run some-slug"},
+			name:           "FailedDobbySpawnWarnsAndKeepsThePass",
+			dobbySpawnErr:  errors.New("exec failed"),
+			wantPassArgs:   []string{"batten", "run", "some-slug"},
+			wantDobbySpawn: 1,
+			wantWarning:    []string{"exec failed", "lyx beam start"},
+			wantParent:     "hub-repo",
 		},
 		{
-			name:     "FailedNewWindowNamesATerminal",
-			openErr:  fmt.Errorf("%w: no space", reedengine.ErrNewWindowFailed),
-			wantArgs: []string{"batten", "run", "some-slug"},
-			wantErr:  []string{"lyx batten run some-slug"},
+			name:         "PrimeOwnedElsewhereStartsNoDobby",
+			parentOwner:  otherHost,
+			wantPassArgs: []string{"batten", "run", "some-slug"},
+			wantWarning:  []string{otherHost, "lyx adopt --prime"},
+			wantParent:   "hub-repo",
 		},
 		{
-			name:     "ReadBackNamesStatusFirst",
-			openErr:  fmt.Errorf("%w: read on", reedengine.ErrWindowReadBack),
-			wantArgs: []string{"batten", "run", "some-slug"},
-			wantErr:  []string{"lyx batten status some-slug", "lyx batten run some-slug"},
+			name:         "BeamOwnedElsewhereStartsNoDobby",
+			beamParent:   true,
+			parentOwner:  otherHost,
+			wantPassArgs: []string{"batten", "run", "some-slug"},
+			wantWarning:  []string{otherHost, "lyx adopt " + beam},
+			wantParent:   beam,
 		},
 		{
-			name:       "DoneSlugIsRefusedBeforeAnyWindowOpens",
-			status:     shedengine.StateDone,
-			wantNoOpen: true,
-			wantErr:    []string{"has already completed", "lyx batten cleanup --apply", "different slug"},
+			name:        "DoneSlugIsRefusedBeforeAnythingStarts",
+			status:      shedengine.StateDone,
+			wantRefusal: []string{"has already completed", "lyx batten cleanup --apply", "different slug"},
 		},
 		{
-			name:       "RunOwnedElsewhereIsRefusedBeforeAnyWindowOpens",
-			status:     shedengine.StateBlocked,
-			owned:      true,
-			wantNoOpen: true,
-			wantErr:    []string{"there", "lyx adopt some-slug"},
-		},
-		{
-			name:         "BlockedStatusOpensTheWindowAsBefore",
-			status:       shedengine.StateBlocked,
-			opened:       reedengine.WindowResult{WindowID: "@3", Name: "batten:some-slug"},
-			wantArgs:     []string{"batten", "run", "some-slug"},
-			wantTerminal: "open_window_command, whose default opens through konsole",
+			name:        "CoveredSlugIsRefusedBeforeAnythingStarts",
+			pauseCovers: true,
+			wantRefusal: []string{"lyx resume"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var gotName string
-			var gotArgs []string
-			dir := t.TempDir()
-			c := &battenCLI{
-				location:           &lyxcwd.Location{RepoName: "example", HubPath: dir, WorktreeName: "hub-repo", AnchorRel: "."},
-				slug:               "some-slug",
-				driverFlag:         "go",
-				childDriverFlag:    "go",
-				driverFlagSet:      tt.driverSet,
-				childDriverFlagSet: tt.childSet,
-				shedPaths: shedbuild.ShedPaths{
-					StatusPath:     filepath.Join(dir, "status.json"),
-					StatusLockPath: filepath.Join(dir, "status.json.lock"),
-				},
-				windowOpener: func(name string, lyxArgs []string) (reedengine.WindowResult, error) {
-					gotName, gotArgs = name, lyxArgs
-					return tt.opened, tt.openErr
-				},
-				terminalLauncher: func() (string, error) {
-					if tt.noLauncher {
-						return "", fmt.Errorf("%w: no launcher for plan9", termwindow.ErrNoLauncher)
-					}
-					return "konsole", nil
-				},
+			c := newFakeReceiver(t, nil)
+			hub := c.location.HubPath
+			if err := os.MkdirAll(filepath.Join(hub, "hub-repo", ".git"), 0o755); err != nil {
+				t.Fatal(err)
 			}
-			if tt.owned {
-				c.reconcile = func(string) (fabricengine.OriginReport, error) {
-					return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: c.slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there"}}}, nil
+			if tt.beamParent {
+				if err := os.MkdirAll(filepath.Join(hub, beam), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.MkdirAll(fabricengine.BoardDir(hub), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				board := `{"version":1,"entries":[` +
+					`{"id":0,"slug":"` + beam + `","title":"Beam","kind":"project","labels":["bug"],"beam":true},` +
+					`{"id":1,"slug":"some-slug","title":"Member","kind":"task","labels":["bug"],"project":"` + beam + `"}]}`
+				if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(hub), "board.json"), []byte(board), 0o644); err != nil {
+					t.Fatal(err)
 				}
 			}
-			wantArgs := tt.wantArgs
-			if !tt.noLauncher && wantArgs != nil {
-				wantArgs = append(slices.Clone(wantArgs), "--open-terminal")
+			if tt.pauseCovers {
+				geometry, err := hubgeom.PauseGeometry(c.location)
+				if err != nil {
+					t.Fatalf("hubgeom.PauseGeometry: %v", err)
+				}
+				now := time.Now()
+				if _, err := pauserecord.Update(geometry.RecordPath, now, func(record *pauserecord.Record) error {
+					record.Live = append(record.Live, pauserecord.Entry{Scope: c.slug, PausedAt: now, Caller: "EXTERNAL"})
+					return nil
+				}); err != nil {
+					t.Fatalf("pauserecord.Update: %v", err)
+				}
 			}
 			if tt.status != "" {
 				writeStatus(t, c, shedengine.Status{CurrentProducer: battenrecipe.NameWorktreeTeardown, State: tt.status})
 			}
-			cmd := &cobra.Command{Use: "run", RunE: func(cmd *cobra.Command, args []string) error { return c.runInWindow(cmd) }}
+			c.driverFlag, c.childDriverFlag = "go", "go"
+			c.driverFlagSet, c.childDriverFlagSet = tt.driverSet, tt.childSet
 
+			var passDir string
+			var passArgs []string
+			dobbySpawns := 0
+			c.passSpawn = func(dir string, args []string) (int, error) {
+				passDir, passArgs = dir, args
+				return 4242, nil
+			}
+			c.parentOwner = func(string) (string, error) { return tt.parentOwner, nil }
+			c.dobbyLive = func(dobbyengine.Geometry) (bool, error) { return tt.dobbyLive, nil }
+			c.dobbySpawn = func(dobbyengine.Geometry) error {
+				dobbySpawns++
+				return tt.dobbySpawnErr
+			}
+
+			cmd := &cobra.Command{Use: "run", RunE: func(cmd *cobra.Command, args []string) error { return c.startFirstPass(cmd) }}
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(cmd, &out, []string{})
-
-			if tt.wantNoOpen {
-				if gotName != "" || gotArgs != nil {
-					t.Errorf("opener was called with window %q and args %v; want it never called", gotName, gotArgs)
-				}
-			} else {
-				if gotName != "batten:some-slug" {
-					t.Errorf("opener asked for window %q, want %q", gotName, "batten:some-slug")
-				}
-				if !slices.Equal(gotArgs, wantArgs) {
-					t.Errorf("opener asked to run %v, want %v", gotArgs, wantArgs)
-				}
-			}
 			var envelope map[string]any
 			if err := json.Unmarshal(out.Bytes(), &envelope); err != nil {
 				t.Fatalf("envelope %q is not one JSON object: %v", out.String(), err)
 			}
-			if tt.openErr != nil || tt.wantNoOpen {
+
+			if tt.wantRefusal != nil {
 				if exitCode != 1 || envelope["ok"] != false {
 					t.Fatalf("exit %d, envelope %v; want exit 1 and ok=false", exitCode, envelope)
 				}
-				for _, want := range tt.wantErr {
+				for _, want := range tt.wantRefusal {
 					if msg, _ := envelope["error"].(string); !strings.Contains(msg, want) {
 						t.Errorf("error %q does not name its way forward %q", msg, want)
 					}
+				}
+				if passArgs != nil || dobbySpawns != 0 {
+					t.Errorf("a refused slug started a pass %v and %d dobbies; want nothing started", passArgs, dobbySpawns)
 				}
 				return
 			}
 			if exitCode != 0 || envelope["ok"] != true {
 				t.Fatalf("exit %d, envelope %v; want exit 0 and ok=true", exitCode, envelope)
 			}
-			if envelope["window_id"] != tt.opened.WindowID || envelope["window_name"] != tt.opened.Name || envelope["existing"] != tt.wantExisting {
-				t.Errorf("envelope %v does not name window %+v", envelope, tt.opened)
+			if !slices.Equal(passArgs, tt.wantPassArgs) || passDir != c.location.AnchorPath() {
+				t.Errorf("pass started as %v in %q; want %v in %q", passArgs, passDir, tt.wantPassArgs, c.location.AnchorPath())
 			}
-			if note, _ := envelope["note"].(string); note != tt.wantNote {
-				t.Errorf("envelope note = %q, want %q", note, tt.wantNote)
+			if envelope["pid"] != float64(4242) || envelope["parent_worktree"] != tt.wantParent {
+				t.Errorf("envelope %v; want pid 4242 and parent_worktree %q", envelope, tt.wantParent)
 			}
-			terminal, hasTerminal := envelope["terminal_window"].(string)
-			if hasTerminal != (tt.wantTerminal != "") || !strings.Contains(terminal, tt.wantTerminal) {
-				t.Errorf("envelope terminal_window = %q (present %v), want it to contain %q", terminal, hasTerminal, tt.wantTerminal)
+			if dobbySpawns != tt.wantDobbySpawn {
+				t.Errorf("dobby spawns = %d; want %d", dobbySpawns, tt.wantDobbySpawn)
+			}
+			warning, hasWarning := envelope["warning"].(string)
+			if hasWarning != (tt.wantWarning != nil) {
+				t.Errorf("envelope warning = %q (present %v); want present %v", warning, hasWarning, tt.wantWarning != nil)
+			}
+			for _, want := range tt.wantWarning {
+				if !strings.Contains(warning, want) {
+					t.Errorf("warning %q does not name %q", warning, want)
+				}
 			}
 		})
-	}
-}
-
-// TestWindowFlagIsOnTheRunVerbOnly asserts "--window" is declared on run and on no other verb, so any other verb rejects it as an unknown flag.
-func TestWindowFlagIsOnTheRunVerbOnly(t *testing.T) {
-	t.Parallel()
-
-	for _, cmd := range Command().Commands() {
-		declared := cmd.Flags().Lookup("window") != nil
-		if want := cmd.Name() == "run"; declared != want {
-			t.Errorf("verb %q declares --window = %v, want %v", cmd.Name(), declared, want)
-		}
 	}
 }

@@ -114,9 +114,9 @@ type ChildArbiterStop struct {
 	// Eligible reports whether the arbiter verb would admit the stop.
 	// It is read from the arbiter eligibility rule over the status file, the escalation record and the verify record.
 	Eligible bool
-	// On reports whether the child's arbiter_max_spawns is above 0, read from the child's loom config.
+	// On reports whether the child's arbiter_max_spawns is above 0, read from the arbiter keys in shed.yaml with the recipe's module override.
 	On bool
-	// Timeout is one arbiter spawn's resolved timeout, read from the child's loom config.
+	// Timeout is one arbiter spawn's resolved timeout, read from the arbiter keys in shed.yaml with the recipe's module override.
 	Timeout time.Duration
 	// SpawnsLeft reports whether the run's attempt records in its arbiter directory are fewer than arbiter_max_spawns.
 	SpawnsLeft bool
@@ -134,12 +134,12 @@ type ChildArbiterStop struct {
 
 // InnerRunDeps carries every told value and injected closure NewInnerRun needs: spawning the
 // inner shed run, resolving and reading its persisted status, and the sleep seam a test replaces
-// to keep the poll interval out of real time.
+// to keep the spawn hold's poll interval out of real time.
 type InnerRunDeps struct {
 	// Spawn starts the inner shed run and blocks until the bootstrap process it launched exits,
 	// which is not the inner run's own completion:
-	// the bootstrap returns once the child's driver is up, and the wait for the campaign itself is
-	// the producer's own wait loop, inside the call.
+	// the bootstrap returns once the child's driver is up,
+	// and the producer checks the campaign itself once per pass.
 	//
 	// InnerRun waits for that bootstrap process rather than detaching, per the Live-Substrate Spawn
 	// Observability invariant. Call invokes Spawn at its start only when its own
@@ -160,24 +160,17 @@ type InnerRunDeps struct {
 	// ReadStatus reads and decodes the persisted status file under statusLockPath's protection,
 	// reporting found == false when no status file exists yet.
 	// Call reads it before doing anything else, and again once more after a spawn it triggers;
-	// the wait loop then decodes it again only when the file's modification time moved or the notice probe is due.
+	// the check then decodes it again only when the file's modification time moved since.
 	ReadStatus func(statusPath, statusLockPath string) (shedengine.Status, bool, error)
-	// Sleep pauses for d, returning early when ctx is cancelled.
-	// It is the wait loop's check interval, and it takes a context because it sits directly in
-	// front of a cancellation check, which an uninterruptible sleep would delay by a whole interval
-	// for any caller driving the producer under a cancellable context (the lyx CLI's own context is
-	// never cancelled; see waitOrCancel).
-	// A nil Sleep resolves to waitOrCancel in NewInnerRun;
-	// a test replaces it with a function that advances its fake clock and never blocks.
-	Sleep func(ctx context.Context, d time.Duration)
-	// PauseRequested reports whether batten's own status carries pause_requested, which ends the wait within one check.
+	// PauseRequested reports whether batten's own status carries pause_requested, which ends the check.
 	// A nil PauseRequested resolves to reporting false in NewInnerRun; an error is warned about and reads as not paused.
 	PauseRequested func() (bool, error)
 	// Pause reads what the hub's pause record says about this run's slug.
-	// The wait reads it once per check: while it reports covered, the wait spawns, resumes and revives nothing and sends no running-child notice, and its idle clocks leave out the covered intervals.
+	// The check reads it once per pass: while it reports covered, the check spawns, resumes and revives nothing and sends no running-child notice, and its idle clocks leave out the covered intervals.
 	// A nil Pause resolves to never covered in NewInnerRun; an error is warned about and reads as not covered.
 	Pause func() (pauserecord.Coverage, error)
-	// NoticeProbe is how rarely the wait does anything costing a process or a multiplexer round trip: the driver, review and agent-activity reads, the forced status decode, the not-parked resume retry, the watched-marker refresh and a notice's delivery.
+	// NoticeProbe is how rarely a check does anything costing a process or a multiplexer round trip: the driver, review and agent-activity reads, the not-parked resume retry, the parent lock step and a notice's delivery.
+	// The last probe's time is in the memory record, so the interval holds across passes.
 	// Zero makes every check a probe.
 	NoticeProbe time.Duration
 	// ReadDecision reads whichever operator record the child's run holds, an approval or a rejection, reporting found == false when neither exists.
@@ -189,13 +182,17 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	DriverAlive func(ctx context.Context) (bool, error)
 	// Now is the clock the driver-exit grace reads.
-	// A nil Now resolves to time.Now in NewInnerRun, the same way a nil Sleep resolves to waitOrCancel; a test replaces it to keep the grace out of real time.
+	// A nil Now resolves to time.Now in NewInnerRun; a test replaces it to keep the grace out of real time.
 	Now func() time.Time
 	// Awake is a clock that stops while the machine sleeps, read as a duration from any fixed origin.
-	// The quiet and api-error idle checks treat each time the wall clock ran ahead of it by more than a minute as a sleep, an interval that is not idle time.
-	// A nil Awake resolves in NewInnerRun to Go's monotonic reading, measured from an origin taken at construction.
-	// That reading stops during suspend on Linux and macOS; on Windows it keeps running, so a nil Awake there leaves the idle clocks counting suspended time as before.
+	// The parent lock's idle watch counts a lock owner's waiting on it, and keeps its readings in the memory record across passes, so the origin must be one the caller keeps across passes.
+	// A nil Awake resolves in NewInnerRun to Go's monotonic reading, measured from an origin taken at construction, which holds for one process only.
+	// That reading stops during suspend on Linux and macOS; on Windows it keeps running, so a nil Awake there counts suspended time.
 	Awake func() time.Duration
+	// Sleeps reports the machine sleeps the scheduling dobby recorded.
+	// The quiet and api-error idle checks leave them out of the time since an activity, beside the intervals a pause covered.
+	// A nil Sleeps excludes none, and an error is warned about once per episode and excludes none.
+	Sleeps func() ([]pauserecord.Interval, error)
 	// Notify hands one run notice line to whoever tells the orch, posted as creel mail behind a seam so this package never imports the orch, and reports whether the line was posted.
 	// A notice is recorded as sent only when it was posted.
 	// The wait invokes it once per condition per episode (see notice.go) and retries an error or an unposted line at most once per notice probe and at most three times; its failure is only warned about and never changes the row's outcome.
@@ -266,16 +263,22 @@ type InnerRunDeps struct {
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil ReviveStrands resolves to a function returning an error that says no revive is wired, in NewInnerRun.
 	ReviveStrands func(ctx context.Context) error
+	// ReviveAPIError sends the revive line to the task pair's sessions stalled on an API error, through the conditioned send.
+	// The notice step calls it once for an api-error episode, before telling the orch.
+	// An error is warned about once per episode and still counts as the revive.
+	// A nil ReviveAPIError sends nothing and keeps the api-error notice at the first sight of the episode.
+	ReviveAPIError func(ctx context.Context) error
 	// MarkWatched writes or removes the batten-watched marker of the task worktree's run and reports whether this batten now holds it.
 	// The marker is held while this batten's notices have a destination that is also the child driver's parent, so the driver can leave the run's stops to batten.
-	// Call invokes it at its start and once per notice probe inside the wait, keeps the last answer for the awaiting notice rule, and reads an error as not held with one Warn per change of answer.
+	// Call invokes it at its start, keeps the last answer for the awaiting notice rule, and reads an error as not held with one Warn per change of answer across passes.
 	// It is resolved on Call, never at wiring time, for the same reason as ReadDecision.
 	// A nil MarkWatched resolves to a function reporting not held in NewInnerRun.
 	MarkWatched func(ctx context.Context) (held bool, err error)
 	// ParentLock carries the seams of the parent lock backstop and of the stale-base resume; nil switches both off.
 	ParentLock *ChildParentLock
 	// OwnerCheck judges, without moving any branch, whether another machine owns this run now.
-	// The wait calls it after a detected sleep, after a pause hold ends and while it holds a spawn for an owner.
+	// A pass calls it when the memory holds the check due, after a pause hold ends, once per probe while an owner stands and while it holds a spawn for an owner.
+	// A machine wake reaches the check through the full pass the scheduling dobby owes, which leaves it due.
 	// A nil OwnerCheck switches the check off.
 	OwnerCheck func(ctx context.Context) (OwnerVerdict, error)
 	// PauseOwned pauses the slug under the owner caller, naming the machine that owns it.
@@ -394,6 +397,4 @@ type TeardownDeps struct {
 	Shutdown func(ctx context.Context) (abandonedSession string, err error)
 	// Remove deletes the task worktree pair. Called only after Shutdown has succeeded.
 	Remove func(ctx context.Context) error
-	// Notices carries the seams the row's failure notice goes through; its zero value switches the notice off.
-	Notices RowNoticeDeps
 }

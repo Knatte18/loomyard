@@ -23,7 +23,8 @@ The arming module fills `Deps` and `TacklerDeps`; the optional groups are the re
 
 ## Outside it
 
-Batten's InnerRun wait polls a child run it does not step, so it is not a step loop and stays in `internal/battenshed`.
+Batten's InnerRun checks a child run it does not step once per pass, yields when the check ends nothing and keeps its memory between passes in a per-run record, so it is not a step loop and stays in `internal/battenshed`.
+A yield is logged at Debug.
 
 ## The verb set
 
