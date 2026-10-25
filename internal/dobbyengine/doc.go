@@ -31,6 +31,8 @@
 //   - Each tick lists the runs whose parent worktree is this dobby's, from the prime's local batten status files and never the board, so a run whose task Land already pruned is still driven through its teardown.
 //   - A run gets a pass only while batten's state is running and its cancel marker is absent, never while a pass of it is in flight; a held driver lock reads as in flight, so a pass left by a dead dobby is waited for and never doubled.
 //     A halted or paused batten run gets no pass; the orch or the operator resumes it with a hand pass.
+//   - A done batten run is driven no further: once no pass of it is in flight, it takes no slot under `max_runs`, gets no pass, and its entry leaves the state record.
+//     The board tidy still reads its history.
 //   - A pass is triggered by a write of the child's status file, by a write of batten's own status file later than the run's last pass exit, by a probe tick once per probe interval, by the dobby's start and by the lift of a pause that covered the run.
 //     A lift while a pass is in flight gives the run its pass once that one exits.
 //   - A continue pass needs the run at Run-Shed with no full pass owed and no lift to answer; every other pass is full, and runs with `--no-reopen` while the run's origin-owed marker stands.
@@ -47,7 +49,7 @@
 //     A marked run is in flight for the backoff only while no pause covers it.
 //   - A task waits on the board as `draft` until released, and dobby starts it from an empty status.
 //     It starts a task when the entry is a task whose dependencies are all done, its parent is this dobby's worktree, no other machine owns it, and no pause entry covers the hub or the slug.
-//     Each tick reads the local board, which a write of `board.json` and the probe tick both cause, and starts each ready task while fewer than `max_runs` runs it drives are in flight: halted runs count, runs recorded owned elsewhere do not, and `max_runs: 0` starts nothing.
+//     Each tick reads the local board, which a write of `board.json` and the probe tick both cause, and starts each ready task while fewer than `max_runs` runs it drives are in flight: halted runs count, done runs and runs recorded owned elsewhere do not, and `max_runs: 0` starts nothing.
 //   - Starting is the run's first pass, a full pass, which claims the task as batten does; a slug with a pass in flight is never started twice.
 //     A first pass refused for a covering pause is no refused start: no notice, no marker and no backoff, and the start waits for the lift.
 //     Any other first pass that exits non-zero and leaves no status file, a refusal as owned elsewhere included, is a refused start: one notice per refusal text, and a retry from one probe interval, doubling up to an hour, or at once when the entry changes.
