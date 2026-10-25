@@ -38,6 +38,16 @@ var LandingTemplateFixer []byte
 //go:embed darn/darn-template-write.md
 var DarnTemplateWrite []byte
 
+// DriftTemplateBaseline is the drift baseline agent's shipped-default prompt: the whole instruction set of the session that scopes a task's regression and writes down the drift it expects.
+//
+//go:embed drift/drift-template-baseline.md
+var DriftTemplateBaseline []byte
+
+// DriftTemplateVerify is the drift verify agent's shipped-default prompt: the whole instruction set of the session that judges, accepts and fixes the drift between a task's code and its baseline.
+//
+//go:embed drift/drift-template-verify.md
+var DriftTemplateVerify []byte
+
 // LoomTemplateDiscussion is the loom Discussion producer's shipped-default interview prompt.
 //
 //go:embed loom/loom-template-discussion.md
@@ -435,6 +445,8 @@ var entries = []registryEntry{
 	{"landing-template-describe-darn", &LandingTemplateDescribeDarn},
 	{"landing-template-fixer", &LandingTemplateFixer},
 	{"darn-template-write", &DarnTemplateWrite},
+	{"drift-template-baseline", &DriftTemplateBaseline},
+	{"drift-template-verify", &DriftTemplateVerify},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
 	{"loom-template-discussion-chair", &LoomTemplateDiscussionChair},
 	{"loom-template-discussion-advisor", &LoomTemplateDiscussionAdvisor},
@@ -536,6 +548,8 @@ var roleOpeningStencils = map[string][]string{
 	"friction":           {"friction-template-reflection"},
 	"describe":           {"landing-template-describe", "landing-template-describe-darn"},
 	"darn":               {"darn-template-write"},
+	"drift-baseline":     {"drift-template-baseline"},
+	"drift-verify":       {"drift-template-verify"},
 	"board-tidy":         {"beam-template-board-tidy"},
 }
 

@@ -473,8 +473,7 @@ func buildConfigLong() string {
 		"with neither set it uses `code --wait` when code is on PATH, else\n" +
 		"notepad on Windows, or nano and then vi elsewhere.\n\n" +
 		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
-		"Use --set key=value (repeatable) to write one or more config values directly,\n" +
-		"with no editor, e.g.\n" +
+		"Use --set key=value (repeatable) to write config values with no editor, e.g.\n" +
 		"  lyx config board --set design_prefix=foo- --set readme=Home.md\n" +
 		"A list-valued key takes a YAML flow list and is replaced whole, e.g.\n" +
 		"  lyx config landing --set 'deploy_branches=[]'\n" +

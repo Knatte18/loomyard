@@ -129,7 +129,7 @@ func TestRenderOverview(t *testing.T) {
 					Child:  foundStatus(shedengine.StateRunning, "Plan-Write", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 				},
 			},
-			want: []string{"run  running  6.5 Plan-Write  30m  1h40m  run-s"},
+			want: []string{"run  running  6.6 Plan-Write  30m  1h40m  run-s"},
 		},
 		{
 			name: "a child row in a review segment takes its segment's number",
@@ -140,7 +140,7 @@ func TestRenderOverview(t *testing.T) {
 					Child:  foundStatus(shedengine.StateRunning, "Plan-Burler-Review", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 				},
 			},
-			want: []string{"run  running  6.6 Plan-Burler-Review  30m  1h40m  run-s"},
+			want: []string{"run  running  6.7 Plan-Burler-Review  30m  1h40m  run-s"},
 		},
 		{
 			name: "a child row shows alone when the child recipe is unknown or does not hold it, and a run with an unreadable seed shows the name alone",
@@ -172,7 +172,7 @@ func TestRenderOverview(t *testing.T) {
 					Child:  foundStatus(shedengine.StateRunning, "Plan-Write"),
 				},
 			},
-			want: []string{"run  running  6.5 Plan-Write  40m  1h40m  run-s"},
+			want: []string{"run  running  6.6 Plan-Write  40m  1h40m  run-s"},
 		},
 		{
 			name: "a run in Run-Shed whose child status is not found shows batten's producer",
@@ -380,7 +380,7 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	}
 
 	want := []string{
-		"run-a       running  6.5 Plan-Write  2h00m  2h00m  run-a",
+		"run-a       running  6.6 Plan-Write  2h00m  2h00m  run-a",
 		"run-b       running  Plan            1h00m  1h00m  run-b",
 		"future-key  running  Plan            -      -      future-key",
 	}

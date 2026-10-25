@@ -54,7 +54,7 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 		if m.SeedOnly != wantSeedOnly {
 			t.Errorf("Modules(): module %q SeedOnly = %v; want %v", m.Name, m.SeedOnly, wantSeedOnly)
 		}
-		wantHubWide := m.Name == "fabric" || m.Name == "board" || m.Name == "gate" || m.Name == "landing" || m.Name == "darn" || m.Name == "language" || m.Name == "profiles"
+		wantHubWide := m.Name == "fabric" || m.Name == "board" || m.Name == "gate" || m.Name == "landing" || m.Name == "darn" || m.Name == "drift" || m.Name == "language" || m.Name == "profiles"
 		if m.HubWide != wantHubWide {
 			t.Errorf("Modules(): module %q HubWide = %v; want %v", m.Name, m.HubWide, wantHubWide)
 		}
@@ -75,6 +75,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
 		"darn":    {"arbiter", "arbiter_max_spawns", "arbiter_timeout_min", "driver_kind", "pr_review", "tackler", "tackler_max_spawns", "tackler_timeout_min", "verify_attempts", "writer", "writer_timeout_min"},
+		"drift":   {"baseline_model", "enabled", "verify_max_runs", "verify_model"},
 		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min"},
 	}
 	wantLocalDenied := map[string][]string{

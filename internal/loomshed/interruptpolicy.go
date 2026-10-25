@@ -52,6 +52,11 @@ var InterruptPolicies = map[string]string{
 	NamePlanBurlerFix:          shedverbs.InterruptPolicyReinvoke,
 	NameCodeBurlerReview:       shedverbs.InterruptPolicyReinvoke,
 	NameCodeBurlerFix:          shedverbs.InterruptPolicyReinvoke,
+
+	// The two agent rows probe for a live chair and reattach to it, and Drift-Await spawns nothing.
+	NameDriftBaseline: shedverbs.InterruptPolicyReinvoke,
+	NameDriftAwait:    shedverbs.InterruptPolicyReinvoke,
+	NameDriftVerify:   shedverbs.InterruptPolicyReinvoke,
 }
 
 // InterruptPolicyFor returns InterruptPolicies' entry for name, or the empty string when name is

@@ -40,4 +40,8 @@ const (
 	NameCodeBurlerReview = "Code-Burler-Review"
 	NameCodeBurlerFix    = "Code-Burler-Fix"
 	NamePRReview         = "PR-Review"
+
+	NameDriftBaseline = "Drift-Baseline"
+	NameDriftAwait    = "Drift-Await"
+	NameDriftVerify   = "Drift-Verify"
 )

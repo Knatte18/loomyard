@@ -40,6 +40,8 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"twill-judge-plain", TwillJudgePlain, []string{"disposition_place", "rejection_rule"}},
 		{"twill-writer-fork", TwillWriterFork, []string{"disposition_place", "explore_step", "files_dir", "format_step", "input_record", "last_file", "reviewed_files", "self_check_command", "self_check_step"}},
 		{"twill-relaunch", TwillRelaunch, []string{"disposition_place", "format_step", "relaunch_files", "self_check_command", "self_check_step"}},
+		{"drift-template-baseline", DriftTemplateBaseline, []string{"baseline_path", "edit_directive", "parent_directive", "scope_note", "subject_reading"}},
+		{"drift-template-verify", DriftTemplateVerify, []string{"baseline_head", "baseline_path", "compare_log", "edit_directive", "max_runs", "parent_directive", "pattern_directive", "report_path", "scope_path", "subject_reading"}},
 		{"loom-template-discussion-chair", LoomTemplateDiscussionChair, nil},
 		{"loom-template-discussion-advisor", LoomTemplateDiscussionAdvisor, []string{"decision_record_path", "edit_directive", "output_files", "parent_directive", "pattern_directive", "slug", "support_log_path"}},
 		{"landing-template-describe-darn", LandingTemplateDescribeDarn, []string{"decision_record_path", "description_path", "edit_directive", "merge_base", "parent_branch", "parent_directive", "review_dir", "slug", "task_branch"}},

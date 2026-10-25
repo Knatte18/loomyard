@@ -45,6 +45,7 @@ func TestEndForCancel(t *testing.T) {
 		driverLockHeldByProbe []bool
 		driverLockHeld        bool
 		awaitErr              error
+		killCaptureErr        error
 		strands               []string
 		wantCalls             string
 		wantErrIs             error
@@ -57,31 +58,31 @@ func TestEndForCancel(t *testing.T) {
 			keep:       true,
 			hooks:      []hookAnswer{{}},
 			strands:    []string{"tst:slug:driver"},
-			wantCalls:  presentHead + ",stopStrands,kill,seize,await,end,release(ended=false)",
+			wantCalls:  presentHead + ",killCapture,stopStrands,kill,seize,await,end,release(ended=false)",
 			wantResult: CancelResult{StrandsStopped: []string{"tst:slug:driver"}, SessionEnded: true},
 		},
 		{
 			name:       "PresentPairRemovedKeepsTheTeardownMark",
 			hooks:      []hookAnswer{{}},
-			wantCalls:  presentHead + ",stopStrands,kill,seize,await,end,release(ended=true)",
+			wantCalls:  presentHead + ",killCapture,stopStrands,kill,seize,await,end,release(ended=true)",
 			wantResult: CancelResult{SessionEnded: true},
 		},
 		{
 			name:       "NilHookTakesNothing",
-			wantCalls:  "holdWriteLocks,endOwned,release,driverLock,stopStrands,kill,seize,await,end,release(ended=true)",
+			wantCalls:  "holdWriteLocks,endOwned,release,driverLock,killCapture,stopStrands,kill,seize,await,end,release(ended=true)",
 			wantResult: CancelResult{SessionEnded: true},
 		},
 		{
 			name:       "GonePairEndsOwnedProcessesAndTheSessionByNameOnly",
 			gone:       true,
 			hooks:      []hookAnswer{{}},
-			wantCalls:  "holdWriteLocks,endOwned,release,afterEnd,end",
+			wantCalls:  "holdWriteLocks,endOwned,release,afterEnd,killCapture,end",
 			wantResult: CancelResult{SessionEnded: true, TaskWorktreeGone: true},
 		},
 		{
 			name:       "HookBusyOnceEndsAndProbesAgainThenGoesOn",
 			hooks:      []hookAnswer{{busy: "/hub/run.lock"}, {}},
-			wantCalls:  presentHead + ",holdWriteLocks,endOwned,release,driverLock,afterEnd,stopStrands,kill,seize,await,end,release(ended=true)",
+			wantCalls:  presentHead + ",holdWriteLocks,endOwned,release,driverLock,afterEnd,killCapture,stopStrands,kill,seize,await,end,release(ended=true)",
 			wantResult: CancelResult{SessionEnded: true},
 		},
 		{
@@ -140,8 +141,15 @@ func TestEndForCancel(t *testing.T) {
 			name:            "SpentRunLockWaitRefusesNamingTheCancelAndPutsTheMarkBack",
 			hooks:           []hookAnswer{{}},
 			awaitErr:        errors.New("the run lock is still held by pid 42; retry the removal once the holder ends"),
-			wantCalls:       presentHead + ",stopStrands,kill,seize,await,release(ended=false)",
+			wantCalls:       presentHead + ",killCapture,stopStrands,kill,seize,await,release(ended=false)",
 			wantErrContains: []string{"pid 42", refusalTail},
+		},
+		{
+			name:            "CaptureJobTerminationFailureRefusesNamingTheCancelBeforeAnyStrandIsStopped",
+			hooks:           []hookAnswer{{}},
+			killCaptureErr:  errors.New("job object unreachable"),
+			wantCalls:       presentHead + ",killCapture",
+			wantErrContains: []string{"end the pair's drift capture", "job object unreachable", refusalTail},
 		},
 	}
 	for _, tt := range tests {
@@ -151,6 +159,7 @@ func TestEndForCancel(t *testing.T) {
 			f := &fakeSubstrates{
 				quiets: []quietState{{quiet: true}}, gone: tt.gone, writeLockBusy: tt.writeLockBusy, endOwnedErr: tt.endOwnedErr,
 				driverLockHeld: tt.driverLockHeld, driverLockHeldByProbe: tt.driverLockHeldByProbe, awaitErr: tt.awaitErr, strands: tt.strands,
+				killCaptureErr: tt.killCaptureErr,
 			}
 			td := f.teardown()
 			request := CancelRequest{Slug: "slug", Keep: tt.keep}

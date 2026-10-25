@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -122,9 +123,9 @@ func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepSto
 
 // agentActivityFor returns the reading of the run's agent activity: the newest LastActivity over every live agent run of loc's worktree.
 // The runs come from shuttle through its registered engines, which list every strand, so a MultiLLM row's chair and each of its advisors count.
-// A running verify, a live parent lock wait, or a shuttle wait that is not a held turn end, reads as activity now.
-// A verify held by a pause does no work and reads as none.
-// All three are read from their marker or record files.
+// A running verify, a live parent lock wait, a held drift capture lock or compare marker, or a shuttle wait that is not a held turn end, reads as activity now.
+// A verify held by a pause does no work and reads as none, and a drift lock a dead process left reads free.
+// All of them are read from their marker, lock or record files.
 // The boolean is false when nothing is live.
 func agentActivityFor(loc *lyxcwd.Location, cfg shuttleengine.Config) func() (time.Time, bool, error) {
 	return func() (time.Time, bool, error) {
@@ -141,6 +142,13 @@ func agentActivityFor(loc *lyxcwd.Location, cfg shuttleengine.Config) func() (ti
 			return time.Time{}, false, err
 		}
 		if lockWaiting {
+			return time.Now(), true, nil
+		}
+		driftActive, err := driftengine.Active(driftengine.NewPaths(anchor))
+		if err != nil {
+			return time.Time{}, false, err
+		}
+		if driftActive {
 			return time.Now(), true, nil
 		}
 		markers, err := shuttleengine.ReadWaitMarkers(cfg, anchor)

@@ -1,6 +1,9 @@
-# darn-recipe.yaml is the darn task recipe: one gated writer reads the board entry, edits, tests and
-# commits, the Code-Review perch reviews the committed diff, Describe rewrites the change
-# description from the final diff, then PR-Review and Finalize land it. It is
+# darn-recipe.yaml is the darn task recipe: Drift-Baseline records the regression scope and captures
+# the baseline, one gated writer reads the board entry, edits, tests and commits, Drift-Verify
+# compares the writer's code with the baseline, the Code-Review perch reviews the committed diff,
+# Describe rewrites the change description from the final diff, then PR-Review and Finalize land it.
+# The two Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
+# each of them Skipped and spawns or runs nothing for them. It is
 # embedded into the binary by the sibling recipes.go rather than read from disk. The row names below are the
 # durable on-disk identities pinned against internal/loomshed's Name* constants -- a rename here
 # without a matching constant rename breaks resume for any in-flight task, unless internal/loomrecipe
@@ -14,8 +17,12 @@
 # gates, so a human is the only thing that can fix them.
 # Finalize fixes its own merge and test failures in its merge fixer, and a failure the fixer cannot
 # fix halts the run for the orch.
-# Darn-Write and Describe carry none either:
-# an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget.
+# Drift-Baseline, Darn-Write, Drift-Verify and Describe carry none either:
+# an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget,
+# and a Stuck of a Drift row halts it with the ways forward in its reason.
+# Drift-Verify compares the code the writer committed, and the Code-Review perch reviews its fixes.
+# The comparison never sees the code the Code-Review perch's fixes change, a Finalize merge and its
+# fixer, or the code a Finalize reroute makes the perch review.
 # PR-Review, like Friction-Reflect, carries none either, because it never returns Stuck.
 #
 # Code-Bouncer, Code-Burler-Review and Code-Burler-Fix are the Code-Review perch, the same perch
@@ -52,12 +59,21 @@ terminals:
 producers:
   - name: Preflight
     engine: Preflight
+    on_done: Drift-Baseline
+
+  # Drift-Baseline has an agent record the task's regression scope, then takes the baseline capture
+  # in its own process and waits for it, since the writer starts at once and edits the code.
+  - name: Drift-Baseline
+    engine: DriftBaseline
+    entry_gate: drift.enabled
     on_done: Darn-Write
+    config:
+      subject: board-entry
+      capture: wait
 
   - name: Darn-Write
     engine: DarnWrite
-    # With loom.yaml's code_max_bounces at 0 the Bouncer settles approved at once, so this edge is kept.
-    on_done: Code-Bouncer
+    on_done: Drift-Verify
     config:
       # gates holds this row's handoff until it is mechanically valid: each entry names a gate and
       # re-prompts the live session up to its attempts times. The verify gate runs the hub's
@@ -74,6 +90,20 @@ producers:
         - name: verify
           attempts: 3
         - name: description
+          attempts: 3
+
+  # Drift-Verify compares the writer's committed code with the baseline and, when it drifted, spawns
+  # one agent that accepts the intended drift and fixes the rest.
+  - name: Drift-Verify
+    engine: DriftVerify
+    entry_gate: drift.enabled
+    # With loom.yaml's code_max_bounces at 0 the Bouncer settles approved at once, so this edge is kept.
+    on_done: Code-Bouncer
+    config:
+      subject: board-entry
+      gate_key: drift-verify
+      gates:
+        - name: verify
           attempts: 3
 
   - name: Code-Bouncer

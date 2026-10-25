@@ -49,6 +49,8 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/agentname",
 	// internal/verifytree is imported for the told PauseHold type of Env.VerifyHold; it resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/verifytree",
+	// internal/driftengine is imported for the Drift producers and the told Deps type of Env.Drift; it resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/driftengine",
 }
 
 // shedrecipeDeniedLyxcwdImport is the exact import path the Shed Recipe Registry Invariant excludes

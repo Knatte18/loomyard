@@ -89,6 +89,18 @@ var intentionallyNil = map[string]string{
 	"DarnTable":                   "darn-only seam, batten has no darn segment",
 	"Darn.Commit":                 "darn-only seam, batten has no darn segment",
 	"Darn.LatestOutcome":          "darn-only seam, batten has no darn segment",
+	"Drift.Config":                "loom- and darn-only seam, batten has no Drift row",
+	"Drift.Status":                "loom- and darn-only seam, batten has no Drift row",
+	"Drift.Head":                  "loom- and darn-only seam, batten has no Drift row",
+	"Drift.BranchPoint":           "loom- and darn-only seam, batten has no Drift row",
+	"Drift.DirtyPaths":            "loom- and darn-only seam, batten has no Drift row",
+	"Drift.Commit":                "loom- and darn-only seam, batten has no Drift row",
+	"Drift.BaselineTable":         "loom- and darn-only seam, batten has no Drift row",
+	"Drift.StartCapture":          "loom- and darn-only seam, batten has no Drift row",
+	"Drift.RunCapture":            "loom- and darn-only seam, batten has no Drift row",
+	"Drift.Sleep":                 "loom- and darn-only seam, batten has no Drift row",
+	"Drift.VerifyTable":           "loom- and darn-only seam, batten has no Drift row",
+	"Drift.Compare":               "loom- and darn-only seam, batten has no Drift row",
 }
 
 func TestWire_EverySeamFilled(t *testing.T) {

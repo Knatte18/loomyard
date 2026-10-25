@@ -35,6 +35,7 @@ A gate key in `gate.yaml` names a site's tiers and its scope, and a site runs `l
 | `webster` | Webster's end gate | `all` |
 | `parent-align`, `finalize` | Parent-Align and Finalize | `all` |
 | `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |
+| `drift-verify` | `Drift-Verify`'s test gate over its agent's fixes | `diff` |
 | By hand | the `tier3` tier | |
 
 ### No gate runs `tier3`

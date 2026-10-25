@@ -12,6 +12,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - batten's Land row land-lock wait in `internal/battenshed/land.go`, which polls from one second and doubles to thirty seconds,
 - the parent lock wait in `internal/parentlock/acquire.go`, which polls from one second and doubles to thirty seconds,
 - the hibernate daemon's trigger wait in `internal/hibernateengine/watch.go`, which polls from one second and doubles to thirty seconds while its reading is unchanged,
+- the capture wait in `internal/driftengine/wait.go`, which polls the capture lock from one second and doubles to thirty seconds while the lock stays held,
 - the pause hold in `internal/pauserecord/hold.go`, which polls from one second and doubles to five seconds while the covering entry is unchanged,
 - shuttle's `Wait`,
 - webster's long poll,

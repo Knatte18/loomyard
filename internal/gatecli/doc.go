@@ -291,6 +291,7 @@
 //	  webster-fix: {tiers: [0, 1], scope: diff}
 //	  darn-write: {tiers: [0, 1], scope: diff}
 //	  code-burler-fix: {tiers: [0, 1], scope: diff}
+//	  drift-verify: {tiers: [0, 1], scope: diff}
 //
 // A tier is written whole with one flow mapping, for example `lyx config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., counter: go-json, timeout_min: 10}'`.
 //

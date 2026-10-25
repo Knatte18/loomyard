@@ -21,7 +21,9 @@ import (
 // wantDarnProducerTable is the darn recipe's rows in order.
 var wantDarnProducerTable = []wantProducerRow{
 	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflight("", ""))},
+	{loomshed.NameDriftBaseline, "DriftBaseline", driftBaselineType},
 	{loomshed.NameDarnWrite, "DarnWrite", reflect.TypeOf(loomshed.NewDarnWrite("", nil, loomshed.DarnDeps{}))},
+	{loomshed.NameDriftVerify, "DriftVerify", driftVerifyType},
 	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},
 	{loomshed.NameCodeBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameCodeBurlerFix, "BurlerFix", burlerFixType},
@@ -141,11 +143,20 @@ func TestNewDarn_Routing(t *testing.T) {
 		return rows
 	}
 
-	t.Run("the perch and Describe sit between Darn-Write and PR-Review, and Finalize reroutes to the perch", func(t *testing.T) {
+	t.Run("Drift-Baseline follows Preflight, Drift-Verify and the perch follow Darn-Write, and Finalize reroutes to the perch", func(t *testing.T) {
 		rows := build(t, 4)
+		if preflight := rows[loomshed.NamePreflight]; preflight.OnDone != loomshed.NameDriftBaseline {
+			t.Errorf("Preflight OnDone = %q; want %q", preflight.OnDone, loomshed.NameDriftBaseline)
+		}
+		if baseline := rows[loomshed.NameDriftBaseline]; baseline.OnDone != loomshed.NameDarnWrite || baseline.OnStuck != "" || baseline.Segment != "" {
+			t.Errorf("Drift-Baseline OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", baseline.OnDone, baseline.OnStuck, baseline.Segment, loomshed.NameDarnWrite)
+		}
 		darn := rows[loomshed.NameDarnWrite]
-		if darn.OnDone != loomshed.NameCodeBouncer || darn.OnStuck != "" || darn.OnReroute != "" || darn.Segment != "" {
-			t.Errorf("Darn-Write OnDone/OnStuck/OnReroute/Segment = %q/%q/%q/%q; want %q/empty/empty/empty", darn.OnDone, darn.OnStuck, darn.OnReroute, darn.Segment, loomshed.NameCodeBouncer)
+		if darn.OnDone != loomshed.NameDriftVerify || darn.OnStuck != "" || darn.OnReroute != "" || darn.Segment != "" {
+			t.Errorf("Darn-Write OnDone/OnStuck/OnReroute/Segment = %q/%q/%q/%q; want %q/empty/empty/empty", darn.OnDone, darn.OnStuck, darn.OnReroute, darn.Segment, loomshed.NameDriftVerify)
+		}
+		if verify := rows[loomshed.NameDriftVerify]; verify.OnDone != loomshed.NameCodeBouncer || verify.OnStuck != "" || verify.Segment != "" {
+			t.Errorf("Drift-Verify OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", verify.OnDone, verify.OnStuck, verify.Segment, loomshed.NameCodeBouncer)
 		}
 		bouncer, review, fix := rows[loomshed.NameCodeBouncer], rows[loomshed.NameCodeBurlerReview], rows[loomshed.NameCodeBurlerFix]
 		if bouncer.OnDone != loomshed.NameDescribe || bouncer.OnStuck != loomshed.NameCodeBurlerReview || review.OnStuck != loomshed.NameCodeBurlerFix || fix.OnStuck != loomshed.NameCodeBouncer {
@@ -180,8 +191,8 @@ func TestNewDarn_Routing(t *testing.T) {
 
 	t.Run("a review budget of 0 keeps every edge and gates Describe off", func(t *testing.T) {
 		rows := build(t, 0)
-		if got := rows[loomshed.NameDarnWrite].OnDone; got != loomshed.NameCodeBouncer {
-			t.Errorf("Darn-Write OnDone = %q; want %q", got, loomshed.NameCodeBouncer)
+		if got := rows[loomshed.NameDriftVerify].OnDone; got != loomshed.NameCodeBouncer {
+			t.Errorf("Drift-Verify OnDone = %q; want %q", got, loomshed.NameCodeBouncer)
 		}
 		if got := rows[loomshed.NameFinalize].OnReroute; got != loomshed.NameCodeBouncer {
 			t.Errorf("Finalize OnReroute = %q; want %q", got, loomshed.NameCodeBouncer)
@@ -323,8 +334,8 @@ func TestDarnRouting(t *testing.T) {
 			t.Fatalf("DarnRouting() error = %v; want nil", err)
 		}
 		for _, p := range routing.Producers {
-			if p.Name == loomshed.NameDarnWrite && p.OnDone != loomshed.NameCodeBouncer {
-				t.Errorf("Darn-Write OnDone = %q; want %q", p.OnDone, loomshed.NameCodeBouncer)
+			if p.Name == loomshed.NameDriftVerify && p.OnDone != loomshed.NameCodeBouncer {
+				t.Errorf("Drift-Verify OnDone = %q; want %q", p.OnDone, loomshed.NameCodeBouncer)
 			}
 			if p.Name == loomshed.NameFinalize && p.OnReroute != loomshed.NameCodeBouncer {
 				t.Errorf("Finalize OnReroute = %q; want %q", p.OnReroute, loomshed.NameCodeBouncer)

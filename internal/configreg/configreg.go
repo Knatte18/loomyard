@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -122,6 +123,7 @@ func Modules() []Module {
 		{Name: "beam", Template: dobbyengine.ConfigTemplate, CheckLoad: checkLoad(dobbyengine.LoadConfig), Spec: dobbyengine.ConfigSpec},
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, Migrate: darnengine.MigrateConfig, CheckValues: darnengine.ValidateLocalValues, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
+		{Name: "drift", Template: driftengine.ConfigTemplate, OpenMaps: driftengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(driftengine.LoadConfig), Spec: driftengine.ConfigSpec},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(fabricengine.LoadConfig), Spec: fabricengine.ConfigSpec},
 		{Name: "gate", Template: gateslot.ConfigTemplate, OpenMaps: gateslot.ConfigOpenMaps(), PerNameMaps: gateslot.ConfigPerNameMaps(), HubWide: true, Migrate: gateslot.MigrateConfig, CheckLoad: checkLoad(gateslot.LoadConfig), Spec: gateslot.ConfigSpec},
 		{Name: "landing", Template: landingshed.ConfigTemplate, OpenMaps: landingshed.ConfigOpenMaps(), HubWide: true, SeedsFromPrime: true, Migrate: landingshed.MigrateConfig, CheckLoad: checkLoadNamed(landingshed.LoadConfig, "landing"), Spec: landingshed.ConfigSpec},
