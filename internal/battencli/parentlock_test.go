@@ -61,8 +61,8 @@ func TestChildParentLock(t *testing.T) {
 		}{
 			{name: "no status and no marker keeps nothing"},
 			{name: "Finalize running keeps it", producer: loomshed.NameFinalize, want: true},
-			{name: "another row running keeps nothing", producer: loomshed.NameMergeIn},
-			{name: "a live verify marker keeps it", producer: loomshed.NameMergeIn, marker: true, want: true},
+			{name: "another row running keeps nothing", producer: loomshed.NameParentAlign},
+			{name: "a live verify marker keeps it", producer: loomshed.NameParentAlign, marker: true, want: true},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

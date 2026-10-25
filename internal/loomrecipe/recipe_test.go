@@ -348,7 +348,7 @@ func TestEntryNumbers(t *testing.T) {
 			"Discussion-Bouncer": 4, "Discussion-Burler-Review": 4, "Discussion-Burler-Fix": 4,
 			"Plan-Write":   5,
 			"Plan-Bouncer": 6, "Plan-Burler-Review": 6, "Plan-Burler-Fix": 6,
-			"Webster": 7, "Merge-In": 8,
+			"Webster": 7, "Parent-Align": 8,
 			"Code-Bouncer": 9, "Code-Burler-Review": 9, "Code-Burler-Fix": 9,
 			"Describe": 10, "PR-Review": 11, "Finalize": 12, "Friction-Reflect": 13,
 		}},

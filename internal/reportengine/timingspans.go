@@ -33,6 +33,7 @@ const (
 	retiredPRAlignRow             = "PR-Align"
 	retiredPRGateRow              = "PR-Gate"
 	retiredPRReworkRow            = "PR-Rework"
+	retiredMergeInRow             = "Merge-In"
 	retiredMergeBouncerRow        = "Merge-Bouncer"
 	retiredMergeBurlerReviewRow   = "Merge-Burler-Review"
 	retiredMergeBurlerFixRow      = "Merge-Burler-Fix"
@@ -54,6 +55,7 @@ var retiredRowNames = map[string]string{
 	retiredPRAlignRow:             PhasePublishFinalize,
 	retiredPRGateRow:              PhasePublishFinalize,
 	retiredPRReworkRow:            PhasePublishFinalize,
+	retiredMergeInRow:             PhaseMerge,
 	retiredMergeBouncerRow:        PhaseMerge,
 	retiredMergeBurlerReviewRow:   PhaseMerge,
 	retiredMergeBurlerFixRow:      PhaseMerge,
@@ -71,7 +73,8 @@ var recipePhaseTables = map[string]phaseTable{
 			rowFamily(loomshed.NamePlanWrite):       PhasePlan,
 			rowFamily(loomshed.NameWebster):         PhaseWebster,
 			rowFamily(loomshed.NameCodeBouncer):     PhaseWebster,
-			rowFamily(loomshed.NameMergeIn):         PhaseMerge,
+			rowFamily(loomshed.NameParentAlign):     PhaseMerge,
+			rowFamily(retiredMergeInRow):            PhaseMerge,
 		},
 	},
 	shedrun.RecipeDarn: {exact: darnPhases()},
@@ -101,7 +104,7 @@ func darnPhases() map[string]string {
 		loomshed.NameCodeBouncer:      PhaseReview,
 		loomshed.NameCodeBurlerReview: PhaseReview,
 		loomshed.NameCodeBurlerFix:    PhaseReview,
-		loomshed.NameMergeIn:          PhaseMerge,
+		retiredMergeInRow:             PhaseMerge,
 		loomshed.NamePRReview:         PhasePublishFinalize,
 		loomshed.NameFinalize:         PhasePublishFinalize,
 		loomshed.NameFrictionReflect:  PhasePublishFinalize,

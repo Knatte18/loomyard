@@ -1242,14 +1242,18 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 // blocking_escalates turns that auto-accept into an escalation, and color_segment colors the judge's session, the review color where absent.
 func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 	tests := []struct {
-		name        string
-		extra       Config
-		autoAccept  any
-		hardCap     int
-		wantOutcome shedengine.Outcome
-		wantSegment segmentcolor.Segment
+		name       string
+		extra      Config
+		autoAccept any
+		hardCap    int
+		// decisionReview replaces the round-1 review with one holding a decision-class finding.
+		decisionReview bool
+		wantOutcome    shedengine.Outcome
+		wantSegment    segmentcolor.Segment
 	}{
 		{name: "absent keys auto-accept in the review color", autoAccept: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
+		{name: "a decision finding without escalate_decisions settles as today", autoAccept: true, decisionReview: true, wantOutcome: shedengine.Done, wantSegment: segmentcolor.Review},
+		{name: "escalate_decisions escalates a decision finding to the parent", extra: Config{"escalate_decisions": true}, autoAccept: true, decisionReview: true, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
 		{name: "blocking_escalates sends the open BLOCKING entry to the rule, which continues", extra: Config{"blocking_escalates": true}, autoAccept: true, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
 		{name: "a null auto-accept is false, so the soft-cap rule runs", autoAccept: nil, wantOutcome: shedengine.Stuck, wantSegment: segmentcolor.Review},
 		{name: "a hard cap of 1 offers only accept", extra: Config{"blocking_escalates": true}, autoAccept: true, hardCap: 1, wantOutcome: shedengine.Awaiting, wantSegment: segmentcolor.Review},
@@ -1281,6 +1285,12 @@ func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
 				cfg[key] = value
 			}
 			layoutBouncerRound1Report(t, env)
+			if tt.decisionReview {
+				review := "---\nverdict: APPROVED\nfindings:\n  - id: D1\n    severity: LOW\n    class: decision\n    location: plan.md:4\n    summary: cache scope left open\n    fix: ask the parent to record the cache scope\n---\n### [LOW] cache scope left open\n"
+				if err := os.WriteFile(filepath.Join(env.RunRoot, "review-segment", "round-1-review.md"), []byte(review), 0o644); err != nil {
+					t.Fatalf("write the decision review: %v", err)
+				}
+			}
 
 			producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 			if err != nil {

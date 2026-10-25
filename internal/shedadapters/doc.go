@@ -74,7 +74,7 @@
 //     an empty ParentName renders the no-parent variant.
 //     The seed and judge sessions carry the roles bouncer-seed and bouncer-judge, each led by BouncerConfig.RolePrefix and a hyphen when one is configured, in the spawn and in the probe that attaches to it.
 //     The escalation brief and the parent notice are read by the parent, not by a spawned role, and carry no directive.
-//     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of three causes.
+//     Escalation: a CONTINUE or CIRCLING round escalates to the run's parent instead of halting for a human, for one of three causes; a fourth, decision, escalates a round of any verdict (see Decision escalation).
 //     Soft-cap rule: the soft cap is reached when the BouncerConfig.Bounces seam reports count >= budget, the comparison Shed applies.
 //     The rule's window opens on the soft cap by that count or on the hard cap by the round number, whichever comes first, so a round past a new generation that reset the count is still settled by the rule.
 //     A round in the window with no decision file is settled in five steps:
@@ -100,6 +100,17 @@
 //     and the round re-escalates with cause `hard-cap`, the third cause beside budget and circling.
 //     An escalation at or past the hard cap, whatever its cause, carries the accept-only Reason and the bouncer-fragment-decide-capped decide step; below it the Reason and the bouncer-fragment-decide-open step offer accept and continue.
 //     PendingCirclingDecision, PendingEscalation and PendingEscalationCause read a run directory's latest round: the first reports a decision file not yet settled, the second a Bouncer-written escalation, with its round and brief path, that no decision file answers, and the third the same escalation with its cause and brief path.
+//     Decision escalation: a Bouncer told BouncerConfig.EscalateDecisions escalates a judged round whose review holds a finding of class decision, a question only the run's parent can settle, with cause `decision`, whatever the judge ruled.
+//     The routing runs first in the settle, ahead of the judgment refusal, the soft-cap rule, the circling escalation and auto-accept, so neither a re-judge nor auto-accept passes it.
+//     It takes the round only when the review parses and holds such a finding, and the round carries no escalation record of another cause and no decision file of another cause or settled accept; every other round, and every round of a Bouncer with the switch off, takes the route it always took.
+//     While the escalation is open, a replay and a re-entry over a changed subject return the same Awaiting instead of clearing a CONVERGED verdict or starting a generation.
+//     The first escalation writes round-<N>-decision-snapshot.yaml, the titles of the decision record's `Added after Discussion` entries, and a re-escalation keeps it.
+//     The brief carries the bouncer-fragment-decision detail: the decision findings, every BLOCKING finding of the review, the refusal the recorded answer would meet and the verbs that record it.
+//     A recorded continue passes nothing, so only the dropped-key check applies; a refusal re-judges the round, a continue at the hard cap is moved aside and the round escalates again, and below it the next round starts.
+//     A recorded accept faces the judgment refusal with the round's decision-class findings and ledger entries left out of its BLOCKING checks:
+//     an admitted accept passes the round, a refused one is re-judged while budget is left, is moved aside and escalated again at the budget below the hard cap,
+//     and at the budget at or past it archives the judge outputs and halts the run with a Reason opening with DecisionHaltPrefix, so `lyx loom resume` re-judges the round under the recorded accept.
+//     An accept's carry-over holds every decision-class finding of the review at any severity, with the titles recorded since the snapshot, and every other BLOCKING finding of the review the ledger does not carry, so a finding the judge closed still reaches `## Open risks`.
 //     Auto-accept: a Bouncer told BouncerConfig.AutoAccept settles a spent budget as an accept instead of running the soft-cap rule.
 //     It fires at the soft cap alone, also over a CIRCLING verdict, and only on a harvest, the judge having written the verdict in this call, over a round with no decision and no escalation record.
 //     A replay and a round BlockingEscalates sends to the rule (an open BLOCKING entry, or an unreadable ledger) go to the rule instead.
@@ -345,6 +356,7 @@
 // A fix row told BurlerHalfDeps.NotifyParent sends the accepted review's decision-class findings to the run's parent in one line, each with its id, summary and fix, before a fresh fix starts, and runs the fix with burlerengine's DecisionsRouted set.
 // The line is sent once per call that starts a fresh fix and never on the resume of a live fixer; a review that does not parse and a failed post are logged at Warn and never fail the round.
 // A row told no notifier sends nothing and keeps every finding as fixer work.
+// A row told BurlerHalfDeps.DecisionsEscalated, because its segment's Bouncer escalates the decisions itself, posts nothing even with a notifier and still runs the fix with DecisionsRouted set, so the Bouncer's escalation is the one parent message per round.
 //
 // The fix row hands on an unjudged highest round the same way, and otherwise requires the next round's acceptance record and review.
 // Without them it is a hard error whose way forward is a goto to the review row and a resume, since the review row's hand-on never produces that state:

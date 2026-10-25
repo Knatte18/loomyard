@@ -37,7 +37,6 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/seatengine",
 	"github.com/Knatte18/loomyard/internal/segmentcolor",
 	"github.com/Knatte18/loomyard/internal/landingshed",
-	"github.com/Knatte18/loomyard/internal/parentreview",
 	"github.com/Knatte18/loomyard/internal/planindex",
 	"github.com/Knatte18/loomyard/internal/battenshed",
 	"github.com/Knatte18/loomyard/internal/preflightshed",

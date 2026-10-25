@@ -259,6 +259,7 @@ func TestBurlerFixProducer_Call_SendsDecisionFindingsToTheParent(t *testing.T) {
 		review     string
 		notify     bool
 		notifyErr  error
+		escalated  bool
 		wantLines  int
 		wantRouted bool
 	}{
@@ -267,6 +268,8 @@ func TestBurlerFixProducer_Call_SendsDecisionFindingsToTheParent(t *testing.T) {
 		{name: "a review that does not parse sends nothing", review: "no frontmatter\n", notify: true, wantRouted: true},
 		{name: "a failed post leaves the round's outcome", review: "---\nverdict: APPROVED\nfindings:\n" + decisionFinding + "---\n" + decisionProse, notify: true, notifyErr: errors.New("creel down"), wantRouted: true},
 		{name: "a row told no notifier routes nothing", review: "---\nverdict: APPROVED\nfindings:\n" + decisionFinding + "---\n" + decisionProse},
+		{name: "a row whose Bouncer escalates the decisions sends nothing and routes them", review: "---\nverdict: APPROVED\nfindings:\n" + decisionFinding + "---\n" + decisionProse, notify: true, escalated: true, wantRouted: true},
+		{name: "a row whose Bouncer escalates the decisions routes them with no notifier", review: "---\nverdict: APPROVED\nfindings:\n" + decisionFinding + "---\n" + decisionProse, escalated: true, wantRouted: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -289,6 +292,13 @@ func TestBurlerFixProducer_Call_SendsDecisionFindingsToTheParent(t *testing.T) {
 			}
 			runner := &shedfake.BurlerHalfRunner{FixResults: []burlerengine.FixResult{fixDone}}
 			p := newFixProducer(t, runDir, runner, spec)
+			if tt.escalated {
+				var err error
+				p, err = NewBurlerFixProducer("burler-fix", "burler-review", BurlerHalfDeps{Runner: runner, Models: spec.models, NotifyParent: spec.notifyParent, DecisionsEscalated: true}, spec.profile, spec.opts, runDir, spec.now)
+				if err != nil {
+					t.Fatalf("NewBurlerFixProducer() error = %v; want nil", err)
+				}
+			}
 
 			ptr := shedfake.RequireOutcome(t, p, shedengine.Stuck)
 

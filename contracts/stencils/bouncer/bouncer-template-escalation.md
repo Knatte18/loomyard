@@ -1,7 +1,8 @@
 <!-- This is the Bouncer's escalation brief: what a one-shot fork of the run's parent session reads when a review segment cannot settle a question itself.
      Go renders it into the Bouncer run directory (round-<N>-escalation.md) and the parent notice points at it.
      Every marker below is a top-level {{.X}} substitution, and there are no {{if}}/{{range}} conditionals anywhere in this file.
-     Go interpolates only paths, round, cause, segment and slug, plus the decide fragment it picks by the hard cap; the wording lives here and nowhere else. -->
+     Go interpolates only paths, round, cause, segment and slug, plus the decide fragment it picks by the hard cap; the wording lives here and nowhere else.
+     cause_detail is the one optional marker, filled through stencil.FillOptional: it renders the decision cause's detail and nothing for any other cause. -->
 
 # Escalation — review segment `{{.segment}}`, round {{.round}}
 
@@ -12,6 +13,9 @@ The cause is `{{.cause}}`:
 - `circling`: the judge found no progress on recurring gating findings, or a design-wrong finding returned after a continue.
 - `budget`: the soft-cap rule could not read its inputs: the round's review, its ledger or the previous round's ledger.
 - `hard-cap`: the round is at or past the perch's hard cap with a design-wrong finding still open, or a continue was recorded there.
+- `decision`: the round's review holds a finding only the run's parent can settle.
+
+{{.cause_detail}}
 
 What a ledger entry's `design-wrong` and `mechanical` tags mean is defined in `{{.judge_stencil_path}}`.
 

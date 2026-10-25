@@ -43,10 +43,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 )
 
-// seedLoomConfigWithInteractive overwrites <anchorPath>/_lyx/config/loom.yaml with a full
-// eleven-key literal, identical to the embedded template's own values except
-// discussion_interactive, which takes the caller-chosen value.
-// All eleven keys are written explicitly, rather than string-substituting the template, so the literal pins every value instead of relying on template fills --
+// seedLoomConfigWithInteractive overwrites <anchorPath>/_lyx/config/loom.yaml with a full literal.
+// It matches the embedded template's own values except discussion_interactive, which takes the caller-chosen value.
+// Every key is written explicitly, rather than string-substituting the template, so the literal pins every value instead of relying on template fills --
 // an explicit literal is what internal/loomengine/config_test.go already does.
 func seedLoomConfigWithInteractive(t *testing.T, anchorPath string, discussionInteractive bool) {
 	t.Helper()
@@ -65,17 +64,15 @@ review_timeout_min: 240
 friction: opus[effort=high]
 friction_timeout_min: 30
 driver: ""
-parent_review_wait_min: 60
 `, discussionInteractive)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
 	}
 }
 
-// seedLoomConfigWithFriction overwrites <anchorPath>/_lyx/config/loom.yaml with a full eleven-key
-// literal, identical to the embedded template's own values except the friction key, which takes the
-// caller-chosen value -- empty to mean Tier 2 is off.
-// All eleven keys are written explicitly for the same pin-every-value reason seedLoomConfigWithInteractive already documents.
+// seedLoomConfigWithFriction overwrites <anchorPath>/_lyx/config/loom.yaml with a full literal.
+// It matches the embedded template's own values except the friction key, which takes the caller-chosen value -- empty to mean Tier 2 is off.
+// Every key is written explicitly for the same pin-every-value reason seedLoomConfigWithInteractive already documents.
 func seedLoomConfigWithFriction(t *testing.T, anchorPath, friction string) {
 	t.Helper()
 	configDir := filepath.Join(anchorPath, "_lyx", "config")
@@ -93,7 +90,6 @@ review_timeout_min: 240
 friction: %s
 friction_timeout_min: 30
 driver: ""
-parent_review_wait_min: 60
 `, friction)
 	if err := os.WriteFile(cfgPath, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q) = %v; want nil", cfgPath, err)
@@ -1080,8 +1076,8 @@ func TestLoomRerouteCapWayForward(t *testing.T) {
 	})
 	shed := &shedengine.Shed{
 		Producers: []shedengine.ProducerDef{
-			{Name: loomshed.NameMergeIn, Producer: doneProducer, OnDone: loomshed.NameFinalize},
-			{Name: loomshed.NameFinalize, Producer: reroute, OnReroute: loomshed.NameMergeIn},
+			{Name: loomshed.NameParentAlign, Producer: doneProducer, OnDone: loomshed.NameFinalize},
+			{Name: loomshed.NameFinalize, Producer: reroute, OnReroute: loomshed.NameParentAlign},
 		},
 		StatusPath:           statusPath,
 		LockPath:             filepath.Join(dir, "run.lock"),

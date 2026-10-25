@@ -64,7 +64,7 @@ func landedRunWith(w *world, slug, sha string, hour int, seed string, loom []she
 
 // parentRoundTimed returns the files of parent-review round number with a request opened at opened (none when zero), a verdict recorded at verdict (none when zero) and an alignment record spawned at spawned (none when zero).
 func parentRoundTimed(number int, opened, verdict, spawned time.Time) map[string]string {
-	dir := path.Join(filepath.ToSlash(loomengine.LoomParentReviewDirRel()), fmt.Sprintf("round-%d", number))
+	dir := path.Join(filepath.ToSlash(parentReviewDirRel()), fmt.Sprintf("round-%d", number))
 	files := map[string]string{path.Join(dir, "delivery.json"): `{}`}
 	if !opened.IsZero() {
 		files[path.Join(dir, "request.json")] = fmt.Sprintf(`{"round":%d,"state":"open","opened_at":%q}`, number, opened.Format(time.RFC3339))
@@ -283,7 +283,8 @@ var loomRowPhases = []struct{ row, phase string }{
 	{loomshed.NameWebster, PhaseWebster},
 	{retiredWebsterBouncerRow, PhaseWebster},
 	{loomshed.NameDescribe, PhaseWebster},
-	{loomshed.NameMergeIn, PhaseMerge},
+	{loomshed.NameParentAlign, PhaseMerge},
+	{retiredMergeInRow, PhaseMerge},
 	{retiredMergeBouncerRow, PhaseMerge},
 	{retiredPublishRow, PhasePublishFinalize},
 	{retiredPRAlignRow, PhasePublishFinalize},
@@ -317,7 +318,7 @@ var darnRowPhases = []struct{ row, phase string }{
 	{loomshed.NameCodeBurlerReview, PhaseReview},
 	{loomshed.NameCodeBurlerFix, PhaseReview},
 	{loomshed.NameDescribe, PhaseWrite},
-	{loomshed.NameMergeIn, PhaseMerge},
+	{retiredMergeInRow, PhaseMerge},
 	{retiredPublishRow, PhasePublishFinalize},
 	{retiredPRAlignRow, PhasePublishFinalize},
 	{retiredPRGateRow, PhasePublishFinalize},
@@ -355,7 +356,7 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(loomshed.NameDiscussionWrite, secondsAfter(run, 600)),
 					entryAt(loomshed.NamePlanWrite, secondsAfter(run, 1200)),
 					entryAt(loomshed.NameWebster, secondsAfter(run, 1800)),
-					entryAt(loomshed.NameMergeIn, secondsAfter(run, 2040)),
+					entryAt(loomshed.NameParentAlign, secondsAfter(run, 2040)),
 					entryAt(retiredPublishRow, secondsAfter(run, 2160)),
 					entryAt(loomshed.NameFinalize, secondsAfter(run, 2280)),
 				}
@@ -526,8 +527,8 @@ func TestComputeTiming(t *testing.T) {
 			},
 			check: func(t *testing.T, got TimingReport) {
 				wantPhases(t, runOf(t, got, "every"), map[string]int64{
-					PhaseSetup: 600, PhaseDiscussion: 240, PhasePlan: 255, PhaseWebster: 570,
-					PhaseMerge: 210, PhasePublishFinalize: 405, PhaseLand: 180,
+					PhaseSetup: 600, PhaseDiscussion: 240, PhasePlan: 255, PhaseWebster: 540,
+					PhaseMerge: 300, PhasePublishFinalize: 405, PhaseLand: 120,
 				})
 				if len(got.Findings) != 0 {
 					t.Errorf("findings = %+v; want none, since every row names a phase", got.Findings)
@@ -540,7 +541,7 @@ func TestComputeTiming(t *testing.T) {
 				landedRun(w, "newtail", "t1", 3, seedStartedAt(run), []shedengine.HistoryEntry{
 					entryAt(loomshed.NamePreflight, secondsAfter(run, 600)),
 					entryAt(loomshed.NameWebster, secondsAfter(run, 1200)),
-					entryAt(loomshed.NameMergeIn, secondsAfter(run, 1260)),
+					entryAt(loomshed.NameParentAlign, secondsAfter(run, 1260)),
 					entryAt(loomshed.NameCodeBouncer, secondsAfter(run, 1320)),
 					entryAt(loomshed.NameCodeBurlerReview, secondsAfter(run, 1380)),
 					entryAt(loomshed.NameCodeBurlerFix, secondsAfter(run, 1440)),
@@ -551,7 +552,7 @@ func TestComputeTiming(t *testing.T) {
 				landedRun(w, "oldtail", "t2", 4, seedStartedAt(run), []shedengine.HistoryEntry{
 					entryAt(loomshed.NamePreflight, secondsAfter(run, 600)),
 					entryAt(loomshed.NameWebster, secondsAfter(run, 1200)),
-					entryAt(loomshed.NameMergeIn, secondsAfter(run, 1260)),
+					entryAt(retiredMergeInRow, secondsAfter(run, 1260)),
 					entryAt(retiredPRReworkRow, secondsAfter(run, 1320)),
 					entryAt(loomshed.NameFinalize, secondsAfter(run, 1380)),
 				})
@@ -1248,8 +1249,8 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(loomshed.NamePlanWrite, secondsAfter(run, 1100)),
 					stuckAt(loomshed.NameWebster, secondsAfter(run, 1990)),
 					entryAt(loomshed.NameWebster, secondsAfter(run, 2100)),
-					stuckAt(loomshed.NameMergeIn, secondsAfter(run, 2990)),
-					entryAt(loomshed.NameMergeIn, secondsAfter(run, 3200)),
+					stuckAt(loomshed.NameParentAlign, secondsAfter(run, 2990)),
+					entryAt(loomshed.NameParentAlign, secondsAfter(run, 3200)),
 					stuckAt(retiredPublishRow, secondsAfter(run, 3990)),
 					gotoAt(retiredPublishRow, secondsAfter(run, 4100), "orch"),
 					stuckAt(retiredPRReworkRow, secondsAfter(run, 4990)),
@@ -1262,10 +1263,10 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(loomshed.NameDescribe, secondsAfter(run, 8100)),
 					entryAt(loomshed.NameFinalize, secondsAfter(run, 8500)),
 				}
-				halted := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameMergeIn, retiredPublishRow, retiredPRReworkRow, loomshed.NameLoomPreflight, loomshed.NameDiscussionWrite, loomshed.NameDescribe}
+				halted := []string{loomshed.NamePlanWrite, loomshed.NameWebster, loomshed.NameParentAlign, retiredPublishRow, retiredPRReworkRow, loomshed.NameLoomPreflight, loomshed.NameDiscussionWrite, loomshed.NameDescribe}
 				batten := []shedengine.HistoryEntry{entryAt(battenrecipe.NameWorktreeCreate, run)}
 				extra := arbiterAttemptFiles(w.t, "settlers", 1, loomengine.ArbiterAttempt{
-					StopKey:   shedrun.StopKey{CurrentProducer: loomshed.NameMergeIn, State: "blocked"},
+					StopKey:   shedrun.StopKey{CurrentProducer: loomshed.NameParentAlign, State: "blocked"},
 					SpawnedAt: secondsAfter(run, 3100),
 				}, "", true)
 				for k, producer := range halted {

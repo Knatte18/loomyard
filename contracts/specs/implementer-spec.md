@@ -6,7 +6,7 @@
 
 ## The row
 
-Loom's implementer row is the recipe's `Webster` row, between `Plan-Bouncer` and `Merge-In`, which the `Code-Review` perch follows.
+Loom's implementer row is the recipe's `Webster` row, between `Plan-Bouncer` and `Parent-Align`, which the `Code-Review` perch follows.
 Its `Implementer` engine builds the row with the implementer `loom.yaml`'s `implementer` key names, read through the row's `implementer_setting: loom.implementer`.
 The key is settable per task through `run_settings`, and a value outside the closed implementer table in `internal/shedrecipe` refuses when the recipe builds.
 Every implementer builds the same row with the same edges, so no row is skipped or entered conditionally on which one runs.
@@ -33,7 +33,7 @@ The plan writer writes a flat plan and never groups its cards.
 
 | Outcome | Meaning | Route |
 | --- | --- | --- |
-| Done | The plan is built and the plan-level verify passed. | `on_done` to `Merge-In`. |
+| Done | The plan is built and the plan-level verify passed. | `on_done` to `Parent-Align`. |
 | Stuck with a reroute | The implementer refused the approved plan with a new plan-conflict record for plan review. | `on_reroute` to `Plan-Burler-Review`, within shed's reroute cap. |
 | Stuck | Any other fault, its reason naming the way forward. | The row has no `on_stuck`, so the run halts for a human. |
 

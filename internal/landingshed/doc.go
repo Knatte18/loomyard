@@ -1,17 +1,17 @@
-// Package landingshed owns landing's general producers, Merge-In, the PR-Review stub and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
+// Package landingshed owns landing's general producers, Parent-Align, the PR-Review stub and Finalize, which any producer list may name -- none is special-cased by the engine that drives them.
 //
 // PR-Review is the stub of the human pull-request review that is not built yet; PRReview names it for a recipe row.
 // Its call is Done every time: with its flag off it logs nothing, and with its flag on it logs one Info line that the PR review is not built.
 // It opens no pull request, calls no GitHub API, reads no file and takes no lock, and a cancelled context is an error.
 //
-// A merge or test failure at Merge-In or Finalize is owned by the recipe: it ends in the row's fixer, a reroute or a halt to the orch.
+// A merge or test failure at Parent-Align or Finalize is owned by the recipe: it ends in the row's fixer, a reroute or a halt to the orch.
 //
 // Finalize holds the parent lock, which it takes through the shared guard; the guard grants a run that already holds it, so a re-call after a resume takes back a record handed to batten.
 // A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
 // Finalize's constructor refuses a nil Deps.Lock.Store, a nil Deps.Lock.Owner and a nil Deps.ReadParentTips, and a row built without its guard, as a struct-literal test builds it, takes no lock.
 // Finalize takes the lock first, after parsing the change description and committing the status file and before anything reads or moves the parent, and releases it on every way out of its Call: Done, a reroute, a Stuck and an error.
 // A lock a dead Finalize left is taken over at the next acquire, since the lock store grants a record whose owner process no longer lives.
-// Under that lock it runs the same run-scope origin reconcile and maps its ended and stopped verdicts as Merge-In does, then the owner checks.
+// Under that lock it runs the same run-scope origin reconcile and maps its ended and stopped verdicts as Parent-Align does, then the owner checks.
 // It then opens the parent pair and syncs it before any merge: a pair that is missing, mid-merge or holding tracked dirt in its code checkout is Stuck with its way forward, whether the parent is behind, equal, without an upstream or under the push skip.
 // With no push skip a parent behind its upstream is fast-forwarded in its own pair, which moves it to the upstream tip and touches no local commit, and one ahead of, diverged from or no longer a fast-forward of its upstream is Stuck, since Finalize never pushes or rewrites the parent here.
 // Under the push skip it neither fetches nor fast-forwards, and a parent that already holds the task's work is past its parent-side merge and is left as it is.
@@ -24,12 +24,12 @@
 // A run whose pair has no batten run record reads as owned here, since the reconcile judges only recorded pairs, but its parent's owner is still read.
 // A parent or run owned by another machine, an unreachable origin and a failed read of either seam each stop with Halt and a reason behind OwnerHaltPrefix, so the loom halt note is written;
 // the reason names the owners and the `lyx adopt` commands that move them.
-// Merge-In proceeds on an owned_elsewhere verdict, since the owner check belongs to the landing.
+// Parent-Align proceeds on an owned_elsewhere verdict, since the owner check belongs to the landing.
 // A nil seam reads as not past the merge and as the parent owned here, so a Finalize built with no owner seams lands as before.
 // A parent that already holds the task's work, after a GitHub merge or an earlier landing, lands through the already-landed path.
 // Finalize then merges the parent branch into the task worktree under the lock and judges the merge.
 // It reads the merge record's merged tip, clears a parked merge-in, checks the tree clean and merges.
-// A loom Finalize (Deps.ConflictReroutes) merges through the task pair's merge-in and, on a conflict, aborts the merge and reroutes, leaving the merge and its conflict session to Merge-In outside the lock.
+// A loom Finalize (Deps.ConflictReroutes) merges through the task pair's merge-in and, on a conflict, aborts the merge and reroutes, leaving the merge and its conflict session to Parent-Align outside the lock.
 // A darn Finalize merges through its resolver, which resolves a conflict with the conflict session under the lock, since darn has no other merging row.
 // An unreadable merge record is logged and read as absent, so the parent side is measured from the task's merge base, as a darn run with no record is.
 // The merge is large when it needed the conflict session, or when the parent's changes since the merged tip it read touch a file the task changed since its merge base; a parent already holding the task's work is never large.
@@ -58,7 +58,7 @@
 // it names the task's squash by the parent head's SHA, a `git reset --keep` to origin's parent when the squash is the only commit origin lacks or a `git rebase --onto` dropping it when another is listed, and then `lyx fabric remove` of the run, leaving the owner pause standing.
 // An origin parent lacking the work, or a failed read, adds no note.
 //
-// Merge-In and Finalize clear the merge-in their own earlier attempt left parked before the clean-tree check that precedes each merge of the parent, Finalize's retry pass included.
+// Parent-Align and Finalize clear the merge-in their own earlier attempt left parked before the clean-tree check that precedes each merge of the parent, Finalize's retry pass included.
 // A parked fabric `merge-in` of the parent branch is aborted, whoever started it, so a conflict session's resolution and a hand-started merge-in with its partial resolution are both discarded and the merge starts afresh.
 // Every live conflict-session strand of the run is stopped through Deps.StopConflictSession first, and only after every stop succeeded is the merge aborted, so no session is left writing into the redone merge;
 // a stop that fails is Stuck naming the strand, with the merge untouched.
@@ -66,9 +66,9 @@
 // The resolver's own abort stays as crash recovery within one merge-in step.
 // The seams are nil-is-absent: a nil Deps.MergeState skips the step.
 //
-// Merge-In is built here and listed by a recipe's producer list like the others.
+// Parent-Align is built here and listed by a recipe's producer list like the others.
 // It commits the status file and runs the run-scope origin reconcile through the told Deps.Reconcile, then picks the parent tip to merge.
-// Merge-In takes no parent lock across the merge and writes nothing in the parent pair: the fast-forward of the local parent branch and the parent-pair refusals belong to Finalize, under its lock.
+// Parent-Align takes no parent lock across the merge and writes nothing in the parent pair: the fast-forward of the local parent branch and the parent-pair refusals belong to Finalize, under its lock.
 // The reconcile judges and never moves the parent.
 // A run origin ended is a Stuck with Halt naming the landing or the board removal, with `lyx cleanup --apply` from the prime as the way forward;
 // a run its branches stop is a Stuck naming the branch, its state and its way forward, then `lyx loom resume` in the task worktree;
@@ -76,7 +76,7 @@
 // With an upstream and no push skip it fetches and merges the parent's upstream tip, read from the fetching tips read and never the local tip, so a landing another run made locally and has not pushed is never merged in.
 // Under the told push skip, or with no upstream, it takes the parent lock through the shared guard only for the read of the local tip and releases it before the merge, which then runs unlocked.
 // A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
-// It then clears a parked merge-in, merges that tip into the task worktree through internal/mergeresolve, and runs its own gate key, `merge-in`, over the merged tree.
+// It then clears a parked merge-in, merges that tip into the task worktree through internal/mergeresolve, and runs its own gate key, `parent-align`, over the merged tree.
 // The task worktree must be clean at three points: before the merge-in (after the status commit), after the merge-in, and after the verify.
 // A dirty tree at any of them is Stuck naming the paths, so nothing uncommitted is merged over or reviewed;
 // a verify that dirties the tree is a non-hermetic test and halts rather than ships.
@@ -91,37 +91,38 @@
 // The record is keyed on the tree, so the verify runs after a resolved conflict, after new parent commits and after a crash between a merge and its verify, and a no-op merge onto a verified tree skips it.
 // A missing command logs a warning and proceeds.
 // A failed verify writes the landing failure record, and a passing one, or a skip over a tree recorded as passed, removes it.
-// After the gate Merge-In aligns: the parent brought in commits when its merged tip adds something over the aligned tip, or over the task's fork point from the parent when the merge record holds none.
+// After the gate Parent-Align aligns: the parent brought in commits when its merged tip adds something over the aligned tip, or over the task's fork point from the parent when the merge record holds none.
 // A merge that brought none over a passing gate is aligned with no fixer and advances the aligned tip to the merged tip.
-// Parent commits brought in, or a failing gate, run the merge fixer in merge-in mode on the attempts `merge_fix_attempts` leaves the entry; a `fixed` report over a passing gate advances the aligned tip and is Done.
+// Parent commits brought in, or a failing gate, run the merge fixer in parent-align mode on the attempts `parent_align_fix_attempts` leaves the entry; a `fixed` report over a passing gate advances the aligned tip and is Done.
 // The entry's fork point is kept in its attempt record before the merge, so a resumed entry whose merge is already up to date still reads what the first merge brought in.
 // With the Code-Review perch's budget 0, or told nothing, a fixer change over `finalize_fix_max_lines` or touching a test, testdata or gate configuration file, or adding a test skip or a build constraint, halts over-cap; with a budget above 0 the change goes to the Code-Perch unjudged.
 // An escalate report, a spent cap, a turn that ended without a usable result and an over-cap change each halt with a reason opening with LandingStopPrefix and a way forward; the resume after an over-cap halt reads the operator's review as the alignment.
 // Every Done clears the entry's attempt record, and an entry reached again from another row starts at zero attempts.
+// A run halted on the row under its name before the rename, Merge-In, resumes with its spent attempts: the row reads the old name's attempt record when its own is absent, and every Done removes both.
 // Last it writes the merge record: the tip merged, the task head before the merge, the parent tip last merged into the task, the aligned tip, the merge commit and where the parent's changes since the aligned tip meet the task's changes since its last merge base.
 // The aligned tip is the parent tip up to which the merge fixer has read what the parent brought in; it is empty before the first alignment, and the overlap then starts at the task's fork point from the parent.
 // The record carries the earlier record's aligned tip forward unchanged, and a record an older build wrote with a reviewed tip reads with an empty aligned tip.
 // An up-to-date merge records an empty overlap, and a failed record write is an error, never Stuck.
-// Merge-In holds no lock on any way out of the row, so no later row inherits one.
+// Parent-Align holds no lock on any way out of the row, so no later row inherits one.
 //
-// HandsBack is the one predicate that names the halts the orch takes over: a blocked stop at Merge-In or Finalize whose reason opens with LandingStopPrefix, and a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
-// Merge-In has no reroute edge, and a reroute-cap halt at another row, such as Webster's, stays routed as before.
-// A merge or test failure at Merge-In or Finalize is the recipe's own to settle:
+// HandsBack is the one predicate that names the halts the orch takes over: a blocked stop at Parent-Align or Finalize whose reason opens with LandingStopPrefix, and a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
+// Parent-Align has no reroute edge, and a reroute-cap halt at another row, such as Webster's, stays routed as before.
+// A merge or test failure at Parent-Align or Finalize is the recipe's own to settle:
 // the row's fixer fixes it, a loom conflict, a large merge or a spent or over-cap fix at Finalize routes back through the recipe's reroute edge, or halts where that edge reaches no review, and the halt goes to the orch.
-// No driver, batten, arbiter or record target routes a Merge-In or Finalize failure to another row.
+// No driver, batten, arbiter or record target routes a Parent-Align or Finalize failure to another row.
 // The recipe's owner tells it to shedverbs as Spec.HandBack, which marks the loop's stop envelope and the status as hand_back; the drivers read the predicate or that mark.
 //
-// A darn run whose diff lies wholly under its configured non-production trees runs only the tree-scoped command at Merge-In and Finalize, the hub's whole statement of what such a diff needs.
+// A darn run whose diff lies wholly under its configured non-production trees runs only the tree-scoped command at Parent-Align and Finalize, the hub's whole statement of what such a diff needs.
 // landing.yaml's retired `publish_verify` key loads and is dropped, and `lyx config reconcile` prunes it.
 //
 // Landing.yaml's `deploy` is read only by batten's Land row, from the board dir like the rest of landing config and never from a pair.
 // It runs in the prime only for a parent branch in `deploy_branches` when the row runs.
 // An empty value runs nothing, and `lyx config` refuses a write to it from a pair, as for every hub-wide key, as a guard against a mistaken write rather than a determined agent.
-// Landing config is hub-wide: Merge-In and Finalize read it from the board dir, never from a task worktree's `_lyx/config/`, and `lyx config` refuses a write to it from a pair, so a task cannot weaken the key, or set `deploy_branches` or `squash`, through its own tree.
+// Landing config is hub-wide: Parent-Align and Finalize read it from the board dir, never from a task worktree's `_lyx/config/`, and `lyx config` refuses a write to it from a pair, so a task cannot weaken the key, or set `deploy_branches` or `squash`, through its own tree.
 // A landing change is an operator or hub-orch `lyx config landing` run from the prime, committed in `_board` and effective for every pair at once.
 //
-// Merge-In and Finalize persist their verify failure.
-// When a row's gate call fails with a non-zero exit, Merge-In or Finalize writes the verifytree landing failure record with the row's gate key as its kind, the failing tier, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
+// Parent-Align and Finalize persist their verify failure.
+// When a row's gate call fails with a non-zero exit, Parent-Align or Finalize writes the verifytree landing failure record with the row's gate key as its kind, the failing tier, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.
 // The tier is the first failing tier or build the log's `lyx gate test` summary lines name; when that is a build line the record's `build` field is true, its tier is the first tier the build blocked, and it lists no tests, since the gate failed before any test ran.
 // A log without a failing line, such as a refusal before the first tier, takes the highest tier of the row's key, read through the told Deps.GateTiers.
 // The merge-in commit is HEAD after a merge-in that was not already up to date and empty otherwise; Finalize takes it from its own merge.
@@ -132,14 +133,14 @@
 // When the failed verify's log holds the CPU watchdog's line that `lyx gate test` prints after it quits a busy test binary, the reason names the window and says the goroutine stacks are in the log, before that clause.
 // A watchdog quit of a healthy package has no code fix: the way forward is raising `busy_quit_sec` through `lyx config gate` from the prime, then resuming.
 // An unreadable log or one without the line leaves the reason unchanged, and the checks run no flake rerun.
-// Merge-In and Finalize remove the record once their landing call passes.
+// Parent-Align and Finalize remove the record once their landing call passes.
 //
 // deploy_branches is read only by batten's Land row, to decide whether a landing deploys:
 // a landing into a listed base branch runs the hub-wide `deploy` command, and an empty list deploys nothing.
 // It is a list of base-branch names, not a bool, because tasks branch off other tasks and only a landing into a listed branch is a deploy.
 //
 // Finalize always merges the parent branch into the task worktree and then merges the task branch into the parent pair itself.
-// Each merge of the parent, the retry after a merge-in-required error included, runs the same three clean-tree checks and the same post-merge verify gate as Merge-In before the parent-side merge,
+// Each merge of the parent, the retry after a merge-in-required error included, runs the same three clean-tree checks and the same post-merge verify gate as Parent-Align before the parent-side merge,
 // and a dirty tree is Stuck with the parent branch untouched, while a failing gate runs the merge fixer.
 // After each merge of the parent and before the parent-side merge, Finalize commits the parent pair's own run records through the told Deps.CommitParentRecords, so a sibling run's uncommitted status record does not trip the merge guard;
 // a clean subtree is a no-op, an absent seam skips the step, and a commit failure is Stuck naming the parent pair and its run records, with nothing merged.
@@ -176,7 +177,7 @@
 //
 // The Describe session loads `scribe:prose` before its prompt.
 // Its stencil, like the conflict session's, carries the parent directive that internal/parentdirective renders from the told name:
-// the seat engine's geometry for Describe, and Deps.ParentName passed through to the resolver for Merge-In and Finalize.
+// the seat engine's geometry for Describe, and Deps.ParentName passed through to the resolver for Parent-Align and Finalize.
 // DescribeTable builds a loom run's session, which reads the decision record and the webster run records;
 // DarnDescribeTable builds a darn run's from its own stencil, `landing-template-describe-darn`, which reads the board entry, the decision record beside it, the diff and the review perch's run directory, under the same describe keys, role and skills.
 // NewBeamDescribe is the beam recipe's Describe row and starts no agent: it writes the description from the beam's board entry and the subjects of the commits the beam adds, validates it with the check the Describe gate runs, and commits it.

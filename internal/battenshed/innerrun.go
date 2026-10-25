@@ -188,7 +188,6 @@ const (
 	failLockRecordUnreadable  = "battenshed: parent lock record unreadable; leaving it alone"
 	failAgentStatesUnreadable = "battenshed: the child's agent states are unreadable; keeping its parent lock"
 	failLockRelease           = "battenshed: could not release the child's parent lock"
-	failReviewWaitNote        = "battenshed: reviewer wait note unavailable"
 	failDriverStrandRead      = "battenshed: could not read the child's driver strand; skipping the revive"
 	failDriverLiveness        = "battenshed: driver liveness read failed; treating the driver as live"
 	failChildLockRead         = "battenshed: child lock read failed; treating the driver as live"
@@ -535,21 +534,6 @@ func (p *innerRunProducer) driverAtWork(ctx context.Context) (bool, error) {
 	return strand == ChildDriverLive || strand == ChildDriverRetiring || held || driverLockHeld, nil
 }
 
-// reviewWaitNote returns the child's reviewer-wait note, or empty when there is none or ReviewWait is nil.
-// A ReviewWait error warns once per episode and reads as no note, since the note never fails the row.
-func (p *innerRunProducer) reviewWaitNote() string {
-	if p.deps.ReviewWait == nil {
-		return ""
-	}
-	note, err := p.deps.ReviewWait()
-	if err != nil {
-		p.seamFailed(failReviewWaitNote, err)
-		return ""
-	}
-	p.seamRecovered(failReviewWaitNote)
-	return note
-}
-
 // childWait is the state of one Call's wait on the child.
 type childWait struct {
 	statusPath     string
@@ -572,8 +556,6 @@ type childWait struct {
 	pause          pauserecord.Coverage
 	coverageWarned string
 
-	// reviewNote is the running arm's newest reviewer-wait note.
-	reviewNote string
 	// revival is the halted arm's newest reading of the child's driver strand.
 	revival driverRevival
 	// alive is the newest reading of the driver strand and aliveKnown whether it succeeded; aliveStale is true on a probe check until the strand is read.
@@ -776,16 +758,9 @@ func (p *innerRunProducer) pauseRequested(w *childWait) bool {
 	return paused
 }
 
-// runningStep is the running arm: it reports the wait reason, naming the reviewer the child waits on, refreshing the note on the probe checks.
+// runningStep is the running arm: it reports the plain wait reason.
 func (p *innerRunProducer) runningStep(ctx context.Context, w *childWait) *waitEnd {
-	if w.probeDue {
-		w.reviewNote = p.reviewWaitNote()
-	}
-	reason := fmt.Sprintf("inner shed run still running; checking it every %s", p.pollInterval)
-	if w.reviewNote != "" {
-		reason = fmt.Sprintf("inner shed run waiting: %s; checking it every %s", w.reviewNote, p.pollInterval)
-	}
-	p.reportState(w, reason)
+	p.reportState(w, fmt.Sprintf("inner shed run still running; checking it every %s", p.pollInterval))
 	return nil
 }
 

@@ -8,7 +8,7 @@
 #
 # The writer writes and validates the decision record before any code, and the perch's open findings
 # land in the record's `## Open risks`.
-# Darn has no Merge-In row: Finalize merges the parent itself, under the parent lock it takes first.
+# Darn has no Parent-Align row: Finalize merges the parent itself, under the parent lock it takes first.
 #
 # Preflight and Finalize carry no on_stuck: nothing in the list produces what each of them
 # gates, so a human is the only thing that can fix them.

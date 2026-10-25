@@ -82,46 +82,6 @@ func ArbiterTimeout(cfg Config) time.Duration {
 	return arbiterDefaultTimeout
 }
 
-// alignmentDefaultModelSpec is the model-spec an empty alignment key takes.
-const alignmentDefaultModelSpec = "opus[high]"
-
-// alignmentDefaultTimeoutMin is the minutes a zero alignment_timeout_min takes.
-const alignmentDefaultTimeoutMin = 20
-
-// AlignmentSettings is the alignment agent's resolved model choice and timeout, threaded onto its session's launch spec.
-type AlignmentSettings struct {
-	shuttleengine.ModelChoice
-	// Timeout is how long one alignment spawn may run.
-	Timeout time.Duration
-}
-
-// ResolveAlignment parses and resolves the alignment agent's model-spec from cfg through reg.
-// An empty cfg.Alignment takes opus[high] and a zero cfg.AlignmentTimeoutMin takes 20 minutes.
-// A spec that does not parse or resolve is an error naming the alignment key.
-func ResolveAlignment(cfg Config, reg modelspec.Registry) (AlignmentSettings, error) {
-	specText := cfg.Alignment
-	if specText == "" {
-		specText = alignmentDefaultModelSpec
-	}
-	spec, err := modelspec.Parse(specText)
-	if err != nil {
-		return AlignmentSettings{}, fmt.Errorf("loom: ResolveAlignment: alignment model-spec: %w", err)
-	}
-	resolved, err := reg.Resolve(spec)
-	if err != nil {
-		return AlignmentSettings{}, fmt.Errorf("loom: ResolveAlignment: alignment model-spec: %w", err)
-	}
-
-	timeoutMin := alignmentDefaultTimeoutMin
-	if cfg.AlignmentTimeoutMin > 0 {
-		timeoutMin = cfg.AlignmentTimeoutMin
-	}
-	return AlignmentSettings{
-		ModelChoice: shuttleengine.NewModelChoice(resolved),
-		Timeout:     time.Duration(timeoutMin) * time.Minute,
-	}, nil
-}
-
 // ResolveDriver parses and resolves the driver role's model-spec from cfg.
 // It returns the ModelChoice the caller threads onto the driver session's launch spec.
 // An empty cfg.Driver resolves to the zero ModelChoice (default engine, provider defaults) with a nil error.

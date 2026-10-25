@@ -126,7 +126,7 @@ const (
 )
 
 // fixedGateTierLists are the tier lists fixedGateTiers answers, one gate's highest tier differing from its first.
-var fixedGateTierLists = map[string][]int{"merge-in": {0, 1}, "finalize": {0, 1}, "webster": {0}}
+var fixedGateTierLists = map[string][]int{"parent-align": {0, 1}, "finalize": {0, 1}, "webster": {0}}
 
 // fixedGateTiers is the tier lookup the fixtures tell their gate.
 func fixedGateTiers(gate string) ([]int, error) {

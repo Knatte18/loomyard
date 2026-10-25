@@ -24,8 +24,8 @@ func TestSettledSegmentGuard(t *testing.T) {
 		{Name: "Plan-Bouncer", Segment: "Plan-Review", OnStuck: "Plan-Burler-Review", OnDone: "Webster"},
 		{Name: "Plan-Burler-Review", Segment: "Plan-Review", OnStuck: "Plan-Burler-Fix", OnDone: "Plan-Burler-Fix"},
 		{Name: "Plan-Burler-Fix", Segment: "Plan-Review", OnStuck: "Plan-Bouncer", OnDone: "Plan-Bouncer"},
-		{Name: "Webster", OnDone: "Merge-In"},
-		{Name: "Merge-In", OnDone: "Code-Bouncer"},
+		{Name: "Webster", OnDone: "Parent-Align"},
+		{Name: "Parent-Align", OnDone: "Code-Bouncer"},
 		{Name: "Code-Bouncer", Segment: "Code-Review", OnStuck: "Code-Burler-Review", OnDone: "Describe"},
 		{Name: "Code-Burler-Review", Segment: "Code-Review", OnStuck: "Code-Burler-Fix", OnDone: "Code-Burler-Fix"},
 		{Name: "Code-Burler-Fix", Segment: "Code-Review", OnStuck: "Code-Bouncer", OnDone: "Code-Bouncer"},
@@ -74,7 +74,7 @@ func TestSettledSegmentGuard(t *testing.T) {
 		},
 		{
 			name: "Code-Review review row", bouncer: "Code-Bouncer", files: map[string]string{"settle-record.json": settled},
-			target: "Code-Burler-Review", wantRefusal: []string{"goto --to Code-Bouncer", "goto --to Merge-In"},
+			target: "Code-Burler-Review", wantRefusal: []string{"goto --to Code-Bouncer", "goto --to Parent-Align"},
 		},
 		{
 			name: "interrupted live record", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": interrupted},

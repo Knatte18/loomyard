@@ -111,7 +111,7 @@ func writeSubjectPart(digest hash.Hash, name, kind string, content []byte) {
 
 // taskMergeBase returns the reader of the commit the task's diff is taken from: the merge base of the task pair's HEAD with the parent tip the run's merge record names.
 // The local parent branch can lag a tip the task merged, so with no merge record it falls back to the merge base with that branch.
-// An unreadable merge record is logged at Warn and read as absent, so no reader errors on it and the next Merge-In or Finalize rewrites it.
+// An unreadable merge record is logged at Warn and read as absent, so no reader errors on it and the next Parent-Align or Finalize rewrites it.
 // The record and the fabric are read on each call, so a merge made after bootstrap is read as it stands.
 func taskMergeBase(l *lyxcwd.Location) func() (string, error) {
 	fallback := pairMergeBase(l)
@@ -136,7 +136,7 @@ func taskMergeBase(l *lyxcwd.Location) func() (string, error) {
 // codeSubject returns the identity of the task's diff against its merge base from taskMergeBase.
 // A run with no recorded parent branch, a standalone run, answers not found, so its code segments write no records.
 // The diff leaves out the run's own state directories and harnessOwnFiles while untracked; the run's records live on the records side of the fabric, so no diff of the task's code holds them.
-// Bound: a change confined to harnessOwnFiles reads as an unchanged subject; the landing gate at Merge-In and Finalize bounds it.
+// Bound: a change confined to harnessOwnFiles reads as an unchanged subject; the landing gate at Parent-Align and Finalize bounds it.
 func codeSubject(location *lyxcwd.Location, runID string) (shedadapters.Subject, bool, error) {
 	origin, found, err := fabricengine.ReadOrigin(location)
 	if err != nil {
@@ -229,10 +229,19 @@ func documentSubjectWithHead(location *lyxcwd.Location, head func() (string, err
 	}
 }
 
-// fixerReportInput returns the review input seam of a loom run: the merge fixer's latest Merge-In report under scratchDir, with the time it was written.
+// fixerReportInput returns the review input seam of a loom run: the merge fixer's latest Parent-Align report under scratchDir, with the time it was written.
+// A run past the row under its former name, Merge-In, left its report under that name, so the seam reads it when the row's own is absent.
 // A session that never ran leaves no report, which answers not found.
 func fixerReportInput(scratchDir string) func() (string, time.Time, bool, error) {
-	return reviewInputFile(filepath.Join(scratchDir, loomshed.NameMergeIn+"-fixer-report.md"))
+	current := reviewInputFile(filepath.Join(scratchDir, loomshed.NameParentAlign+"-fixer-report.md"))
+	retired := reviewInputFile(filepath.Join(scratchDir, "Merge-In-fixer-report.md"))
+	return func() (string, time.Time, bool, error) {
+		path, written, found, err := current()
+		if err != nil || found {
+			return path, written, found, err
+		}
+		return retired()
+	}
 }
 
 // overlapNoteInput returns the review input seam of a darn run: the overlap note Finalize writes under scratchDir on a large-merge reroute, with the time it was written.

@@ -56,6 +56,27 @@ func TestRenameProducers(t *testing.T) {
 		}
 	})
 
+	t.Run("a status file that does not decode is left byte for byte and is not an error", func(t *testing.T) {
+		t.Parallel()
+		shed, _, _, _ := newTestShed(t)
+		seedStatus(t, shed.StatusPath, shed.StatusLockPath, commonSeed("Old"))
+		malformed := []byte(`{"current_producer":`)
+		if err := os.WriteFile(shed.StatusPath, malformed, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		if wrote, err := RenameProducers(request(shed)); err != nil || wrote {
+			t.Fatalf("RenameProducers() = %v, %v; want false, nil", wrote, err)
+		}
+		after, err := os.ReadFile(shed.StatusPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(malformed, after) {
+			t.Errorf("status file changed:\n%s\nwant:\n%s", after, malformed)
+		}
+	})
+
 	t.Run("a file naming no retired row is left byte for byte and takes no lock", func(t *testing.T) {
 		t.Parallel()
 		shed, _, _, _ := newTestShed(t)

@@ -19,7 +19,7 @@
 6. Run `{{.final_self_check_command}}` again until it passes, then end your turn.
 
 One fork pass per writer spawn.
-A writer re-prompted by a gate or a parent-review reject fixes the reviewed files itself: if it has not yet made its lens spawn call (step 2), it runs this procedure once; otherwise it spawns no forks.
+A writer re-prompted by a gate fixes the reviewed files itself: if it has not yet made its lens spawn call (step 2), it runs this procedure once; otherwise it spawns no forks.
 
 {{.relaunch_rules}}Lenses:
 {{.lens_list}}

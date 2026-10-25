@@ -76,6 +76,12 @@ func escalationPath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-escalation.md", round))
 }
 
+// decisionSnapshotPath returns the path of the decision snapshot file for round inside runDir:
+// the titles of the decision record's `Added after Discussion` entries when round was first escalated with cause decision.
+func decisionSnapshotPath(runDir string, round int) string {
+	return filepath.Join(runDir, fmt.Sprintf("round-%d-decision-snapshot.yaml", round))
+}
+
 // parentNoticePath returns the path of the one-line parent notice file for round inside runDir.
 func parentNoticePath(runDir string, round int) string {
 	return filepath.Join(runDir, fmt.Sprintf("round-%d-parent-notice.md", round))

@@ -44,7 +44,7 @@ func TestFinalizeDirtGuard(t *testing.T) {
 		{name: "Finalize over a read error beside dirt", paths: dirtyPaths, dirtErr: errors.New("git failed"), target: "Finalize", wantReads: 1},
 		{name: "settled review row", paths: dirtyPaths, target: "Plan-Burler-Review", wantRefusal: []string{settledRefusal}},
 		{name: "later guard error", paths: dirtyPaths, target: "Webster-Burler-Review", wantErr: errLater},
-		{name: "Merge-In", paths: dirtyPaths, target: "Merge-In"},
+		{name: "Parent-Align", paths: dirtyPaths, target: "Parent-Align"},
 		{name: "isFinalize error", isFinalizeErr: errRecipe, paths: dirtyPaths, target: "Finalize", wantErr: errRecipe},
 	}
 	for _, tt := range tests {

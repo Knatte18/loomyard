@@ -59,7 +59,7 @@ func newMergeInDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 	// The parent is told to add nothing over the fork point, so Merge-In aligns with no fixer session.
 	deps.HoldsWork = func(string, string) (bool, error) { return true, nil }
 	deps.RowEntry = func(string) (int, error) { return 1, nil }
-	deps.Config.MergeFixAttempts = 1
+	deps.Config.ParentAlignFixAttempts = 1
 	return deps
 }
 
@@ -82,9 +82,9 @@ func TestMergeIn_ConflictSessionLoadsLanguageSkills(t *testing.T) {
 		deps.Shuttle = shuttle
 		deps.LanguageSkills = []string{"scribe:golang-testing"}
 
-		m, err := landingshed.NewMergeIn(deps)
+		m, err := landingshed.NewParentAlign(deps)
 		if err != nil {
-			t.Fatalf("NewMergeIn() error = %v; want nil", err)
+			t.Fatalf("NewParentAlign() error = %v; want nil", err)
 		}
 		shedfake.RequireOutcome(t, m, shedengine.Done)
 
@@ -110,9 +110,9 @@ func TestMergeIn_ConflictSessionLoadsLanguageSkills(t *testing.T) {
 
 		deps := newMergeInDepsAt(t, taskWorktree)
 		deps.PushSkipped = false
-		m, err := landingshed.NewMergeIn(deps)
+		m, err := landingshed.NewParentAlign(deps)
 		if err != nil {
-			t.Fatalf("NewMergeIn() error = %v; want nil", err)
+			t.Fatalf("NewParentAlign() error = %v; want nil", err)
 		}
 		shedfake.RequireOutcome(t, m, shedengine.Done)
 

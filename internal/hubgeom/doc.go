@@ -39,7 +39,7 @@
 // A found record's parent is its ParentWorktree, read as the prime when the record names the prime's checked-out branch or the prime's worktree, and never derived by matching the recorded branch against the pairs present here.
 // So a member whose beam pair is absent on this machine still reads the beam as its parent, and the beam's owner as its own.
 // ResolveParent keeps answering the parent pair's orch name for a reader that needs the pair itself:
-// the parent names the driver's prompts carry, and the Discussion-Write parent review, whose reviewer is the recorded parent's own orch and is absent when that orch is not live.
+// the parent names the driver's prompts carry.
 // The `lyx loom decision add --by parent` guard admits the destination of notices instead, so the orch that receives them can record the call.
 //
 // NearestLiveOrch is the destination of a notice to an orch.

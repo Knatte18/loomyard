@@ -18,8 +18,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -261,6 +263,60 @@ func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
 	}
 }
 
+// TestRenameRetiredRows pins that renameRetiredRows carries every field of a status file naming a retired row onto its successor, for the loom table and for the darn one, and leaves other rows alone.
+func TestRenameRetiredRows(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		renames map[string]string
+		retired string
+		want    string
+	}{
+		{name: "a loom run parked on Merge-In", renames: loomrecipe.LoomRetiredRows(), retired: "Merge-In", want: loomshed.NameParentAlign},
+		{name: "a darn run parked on Darn", renames: loomrecipe.DarnRetiredRows(), retired: "Darn", want: loomshed.NameDarnWrite},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			statusPath, statusLock := shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID)
+			if err := os.MkdirAll(filepath.Dir(statusLock), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			seed := shedengine.Status{
+				CurrentProducer: tt.retired, EnteredRow: tt.retired, PauseBefore: tt.retired, PauseAfter: tt.retired,
+				State:   shedengine.StateBlocked,
+				History: []shedengine.HistoryEntry{{Producer: loomshed.NameWebster, Outcome: shedengine.Done}, {Producer: tt.retired, Outcome: shedengine.Stuck}},
+			}
+			if err := state.WriteJSON(statusPath, statusLock, seed); err != nil {
+				t.Fatalf("state.WriteJSON() = %v; want nil", err)
+			}
+
+			c := &loomCLI{runID: shedrun.SelfRunID, shedPaths: shedbuild.ShedPaths{
+				StatusPath: statusPath, StatusLockPath: statusLock, LockPath: shedrun.RunLock(loc, shedrun.SelfRunID),
+			}}
+			if err := c.renameRetiredRows(tt.renames); err != nil {
+				t.Fatalf("renameRetiredRows() = %v; want nil", err)
+			}
+
+			got, _, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLock)
+			if err != nil {
+				t.Fatalf("read status = %v; want nil", err)
+			}
+			fields := []string{got.CurrentProducer, got.EnteredRow, got.PauseBefore, got.PauseAfter, got.History[1].Producer}
+			for i, field := range fields {
+				if field != tt.want {
+					t.Errorf("renamed field %d = %q; want %q", i, field, tt.want)
+				}
+			}
+			if got.History[0].Producer != loomshed.NameWebster {
+				t.Errorf("History[0].Producer = %q; want %q, untouched", got.History[0].Producer, loomshed.NameWebster)
+			}
+		})
+	}
+}
+
 func TestRecipeRouting(t *testing.T) {
 	t.Parallel()
 
@@ -269,10 +325,10 @@ func TestRecipeRouting(t *testing.T) {
 		wantRow string
 		absent  string
 	}{
-		{shedrun.RecipeLoom, loomshed.NameMergeIn, loomshed.NameDarnWrite},
-		{"", loomshed.NameMergeIn, loomshed.NameDarnWrite},
-		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NameMergeIn},
-		{shedrun.RecipeBeam, "Beam-Describe", loomshed.NameMergeIn},
+		{shedrun.RecipeLoom, loomshed.NameParentAlign, loomshed.NameDarnWrite},
+		{"", loomshed.NameParentAlign, loomshed.NameDarnWrite},
+		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NameParentAlign},
+		{shedrun.RecipeBeam, "Beam-Describe", loomshed.NameParentAlign},
 	}
 	for _, tt := range tests {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {
@@ -365,7 +421,7 @@ func TestLatestDarnOutcome(t *testing.T) {
 		},
 		{
 			name:   "a lone Darn-Write reroute entry reports not found",
-			status: &shedengine.Status{CurrentProducer: loomshed.NameMergeIn, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.OutcomeReroute}}},
+			status: &shedengine.Status{CurrentProducer: loomshed.NameParentAlign, State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameDarnWrite, Outcome: shedengine.OutcomeReroute}}},
 		},
 	}
 	for _, tt := range tests {

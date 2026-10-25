@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
-	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -72,19 +71,11 @@ func newLoomBurler(t *testing.T) *shedfake.BurlerHalfRunner {
 	return burler
 }
 
-// testParentReviewConfig fills the Env.ParentReview the embedded recipe's parent-review gate entry needs to build.
-// Reviewer is left empty, so the gate passes without opening a request.
-func testParentReviewConfig(dir, decisionRecordPath, supportLogPath string) parentreview.GateConfig {
-	return parentreview.GateConfig{
-		Store:          parentreview.Store{Root: filepath.Join(dir, "parent-review"), LockDir: filepath.Join(dir, "parent-review-lock")},
-		Slug:           "fixture",
-		DecisionRecord: decisionRecordPath,
-		SupportLog:     supportLogPath,
-		WaitBound:      time.Hour,
-		RenderDelivery: func(string) (string, error) { return "delivery", nil },
-		RenderBrief:    func() (string, error) { return "brief", nil },
-	}
-}
+// parentReviewRoundRel is the anchor-relative path of the open parent-review request buildSequenceFixture lays out.
+const parentReviewRoundRel = "_lyx/reviews/parent-review/round-1/request.json"
+
+// openParentReviewRequest is the request an older binary left for an open round: state open and no verdict beside it.
+const openParentReviewRequest = `{"slug":"fixture-slug","round":1,"state":"open"}` + "\n"
 
 // validDecisionRecord carries all seven required sections, in order, plus the optional eighth.
 const validDecisionRecord = `# Decision record
@@ -392,6 +383,7 @@ func writeBatcherConfig(t *testing.T, anchorPath, content string) {
 
 // buildSequenceFixture builds a temp anchor whose on-disk state makes Discussion-Write's own gate, Plan-Write's own gate, and Webster's batcher load -- the three real, non-injectable checks on the main line -- genuinely pass, and returns the anchor path alongside the shedrecipe.Env/shedbuild.ShedPaths pair pointing at it.
 // The Env starts from envkit.FullEnv and overrides the anchor, the paths, the loom shuttle, the burler, and the specs the sequence tests script.
+// The anchor also holds an open parent-review round at parentReviewRoundRel, as an older binary left it.
 //
 // Discussion-Write's gate: both discussion files are written, the decision record carrying all
 // seven required H2 sections (writeDiscussionFixture). Plan-Write's gate: a
@@ -445,6 +437,16 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	}
 	decisionRecordPath, supportLogPath := writeDiscussionFixture(t, discussionDir, validDecisionRecord, "support log")
 
+	// An open parent-review round as an older binary left it: a request with no verdict.
+	// No gate reads it any more, so a run waiting in it passes Discussion-Write on its next gate evaluation.
+	parentReviewRound := filepath.Join(dir, parentReviewRoundRel)
+	if err := os.MkdirAll(filepath.Dir(parentReviewRound), 0o755); err != nil {
+		t.Fatalf("mkdir parent-review round dir: %v", err)
+	}
+	if err := os.WriteFile(parentReviewRound, []byte(openParentReviewRequest), 0o644); err != nil {
+		t.Fatalf("write parent-review request: %v", err)
+	}
+
 	// Seeded unapproved, matching what the real Plan-Write producer must write: it is inert at the
 	// gate -- loomshed.NewPlanWrite's rotation archives every top-level .md file in the plan
 	// directory before the shuttle runs, so the loom shuttle's "plan"-role branch rewrites the whole
@@ -487,7 +489,6 @@ func buildSequenceFixture(t *testing.T) (anchorPath string, env shedrecipe.Env, 
 	}
 
 	env = envkit.FullEnv(t)
-	env.ParentReview = testParentReviewConfig(dir, decisionRecordPath, supportLogPath)
 	env.Cwd = cwd
 	env.AnchorPath = dir
 	env.ConfigDirs = configengine.Dirs{Anchor: dir}

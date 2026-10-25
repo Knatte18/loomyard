@@ -315,7 +315,7 @@ func reviewFiles(segment string, names ...string) map[string]string {
 
 // parentRoundFiles returns the files of parent-review round number: a delivery stamped when delivered, with pings keep-alives, an alignment record in state alignmentState unless that is empty, and a verdict of kind verdictKind unless that is empty.
 func parentRoundFiles(number int, delivered bool, pings int, alignmentState, verdictKind string) map[string]string {
-	dir := path.Join(filepath.ToSlash(loomengine.LoomParentReviewDirRel()), fmt.Sprintf("round-%d", number))
+	dir := path.Join(filepath.ToSlash(parentReviewDirRel()), fmt.Sprintf("round-%d", number))
 	delivery := fmt.Sprintf(`{"pings":%d}`, pings)
 	if delivered {
 		delivery = fmt.Sprintf(`{"delivered_at":%q,"pings":%d}`, at(1).Format(time.RFC3339), pings)

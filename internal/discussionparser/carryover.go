@@ -46,11 +46,13 @@ const (
 // CarryOverFinding is one finding that was open when its segment closed.
 // It holds the key, the class and severity labels (the caller passes "unlabelled" for a missing label),
 // and the ledger rounds the key was open in.
+// AddedSince holds the titles, in record order, of the `Added after Discussion` entries recorded since the finding was escalated to the run's parent; nil means none.
 type CarryOverFinding struct {
-	Key      string
-	Class    string
-	Severity string
-	Rounds   []int
+	Key        string
+	Class      string
+	Severity   string
+	Rounds     []int
+	AddedSince []string
 }
 
 // CarryOver is one review segment's carry-over entry.
@@ -189,9 +191,17 @@ func renderCarryOver(entry CarryOver) []string {
 		for i, round := range finding.Rounds {
 			rounds[i] = strconv.Itoa(round)
 		}
-		lines = append(lines, fmt.Sprintf("  - %s (class %s, severity %s, open in rounds %s)",
+		var answeredSince string
+		if len(finding.AddedSince) > 0 {
+			titles := make([]string, len(finding.AddedSince))
+			for i, title := range finding.AddedSince {
+				titles[i] = sanitizeCarryOverField(title)
+			}
+			answeredSince = "; answered since by: " + strings.Join(titles, "; ")
+		}
+		lines = append(lines, fmt.Sprintf("  - %s (class %s, severity %s, open in rounds %s%s)",
 			sanitizeCarryOverField(finding.Key), sanitizeCarryOverField(finding.Class),
-			sanitizeCarryOverField(finding.Severity), strings.Join(rounds, ", ")))
+			sanitizeCarryOverField(finding.Severity), strings.Join(rounds, ", "), answeredSince))
 	}
 	return append(lines, carryOverClosePrefix+entry.Segment+carryOverMarkerEnd)
 }

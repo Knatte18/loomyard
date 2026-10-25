@@ -59,12 +59,12 @@ func TestRouting_ProgressAt(t *testing.T) {
 			rows[def.Name] = struct{ done, stuck, reroute string }{def.OnDone, def.OnStuck, def.OnReroute}
 		}
 		for _, want := range []struct{ row, done, stuck, reroute string }{
-			{loomshed.NameWebster, loomshed.NameMergeIn, "", loomshed.NamePlanBurlerReview},
-			{loomshed.NameMergeIn, loomshed.NameCodeBouncer, "", ""},
+			{loomshed.NameWebster, loomshed.NameParentAlign, "", loomshed.NamePlanBurlerReview},
+			{loomshed.NameParentAlign, loomshed.NameCodeBouncer, "", ""},
 			{loomshed.NameCodeBouncer, loomshed.NameDescribe, loomshed.NameCodeBurlerReview, ""},
 			{loomshed.NameDescribe, loomshed.NamePRReview, "", ""},
 			{loomshed.NamePRReview, loomshed.NameFinalize, "", ""},
-			{loomshed.NameFinalize, loomshed.NameFrictionReflect, "", loomshed.NameMergeIn},
+			{loomshed.NameFinalize, loomshed.NameFrictionReflect, "", loomshed.NameParentAlign},
 		} {
 			got, ok := rows[want.row]
 			if !ok {

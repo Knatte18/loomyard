@@ -90,7 +90,7 @@ func TestDarnWrite_Call(t *testing.T) {
 			wantResult:      shedengine.Stuck,
 			wantReason:      "verify gate failed: see /work/verify-1.log; " + darnResumeWayForward,
 			wantReasonHas:   []string{"lyx loom resume"},
-			wantReasonLacks: "Merge-In",
+			wantReasonLacks: "Parent-Align",
 			wantEvents:      "session,commit",
 		},
 		{

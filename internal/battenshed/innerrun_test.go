@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
@@ -417,74 +416,6 @@ func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) 
 			}
 			if !strings.Contains(err.Error(), "context cancelled during run") {
 				t.Errorf("Call() error = %q; want it to carry the cancelled-context diagnosis, not the raw seam error", err.Error())
-			}
-		})
-	}
-}
-
-// TestInnerRun_RunningArmReviewWaitNote pins the running arm's reason with a reviewer note, without one, when ReviewWait fails, and that a changed note rewrites the reason once.
-// The wait reads the note on every probe check, and the reason is written at entry and only when it changes.
-// It captures the process-global logger at Debug, where each reason is its own key and so logs once per write, and a failing ReviewWait warns once and logs its recovery.
-func TestInnerRun_RunningArmReviewWaitNote(t *testing.T) {
-	plain := "inner shed run still running; checking it every 5s"
-	hub := "inner shed run waiting: parent review: waiting on the hub; checking it every 5s"
-	script := func(notes ...string) func() (string, error) {
-		calls := 0
-		return func() (string, error) {
-			i := min(calls, len(notes)-1)
-			calls++
-			return notes[i], nil
-		}
-	}
-	// failsTwice fails its first two reads and answers an empty note after.
-	failsTwice := func() func() (string, error) {
-		calls := 0
-		return func() (string, error) {
-			calls++
-			if calls <= 2 {
-				return "", errors.New("boom")
-			}
-			return "", nil
-		}
-	}
-	tests := []struct {
-		name       string
-		reviewWait func() (string, error)
-		// wantReasons is the reason in force at the end of each of the three checks.
-		wantReasons []string
-		// wantWrites counts reason writes: the entry, each change, and the pause that ends the wait.
-		wantWrites int
-		// wantEpisode is true when the row's ReviewWait fails and then heals: one Warn, a Debug after it and one recovery Info.
-		wantEpisode bool
-	}{
-		{"note replaces plain reason", func() (string, error) { return "parent review: waiting on the hub", nil }, []string{hub, hub, hub}, 2, false},
-		{"empty note keeps plain reason", func() (string, error) { return "", nil }, []string{plain, plain, plain}, 2, false},
-		{"nil ReviewWait keeps plain reason", nil, []string{plain, plain, plain}, 2, false},
-		{"failing ReviewWait falls back to plain reason", failsTwice(), []string{plain, plain, plain}, 2, true},
-		{"a changed note rewrites the reason once", script("", "", "parent review: waiting on the hub"), []string{plain, hub, hub}, 3, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			buf := logcapture.CaptureVerbose(t)
-			logger.SetVerbosity(2)
-
-			scratchDir := t.TempDir()
-			clock := &fakeClock{}
-			_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, clock)
-			clock.watchReason(scratchDir)
-			clock.pauseAtSleep = 3
-			deps.NoticeProbe = 0
-			deps.ReviewWait = tt.reviewWait
-
-			shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, 5*time.Second, scratchDir, testGrace), shedengine.Stuck)
-			if !slices.Equal(clock.reasons, tt.wantReasons) {
-				t.Errorf("reasons at each check = %q; want %q", clock.reasons, tt.wantReasons)
-			}
-			if got := strings.Count(buf.String(), "producer stuck"); got != tt.wantWrites {
-				t.Errorf("reason writes = %d; want %d", got, tt.wantWrites)
-			}
-			if tt.wantEpisode {
-				assertRepeatedFailureEpisode(t, buf.String(), "reviewer wait note unavailable")
 			}
 		})
 	}

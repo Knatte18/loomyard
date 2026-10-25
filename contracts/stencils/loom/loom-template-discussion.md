@@ -44,6 +44,9 @@ lyx board get '{"slug":"<other-slug>"}'
 Treat planned work on other entries as design context.
 The design must fit it without duplicating or contradicting it.
 
+A board note titled `Decision for {{.slug}}:` for this task is a parent decision, which wins over the entry body.
+Read each such note `lyx board list` shows.
+
 ## Step 2 — Explore before asking
 
 Read the relevant parts of the codebase before asking the operator anything.
@@ -87,6 +90,11 @@ A follow-up a decision files goes on the board as a note, never as a task, and n
 
 ## Step 4 — How to get answers
 
+A question only the run's parent can settle is not settled from your own exploration or your lens forks while running autonomously.
+Such a question is the entry plainly outdated by landed work or contradicted by another entry or run, a design conflict with another run, a landed parent commit contradicting or already making a decision, or doubt about what the task is for.
+Record it under the decision record's `## Open risks`, naming the entry, run or commit, so the Discussion-Review perch raises it to the parent.
+In interactive mode put it to the operator in the pane like any other question.
+
 {{.mode_rules}}
 {{.twill_directive}}
 ## Step 5 — Write the three output files
@@ -110,22 +118,6 @@ It exits 0 on a clean gate and 1 otherwise, and puts its findings under the fail
 Fix whatever it reports, then re-run it until it exits 0 before ending your turn.
 A design change in that turn may update `{{.relevant_path}}` in the same turn.
 
-## Messages the gate may send after you end your turn
-
-Once `lyx loom validate-discussion` passes, the gate may send you one of three messages.
-None changes the design on its own.
-
-- **A delivery prompt** asks you to notify the parent reviewer and then record the delivery.
-  Follow it as written.
-  Change nothing in the discussion.
-- **A parent-review re-prompt** names a review file.
-  Read it and address every finding, BLOCKING and NIT alike, by fixing it in the discussion or by answering it.
-  Append one parent-review entry to the support log's `## Review rounds`, listing each finding with its disposition: fixed, or answered with the reason.
-  A design change in that turn may update `{{.relevant_path}}` in the same turn.
-  Then re-run `lyx loom validate-discussion` until it exits 0, and end your turn.
-- **A keep-alive prompt** asks only that you end your turn.
-  It changes nothing in the discussion.
-
 ## Never use `AskUserQuestion`
 
 Never call the `AskUserQuestion` tool at any point in this session, in either mode — see Step 4 above for the correct channel to ask questions through.
@@ -137,13 +129,6 @@ You are a **design** agent. The only files you create or modify in this session 
 - `{{.decision_record_path}}`
 - `{{.support_log_path}}`
 - `{{.relevant_path}}`
-
-Two narrow carve-outs apply, each only when the gate's message asks for it:
-
-- running `lyx loom review delivered` when a delivery prompt asks;
-- appending the one parent-review entry to `## Review rounds` in the support log when a parent-review re-prompt asks.
-
-Every other `## Review rounds` entry stays the Discussion-review gate's.
 
 Everything else in the worktree is read-only to you. In particular, never write, move, delete, or reconcile any of:
 

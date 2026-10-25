@@ -175,7 +175,7 @@ func (row *RunRow) readSegments(records Reader, tag gitrepo.TagRef) error {
 		return fmt.Errorf("reportengine: list %s at %s: %w", reviewsDir, tag.Name, err)
 	}
 
-	parentReviewDir := filepath.Base(loomengine.LoomParentReviewDirRel())
+	parentReviewDir := filepath.Base(parentReviewDirRel())
 	archivedRounds := map[string]int{}
 	for _, subdir := range subdirs {
 		if subdir == parentReviewDir {

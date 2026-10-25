@@ -93,13 +93,13 @@ gates:
   webster-fix: {tiers: [0], scope: diff}
   darn-write: {tiers: [0], scope: diff}
   code-burler-fix: {tiers: [0], scope: diff}
-  merge-in: {tiers: [0], scope: all}
+  parent-align: {tiers: [0], scope: all}
   finalize: {tiers: [0], scope: all}
 ```
 
 A landing key may list more tiers than the card keys, such as one that runs the slow category.
 
-Merge-In is then the one planned whole-solution run per task, since it is the first gate over the merged parent.
+Parent-Align is then the one planned whole-solution run per task, since it is the first gate over the merged parent.
 Finalize carries that run from the green record when no commit landed between, and runs whole again only after a fix or a moved parent changed the tree.
 
 ## A timing tier

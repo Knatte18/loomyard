@@ -28,13 +28,14 @@ type RenameRequest struct {
 
 // RenameProducers rewrites every retired row name the status file carries onto its successor: current_producer, entered_row, pause_before, pause_after and each history entry's producer.
 // It reports whether it wrote the file.
-// An absent status file, and one that names no retired row, are left untouched and take no lock, so a caller may run it before every verb.
+// An absent status file, one that does not decode, and one that names no retired row, are left untouched and take no lock, so a caller may run it before every verb.
 // A run lock held by a live driver refuses with ErrShedBusy and leaves the file unchanged.
 // Like Goto, it calls no CommitStatus: the next step's persist commits the file.
 func RenameProducers(req RenameRequest) (bool, error) {
 	st, found, err := state.ReadJSONNoMkdir[Status](req.StatusPath, req.StatusLockPath)
 	// A run directory not yet created fails the status lock open with not-exist; that is an absent status file too.
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	// A status file that does not decode names no retired row; the driver's own read gate diagnoses it.
+	if err != nil && !errors.Is(err, fs.ErrNotExist) && !errors.Is(err, state.ErrDecode) {
 		return false, fmt.Errorf("shedengine: read status file %q: %w", req.StatusPath, err)
 	}
 	if err != nil || !found || !namesRetiredRow(st, req.Renames) {

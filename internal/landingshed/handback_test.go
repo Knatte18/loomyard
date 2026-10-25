@@ -19,13 +19,16 @@ func TestHandsBack(t *testing.T) {
 		reason   string
 		want     bool
 	}{
+		{"LandingStopAtParentAlign", "Parent-Align", LandingStopPrefix + "the fixer escalated; way forward: resolve it, then `lyx loom resume`", true},
 		{"LandingStopAtMergeIn", "Merge-In", LandingStopPrefix + "the fixer escalated; way forward: resolve it, then `lyx loom resume`", true},
 		{"LandingStopAtFinalize", "Finalize", LandingStopPrefix + "the fixer's change is over the caps; way forward: review it", true},
+		{"UndecodableAttemptRecordAtParentAlign", "Parent-Align", LandingStopPrefix + "the fixer attempt record of Parent-Align does not decode: p; way forward: remove p", true},
 		{"UndecodableAttemptRecordAtMergeIn", "Merge-In", LandingStopPrefix + "the fixer attempt record of Merge-In does not decode: p; way forward: remove p", true},
 		{"UndecodableAttemptRecordAtFinalize", "Finalize", LandingStopPrefix + "the fixer attempt record of Finalize does not decode: p; way forward: remove p", true},
 		{"LockRecheckAtFinalize", "Finalize", LandingStopPrefix + "the parent lock on \"main\" no longer names this run; nothing was landed", true},
-		{"RerouteCapAtFinalize", "Finalize", shedengine.ReasonRerouteCapReached + ": Finalize rerouted to Merge-In 3 times since its last done; way forward: x", true},
+		{"RerouteCapAtFinalize", "Finalize", shedengine.ReasonRerouteCapReached + ": Finalize rerouted to Parent-Align 3 times since its last done; way forward: x", true},
 		{"RerouteCapAtWebster", "Webster", shedengine.ReasonRerouteCapReached + ": Webster rerouted to Plan-Write 3 times since its last done; way forward: x", false},
+		{"RerouteCapAtParentAlign", "Parent-Align", shedengine.ReasonRerouteCapReached + ": Parent-Align rerouted to Webster 3 times since its last done; way forward: x", false},
 		{"RerouteCapAtMergeIn", "Merge-In", shedengine.ReasonRerouteCapReached + ": Merge-In rerouted to Webster 3 times since its last done; way forward: x", false},
 		{"LandingStopPrefixAtOtherRow", "Describe", LandingStopPrefix + "the fixer escalated", false},
 		{"UnrelatedReasonAtFinalize", "Finalize", "dirty parent: the parent's code checkout has tracked changes", false},

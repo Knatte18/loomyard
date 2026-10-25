@@ -22,7 +22,7 @@ import (
 // packages this package already imports directly -- an indirection with no benefit here.
 var registry = map[string]Constructor{
 	"Preflight":        preflightEntry,
-	"MergeIn":          mergeInEntry,
+	"ParentAlign":      parentAlignEntry,
 	"DarnWrite":        darnWriteEntry,
 	"Finalize":         finalizeEntry,
 	"FrictionReflect":  frictionReflectEntry,

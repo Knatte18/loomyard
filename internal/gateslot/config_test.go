@@ -27,7 +27,7 @@ var templateDefaults = Config{
 		"card":            {Tiers: []int{0}, Scope: "card"},
 		"batch":           {Tiers: []int{0}, Scope: "card"},
 		"webster":         {Tiers: []int{0}, Scope: "all"},
-		"merge-in":        {Tiers: []int{0}, Scope: "all"},
+		"parent-align":    {Tiers: []int{0}, Scope: "all"},
 		"finalize":        {Tiers: []int{0}, Scope: "all"},
 		"webster-fix":     {Tiers: []int{0}, Scope: "diff"},
 		"darn-write":      {Tiers: []int{0}, Scope: "diff"},
@@ -122,8 +122,8 @@ func TestLoadConfig(t *testing.T) {
 				c.Gates["push"] = GateKey{Tiers: []int{0, 1}, Scope: "diff"}
 			}), "",
 		},
-		{"scope card on a key but card and batch", baseKeys + "gates:\n  merge-in: {tiers: [0], scope: card}\n", Config{}, `gate config key "gates.merge-in": scope card is only for the card and batch keys` + fixIt},
-		{"an unknown scope", baseKeys + "gates:\n  merge-in: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.merge-in": scope "some"; want card, diff or all` + fixIt},
+		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `gate config key "gates.parent-align": scope card is only for the card and batch keys` + fixIt},
+		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.parent-align": scope "some"; want card, diff or all` + fixIt},
 		{"a key in the retired list shape", baseKeys + "gates:\n  card: [0]\n", Config{}, `gate config key "gates.card": the retired list shape; fix it with "lyx fabric reconcile" (or "lyx config reconcile --layer default --apply") from the prime, which migrates it` + roleClause},
 		{
 			"a manual tier above tier0 loads", baseKeys + `tiers: {tier0: {command: x, timeout_min: 5, counter: vstest}, tier3: {command: y, timeout_min: 5, counter: vstest, manual: true}}`,
@@ -531,7 +531,7 @@ func TestMigrateConfig(t *testing.T) {
 	withoutPublish := "gates:\n  card: {tiers: [0], scope: card}\n  webster-fix: {tiers: [0, 1], scope: diff}\nscoper: none\n"
 	retiredLists := "gates:\n  # the lists\n  card: [0]\n  batch: [0, 1]\n  round: [0, 1]\n  final: [0, 1, 2]\n  landing: [0, 1]\nscoper: none\n"
 	migratedLists := "gates:\n  # the lists\n  card: {tiers: [0], scope: card}\n  batch: {tiers: [0, 1], scope: card}\n  webster-fix: {tiers: [0, 1], scope: diff}\n  webster: {tiers: [0, 1, 2], scope: all}\n" +
-		"  merge-in: {tiers: [0, 1], scope: all}\n  finalize: {tiers: [0, 1], scope: all}\n  darn-write: {tiers: [0, 1], scope: diff}\n  code-burler-fix: {tiers: [0, 1], scope: diff}\nscoper: none\n"
+		"  parent-align: {tiers: [0, 1], scope: all}\n  finalize: {tiers: [0, 1], scope: all}\n  darn-write: {tiers: [0, 1], scope: diff}\n  code-burler-fix: {tiers: [0, 1], scope: diff}\nscoper: none\n"
 
 	tests := []struct {
 		name      string
@@ -549,14 +549,24 @@ func TestMigrateConfig(t *testing.T) {
 				"gates.batch: list shape retired, migrated to tiers and scope card",
 				"gates.round: retired, migrated to webster-fix",
 				"gates.final: retired, migrated to webster",
-				"gates.landing: retired, migrated to merge-in, finalize, darn-write and code-burler-fix",
+				"gates.landing: retired, migrated to parent-align, finalize, darn-write and code-burler-fix",
 			},
 			false,
 		},
 		{
-			"a migrated key the file already holds keeps its value", "gates:\n  landing: [0, 1]\n  merge-in: {tiers: [0], scope: diff}\n",
-			"gates:\n  finalize: {tiers: [0, 1], scope: all}\n  darn-write: {tiers: [0, 1], scope: diff}\n  code-burler-fix: {tiers: [0, 1], scope: diff}\n  merge-in: {tiers: [0], scope: diff}\n",
+			"a migrated key the file already holds keeps its value", "gates:\n  landing: [0, 1]\n  parent-align: {tiers: [0], scope: diff}\n",
+			"gates:\n  finalize: {tiers: [0, 1], scope: all}\n  darn-write: {tiers: [0, 1], scope: diff}\n  code-burler-fix: {tiers: [0, 1], scope: diff}\n  parent-align: {tiers: [0], scope: diff}\n",
 			[]string{"gates.landing: retired, migrated to finalize, darn-write and code-burler-fix"}, false,
+		},
+		{
+			"a merge-in key is renamed to parent-align with its value", "gates:\n  card: {tiers: [0], scope: card}\n  merge-in: {tiers: [0, 1], scope: all}\n",
+			"gates:\n  card: {tiers: [0], scope: card}\n  parent-align: {tiers: [0, 1], scope: all}\n",
+			[]string{"gates.merge-in: renamed to gates.parent-align"}, false,
+		},
+		{
+			"a merge-in key beside parent-align is dropped", "gates:\n  merge-in: {tiers: [0, 1], scope: all}\n  parent-align: {tiers: [0], scope: diff}\n",
+			"gates:\n  parent-align: {tiers: [0], scope: diff}\n",
+			[]string{"gates.merge-in: retired, removed"}, false,
 		},
 		{
 			"a hub file with the retired lists and guard_tier reconciles to the keys with no guard_tier", "gates:\n  # the lists\n  card: [0]\n  batch: [0, 1]\n  round: [0, 1]\n  final: [0, 1, 2]\n  landing: [0, 1]\nscoper: go\nguard_tier: 1\nrefuse_raw: []\n",
@@ -566,7 +576,7 @@ func TestMigrateConfig(t *testing.T) {
 				"gates.batch: list shape retired, migrated to tiers and scope card",
 				"gates.round: retired, migrated to webster-fix",
 				"gates.final: retired, migrated to webster",
-				"gates.landing: retired, migrated to merge-in, finalize, darn-write and code-burler-fix",
+				"gates.landing: retired, migrated to parent-align, finalize, darn-write and code-burler-fix",
 				"guard_tier: retired, removed",
 			},
 			false,

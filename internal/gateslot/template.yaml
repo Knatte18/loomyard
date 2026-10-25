@@ -10,14 +10,14 @@ busy_quit_sec: 120  # seconds a Go test binary under lyx gate test may keep a CP
 tiers: {}
 
 # Gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|all}.
-# The keys lyx reads: card and batch (scope card, the card's own packages), webster, merge-in and finalize (scope all, the whole tree), and webster-fix, darn-write and code-burler-fix (scope diff, the diff from the merge base).
+# The keys lyx reads: card and batch (scope card, the card's own packages), webster, parent-align and finalize (scope all, the whole tree), and webster-fix, darn-write and code-burler-fix (scope diff, the diff from the merge base).
 # The scope card is only for the card and batch keys.
 # No tier list may be empty, and a tier a key names must be declared above when the gate runs.
 gates:
   card: {tiers: [0], scope: card}
   batch: {tiers: [0], scope: card}
   webster: {tiers: [0], scope: all}
-  merge-in: {tiers: [0], scope: all}
+  parent-align: {tiers: [0], scope: all}
   finalize: {tiers: [0], scope: all}
   webster-fix: {tiers: [0], scope: diff}
   darn-write: {tiers: [0], scope: diff}

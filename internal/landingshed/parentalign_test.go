@@ -1,6 +1,6 @@
 //go:build tier0
 
-// mergein_test.go drives Merge-In's Call against a real parentlock.Store in a temporary directory and fake tip reads, resolver and verify seams.
+// parentalign_test.go drives Parent-Align's Call against a real parentlock.Store in a temporary directory and fake tip reads, resolver and verify seams.
 
 package landingshed
 
@@ -60,9 +60,9 @@ func (r *eventResolver) Resolve(_ context.Context, source, tip string) (mergeres
 	return r.result, r.err
 }
 
-// mergeInFixture is a MergeIn over a real lock store, with every seam but the lock a fake that logs into events.
+// mergeInFixture is a ParentAlign over a real lock store, with every seam but the lock a fake that logs into events.
 type mergeInFixture struct {
-	m      *MergeIn
+	m      *ParentAlign
 	store  *parentlock.Store
 	gate   *gateFixture
 	events []string
@@ -102,7 +102,7 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 	dir := t.TempDir()
 	fx := &mergeInFixture{
 		store:        &parentlock.Store{Dir: filepath.Join(dir, "locks"), Alive: func(int, string) bool { return true }},
-		gate:         newGateFixture(t, "merge-in", "go test ./...", nil),
+		gate:         newGateFixture(t, "parent-align", "go test ./...", nil),
 		tips:         fabricengine.ParentTips{Local: "p1", Upstream: "p1", Relation: fabricengine.ParentEqual},
 		head:         "t1",
 		mergeHead:    "t2",
@@ -128,7 +128,7 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 	stencilsDir := t.TempDir()
 	stencilkit.SeedInto(t, stencilsDir)
 	deps := Deps{
-		GateKey:            "merge-in",
+		GateKey:            "parent-align",
 		ParentBranch:       "main",
 		TaskBranch:         "task-branch",
 		Slug:               "my-slug",
@@ -136,7 +136,7 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 		StencilsDir:        stencilsDir,
 		DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
 		MergeRecordPath:    MergeRecordPath(dir),
-		Config:             Config{Fixer: "claude:opus", FixerTimeoutMin: 5, MergeFixAttempts: 2, FinalizeFixMaxLines: 100},
+		Config:             Config{Fixer: "claude:opus", FixerTimeoutMin: 5, ParentAlignFixAttempts: 2, FinalizeFixMaxLines: 100},
 		Registry:           modelspec.Registry{},
 		FixerSeats:         fx.seats,
 		TaskRemoteTip:      func() (string, error) { return "remote-1", nil },
@@ -177,7 +177,7 @@ func newMergeInFixture(t *testing.T) *mergeInFixture {
 	fx.gate.fake.onVerify = func() { fx.events = append(fx.events, "verify") }
 	fx.gate.gate.baseCommand = func() (string, error) { return gateBaseCall, nil }
 	fx.gate.gate.recorder = &failureRecorder{head: deps.TaskHead}
-	fx.m = &MergeIn{
+	fx.m = &ParentAlign{
 		deps:     deps,
 		resolver: fx.resolver,
 		gate:     fx.gate.gate,
@@ -298,7 +298,7 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 				}
 			}
 			if rec, found, _ := fx.store.Read("main"); found {
-				t.Errorf("lock record = %+v; want Merge-In to take no parent lock", rec)
+				t.Errorf("lock record = %+v; want Parent-Align to take no parent lock", rec)
 			}
 		})
 	}
@@ -524,7 +524,7 @@ func recordsEqual(a, b MergeRecord) bool {
 func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 	t.Parallel()
 
-	t.Run("a failed verify writes the failure record with row Merge-In and no merge record", func(t *testing.T) {
+	t.Run("a failed verify writes the failure record with row Parent-Align and no merge record", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)
 		fx.mergeHead = "m1"
@@ -540,9 +540,9 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 			t.Fatalf("ReadLandingFailure() = %v, %v; want a record", found, err)
 		}
 		// The log names no failing tier, so the record takes the highest tier of the row's key.
-		wantTier := slices.Max(fixedGateTierLists["merge-in"])
-		if failure.MergeCommit != "m1" || failure.Kind != "merge-in" || failure.Tier != wantTier {
-			t.Errorf("failure record = %+v; want merge commit m1, kind merge-in, tier %d", failure, wantTier)
+		wantTier := slices.Max(fixedGateTierLists["parent-align"])
+		if failure.MergeCommit != "m1" || failure.Kind != "parent-align" || failure.Tier != wantTier {
+			t.Errorf("failure record = %+v; want merge commit m1, kind parent-align, tier %d", failure, wantTier)
 		}
 		if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
 			t.Error("a merge record was written after a failed verify")
@@ -646,7 +646,7 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 }
 
 // TestMergeIn_VerifyGate pins the clean-tree checks and the plan verify around the merge-in:
-// the verify is asked once at site Merge-In between three checks, and every stop leaves no merge record.
+// the verify is asked once at site Parent-Align between three checks, and every stop leaves no merge record.
 func TestMergeIn_VerifyGate(t *testing.T) {
 	t.Parallel()
 
@@ -661,7 +661,7 @@ func TestMergeIn_VerifyGate(t *testing.T) {
 			if outcome != shedengine.Done {
 				t.Fatalf("status %q: Call() = %q, %+v; want Done", status, outcome, ptr)
 			}
-			if wantSite := (verifytree.Site{Label: "Merge-In", BaseCommand: gateBaseCall}); fx.gate.fake.verifyCalls != 1 || fx.gate.fake.site != wantSite {
+			if wantSite := (verifytree.Site{Label: "Parent-Align", BaseCommand: gateBaseCall}); fx.gate.fake.verifyCalls != 1 || fx.gate.fake.site != wantSite {
 				t.Errorf("status %q: verify calls=%d site=%+v; want 1 call at site %+v", status, fx.gate.fake.verifyCalls, fx.gate.fake.site, wantSite)
 			}
 			if fx.gate.fake.dirtyCalls != 3 {
@@ -690,7 +690,7 @@ func TestMergeIn_VerifyGate(t *testing.T) {
 			if outcome != shedengine.Stuck || !ptr.Halt || !strings.HasPrefix(ptr.Reason, LandingStopPrefix) {
 				t.Fatalf("%s: Call() = %q, %+v; want a halting Stuck opening with %q", tt.name, outcome, ptr, LandingStopPrefix)
 			}
-			if len(fx.seats.tables) != 1 || fx.seats.tables[0].Values["mode"] != string(FixerModeMergeIn) {
+			if len(fx.seats.tables) != 1 || fx.seats.tables[0].Values["mode"] != string(FixerModeParentAlign) {
 				t.Errorf("%s: fixer sessions = %d; want one in merge-in mode", tt.name, len(fx.seats.tables))
 			}
 			if _, found, _ := ReadMergeRecord(fx.m.deps.MergeRecordPath); found {
@@ -811,7 +811,7 @@ func TestMergeIn_UnreadableLockRecordHaltsNamingTheReleaseVerb(t *testing.T) {
 	}
 }
 
-func TestNewMergeIn_RefusesAMissingSeam(t *testing.T) {
+func TestNewParentAlign_RefusesAMissingSeam(t *testing.T) {
 	t.Parallel()
 
 	whole := func() Deps {
@@ -846,10 +846,10 @@ func TestNewMergeIn_RefusesAMissingSeam(t *testing.T) {
 			deps := whole()
 			tt.remove(&deps)
 
-			m, err := NewMergeIn(deps)
+			m, err := NewParentAlign(deps)
 
 			if m != nil || err == nil || !strings.Contains(err.Error(), tt.want) {
-				t.Errorf("NewMergeIn() = %v, %v; want an error containing %q", m, err, tt.want)
+				t.Errorf("NewParentAlign() = %v, %v; want an error containing %q", m, err, tt.want)
 			}
 		})
 	}

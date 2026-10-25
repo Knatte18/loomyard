@@ -1,7 +1,7 @@
 //go:build tier0
 
 // commitstatus_test.go covers Deps.CommitStatus, the injected loop-owner seam Finalize commits the product's own orchestration status file through before it merges.
-// Merge-In's cases live in mergein_test.go.
+// Parent-Align's cases live in parentalign_test.go.
 //
 // The ordering assertion is the point of every case here. Committing after the merge would be
 // indistinguishable from not committing at all, because fabricengine's merge guard has already

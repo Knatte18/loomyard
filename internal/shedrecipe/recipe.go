@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -193,9 +192,6 @@ type Env struct {
 	// told wholesale through shedrecipe.Env.Landing now, filled by whichever caller invokes the
 	// registry.
 	Landing landingshed.Deps
-	// ParentReview is a whole-struct passthrough handed to parentreview.NewGate unchanged, following Env.Landing's precedent.
-	// Only the "parent-review" gate and the entries that wrap a discussion producer read it.
-	ParentReview parentreview.GateConfig
 	// Now is the injected clock. Nil is legal and defaults to time.Now inside the underlying
 	// constructors.
 	Now func() time.Time

@@ -1,7 +1,7 @@
 // config.go — configuration for the loom module.
 //
 // Defines the Config type mirroring loom.yaml's keys and LoadConfig, which uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve loom's config file,
-// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the shared reviewer_model and fixer_model lists' grammar via modelspec.Parse, plus every entry of each review segment's own <segment>_reviewer_model and <segment>_fixer_model list that is set, an empty value meaning the shared list, rejects a negative value on each of the four timeout knobs, and rejects a parent_review_wait_min, review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces or code_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of every perch's fan and fix fan key through lenses.ValidateFanKeys,
+// then validates the discussion, plan, judge, friction, and driver role model-specs and every entry of the shared reviewer_model and fixer_model lists' grammar via modelspec.Parse, plus every entry of each review segment's own <segment>_reviewer_model and <segment>_fixer_model list that is set, an empty value meaning the shared list, rejects a negative value on each of the four timeout knobs, and rejects a review_circling_checkpoint or review_hard_max_bounces below 1, rejects a review_max_bounces, discussion_max_bounces, plan_max_bounces or code_max_bounces below 0 (0 giving zero rounds, null taking review_max_bounces) or any per-perch hard cap below 0, rejects a perch whose resolved hard cap is below its resolved budget, and resolves each non-empty entry of every perch's fan and fix fan key through lenses.ValidateFanKeys,
 // so a mistake in any of those validated keys fails loud at load time rather than hours into a run when the discussion, plan, review, judge, friction, or driver producer first spawns.
 // implementer names the engine of the Webster row, the implementer; it is read and validated where the recipe builds that row, never here.
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a value below 1 is raised to 1 with one Warn and never refused.
@@ -26,9 +26,6 @@
 // arbiter is a role model-spec validated only when non-empty, an empty value taking opus[high]; arbiter_timeout_min and arbiter_max_spawns are refused when negative, and a zero arbiter_max_spawns turns the arbiter off.
 // driver_kind is the driver a task's loom run is seeded with when nothing typed one, llm or go, an empty value reading as llm; tackler is a role model-spec validated only when non-empty, an empty value taking haiku;
 // tackler_timeout_min and tackler_max_spawns are refused when negative, a zero tackler_timeout_min taking 10 and a zero tackler_max_spawns turning the tackler off.
-// alignment, alignment_timeout_min and skip_alignment configure the alignment agent at parent review:
-// alignment is a role model-spec validated only when non-empty, an empty value taking opus[high];
-// alignment_timeout_min is refused when negative, a zero taking 20, and a resolved value at or above parent_review_wait_min is refused too.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -91,10 +88,6 @@ const loomDirName = "loom"
 // reviewsDirName is the relative-path segment loomengine joins onto lyxdirs.LyxDirName to form the review segments' durable run root.
 // loomengine is this segment's sole declarer.
 const reviewsDirName = "reviews"
-
-// parentReviewDirName is the relative-path segment loomengine joins onto the reviews segment to form the parent-review round directories' root.
-// loomengine is this segment's sole declarer.
-const parentReviewDirName = "parent-review"
 
 // amendmentRecordFileName is the file name loomengine joins onto LoomDurableDir to form the plan amendment record's path.
 // loomengine is this segment's sole declarer.
@@ -262,25 +255,6 @@ func LoomReviewsDir(l *lyxcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), LoomReviewsDirRel())
 }
 
-// LoomParentReviewDirRel returns the worktree-anchor-relative form of LoomParentReviewDir's path: LoomReviewsDirRel joined with parentReviewDirName.
-// It sits beside the Discussion-Review run directory under the review run root, never under _lyx/discussion/.
-func LoomParentReviewDirRel() string {
-	return filepath.Join(LoomReviewsDirRel(), parentReviewDirName)
-}
-
-// LoomParentReviewDir returns the root of the parent-review round directories (`round-<N>/`) for this worktree.
-// It is durable: the requests, briefs, deliveries, verdicts and reviews under it are tracked content committed with the discussion.
-// Per the Cwd Resolution Invariant, no other package may construct this path.
-func LoomParentReviewDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), LoomParentReviewDirRel())
-}
-
-// LoomParentReviewLockDir returns the ephemeral mirror of LoomParentReviewDir under .lyx, where the parent-review store keeps its lock files.
-// It is never tracked, per the Durable-vs-Ephemeral State Invariant.
-func LoomParentReviewLockDir(l *lyxcwd.Location) string {
-	return filepath.Join(l.AnchorPath(), lyxdirs.DotLyxDirName, reviewsDirName, parentReviewDirName)
-}
-
 // LoomDurableDirRel returns the worktree-anchor-relative form of LoomDurableDir's path: the join of lyxdirs.LyxDirName and loomDirName.
 // Everything under this directory is tracked run content committed by loom's per-transition status commit.
 func LoomDurableDirRel() string {
@@ -417,20 +391,19 @@ type Config struct {
 	PlanFixerFan          lenses.FanList `yaml:"plan_fixer_fan"`
 	CodeFixerFan          lenses.FanList `yaml:"code_fixer_fan"`
 
-	Judge               string `yaml:"judge"`
-	Seed                string `yaml:"seed"`
-	DiscussionJudge     string `yaml:"discussion_judge"`
-	PlanJudge           string `yaml:"plan_judge"`
-	CodeJudge           string `yaml:"code_judge"`
-	DiscussionSeed      string `yaml:"discussion_seed"`
-	PlanSeed            string `yaml:"plan_seed"`
-	CodeSeed            string `yaml:"code_seed"`
-	ReviewTimeoutMin    int    `yaml:"review_timeout_min"`
-	Friction            string `yaml:"friction"`
-	FrictionTimeoutMin  int    `yaml:"friction_timeout_min"`
-	Driver              string `yaml:"driver"`
-	ParentReviewWaitMin int    `yaml:"parent_review_wait_min"`
-	StepIdleTimeoutMin  int    `yaml:"step_idle_timeout_min"`
+	Judge              string `yaml:"judge"`
+	Seed               string `yaml:"seed"`
+	DiscussionJudge    string `yaml:"discussion_judge"`
+	PlanJudge          string `yaml:"plan_judge"`
+	CodeJudge          string `yaml:"code_judge"`
+	DiscussionSeed     string `yaml:"discussion_seed"`
+	PlanSeed           string `yaml:"plan_seed"`
+	CodeSeed           string `yaml:"code_seed"`
+	ReviewTimeoutMin   int    `yaml:"review_timeout_min"`
+	Friction           string `yaml:"friction"`
+	FrictionTimeoutMin int    `yaml:"friction_timeout_min"`
+	Driver             string `yaml:"driver"`
+	StepIdleTimeoutMin int    `yaml:"step_idle_timeout_min"`
 
 	// DiscussionAdvisors are the Discussion-Write advisors, one seat each; an empty list runs the lead alone.
 	DiscussionAdvisors DiscussionAdvisorList `yaml:"discussion_advisors"`
@@ -455,13 +428,6 @@ type Config struct {
 	Tackler           string `yaml:"tackler"`
 	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
 	TacklerMaxSpawns  *int   `yaml:"tackler_max_spawns"`
-
-	// The alignment agent's model-spec, timeout and switches.
-	// An empty Alignment takes opus[high] and a zero AlignmentTimeoutMin takes 20 minutes, kept below ParentReviewWaitMin.
-	// SkipAlignment true sends parent review to the run's parent without the agent.
-	Alignment           string `yaml:"alignment"`
-	AlignmentTimeoutMin int    `yaml:"alignment_timeout_min"`
-	SkipAlignment       bool   `yaml:"skip_alignment"`
 
 	// PRReview turns on the PR-Review stub's log line; the stub opens no pull request and acts on nothing either way.
 	PRReview bool `yaml:"pr_review"`
@@ -542,8 +508,6 @@ func ConfigOpenMaps() []string {
 // ConfigSpec returns loom's layered-load spec.
 // Only the keys that can switch off or hollow a review or approval gate are barred from the local layer.
 // The budget, hard-cap and auto-accept keys come from reviewbudget: a budget of 0 is the per-run off switch and no guard, while the auto-accept keys are guards.
-// A weaker alignment model or a local skip_alignment: false under a hub true hollows the parent-review gate;
-// a shorter alignment_timeout_min only routes a review to the parent.
 // discussion_advisors, discussion_lenses and plan_lenses are barred too, so no local override or task run_settings can start advisors, turn the lens forks off or change their fan.
 func ConfigSpec() configengine.Spec {
 	none := configengine.CategoryNone
@@ -595,11 +559,7 @@ func ConfigSpec() configengine.Spec {
 			"tackler":                    none,
 			"tackler_timeout_min":        none,
 			"tackler_max_spawns":         none,
-			"alignment":                  guard,
-			"alignment_timeout_min":      none,
-			"skip_alignment":             guard,
 			"pr_review":                  none,
-			"parent_review_wait_min":     guard,
 			"step_idle_timeout_min":      none,
 			"review_circling_checkpoint": none,
 		},
@@ -695,7 +655,8 @@ func fanKeys(cfg Config) []lenses.FanKey {
 // A document holding skip_merge_review was written under the old schema, where a per-perch budget of 0 meant "take review_max_bounces":
 // each per-perch budget that is the integer 0 becomes null, skip_merge_review true becomes merge_max_bounces: 0, and the key is removed.
 // A document without skip_merge_review keeps every budget as written, since its 0 already means zero rounds.
-// Last, each key retiredLoomKeys lists is removed through yamlengine.DropKeys, the Merge-Review perch's keys included, so the merge_max_bounces the skip rewrite writes ends removed too.
+// Last, each key retiredLoomKeys lists is removed through yamlengine.DropKeys, the Merge-Review perch's keys and the alignment, alignment_timeout_min, skip_alignment and parent_review_wait_min keys included, so the merge_max_bounces the skip rewrite writes ends removed too.
+// Each dropped key reports the line `<key>: retired, removed`.
 // The retired reviewer, fixer and fan keys, review, fix, <segment>_review, <segment>_fix, <segment>_fan and <segment>_fix_fan, are renamed to reviewer_model, fixer_model, <segment>_reviewer_model, <segment>_fixer_model, <segment>_reviewer_fan and <segment>_fixer_fan with their values, and a document already holding the new name keeps its value and drops the old key.
 // Before the rename, a document holding webster_review or webster_fix and not merge_reviewer_model or merge_fixer_model gets that Merge key set to the Webster key's value, or to the renamed webster_reviewer_model or webster_fixer_model value when the document holds that too, so Merge-Review keeps the models it ran on.
 // After those renames, each webster_* review-perch key, webster_reviewer_model to webster_auto_accept, is renamed to its code_* successor with its value, so a retired webster_review ends as code_reviewer_model, and a document already holding the code_* name keeps its value and drops the webster_* key.
@@ -1102,6 +1063,10 @@ var retiredLoomKeys = []string{
 	"merge_auto_accept",
 	"rework",
 	"alignment_pr_approve",
+	"alignment",
+	"alignment_timeout_min",
+	"skip_alignment",
+	"parent_review_wait_min",
 }
 
 // copyWebsterModelsOntoMerge sets merge_reviewer_model and merge_fixer_model of document to the values of its retired webster_review and webster_fix, each only when the document holds the Webster key and not the Merge one.
@@ -1331,17 +1296,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
-	// alignment is validated only when non-empty: an empty value takes ResolveAlignment's default.
-	if cfg.Alignment != "" {
-		if _, err := modelspec.Parse(cfg.Alignment); err != nil {
-			return Config{}, fmt.Errorf("loom config key %q: %w", "alignment", err)
-		}
-	}
-
-	if cfg.AlignmentTimeoutMin < 0 {
-		return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to 0 for the %d minute default, or to a positive integer below parent_review_wait_min", "alignment_timeout_min", cfg.AlignmentTimeoutMin, alignmentDefaultTimeoutMin)
-	}
-
 	// Zero is a meaning on both arbiter knobs, so only a negative value is refused.
 	for _, knob := range []struct {
 		key   string
@@ -1380,23 +1334,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		if knob.minutes < 0 {
 			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; use 0 to defer to shuttle's run_timeout_min", knob.key, knob.minutes)
 		}
-	}
-
-	// parent_review_wait_min has no "0 defers" meaning:
-	// a 0 bound would still open a request and notify the parent of a request that expires at its next evaluation,
-	// so the one off switch is the gate entry's own attempts, not this key.
-	if cfg.ParentReviewWaitMin < 1 {
-		return Config{}, fmt.Errorf("loom config key %q: must be at least 1, got %d; set attempts: 0 on Discussion-Write's parent-review gate entry to turn the review off", "parent_review_wait_min", cfg.ParentReviewWaitMin)
-	}
-
-	// The agent must give up before the parent-review wait does, or the wait would pass with no verdict while the agent still runs.
-	// The check runs on the merged layers, so a local layer, run_settings included, is checked like the hub file.
-	alignmentTimeoutMin := cfg.AlignmentTimeoutMin
-	if alignmentTimeoutMin == 0 {
-		alignmentTimeoutMin = alignmentDefaultTimeoutMin
-	}
-	if alignmentTimeoutMin >= cfg.ParentReviewWaitMin {
-		return Config{}, fmt.Errorf("loom config key %q: resolved timeout %d minutes (set %d) is not below parent_review_wait_min %d; set alignment_timeout_min below parent_review_wait_min, or raise parent_review_wait_min in the hub's loom.yaml", "alignment_timeout_min", alignmentTimeoutMin, cfg.AlignmentTimeoutMin, cfg.ParentReviewWaitMin)
 	}
 
 	// step_idle_timeout_min is a wake interval's cousin: a value below the floor is raised to it with one Warn and never refused.

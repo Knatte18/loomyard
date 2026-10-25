@@ -50,7 +50,7 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 		modelspec.Registry{"claude/sonnet-5": {}}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(loc), parentLockDeps(loc, shedrun.SelfRunID, "", ""))
 
 	readers := map[string]func() (string, error){
-		"VerifyCommand": func() (string, error) { return deps.VerifyCommand("merge-in") },
+		"VerifyCommand": func() (string, error) { return deps.VerifyCommand("parent-align") },
 		"BaseCommand":   deps.BaseCommand,
 	}
 	for name, read := range readers {
@@ -61,7 +61,7 @@ func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
 
 	writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
 	for name, want := range map[string]string{
-		"VerifyCommand": "lyx gate test --wait --gate merge-in",
+		"VerifyCommand": "lyx gate test --wait --gate parent-align",
 		"BaseCommand":   "lyx gate test --wait --gate code-burler-fix",
 	} {
 		if got, err := readers[name](); err != nil || got != want {

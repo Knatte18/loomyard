@@ -13,7 +13,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -26,7 +25,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // An absent key returns the empty GateSpec, which is what every ungated row carries by saying nothing;
 // a present empty list is an error, since it is an author mistake rather than an ungated row.
 //
-// Each element carries a required "name", resolved against a closed five-value vocabulary:
+// Each element carries a required "name", resolved against a closed four-value vocabulary:
 // "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and returns loomshed.NewDiscussionGate over them, or, when env.DiscussionHistory is set, loomshed.NewDarnDiscussionGate over them, the history seam and a non-nil env.CommitDiscussion;
 // on a loom run, where env.DiscussionHistory is unset, "discussion" also requires env.RelevantPath to pass requireAbsRoot and passes it to the gate;
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
@@ -34,14 +33,12 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand, takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
 // the gate's told command is env.VerifyCommand read for the row's gate key, and its tree scope is env.VerifyTreeScope read for that key, so the row runs its own key of the hub's gate.yaml;
 // env.VerifyTreeScope alone selects the darn form, which requires env.VerifyMergeBase, the base of both lints in that form, and otherwise env.VerifyMergeBase is the base of the headroom lint;
-// "parent-review" requires the absolute Env.ParentReview.Store.Root, Store.LockDir, DecisionRecord and SupportLog, a non-empty Slug and both render seams, and returns parentreview.NewGate's closure pair, the second being the entry's Final closure;
-// it is must-pass and may hold the run, its "attempts" is the reject cap told to the gate, a "pass_on_cap" key on it is refused, and it carries an expiry probe the wait loop calls off the boundary;
-// any other value is an error naming the key and all five legal values.
-// A name may appear once per list, and "parent-review" must be the last element, since a must-pass entry after a pending review would read as not reached at a deadline.
+// any other value is an error naming the key and all four legal values.
+// A name may appear once per list.
 //
 // "attempts" is required, a non-negative integer read via configInt so 0 is a present value:
 // 0 turns the entry off, yet the entry still resolves its closure and its Env requirements, so a typo in an off gate fails loud.
-// "pass_on_cap" is an optional bool on every element but "parent-review", false when absent.
+// "pass_on_cap" is an optional bool on every element, false when absent.
 //
 // Every error is qualified with entry so a recipe author with a typo is told which row spoke, matching the qualification resolveUnderRoot already applies.
 //
@@ -89,11 +86,6 @@ func resolveRowGateSpec(entry, row string, cfg Config, env Env) (shuttleengine.G
 		seen[ge.Name] = true
 		spec = append(spec, ge)
 	}
-	for i, ge := range spec[:len(spec)-1] {
-		if ge.Name == parentReviewGateName {
-			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: %q must be the last element of the list; way forward: move the %s element to the end of the gates list", entry, "gates", i, parentReviewGateName, parentReviewGateName)
-		}
-	}
 	return spec, nil
 }
 
@@ -117,17 +109,6 @@ func resolveGateEntry(entry, row, gateKey string, index int, elem Config, env En
 	if attempts < 0 {
 		return shuttleengine.GateEntry{}, wrap(fmt.Errorf("config key %q must not be negative, got %d", "attempts", attempts))
 	}
-	if name == parentReviewGateName {
-		if _, present := elem["pass_on_cap"]; present {
-			return shuttleengine.GateEntry{}, wrap(fmt.Errorf("%q is refused on %q; way forward: drop the key, and raise %q for more review rounds", "pass_on_cap", parentReviewGateName, "attempts"))
-		}
-		closure, final, expired, err := resolveParentReviewClosure(entry, attempts, env)
-		if err != nil {
-			return shuttleengine.GateEntry{}, err
-		}
-		return shuttleengine.GateEntry{Name: name, Gate: closure, Final: final, Expired: expired, Attempts: attempts, MayHold: true}, nil
-	}
-
 	passOnCap, err := configBool(elem, "pass_on_cap", false)
 	if err != nil {
 		return shuttleengine.GateEntry{}, wrap(err)
@@ -137,50 +118,6 @@ func resolveGateEntry(entry, row, gateKey string, index int, elem Config, env En
 		return shuttleengine.GateEntry{}, err
 	}
 	return shuttleengine.GateEntry{Name: name, Gate: closure, Attempts: attempts, PassOnCap: passOnCap}, nil
-}
-
-// parentReviewGateName is the one gate name whose entry may hold the run and whose cap its own store counts.
-const parentReviewGateName = "parent-review"
-
-// resolveParentReviewClosure checks the Env fields the "parent-review" gate needs.
-// It returns parentreview.NewGate's pair and the read-only expiry probe, with attempts told to the gate as its reject cap.
-//
-// The cap and the entry's own Attempts are the same value, which is what keeps the engine's in-memory failure count behind the store's rejected-round count.
-// The only non-terminal failure the closure returns consumes one distinct rejected round, so the in-memory count is at most Cap-1 when the cap's reject arrives;
-// that reject then fails terminal, so the engine's own budget never ends the run.
-// A later non-terminal failure added to the closure breaks this.
-// The entry itself is never the engine's PassOnCap, since the gate's own store, not the engine's in-memory count, decides the let-through.
-func resolveParentReviewClosure(entry string, attempts int, env Env) (gate, final shuttleengine.Gate, expired func() (bool, error), err error) {
-	pr := env.ParentReview
-	pr.Cap = attempts
-	if err := requireAbsRoot(entry, "ParentReview.Store.Root", pr.Store.Root); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := requireAbsRoot(entry, "ParentReview.Store.LockDir", pr.Store.LockDir); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := requireNonEmpty(entry, "ParentReview.Slug", pr.Slug); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := requireSeam(entry, "ParentReview.RenderDelivery", pr.RenderDelivery); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := requireSeam(entry, "ParentReview.RenderBrief", pr.RenderBrief); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := requireAbsRoot(entry, "ParentReview.DecisionRecord", pr.DecisionRecord); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := requireAbsRoot(entry, "ParentReview.SupportLog", pr.SupportLog); err != nil {
-		return nil, nil, nil, err
-	}
-	if pr.KeepAlive > 0 {
-		if err := requireSeam(entry, "ParentReview.RenderKeepAlive", pr.RenderKeepAlive); err != nil {
-			return nil, nil, nil, err
-		}
-	}
-	gate, final = parentreview.NewGate(pr)
-	return gate, final, parentreview.NewExpiryProbe(pr), nil
 }
 
 // planContextOf builds the plan gates' PlanContext from env: the hub's rename tools and refused raw commands, and the decision record on a loom run.
@@ -195,7 +132,7 @@ func planContextOf(env Env) loomshed.PlanContext {
 	}
 }
 
-// resolvePlainGateClosure resolves the five validator names that carry no Final closure.
+// resolvePlainGateClosure resolves the four validator names of the gate vocabulary.
 // The "verify" gate is told env.VerifyHold, which holds its verify under a pause.
 func resolvePlainGateClosure(entry, row, gateKey string, index int, name string, env Env) (shuttleengine.Gate, error) {
 	switch name {
@@ -249,6 +186,6 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		}
 		return loomshed.NewVerifyGate(env.WorktreeRoot, env.VerifyDir, row+" gate", command, env.VerifyMergeBase, treeScope, env.VerifyHold), nil
 	default:
-		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "description", "verify", "parent-review", name)
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "description", "verify", name)
 	}
 }

@@ -91,8 +91,8 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 	if result2.Outcome != shedengine.RunBlocked {
 		t.Fatalf("second Run() outcome = %q; want %q (reason: %s)", result2.Outcome, shedengine.RunBlocked, result2.Reason)
 	}
-	if result2.HaltedProducer != loomshed.NameMergeIn {
-		t.Fatalf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, loomshed.NameMergeIn)
+	if result2.HaltedProducer != loomshed.NameParentAlign {
+		t.Fatalf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, loomshed.NameParentAlign)
 	}
 
 	// result2.History is the full persisted history, including the first run's own appended
@@ -221,8 +221,8 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 	if result2.Outcome != shedengine.RunBlocked {
 		t.Fatalf("second Run() outcome = %q; want %q -- a subsequent run must resume rather than re-pause on the flag it is resuming from", result2.Outcome, shedengine.RunBlocked)
 	}
-	if result2.HaltedProducer != loomshed.NameMergeIn {
-		t.Errorf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, loomshed.NameMergeIn)
+	if result2.HaltedProducer != loomshed.NameParentAlign {
+		t.Errorf("second Run() HaltedProducer = %q; want %q", result2.HaltedProducer, loomshed.NameParentAlign)
 	}
 }
 

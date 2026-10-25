@@ -111,7 +111,7 @@ func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
 		},
 	}
 
-	for _, producer := range []string{mergeInName, finalizeName} {
+	for _, producer := range []string{parentAlignName, finalizeName} {
 		for _, tt := range tests {
 			t.Run(producer+"/"+tt.name, func(t *testing.T) {
 				logs := logcapture.CaptureVerbose(t)
@@ -188,7 +188,7 @@ func callProducer(t *testing.T, producer string, pm preMerge, res *recordingReso
 	t.Helper()
 	deps := newTestDeps(t)
 	switch producer {
-	case mergeInName:
+	case parentAlignName:
 		deps.MergeRecordPath = MergeRecordPath(t.TempDir())
 		deps.TaskHead = func() (string, error) { return "head", nil }
 		deps.MergeBase = func(string) (string, error) { return "base", nil }
@@ -196,7 +196,7 @@ func callProducer(t *testing.T, producer string, pm preMerge, res *recordingReso
 		deps.ReadParentTips = func(bool) (fabricengine.ParentTips, error) {
 			return fabricengine.ParentTips{Local: "tip", Relation: fabricengine.ParentNoUpstream}, nil
 		}
-		return (&MergeIn{deps: deps, resolver: res, premerge: pm}).Call(context.Background())
+		return (&ParentAlign{deps: deps, resolver: res, premerge: pm}).Call(context.Background())
 	case finalizeName:
 		merger := &recordingParentMerger{}
 		return (&Finalize{deps: deps, resolver: res, premerge: pm, parentOpener: func() (parentMerger, error) { return merger, nil }}).Call(context.Background())

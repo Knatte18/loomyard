@@ -8,14 +8,12 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -103,7 +101,7 @@ func (row *RunRow) classifyBatten(records Reader, rev string) error {
 	}
 	record := battenshed.BattenRecord{Snapshots: row.battenSnapshots, Child: row.childHistory}
 	rules := battenshed.NoticeRules{
-		VerifyRows:  []string{loomshed.NameMergeIn, retiredPublishRow},
+		VerifyRows:  []string{loomshed.NameParentAlign, retiredMergeInRow, retiredPublishRow},
 		GateRow:     retiredPRGateRow,
 		EpisodeRows: []string{battenrecipe.NameLand, battenrecipe.NameWorktreeTeardown},
 	}
@@ -177,7 +175,7 @@ func escalationsOf(records Reader, rev, producer string) (int, error) {
 // readParentReviewWakes counts the parent-review rounds that woke the orch and sums every round's keep-alive pings.
 // The source is absent when the tree has no parent-review directory.
 func (row *RunRow) readParentReviewWakes(records Reader, tag gitrepo.TagRef) ([]Finding, error) {
-	root := filepath.ToSlash(loomengine.LoomParentReviewDirRel())
+	root := filepath.ToSlash(parentReviewDirRel())
 	dirs, err := records.SubdirsAtRevision(tag.Commit, root)
 	if err != nil {
 		return nil, fmt.Errorf("reportengine: list %s at %s: %w", root, tag.Name, err)
@@ -191,7 +189,7 @@ func (row *RunRow) readParentReviewWakes(records Reader, tag gitrepo.TagRef) ([]
 	var kinds []string
 	pings := 0
 	for _, dir := range dirs {
-		number, ok := parentreview.RoundNumber(dir)
+		number, ok := parentReviewRoundNumber(dir)
 		if !ok {
 			continue
 		}
@@ -199,14 +197,14 @@ func (row *RunRow) readParentReviewWakes(records Reader, tag gitrepo.TagRef) ([]
 		if err != nil {
 			return nil, err
 		}
-		round, err := parentreview.ParseRoundDir(number, files)
+		round, err := parseParentReviewRound(number, files)
 		if err != nil {
 			findings = append(findings, Finding{Tag: tag.Name, File: path.Join(root, dir), Error: err.Error()})
 			continue
 		}
 		row.parentRounds = append(row.parentRounds, round)
 		pings += round.Delivery.Pings
-		if round.Delivery.DeliveredAt.IsZero() || (round.Alignment != nil && round.Alignment.State == parentreview.AlignmentApplied) {
+		if round.Delivery.DeliveredAt.IsZero() || (round.Alignment != nil && round.Alignment.State == parentReviewAlignmentApplied) {
 			continue
 		}
 		kind := parentReviewWakeKindDelivered
@@ -252,7 +250,7 @@ func (row *RunRow) readAlignmentWakes(records Reader, tag gitrepo.TagRef) ([]Fin
 			if err != nil {
 				return nil, err
 			}
-			attempt, verdict, err := alignment.ParseAttemptDir(files)
+			attempt, verdict, err := parseAlignmentAttempt(files)
 			if err != nil {
 				findings = append(findings, Finding{Tag: tag.Name, File: attemptDir, Error: err.Error()})
 				continue
@@ -273,7 +271,7 @@ func (row *RunRow) readAlignmentWakes(records Reader, tag gitrepo.TagRef) ([]Fin
 			if attempt.Applied != "" {
 				outcomes[key].Applied++
 			}
-			if attempt.Applied == alignment.VerdictApprove && verdict != nil && len(verdict.Superseded) > 0 {
+			if attempt.Applied == alignmentVerdictApprove && verdict != nil && len(verdict.Superseded) > 0 {
 				kinds = append(kinds, alignmentWakeKindSuperseding)
 			}
 		}

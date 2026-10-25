@@ -24,7 +24,7 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
    It starts the batten run in its own tmux window of your reed session and returns at once; that window gets no status-bar button, so watch the run with `lyx batten status <slug>`.
    Batten also opens the operator's terminal window on the task pair once the task's run is spawned, so never open one yourself; its `terminal_window` field says when this machine has no launcher.
    The batten run creates the task pair, drives the task's run inside it, loom or darn as the board entry's `recipe` says, and tears the pair down after the run ends.
-   A darn run has no parent review: its Code-Review perch, the one loom runs, reviews the writer's diff before Describe unless the run's `code_max_bounces` is 0, in `loom.yaml` or the task's `run_settings`, and its Finalize lands it as loom's does.
+   A darn run has no Discussion review: its Code-Review perch, the one loom runs, reviews the writer's diff before Describe unless the run's `code_max_bounces` is 0, in `loom.yaml` or the task's `run_settings`, and its Finalize lands it as loom's does.
    Every task runs through loom, bug fixes included: never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.
 2. A halted child (blocked, paused or failed) is a wait batten does not resume on its own, so every halted child waits for you: once its cause is known (see Investigating a stop), resume it with `lyx loom resume` in the task worktree.
    When `lyx loom resume` refuses, its message names the way forward (`lyx batten run <slug>` to bring a dead driver back, or `lyx loom start`),
@@ -39,16 +39,6 @@ This list holds every `lyx` command you may use, and `lyx <command> --help` give
    Every `landed` notice goes to After landing, and every other `[batten notice]` is handled as under Investigating a stop.
 5. Runs that can run in parallel do, and only a task whose packages overlap a running task waits, through its board `depends_on`.
 
-## Parent-review
-
-A parent-review request reaches you only when the alignment agent escalated or gave no verdict, since the agent settles every other review itself.
-The alignment agent is the dedicated reviewer: you never review a request, and never fork a review, even when the request or its brief asks for a one-shot fork.
-Read only the brief's "Why it did not settle the review" line, put that question to the operator in plain words, and submit the operator's answer with the brief's `lyx loom review` command.
-A reject's review file, in the format the brief names, holds the operator's answer and nothing of your own.
-When that line reads `none`, no agent ran: say so, and ask the operator whether to approve or reject.
-A repeat notice for a request already put to the operator asks nothing again.
-The verdict reaches the writer through the gate only, so you send the writer no message, neither an acknowledgement nor a reply to its notice.
-
 ## Escalations from a child
 
 The driver, webster or a review loop that cannot go on escalates to you, its parent.
@@ -58,6 +48,8 @@ Its stop report then carries the arbiter's verdict path and question: read the v
   Read only the envelope's `question`, put it to the operator in plain words, and record the operator's answer and resume by the escalation brief's steps.
   You never settle the question yourself and never fork it.
   A repeat notice for the slug asks nothing again while its question is with the operator, and the slug is named in the orch note until the operator answers.
+- A review escalation of cause `decision` carries a question only the operator can settle.
+  Put it to the operator in plain words, and record the operator's answer with `lyx loom decision add <slug> --by parent` before the escalation brief's circling verb and resume.
 - A review loop that ran out of rounds: `lyx loom circling continue <slug>` grants one more round only below the perch's hard cap.
   At or past it, or at a `hard-cap` escalation, the way forward is `lyx loom circling accept <slug>` to take the work as it stands, or raising the hard cap by the command the refusal names for the layer its value comes from.
   Either only records the decision,
@@ -66,7 +58,7 @@ Its stop report then carries the arbiter's verdict path and question: read the v
   A goto keeps the spent budget and grants none; use `lyx loom goto` or `lyx shed goto`, naming the producer, to move a run back.
   A goto leaves the run paused,
   so run `lyx loom resume` in the task worktree to resume it.
-- A landing-stop halt at Merge-In or Finalize, or a reroute-cap halt at Finalize: see Landing halts below.
+- A landing-stop halt at Parent-Align or Finalize, or a reroute-cap halt at Finalize: see Landing halts below.
   Never a goto to Plan-Bouncer for either, since the plan does not change.
 - A parent lock held too long: `lyx batten lock list` shows who holds each parent lock, and `lyx batten lock release <branch>` frees one whose owner is alive but wedged.
   A release never stops a run: the released run takes the lock again at its next lock-taking row and reroutes if the parent moved meanwhile.
@@ -83,7 +75,7 @@ When the fault is diagnosed and acted on and a design question still stands, you
 ## Investigating a stop
 
 A stop is a `[batten notice]`, a halted run, or a message or escalation from a driver, webster or review loop.
-A parent-review request follows Parent-review, and a `landed` notice follows After landing; neither is investigated as a stop.
+A `landed` notice follows After landing and is not investigated as a stop.
 A Finalize halt that opens `owner check:` is an owner halt: its message names the `lyx adopt` forms, and you relay it to the operator.
 First read what the stop itself shows: `lyx batten status <slug>` for a notice or a halted run, the message for a message.
 When what it shows names the action (run loop item 2, Escalations from a child), take it yourself without a fork.
@@ -122,11 +114,11 @@ A brief for a non-fork agent that runs `lyx gate test` carries a copy of the gat
 
 ## Landing halts
 
-A run lands with no orch turn: Merge-In and Finalize fix their own merge and test failures with the merge fixer, and no pull request waits for an approval.
+A run lands with no orch turn: Parent-Align and Finalize fix their own merge and test failures with the merge fixer, and no pull request waits for an approval.
 Finalize takes the parent lock first, syncs the task branch with main, squashes it onto main, marks the board task done and pushes main.
-A parent that moved since Merge-In, a loom conflict or a merge too large to land sends the run back to Merge-In by itself.
+A parent that moved since Parent-Align, a loom conflict or a merge too large to land sends the run back to Parent-Align by itself.
 A landing halt reaches you with the status marked `hand_back`, and no driver, batten or arbiter routes it to another row.
-- A landing-stop halt at Merge-In or Finalize means the fixer spent its cap, failed, made a change no review on the way back can see, escalated a decision for `lyx loom decision add`, or found its attempt record undecodable.
+- A landing-stop halt at Parent-Align or Finalize means the fixer spent its cap, failed, made a change no review on the way back can see, escalated a decision for `lyx loom decision add`, or found its attempt record undecodable.
   The halt's reason says which, and names the commits the fixer kept.
   For an undecodable attempt record the way forward is removing that record by the path the reason names, which grants the entry a fresh cap.
   Read the commits, decide with the operator what the run needs, then `lyx loom resume` in the task worktree.
@@ -164,7 +156,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
     Several decisions taken together go in one call with `--from <file>`, a JSON array of entries, so they land in one commit and one notice.
     Once the plan is approved, the parent also passes `--amends-plan`.
   - When that verb refuses because the run has no decision record (batten's pre-loom rows such as `running · Worktree-Create`, `Preflight` and `Loom-Preflight`, or a halt before Discussion-Write), the decision becomes a board note of its own through `lyx board upsert` with kind note, titled `{{.decision_note_title}} <the decision>`, with the held task's slug in place of `<slug>`.
-    Only a note titled that way counts as a decision for the run's alignment agent.
+    Only a note titled that way counts as a parent decision, which the Discussion-Review lenses and the darn writer read.
   - Only when the verb refuses because Discussion-Write is running and owns the record does the decision go by message to the Discussion-Write session.
     A darn run's verb refuses until Darn-Write has committed its record, and then the verb alone records the decision, with no message of your own, since it tells each live agent of the run and a producer that starts later reads the record.
   - The board's run lock is unchanged, so a held task's entry is never edited.
@@ -213,7 +205,7 @@ When the operator asks:
 ## Acting without asking
 
 Act and fix without asking: start the runs the operator approved, un-wedge stuck ones, and handle a Land or Worktree-Teardown failure notice.
-Ask the operator only about what to build, its priority, design choices, and the review questions the alignment agent or the arbiter hands on.
+Ask the operator only about what to build, its priority, design choices, and the questions a review escalation or the arbiter hands on.
 When the operator gives an instruction for a strand, relay it in the operator's own words and scope, adding nothing.
 When the operator asks to hibernate the machine, run `lyx hibernate request`, with `--after <slug>` when they name a task to land first or `--after-all` when they name the runs in flight, then end the turn.
 lyx itself pauses the hub, confirms every session paused, hibernates the machine and lifts its pause on wake, and mails you a notice when it is done or failed.

@@ -1,10 +1,10 @@
 # Landing fixer report spec — what the merge fixer writes when a turn ends
 
-> **Status: Contract — pinned.** This doc pins the merge fixer's report format: what the fixer session writes at the end of a turn, and what Merge-In and Finalize read from it.
+> **Status: Contract — pinned.** This doc pins the merge fixer's report format: what the fixer session writes at the end of a turn, and what Parent-Align and Finalize read from it.
 
 ## What it is
 
-The merge fixer is the one session Merge-In and Finalize spawn to fix a merge or test failure inside their row.
+The merge fixer is the one session Parent-Align and Finalize spawn to fix a merge or test failure inside their row.
 It ends each turn by writing one report, a markdown file at the path its prompt names, and the row reads that report to decide whether the run goes on or halts.
 
 ## Format

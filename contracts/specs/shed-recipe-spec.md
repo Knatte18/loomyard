@@ -15,7 +15,7 @@ Motivation: several rows are already pure `Engine + Config` in spirit, exactly t
 Its table also carries per-run values a static recipe `Config` cannot hold — the task slug and the mode-rules block — plus a model and timeout resolved from the `discussion` role's own config rather than from recipe strings.
 That is why it ships as its own `DiscussionWrite` registry entry, over an injected `shedadapters.TableSource` closure, rather than as a `MultiLLM` row.
 The entry runs the lead and its advisors, when the table has any, on `MultiLLMProducer`, over a table told through `Env.DiscussionTable`.
-It carries the row's gates on the lead and, for an enabled `parent-review` entry, the fresh-spawn preparation that opens the next review round.
+It carries the row's gates on the lead.
 The recipe file names `DiscussionWrite`, and the built row carries that engine whatever `discussion_advisors` and `discussion_lenses` hold.
 `Plan-Write` is the second such row: its seat table is resolved from the `plan` role's own model-spec and timeout rather than from recipe strings, and building it needs a `*lyxcwd.Location` to build the plan paths, so it ships as its own `PlanWrite` entry for the same reason.
 The question the discussion worked through was whether the *other* rows (the loom-specific ones, such as `Loom-Preflight`) resist this shape, and the answer was no: they don't need to be reusable to fit the pattern, they just need a name in the same registry as everything else — a bespoke, single-consumer `Engine` is exactly as valid a registry entry as a widely-shared one.
@@ -58,6 +58,9 @@ A `Bouncer` row's optional `subject` key takes one of exactly two literal values
 Every kind also tells the Bouncer `Env.ReviewInput`, which stays optional, and the segment's `AmendMaxBounces` as the amendment allowance.
 It follows the same two rules as `commit_seam`: absent tells no subject and keeps the Bouncer on its clear-and-reseed path, and a present key naming a seam the `Env` does not carry is a construction error naming that seam.
 An unknown value is a construction error naming the key, the value and the two legal ones.
+A `Bouncer` row's optional boolean `escalate_decisions` key (default false) makes a judged round whose review holds a `decision`-class finding escalate to the run's parent with cause `decision`.
+A `BurlerFix` row's optional boolean `decisions_escalated` key (default false) says its segment's Bouncer does so: the fixer is given no `decision` finding and the row posts no parent notice of its own.
+Loom's recipe sets both keys on its Discussion-Review rows and on no other row.
 
 A `MultiLLM` row runs one lead and its advisors as seats.
 Its keys are `role`, `segment` and `seats`, and the optional `gates`, `timeout_min`, `interactive` and `tokens`.
@@ -68,17 +71,10 @@ The row drives `Env.Seats`, and a nil seam is a construction error.
 
 A gate-capable row's `gates` key selects validators by name from a closed vocabulary, in order, each element carrying its own `attempts` budget (0 means off) and an optional `pass_on_cap`.
 An absent key is ungated, while an empty list, a duplicate name, or a negative budget is a construction error.
-`parent-review` must be the last element of its list, else construction fails.
-The vocabulary is `discussion`, `plan`, `description`, `verify` and `parent-review`.
+The vocabulary is `discussion`, `plan`, `description` and `verify`.
 `verify` lints the comments, then runs the verify command the wiring tells in `Env.VerifyCommand`, which it requires.
 `Env.VerifyTreeScope`, when set, selects the darn form, which runs the tree-scoped command it answers for a diff wholly under the configured trees and the impact-scoped command otherwise, and the round form is the default.
 `Env.VerifyMergeBase`, when set, is the base of the headroom lint, which runs before the comment lint, or of both lints under the darn form, which requires it.
-`parent-review` waits for the run's parent to review the discussion, so it can return a pending result that the wait loop holds without stalling its liveness and deadline checks, and it carries a `Final` closure that `finalize` evaluates in its place.
-It also carries an expiry probe the wait loop calls off the boundary, a read-only check that the latest round's request is open, has no verdict and is older than the wait bound.
-The entry is must-pass and may hold the run, and its `attempts` is the reject cap: the gate fails terminally at that many rejected rounds, halting the run `blocked` until the parent approves.
-A `pass_on_cap` key on the element is a construction error.
-The gate's own store counts the rejects, so the engine's own pass-on-cap never applies to this entry.
-It reads `Env.ParentReview`, and a Discussion-Write row with an enabled `parent-review` entry opens a new review round on each fresh spawn, except that the latest round is kept when it holds no request, or after a reject or a superseding approve so the gate can read it.
 
 ## The recipe loader/builder
 

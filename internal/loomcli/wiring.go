@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/alignment"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -33,7 +32,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
-	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -78,10 +76,9 @@ type commitStatusDeps struct {
 	SetBoardStatus func(status string) error
 }
 
-// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, runID), shedrun.ArbiterRel(location, runID), shedrun.TacklerRel(location, runID) and shedrun.AlignmentRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it.
+// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, runID), shedrun.ArbiterRel(location, runID) and shedrun.TacklerRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it.
 // The arbiter directory carries each attempt's record, prompt, verdict and envelope, so they are committed with the run records.
 // The tackler directory, staged under the same rule, carries each tackler attempt's record, prompt, verdict and envelope.
-// The alignment directory, staged under the same rule, carries each alignment agent attempt's record, prompt, verdict and report.
 // The loom durable directory is staged whole rather than its friction directory alone:
 // staging the parent carries the friction directory and every timestamped archive sibling in one entry,
 // where a friction-only entry would miss the archives.
@@ -109,9 +106,6 @@ func statusCommitPathspec(location *lyxcwd.Location, runID string) []string {
 	}
 	if holdsFile(shedrun.TacklerDir(location, runID)) {
 		paths = append(paths, shedrun.TacklerRel(location, runID))
-	}
-	if holdsFile(shedrun.AlignmentDir(location, runID, "")) {
-		paths = append(paths, shedrun.AlignmentRel(location, runID))
 	}
 	return paths
 }
@@ -325,15 +319,10 @@ func committedAnchoredReader(location *lyxcwd.Location) func(anchorRel string) (
 	}
 }
 
-// discussionCommitPathspec is the pathspec CommitDiscussion stages: the whole discussion directory, plus the parent-review round directories so the review records land in the same commit.
-// The parent-review directory is left out while it holds no file, since git refuses such a pathspec (see statusCommitPathspec):
-// that is a run with no reviewer, whose fresh spawn leaves an empty round directory, or one whose parent-review entry is off.
-// Its round files are never deleted, so a directory holding no file was never tracked either.
+// discussionCommitPathspec is the pathspec CommitDiscussion stages: the whole discussion directory and the plan amendment record.
+// A parent-review round directory an older binary left stays committed as it is and is staged no more.
 func discussionCommitPathspec(location *lyxcwd.Location) []string {
 	paths := []string{loomengine.DiscussionDirRel()}
-	if holdsFile(loomengine.LoomParentReviewDir(location)) {
-		paths = append(paths, loomengine.LoomParentReviewDirRel())
-	}
 	return append(paths, amendmentPathspec(location, func(rel string) (bool, error) {
 		return fabricengine.PathTracked(location.AnchorPath(), rel)
 	})...)
@@ -379,110 +368,8 @@ func writeCarryOver(location *lyxcwd.Location, entry discussionparser.CarryOver)
 	return err
 }
 
-// newParentReviewConfig builds the Discussion-Write parent-review gate's told input.
-// The reviewer is the Parent hubgeom.ResolveParent returns, empty when the run has no parent;
-// a resolver error is a wiring error.
-// ReviewerLive is nil, so the gate treats the reviewer as live, while the parent names no worktree (no parent);
-// otherwise it reads the parent worktree's reed session through reedCfg.
-// KeepAlive is the writer's prompt-cache lifetime as the set's default engine answers it for shuttleCfg, less a minute;
-// a lifetime error logs a Warn and leaves pings off, since the writer's own spawn refuses the same config with its advice.
-func newParentReviewConfig(location *lyxcwd.Location, reedCfg reedengine.Config, cfg loomengine.Config, stencilsDir string, engines shuttleengine.EngineSet, shuttleCfg shuttleengine.Config) (parentreview.GateConfig, error) {
-	parent, err := hubgeom.ResolveParent(location)
-	if err != nil {
-		return parentreview.GateConfig{}, fmt.Errorf("loom: resolve the parent review reviewer: %w", err)
-	}
-	var reviewerLive func() (bool, error)
-	if parent.Worktree != "" {
-		reviewerLive = func() (bool, error) {
-			return parentWorktreeReviewerLive(location, reedCfg, parent)
-		}
-	}
-	slug := seedSlug(location.WorktreeName)
-	decisionRecord := loomengine.DiscussionDecisionRecord(location)
-	supportLog := loomengine.DiscussionSupportLog(location)
-	waitBound := time.Duration(cfg.ParentReviewWaitMin) * time.Minute
-	var keepAlive time.Duration
-	var lifetime time.Duration
-	defaultEngine, err := engines.Lookup("")
-	if err == nil {
-		lifetime, err = defaultEngine.PromptCacheLifetime(shuttleengine.Spec{Role: loomengine.DiscussionWriterRole()}, shuttleCfg)
-	}
-	if err != nil {
-		logger.Warn("parent review keep-alive off: the writer's prompt-cache lifetime cannot be resolved", "slug", slug, "error", err.Error())
-	} else {
-		keepAlive = keepAliveInterval(lifetime, waitBound)
-	}
-	return parentreview.GateConfig{
-		Store:          parentreview.Store{Root: loomengine.LoomParentReviewDir(location), LockDir: loomengine.LoomParentReviewLockDir(location)},
-		Slug:           slug,
-		Reviewer:       parent.Name,
-		ReviewerLive:   reviewerLive,
-		DecisionRecord: decisionRecord,
-		SupportLog:     supportLog,
-		WaitBound:      waitBound,
-		KeepAlive:      keepAlive,
-		RenderDelivery: func(briefPath string) (string, error) {
-			return loomengine.ParentReviewDeliveryPrompt(stencilsDir, slug, briefPath, parent.Name)
-		},
-		RenderBrief: func() (string, error) {
-			return loomengine.ParentReviewBrief(stencilsDir, slug, decisionRecord, supportLog, "", "")
-		},
-		RenderAlignmentBrief: func(report, reason string) (string, error) {
-			return loomengine.ParentReviewBrief(stencilsDir, slug, decisionRecord, supportLog, report, reason)
-		},
-		RenderKeepAlive: func(ping int) (string, error) {
-			return loomengine.ParentReviewKeepAlivePrompt(stencilsDir, ping)
-		},
-	}, nil
-}
-
-// keepAliveMargin is how long before the writer's prompt cache would lapse a keep-alive ping lands.
-const keepAliveMargin = time.Minute
-
 // loomProgram is the program name loom signs its notices to the orch with.
 const loomProgram = "LOOM"
-
-// keepAliveInterval returns lifetime less keepAliveMargin, and zero, which turns pings off, when lifetime reaches waitBound or is no more than the margin.
-// A cache that outlasts the whole wait needs no ping.
-func keepAliveInterval(lifetime, waitBound time.Duration) time.Duration {
-	if lifetime >= waitBound || lifetime <= keepAliveMargin {
-		return 0
-	}
-	return lifetime - keepAliveMargin
-}
-
-// parentWorktreeReviewerLive reports whether parent's reviewer has a live strand in its worktree's reed session.
-// The parent worktree is resolved on each call, never at wiring time, so a parent started after the run is seen.
-func parentWorktreeReviewerLive(location *lyxcwd.Location, reedCfg reedengine.Config, parent hubgeom.Parent) (bool, error) {
-	parentLoc, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, parent.Worktree))
-	if err != nil {
-		return false, fmt.Errorf("loom: resolve parent worktree %q: %w", parent.Worktree, err)
-	}
-	geom, err := hubgeom.ReedGeometry(parentLoc)
-	if err != nil {
-		return false, fmt.Errorf("loom: reed geometry of parent worktree %q: %w", parent.Worktree, err)
-	}
-	return strandLive(parent.Name, reedengine.New(reedCfg, geom, shuttleengines.EnvScrub()).Status)
-}
-
-// strandLive reports whether status lists a live strand named name.
-// An error wrapping reedengine.ErrNoSession answers not live with no error, since a parent with no session has no reviewer;
-// any other status error is returned.
-func strandLive(name string, status func() (reedengine.StatusResult, error)) (bool, error) {
-	res, err := status()
-	if errors.Is(err, reedengine.ErrNoSession) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	for _, s := range res.Strands {
-		if s.Name == name && s.Live {
-			return true, nil
-		}
-	}
-	return false, nil
-}
 
 // wire builds the whole engine stack onto c from location and cwd: every module config anchored at
 // location.AnchorPath(), the reed engine and shuttle runner, the assembled websterengine.RunDeps, and
@@ -650,16 +537,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		},
 	}
 
-	parentReviewCfg, err := newParentReviewConfig(location, reedCfg, loomCfg, websterGeom.StencilsDir, engines, shuttleCfg)
-	if err != nil {
-		return err
-	}
-	aligner, err := newParentReviewAligner(location, c.runID, loomCfg, registry, websterGeom.StencilsDir, alignment.RunnerShuttle(runner), hubBoardTasks(location))
-	if err != nil {
-		return err
-	}
-	parentReviewCfg.Aligner = aligner
-
 	// A pair run records its parent branch in the origin record, so the record file's presence tells the headroom lint its merge base.
 	// The check only stats, because reading the record would create the records-side lock directory and seed its exclude.
 	var verifyMergeBase func() (string, error)
@@ -670,7 +547,6 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	}
 
 	c.env = shedrecipe.Env{
-		ParentReview: parentReviewCfg,
 		Cwd:          cwd,
 		AnchorPath:   anchorPath,
 		ConfigDirs:   fabricengine.ConfigDirs(location),
@@ -857,7 +733,7 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		CodeSubject:     func() (shedadapters.Subject, bool, error) { return codeSubject(location, c.runID) },
 		MergeInOnly:     parentMergeInOnly(location),
 		RecordHead:      recordHead(location),
-		// ReviewInput is the merge fixer's latest Merge-In report, so a report newer than the Code-Perch's settled verdict re-opens the perch as an amendment over it.
+		// ReviewInput is the merge fixer's latest Parent-Align report, so a report newer than the Code-Perch's settled verdict re-opens the perch as an amendment over it.
 		ReviewInput: fixerReportInput(loomengine.LoomScratchDir(location)),
 		// SkipPlanReview lets Plan-Bouncer approve an exempt rework generation without a judge; it reads committed state on demand and opens nothing at wire time.
 		SkipPlanReview: func() (bool, error) { return loomshed.PlanReviewSkippable(reworkDeps) },

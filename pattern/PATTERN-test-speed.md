@@ -33,7 +33,7 @@ A gate key in `gate.yaml` names a site's tiers and its scope, and a site runs `l
 | `batch` | each Webster batch, each tier run failing on a tmux server socket its end-of-package check finds | `card` |
 | `webster-fix` | Webster-Burler-Fix's verify fixers, after the headroom and comment lints | `diff` |
 | `webster` | Webster's end gate | `all` |
-| `merge-in`, `finalize` | Merge-In and Finalize | `all` |
+| `parent-align`, `finalize` | Parent-Align and Finalize | `all` |
 | `darn-write`, `code-burler-fix` | darn's writer and the Code-Burler-Fix rows | `diff` |
 | By hand | the `tier3` tier | |
 

@@ -4,14 +4,14 @@
 # here without a matching constant rename breaks resume for any in-flight task.
 #
 # The main line is Preflight, Loom-Preflight, Discussion-Write, the Discussion-Review ring,
-# Plan-Write, the Plan-Review ring, Webster, Merge-In, the Code-Review ring, Describe, PR-Review,
+# Plan-Write, the Plan-Review ring, Webster, Parent-Align, the Code-Review ring, Describe, PR-Review,
 # Finalize and Friction-Reflect.
 #
 # Every gate and validator bounces back to the producer whose artifact it guards, and a gate whose
 # guarded artifact is produced by no row in the list escalates instead.
 # Preflight and Loom-Preflight carry no on_stuck for exactly that reason: nothing in the list
 # produces what each of them gates, so a human is the only thing that can fix either.
-# Merge-In and Finalize carry none either, because each fixes its own merge and test failures in its
+# Parent-Align and Finalize carry none either, because each fixes its own merge and test failures in its
 # merge fixer, and a failure the fixer cannot fix halts the run for the orch instead of routing to another row.
 #
 # Those four are not the whole escalate-to-a-human set, and the difference matters when auditing
@@ -26,13 +26,13 @@
 # Webster's Stuck halts the run for a human too, with one exception: Webster declares on_reroute:
 # Plan-Burler-Review, and its producer marks a Stuck Reroute only when begin-batch left a new
 # plan-conflict record.
-# Finalize declares on_reroute: Merge-In, the edge a moved parent or a merge too large to land takes.
+# Finalize declares on_reroute: Parent-Align, the edge a moved parent or a merge too large to land takes.
 # Shed's reroute cap bounds both edges, and a reroute spends no bounce budget.
 #
 # PR-Review and Friction-Reflect are outside the escalate-to-a-human set: each also carries no
 # on_stuck, but each always returns Done and never Stuck.
 #
-# Merge-In follows Webster and brings the parent's upstream tip into the task branch with no parent
+# Parent-Align follows Webster and brings the parent's upstream tip into the task branch with no parent
 # lock, then hands to the Code-Review perch.
 # Finalize takes the parent lock first and is the only row that lands on the parent.
 #
@@ -42,6 +42,9 @@
 # resume identities, and a permanent migration table mapping retired names onto their successors is
 # carrying cost a pre-release, single-operator system does not need when the operator can simply
 # re-run.
+# A run parked on Merge-In, the row now named Parent-Align, is carried across by rename and not
+# restarted: `lyx loom` rewrites the old name in its status file through LoomRetiredRows, and the row
+# keeps its position, so `lyx loom peers` reports the same positions.
 #
 # Every review segment follows the same shared-segment on_stuck ring: Discussion-Bouncer,
 # Discussion-Burler-Review and Discussion-Burler-Fix carry segment: Discussion-Review, the three
@@ -97,13 +100,6 @@ producers:
       gates:
         - name: discussion
           attempts: 3
-        # parent-review hands the finished discussion to the run's parent once the mechanical gate
-        # passes, as one scope check against the board entry; the perch below reviews the detail.
-        # every rewrite after a reject is reviewed as the next round. attempts is the reject cap and
-        # 0 turns the review off; the cap's reject halts the run blocked until
-        # `lyx loom review approve`.
-        - name: parent-review
-          attempts: 2
 
   - name: Discussion-Bouncer
     engine: Bouncer
@@ -127,6 +123,10 @@ producers:
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Discussion-Review
+      # escalate_decisions makes this Bouncer send a round's decision-class findings to the run's
+      # parent; Discussion-Burler-Fix sets decisions_escalated so its fixer is given none and
+      # posts no notice of its own, and a test pins the two set together.
+      escalate_decisions: true
       # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
       # seed and per-segment judge and seed keys are the only source of this row's passes' models.
 
@@ -177,6 +177,10 @@ producers:
       run_subdir: discussion
       role_prefix: discussion
       fixer_fan_setting: loom.discussion_fixer_fan
+      # decisions_escalated says Discussion-Bouncer's escalate_decisions sends the round's
+      # decision-class findings to the parent, so this row keeps them out of the fixer's work
+      # and posts no notice of its own.
+      decisions_escalated: true
       # review_row names this segment's review row, which a refusal's way forward sends the
       # operator back to.
       review_row: Discussion-Burler-Review
@@ -342,16 +346,16 @@ producers:
   # implementer builds this row with these edges, as contracts/specs/implementer-spec.md pins.
   - name: Webster
     engine: Implementer
-    on_done: Merge-In
+    on_done: Parent-Align
     on_reroute: Plan-Burler-Review
     config:
       implementer_setting: loom.implementer
 
-  # Merge-In brings the parent's upstream tip into the task branch with no parent lock and runs the
+  # Parent-Align brings the parent's upstream tip into the task branch with no parent lock and runs the
   # merge fixer on a conflict or a failing merged tree, so the Code-Review perch below reviews code
   # that already carries the parent. A failure the fixer cannot fix halts the run for the orch.
-  - name: Merge-In
-    engine: MergeIn
+  - name: Parent-Align
+    engine: ParentAlign
     on_done: Code-Bouncer
 
   - name: Code-Bouncer
@@ -498,10 +502,10 @@ producers:
 
   # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
   # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.
-  # A conflict or a merge too large to land reroutes to Merge-In.
+  # A conflict or a merge too large to land reroutes to Parent-Align.
   - name: Finalize
     engine: Finalize
-    on_reroute: Merge-In
+    on_reroute: Parent-Align
     # Hands off to the reflection row rather than ending the run.
     on_done: Friction-Reflect
 

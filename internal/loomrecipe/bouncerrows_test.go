@@ -144,7 +144,7 @@ func TestIsFinalizeRow(t *testing.T) {
 		want bool
 	}{
 		{loomshed.NameFinalize, true},
-		{loomshed.NameMergeIn, false},
+		{loomshed.NameParentAlign, false},
 		{loomshed.NamePRReview, false},
 		{"No-Such-Row", false},
 	}

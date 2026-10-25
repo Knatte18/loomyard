@@ -1,4 +1,5 @@
-// loomrecipe.go implements New: the coherence guard across env and paths, then the parse of contracts/recipes.LoomRecipe, and the delegation to shedbuild.NewShedFrom.
+// loomrecipe.go implements New and LoomRetiredRows.
+// New is the coherence guard across env and paths, then the parse of contracts/recipes.LoomRecipe, and the delegation to shedbuild.NewShedFrom.
 // NewShedFrom builds the recipe against a caller-supplied shedrecipe.Env and returns the assembled *shedengine.Shed.
 
 package loomrecipe
@@ -7,10 +8,16 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
+
+// LoomRetiredRows maps each row name a loom run's status file may still carry from an earlier recipe onto the row that replaced it.
+func LoomRetiredRows() map[string]string {
+	return map[string]string{"Merge-In": loomshed.NameParentAlign}
+}
 
 // New parses recipes.LoomRecipe, builds it against env, and returns a *shedengine.Shed carrying
 // the built []shedengine.ProducerDef plus paths' five fields.

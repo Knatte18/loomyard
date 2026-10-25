@@ -93,19 +93,18 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 
 `lyx loom status` carries a top-level `hand_back` key, and the loop's stop envelope carries `loop.hand_back`.
 Both are true when the run is blocked and the recipe's told check answers true for the status's `current_producer` and `error`, and false otherwise, including when no check is told.
-For loom and darn the check is `landingshed.HandsBack`: a blocked stop at Merge-In or Finalize whose reason opens with the landing-stop prefix, or a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
+For loom and darn the check is `landingshed.HandsBack`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-stop prefix, or a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
 A true key marks a halt that goes to the orch, so every driver hands it back instead of routing it.
 
 ## The `waiting` key
 
-`lyx loom status` adds a `waiting` key to its envelope while the run's state is `running` and one of five waits is present.
+`lyx loom status` adds a `waiting` key to its envelope while the run's state is `running` and one of four waits is present.
 The waits are read in order:
 
 1. a gate wait, read from the worktree's live gate wait records, which `lyx gate test`, the card-verify rerun and the plan gate's type load each write while they wait for a gate slot;
 2. a parent lock wait, read from the run's parent lock wait record, which a landing row writes while it waits for the parent lock;
 3. a verify, read from the verify marker, running or waiting for a gate slot;
-4. a shuttle wait, read from the run's wait marker (a gate entry or the background-shell wait);
-5. an open parent-review request with no verdict in the latest round, read from the round store.
+4. a shuttle wait, read from the run's wait marker (a gate entry or the background-shell wait).
 
 A gate wait does not hide the rest: its note is followed by the first of the other waits that has a live pid, after `; `.
 Among the others, the first one with a live pid wins.
@@ -117,7 +116,6 @@ A verify still waiting for a gate slot renders `<producer>: verify waiting for a
 A parent lock wait renders `<producer>: waiting for the parent lock on <branch> held by <slug> <elapsed>`, elapsed measured from the record's start.
 A lock wait record whose writer is dead is ignored.
 A holders clause is dropped when no slot is held or the holders cannot be read.
-The parent-review wait keeps its existing `parent review: ` form, naming the reviewer, when the request opened and whether the notice was delivered (or why it was not).
 `<producer>` is the run's current producer,
 `<elapsed>` is whole seconds under a minute, whole minutes under an hour and hours with minutes beyond (`45s`, `6m`, `1h12m`),
 and the attempt clause of a verify is dropped when no attempt counter applies.

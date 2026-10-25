@@ -139,6 +139,7 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 // the Webster and Darn fixers name the "verify" gate, so a round that changed code ends with a passing verify, and the two review segments name their own validators.
 // The optional "gate_key" string names the key of the hub's gate.yaml the "verify" gate runs, else the row name in lower case.
 // The row's models and fix key come from its segment's SegmentSettings.
+// The optional boolean "decisions_escalated" key (default false) marks a segment whose Bouncer escalates the round's decision findings itself: the fixer is given none and the row posts no notice of its own.
 // The row names no fan list of its own: a fixer fan reaches it through the review row's recorded round, and only when its fixer_fan_setting key names a setting, which requires the recorded round and is cited as the fan's source.
 func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
@@ -169,7 +170,11 @@ func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	if err != nil {
 		return nil, err
 	}
-	if err := configRejectUnknown(cfg, "run_subdir", "review_row", "profile", "timeout_s", "gates", "gate_key", "color_segment", "role_prefix", "fixer_fan_setting"); err != nil {
+	decisionsEscalated, err := configBool(cfg, "decisions_escalated", false)
+	if err != nil {
+		return nil, err
+	}
+	if err := configRejectUnknown(cfg, "run_subdir", "review_row", "profile", "timeout_s", "gates", "gate_key", "color_segment", "role_prefix", "fixer_fan_setting", "decisions_escalated"); err != nil {
 		return nil, err
 	}
 	segment, err := rowSegment("BurlerFix", row, env)
@@ -195,7 +200,7 @@ func burlerFixEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	if fixFanNamed {
 		opts.FixFanKey = fixFanRef.Key
 	}
-	deps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, RequiresFans: fixFanNamed, GateFindingsPath: env.gateFindingsPath(row.Name), NotifyParent: env.NotifyParent}
+	deps := shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, RequiresFans: fixFanNamed, GateFindingsPath: env.gateFindingsPath(row.Name), NotifyParent: env.NotifyParent, DecisionsEscalated: decisionsEscalated}
 	producer, err := shedadapters.NewBurlerFixProducer(row.Name, reviewRow, deps, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerFix: %w", err)

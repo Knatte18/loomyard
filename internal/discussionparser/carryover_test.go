@@ -56,6 +56,12 @@ func TestWriteCarryOver_RendersConvergedAndAcceptedEntries(t *testing.T) {
 	converged := carryOverEntry("Plan-Review", "cache-key")
 	accepted := carryOverEntry("Plan-Review", "cache-key")
 	accepted.Closing = CarryOverAccepted
+	answered := carryOverEntry("Plan-Review", "scope-question")
+	answered.Closing = CarryOverAccepted
+	answered.Findings = []CarryOverFinding{
+		{Key: "scope-question", Class: "decision", Severity: "LOW", Rounds: []int{2}, AddedSince: []string{"Drop the cache", "Keep `v1`"}},
+		{Key: "cache-key", Class: "design", Severity: "MEDIUM", Rounds: []int{1, 2}},
+	}
 
 	tests := []struct {
 		name  string
@@ -69,6 +75,11 @@ func TestWriteCarryOver_RendersConvergedAndAcceptedEntries(t *testing.T) {
 		{"accepted", accepted, openMarker + "\n" +
 			"- Plan-Review, round 2: closed by an accepted circling decision; a finding below was addressed by the round's fixer or is still unfixed.\n" +
 			"  Review: reviews/round-2/review.md; fixer report: reviews/round-2/fixer-report.md.\n" +
+			"  - cache-key (class design, severity MEDIUM, open in rounds 1, 2)\n" + closeMarker},
+		{"accepted with answered-since titles", answered, openMarker + "\n" +
+			"- Plan-Review, round 2: closed by an accepted circling decision; a finding below was addressed by the round's fixer or is still unfixed.\n" +
+			"  Review: reviews/round-2/review.md; fixer report: reviews/round-2/fixer-report.md.\n" +
+			"  - scope-question (class decision, severity LOW, open in rounds 2; answered since by: Drop the cache; Keep \\`v1\\`)\n" +
 			"  - cache-key (class design, severity MEDIUM, open in rounds 1, 2)\n" + closeMarker},
 	}
 	for _, tt := range tests {

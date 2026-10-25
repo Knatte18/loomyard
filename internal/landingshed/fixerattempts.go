@@ -20,7 +20,7 @@ type FixerAttempts struct {
 	Spent int `json:"spent"`
 	// Baseline is the HEAD a cap measures a fixer change from.
 	Baseline string `json:"baseline"`
-	// AlignFrom is the parent tip a Merge-In entry reads the parent's changes from when the merge record holds no aligned tip.
+	// AlignFrom is the parent tip a Parent-Align entry reads the parent's changes from when the merge record holds no aligned tip.
 	AlignFrom string `json:"align_from"`
 	// Halt notes the halt that last stopped the entry: "spent", "over-cap" or empty.
 	Halt string `json:"halt"`

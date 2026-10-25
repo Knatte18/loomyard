@@ -84,7 +84,7 @@ type fixerRunFixture struct {
 }
 
 const (
-	fixerTestRow   = "Merge-In"
+	fixerTestRow   = "Parent-Align"
 	fixerTestCap   = 2
 	fixerTestLimit = 5 * time.Minute
 )
@@ -92,7 +92,7 @@ const (
 func newFixerRunFixture(t *testing.T) *fixerRunFixture {
 	t.Helper()
 	fx := &fixerRunFixture{
-		gate:      newGateFixture(t, "merge-in", "go test ./...", nil),
+		gate:      newGateFixture(t, "parent-align", "go test ./...", nil),
 		seats:     &fakeFixerSeats{},
 		clock:     gateMarkStart,
 		remoteTip: "remote-1",
@@ -111,7 +111,7 @@ func newFixerRunFixture(t *testing.T) *fixerRunFixture {
 		}
 	}
 	fx.deps = Deps{
-		GateKey:            "merge-in",
+		GateKey:            "parent-align",
 		ScratchDir:         scratch,
 		StencilsDir:        stencilsDir,
 		DecisionRecordPath: filepath.Join(scratch, "decision-record.md"),
@@ -141,7 +141,7 @@ func (fx *fixerRunFixture) writeReport(t *testing.T, content string) {
 
 func (fx *fixerRunFixture) execute(t *testing.T, rec FixerAttempts) (fixerOutcome, FixerAttempts, error) {
 	t.Helper()
-	return fx.run.run(context.Background(), FixerModeMergeIn, rec, fixerTestCap, [2]string{"aligned", "merged"})
+	return fx.run.run(context.Background(), FixerModeParentAlign, rec, fixerTestCap, [2]string{"aligned", "merged"})
 }
 
 const (

@@ -167,7 +167,7 @@ func (c *loomCLI) awaitingResumability(row string) (resumeRefusal, bool) {
 		return resumeRefusal{message: "loom resume: " + err.Error() + `; the embedded loom recipe failed to parse, so this lyx build is broken; rebuild or reinstall lyx, then re-run "` + retryResume + `"`}, false
 	}
 	if !isBouncer {
-		return resumeRefusal{message: `loom resume: the run is awaiting a decision, which resume does not give; answer it through the verb the run's waiting note names, such as "lyx loom review approve <slug>", after which a batten run watching the child resumes it, or run "lyx batten run <slug>" from the prime when no batten run watches it`}, false
+		return resumeRefusal{message: `loom resume: the run is awaiting a decision, which resume does not give; answer it through the verb the run's waiting note names, such as "lyx loom circling accept <slug>", after which a batten run watching the child resumes it, or run "lyx batten run <slug>" from the prime when no batten run watches it`}, false
 	}
 	pending, err := shedadapters.PendingCirclingDecision(filepath.Join(loomengine.LoomReviewsDir(c.location), subdir))
 	if err != nil {

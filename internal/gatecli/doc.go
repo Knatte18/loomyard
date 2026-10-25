@@ -69,7 +69,7 @@
 // Two scopes are empty and tell apart: nothing testable changed, such as an inert-only diff, which makes no invocation as under `go`, and changes that no test class names, which runs a tier with `shared_build` as no invocation and any other tier whole, naming it on stderr, so a compile break still fails the gate.
 // The scope plans no guard step and no vet step, and `--guards` is refused naming the scoper and the way forward of dropping it, since no config change gives a C# hub the guard tests.
 // Green record: a narrowed project invocation is partial and writes no entry, even when its target equals the tier's `all_targets`, so a filtered pass never stands in for a whole run; a whole `dotnet` pass writes its whole entry as under `none`, and only whole entries carry.
-// The class closure skips every test class it does not select, so it misses only references that never spell a changed type's name, and the gates that run whole, such as `merge-in` and `finalize`, catch those.
+// The class closure skips every test class it does not select, so it misses only references that never spell a changed type's name, and the gates that run whole, such as `parent-align` and `finalize`, catch those.
 // Under the `go` scoper a computed or `--base` scope is `impactset.DeriveTargets` of the diff from its base to the working tree, and falls back to whole wherever it does, naming the reason on stderr;
 // a `--card` scope is the cards' packages.
 // A narrower scope runs each listed tier once per module, in that module's directory with its module-relative targets, under one slot hold and one `timeout_min` covering every invocation.
@@ -197,7 +197,7 @@
 // Bound: a carried tier trusts a pass over the same tree, tier declaration and args on this worktree, so a flaky test that passed once is not rerun.
 // A Go toolchain change, inherited environment variables outside the tier's `env` and ignored files such as `.dev-bin` are outside the fingerprint and the clean check.
 // The record never leaves the machine, so an adopted run tests afresh.
-// A forged or hand-edited whole entry carries every later gate on that tree, Merge-In and Finalize included, which is accepted because a session that can write the worktree can change the code and tests under review, so the record guards only honest repeats and no further deny is added, since `cp` and `tee` would still reach it.
+// A forged or hand-edited whole entry carries every later gate on that tree, Parent-Align and Finalize included, which is accepted because a session that can write the worktree can change the code and tests under review, so the record guards only honest repeats and no further deny is added, since `cp` and `tee` would still reach it.
 //
 // # Timeouts
 //
@@ -286,7 +286,7 @@
 //	  card: {tiers: [0], scope: card}
 //	  batch: {tiers: [0, 1], scope: card}
 //	  webster: {tiers: [0, 1], scope: all}
-//	  merge-in: {tiers: [0, 1], scope: all}
+//	  parent-align: {tiers: [0, 1], scope: all}
 //	  finalize: {tiers: [0, 1], scope: all}
 //	  webster-fix: {tiers: [0, 1], scope: diff}
 //	  darn-write: {tiers: [0, 1], scope: diff}

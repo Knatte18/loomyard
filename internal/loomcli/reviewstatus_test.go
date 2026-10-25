@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -15,122 +14,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
-	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-func reviewStore(t *testing.T) parentreview.Store {
-	t.Helper()
-	d := t.TempDir()
-	return parentreview.Store{Root: filepath.Join(d, "reviews"), LockDir: filepath.Join(d, "locks")}
-}
+// fallthroughNote is the fixed note the fake next step returns, so a row can tell a fall-through from a reported wait.
+const fallthroughNote = "next step note"
 
-func openReview(t *testing.T, s parentreview.Store) {
-	t.Helper()
-	if _, err := s.BeginRound(); err != nil {
-		t.Fatal(err)
-	}
-	spec := parentreview.OpenSpec{Slug: "x", Reviewer: "hub:orch", DecisionRecord: "d.md", SupportLog: "s.md", Brief: "brief"}
-	if _, err := s.OpenRequest(spec); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func waitingNote(t *testing.T, s parentreview.Store) string {
-	t.Helper()
-	note, err := reviewWaiting(s.Root, s.LockDir)()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return note
-}
-
-// TestReviewWaiting asserts the waiting note names an open request and whether its notice was delivered, and is empty when there is no review, a settled round or a superseded one.
-func TestReviewWaiting(t *testing.T) {
-	tests := []struct {
-		name       string
-		setup      func(t *testing.T, s parentreview.Store)
-		wantEmpty  bool
-		wantPrefix string
-		wantIn     string
-	}{
-		{name: "absent dir is empty", wantEmpty: true},
-		{
-			name:       "open undelivered",
-			setup:      openReview,
-			wantPrefix: "parent review: waiting on reviewer hub:orch",
-			wantIn:     "notice not delivered",
-		},
-		{
-			name: "open delivered",
-			setup: func(t *testing.T, s parentreview.Store) {
-				openReview(t, s)
-				if err := s.RecordDelivered(""); err != nil {
-					t.Fatal(err)
-				}
-			},
-			wantIn: "notice delivered at",
-		},
-		{
-			name: "verdicted round reports nothing",
-			setup: func(t *testing.T, s parentreview.Store) {
-				openReview(t, s)
-				if err := s.RecordVerdict(parentreview.VerdictApprove, ""); err != nil {
-					t.Fatal(err)
-				}
-			},
-			wantEmpty: true,
-		},
-		{
-			name: "expired round reports nothing",
-			setup: func(t *testing.T, s parentreview.Store) {
-				openReview(t, s)
-				if err := s.MarkExpired(); err != nil {
-					t.Fatal(err)
-				}
-			},
-			wantEmpty: true,
-		},
-		{
-			// Only the latest round counts: the superseded round's open request must not leak.
-			name: "superseded round reports nothing",
-			setup: func(t *testing.T, s parentreview.Store) {
-				openReview(t, s)
-				if _, err := s.BeginRound(); err != nil {
-					t.Fatal(err)
-				}
-				if _, err := os.Stat(filepath.Join(s.Root, "round-2")); err != nil {
-					t.Fatal(err)
-				}
-			},
-			wantEmpty: true,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s := reviewStore(t)
-			if tt.setup != nil {
-				tt.setup(t, s)
-			}
-			note := waitingNote(t, s)
-			if tt.wantEmpty && note != "" {
-				t.Errorf("note = %q, want empty", note)
-			}
-			if !strings.HasPrefix(note, tt.wantPrefix) || !strings.Contains(note, tt.wantIn) {
-				t.Errorf("note = %q; want prefix %q containing %q", note, tt.wantPrefix, tt.wantIn)
-			}
-		})
-	}
-}
-
-// reviewAsNext adapts the review store's waiting note to the hook chain's next step.
-func reviewAsNext(s parentreview.Store) func(shedengine.Status) (string, error) {
-	note := reviewWaiting(s.Root, s.LockDir)
-	return func(shedengine.Status) (string, error) { return note() }
-}
+// fixedNextStep is the hook chain's next step in place of a real wait: it always returns fallthroughNote.
+func fixedNextStep(shedengine.Status) (string, error) { return fallthroughNote, nil }
 
 // writeShuttleMarker writes a wait marker of the given kind held by pid into a run directory under runRoot.
 func writeShuttleMarker(t *testing.T, runRoot, kind string, pid int) {
@@ -147,7 +41,7 @@ func writeShuttleMarker(t *testing.T, runRoot, kind string, pid int) {
 
 // TestShuttleWaiting asserts the hook chain's order.
 // Gate wait records are reported ahead of a live verify marker, and a live verify marker ahead of a live shuttle marker.
-// A dead shuttle marker falls through to the review note.
+// A dead shuttle marker falls through to the next step.
 func TestShuttleWaiting(t *testing.T) {
 	t.Parallel()
 
@@ -159,10 +53,9 @@ func TestShuttleWaiting(t *testing.T) {
 		shuttlePID   int
 		verifyMarker func(t *testing.T) string
 		// waits are the live gate wait records, written in the order listed.
-		waits      []gateslot.Wait
-		holders    []gateslot.Holder
-		want       string
-		wantReview bool
+		waits   []gateslot.Wait
+		holders []gateslot.Holder
+		want    string
 	}{
 		{
 			name:         "two live wait records render both sites oldest first, then the holders once, then the next note",
@@ -215,19 +108,17 @@ func TestShuttleWaiting(t *testing.T) {
 			want:         "Plan-Write: verify running 6m (go test ./...)",
 		},
 		{
-			name:         "dead shuttle marker falls to review",
+			name:         "dead shuttle marker falls to the next step",
 			kind:         "gate validate-plan",
 			shuttlePID:   2147483646,
 			verifyMarker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
-			wantReview:   true,
+			want:         fallthroughNote,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runRoot := t.TempDir()
 			writeShuttleMarker(t, runRoot, tt.kind, tt.shuttlePID)
-			s := reviewStore(t)
-			openReview(t, s)
 			now := func() time.Time { return started.Add(6*time.Minute + 20*time.Second) }
 			readMarker := func() (shuttleengine.WaitMarker, bool, error) {
 				return shuttleengine.ReadWaitMarker(shuttleengine.Config{RunDir: runRoot}, t.TempDir())
@@ -239,17 +130,11 @@ func TestShuttleWaiting(t *testing.T) {
 				}
 			}
 			holders := func() ([]gateslot.Holder, error) { return tt.holders, nil }
-			verify := verifyWaiting(tt.verifyMarker(t), holders, now, shuttleWaiting(readMarker, now, reviewAsNext(s)))
+			verify := verifyWaiting(tt.verifyMarker(t), holders, now, shuttleWaiting(readMarker, now, fixedNextStep))
 			hook := gateWaiting(waitDir, holders, now, verify)
 			note, err := hook(shedengine.Status{CurrentProducer: "Plan-Write"})
 			if err != nil {
 				t.Fatal(err)
-			}
-			if tt.wantReview {
-				if !strings.HasPrefix(note, "parent review: ") {
-					t.Errorf("note = %q; want the parent-review note", note)
-				}
-				return
 			}
 			if note != tt.want {
 				t.Errorf("note = %q; want %q", note, tt.want)
@@ -280,12 +165,11 @@ func writeWaitingVerifyMarker(t *testing.T, pid int) string {
 	return path
 }
 
-// TestVerifyWaiting asserts a live verify marker is reported ahead of an open review, a dead marker falls through to the review note, and no marker with no review is empty.
+// TestVerifyWaiting asserts a live verify marker is reported ahead of the next step, and a dead or absent marker falls through to it.
 func TestVerifyWaiting(t *testing.T) {
 	tests := []struct {
-		name       string
-		openReview bool
-		marker     func(t *testing.T) string
+		name   string
+		marker func(t *testing.T) string
 		// holders is the told holders read; nil reads no holder.
 		holders func() ([]gateslot.Holder, error)
 		check   func(t *testing.T, note string)
@@ -330,9 +214,8 @@ func TestVerifyWaiting(t *testing.T) {
 			},
 		},
 		{
-			name:       "live marker ahead of review",
-			openReview: true,
-			marker:     func(t *testing.T) string { return writeVerifyMarker(t, os.Getpid(), 2) },
+			name:   "live marker ahead of the next step",
+			marker: func(t *testing.T) string { return writeVerifyMarker(t, os.Getpid(), 2) },
 			check: func(t *testing.T, note string) {
 				if want := "Webster-Burler: verify running 6m (attempt 2; go test ./...)"; note != want {
 					t.Errorf("note = %q; want %q", note, want)
@@ -349,38 +232,33 @@ func TestVerifyWaiting(t *testing.T) {
 			},
 		},
 		{
-			name:       "dead marker falls to review",
-			openReview: true,
-			marker:     func(t *testing.T) string { return writeVerifyMarker(t, 2147483646, 2) },
+			name:   "dead marker falls to the next step",
+			marker: func(t *testing.T) string { return writeVerifyMarker(t, 2147483646, 2) },
 			check: func(t *testing.T, note string) {
-				if !strings.HasPrefix(note, "parent review: ") {
-					t.Errorf("note = %q", note)
+				if note != fallthroughNote {
+					t.Errorf("note = %q; want %q", note, fallthroughNote)
 				}
 			},
 		},
 		{
-			name:   "no marker no review is empty",
+			name:   "no marker falls to the next step",
 			marker: func(t *testing.T) string { return filepath.Join(t.TempDir(), "absent.yaml") },
 			check: func(t *testing.T, note string) {
-				if note != "" {
-					t.Errorf("note = %q, want empty", note)
+				if note != fallthroughNote {
+					t.Errorf("note = %q; want %q", note, fallthroughNote)
 				}
 			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := reviewStore(t)
-			if tt.openReview {
-				openReview(t, s)
-			}
 			started := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
 			now := func() time.Time { return started.Add(6*time.Minute + 20*time.Second) }
 			holders := tt.holders
 			if holders == nil {
 				holders = func() ([]gateslot.Holder, error) { return nil, nil }
 			}
-			note, err := verifyWaiting(tt.marker(t), holders, now, reviewAsNext(s))(shedengine.Status{CurrentProducer: "Webster-Burler"})
+			note, err := verifyWaiting(tt.marker(t), holders, now, fixedNextStep)(shedengine.Status{CurrentProducer: "Webster-Burler"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -433,7 +311,7 @@ func TestParentLockWaiting(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{"live record names the branch, holder and elapsed time", writeWait, alive, "Merge-In: waiting for the parent lock on main held by other-task 6m", false},
+		{"live record names the branch, holder and elapsed time", writeWait, alive, "Parent-Align: waiting for the parent lock on main held by other-task 6m", false},
 		{"absent record falls through", func(*testing.T, string) {}, alive, "next note", false},
 		{"dead writer falls through", writeWait, dead, "next note", false},
 		{"unreadable record is an error", func(t *testing.T, path string) {
@@ -448,7 +326,7 @@ func TestParentLockWaiting(t *testing.T) {
 			path := parentlock.WaitRecordPath(t.TempDir())
 			tt.prepare(t, path)
 
-			got, err := parentLockWaiting(path, tt.alive, now, next)(shedengine.Status{CurrentProducer: "Merge-In"})
+			got, err := parentLockWaiting(path, tt.alive, now, next)(shedengine.Status{CurrentProducer: "Parent-Align"})
 
 			if (err != nil) != tt.wantErr || got != tt.want {
 				t.Errorf("note, err = %q, %v; want %q, error %v", got, err, tt.want, tt.wantErr)

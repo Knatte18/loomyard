@@ -120,7 +120,6 @@ func templateConfig() Config {
 		Friction:                 "sonnet[medium]",
 		FrictionTimeoutMin:       30,
 		Driver:                   "haiku[medium]",
-		ParentReviewWaitMin:      60,
 		StepIdleTimeoutMin:       60,
 		Arbiter:                  "opus[high]",
 		ArbiterTimeoutMin:        30,
@@ -129,9 +128,6 @@ func templateConfig() Config {
 		Tackler:                  "",
 		TacklerTimeoutMin:        0,
 		TacklerMaxSpawns:         nil,
-		Alignment:                "opus[high]",
-		AlignmentTimeoutMin:      20,
-		SkipAlignment:            false,
 		ReviewCirclingCheckpoint: 3,
 		ReviewMaxBounces:         3,
 		ReviewHardMaxBounces:     4,
@@ -323,18 +319,6 @@ review_timeout_min: 240
 			},
 		},
 		{
-			name:   "explicit parent_review_wait_min",
-			values: map[string]string{"parent_review_wait_min": "5", "alignment_timeout_min": "4"},
-			mutate: func(c *Config) { c.ParentReviewWaitMin, c.AlignmentTimeoutMin = 5, 4 },
-		},
-		{
-			name:   "explicit alignment keys",
-			values: map[string]string{"alignment": "sonnet[low]", "alignment_timeout_min": "10", "skip_alignment": "true"},
-			mutate: func(c *Config) {
-				c.Alignment, c.AlignmentTimeoutMin, c.SkipAlignment = "sonnet[low]", 10, true
-			},
-		},
-		{
 			name:   "explicit step_idle_timeout_min",
 			values: map[string]string{"step_idle_timeout_min": "15"},
 			mutate: func(c *Config) { c.StepIdleTimeoutMin = 15 },
@@ -483,12 +467,6 @@ review_timeout_min: 240
 				local:  "driver_kind: go\n",
 				mutate: func(c *Config) { c.DriverKind = "go" },
 			},
-			{
-				name:   "a local alignment_timeout_min is open to the local layer",
-				board:  "alignment_timeout_min: 20\n",
-				local:  "alignment_timeout_min: 10\n",
-				mutate: func(c *Config) { c.AlignmentTimeoutMin = 10 },
-			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -598,7 +576,7 @@ func TestSetDiscussionAdvisors_LoadsBack(t *testing.T) {
 }
 
 // TestLoadConfig_Refuses verifies each invalid loom.yaml is refused at load time, naming the offending key:
-// an ungrammatical model-spec (rather than being silently carried into a producer's spawn site), a parent_review_wait_min or review key below one (the sibling timeouts' "0 defers to shuttle" carve-out does not apply to them) with the way forward, a negative timeout (which would otherwise surface only when the producer it governs first spawns), and a set fan key beside an unparseable lenses.yaml.
+// an ungrammatical model-spec (rather than being silently carried into a producer's spawn site), a review key below one (the sibling timeouts' "0 defers to shuttle" carve-out does not apply to them) with the way forward, a negative timeout (which would otherwise surface only when the producer it governs first spawns), and a set fan key beside an unparseable lenses.yaml.
 func TestLoadConfig_Refuses(t *testing.T) {
 	t.Parallel()
 	const positiveIntegerForward = "set it to a positive integer in loom.yaml"
@@ -658,17 +636,12 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed friction spec", "friction", `"opus[effort"`, nil, ""},
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
 		{"malformed arbiter spec", "arbiter", `"opus[effort"`, nil, ""},
-		{"malformed alignment spec", "alignment", `"opus[effort"`, nil, ""},
 		{"unknown driver_kind", "driver_kind", "fast", []string{"llm or go"}, ""},
 		{"malformed tackler spec", "tackler", `"not a spec["`, nil, ""},
 		{"negative tackler_timeout_min", "tackler_timeout_min", "-1", []string{"must not be negative", "0 for the 10 minute default"}, ""},
 		{"negative tackler_max_spawns", "tackler_max_spawns", "-1", []string{"must not be negative", "0 to turn the tackler off"}, ""},
-		{"negative alignment_timeout_min", "alignment_timeout_min", "-1", []string{"must not be negative", "set it to 0 for the 20 minute default, or to a positive integer below parent_review_wait_min"}, ""},
-		{"alignment_timeout_min equal to parent_review_wait_min", "alignment_timeout_min", "60", []string{"parent_review_wait_min", "60", "set alignment_timeout_min below parent_review_wait_min"}, ""},
 		{"negative arbiter_timeout_min", "arbiter_timeout_min", "-1", []string{"must not be negative", "0 for the 30 minute default"}, ""},
 		{"negative arbiter_max_spawns", "arbiter_max_spawns", "-1", []string{"must not be negative", "0 to turn the arbiter off"}, ""},
-		{"zero parent_review_wait_min", "parent_review_wait_min", "0", []string{"attempts: 0"}, ""},
-		{"negative parent_review_wait_min", "parent_review_wait_min", "-1", []string{"attempts: 0"}, ""},
 		{"zero review_circling_checkpoint", "review_circling_checkpoint", "0", []string{positiveIntegerForward}, ""},
 		{"negative review_circling_checkpoint", "review_circling_checkpoint", "-1", []string{positiveIntegerForward}, ""},
 		{"negative review_max_bounces", "review_max_bounces", "-1", []string{"must not be negative", "set it to 0 for no review round, or to a positive integer"}, ""},
@@ -709,39 +682,6 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		})
 	}
 
-	t.Run("a zero alignment_timeout_min resolving to 20 is refused at a 20-minute wait", func(t *testing.T) {
-		t.Parallel()
-		dir := t.TempDir()
-		writeLoomConfigWithKeys(t, dir, map[string]string{"alignment_timeout_min": "0", "parent_review_wait_min": "20"})
-
-		_, err := LoadConfig(configengine.Dirs{Anchor: dir}, "loom")
-		if err == nil {
-			t.Fatal("LoadConfig() error = nil; want the coherence refusal for a resolved 20-minute timeout")
-		}
-		for _, want := range []string{"alignment_timeout_min", "parent_review_wait_min", "20"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
-			}
-		}
-	})
-
-	t.Run("a local skip_alignment is refused naming the local file and the key", func(t *testing.T) {
-		t.Parallel()
-		board, anchor := t.TempDir(), t.TempDir()
-		seedLoomConfig(t, board, ConfigTemplate())
-		localPath := writeLocalLoomConfig(t, anchor, "skip_alignment: true\n")
-
-		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
-		if !errors.Is(err, configengine.ErrInvalid) {
-			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
-		}
-		for _, want := range []string{localPath, "skip_alignment"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
-			}
-		}
-	})
-
 	t.Run("a local fan key is refused naming the local file and the key", func(t *testing.T) {
 		t.Parallel()
 		for _, key := range []string{"discussion_reviewer_fan", "plan_reviewer_fan", "code_reviewer_fan", "discussion_fixer_fan", "plan_fixer_fan", "code_fixer_fan"} {
@@ -761,23 +701,6 @@ func TestLoadConfig_Refuses(t *testing.T) {
 					}
 				}
 			})
-		}
-	})
-
-	t.Run("a local alignment_timeout_min at the hub's wait is refused by the coherence check", func(t *testing.T) {
-		t.Parallel()
-		board, anchor := t.TempDir(), t.TempDir()
-		seedLoomConfig(t, board, ConfigTemplate())
-		writeLocalLoomConfig(t, anchor, "alignment_timeout_min: 60\n")
-
-		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
-		if err == nil {
-			t.Fatal("LoadConfig() error = nil; want the coherence refusal for a local timeout at the hub's 60-minute wait")
-		}
-		for _, want := range []string{"alignment_timeout_min", "parent_review_wait_min"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
-			}
 		}
 	})
 
@@ -866,22 +789,6 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		}
 	})
 
-	t.Run("a local parent_review_wait_min is refused naming the local file and the key", func(t *testing.T) {
-		t.Parallel()
-		board, anchor := t.TempDir(), t.TempDir()
-		seedLoomConfig(t, board, ConfigTemplate())
-		localPath := writeLocalLoomConfig(t, anchor, "parent_review_wait_min: 5\n")
-
-		_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board}, "loom")
-		if !errors.Is(err, configengine.ErrInvalid) {
-			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
-		}
-		for _, want := range []string{localPath, "parent_review_wait_min"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
-			}
-		}
-	})
 }
 
 // TestLoadConfig_NotInitialized verifies uninitialized baseDir yields recovery hint.
@@ -1328,6 +1235,18 @@ func TestMigrateConfig_RetiredKeys(t *testing.T) {
 			wantLines: []string{"alignment_pr_approve: retired, removed"},
 			wantKeys:  map[string]any{"plan_max_bounces": 2},
 			wantGone:  []string{"alignment_pr_approve"},
+		},
+		{
+			name:     "each retired alignment and parent-review key is dropped",
+			document: "alignment: opus[high]\nalignment_timeout_min: 20\nskip_alignment: true\nparent_review_wait_min: 60\nplan_max_bounces: 2\n",
+			wantLines: []string{
+				"alignment: retired, removed",
+				"alignment_timeout_min: retired, removed",
+				"skip_alignment: retired, removed",
+				"parent_review_wait_min: retired, removed",
+			},
+			wantKeys: map[string]any{"plan_max_bounces": 2},
+			wantGone: []string{"alignment", "alignment_timeout_min", "skip_alignment", "parent_review_wait_min"},
 		},
 		{
 			name:     "a document without skip_merge_review keeps its zero",

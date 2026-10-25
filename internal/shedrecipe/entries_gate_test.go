@@ -7,12 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
-	"github.com/Knatte18/loomyard/internal/parentreview"
 	"github.com/Knatte18/loomyard/internal/planparser"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
@@ -247,20 +244,14 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 			map[string]any{"name": "bogus", "attempts": 1},
 		}}, `"gates" element 1`},
 		{"BadPassOnCap", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "pass_on_cap": "yes"}}}, "pass_on_cap"},
-		{"ParentReviewPassOnCapTrue", Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": true}}}, "pass_on_cap"},
-		{"ParentReviewNotLast", Config{"gates": []any{
-			map[string]any{"name": "parent-review", "attempts": 1},
-			map[string]any{"name": "discussion", "attempts": 1},
-		}}, `"parent-review" must be the last element`},
-		{"ParentReviewPassOnCapFalse", Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": 1, "pass_on_cap": false}}}, "pass_on_cap"},
 		{"GateKeyNotAString", Config{"gates": []any{map[string]any{"name": "verify", "attempts": 1}}, "gate_key": 3}, "gate_key"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := resolveGateSpec("TheRow", tt.cfg, parentReviewEnv(t))
+			_, err := resolveGateSpec("TheRow", tt.cfg, newTestEnv(t))
 			assertErrContains(t, err, "TheRow")
 			assertErrContains(t, err, tt.want)
-			if strings.HasPrefix(tt.name, "ParentReview") || tt.name == "GateKeyNotAString" {
+			if tt.name == "GateKeyNotAString" {
 				assertErrContains(t, err, "way forward:")
 			}
 		})
@@ -289,85 +280,6 @@ func TestGateCapableEntries_RejectLeftoverOldKeys(t *testing.T) {
 	}
 }
 
-// parentReviewEnv fills Env.ParentReview with the absolute paths and seams the "parent-review" gate requires.
-func parentReviewEnv(t *testing.T) Env {
-	t.Helper()
-	env := newTestEnv(t)
-	dir := t.TempDir()
-	env.ParentReview = parentreview.GateConfig{
-		Store:          parentreview.Store{Root: filepath.Join(dir, "reviews"), LockDir: filepath.Join(dir, "locks")},
-		Slug:           "slug",
-		Reviewer:       "hub:orch",
-		DecisionRecord: filepath.Join(dir, "decision-record.md"),
-		SupportLog:     filepath.Join(dir, "support-log.md"),
-		WaitBound:      time.Hour,
-		RenderDelivery: func(string) (string, error) { return "deliver", nil },
-		RenderBrief:    func() (string, error) { return "brief", nil },
-	}
-	return env
-}
-
-// parentReviewCfg is a one-entry "gates" list naming parent-review with the given attempts and no pass_on_cap.
-func parentReviewCfg(attempts int) Config {
-	return Config{"gates": []any{map[string]any{"name": "parent-review", "attempts": attempts}}}
-}
-
-func TestResolveGateSpec_ParentReviewResolvesMustPassMayHold(t *testing.T) {
-	cfg := Config{"gates": []any{
-		map[string]any{"name": "discussion", "attempts": 1},
-		map[string]any{"name": "parent-review", "attempts": 3},
-	}}
-	spec, err := resolveGateSpec("Row", cfg, parentReviewEnv(t))
-	if err != nil {
-		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
-	}
-	if len(spec) != 2 || spec[1].Name != "parent-review" || spec[1].Gate == nil || spec[1].Final == nil || spec[1].Expired == nil || spec[1].PassOnCap || !spec[1].MayHold || spec[1].Attempts != 3 {
-		t.Fatalf("resolveGateSpec() = %+v; want parent-review last as a must-pass MayHold entry with Gate, Final and Expired set and Attempts 3", spec)
-	}
-}
-
-// TestResolveGateSpec_ParentReviewCapEqualsAttempts asserts the closure's reject cap is the entry's Attempts: two rejects are non-terminal failures and the third is terminal.
-func TestResolveGateSpec_ParentReviewCapEqualsAttempts(t *testing.T) {
-	env := parentReviewEnv(t)
-	spec, err := resolveGateSpec("Row", parentReviewCfg(3), env)
-	if err != nil {
-		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
-	}
-	gate := spec[0].Gate
-	review := filepath.Join(t.TempDir(), "review.md")
-	if err := os.WriteFile(review, []byte("fix this"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	eval := func() shuttleengine.GateResult {
-		t.Helper()
-		res, err := gate()
-		if err != nil {
-			t.Fatalf("gate() error = %v", err)
-		}
-		return res
-	}
-	if res := eval(); !res.Pending {
-		t.Fatalf("first arrival = %+v; want pending", res)
-	}
-	for round := 1; round <= spec[0].Attempts; round++ {
-		if err := env.ParentReview.Store.RecordVerdict(parentreview.VerdictReject, review); err != nil {
-			t.Fatalf("RecordVerdict() error = %v", err)
-		}
-		res := eval()
-		if res.Passed || res.Pending {
-			t.Fatalf("reject %d = %+v; want a failure", round, res)
-		}
-		if wantTerminal := round == spec[0].Attempts; res.Terminal != wantTerminal {
-			t.Fatalf("reject %d Terminal = %v; want %v", round, res.Terminal, wantTerminal)
-		}
-		if round < spec[0].Attempts {
-			if res := eval(); !res.Pending {
-				t.Fatalf("rewrite after reject %d = %+v; want pending", round, res)
-			}
-		}
-	}
-}
-
 func TestResolveGateSpec_OtherNamesCarryNoFinal(t *testing.T) {
 	env := reworkTestEnv(t)
 	env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
@@ -382,39 +294,12 @@ func TestResolveGateSpec_OtherNamesCarryNoFinal(t *testing.T) {
 	}
 }
 
-func TestResolveGateSpec_ParentReviewMissingEnv(t *testing.T) {
-	tests := []struct {
-		field string
-		clear func(*Env)
-	}{
-		{"ParentReview.Store.Root", func(e *Env) { e.ParentReview.Store.Root = "" }},
-		{"ParentReview.Store.LockDir", func(e *Env) { e.ParentReview.Store.LockDir = "" }},
-		{"ParentReview.Slug", func(e *Env) { e.ParentReview.Slug = "" }},
-		{"ParentReview.RenderDelivery", func(e *Env) { e.ParentReview.RenderDelivery = nil }},
-		{"ParentReview.RenderBrief", func(e *Env) { e.ParentReview.RenderBrief = nil }},
-		{"ParentReview.RenderKeepAlive", func(e *Env) {
-			e.ParentReview.KeepAlive = time.Minute
-			e.ParentReview.RenderKeepAlive = nil
-		}},
-		{"ParentReview.DecisionRecord", func(e *Env) { e.ParentReview.DecisionRecord = "" }},
-		{"ParentReview.SupportLog", func(e *Env) { e.ParentReview.SupportLog = "relative.md" }},
-	}
-	for _, tt := range tests {
-		t.Run(tt.field, func(t *testing.T) {
-			env := parentReviewEnv(t)
-			tt.clear(&env)
-			_, err := resolveGateSpec("Row", parentReviewCfg(1), env)
-			assertErrContains(t, err, tt.field)
-		})
-	}
-}
-
-// The retired rework-plan name is an unknown name like any other.
-func TestResolveGateSpec_UnknownNameListsFiveValues(t *testing.T) {
-	for _, unknown := range []string{"bogus", "rework-plan"} {
+// The retired rework-plan and parent-review names are unknown names like any other.
+func TestResolveGateSpec_UnknownNameListsTheLegalValues(t *testing.T) {
+	for _, unknown := range []string{"bogus", "rework-plan", "parent-review"} {
 		t.Run(unknown, func(t *testing.T) {
 			_, err := resolveGateSpec("Row", gatesCfg(unknown, 1), newTestEnv(t))
-			for _, want := range []string{"discussion", "plan", "description", "verify", "parent-review"} {
+			for _, want := range []string{"discussion", "plan", "description", "verify"} {
 				assertErrContains(t, err, want)
 			}
 		})

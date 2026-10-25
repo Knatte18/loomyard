@@ -85,7 +85,7 @@ func landingDeps(
 		TaskBranch:      taskBranch,
 		ParentBranch:    parentBranch,
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(l)),
-		// Only a loom run has Merge-In to leave a conflict to; a darn run resolves it under the lock.
+		// Only a loom run has Parent-Align to leave a conflict to; a darn run resolves it under the lock.
 		ConflictReroutes: recipe == shedrun.RecipeLoom,
 		StencilsDir:      geom.StencilsDir,
 		ScratchDir:       loomengine.LoomScratchDir(l),
@@ -258,8 +258,8 @@ func landingDeps(
 	}
 }
 
-// codeReviewOff returns the seam Merge-In reads: whether the Code-Perch's effective review budget is 0.
-// A darn or beam run has no Merge-In, and its seam reads false.
+// codeReviewOff returns the seam Parent-Align reads: whether the Code-Perch's effective review budget is 0.
+// A darn or beam run has no Parent-Align, and its seam reads false.
 func codeReviewOff(l *lyxcwd.Location, recipe string) func() (bool, error) {
 	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipeBeam {
 		return func() (bool, error) { return false, nil }
@@ -268,7 +268,7 @@ func codeReviewOff(l *lyxcwd.Location, recipe string) func() (bool, error) {
 }
 
 // rerouteReviewed returns the seam that reports whether a review follows Finalize's reroute: whether the Code-Perch's effective budget is above 0.
-// A loom Finalize reroutes through Merge-In to the Code-Perch, and a darn Finalize to Code-Bouncer, which settles approved at once on a budget of 0.
+// A loom Finalize reroutes through Parent-Align to the Code-Perch, and a darn Finalize to Code-Bouncer, which settles approved at once on a budget of 0.
 func rerouteReviewed(l *lyxcwd.Location) func() (bool, error) {
 	budgetZero := codeBudgetZero(l)
 	return func() (bool, error) {
@@ -335,7 +335,7 @@ func parentTipsReader(l *lyxcwd.Location, parentBranch string) func(fetch bool) 
 	}
 }
 
-// mergeableTips returns the parent tips a Merge-In would merge: the local tip alone when pushes are skipped, and the local tip and the upstream tip otherwise, empty tips dropped.
+// mergeableTips returns the parent tips a Parent-Align would merge: the local tip alone when pushes are skipped, and the local tip and the upstream tip otherwise, empty tips dropped.
 func mergeableTips(tips fabricengine.ParentTips, pushSkipped bool) []string {
 	candidates := []string{tips.Local}
 	if !pushSkipped {

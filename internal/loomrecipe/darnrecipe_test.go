@@ -164,8 +164,8 @@ func TestNewDarn_Routing(t *testing.T) {
 		if prReview := rows[loomshed.NamePRReview]; prReview.OnDone != loomshed.NameFinalize || prReview.OnStuck != "" || prReview.Segment != "" {
 			t.Errorf("PR-Review OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", prReview.OnDone, prReview.OnStuck, prReview.Segment, loomshed.NameFinalize)
 		}
-		if _, ok := rows[loomshed.NameMergeIn]; ok {
-			t.Errorf("darn recipe has a %s row; want none", loomshed.NameMergeIn)
+		if _, ok := rows[loomshed.NameParentAlign]; ok {
+			t.Errorf("darn recipe has a %s row; want none", loomshed.NameParentAlign)
 		}
 		if finalize := rows[loomshed.NameFinalize]; finalize.OnReroute != loomshed.NameCodeBouncer || finalize.OnDone != loomshed.NameFrictionReflect || finalize.OnStuck != "" {
 			t.Errorf("Finalize OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/empty/%q", finalize.OnDone, finalize.OnStuck, finalize.OnReroute, loomshed.NameFrictionReflect, loomshed.NameCodeBouncer)

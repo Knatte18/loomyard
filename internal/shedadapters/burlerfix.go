@@ -38,10 +38,12 @@ type BurlerFixProducer struct {
 	gateFindingsPath string
 	// notifyParent, when non-nil, is where a round's decision-class findings are sent.
 	notifyParent func(line string) error
-	profile      burlerengine.Profile
-	opts         burlerengine.RunOpts
-	runDir       string
-	now          func() time.Time
+	// decisionsEscalated is set when the segment's Bouncer sends the decision-class findings to the parent, so this producer sends none.
+	decisionsEscalated bool
+	profile            burlerengine.Profile
+	opts               burlerengine.RunOpts
+	runDir             string
+	now                func() time.Time
 }
 
 // Compile-time proof that *BurlerFixProducer satisfies shedengine.ShedProducer.
@@ -64,15 +66,15 @@ func NewBurlerFixProducer(name, reviewRow string, deps BurlerHalfDeps, profile b
 	if now == nil {
 		now = time.Now
 	}
-	opts.DecisionsRouted = deps.NotifyParent != nil
-	return &BurlerFixProducer{name: name, reviewRow: reviewRow, runner: deps.Runner, models: deps.Models, requiresFans: deps.RequiresFans, gateFindingsPath: deps.GateFindingsPath, notifyParent: deps.NotifyParent, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	opts.DecisionsRouted = deps.NotifyParent != nil || deps.DecisionsEscalated
+	return &BurlerFixProducer{name: name, reviewRow: reviewRow, runner: deps.Runner, models: deps.Models, requiresFans: deps.RequiresFans, gateFindingsPath: deps.GateFindingsPath, notifyParent: deps.NotifyParent, decisionsEscalated: deps.DecisionsEscalated, profile: profile, opts: opts, runDir: runDir, now: now}, nil
 }
 
 // sendDecisionFindings posts the decision-class findings of round's accepted review at reviewPath to the run's parent in one line.
-// It sends nothing without a notifier or with no such finding.
+// It sends nothing without a notifier, with no such finding, or when the segment's Bouncer escalates the decisions itself.
 // A review that does not parse and a failed post are logged at Warn and never fail the round: the findings stay in the review on disk.
 func (p *BurlerFixProducer) sendDecisionFindings(round int, reviewPath string) {
-	if p.notifyParent == nil {
+	if p.notifyParent == nil || p.decisionsEscalated {
 		return
 	}
 	content, err := os.ReadFile(reviewPath)

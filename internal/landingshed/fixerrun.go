@@ -1,4 +1,4 @@
-// fixerrun.go implements the merge fixer loop Merge-In and Finalize share: one cold session per row entry, held to a turn budget kept in the attempt record, and judged by what the session's report and the landing gate say after each turn.
+// fixerrun.go implements the merge fixer loop Parent-Align and Finalize share: one cold session per row entry, held to a turn budget kept in the attempt record, and judged by what the session's report and the landing gate say after each turn.
 
 package landingshed
 
