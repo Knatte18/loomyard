@@ -1,0 +1,19 @@
+input	setting	finding	own_severity	label	claude_finding	claude_severity	note
+P1	astra-medium	F1	BLOCKING	shared	F3	MEDIUM	retag cards use Custom though Edit applies; Astra rates it BLOCKING, Claude MEDIUM
+P1	astra-medium	F2	MEDIUM	shared	F4	MEDIUM	missing re-sign arrows on two changed function results; Astra names no caller consequence
+P1	opus-medium	F1	BLOCKING	shared	F1	BLOCKING	PATTERN.md grows in cards 3, 7, 19 and 33 while above its headroom line; Opus also finds card 33 still crossing after card 23
+P1	opus-medium	F2	MEDIUM	shared	F4	MEDIUM	card 4 darnTreeScope result change without re-sign arrow; adds the uncovered caller TestDarnTreeScope_ClassifiesAtEachCall
+P1	opus-medium	F3	MEDIUM	shared	F4	MEDIUM	card 14 guardRunOf result change without re-sign arrow
+P1	opus-medium	F4	LOW	unique-real			card 20 adds TestWireSetting_OpenTerminalForcesOpenWindow while its own rewritten tests already force the open-window answer; holds on the card text, against PATTERN-test-economy; whether the assertions are identical was not run
+P1	opus-medium	F5	LOW	unique-real			WaitDir is called with AnchorPath at gatecli/run.go:346 and cardverify.go:100 and with WorktreePath at run.go:95; card 7 says WaitDir(anchor) for a per-worktree record
+P1	opus-medium	F6	LOW	unique-real			card 7 names no internal/state write for green.json; PATTERN-tolerant-records requires it and the card never mentions internal/state
+P4	astra-medium	F1	BLOCKING	unique-real			card 3 reads BOARD_SKIP_GIT and BOARD_SKIP_PUSH owner writes as recorded without a push; ApplySkipEnv reads ordinary environment variables; whether the decision record treats them as test-only is not stated
+P4	astra-medium	F2	BLOCKING	unique-real			card 3's no-Takeover guard covers slugs only, so a prime claim can replace another machine's prime owner; same defect as Opus F1, which Opus rates MEDIUM
+P4	astra-medium	F3	MEDIUM	shared	F5	MEDIUM	prime claimed before reconcile in card 8 collides with the offline legacy-run resume
+P4	astra-medium	F4	MEDIUM	shared	F9	LOW	adopt card bundles public APIs of several packages; Claude names the same bundling across cards 3, 11, 12 and 16
+P4	opus-medium	F1	MEDIUM	unique-real			same defect as Astra F2
+P4	opus-medium	F2	MEDIUM	unique-real			card 12's past-merge carve-out skips both owner checks and the unreachable-origin halt without stating the bound D6 and D7 give it; the card text states the skip and no bound
+P4	opus-medium	F3	MEDIUM	shared	F6	MEDIUM	card 17's short PATTERN line drops the past-merge exception; Opus adds the consequence for the local-Bolt reads of cards 8, 12 and 14
+P4	opus-medium	F4	LOW	unique-real			card 17 plans a Pattern-Departure trailer for a commit that departs from nothing; loom-plan-spec limits the trailer to a fork that departs from its card
+P4	opus-medium	F5	LOW	unique-real			SeamOptions.ParentOf is func(slug string) in card 6 line 25 while the OwnerReader builder takes func(hubPath, slug string) at line 12, and no adapter is named
+P4	opus-medium	F6	LOW	shared	F9	LOW	bundled public symbols in consumer cards; Opus lists six symbols across cards 3, 11, 12, 15 and 16
