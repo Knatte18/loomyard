@@ -1,6 +1,6 @@
 //go:build tier0
 
-// adopt_test.go drives the takeover sequence over fake deps: the refusals before anything runs, the reconcile stops, the per-entry stops and their two ways forward, the pair add, the owner write, the pause lift, the run resume and the halted-child resume.
+// adopt_test.go drives the takeover sequence over fake deps: the refusals before anything runs, the reconcile stops, the per-entry stops and their two ways forward, the pair add, the owner write, the pause lift, the run resume, the halted-child resume, the dobby start and the test suite start.
 
 package adoptcli
 
@@ -46,9 +46,10 @@ type world struct {
 	resumed      []string
 	children     map[string]shedengine.Status
 	childResumed []string
-	// order is the run resumes, child resumes and dobby starts in the order they came, and dobbyErr what the dobby start answers.
+	// order is the run resumes, child resumes, dobby starts and suite starts in the order they came, and dobbyErr and suiteErr what the dobby and suite starts answer.
 	order    []string
 	dobbyErr error
+	suiteErr error
 	// race, when set, runs on the owners right after the owner write lands, as another machine's write does.
 	race func(*boardengine.Owners)
 }
@@ -162,8 +163,18 @@ func (w *world) deps() adoptDeps {
 			w.order = append(w.order, "dobbies")
 			return w.dobbyErr
 		},
+		StartSuite: func() (suiteStart, error) {
+			w.order = append(w.order, "suite")
+			if w.suiteErr != nil {
+				return suiteStart{}, w.suiteErr
+			}
+			return testSuite, nil
+		},
 	}
 }
+
+// testSuite is what the fake suite start answers.
+var testSuite = suiteStart{PID: 42, Log: "suite.log"}
 
 // slugOf returns the outcome of slug, failing the test when the envelope lacks it.
 func slugOf(t *testing.T, got outcome, slug string) slugOutcome {
@@ -491,9 +502,37 @@ func TestAdopt(t *testing.T) {
 		}, wantErr: "`lyx adopt --prime alpha`", check: func(t *testing.T, w *world, _ outcome) {
 			requireNamedCallPasses(t, w, request{Prime: true, Slugs: []string{"alpha"}}, "alpha")
 		}},
-		{name: "DobbyStartRunsLastAfterTheResumes", req: request{Slugs: []string{"alpha"}}, check: func(t *testing.T, w *world, got outcome) {
-			if !slices.Equal(w.order, []string{"resume:alpha", "dobbies"}) || got.DobbyWarning != "" {
-				t.Errorf("steps = %v, warning = %q; want the resume, then the dobby start and no warning", w.order, got.DobbyWarning)
+		{name: "DobbiesThenOneSuiteStartAfterTheResumes", req: request{Slugs: []string{"alpha", "beta"}, Prime: true}, check: func(t *testing.T, w *world, got outcome) {
+			if !slices.Equal(w.order, []string{"resume:alpha", "resume:beta", "dobbies", "suite"}) || got.DobbyWarning != "" {
+				t.Errorf("steps = %v, warning = %q; want the resumes, then the dobby start, then one suite start and no warning", w.order, got.DobbyWarning)
+			}
+			if got.Suite == nil || *got.Suite != testSuite || got.SuiteWarning != "" {
+				t.Errorf("suite = %+v, warning = %q; want %+v and no warning", got.Suite, got.SuiteWarning, testSuite)
+			}
+		}},
+		{name: "PrimeOwnerRecordedAloneStartsTheSuiteLast", req: request{Prime: true}, setup: func(w *world) {
+			delete(w.owners.Entries, "alpha")
+			delete(w.owners.Entries, "beta")
+		}, check: func(t *testing.T, w *world, got outcome) {
+			if !w.ownerReq.Prime || len(w.ownerReq.Slugs) != 0 {
+				t.Fatalf("owner request = %+v, want the prime's owner alone", w.ownerReq)
+			}
+			if got.Suite == nil || len(w.order) == 0 || w.order[len(w.order)-1] != "suite" {
+				t.Errorf("suite = %+v, steps = %v; want one suite start as the last step", got.Suite, w.order)
+			}
+		}},
+		{name: "CallThatRecordsNoOwnerStartsNoSuite", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.stopBranch("alpha", fabricengine.BranchDiverged) }, check: func(t *testing.T, w *world, got outcome) {
+			if slices.Contains(w.order, "suite") || got.Suite != nil || got.SuiteWarning != "" {
+				t.Errorf("steps = %v, suite = %+v, warning = %q; want no suite start", w.order, got.Suite, got.SuiteWarning)
+			}
+		}},
+		{name: "FailedSuiteStartIsTheWarningNamingTheGate", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.suiteErr = errors.New("exec failed") }, check: func(t *testing.T, _ *world, got outcome) {
+			want := "the test suite was not started (exec failed); way forward: run `lyx gate test --gate finalize` in the prime"
+			if got.SuiteWarning != want || got.Suite != nil {
+				t.Errorf("suite = %+v, warning = %q; want no suite and %q", got.Suite, got.SuiteWarning, want)
+			}
+			if alpha := slugOf(t, got, "alpha"); !alpha.OwnerRecorded || alpha.Run != "resumed" || alpha.Error != "" {
+				t.Errorf("alpha = %+v, want it adopted and resumed beside the failed suite start", alpha)
 			}
 		}},
 		{name: "FailedDobbyStartIsTheWarningNamingBeamStart", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.dobbyErr = errors.New("prime: spawn failed") }, check: func(t *testing.T, _ *world, got outcome) {
