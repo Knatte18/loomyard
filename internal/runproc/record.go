@@ -34,6 +34,8 @@ const (
 	RoleSync = "sync"
 	// RoleDobby is a beam's dobby daemon.
 	RoleDobby = "dobby"
+	// RoleCapture is the detached child that runs a task's regression capture.
+	RoleCapture = "capture"
 )
 
 // Record is one registered process of a run.

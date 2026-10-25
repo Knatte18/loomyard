@@ -11,12 +11,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -140,6 +142,8 @@ type Teardown struct {
 	// writeClaim sets the status of the slug's board entry, or clears it with a nil status.
 	writeClaim func(slug string, status *string) error
 
+	// killCapture terminates the pair's drift capture job, which ends the capture child and its command on Windows.
+	killCapture func(slug string) (bool, error)
 	// killLoop kills the pair's loop and its in-flight step tree.
 	killLoop func(slug string) (bool, error)
 	// seizeLoop runs kill, takes the pair's loop lock and leaves the teardown's mark in the pid file;
@@ -186,6 +190,7 @@ func New(prime *lyxcwd.Location) (*Teardown, error) {
 	}
 	t.endSession = t.endReedSession
 	t.archive = t.archivePairLogs
+	t.killCapture = t.killPairCapture
 	t.killLoop = t.killPairLoop
 	t.seizeLoop = t.holdPairLoopLock
 	t.awaitRunLock = t.awaitPairRunLock
@@ -217,7 +222,7 @@ func New(prime *lyxcwd.Location) (*Teardown, error) {
 // A pair with nothing left to do, one paused, ended, owned by another machine, or done locally with batten no longer running, skips the quiet wait;
 // with the task worktree present it waits for the run lock first instead, and a holder a pause or a network-gate wait leaves is passed on to the owned-process end.
 // A refusal or a busy driver leaves the session and its strands untouched, and a refusal ends no registered process.
-// The registered processes are ended for a present or a gone task worktree.
+// The registered processes are ended for a present or a gone task worktree, and so is the pair's drift capture job, which only Windows holds.
 // Processes that survive the end, and a driver lock still held afterwards, refuse the teardown with ErrDriverBusy under Request.RefuseWhenBusy; otherwise survivors land in the result and a held lock sets DriverWasLive.
 // The loop lock is held from the kill until the session has ended, and the teardown's mark stays in the loop's pid file after it, so no step starts once the session end begins.
 // A failure before the session end puts the pid file back.
@@ -255,6 +260,10 @@ func (t *Teardown) EndSession(ctx context.Context, req Request) (SessionResult, 
 
 	if err := t.endOwnedBeforeSession(&res, req, gone); err != nil {
 		return res, err
+	}
+
+	if _, err := t.killCapture(req.Slug); err != nil {
+		return res, fmt.Errorf("end the pair's drift capture: %w", err)
 	}
 
 	var releaseLoopLock func(sessionEnded bool) error
@@ -715,6 +724,20 @@ func (t *Teardown) probeQuiet(slug string) (quietState, error) {
 		}
 	}
 	return quietState{quiet: lockFree && loopFree && driverLockFree && driver == "", driver: driver, loop: !loopFree, goDriver: !driverLockFree}, nil
+}
+
+// killPairCapture terminates the pair's drift capture job and reports whether one existed.
+// The job name is computed from the pair's worktree path, so it needs no present worktree; on Linux it reports false and ends nothing.
+func (t *Teardown) killPairCapture(slug string) (bool, error) {
+	name := driftengine.CaptureJobName(fabricengine.WorktreePath(t.prime, slug))
+	ended, err := proc.TerminateNamedJob(name)
+	if err != nil {
+		return false, err
+	}
+	if ended {
+		logger.Info("pairteardown: drift capture job terminated", "slug", slug, "job", name)
+	}
+	return ended, nil
 }
 
 // killPairLoop kills the present task worktree's loop and its in-flight step tree.

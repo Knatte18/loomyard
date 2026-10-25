@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -318,4 +319,8 @@ type Env struct {
 	// Command is a whole-struct passthrough to shedadapters.NewCommandProducer, following Env.Landing's precedent, read by the Command entry.
 	// The entry fills its Setting and ExecutableSetting from Env.Setting and Env.ExecutableSetting, so a caller leaves those two nil.
 	Command shedadapters.CommandDeps
+
+	// Drift is a whole-struct passthrough to the three Drift producers, following Env.Darn's precedent, read by the DriftBaseline, DriftAwait and DriftVerify entries only.
+	// The entries fill its Seats and Now from Env.Seats and Env.Now, and DriftVerify its GateFindingsFile from Env.GateFindingsFile, so a caller leaves those three unset.
+	Drift driftengine.Deps
 }

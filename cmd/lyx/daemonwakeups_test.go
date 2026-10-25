@@ -32,6 +32,7 @@ var unboundedWaitFiles = []string{
 	"internal/parentlock/acquire.go",
 	"internal/gatecli/watchdog.go",
 	"internal/hibernateengine/watch.go",
+	"internal/driftengine/wait.go",
 	"internal/pauserecord/hold.go",
 	"internal/shuttleengine/wait.go",
 	"internal/verifytree/verify.go",

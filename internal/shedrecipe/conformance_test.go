@@ -83,6 +83,17 @@ func minimalEntries() map[string]minimalEntry {
 		"WorktreeTeardown": {newTestEnv, emptyConfig},
 		"Command":          {newCommandTestEnv, commandTestConfig},
 		"PRReview":         {newPRReviewTestEnv, prReviewTestConfig},
+		"DriftBaseline": {
+			env: driftTestEnv,
+			cfg: func(*testing.T, Env) Config { return Config{"subject": "decision-record"} },
+		},
+		"DriftAwait": {driftTestEnv, emptyConfig},
+		"DriftVerify": {
+			env: driftTestEnv,
+			cfg: func(*testing.T, Env) Config {
+				return Config{"subject": "decision-record", "gates": []any{map[string]any{"name": "verify", "attempts": 3}}}
+			},
+		},
 	}
 }
 

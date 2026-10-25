@@ -32,6 +32,7 @@ var templateDefaults = Config{
 		"webster-fix":     {Tiers: []int{0}, Scope: "diff"},
 		"darn-write":      {Tiers: []int{0}, Scope: "diff"},
 		"code-burler-fix": {Tiers: []int{0}, Scope: "diff"},
+		"drift-verify":    {Tiers: []int{0}, Scope: "diff"},
 	},
 	Scoper: "none",
 }

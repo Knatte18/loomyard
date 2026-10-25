@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -335,7 +337,8 @@ func TestParentLockWaiting(t *testing.T) {
 	}
 }
 
-// TestAgentActivity_LiveLockWaitReadsAsActivity asserts a live parent lock wait record and a live running verify marker read as activity now, and a dead writer's record, a dead marker and a verify marker held by a pause do not.
+// TestAgentActivity_LiveLockWaitReadsAsActivity asserts a live parent lock wait record, a live running verify marker, a held drift capture lock and a held compare marker read as activity now, and a dead writer's record, a dead marker, a verify marker held by a pause and a lock file with no holder do not.
+// A capture lock path the probe cannot take returns the probe's error.
 func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 	t.Parallel()
 	writeLockWait := func(wait parentlock.Wait) func(t *testing.T, loc *lyxcwd.Location) {
@@ -361,16 +364,47 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 			}
 		}
 	}
+	holdDriftLock := func(lockPath func(driftengine.Paths) string) func(t *testing.T, loc *lyxcwd.Location) {
+		return func(t *testing.T, loc *lyxcwd.Location) {
+			path := lockPath(driftengine.NewPaths(loc.AnchorPath()))
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			held, taken, err := lock.TryAcquireWriteLock(path)
+			if err != nil || !taken {
+				t.Fatalf("hold %s: taken = %v, error = %v", filepath.Base(path), taken, err)
+			}
+			t.Cleanup(func() { _ = held.Release() })
+		}
+	}
+	captureLock := func(p driftengine.Paths) string { return p.CaptureLock }
 	tests := []struct {
 		name         string
 		setup        func(t *testing.T, loc *lyxcwd.Location)
 		wantActivity bool
+		wantErr      bool
 	}{
-		{"live writer", writeLockWait(parentlock.NewWait("main", "other-task")), true},
-		{"dead writer", writeLockWait(parentlock.Wait{Branch: "main", Holder: "other-task", PID: 1 << 30, StartTime: "gone", Started: time.Now()}), false},
-		{"live running verify marker", writeVerifyMarkerState(os.Getpid(), verifytree.MarkerStateRunning), true},
-		{"live paused verify marker", writeVerifyMarkerState(os.Getpid(), verifytree.MarkerStatePaused), false},
-		{"dead verify marker", writeVerifyMarkerState(1<<30, verifytree.MarkerStateRunning), false},
+		{"held capture lock", holdDriftLock(captureLock), true, false},
+		{"held compare marker", holdDriftLock(func(p driftengine.Paths) string { return p.CompareMarker }), true, false},
+		{"capture lock file with no holder", func(t *testing.T, loc *lyxcwd.Location) {
+			path := captureLock(driftengine.NewPaths(loc.AnchorPath()))
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}, false, false},
+		{"capture lock path occupied by a directory", func(t *testing.T, loc *lyxcwd.Location) {
+			if err := os.MkdirAll(captureLock(driftengine.NewPaths(loc.AnchorPath())), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, false, true},
+		{"live writer", writeLockWait(parentlock.NewWait("main", "other-task")), true, false},
+		{"dead writer", writeLockWait(parentlock.Wait{Branch: "main", Holder: "other-task", PID: 1 << 30, StartTime: "gone", Started: time.Now()}), false, false},
+		{"live running verify marker", writeVerifyMarkerState(os.Getpid(), verifytree.MarkerStateRunning), true, false},
+		{"live paused verify marker", writeVerifyMarkerState(os.Getpid(), verifytree.MarkerStatePaused), false, false},
+		{"dead verify marker", writeVerifyMarkerState(1<<30, verifytree.MarkerStateRunning), false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -381,6 +415,12 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 			before := time.Now()
 			last, live, err := agentActivityFor(loc, shuttleengine.Config{Engine: "claude"})()
 
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("agentActivityFor() error = nil; want the probe's error")
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("agentActivityFor() error = %v", err)
 			}

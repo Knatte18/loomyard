@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -773,6 +774,20 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		// wire() runs for every verb including "status"/"pause" -- the same open-at-wire hazard the DescribeTable comment above guards against.
 		// See landingDeps (landingdeps.go) and the env-landing-filled-in-run-not-wire design decision.
 	}
+
+	// The Drift rows read the task from the decision record in a loom run and from the board entry in a darn run.
+	driftSubject := driftengine.SubjectDecisionRecord
+	if c.recipe == shedrun.RecipeDarn {
+		driftSubject = driftengine.SubjectBoardEntry
+	}
+	c.env.Drift = driftDeps(location, statusPath, statusLockPath, c.recipe == shedrun.RecipeLoom, driftTables{
+		stencilsDir:        websterGeom.StencilsDir,
+		registry:           registry,
+		subject:            driftSubject,
+		slug:               seedSlug(location.WorktreeName),
+		decisionRecordPath: loomengine.DiscussionDecisionRecord(location),
+		languageSkills:     languageSkills,
+	})
 
 	// c.shedPaths carries the five told values shedengine.Shed itself reads and no shedrecipe.Env
 	// registry entry reads. StatusPath and StatusLockPath are deliberately told twice, once here and

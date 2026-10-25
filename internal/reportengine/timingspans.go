@@ -87,6 +87,9 @@ func loomPhases() map[string]string {
 		loomshed.NameLoomPreflight:   PhaseSetup,
 		retiredBatchifierRow:         PhaseWebster,
 		loomshed.NameDescribe:        PhaseWebster,
+		loomshed.NameDriftBaseline:   PhasePlan,
+		loomshed.NameDriftAwait:      PhasePlan,
+		loomshed.NameDriftVerify:     PhaseWebster,
 		loomshed.NamePRReview:        PhasePublishFinalize,
 		loomshed.NameFinalize:        PhasePublishFinalize,
 		loomshed.NameFrictionReflect: PhasePublishFinalize,
@@ -99,7 +102,9 @@ func loomPhases() map[string]string {
 func darnPhases() map[string]string {
 	phases := map[string]string{
 		loomshed.NamePreflight:        PhaseSetup,
+		loomshed.NameDriftBaseline:    PhaseSetup,
 		loomshed.NameDarnWrite:        PhaseWrite,
+		loomshed.NameDriftVerify:      PhaseReview,
 		loomshed.NameDescribe:         PhaseWrite,
 		loomshed.NameCodeBouncer:      PhaseReview,
 		loomshed.NameCodeBurlerReview: PhaseReview,

@@ -84,7 +84,7 @@ const (
 )
 
 // goReadGates are the gate keys the Go verify sites read, in the order TiersValue lists them.
-var goReadGates = []string{"card", "batch", "webster", "parent-align", "finalize", "webster-fix", "darn-write", "code-burler-fix"}
+var goReadGates = []string{"card", "batch", "webster", "parent-align", "finalize", "webster-fix", "darn-write", "code-burler-fix", "drift-verify"}
 
 var (
 	tierKeyPattern   = regexp.MustCompile(`^tier(0|[1-9][0-9]*)$`)

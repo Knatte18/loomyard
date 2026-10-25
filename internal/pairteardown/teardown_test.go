@@ -33,6 +33,9 @@ type fakeSubstrates struct {
 	awaitErr   error
 	sleeps     int
 
+	// killCaptureErr is what the capture job's termination answers.
+	killCaptureErr error
+
 	// removeErr is returned by the removal.
 	removeErr error
 	// snapshotErr fails the snapshot step.
@@ -197,6 +200,10 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			f.sleeps++
 			return nil
 		},
+		killCapture: func(string) (bool, error) {
+			f.calls = append(f.calls, "killCapture")
+			return false, f.killCaptureErr
+		},
 		killLoop: func(string) (bool, error) {
 			f.calls = append(f.calls, "kill")
 			return true, nil
@@ -233,8 +240,8 @@ func TestTeardown_CallSequence(t *testing.T) {
 	runClaim := text(boardengine.RunStatus("running", "Webster-Burler"))
 	// reads are the skip readings an unpaused, unended pair with no done entry and no landed run makes before its quiet wait.
 	const reads = "readClaim,landed,"
-	const sessionEnd = reads + "quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=true)"
-	const skippedEnd = "awaitOrPass,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=true)"
+	const sessionEnd = reads + "quiet,refusal,endOwned,driverLock,killCapture,kill,seize,await,end,release(ended=true)"
+	const skippedEnd = "awaitOrPass,refusal,endOwned,driverLock,killCapture,kill,seize,await,end,release(ended=true)"
 	survivors := []runproc.Ended{{PID: 4242, Role: runproc.RoleLoop}}
 	tests := []struct {
 		name string
@@ -245,6 +252,8 @@ func TestTeardown_CallSequence(t *testing.T) {
 		endErr     error
 		seizeErr   error
 		awaitErr   error
+		// killCaptureErr fails the capture job's termination.
+		killCaptureErr error
 		// removeErr fails the removal.
 		removeErr error
 		// snapshotErr fails the snapshot step; afterSnapshotErr fails the request's AfterSnapshot, which is set whenever either is wanted.
@@ -309,7 +318,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			name:        "DriverTurningRetiringProceedsAfterCountedSleeps",
 			quiets:      []quietState{busy, busy, {quiet: true}},
 			request:     Request{Slug: "slug", QuietWait: time.Minute, RefuseWhenBusy: true},
-			wantCalls:   reads + "quiet,quiet,quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=true)",
+			wantCalls:   reads + "quiet,quiet,quiet,refusal,endOwned,driverLock,killCapture,kill,seize,await,end,release(ended=true)",
 			wantSleeps:  2,
 			wantSession: &SessionResult{Ended: true, DriverWasLive: false},
 		},
@@ -335,7 +344,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			endErr:       errors.New("tmux down"),
 			request:      Request{Slug: "slug"},
 			wantAnyError: true,
-			wantCalls:    reads + "quiet,refusal,endOwned,driverLock,kill,seize,await,end,release(ended=false)",
+			wantCalls:    reads + "quiet,refusal,endOwned,driverLock,killCapture,kill,seize,await,end,release(ended=false)",
 		},
 		{
 			name:      "CallsQuietProbeLoopKillEndAndRemoveInOrderThenReadsTheClaim",
@@ -483,7 +492,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:     Request{Slug: "slug", RefuseWhenBusy: true},
 			claim:       runClaim,
 			claimFound:  true,
-			wantCalls:   "refusal,endOwned,end,archive,remove,readClaim,battenRun,write=draft",
+			wantCalls:   "refusal,endOwned,killCapture,end,archive,remove,readClaim,battenRun,write=draft",
 			wantSawGone: true,
 		},
 		{
@@ -511,7 +520,15 @@ func TestTeardown_CallSequence(t *testing.T) {
 			seizeErr:     errors.New("the loop lock is still held"),
 			request:      Request{Slug: "slug"},
 			wantAnyError: true,
-			wantCalls:    reads + "quiet,refusal,endOwned,driverLock,kill,seize",
+			wantCalls:    reads + "quiet,refusal,endOwned,driverLock,killCapture,kill,seize",
+		},
+		{
+			name:           "CaptureKillFailureStopsBeforeTheLoopSeizeAndTheSessionEnd",
+			quiets:         []quietState{{quiet: true}},
+			killCaptureErr: errors.New("job object unreachable"),
+			request:        Request{Slug: "slug"},
+			wantAnyError:   true,
+			wantCalls:      reads + "quiet,refusal,endOwned,driverLock,killCapture",
 		},
 		{
 			name:         "RunLockHeldPastTheBoundNeverEndsTheSessionAndRestoresThePidFile",
@@ -519,14 +536,14 @@ func TestTeardown_CallSequence(t *testing.T) {
 			awaitErr:     errors.New("the run lock is still held by pid 42"),
 			request:      Request{Slug: "slug"},
 			wantAnyError: true,
-			wantCalls:    reads + "quiet,refusal,endOwned,driverLock,kill,seize,await,release(ended=false)",
+			wantCalls:    reads + "quiet,refusal,endOwned,driverLock,killCapture,kill,seize,await,release(ended=false)",
 		},
 		{
 			name:        "GonePairSkipsQuietWaitAndEndsByName",
 			quiets:      []quietState{busy},
 			gone:        true,
 			request:     Request{Slug: "slug", RefuseWhenBusy: true},
-			wantCalls:   "refusal,endOwned,end",
+			wantCalls:   "refusal,endOwned,killCapture,end",
 			wantSawGone: true,
 		},
 		{
@@ -769,7 +786,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			gone:        true,
 			pausedErr:   errors.New("pause record unreadable"),
 			request:     Request{Slug: "slug", Verdict: fabricengine.EntryEnded, RefuseWhenBusy: true},
-			wantCalls:   "refusal,endOwned,end",
+			wantCalls:   "refusal,endOwned,killCapture,end",
 			wantSawGone: true,
 		},
 	}
@@ -778,7 +795,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			t.Parallel()
 
 			f := &fakeSubstrates{
-				quiets: tt.quiets, refusalErr: tt.refusalErr, endErr: tt.endErr, seizeErr: tt.seizeErr, awaitErr: tt.awaitErr,
+				quiets: tt.quiets, refusalErr: tt.refusalErr, endErr: tt.endErr, seizeErr: tt.seizeErr, awaitErr: tt.awaitErr, killCaptureErr: tt.killCaptureErr,
 				removeErr: tt.removeErr, childLanded: tt.childLanded, battenSeeded: tt.battenSeeded, battenState: tt.battenState,
 				claim: tt.claim, claimFound: tt.claimFound, claimReadErr: tt.claimReadErr, snapshotErr: tt.snapshotErr,
 				endedProcs: tt.endedProcs, endOwnedErr: tt.endOwnedErr, driverLockHeld: tt.driverLockHeld,

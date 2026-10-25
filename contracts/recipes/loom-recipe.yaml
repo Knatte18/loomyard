@@ -4,8 +4,10 @@
 # here without a matching constant rename breaks resume for any in-flight task.
 #
 # The main line is Preflight, Loom-Preflight, Discussion-Write, the Discussion-Review ring,
-# Plan-Write, the Plan-Review ring, Webster, Parent-Align, the Code-Review ring, Describe, PR-Review,
-# Finalize and Friction-Reflect.
+# Drift-Baseline, Plan-Write, the Plan-Review ring, Drift-Await, Webster, Parent-Align, the
+# Code-Review ring, Drift-Verify, Describe, PR-Review, Finalize and Friction-Reflect.
+# The three Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
+# each of them Skipped and spawns or runs nothing for them.
 #
 # Every gate and validator bounces back to the producer whose artifact it guards, and a gate whose
 # guarded artifact is produced by no row in the list escalates instead.
@@ -16,8 +18,9 @@
 #
 # Those four are not the whole escalate-to-a-human set, and the difference matters when auditing
 # routing from this header.
-# Four PRODUCER rows also carry no on_stuck -- Discussion-Write, Plan-Write, Webster and Describe --
-# and their Stuck halts the whole run just as a gate's does.
+# These PRODUCER rows also carry no on_stuck -- Discussion-Write, Drift-Baseline, Plan-Write,
+# Drift-Await, Webster, Drift-Verify and Describe -- and their Stuck halts the whole run just as a
+# gate's does.
 # A gated writer row's exhausted gate halts the run for a human rather than bouncing to a fresh
 # writer, deliberately: after three in-session re-prompts with the findings already in hand,
 # a cold respawn that knows nothing about the complaint is strictly worse than stopping and telling
@@ -35,6 +38,12 @@
 # Parent-Align follows Webster and brings the parent's upstream tip into the task branch with no parent
 # lock, then hands to the Code-Review perch.
 # Finalize takes the parent lock first and is the only row that lands on the parent.
+#
+# Drift-Verify compares the code after the Code-Review perch with the baseline Drift-Baseline captured
+# on the branch point, and spawns one agent to judge, accept and fix drift. Its fixes are not
+# reviewed again. A Finalize reroute re-enters it through Parent-Align and the Code-Review perch,
+# and the Code-Review perch's own fixes reach it as the code it compares.
+# Drift-Await holds Webster until the baseline capture passed or the parent deferred it.
 #
 # An in-flight run parked on a row this recipe removed or renamed -- Webster-Bouncer and its
 # Burler rows, Merge-Bouncer and its Burler rows, Publish, PR-Align, PR-Gate or PR-Rework -- or on a
@@ -105,7 +114,7 @@ producers:
     engine: Bouncer
     segment: Discussion-Review
     on_stuck: Discussion-Burler-Review
-    on_done: Plan-Write
+    on_done: Drift-Baseline
     config:
       run_subdir: discussion
       subject: document
@@ -198,6 +207,15 @@ producers:
         # fix-scope: overlay, for the reason the review row gives.
         fix-scope: overlay
 
+  # Drift-Baseline has an agent record the task's regression scope and takes the baseline capture
+  # while the plan is written. Its Stuck halts the run, with the ways forward in its reason.
+  - name: Drift-Baseline
+    engine: DriftBaseline
+    entry_gate: drift.enabled
+    on_done: Plan-Write
+    config:
+      subject: decision-record
+
   - name: Plan-Write
     engine: PlanWrite
     on_done: Plan-Bouncer
@@ -213,7 +231,7 @@ producers:
     engine: Bouncer
     segment: Plan-Review
     on_stuck: Plan-Burler-Review
-    on_done: Webster
+    on_done: Drift-Await
     config:
       run_subdir: plan
       subject: document
@@ -341,6 +359,13 @@ producers:
         # fix-scope: overlay, for the reason the review row gives.
         fix-scope: overlay
 
+  # Drift-Await is mechanical and spawns nothing: it holds the run until the baseline capture passed
+  # on the branch point, or the parent deferred it.
+  - name: Drift-Await
+    engine: DriftAwait
+    entry_gate: drift.enabled
+    on_done: Webster
+
   # Webster is the implementer row: its Implementer engine builds the row with the implementer
   # loom.implementer names, and batching the plan is that implementer's own business. Every
   # implementer builds this row with these edges, as contracts/specs/implementer-spec.md pins.
@@ -362,7 +387,7 @@ producers:
     engine: Bouncer
     segment: Code-Review
     on_stuck: Code-Burler-Review
-    on_done: Describe
+    on_done: Drift-Verify
     config:
       run_subdir: code
       subject: code
@@ -480,6 +505,20 @@ producers:
         fix-scope: source
         # The round fixes code, so its seat loads the hub's language skills after its own.
         language-skills: true
+
+  # Drift-Verify compares the committed code with the baseline and, when it drifted, spawns one
+  # agent that accepts the intended drift and fixes the rest. The verify gate runs the hub's
+  # drift-verify key once the agent committed code.
+  - name: Drift-Verify
+    engine: DriftVerify
+    entry_gate: drift.enabled
+    on_done: Describe
+    config:
+      subject: decision-record
+      gate_key: drift-verify
+      gates:
+        - name: verify
+          attempts: 3
 
   - name: Describe
     engine: Describe

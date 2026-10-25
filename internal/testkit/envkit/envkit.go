@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -103,6 +104,8 @@ var nilLegal = map[string]bool{
 	"Setting":                          true,
 	"Command.Setting":                  true,
 	"Command.ExecutableSetting":        true,
+	"Drift.Seats":                      true,
+	"Drift.Now":                        true,
 	"DocumentSubject":                  true,
 	"CodeSubject":                      true,
 	"MergeInOnly":                      true,
@@ -213,7 +216,7 @@ func TemplateSetting(module, key string) (any, error) {
 	return value, nil
 }
 
-// fixedGateLists are the tier lists of the eight gate keys the kit's seams answer from, so a resolved gate builds without a hub's gate.yaml.
+// fixedGateLists are the tier lists of the gate keys the kit's seams answer from, so a resolved gate builds without a hub's gate.yaml.
 var fixedGateLists = map[string][]int{
 	"card":            {0, 1},
 	"batch":           {0, 1},
@@ -223,6 +226,7 @@ var fixedGateLists = map[string][]int{
 	"webster-fix":     {0, 1},
 	"darn-write":      {0, 1},
 	"code-burler-fix": {0, 1},
+	"drift-verify":    {0, 1},
 }
 
 // fixedGateTiers answers a named gate's tier list from fixedGateLists, and errors naming a gate the kit holds no list for.
@@ -350,6 +354,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			Commit:        func() error { return nil },
 			LatestOutcome: func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
 		},
+		Drift:     driftDeps(mustMkdir(t, filepath.Join(dir, "drift"))),
 		PlanIndex: noFindingsIndex{},
 
 		Slug:                     "test-slug",
@@ -441,6 +446,31 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				return shedadapters.CommandResult{}, nil
 			},
 			Rerun: "lyx batten run fullenv-slug",
+		},
+	}
+}
+
+// driftDeps returns the Drift rows' seams over root with no-op seams, leaving the seat runner and the clock the registry entries fill from the Env.
+func driftDeps(root string) driftengine.Deps {
+	table := func() (seatengine.Table, error) { return seatengine.Table{}, nil }
+	return driftengine.Deps{
+		Paths:         driftengine.NewPaths(root),
+		WorktreeRoot:  root,
+		Config:        func() (driftengine.Config, error) { return driftengine.Config{}, nil },
+		Status:        func() (shedengine.Status, error) { return shedengine.Status{}, nil },
+		Head:          func() (string, error) { return "head", nil },
+		BranchPoint:   func() (string, error) { return "branch-point", nil },
+		DirtyPaths:    func() ([]string, error) { return nil, nil },
+		Commit:        func([]string) error { return nil },
+		BaselineTable: func(string) (seatengine.Table, error) { return table() },
+		StartCapture:  func() error { return nil },
+		RunCapture: func(context.Context) (driftengine.CaptureRecord, error) {
+			return driftengine.CaptureRecord{}, nil
+		},
+		Sleep:       func(context.Context, time.Duration) error { return nil },
+		VerifyTable: func(driftengine.VerifyTold) (seatengine.Table, error) { return table() },
+		Compare: func(context.Context) (driftengine.CompareResult, error) {
+			return driftengine.CompareResult{Passed: true}, nil
 		},
 	}
 }

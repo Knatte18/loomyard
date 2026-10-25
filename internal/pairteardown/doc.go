@@ -32,6 +32,9 @@
 //     With the task worktree present the driver lock is then probed: a lock still held means a process the owner record does not reach, such as one an older binary started.
 //     With RefuseWhenBusy that is an ErrDriverBusy refusal whose way forward is `lyx tender status` and `ps` on Linux, and on Windows, where the end signals nothing, the driver's recorded pid with `taskkill /PID <pid> /T /F` or, with no driver record, the lock path and Task Manager;
 //     without it SessionResult.DriverWasLive is set and the sequence goes on.
+//     The pair's drift capture job is then terminated by name, for a present or a gone task worktree, since on Windows the owner-record end signals nothing and only the detached capture child holds that job;
+//     on Linux the capture is a registered process the owner-record end already ended, so the call ends nothing.
+//     An error from the termination is returned with no loop lock taken.
 //  4. Loop end.
 //     With the task worktree present, the pair's detached step loop and its in-flight step tree are killed, and the loop lock is taken and held through the session end.
 //     Taking the lock replaces the loop's pid file with the teardown's mark, which bars every later loop up to the removal, so no step starts once the session end begins.
@@ -101,16 +104,18 @@
 //  2. Driver-lock probe, task worktree present only, and the caller's hook.
 //     A held driver lock refuses.
 //     CancelRequest.AfterEnd then takes the caller's own locks; a hook that reports one busy gets steps 1 and 2 once more and then the hook again, and a lock still busy then refuses.
-//  3. Strand stop, task worktree present only.
+//  3. Drift capture job termination.
+//     The pair's drift capture job is terminated by name, as the session end does, so a detached capture child ends with the cancel.
+//  4. Strand stop, task worktree present only.
 //     Every live strand of the task worktree's reed directory is stopped through shuttle's stop verb.
-//     With the task worktree gone there is no reed directory to read, and step 6's end by name ends the strands' panes.
-//  4. Loop end, task worktree present only.
+//     With the task worktree gone there is no reed directory to read, and step 7's end by name ends the strands' panes.
+//  5. Loop end, task worktree present only.
 //     The loop and its step tree are killed and the loop lock is taken.
-//  5. Run-lock wait, task worktree present only.
+//  6. Run-lock wait, task worktree present only.
 //     It is bounded by CancelLockWait; a spent bound puts the loop's pid file back.
-//  6. Session end.
+//  7. Session end.
 //     It is Engine.Down with the task worktree present and reedengine.EndSessionByName once it is gone.
-//  7. Loop-lock release.
+//  8. Loop-lock release.
 //     With CancelRequest.Keep the teardown's mark is withdrawn, so the kept pair holds no mark; without it the mark stays for the removal that follows.
 //
 // Every refusal names `lyx batten cancel <slug>` as the way to run the phase again.

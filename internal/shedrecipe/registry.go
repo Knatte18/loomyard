@@ -44,6 +44,9 @@ var registry = map[string]Constructor{
 	"Land":             landEntry,
 	"Command":          commandEntry,
 	"PRReview":         prReviewEntry,
+	"DriftBaseline":    driftBaselineEntry,
+	"DriftAwait":       driftAwaitEntry,
+	"DriftVerify":      driftVerifyEntry,
 }
 
 // Lookup resolves name against the registry, returning its Constructor.

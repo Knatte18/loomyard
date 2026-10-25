@@ -26,7 +26,7 @@ const gateQuiescenceFailureMessage = "a turn end whose Stop payload reports an o
 // gatedRowFanViolations returns one message per gated row of r that breaks the fork rule.
 // A row is gated when its config carries a non-empty "gates" list.
 // A gated row receives a fan from its profile's "cluster-fan" or from fans, a row-name to fan-list map of the values the rows' fan settings would answer, when any entry of its list is non-empty.
-// A gated row must be a writer engine (DiscussionWrite, PlanWrite, DarnWrite, Describe, PRRework) or BurlerFix, and none of them may receive a cluster fan.
+// A gated row must be a writer engine (DiscussionWrite, PlanWrite, DarnWrite, DriftVerify, Describe, PRRework) or BurlerFix, and none of them may receive a cluster fan.
 // A writer engine's spec factory never sets shuttleengine.Spec.ForkSubagents, and burlerengine.Engine.Review sets it from a non-empty fan alone, so a cluster fan on the ungated BurlerReview row is the one legal reviewer fork.
 // A gated BurlerFix fixer forks only under the fixer fan the review row recorded, so only a BurlerFix row may name "fixer_fan_setting".
 func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []string {
@@ -53,12 +53,12 @@ func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []strin
 		}
 
 		switch row.Engine {
-		case "DiscussionWrite", "PlanWrite", "DarnWrite", "Describe", "PRRework", "BurlerFix":
+		case "DiscussionWrite", "PlanWrite", "DarnWrite", "DriftVerify", "Describe", "PRRework", "BurlerFix":
 			if fan != "" {
 				violations = append(violations, fmt.Sprintf("row %q (engine %q): receives fan %q; want no fan on a gated row -- %s", row.Name, row.Engine, fan, gateQuiescenceFailureMessage))
 			}
 		default:
-			violations = append(violations, fmt.Sprintf("row %q: carries a \"gates\" config list with engine %q, neither a writer engine (DiscussionWrite/PlanWrite/DarnWrite/Describe/PRRework) nor BurlerFix -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage))
+			violations = append(violations, fmt.Sprintf("row %q: carries a \"gates\" config list with engine %q, neither a writer engine (DiscussionWrite/PlanWrite/DarnWrite/DriftVerify/Describe/PRRework) nor BurlerFix -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage))
 		}
 	}
 	return violations

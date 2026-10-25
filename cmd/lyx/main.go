@@ -29,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/configcli"
 	"github.com/Knatte18/loomyard/internal/creelcli"
+	"github.com/Knatte18/loomyard/internal/driftcli"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gatecli"
@@ -127,7 +128,7 @@ all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output; --json prints the help as JSON and
 never runs the command.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, adopt, beam, report, tender, hibernate, gate, creel, help.
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, adopt, beam, report, tender, hibernate, drift, gate, creel, help.
 Shortcuts, declared in internal/shortcutcli's embedded file, are listed under their own heading in lyx --help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -188,6 +189,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		loomcli.StartAliasCommand(),
 		tendercli.Command(),
 		hibernatecli.Command(),
+		driftcli.Command(),
 		quarrycli.Command(),
 		gatecli.Command(),
 		creelcli.Command(),

@@ -22,8 +22,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
-// DecisionHaltPrefix opens the Reason of the halt a recorded accept over a held refusal meets at the budget and the hard cap.
-// A caller that must tell that halt from any other Stuck reads the Reason for it.
+// DecisionHaltPrefix opens the Reason of a halt that only the run's parent may settle.
+// Two producers open a reason with it: the Bouncer, for the halt a recorded accept over a held refusal meets at the budget and the hard cap, and Drift-Verify, for its decision halts.
+// A caller that must tell such a halt from any other Stuck reads the Reason for it, and arbiterstop hands every one of them to the parent.
 const DecisionHaltPrefix = "decision halt: "
 
 // decisionSnapshot mirrors a decision snapshot file's YAML.

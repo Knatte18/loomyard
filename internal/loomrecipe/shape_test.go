@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/preflightshed"
@@ -49,6 +50,9 @@ var (
 	bouncerType      = reflect.TypeOf(&shedadapters.Bouncer{})
 	burlerReviewType = reflect.TypeOf(&shedadapters.BurlerReviewProducer{})
 	burlerFixType    = reflect.TypeOf(&shedadapters.BurlerFixProducer{})
+
+	driftBaselineType = reflect.TypeOf(&driftengine.DriftBaseline{})
+	driftVerifyType   = reflect.TypeOf(&driftengine.DriftVerify{})
 )
 
 // frictionReflectProducerType returns the dynamic type of the producer loomshed.NewFrictionReflect
@@ -68,15 +72,18 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameDiscussionBouncer, "Bouncer", bouncerType},
 	{loomshed.NameDiscussionBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameDiscussionBurlerFix, "BurlerFix", burlerFixType},
+	{loomshed.NameDriftBaseline, "DriftBaseline", driftBaselineType},
 	{loomshed.NamePlanWrite, "PlanWrite", reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
 	{loomshed.NamePlanBouncer, "Bouncer", bouncerType},
 	{loomshed.NamePlanBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NamePlanBurlerFix, "BurlerFix", burlerFixType},
+	{loomshed.NameDriftAwait, "DriftAwait", reflect.TypeOf(&driftengine.DriftAwait{})},
 	{loomshed.NameWebster, "Implementer", reflect.TypeOf(loomshed.NewWebsterProducer("", configengine.Dirs{}, nil, websterengine.RunDeps{}, nil))},
 	{loomshed.NameParentAlign, "ParentAlign", reflect.TypeOf(&landingshed.ParentAlign{})},
 	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},
 	{loomshed.NameCodeBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameCodeBurlerFix, "BurlerFix", burlerFixType},
+	{loomshed.NameDriftVerify, "DriftVerify", driftVerifyType},
 	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NamePRReview, "PRReview", reflect.TypeOf(&landingshed.PRReview{})},
 	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},

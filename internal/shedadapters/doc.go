@@ -110,6 +110,7 @@
 //     A recorded accept faces the judgment refusal with the round's decision-class findings and ledger entries left out of its BLOCKING checks:
 //     an admitted accept passes the round, a refused one is re-judged while budget is left, is moved aside and escalated again at the budget below the hard cap,
 //     and at the budget at or past it archives the judge outputs and halts the run with a Reason opening with DecisionHaltPrefix, so `lyx loom resume` re-judges the round under the recorded accept.
+//     Drift-Verify opens the Reason of its decision halts with the same prefix, and arbiterstop hands every halt that opens with it to the parent, ahead of the tackler and the arbiter.
 //     An accept's carry-over holds every decision-class finding of the review at any severity, with the titles recorded since the snapshot, and every other BLOCKING finding of the review the ledger does not carry, so a finding the judge closed still reaches `## Open risks`.
 //     Auto-accept: a Bouncer told BouncerConfig.AutoAccept settles a spent budget as an accept instead of running the soft-cap rule.
 //     It fires at the soft cap alone, also over a CIRCLING verdict, and only on a harvest, the judge having written the verdict in this call, over a round with no decision and no escalation record.

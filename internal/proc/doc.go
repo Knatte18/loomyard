@@ -3,6 +3,8 @@
 // On Windows, HideWindow suppresses the console window using CREATE_NO_WINDOW.
 // Detach additionally creates a new process group (CREATE_NEW_PROCESS_GROUP), so the child survives parent exit and is unaffected by the parent's Ctrl-C signal.
 //
+// The per-child and named Windows jobs admit breakaway, so only a DetachBreakaway start leaves them and every other descendant still ends with its job.
+//
 // ConfigureGroupKill makes a command's cancel SIGKILL its whole process group at once.
 // ConfigureGroupTerminate makes it SIGTERM the group instead and SIGKILL it after a delay, and returns the awaitGone a caller runs after the command has been waited for, which returns once the group is empty or the SIGKILL is sent.
 // Windows has no process group to signal here, so both kill the command alone and report ErrNoProcessGroup.

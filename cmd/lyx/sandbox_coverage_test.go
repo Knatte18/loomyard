@@ -55,6 +55,10 @@ var excludedModules = []scankit.Entry{
 		Why: "its daemon hibernates the host machine, which no sandbox scenario may do",
 	},
 	{
+		Key: "drift",
+		Why: "needs a hub whose drift.yaml declares a capture and a compare command and a run at a Drift row, which no sandbox scenario builds; its verbs are covered by internal/driftcli's own tests",
+	},
+	{
 		Key: "adopt",
 		Why: "takes over runs from another machine, which needs a second clone of the hub that no sandbox scenario builds",
 	},

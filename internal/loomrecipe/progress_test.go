@@ -52,7 +52,7 @@ func TestRouting_ProgressAt(t *testing.T) {
 		}
 	})
 
-	t.Run("the tail after Webster runs Merge-In, the Code-Review perch, Describe, PR-Review and Finalize", func(t *testing.T) {
+	t.Run("the tail after Webster runs Merge-In, the Code-Review perch, Drift-Verify, Describe, PR-Review and Finalize", func(t *testing.T) {
 		t.Parallel()
 		rows := map[string]struct{ done, stuck, reroute string }{}
 		for _, def := range routing.Producers {
@@ -61,7 +61,8 @@ func TestRouting_ProgressAt(t *testing.T) {
 		for _, want := range []struct{ row, done, stuck, reroute string }{
 			{loomshed.NameWebster, loomshed.NameParentAlign, "", loomshed.NamePlanBurlerReview},
 			{loomshed.NameParentAlign, loomshed.NameCodeBouncer, "", ""},
-			{loomshed.NameCodeBouncer, loomshed.NameDescribe, loomshed.NameCodeBurlerReview, ""},
+			{loomshed.NameCodeBouncer, loomshed.NameDriftVerify, loomshed.NameCodeBurlerReview, ""},
+			{loomshed.NameDriftVerify, loomshed.NameDescribe, "", ""},
 			{loomshed.NameDescribe, loomshed.NamePRReview, "", ""},
 			{loomshed.NamePRReview, loomshed.NameFinalize, "", ""},
 			{loomshed.NameFinalize, loomshed.NameFrictionReflect, "", loomshed.NameParentAlign},

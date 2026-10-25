@@ -12,15 +12,17 @@
 // New refuses a review segment with no Env.Segments entry, naming the segment and the loom wiring's segment-to-perch table, and a negative budget, naming the segment, its config key and file.
 // Routing refuses a review segment its map lacks and a negative entry, each naming the segment.
 //
-// The loom recipe's tail after Webster reads `Parent-Align → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`.
+// The loom recipe's tail after Webster reads `Parent-Align → Code-Review → Drift-Verify → Describe → PR-Review → Finalize → Friction-Reflect`.
+// Drift-Baseline sits between the Discussion-Review ring and Plan-Write, and Drift-Await between the Plan-Review ring and Webster.
 // PR-Review always ends Done, so it carries no on_stuck, and Finalize's reroute names Parent-Align.
-// The darn recipe's tail after Darn-Write reads `Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`, with no Parent-Align, and Finalize's reroute names Code-Bouncer.
+// The darn recipe reads `Preflight → Drift-Baseline → Darn-Write → Drift-Verify → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`, with no Parent-Align, and Finalize's reroute names Code-Bouncer.
+// Every Drift row carries the entry gate `drift.enabled`, so a hub that leaves regression off records each of them skipped.
 // Its Code-Review rows are loom's, with the same names, segment, rubric and `loom.yaml` keys; only their answer key differs, the board entry snapshot and the decision record in place of the record and the plan.
 //
 // NewDarn is the second builder: it builds the embedded darn recipe, and DarnRouting projects that recipe's routing.
 // Its verify budget is not declared in the recipe: NewDarn stamps shedrecipe.Env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`, onto the verify gates of the `Darn-Write` and `Code-Burler-Fix` rows at every build and refuses a value below 1.
 // Nor is the bounce budget of its perch: NewDarn takes it from shedrecipe.Env.Segments["Code-Review"], whose budget is the Code-Review perch's resolved soft cap from `loom.yaml`, and DarnRouting from a map keyed by segment, and both set it on the perch's rows and refuse a missing Code-Review entry and a value below 0.
-// A budget of 0 turns the perch off as loom's does: NewDarn stamps `zero_rounds` on Code-Bouncer, which settles approved at once on both `Darn-Write`'s Done and `Finalize`'s reroute, and every edge is kept.
+// A budget of 0 turns the perch off as loom's does: NewDarn stamps `zero_rounds` on Code-Bouncer, which settles approved at once on both `Drift-Verify`'s Done and `Finalize`'s reroute, and every edge is kept.
 // The `Describe` row carries the entry gate `budget.Code-Review`, so a budget of 0 skips it and the writer's own change description stands.
 // DarnRetiredRows maps the writer row's former name, `Darn`, onto `Darn-Write`, so the caller can carry a darn run parked under the old name across with shedengine.RenameProducers.
 // LoomRetiredRows maps the landing row's former name, `Merge-In`, onto `Parent-Align` for a loom run the same way.

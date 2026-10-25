@@ -46,8 +46,8 @@ type CancelResult struct {
 
 // EndForCancel ends the pair's registered processes and strands, then its loop and session, for a caller that ends the run for good.
 // It skips the quiet wait, the removal refusal probe and the pre-end run-lock wait, and waits for the run lock after the processes are ended.
-// With the task worktree present the order is: the owned-process end under the prime's and the pair's records write locks, the driver-lock probe, req.AfterEnd, the strand stop, the loop end, the run-lock wait and the session end;
-// with it gone, only the owned-process end, req.AfterEnd and the session end by name run.
+// With the task worktree present the order is: the owned-process end under the prime's and the pair's records write locks, the driver-lock probe, req.AfterEnd, the drift capture job's termination, the strand stop, the loop end, the run-lock wait and the session end;
+// with it gone, only the owned-process end, req.AfterEnd, the drift capture job's termination and the session end by name run.
 // A hook that reports busy gets the owned-process end and the probe once more, then the hook again; a lock still busy then is refused.
 // Every refusal wraps ErrDriverBusy where a busy holder caused it and names `lyx batten cancel <slug>` as the way to run the phase again.
 func (t *Teardown) EndForCancel(ctx context.Context, req CancelRequest) (CancelResult, error) {
@@ -97,6 +97,10 @@ func (t *Teardown) EndForCancel(ctx context.Context, req CancelRequest) (CancelR
 					ErrDriverBusy, busy, req.Slug, req.Slug)
 			}
 		}
+	}
+
+	if _, err := t.killCapture(req.Slug); err != nil {
+		return res, fmt.Errorf("end the pair's drift capture: %w; for this cancel, run %s again", err, retry)
 	}
 
 	var releaseLoopLock func(sessionEnded bool) error

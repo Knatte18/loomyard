@@ -346,14 +346,17 @@ func TestEntryNumbers(t *testing.T) {
 		{"loom", shedrun.RecipeLoom, map[string]int{
 			"Preflight": 1, "Discussion-Write": 3,
 			"Discussion-Bouncer": 4, "Discussion-Burler-Review": 4, "Discussion-Burler-Fix": 4,
-			"Plan-Write":   5,
-			"Plan-Bouncer": 6, "Plan-Burler-Review": 6, "Plan-Burler-Fix": 6,
-			"Webster": 7, "Parent-Align": 8,
-			"Code-Bouncer": 9, "Code-Burler-Review": 9, "Code-Burler-Fix": 9,
-			"Describe": 10, "PR-Review": 11, "Finalize": 12, "Friction-Reflect": 13,
+			"Drift-Baseline": 5,
+			"Plan-Write":     6,
+			"Plan-Bouncer":   7, "Plan-Burler-Review": 7, "Plan-Burler-Fix": 7,
+			"Drift-Await": 8,
+			"Webster":     9, "Parent-Align": 10,
+			"Code-Bouncer": 11, "Code-Burler-Review": 11, "Code-Burler-Fix": 11,
+			"Drift-Verify": 12,
+			"Describe":     13, "PR-Review": 14, "Finalize": 15, "Friction-Reflect": 16,
 		}},
 		{"batten", shedrun.RecipeBatten, map[string]int{"Run-Shed": 6, "Land": 7}},
-		{"darn", shedrun.RecipeDarn, map[string]int{"Code-Bouncer": 3, "Code-Burler-Review": 3, "Code-Burler-Fix": 3}},
+		{"darn", shedrun.RecipeDarn, map[string]int{"Drift-Baseline": 2, "Drift-Verify": 4, "Code-Bouncer": 5, "Code-Burler-Review": 5, "Code-Burler-Fix": 5}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got := numbersOf(t, tt.recipe)
