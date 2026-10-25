@@ -1,0 +1,63 @@
+State of the operator's ~/.codex after the bench, read during the round-1 fix on 2026-10-25 (timezone +0100). The bench itself ran 11:45 to 12:34.
+
+config.toml, first read, before 12:48:18
+  sha256 3854c50af63b0bb5f00bd71c68a69de6efd2e1c88a63562f0d1af8f2e08980f0
+  size 540 bytes, mtime 2026-10-24 16:52:27 +0200
+  No hash was taken before the bench, so this hash matches the pre-bench file only as far as the unchanged mtime shows.
+
+config.toml, read again at 12:48:49
+  sha256 e04ddb6669f7da459f7a999e872ef3c55a35911ae2946a9cb42aedec4ec5ae1b
+  size 675 bytes, mtime 2026-10-25 12:48:18 +0100
+  Rewritten 14 minutes after the last bench run ended. An interactive operator `codex` session (pid 2687811, started 2026-10-24 11:49:02, with its app-server daemon pid 2687877) was running and was writing history.jsonl, the state and log databases and shell_snapshots at the same minute; no bench process was alive.
+
+auth.json
+  mtime 2026-10-24 11:16:39 +0200, size 4145 bytes.
+  .scratch/codex-home/auth.json is a symlink to it, created 2026-10-25 11:42, writable through to the target.
+  The target's mtime predates the link, so no token refresh wrote through it.
+
+~/.codex directory mtime
+  2026-10-25 12:15:56 at the first read; 2026-10-25 12:48:27 at the second.
+  No entry of the directory carries the 12:15 time, and the 12:15 change stays unexplained.
+  The live operator session above was writing into the directory throughout, so it is the likely writer, but nothing recorded ties it to 12:15.
+
+ls -lA of ~/.codex at 12:48:49 (names and mtimes)
+2026-10-24 11:16:44 .sandbox_migration
+2026-10-24 11:17:21 .sqlite-maintenance.lock
+2026-10-24 11:16:24 .tmp
+2026-10-24 11:49:04 app-server-control
+2026-10-24 11:49:04 app-server-daemon
+2026-10-24 11:16:39 auth.json
+2026-10-24 11:17:05 cache
+2026-10-25 12:48:18 config.toml
+2026-10-24 11:36:21 goals_1.sqlite
+2026-10-25 12:48:06 goals_1.sqlite-shm
+2026-10-24 12:17:55 goals_1.sqlite-wal
+2026-10-25 12:48:27 history.jsonl
+2026-10-24 11:16:21 installation_id
+2026-10-25 12:48:06 logs_2.sqlite
+2026-10-25 12:48:36 logs_2.sqlite-shm
+2026-10-25 12:48:46 logs_2.sqlite-wal
+2026-10-24 11:36:21 memories_1.sqlite
+2026-10-25 12:48:06 memories_1.sqlite-shm
+2026-10-24 12:17:55 memories_1.sqlite-wal
+2026-10-25 12:48:49 models_cache.json
+2026-10-24 11:49:03 packages
+2026-10-24 11:17:08 plugins
+2026-10-24 11:16:21 queue_1.sqlite
+2026-10-24 11:49:04 queue_1.sqlite-shm
+2026-10-24 11:16:21 queue_1.sqlite-wal
+2026-10-24 11:57:14 rules
+2026-10-24 12:05:57 session_index.jsonl
+2026-10-24 11:16:58 sessions
+2026-10-25 12:48:18 shell_snapshots
+2026-10-24 11:16:21 skills
+2026-10-24 12:09:04 state_5.sqlite
+2026-10-25 12:48:27 state_5.sqlite-shm
+2026-10-25 12:48:28 state_5.sqlite-wal
+2026-10-25 12:48:18 thread-writer-locks
+2026-10-24 12:09:04 thread_history_1.sqlite
+2026-10-25 12:48:27 thread_history_1.sqlite-shm
+2026-10-25 12:48:27 thread_history_1.sqlite-wal
+2026-10-24 11:15:57 tmp
+2026-10-24 12:18:25 tui-thread-reference-capabilities
+2026-10-25 12:48:06 version.json
