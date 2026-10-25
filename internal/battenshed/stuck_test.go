@@ -78,14 +78,22 @@ func TestStuckReport_LevelFollowsCause(t *testing.T) {
 			},
 		},
 		{
-			name: "an InnerRun whose status file goes missing mid-wait", level: "WARN", reason: "is gone",
+			name: "an InnerRun whose status file goes missing between its read and its check", level: "WARN", reason: "is gone",
 			run: func(t *testing.T) (string, string) {
 				scratchDir := t.TempDir()
 				clock := &fakeClock{}
-				// A running child with no confirmed spawn is spawned and read once more before the wait begins, so the first two reads are the start.
-				_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{running, running, {found: false}}, clock)
-				deps.NoticeProbe = 0
-				clock.pauseAtSleep = 5
+				_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{running}, clock)
+				recordSpawnConfirmed("innerrun", "myslug", scratchDir, SpawnConfirmedFile(scratchDir, "innerrun"))
+				// The write that removes the child's status lands as the first read returns, so the check finds the file moved and its next read finds it gone.
+				reads := 0
+				deps.ReadStatus = func(string, string) (shedengine.Status, bool, error) {
+					reads++
+					if reads == 1 {
+						clock.bumpStatus()
+						return running.status, true, nil
+					}
+					return shedengine.Status{}, false, nil
+				}
 				shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, time.Second, scratchDir, testGrace), shedengine.Stuck)
 				return scratchDir, "innerrun"
 			},
@@ -98,12 +106,15 @@ func TestStuckReport_LevelFollowsCause(t *testing.T) {
 				awaiting := statusResult{status: shedengine.Status{State: shedengine.StateAwaiting}, found: true}
 				_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{running, running, awaiting}, clock)
 				clock.pauseAtSleep = 5
-				clock.onSleep = func(call int) {
-					if call == 1 {
-						clock.bumpStatus()
-					}
+				build := func() shedengine.ShedProducer {
+					return NewInnerRun("innerrun", "myslug", deps, time.Second, scratchDir, testGrace)
 				}
-				shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, time.Second, scratchDir, testGrace), shedengine.Stuck)
+				// The first pass spawns the child, reads it running and yields; the next pass finds it awaiting and ends with the change of state.
+				if outcome, _ := shedfake.CallOK(t, build()); outcome != shedengine.Yield {
+					t.Errorf("first pass = %q; want a Yield", outcome)
+				}
+				clock.Sleep(context.Background(), time.Second)
+				shedfake.RequireOutcome(t, build(), shedengine.Stuck)
 				return scratchDir, "innerrun"
 			},
 		},
@@ -114,7 +125,14 @@ func TestStuckReport_LevelFollowsCause(t *testing.T) {
 				clock := &fakeClock{}
 				_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{haltedStatus(shedengine.StateBlocked, 2)}, clock)
 				clock.pauseAtSleep = 1
-				shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, time.Second, scratchDir, testGrace), shedengine.Stuck)
+				build := func() shedengine.ShedProducer {
+					return NewInnerRun("innerrun", "myslug", deps, time.Second, scratchDir, testGrace)
+				}
+				if outcome, _ := shedfake.CallOK(t, build()); outcome != shedengine.Yield {
+					t.Errorf("first pass = %q; want a Yield", outcome)
+				}
+				clock.Sleep(context.Background(), time.Second)
+				shedfake.RequireOutcome(t, build(), shedengine.Stuck)
 				return scratchDir, "innerrun"
 			},
 		},

@@ -210,6 +210,14 @@ func halting(st shedengine.State, reason string, history int) childScript {
 	}
 }
 
+// yielding is a child whose step yielded: it succeeded and left the status file running at the row it found.
+func yielding() childScript {
+	return func(fx *loopFixture, traceID string, _ ChildRequest) error {
+		fx.writeSuccess(traceID, shedengine.StepResult{Producer: "A", Outcome: shedengine.Yield, Next: "A", State: shedengine.StateRunning, History: historyOf(0)})
+		return nil
+	}
+}
+
 // failing is a child whose step ended in an error of kind, leaving the status file running.
 func failing(kind, transient, msg string) childScript {
 	return func(fx *loopFixture, traceID string, _ ChildRequest) error {
@@ -234,7 +242,10 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 		wantStep map[string]any
 		// wantHandBack is the loop's hand_back under a told check that answers true for the producer B, where every halting script leaves the run.
 		wantHandBack bool
+		// wantStatusLeftAtA is whether the status file must still read running at the row the run was seeded on.
+		wantStatusLeftAtA bool
 	}{
+		{name: "yield", scripts: []childScript{yielding()}, wantStop: LoopStopHalted, wantStatusLeftAtA: true},
 		{name: "blocked", scripts: []childScript{continuing("B", 1), halting(shedengine.StateBlocked, shedengine.ReasonBounceBudgetExhausted, 2)}, wantStop: LoopStopHalted, wantHandBack: true},
 		{name: "awaiting", scripts: []childScript{halting(shedengine.StateAwaiting, "", 1)}, wantStop: LoopStopHalted},
 		{name: "done", scripts: []childScript{continuing("B", 1), halting(shedengine.StateDone, "", 2)}, wantStop: LoopStopHalted},
@@ -275,6 +286,10 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 			}
 			if loop["hand_back"] != tt.wantHandBack {
 				t.Errorf("loop hand_back = %v; want %v", loop["hand_back"], tt.wantHandBack)
+			}
+
+			if st := fx.readStatus(); tt.wantStatusLeftAtA && (st.State != shedengine.StateRunning || st.CurrentProducer != "A") {
+				t.Errorf("status after the loop = %s at %s; want running at A, left as it was", st.State, st.CurrentProducer)
 			}
 
 			ids := fx.childIDs()

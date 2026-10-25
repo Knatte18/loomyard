@@ -33,13 +33,13 @@ review_timeout_min: 240  # minutes one review round's shuttle run is allowed to 
 friction: sonnet[medium]  # model-spec for the Tier 2 friction-reflection producer (see contracts/specs/llm-model-spec.md); empty turns Tier 2 self-reporting off
 friction_timeout_min: 30  # minutes the friction-reflection agent's shuttle run is allowed to run
 driver: haiku[medium]  # model-spec for the model that runs an llm-driven run's loom driver session (see contracts/specs/llm-model-spec.md); the llm driver runs only when a hub, a module's driver override, a task's run settings or --driver selects llm, and a hub pins the model back with lyx config loom --layer default --set driver=sonnet[medium]; empty defers to the provider default
-arbiter: opus[high]  # model-spec for the arbiter, the cold agent a run's driver asks to settle a stop it cannot (see contracts/specs/llm-model-spec.md); empty takes opus[high]
-arbiter_timeout_min: 30  # minutes one arbiter spawn is allowed to run; 0 takes 30
-arbiter_max_spawns: 3  # arbiter spawns a run may use; 0 turns the arbiter off, so every eligible stop escalates to the run's parent as without it
 driver_kind: ""  # overrides shed.yaml's driver_kind for a loom run, llm or go; empty inherits shed.yaml; a seeded run keeps its recorded driver
 tackler: ""  # overrides shed.yaml's tackler model-spec for a loom run (see contracts/specs/llm-model-spec.md); empty inherits shed.yaml
 tackler_timeout_min: 0  # overrides shed.yaml's tackler_timeout_min for a loom run; 0 inherits shed.yaml
 tackler_max_spawns: ~  # overrides shed.yaml's tackler_max_spawns for a loom run; null inherits shed.yaml, and a set 0 turns the tackler off for loom
+arbiter: ""  # overrides shed.yaml's arbiter model-spec for a loom run (see contracts/specs/llm-model-spec.md); empty inherits shed.yaml
+arbiter_timeout_min: 0  # overrides shed.yaml's arbiter_timeout_min for a loom run; 0 inherits shed.yaml
+arbiter_max_spawns: ~  # overrides shed.yaml's arbiter_max_spawns for a loom run; null inherits shed.yaml, and a set 0 turns the arbiter off for loom
 pr_review: false  # true makes the PR-Review stub log that the PR review is not built; the stub opens no pull request and acts on nothing either way
 step_idle_timeout_min: 60  # minutes a --until-stop step may show no activity (no trace write and no agent activity) before the loop kills it; a value below 1 is raised to 1
 review_circling_checkpoint: 3  # first judged round from which a review segment's judge may rule CIRCLING; with review_max_bounces also 3 a run reaches the soft-cap rule at round 3 before a CIRCLING verdict could change the outcome, so lower this for an earlier circling escalation; a value above review_max_bounces means a run never rules CIRCLING and reaches the soft-cap rule instead

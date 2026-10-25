@@ -60,6 +60,7 @@ func settleClaim(status *string, landed, battenSeeded bool, battenState string, 
 }
 
 // settleBoardClaim settles the removed pair's board entry once its removal succeeded.
+// A cleared claim is written as the draft status, so the task is not started again until it is released.
 // A board or status read failure warns and writes nothing, and a failed write warns.
 func (t *Teardown) settleBoardClaim(slug string, landed bool) {
 	status, found, err := t.readClaim(slug)
@@ -103,6 +104,9 @@ func (t *Teardown) settleBoardClaim(slug string, landed bool) {
 	case claimDone:
 		done := "done"
 		settled = &done
+	case claimClear:
+		draft := boardengine.StatusDraft
+		settled = &draft
 	}
 	if err := t.writeClaim(slug, settled); err != nil {
 		logger.Warn("pairteardown: could not settle the board claim", "slug", slug, "cause", err)

@@ -106,6 +106,11 @@ func TestWire_EverySeamFilled(t *testing.T) {
 		t.Fatalf("wire() error = %v; want nil", err)
 	}
 
+	// envkit lists these three as legal nils, so wire's filling them is asserted here.
+	if c.env.InnerRun.Sleeps == nil || c.env.InnerRun.Awake == nil || c.env.InnerRun.ReviveAPIError == nil {
+		t.Errorf("InnerRun Sleeps, Awake and ReviveAPIError set = %t, %t, %t; want all set after wire()", c.env.InnerRun.Sleeps != nil, c.env.InnerRun.Awake != nil, c.env.InnerRun.ReviveAPIError != nil)
+	}
+
 	nils := envkit.NilSeams(c.env)
 	for _, path := range nils {
 		if _, ok := intentionallyNil[path]; !ok {
@@ -218,7 +223,7 @@ func TestWire_BattenStatusSeamsReadBattensOwnStatus(t *testing.T) {
 			if err != nil || landPaused != tt.want {
 				t.Errorf("Land.PauseRequested() = %v, %v; want %v, nil", landPaused, err, tt.want)
 			}
-			history, err := c.env.Teardown.Notices.BattenHistoryLen()
+			history, err := c.env.Land.Notices.BattenHistoryLen()
 			if err != nil || history != tt.wantHistory {
 				t.Errorf("BattenHistoryLen() = %d, %v; want %d, nil", history, err, tt.wantHistory)
 			}
@@ -230,7 +235,7 @@ func TestWire_BattenStatusSeamsReadBattensOwnStatus(t *testing.T) {
 func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	t.Parallel()
 
-	c, location := wiredPrime(t)
+	c, _ := wiredPrime(t)
 
 	for name, mark := range map[string]func(context.Context) (bool, error){"RunShed": c.env.InnerRun.MarkWatched, "SeedChild": c.env.SeedChild.MarkWatched} {
 		held, err := mark(context.Background())
@@ -251,17 +256,6 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	// Every Command row reads its switch from the task worktree when it is reached, so the lookup refuses before any command runs.
 	if value, err := c.env.Setting("batten", "open_window"); err == nil || value != nil || !strings.Contains(err.Error(), "a-slug") {
 		t.Errorf("Setting(batten, open_window) = %v, %v; want the absent-worktree refusal naming the slug", value, err)
-	}
-	// --open-terminal answers batten.open_window true without reading the task worktree, and every other lookup is unchanged.
-	asked := &battenCLI{openTerminalFlag: true}
-	if err := asked.wire(location, "a-slug"); err != nil {
-		t.Fatalf("wire() error = %v; want nil", err)
-	}
-	if value, err := asked.env.Setting("batten", "open_window"); err != nil || value != true {
-		t.Errorf("Setting(batten, open_window) under --open-terminal = %v, %v; want true, nil", value, err)
-	}
-	if value, err := asked.env.Setting("batten", "seed_ide"); err == nil || value != nil || !strings.Contains(err.Error(), "a-slug") {
-		t.Errorf("Setting(batten, seed_ide) under --open-terminal = %v, %v; want the absent-worktree refusal naming the slug", value, err)
 	}
 }
 

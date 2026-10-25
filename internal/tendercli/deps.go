@@ -233,6 +233,33 @@ func PauseOwnedElsewhere(location *lyxcwd.Location, slug string) error {
 	return nil
 }
 
+// ReviveStalled gives the revive line to the sessions of the pair slug that are stalled on an API error, through the conditioned send.
+// It returns an error when the revive sent nothing and a session refused or did not land the line, so a caller that revives once per episode can warn.
+func ReviveStalled(location *lyxcwd.Location, slug string) error {
+	deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
+	if err != nil {
+		return err
+	}
+	report, err := tenderengine.Revive(deps, tenderengine.ReviveRequest{Slug: slug})
+	if err != nil {
+		return err
+	}
+	return reviveError(report)
+}
+
+// reviveError maps a revive report onto an error: nil when a session was given the line or none refused it, otherwise an error naming the first refusal.
+func reviveError(report tenderengine.ReviveReport) error {
+	if len(report.Sent) > 0 || len(report.SentNoTurnStart) > 0 {
+		return nil
+	}
+	refusals := append(slices.Clone(report.Refused), report.NotLanded...)
+	if len(refusals) == 0 {
+		return nil
+	}
+	first := refusals[0]
+	return fmt.Errorf("revive sent no line: %s (%s): %s", first.Strand, first.Slug, first.Reason)
+}
+
 // endOwnedElsewhere is the end PauseOwnedElsewhere runs after its pause.
 var endOwnedElsewhere = EndOwnedElsewhere
 

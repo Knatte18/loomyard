@@ -19,6 +19,12 @@ const (
 	Awaiting Outcome = "awaiting"
 )
 
+// Yield is the verdict of a producer at a wait its own next call re-checks.
+// It persists nothing: no history entry, no status write and no activity, so the run stays at the same row and running.
+// Only such a producer returns it, and batten's InnerRun is the only one.
+// It has no State twin; the run it ends reports RunYielded.
+const Yield Outcome = "yield"
+
 // OutcomeGoto is a history-only Outcome, written by `lyx shed goto` and never returned by a producer.
 // A producer returning it is unrecognised, as any value outside the three verdicts is.
 // A goto entry leaves every row's bounce-budget count as it was.

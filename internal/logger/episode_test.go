@@ -94,3 +94,26 @@ func TestEpisode_WarnsOncePerEpisodeAndInfoOnRecovery(t *testing.T) {
 		})
 	}
 }
+
+// TestEpisodeSet_RestoreContinuesTheEpisode pins that a set restored from saved tick counts continues each open episode at Debug and recovers it at Info, while a key absent from the restore warns on its first failure.
+// It is not parallel: it captures the process-global logger output and verbosity.
+func TestEpisodeSet_RestoreContinuesTheEpisode(t *testing.T) {
+	buf := withCapturedOutput(t)
+	SetVerbosity(2)
+	t.Cleanup(func() { SetVerbosity(0) })
+
+	var before EpisodeSet
+	before.Fail("a", "failing", "key", "a")
+	var after EpisodeSet
+	after.Restore(before.Ticks())
+	buf.Reset()
+
+	after.Fail("a", "failing", "key", "a")
+	after.Recover("a", "recovered", "key", "a")
+	after.Fail("b", "failing", "key", "b")
+
+	want := []string{"DEBUG key=a failed_ticks=2", "INFO key=a failed_ticks=2", "WARN key=b"}
+	if got := episodeLineSummaries(buf.String()); !reflect.DeepEqual(got, want) {
+		t.Errorf("logged lines = %q, want %q", got, want)
+	}
+}

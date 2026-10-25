@@ -61,13 +61,15 @@ const (
 // storeFile is the on-disk shape of board.json.
 // LegacyDone lists the slugs whose done mark came from a legacy file, so the fold never re-applies one.
 // PrimeOwner names the machine that owns the hub's prime, empty when none is recorded.
+// DraftStatus is true once the board's open tasks with no status were marked draft.
 // Unknown holds the top-level keys this binary does not know, written back after the known ones in key order.
 type storeFile struct {
-	Version    int                        `json:"version"`
-	Entries    []Task                     `json:"entries"`
-	LegacyDone []string                   `json:"legacy_done,omitempty"`
-	PrimeOwner string                     `json:"prime_owner,omitempty"`
-	Unknown    map[string]json.RawMessage `json:"-"`
+	Version     int                        `json:"version"`
+	Entries     []Task                     `json:"entries"`
+	LegacyDone  []string                   `json:"legacy_done,omitempty"`
+	PrimeOwner  string                     `json:"prime_owner,omitempty"`
+	DraftStatus bool                       `json:"draft_status,omitempty"`
+	Unknown     map[string]json.RawMessage `json:"-"`
 }
 
 // MarshalJSON encodes the known fields, then the Unknown members after them in key order.
@@ -83,21 +85,23 @@ func (f storeFile) MarshalJSON() ([]byte, error) {
 // loadedStoreFile is the decode shape of board.json: its entries may still carry the retired tier and type.
 // Unknown holds the top-level keys this binary does not know, each with its raw JSON value.
 type loadedStoreFile struct {
-	Version    int                        `json:"version"`
-	Entries    []storedEntry              `json:"entries"`
-	LegacyDone []string                   `json:"legacy_done,omitempty"`
-	PrimeOwner string                     `json:"prime_owner,omitempty"`
-	Unknown    map[string]json.RawMessage `json:"-"`
+	Version     int                        `json:"version"`
+	Entries     []storedEntry              `json:"entries"`
+	LegacyDone  []string                   `json:"legacy_done,omitempty"`
+	PrimeOwner  string                     `json:"prime_owner,omitempty"`
+	DraftStatus bool                       `json:"draft_status,omitempty"`
+	Unknown     map[string]json.RawMessage `json:"-"`
 }
 
 // UnmarshalJSON decodes the known fields in one json pass, then walks the raw bytes once to keep every other key, top-level and per entry, in Unknown.
 // The entries decode through decodedEntry, not storedEntry, so no json call is nested per entry and the load stays as cheap as one decode.
 func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 	var decoded struct {
-		Version    int            `json:"version"`
-		Entries    []decodedEntry `json:"entries"`
-		LegacyDone []string       `json:"legacy_done,omitempty"`
-		PrimeOwner string         `json:"prime_owner,omitempty"`
+		Version     int            `json:"version"`
+		Entries     []decodedEntry `json:"entries"`
+		LegacyDone  []string       `json:"legacy_done,omitempty"`
+		PrimeOwner  string         `json:"prime_owner,omitempty"`
+		DraftStatus bool           `json:"draft_status,omitempty"`
 	}
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
@@ -116,7 +120,7 @@ func (f *loadedStoreFile) UnmarshalJSON(data []byte) error {
 	eachElement(rawEntries, func(raw []byte) {
 		entries = append(entries, storedEntryFrom(decoded.Entries[len(entries)], raw))
 	})
-	*f = loadedStoreFile{Version: decoded.Version, Entries: entries, LegacyDone: decoded.LegacyDone, PrimeOwner: decoded.PrimeOwner}
+	*f = loadedStoreFile{Version: decoded.Version, Entries: entries, LegacyDone: decoded.LegacyDone, PrimeOwner: decoded.PrimeOwner, DraftStatus: decoded.DraftStatus}
 	if len(unknown) > 0 {
 		f.Unknown = unknown
 	}
@@ -132,6 +136,8 @@ type Store struct {
 	legacyDone []string
 	// primeOwner is the board.json prime_owner record, the machine that owns the hub's prime; empty when none is recorded.
 	primeOwner string
+	// draftStatus is the board.json draft_status record: true once migrateDraftStatus marked the open tasks with no status draft.
+	draftStatus bool
 	// unknown is the top-level keys of board.json this binary does not know, kept raw and written back by Save.
 	unknown  map[string]json.RawMessage
 	boardDir string
@@ -165,6 +171,7 @@ func (s *Store) Load() error {
 	s.tasks = []Task{}
 	s.legacyDone = nil
 	s.primeOwner = ""
+	s.draftStatus = false
 	s.unknown = nil
 	if s.boardDir == "" {
 		return nil
@@ -184,6 +191,7 @@ func (s *Store) Load() error {
 	var legacyDone []string
 	var unknown map[string]json.RawMessage
 	var primeOwner string
+	var draftStatus bool
 	if fileExists(path) {
 		// The raw bytes are read under the shared lock and decoded after it is released,
 		// so the decode never holds off a writer waiting for the exclusive lock.
@@ -200,7 +208,7 @@ func (s *Store) Load() error {
 				return fmt.Errorf("load store: %s has version %d; this binary reads only version %d", boardFile, file.Version, storeVersion)
 			}
 			entries, legacyDone, unknown = migrateEntries(file.Entries, s.vocab), file.LegacyDone, file.Unknown
-			primeOwner = file.PrimeOwner
+			primeOwner, draftStatus = file.PrimeOwner, file.DraftStatus
 		}
 	} else if haveTasks || haveNotes {
 		entries, legacyDone, err = migrateLegacy(tasksRecords, notesRecords, s.vocab)
@@ -231,6 +239,7 @@ func (s *Store) Load() error {
 	s.tasks = entries
 	s.legacyDone = legacyDone
 	s.primeOwner = primeOwner
+	s.draftStatus = draftStatus
 	s.unknown = unknown
 	return nil
 }
@@ -280,11 +289,12 @@ func (s *Store) Save() error {
 	}
 	path := filepath.Join(s.boardDir, boardFile)
 	return state.WriteJSON(path, path+swapLockSuffix, storeFile{
-		Version:    storeVersion,
-		Entries:    s.tasks,
-		LegacyDone: s.legacyDone,
-		PrimeOwner: s.primeOwner,
-		Unknown:    s.unknown,
+		Version:     storeVersion,
+		Entries:     s.tasks,
+		LegacyDone:  s.legacyDone,
+		PrimeOwner:  s.primeOwner,
+		DraftStatus: s.draftStatus,
+		Unknown:     s.unknown,
 	})
 }
 

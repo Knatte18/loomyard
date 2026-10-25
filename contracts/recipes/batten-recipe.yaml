@@ -4,13 +4,14 @@
 # Name* constants by that package's coverage guard -- a rename here without a matching constant
 # rename breaks resume for any in-flight run.
 #
-# Run-Shed's producer waits on its child inside its own call, checking every config.poll_interval_s
-# seconds, and returns only when something is worth a history entry: the child's state changed,
-# an awaiting child's decision arrived, batten was paused, or the child's status file could not be
-# stat'ed. Anything costing a process or a multiplexer round trip runs at most once per
+# Run-Shed's producer checks its child once per call and yields when the check ends nothing, with
+# its memory between calls in a per-run record: a call is one pass that the scheduling dobby runs
+# again. It returns a verdict only when something is worth a history entry: the child's state
+# changed, an awaiting child's decision arrived, batten was paused, or the child's status file
+# could not be stat'ed. Anything costing a process or a multiplexer round trip runs at most once per
 # config.notice_probe_s. Every Stuck it returns is budget-exempt and routes back through the
-# on_stuck: Run-Shed self-route to re-enter the producer for the next wait, so the row carries no
-# max_bounces and no running watch window: a running child is waited on without a time limit, bounded
+# on_stuck: Run-Shed self-route to re-enter the producer for the next pass, so the row carries no
+# max_bounces and no running watch window: a running child is checked without a time limit, bounded
 # only by "lyx batten pause", the notices, and the driver-exit grace for a done child
 # (config.driver_exit_grace_s). It never routes to
 # Worktree-Teardown: the destructive teardown row is unreachable from any failure path because
@@ -24,8 +25,8 @@
 # into the pair's local config layer, which their entry gates are read from.
 #
 # Land runs after Run-Shed's Done: under the hub's land lock it pulls the prime, runs the hub-wide
-# deploy command, prunes the board and names the tasks the landing made ready. It carries no
-# on_stuck and no max_bounces: a failed Land step, or a pause honoured during its waits, halts
+# deploy command and prunes the board; a records stop of the pull is the one notice of a successful
+# landing. It carries no on_stuck and no max_bounces: a failed Land step, or a pause honoured during its waits, halts
 # batten blocked at Land with the pair present, so Worktree-Teardown stays the only terminal and
 # unreachable from any failure path.
 #

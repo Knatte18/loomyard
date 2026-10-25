@@ -297,3 +297,30 @@ func TestOwnedElsewhereEnder(t *testing.T) {
 		})
 	}
 }
+
+func TestReviveError(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		report     tenderengine.ReviveReport
+		wantErr    bool
+		wantNaming string
+	}{
+		{name: "SessionSent", report: tenderengine.ReviveReport{Sent: []string{"driver"}, Refused: []tenderengine.SessionNote{{Strand: "other", Slug: "task", Reason: "draft in the box"}}}},
+		{name: "OnlyARefusal", report: tenderengine.ReviveReport{Refused: []tenderengine.SessionNote{{Strand: "driver", Slug: "task", Reason: "draft in the box"}}}, wantErr: true, wantNaming: "draft in the box"},
+		{name: "OnlyALineThatDidNotLand", report: tenderengine.ReviveReport{NotLanded: []tenderengine.SessionNote{{Strand: "driver", Slug: "task", Reason: "submission not landed"}}}, wantErr: true, wantNaming: "submission not landed"},
+		{name: "EmptyReport", report: tenderengine.ReviveReport{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := reviveError(tt.report)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("reviveError() = %v; want error %v", err, tt.wantErr)
+			}
+			if tt.wantErr && !strings.Contains(err.Error(), tt.wantNaming) {
+				t.Errorf("reviveError() = %q; want it to name %q", err, tt.wantNaming)
+			}
+		})
+	}
+}

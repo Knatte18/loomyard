@@ -28,13 +28,25 @@ type GoClient struct {
 // Its claim carries no strand name, whatever $LYX_STRAND_NAME holds, so it never claims a strand.
 // It refuses a location outside a hub, and a program name that is not well formed.
 func NewProgramClient(location *lyxcwd.Location, program string) (*GoClient, error) {
-	return newGoClient(location, func(shortname string) (creelengine.Claim, error) {
-		full, err := agentname.FormatProgram(shortname, program)
+	return newGoClient(location, programClaim("", program))
+}
+
+// NewScopedProgramClient returns a client that signs as the program named program for the beam slug, as "<shortname>:<slug>:<NAME>".
+// An empty slug signs like NewProgramClient.
+// Its claim carries no strand name, and it refuses a location outside a hub, a malformed slug and a program name that is not well formed.
+func NewScopedProgramClient(location *lyxcwd.Location, slug, program string) (*GoClient, error) {
+	return newGoClient(location, programClaim(slug, program))
+}
+
+// programClaim returns the claim builder of a program client: the program sender scoped to slug, the two-segment sender for an empty slug.
+func programClaim(slug, program string) func(shortname string) (creelengine.Claim, error) {
+	return func(shortname string) (creelengine.Claim, error) {
+		full, err := agentname.FormatScopedProgram(shortname, slug, program)
 		if err != nil {
 			return creelengine.Claim{}, fmt.Errorf("creel: the program name %q is not usable: %w", program, err)
 		}
 		return creelengine.Claim{Program: full}, nil
-	})
+	}
 }
 
 // NewStrandClient returns a client that claims the strand named strandName and no program.

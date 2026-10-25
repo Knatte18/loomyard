@@ -1,4 +1,4 @@
-// innerrun_owner.go implements InnerRun's owner check: after a sleep or a pause hold it asks whether another machine owns the run now,
+// innerrun_owner.go implements InnerRun's owner check: after a pause hold, or while an owner stands, it asks whether another machine owns the run now,
 // and a run found owned elsewhere is paused, its parent lock released and the orch noticed, unless a Finalize past its parent-side merge still holds the lock.
 
 package battenshed
@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -58,19 +57,16 @@ func (p *innerRunProducer) ownerHoldReason() string {
 	return fmt.Sprintf("held: the run is owned by machine %s; take it over with \"lyx adopt %s\"", p.ownedBy, p.slug)
 }
 
-// foldOwnerTrigger folds this check's wall and awake readings and its pause coverage into the owner check's trigger.
-// The check becomes due in three cases.
-// The watch records a new sleep.
+// foldOwnerTrigger folds this check's pause coverage into the owner check's trigger.
+// The check becomes due in two cases.
 // The previous check was covered and this one is not.
 // Or this is a probe check while an owner stands that no pause covers.
-func (p *innerRunProducer) foldOwnerTrigger(w *childWait, now time.Time) {
-	p.ownerSleep.Observe(now, p.deps.Awake())
-	sleeps := p.ownerSleep.Sleeps()
-	slept := len(sleeps) > 0 && sleeps[len(sleeps)-1].End.Equal(now)
+// A machine wake reaches the owner verdict through the full pass the scheduling dobby owes, not through a trigger here.
+func (p *innerRunProducer) foldOwnerTrigger(w *childWait) {
 	released := p.ownerCovered && !w.pause.Covered
 	retry := p.ownedBy != "" && !w.pause.Covered && w.probeDue
 	p.ownerCovered = w.pause.Covered
-	if p.deps.OwnerCheck != nil && (slept || released || retry) {
+	if p.deps.OwnerCheck != nil && (released || retry) {
 		p.ownerDue = true
 	}
 }

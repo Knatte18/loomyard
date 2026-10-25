@@ -47,9 +47,15 @@ type fakeSubstrates struct {
 	claimFound   bool
 	claimReadErr error
 
-	// endedProcs and endOwnedErr are what the owner-record end answers.
+	// endedProcs and endOwnedErr are what the owner-record end answers; spared is the roles its last call spared.
 	endedProcs  []runproc.Ended
 	endOwnedErr error
+	spared      []string
+	// parent is the slug's parent, empty for the prime; cancelMark is whether a cancel marker stands.
+	parent     string
+	cancelMark bool
+	// ownedUnder answers the live owned processes of the owners it names, ahead of the owned list.
+	ownedUnder map[string][]runproc.Record
 	// driverLockHeld is whether the driver lock reads held after the owned end.
 	driverLockHeld bool
 	// battenAlive is whether a registered batten process reads alive.
@@ -87,11 +93,14 @@ type awaitCall struct {
 
 func (f *fakeSubstrates) teardown() *Teardown {
 	return &Teardown{
-		prime:    &lyxcwd.Location{HubPath: "/hub", AnchorRel: "."},
-		interval: time.Second,
-		goos:     "linux",
-		endOwned: func(string) ([]runproc.Ended, error) {
+		prime:        &lyxcwd.Location{HubPath: "/hub", AnchorRel: "."},
+		interval:     time.Second,
+		goos:         "linux",
+		parentOf:     func(string) (string, error) { return f.parent, nil },
+		cancelMarked: func(string) bool { return f.cancelMark },
+		endOwned: func(_ string, spare ...string) ([]runproc.Ended, error) {
 			f.calls = append(f.calls, "endOwned")
+			f.spared = spare
 			return f.endedProcs, f.endOwnedErr
 		},
 		driverLockHeld: func(string) (bool, error) {
@@ -125,8 +134,13 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			f.awaitSeen = awaitCall{paused: paused, hubEntry: hubEntry, retry: retry}
 			return f.awaitOrPassErr
 		},
-		ownedProcesses: func(string) ([]runproc.Record, error) { return f.owned, f.ownedErr },
-		gone:           func(string) (bool, error) { return f.gone, nil },
+		ownedProcesses: func(owner string) ([]runproc.Record, error) {
+			if records, ok := f.ownedUnder[owner]; ok {
+				return records, f.ownedErr
+			}
+			return f.owned, f.ownedErr
+		},
+		gone: func(string) (bool, error) { return f.gone, nil },
 		quiet: func(string) (quietState, error) {
 			f.calls = append(f.calls, "quiet")
 			st := f.quiets[0]
@@ -376,7 +390,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:    Request{Slug: "slug"},
 			claim:      runClaim,
 			claimFound: true,
-			wantCalls:  sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=clear",
+			wantCalls:  sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=draft",
 		},
 		{
 			name:         "PausedBattenRunIsCleared",
@@ -387,7 +401,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "paused",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=clear",
+			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=draft",
 		},
 		{
 			name:         "BlockedBattenRunIsCleared",
@@ -398,7 +412,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "blocked",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=clear",
+			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=draft",
 		},
 		{
 			name:         "FailedBattenRunIsCleared",
@@ -409,7 +423,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "failed",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=clear",
+			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=draft",
 		},
 		{
 			name:         "AwaitingBattenRunIsCleared",
@@ -420,7 +434,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			battenState:  "awaiting",
 			claim:        runClaim,
 			claimFound:   true,
-			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=clear",
+			wantCalls:    sessionEnd + ",landed,archive,remove,readClaim,battenRun,write=draft",
 		},
 		{
 			name:         "DoneBattenRunMarksDone",
@@ -469,7 +483,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 			request:     Request{Slug: "slug", RefuseWhenBusy: true},
 			claim:       runClaim,
 			claimFound:  true,
-			wantCalls:   "refusal,endOwned,end,archive,remove,readClaim,battenRun,write=clear",
+			wantCalls:   "refusal,endOwned,end,archive,remove,readClaim,battenRun,write=draft",
 			wantSawGone: true,
 		},
 		{
@@ -878,7 +892,7 @@ func TestSettleBoardClaim_RunningBattenRecordWayForward(t *testing.T) {
 			if strings.Contains(buf.String(), tt.notWant) {
 				t.Errorf("log = %q, want it not to name %q", buf.String(), tt.notWant)
 			}
-			if slices.Contains(f.calls, "write=clear") || slices.Contains(f.calls, "write=done") {
+			if slices.Contains(f.calls, "write=clear") || slices.Contains(f.calls, "write=draft") || slices.Contains(f.calls, "write=done") {
 				t.Errorf("calls = %v, want the claim kept", f.calls)
 			}
 		})
@@ -1073,6 +1087,39 @@ func TestLoopTeardown_LockMarkAndRunLockWait(t *testing.T) {
 			t.Errorf("sleeps = %d; want none for a free lock", sleeps-before)
 		}
 	})
+}
+
+// TestRegisteredBattenAlive_ReadsADobbyDrivenRun pins that the gap between two batten passes reads as a live lifecycle owner only while a dobby of the run's parent stands and batten's status reads running with no cancel marker.
+func TestRegisteredBattenAlive_ReadsADobbyDrivenRun(t *testing.T) {
+	t.Parallel()
+
+	dobby := []runproc.Record{{PID: 7, Role: runproc.RoleDobby}}
+	tests := []struct {
+		name string
+		f    fakeSubstrates
+		want bool
+	}{
+		{"RunningStatusWithADobbyUnderTheParentIsAlive", fakeSubstrates{battenSeeded: true, battenState: "running", parent: "beam", ownedUnder: map[string][]runproc.Record{"beam": dobby}}, true},
+		{"RunningStatusWithADobbyUnderTheHubIsAlive", fakeSubstrates{battenSeeded: true, battenState: "running", ownedUnder: map[string][]runproc.Record{runproc.HubOwner: dobby}}, true},
+		{"HaltedStatusIsNotAlive", fakeSubstrates{battenSeeded: true, battenState: "blocked", parent: "beam", ownedUnder: map[string][]runproc.Record{"beam": dobby}}, false},
+		{"CancelMarkerIsNotAlive", fakeSubstrates{battenSeeded: true, battenState: "running", parent: "beam", cancelMark: true, ownedUnder: map[string][]runproc.Record{"beam": dobby}}, false},
+		{"NoDobbyRecordIsNotAlive", fakeSubstrates{battenSeeded: true, battenState: "running", parent: "beam", ownedUnder: map[string][]runproc.Record{"beam": nil}}, false},
+		{"RegisteredBattenIsAlive", fakeSubstrates{ownedUnder: map[string][]runproc.Record{"slug": {{PID: 8, Role: runproc.RoleBatten}}}}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f := tt.f
+			got, err := f.teardown().registeredBattenAlive("slug")
+			if err != nil {
+				t.Fatalf("registeredBattenAlive() error = %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("registeredBattenAlive() = %t; want %t", got, tt.want)
+			}
+		})
+	}
 }
 
 // mustRunLockFree reports whether the lock at lockPath is free.

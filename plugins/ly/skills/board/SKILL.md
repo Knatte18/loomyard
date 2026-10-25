@@ -37,6 +37,8 @@ lyx board get B4
 lyx board set-status '{"handle":"T4","status":null}'
 ```
 
+A new task is `draft`; a null status on a task releases it rather than clearing it to a plain empty status.
+
 ## Labels
 
 Every entry carries `labels`, validated against two maps in the hub's `board.yaml`, each from label to description:

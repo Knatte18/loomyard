@@ -64,6 +64,10 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	if _, err := board.UpsertTask(map[string]any{"slug": taskSlug, "title": taskSlug, "kind": "task", "labels": []string{"bug"}}); err != nil {
 		t.Fatalf("seed the board entry: %v", err)
 	}
+	// A new task is a draft, which a fresh run refuses.
+	if err := board.SetStatus(taskSlug, nil); err != nil {
+		t.Fatalf("release the board entry: %v", err)
+	}
 	if _, err := boardengine.SetOwners(first.BoardDir(), boardengine.OwnerRequest{Machine: firstMachine, Slugs: []string{taskSlug}, Prime: true, Takeover: true}); err != nil {
 		t.Fatalf("record the first machine as owner: %v", err)
 	}
@@ -71,7 +75,8 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	second := hubforge.CloneSecond(t, first)
 	holdOwnerPause(t, second.Location)
 
-	got, err := adoptcli.AdoptAs(second.Location, secondMachine, []string{taskSlug}, false, false)
+	// The task's parent is the prime the first machine owns, so the takeover names the prime too.
+	got, err := adoptcli.AdoptAs(second.Location, secondMachine, []string{taskSlug}, true, false, false)
 	if err != nil {
 		t.Fatalf("the second clone's adopt: %v", err)
 	}
@@ -130,7 +135,7 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = held.Release() })
 
-	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{taskSlug}, false, false)
+	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{taskSlug}, false, false, false)
 	if err != nil {
 		t.Fatalf("the first clone's adopt back: %v", err)
 	}
@@ -138,7 +143,7 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 		t.Errorf("adopt back = %+v, want a stop on the live pair naming both ways forward", stopped)
 	}
 
-	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{taskSlug}, false, true)
+	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{taskSlug}, false, false, true)
 	if err != nil {
 		t.Fatalf("the first clone's --drop-local: %v", err)
 	}
@@ -146,7 +151,8 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 		t.Errorf("--drop-local over a live pair = %+v, want a refusal naming --keep-local", refused)
 	}
 
-	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{taskSlug}, true, false)
+	// The second machine took the prime over with the task, so taking the task back names the prime too.
+	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{taskSlug}, true, true, false)
 	if err != nil {
 		t.Fatalf("the first clone's --keep-local: %v", err)
 	}

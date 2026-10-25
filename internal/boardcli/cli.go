@@ -622,15 +622,15 @@ Example:
 	// slug or numeric id.
 	setStatusCmd := &cobra.Command{
 		Use:         "set-status {slug|id|handle, status}",
-		Short:       "set or clear the status of a task",
+		Short:       "set the status of a task, or release it with null",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Set or clear the lifecycle status of a task. Use null as "status" to clear it.
+		Long: `Set the lifecycle status of a task. A new task is "draft"; null releases it, leaving it with no status, and an empty string on a task gives "draft" again.
 
 Fields:
   "slug"   string      — task slug (one of slug, id or handle)
   "id"     integer     — numeric task ID (one of slug, id or handle)
   "handle" string      — task handle, such as T4 (one of slug, id or handle)
-  "status" string|null — new status value; null clears the current status
+  "status" string|null — new status value; null releases a draft task
 
 Examples:
   lyx board set-status '{"slug":"my-task","status":"active"}'
@@ -835,7 +835,9 @@ Fields:
     "slug"   string      — task slug (one of slug, id or handle)
     "id"     integer     — numeric task ID (one of slug, id or handle)
     "handle" string      — task handle, such as T4 (one of slug, id or handle)
-    "status" string|null — new status; null clears
+    "status" string|null — new status; null releases a draft task
+
+A task the merge creates is "draft", and a "set_status" of null releases it.
 
 Flag:
   --body-file <path>  read the upsert's "body" from the file, or from stdin when the path is "-"; every other field still comes from the payload.

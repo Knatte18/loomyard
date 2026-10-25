@@ -214,16 +214,15 @@ func TestNotice_EligibleStopHold(t *testing.T) {
 			},
 		},
 		{
-			name: "a restart after the arbiter was switched off takes its own first observation", status: parked(shedengine.StateBlocked),
+			name: "a restart after the arbiter was switched off keeps the first observation of it", status: parked(shedengine.StateBlocked),
 			steps: []holdStep{
 				{at: minutes(5), mutate: func(s *holdScenario) {
 					r := s.h.arbiterStop
 					r.On = false
 					s.h.arbiterStop = r
 				}, wantSent: 0},
-				{at: minutes(20), mutate: restart, wantSent: 0},
-				{at: minutes(22), wantSent: 0},
-				{at: minutes(24), wantSent: 1},
+				{at: minutes(7), wantSent: 0},
+				{at: minutes(20), mutate: restart, wantSent: 1},
 			},
 		},
 		{

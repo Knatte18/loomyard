@@ -1,4 +1,4 @@
-// create.go is the "lyx beam create" sequence: it judges the named board entry, then records the owner and the beam flag, makes the beam's pair, spawns its push and regenerates the workspace files, each step skipped when its result is already there.
+// create.go is the "lyx beam create" sequence: it judges the named board entry, then records the owner and the beam flag, makes the beam's pair, spawns its push, regenerates the workspace files and starts the beam's dobby, each step skipped when its result is already there.
 
 package beamcli
 
@@ -14,6 +14,7 @@ import (
 // ParentBeam names the beam a board entry belongs to over its project links, "" for the prime.
 // PairPresent reports whether this machine holds the slug's pair worktree.
 // BranchOnOrigin reports whether the slug's task branch is on origin.
+// StartDobby starts the dobby of the slug's beam when it is not live, and reports whether it started one.
 // HubPath roots the mutation record.
 type createDeps struct {
 	Machine             func() (string, error)
@@ -28,6 +29,7 @@ type createDeps struct {
 	SpawnPush           func(slug string) error
 	RegenerateWorkspace func(rec *fabricengine.Mutations) (string, error)
 	WorktreePath        func(slug string) string
+	StartDobby          func(slug string) (bool, error)
 	HubPath             string
 }
 
@@ -40,6 +42,7 @@ type createResult struct {
 	BeamMarked    bool                    `json:"beam_marked,omitempty"`
 	PushSpawned   bool                    `json:"push_spawned,omitempty"`
 	Workspace     string                  `json:"workspace,omitempty"`
+	DobbyStarted  bool                    `json:"dobby_started,omitempty"`
 	WayForward    string                  `json:"way_forward,omitempty"`
 	Mutations     []fabricengine.Mutation `json:"mutations,omitempty"`
 	Partial       bool                    `json:"partial,omitempty"`
@@ -98,7 +101,8 @@ func judgeCreateEntry(deps createDeps, owners boardengine.Owners, here, slug str
 	return nil
 }
 
-// createSteps runs the four steps in order, each skipped when its result stands, and records what it did on result.
+// createSteps runs the five steps in order, each skipped when its result stands, and records what it did on result.
+// The dobby start is the last, so a beam never exists without a daemon to drive its runs.
 func createSteps(deps createDeps, rec *fabricengine.Mutations, entry boardengine.OwnerEntry, here, slug string, result *createResult) error {
 	rerun := "run `lyx beam create " + slug + "` again"
 
@@ -145,7 +149,21 @@ func createSteps(deps createDeps, rec *fabricengine.Mutations, entry boardengine
 		return fmt.Errorf("lyx beam create: regenerate the workspace files: %w; way forward: fix the cause it names, then %s", err, rerun)
 	}
 	result.Workspace = workspace
+	if err := startDobby(deps, slug, &result.DobbyStarted); err != nil {
+		return err
+	}
 	result.WayForward = orchWayForward(result.Worktree)
+	return nil
+}
+
+// startDobby is the last step of create and promote: it starts the dobby of the beam slug when it is not live and records on started whether it did.
+// A failure names `lyx beam start`, which starts it again once the cause is fixed.
+func startDobby(deps createDeps, slug string, started *bool) error {
+	began, err := deps.StartDobby(slug)
+	if err != nil {
+		return fmt.Errorf("lyx beam: start the dobby of %s: %w; way forward: fix the cause it names, then run `lyx beam start`", slug, err)
+	}
+	*started = began
 	return nil
 }
 

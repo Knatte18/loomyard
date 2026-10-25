@@ -23,9 +23,8 @@
 // The retired discussion_producer and plan_producer keys are rewritten into these by MigrateConfig.
 // seed, discussion_judge, plan_judge, code_judge, discussion_seed, plan_seed and code_seed are role model-specs validated only when non-empty, an empty value meaning the fallback:
 // a per-segment judge takes judge, a per-segment seed takes seed, and seed takes that segment's resolved judge.
-// arbiter is a role model-spec validated only when non-empty, an empty value taking opus[high]; arbiter_timeout_min and arbiter_max_spawns are refused when negative, and a zero arbiter_max_spawns turns the arbiter off.
-// driver_kind is the driver a task's loom run is seeded with when nothing typed one, llm or go, an empty value reading as llm; tackler is a role model-spec validated only when non-empty, an empty value taking haiku;
-// tackler_timeout_min and tackler_max_spawns are refused when negative, a zero tackler_timeout_min taking 10 and a zero tackler_max_spawns turning the tackler off.
+// driver_kind is the driver a task's loom run is seeded with when nothing typed one, llm or go, an empty value reading as llm; tackler and arbiter are role model-specs validated only when non-empty, an empty value inheriting shed.yaml;
+// tackler_timeout_min, tackler_max_spawns, arbiter_timeout_min and arbiter_max_spawns are refused when negative, a zero timeout and a null spawn budget inheriting shed.yaml and a set zero spawn budget turning that role off.
 // friction and driver are the two role keys validated only when non-empty: a present-but-empty
 // value means, respectively, Tier 2 self-reporting is off or the engine default model runs the
 // driver, and both must load cleanly, unlike the other role keys, which are always required.
@@ -416,18 +415,15 @@ type Config struct {
 	// It names the writer's lens fan, not the Plan-Review perch's PlanReviewerFan.
 	PlanLenses string `yaml:"plan_lenses"`
 
-	// The arbiter's model-spec, timeout and spawn budget.
-	// An empty Arbiter takes opus[high], a zero ArbiterTimeoutMin takes 30 minutes, and a zero ArbiterMaxSpawns turns the arbiter off.
-	Arbiter           string `yaml:"arbiter"`
-	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
-	ArbiterMaxSpawns  int    `yaml:"arbiter_max_spawns"`
-
-	// The driver a task's loom run is seeded with when nothing typed one, and the tackler's model-spec, timeout and spawn budget; each overrides shed.yaml's key.
-	// An empty DriverKind or Tackler, a zero TacklerTimeoutMin and a null TacklerMaxSpawns inherit shed.yaml, and a set TacklerMaxSpawns of 0 turns the tackler off.
+	// The driver a task's loom run is seeded with when nothing typed one, and the tackler's and the arbiter's model-spec, timeout and spawn budget; each overrides shed.yaml's key.
+	// An empty DriverKind, Tackler or Arbiter, a zero TacklerTimeoutMin or ArbiterTimeoutMin and a null TacklerMaxSpawns or ArbiterMaxSpawns inherit shed.yaml, and a set TacklerMaxSpawns or ArbiterMaxSpawns of 0 turns that role off.
 	DriverKind        string `yaml:"driver_kind"`
 	Tackler           string `yaml:"tackler"`
 	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
 	TacklerMaxSpawns  *int   `yaml:"tackler_max_spawns"`
+	Arbiter           string `yaml:"arbiter"`
+	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
+	ArbiterMaxSpawns  *int   `yaml:"arbiter_max_spawns"`
 
 	// PRReview turns on the PR-Review stub's log line; the stub opens no pull request and acts on nothing either way.
 	PRReview bool `yaml:"pr_review"`
@@ -1133,13 +1129,16 @@ func mappingKeyIndex(mapping *yaml.Node, key string) int {
 	return -1
 }
 
-// ShedOverride returns the driver and tackler keys of loom.yaml as the override of shed.yaml's.
+// ShedOverride returns the driver, tackler and arbiter keys of loom.yaml as the override of shed.yaml's.
 func (c Config) ShedOverride() sheddriver.Override {
 	return sheddriver.Override{
 		DriverKind:        c.DriverKind,
 		Tackler:           c.Tackler,
 		TacklerTimeoutMin: c.TacklerTimeoutMin,
 		TacklerMaxSpawns:  c.TacklerMaxSpawns,
+		Arbiter:           c.Arbiter,
+		ArbiterTimeoutMin: c.ArbiterTimeoutMin,
+		ArbiterMaxSpawns:  c.ArbiterMaxSpawns,
 	}
 }
 
@@ -1161,7 +1160,7 @@ func RecipeOverride(dirs configengine.Dirs, recipe string) (sheddriver.Override,
 	return cfg.ShedOverride(), nil
 }
 
-// ValidateLocalValues checks the values of the driver_kind, tackler, tackler_timeout_min and tackler_max_spawns keys a local-layer document sets, and of every review budget and hard-cap key through reviewbudget, and leaves every other key to LoadConfig.
+// ValidateLocalValues checks the values of the driver_kind, tackler, tackler_timeout_min, tackler_max_spawns, arbiter, arbiter_timeout_min and arbiter_max_spawns keys a local-layer document sets, and of every review budget and hard-cap key through reviewbudget, and leaves every other key to LoadConfig.
 // A refusal is marked configengine.ErrInvalid and names the key.
 func ValidateLocalValues(document []byte) error {
 	if err := sheddriver.CheckLocalOverride("loom", document); err != nil {
@@ -1286,27 +1285,6 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	if cfg.Driver != "" {
 		if _, err := modelspec.Parse(cfg.Driver); err != nil {
 			return Config{}, fmt.Errorf("loom config key %q: %w", "driver", err)
-		}
-	}
-
-	// arbiter is validated only when non-empty: an empty value takes ResolveArbiter's default.
-	if cfg.Arbiter != "" {
-		if _, err := modelspec.Parse(cfg.Arbiter); err != nil {
-			return Config{}, fmt.Errorf("loom config key %q: %w", "arbiter", err)
-		}
-	}
-
-	// Zero is a meaning on both arbiter knobs, so only a negative value is refused.
-	for _, knob := range []struct {
-		key   string
-		value int
-		zero  string
-	}{
-		{"arbiter_timeout_min", cfg.ArbiterTimeoutMin, "0 for the 30 minute default"},
-		{"arbiter_max_spawns", cfg.ArbiterMaxSpawns, "0 to turn the arbiter off"},
-	} {
-		if knob.value < 0 {
-			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; set it to %s, or to a positive integer, in loom.yaml", knob.key, knob.value, knob.zero)
 		}
 	}
 

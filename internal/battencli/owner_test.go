@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -23,8 +25,10 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 		name       string
 		fake       fakeOwners
 		wantErrors []string
-		wantPulls  int
-		wantSets   []string
+		// wantOwner, when set, is the owner an *OwnedElsewhereError in the refusal names; a refusal with none must not be one.
+		wantOwner string
+		wantPulls int
+		wantSets  []string
 		// markerAfterPull makes the cancel marker read absent before the pull and present once it ran.
 		markerAfterPull bool
 		// parent is the slug the owner seams' ParentOf answers for every entry, "" keeping the fake's prime.
@@ -41,6 +45,7 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 			}},
 			parent:     "b",
 			wantErrors: []string{`"there"`, "lyx adopt " + slug},
+			wantOwner:  "there",
 			wantPulls:  1,
 		},
 		{
@@ -54,6 +59,7 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 			name:       "EntryOwnedElsewhereRefuses",
 			fake:       fakeOwners{machine: "here", owners: ownedBy("here", "there", false)},
 			wantErrors: []string{`"there"`, "lyx adopt " + slug},
+			wantOwner:  "there",
 			wantPulls:  1,
 		},
 		{
@@ -93,6 +99,7 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 			name:       "LostPrimeClaimReadsTheOtherMachinesClaim",
 			fake:       fakeOwners{machine: "here", owners: ownedBy("", "", false), primeLostTo: "there"},
 			wantErrors: []string{`"there"`, "lyx adopt " + slug},
+			wantOwner:  "there",
 			wantPulls:  1,
 			wantSets:   []string{"prime"},
 		},
@@ -126,6 +133,10 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 					t.Errorf("refuseStartOwnedElsewhere() = %q; want it to carry %q", err.Error(), want)
 				}
 			}
+			var owned *OwnedElsewhereError
+			if isOwned := errors.As(err, &owned); isOwned != (tt.wantOwner != "") || (isOwned && owned.Owner != tt.wantOwner) {
+				t.Errorf("refuseStartOwnedElsewhere() = %v; want an *OwnedElsewhereError naming owner %q only when one is set", err, tt.wantOwner)
+			}
 			if fake.pulls != tt.wantPulls {
 				t.Errorf("pulls = %d; want %d", fake.pulls, tt.wantPulls)
 			}
@@ -142,6 +153,51 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 			t.Errorf("refuseStartOwnedElsewhere() = %v; want nil for a receiver with no owner seams", err)
 		}
 	})
+}
+
+// TestPassExitCode asserts a pass exits 77 for each refusal of a run another machine owns that the pre-run reaches, wrapped or not, 78 for a covered run, 79 for a continue pass of a run dobby may not continue, and 1 for any other error.
+// A claim the Worktree-Create row loses is not a row here, since no pre-run wraps it and its stop ends in the driver's own envelope.
+func TestPassExitCode(t *testing.T) {
+	t.Parallel()
+
+	const slug = "some-slug"
+	elsewhereReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there"}}}
+	tests := []struct {
+		name string
+		err  func() error
+		want int
+	}{
+		{"ResumeVerdictOwnedElsewhere", func() error { return resumeRefusal(slug, elsewhereReport) }, dobbyengine.PassExitOwnedElsewhere},
+		{"LostResumeOwnerClaim", func() error {
+			fake := fakeOwners{machine: "here", owners: ownedBy("here", "", true), lost: map[string]string{slug: "there"}}
+			return (&battenCLI{slug: slug, owner: fake.seams()}).resumeOwnerClaim()
+		}, dobbyengine.PassExitOwnedElsewhere},
+		{"StartOwnedElsewhere", func() error {
+			fake := fakeOwners{machine: "here", owners: ownedBy("here", "there", false)}
+			return (&battenCLI{slug: slug, owner: fake.seams()}).refuseStartOwnedElsewhere()
+		}, dobbyengine.PassExitOwnedElsewhere},
+		{"ResumeWithOriginUnreachableAndLocalBoardElsewhere", func() error {
+			fake := fakeOwners{machine: "here", owners: ownedBy("here", "there", true)}
+			return (&battenCLI{slug: slug, owner: fake.seams()}).refuseResumeUnreachable()
+		}, dobbyengine.PassExitOwnedElsewhere},
+		{"WrappedOwnedElsewhere", func() error { return fmt.Errorf("outer: %w", ownedElsewhereRefusal(slug, "there")) }, dobbyengine.PassExitOwnedElsewhere},
+		{"Covered", func() error { return &coveredRefusal{err: errors.New("pause: held")} }, dobbyengine.PassExitCovered},
+		{"ContinueRefused", func() error { return fmt.Errorf("outer: %w", &continueRefusal{reason: "no state", slug: slug}) }, dobbyengine.PassExitContinueRefused},
+		{"PlainError", func() error { return errors.New("boom") }, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tt.err()
+			if err == nil {
+				t.Fatal("the refusal source returned nil; want a refusal")
+			}
+			if got := passExitCode(err); got != tt.want {
+				t.Errorf("passExitCode(%v) = %d; want %d", err, got, tt.want)
+			}
+		})
+	}
 }
 
 // TestBattenStatus_CarriesTheOwner asserts the status envelope names the slug's effective owner as owner_machine and whether this machine holds it as owned_here, and adds neither for an unreadable board or a receiver with no owner seams.

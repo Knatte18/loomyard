@@ -467,8 +467,13 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 		}
 		return StepResult{Producer: def.Name, Outcome: outcome, Output: output.Path, Next: def.OnDone, State: next, Reason: reason, History: nextHistory}, nil
 
+	case outcome == Yield:
+		// A wait the producer's own next call re-checks: nothing is written, so the run stays at this row, running, exactly as it was.
+		// No history entry, no activity, no commit-status call, and no bounce budget, reroute or route is read.
+		return StepResult{Producer: def.Name, Outcome: outcome, Next: st.CurrentProducer, State: StateRunning, History: st.History}, nil
+
 	default:
-		// An Outcome that is none of Done, Stuck or Awaiting, returned with a nil error, is an
+		// An Outcome that is none of Done, Stuck, Awaiting or Yield, returned with a nil error, is an
 		// engine-level failure: Outcome is a string type and therefore open, so the
 		// routing would otherwise have an undefined fourth case, and coercing an unknown
 		// value to Stuck would consume bounce budget for a broken adapter while coercing
@@ -483,9 +488,9 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	}
 }
 
-// Run walks the whole six-step loop in one call, from wherever the status file's current_producer
-// currently sits, until it hits a stopping condition: pause/cancellation, blocked, awaiting, done,
-// or an error.
+// Run walks the whole six-step loop in one call, from wherever the status file's current_producer currently sits.
+// It stops on pause/cancellation, blocked, awaiting, done, a yield or an error.
+// A step that yields ends the loop with RunYielded and the run exactly as it was.
 // Result is meaningless unless the returned error is nil -- every hard-error path below returns an
 // unpopulated Result alongside its error, and a caller must check error before reading Outcome.
 // The producer list itself carries zero routing meaning once Done routes by OnDone: it is
@@ -516,6 +521,9 @@ func (s *Shed) Run(ctx context.Context) (Result, error) {
 		res, err := s.stepLocked(ctx)
 		if err != nil {
 			return Result{}, err
+		}
+		if res.Outcome == Yield {
+			return Result{Outcome: RunYielded, HaltedProducer: res.Next, History: res.History}, nil
 		}
 		if res.State == StateRunning {
 			continue

@@ -71,24 +71,26 @@ func TestLoadConfig(t *testing.T) {
 	t.Run("set values are read, a spawn budget of 0 as a set 0", func(t *testing.T) {
 		t.Parallel()
 		board := t.TempDir()
-		writeBattenLayer(t, configengine.ConfigFile(board, "batten"), strings.NewReplacer(`tackler: ""`, "tackler: sonnet[low]", "tackler_timeout_min: 0", "tackler_timeout_min: 5", "tackler_max_spawns: ~", "tackler_max_spawns: 0").Replace(ConfigTemplate()))
+		writeBattenLayer(t, configengine.ConfigFile(board, "batten"), strings.NewReplacer(`tackler: ""`, "tackler: sonnet[low]", "tackler_timeout_min: 0", "tackler_timeout_min: 5", "tackler_max_spawns: ~", "tackler_max_spawns: 0", `arbiter: ""`, "arbiter: sonnet[low]", "arbiter_timeout_min: 0", "arbiter_timeout_min: 7", "arbiter_max_spawns: ~", "arbiter_max_spawns: 0").Replace(ConfigTemplate()))
 		cfg, err := LoadConfig(configengine.Dirs{Board: board})
 		if err != nil {
 			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 		}
-		want := sheddriver.Override{Tackler: "sonnet[low]", TacklerTimeoutMin: 5, TacklerMaxSpawns: &spawnsOff}
+		want := sheddriver.Override{Tackler: "sonnet[low]", TacklerTimeoutMin: 5, TacklerMaxSpawns: &spawnsOff, Arbiter: "sonnet[low]", ArbiterTimeoutMin: 7, ArbiterMaxSpawns: &spawnsOff}
 		if got := cfg.ShedOverride(); !reflect.DeepEqual(got, want) {
 			t.Errorf("ShedOverride() = %+v; want %+v", got, want)
 		}
 	})
 
-	t.Run("a negative tackler_max_spawns is refused naming batten", func(t *testing.T) {
+	t.Run("a negative spawn budget is refused naming batten and the key", func(t *testing.T) {
 		t.Parallel()
-		board := t.TempDir()
-		writeBattenLayer(t, configengine.ConfigFile(board, "batten"), strings.Replace(ConfigTemplate(), "tackler_max_spawns: ~", "tackler_max_spawns: -1", 1))
-		_, err := LoadConfig(configengine.Dirs{Board: board})
-		if err == nil || !strings.Contains(err.Error(), "batten config key") || !strings.Contains(err.Error(), "tackler_max_spawns") {
-			t.Errorf("LoadConfig() = _, %v; want a refusal naming %q and the key", err, "batten config key")
+		for _, key := range []string{"tackler_max_spawns", "arbiter_max_spawns"} {
+			board := t.TempDir()
+			writeBattenLayer(t, configengine.ConfigFile(board, "batten"), strings.Replace(ConfigTemplate(), key+": ~", key+": -1", 1))
+			_, err := LoadConfig(configengine.Dirs{Board: board})
+			if err == nil || !strings.Contains(err.Error(), "batten config key") || !strings.Contains(err.Error(), key) {
+				t.Errorf("LoadConfig() with %s: -1 = _, %v; want a refusal naming %q and the key", key, err, "batten config key")
+			}
 		}
 	})
 

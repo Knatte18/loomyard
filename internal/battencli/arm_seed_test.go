@@ -65,15 +65,6 @@ func TestArmSeed_RunAndStepSeedBeforeWire(t *testing.T) {
 				if verb == "step" && len(records) != 0 {
 					t.Errorf("step records = %+v; want none", records)
 				}
-				if verb == "run" {
-					windowLoc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
-					if err := (&battenCLI{windowFlag: true}).armSeed(windowLoc, "some-slug", verb); err != nil {
-						t.Fatalf("armSeed(%q) with windowFlag = %v; want nil", verb, err)
-					}
-					if records := listRunRecords(t, windowLoc, "some-slug"); len(records) != 0 {
-						t.Errorf("window run records = %+v; want none, since the window opener only opens the window", records)
-					}
-				}
 			})
 		}
 	}

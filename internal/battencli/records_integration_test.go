@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -87,6 +88,10 @@ func stepAwaitingChildDoneTeardown_ArchivesTheRunRecords(t *testing.T, h *hubfor
 		return nil
 	}
 
+	// A minute passes between two passes on the row's clock, so every pass is a probe check and a done child's driver is read.
+	clockStart := time.Now()
+	passes := 0
+	c.env.InnerRun.Now = func() time.Time { return clockStart.Add(time.Duration(passes) * time.Minute) }
 	seedEntryStatus(t, c, battenrecipe.NameRunShed, shedengine.StateRunning, []shedengine.HistoryEntry{
 		{Producer: battenrecipe.NameWorktreeCreate, Outcome: shedengine.Done},
 		{Producer: battenrecipe.NameSeedChild, Outcome: shedengine.Done},
@@ -97,13 +102,13 @@ func stepAwaitingChildDoneTeardown_ArchivesTheRunRecords(t *testing.T, h *hubfor
 	}
 	ctx := context.Background()
 
-	// Awaiting: a wait, and batten never resumes the child itself.
+	// Awaiting: a wait that yields, and batten never resumes the child itself.
 	step, err := shed.Step(ctx)
 	if err != nil {
 		t.Fatalf("Step (awaiting): %v", err)
 	}
-	if step.Outcome != shedengine.Stuck || spawns != 0 {
-		t.Fatalf("awaiting child: outcome %q, spawns %d; want a Stuck wait and no spawn", step.Outcome, spawns)
+	if step.Outcome != shedengine.Yield || spawns != 0 {
+		t.Fatalf("awaiting child: outcome %q, spawns %d; want a Yield and no spawn", step.Outcome, spawns)
 	}
 
 	// The operator resumes the child, which commits its records and reaches done.
@@ -112,7 +117,16 @@ func stepAwaitingChildDoneTeardown_ArchivesTheRunRecords(t *testing.T, h *hubfor
 	}
 	childDone = true
 
-	// Done, driver gone: the row completes with no spawn.
+	// Done: the pass that sees it ends on the change of state; the next, with the driver gone, completes the row with no spawn.
+	passes++
+	step, err = shed.Step(ctx)
+	if err != nil {
+		t.Fatalf("Step (done, the change): %v", err)
+	}
+	if step.Outcome != shedengine.Stuck {
+		t.Fatalf("change step outcome = %q; want %q", step.Outcome, shedengine.Stuck)
+	}
+	passes++
 	step, err = shed.Step(ctx)
 	if err != nil {
 		t.Fatalf("Step (done): %v", err)

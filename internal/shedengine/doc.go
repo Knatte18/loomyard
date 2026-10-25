@@ -34,6 +34,9 @@
 // resume re-calls the same producer, exactly as it does after a blocked halt.
 // An Awaiting outcome may also carry OutputPointer.ParentNotice, a one-line notice for the run's parent:
 // Shed persists it as the status file's optional parent_notice and returns it on StepResult, writes it on no other outcome, and clears it on the next write.
+// A Yield outcome is a producer at a wait its own next call re-checks: Shed persists nothing for it (no history entry, no status write, no activity, no CommitStatus call), reads no budget or route, and leaves the run at the same row, running.
+// Step reports it with State running, and Run returns RunYielded instead of continuing.
+// Only a producer that waits that way returns it, and batten's InnerRun is the only one.
 // The persisted state vocabulary is running, paused, done, blocked, failed and awaiting.
 // A Done outcome routes via OnDone the same way: "" finishes the whole run from any list position
 // (state: "done"), and a non-empty value jumps to the Name it names with no positional fallback of

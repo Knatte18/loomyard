@@ -1,4 +1,4 @@
-// rownotice.go implements the failure notice the rows after Run-Shed send the orch.
+// rownotice.go implements the stop notice the driver's hand-back sends the orch for a stop at a row after Run-Shed.
 // It also owns the per-run markers, which batten clears where it seeds a fresh status.
 
 package battenshed
@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,9 +22,6 @@ const rowNoticeFileSuffix = "-row-notice"
 // rowNoticeRetrySpacing is the pause between two delivery attempts of one row notice.
 const rowNoticeRetrySpacing = 30 * time.Second
 
-// rowNoticeFailurePrefix leads the marker line recording the history length of the last failure episode noticed.
-const rowNoticeFailurePrefix = "failure "
-
 // rowNoticeHandBackPrefix leads the marker line recording the history length of the last stop the driver's hand-back noticed.
 const rowNoticeHandBackPrefix = "handback "
 
@@ -31,7 +29,7 @@ const rowNoticeHandBackPrefix = "handback "
 // ClearRunMarkers removes them all where batten seeds a fresh status.
 var runMarkerSuffixes = []string{
 	rowNoticeFileSuffix,
-	readySnapshotFileSuffix,
+	innerRunMemoryFileSuffix,
 }
 
 // ClearRunMarkers removes every file in scratchDir whose name ends in a suffix of runMarkerSuffixes.
@@ -126,41 +124,16 @@ func (n rowNotifier) setMarkerLine(prefix, line string) {
 	}
 }
 
-// failed posts one notice per failure episode of the row, naming the failed step and the way forward.
-// An episode is told apart by batten's history length: a failure at the length the marker recorded is the same episode and sends nothing.
-// A history that cannot be read reads as a new episode, since a repeated notice costs less than a lost one.
-// A cancelled context sends nothing, and a notice never changes the row's outcome.
-func (n rowNotifier) failed(ctx context.Context, step, reason string) {
-	if n.deps.Notify == nil || ctx.Err() != nil {
-		return
-	}
-	historyLen := -1
-	if n.deps.BattenHistoryLen != nil {
-		length, err := n.deps.BattenHistoryLen()
-		if err != nil {
-			logger.Warn("battenshed: batten history unreadable for the row notice; reading it as a new episode", "producer", n.producer, "slug", n.slug, "error", err)
-		} else {
-			historyLen = length
-		}
-	}
-	marker := rowNoticeFailurePrefix + strconv.Itoa(historyLen)
-	if historyLen >= 0 {
-		for _, line := range n.readMarker() {
-			if line == marker {
-				return
-			}
-		}
-	}
-	line := fmt.Sprintf("%s %s: %s failed at %s: %s; way forward: fix the cause, then run \"lyx batten run %s\" from the prime",
-		noticePrefix, n.slug, n.producer, step, oneLine(reason, noticeErrorMax), n.slug)
-	if n.send(ctx, line) && historyLen >= 0 {
-		n.setMarkerLine(rowNoticeFailurePrefix, marker)
-	}
+// RowStopNotice sends the notice of the stop at the row producer after Run-Shed, which the stop chain gave back with the report at reportPath and whose stop key's history length is historyLen, and reports whether it was posted.
+// The line names the row, the reason cut to one line, the report and the way forward, and goes out as HandBackNotice sends a line, so a stop is noticed once.
+func RowStopNotice(ctx context.Context, deps RowNoticeDeps, slug, scratchDir, producer, reason, reportPath string, historyLen int) bool {
+	line := fmt.Sprintf("%s %s: %s failed: %s; report %s; way forward: fix the cause, then run \"lyx batten run %s\"",
+		noticePrefix, slug, producer, oneLine(reason, noticeErrorMax), reportPath, slug)
+	return HandBackNotice(ctx, deps, slug, scratchDir, producer, historyLen, line)
 }
 
 // HandBackNotice sends line for the stop at the batten row producer, whose stop key's history length is historyLen, and reports whether it was posted.
-// It sends nothing when the row's marker holds `failure <historyLen-1>`, the row's own notice of this stop, since a row records the length it read before its halting entry was appended.
-// It also sends nothing for `handback <historyLen>`, an earlier hand-back of the same stop by a driver that restarted.
+// It sends nothing for `handback <historyLen>`, an earlier hand-back of the same stop by a driver that restarted.
 // Otherwise it sends through the row's own notifier, so the line is retried as a row notice is, and a posted line records `handback <historyLen>`.
 // A nil deps.Notify or a cancelled context sends nothing.
 func HandBackNotice(ctx context.Context, deps RowNoticeDeps, slug, scratchDir, producer string, historyLen int, line string) bool {
@@ -168,12 +141,9 @@ func HandBackNotice(ctx context.Context, deps RowNoticeDeps, slug, scratchDir, p
 		return false
 	}
 	notifier := newRowNotifier(producer, slug, scratchDir, deps)
-	failureMarker := rowNoticeFailurePrefix + strconv.Itoa(historyLen-1)
 	handBackMarker := rowNoticeHandBackPrefix + strconv.Itoa(historyLen)
-	for _, existing := range notifier.readMarker() {
-		if existing == failureMarker || existing == handBackMarker {
-			return false
-		}
+	if slices.Contains(notifier.readMarker(), handBackMarker) {
+		return false
 	}
 	if !notifier.send(ctx, line) {
 		return false

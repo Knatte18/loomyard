@@ -175,7 +175,7 @@ func TestLoadConfig(t *testing.T) {
 
 	t.Run("the shed override keys inherit by default, are read when set, and a local set 0 is a set 0", func(t *testing.T) {
 		t.Parallel()
-		spawnsOff, spawnsTwo := 0, 2
+		spawnsOff, spawnsOne, spawnsTwo := 0, 1, 2
 		tests := []struct {
 			name  string
 			board string
@@ -185,10 +185,11 @@ func TestLoadConfig(t *testing.T) {
 			{name: "the template inherits every key", board: ConfigTemplate()},
 			{
 				name:  "set values are read",
-				board: strings.NewReplacer(`driver_kind: ""`, "driver_kind: go", `tackler: ""`, "tackler: sonnet[low]", "tackler_timeout_min: 0", "tackler_timeout_min: 5", "tackler_max_spawns: ~", "tackler_max_spawns: 2").Replace(ConfigTemplate()),
-				want:  sheddriver.Override{DriverKind: "go", Tackler: "sonnet[low]", TacklerTimeoutMin: 5, TacklerMaxSpawns: &spawnsTwo},
+				board: strings.NewReplacer(`driver_kind: ""`, "driver_kind: go", `tackler: ""`, "tackler: sonnet[low]", "tackler_timeout_min: 0", "tackler_timeout_min: 5", "tackler_max_spawns: ~", "tackler_max_spawns: 2", `arbiter: ""`, "arbiter: sonnet[low]", "arbiter_timeout_min: 0", "arbiter_timeout_min: 7", "arbiter_max_spawns: ~", "arbiter_max_spawns: 1").Replace(ConfigTemplate()),
+				want:  sheddriver.Override{DriverKind: "go", Tackler: "sonnet[low]", TacklerTimeoutMin: 5, TacklerMaxSpawns: &spawnsTwo, Arbiter: "sonnet[low]", ArbiterTimeoutMin: 7, ArbiterMaxSpawns: &spawnsOne},
 			},
 			{name: "a local tackler_max_spawns of 0 is a set 0", board: ConfigTemplate(), local: "tackler_max_spawns: 0\n", want: sheddriver.Override{TacklerMaxSpawns: &spawnsOff}},
+			{name: "a local arbiter_max_spawns of 0 is a set 0", board: ConfigTemplate(), local: "arbiter_max_spawns: 0\n", want: sheddriver.Override{ArbiterMaxSpawns: &spawnsOff}},
 		}
 		for _, tt := range tests {
 			board, anchor := t.TempDir(), t.TempDir()
@@ -213,6 +214,8 @@ func TestLoadConfig(t *testing.T) {
 			{`tackler: ""`, `tackler: "not a spec["`, "tackler"},
 			{"tackler_timeout_min: 0", "tackler_timeout_min: -1", "tackler_timeout_min"},
 			{"tackler_max_spawns: ~", "tackler_max_spawns: -1", "tackler_max_spawns"},
+			{`arbiter: ""`, `arbiter: "not a spec["`, "arbiter"},
+			{"arbiter_max_spawns: ~", "arbiter_max_spawns: -1", "arbiter_max_spawns"},
 		} {
 			board := t.TempDir()
 			seedDarnConfig(t, board, strings.Replace(ConfigTemplate(), tt.old, tt.new, 1))

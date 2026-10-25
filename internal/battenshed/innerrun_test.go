@@ -1,8 +1,7 @@
 //go:build tier0
 
-// innerrun_test.go covers NewInnerRun's full re-entrant disposition table over a fake ReadStatus
-// and a fake Sleep that never sleeps -- so the still-running case is provably a single
-// Stuck with a single sleep, never a bounded poll loop, in unmeasurable real time.
+// innerrun_test.go covers NewInnerRun's full re-entrant disposition table over a fake ReadStatus and a fake clock whose Sleep never blocks.
+// A still-running child is provably one Yield per pass, never a poll loop inside a Call, in unmeasurable real time.
 
 package battenshed
 
@@ -11,7 +10,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,22 +20,22 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 )
 
-// fakeClock is the Sleep and Now seam of a wait a test drives: Sleep moves the clock by the interval and never blocks.
-// It also owns the on-disk status file of the fake child and the pause flag of the fake batten status, so a test makes the changes a wait ends on without real time passing.
+// fakeClock is the Sleep and Now seam of the passes a test drives: Sleep moves the clock by the interval and never blocks.
+// It also owns the on-disk status file of the fake child and the pause flag of the fake batten status, so a test makes the changes a pass ends on without real time passing.
 type fakeClock struct {
 	sleepCalls int
 	now        time.Time
-	// t fails a wait that never ends.
+	// t fails a run of passes that never ends.
 	t *testing.T
 	// statusPath is the status file newInnerRunDeps keeps for the fake child, and statusBumps how often bumpStatus moved its modification time.
 	statusPath  string
 	statusBumps int
-	// pauseAtSleep is the check at which the fake batten status carries pause_requested; zero means never.
-	// newInnerRunDeps sets it to 1, so a wait that nothing else ends returns at its first check.
+	// pauseAtSleep is the number of Sleep calls from which the fake batten status carries pause_requested; zero means never.
+	// newInnerRunDeps sets it to 1, so passes that nothing else ends return at the first pass after a Sleep.
 	pauseAtSleep int
-	// onSleep runs at every Sleep, before the check that follows it, with the number of Sleep calls so far.
+	// onSleep runs at every Sleep, between two passes, with the number of Sleep calls so far.
 	onSleep func(call int)
-	// reasonFile, when set, is the stuck-reason file whose content pauseRequested appends to reasons at the end of every check, so a test reads the wait reason in force at each check.
+	// reasonFile, when set, is the stuck-reason file whose content pauseRequested appends to reasons at the end of every pass, so a test reads the wait reason in force at each pass.
 	reasonFile string
 	reasons    []string
 }
@@ -45,7 +43,7 @@ type fakeClock struct {
 // testGrace is the driver-exit grace every test producer is built with unless it says otherwise.
 const testGrace = 10 * time.Minute
 
-// maxFakeSleeps bounds the checks of one test, so a wait nothing ends fails instead of hanging.
+// maxFakeSleeps bounds the passes of one test, so passes nothing ends fail instead of hanging.
 const maxFakeSleeps = 500
 
 // Now is the fake clock's time, moved by advance and Sleep.
@@ -62,11 +60,53 @@ func (c *fakeClock) advance(d time.Duration) { c.now = c.Now().Add(d) }
 func (c *fakeClock) Sleep(ctx context.Context, d time.Duration) {
 	c.sleepCalls++
 	c.advance(d)
-	if c.t != nil && c.sleepCalls > maxFakeSleeps {
-		c.t.Fatalf("the wait made %d checks without ending", c.sleepCalls)
+	if c.sleepCalls > maxFakeSleeps {
+		if c.t != nil {
+			c.t.Fatalf("the run made %d passes without ending", c.sleepCalls)
+		}
+		panic("the run made too many passes without ending")
 	}
 	if c.onSleep != nil {
 		c.onSleep(c.sleepCalls)
+	}
+}
+
+// producerFunc adapts a function to a shedengine.ShedProducer.
+type producerFunc func(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error)
+
+func (f producerFunc) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	return f(ctx)
+}
+
+// freshPerCall returns a producer whose every Call is the one Call of a producer newProducer builds anew, so only the memory record in the scratch directory carries state from one Call to the next, as it does between two runs of `lyx batten run`.
+func freshPerCall(newProducer func() shedengine.ShedProducer) shedengine.ShedProducer {
+	return producerFunc(func(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+		return newProducer().Call(ctx)
+	})
+}
+
+// passDriver is a producer whose Call runs successive passes of the Run-Shed row, the way `lyx batten run` does.
+// Each pass is one Call of a producer newProducer builds fresh over the same scratch directory, so only the memory record carries state from a pass to the next.
+// An interval passes on the clock between two passes.
+// Its Call returns the first pass that ends with something other than Yield.
+type passDriver struct {
+	clock       *fakeClock
+	newProducer func() shedengine.ShedProducer
+	interval    time.Duration
+}
+
+// passes returns a passDriver over newProducer that lets interval pass between two passes.
+func (c *fakeClock) passes(newProducer func() shedengine.ShedProducer, interval time.Duration) shedengine.ShedProducer {
+	return &passDriver{clock: c, newProducer: newProducer, interval: interval}
+}
+
+func (d *passDriver) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	for {
+		outcome, pointer, err := d.newProducer().Call(ctx)
+		if outcome != shedengine.Yield || err != nil {
+			return outcome, pointer, err
+		}
+		d.clock.Sleep(ctx, d.interval)
 	}
 }
 
@@ -140,7 +180,6 @@ func newInnerRunDeps(t *testing.T, spawnErr error, resolveErr error, statuses []
 			r := statuses[idx]
 			return r.status, r.found, r.err
 		},
-		Sleep:        clock.Sleep,
 		Now:          clock.Now,
 		ReadDecision: func() (ChildDecision, bool, error) { return ChildDecision{}, false, nil },
 		DriverAlive:  func(ctx context.Context) (bool, error) { return false, nil },
@@ -245,7 +284,9 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 				}
 			}
 
-			producer := NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
+			producer := clock.passes(func() shedengine.ShedProducer {
+				return NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
+			}, time.Second)
 			outcome, ptr, err := producer.Call(context.Background())
 
 			if tt.wantErr {
@@ -359,7 +400,6 @@ func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) 
 					ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 						return shedengine.Status{}, false, nil
 					},
-					Sleep: (&fakeClock{}).Sleep,
 				}
 			},
 		},
@@ -375,7 +415,6 @@ func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) 
 						cancel()
 						return shedengine.Status{}, false, readErr
 					},
-					Sleep: (&fakeClock{}).Sleep,
 				}
 			},
 		},
@@ -398,7 +437,6 @@ func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) 
 						cancel()
 						return shedengine.Status{}, false, readErr
 					},
-					Sleep: (&fakeClock{}).Sleep,
 				}
 			},
 		},
@@ -425,10 +463,14 @@ func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) 
 // pins that a nil Now/Sleep resolve to the real stdlib functions rather than panicking.
 func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 	scratchDir := t.TempDir()
+	statusPath := filepath.Join(t.TempDir(), "status.json")
+	if err := os.WriteFile(statusPath, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	deps := InnerRunDeps{
 		Spawn: func(ctx context.Context) error { return nil },
 		ResolveStatus: func() (string, string, error) {
-			return "/status/path", "/status/lock/path", nil
+			return statusPath, "/status/lock/path", nil
 		},
 		ReadStatus: func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 			return shedengine.Status{State: shedengine.StateDone}, true, nil
@@ -440,7 +482,7 @@ func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 	shedfake.RequireOutcome(t, producer, shedengine.Done)
 }
 
-// TestNewInnerRun_FloorsPollInterval pins that a told poll interval below one second sleeps one second between checks and logs one Warn naming poll_interval_s, and that one second passes through unwarned.
+// TestNewInnerRun_FloorsPollInterval pins that a told poll interval below one second logs one Warn naming poll_interval_s, and that one second passes through unwarned.
 func TestNewInnerRun_FloorsPollInterval(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -453,24 +495,10 @@ func TestNewInnerRun_FloorsPollInterval(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logs := logcapture.Capture(t)
-			scratchDir := t.TempDir()
-			clock := &fakeClock{}
-			statuses := []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}
-			_, _, deps := newInnerRunDeps(t, nil, nil, statuses, clock)
-			if err := os.WriteFile(SpawnConfirmedFile(scratchDir, "innerrun"), pidMarker(os.Getpid()), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			var slept []time.Duration
-			deps.Sleep = func(ctx context.Context, d time.Duration) {
-				slept = append(slept, d)
-				clock.Sleep(ctx, d)
-			}
+			_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}, &fakeClock{})
 
-			shedfake.CallOK(t, NewInnerRun("innerrun", "myslug", deps, tt.told, scratchDir, testGrace))
+			NewInnerRun("innerrun", "myslug", deps, tt.told, t.TempDir(), testGrace)
 
-			if !slices.Equal(slept, []time.Duration{time.Second}) {
-				t.Errorf("slept %v between checks; want one second", slept)
-			}
 			warned := strings.Count(logs.String(), "key=poll_interval_s") == 1 && strings.Contains(logs.String(), "floor_s=1")
 			if warned != tt.wantWarn {
 				t.Errorf("warned = %v, want %v; log = %q", warned, tt.wantWarn, logs.String())
@@ -626,7 +654,8 @@ func TestInnerRun_FailedSpawnIsRetriedOnTheNextCall(t *testing.T) {
 	scratchDir := t.TempDir()
 	spawnErr := errors.New("bootstrap exited 1")
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
-	_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, []statusResult{{found: false}, running}, &fakeClock{})
+	clock := &fakeClock{}
+	_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, []statusResult{{found: false}, running}, clock)
 	failing := deps
 	failing.Spawn = func(ctx context.Context) error {
 		*spawnCalls++
@@ -636,7 +665,9 @@ func TestInnerRun_FailedSpawnIsRetriedOnTheNextCall(t *testing.T) {
 	if _, _, err := NewInnerRun("innerrun", "myslug", failing, time.Millisecond, scratchDir, testGrace).Call(context.Background()); !errors.Is(err, spawnErr) {
 		t.Fatalf("first Call() error = %v; want it to wrap %v", err, spawnErr)
 	}
-	shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace), shedengine.Stuck)
+	shedfake.RequireOutcome(t, clock.passes(func() shedengine.ShedProducer {
+		return NewInnerRun("innerrun", "myslug", deps, time.Millisecond, scratchDir, testGrace)
+	}, time.Second), shedengine.Stuck)
 	if *spawnCalls != 2 {
 		t.Errorf("spawn calls = %d; want 2 -- the resumed Call must retry the failed spawn", *spawnCalls)
 	}

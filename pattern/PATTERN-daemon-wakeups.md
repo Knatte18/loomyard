@@ -8,7 +8,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 
 - the detached daemons `lyx reed watchdog` and `lyx orch watch`,
 - the resize watch loop's poll mode in `internal/reedengine/watchloop.go`, whose timer starts at a two-second base and backs off to a minute while nothing changes,
-- batten's Run-Shed wait,
+- dobby's loop in `internal/dobbyengine/loop.go`, which wakes on a file event or its timer, at most one tick a second, and doubles the timer from batten's probe interval to a minute while no run is in flight,
 - batten's Land row land-lock wait in `internal/battenshed/land.go`, which polls from one second and doubles to thirty seconds,
 - the parent lock wait in `internal/parentlock/acquire.go`, which polls from one second and doubles to thirty seconds,
 - the hibernate daemon's trigger wait in `internal/hibernateengine/watch.go`, which polls from one second and doubles to thirty seconds while its reading is unchanged,

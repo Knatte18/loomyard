@@ -79,13 +79,15 @@ type Shed struct {
 // RunOutcome is the whole run's terminal classification.
 type RunOutcome string
 
-// The four legal RunOutcome values. Their string values are deliberately identical to State's
+// The legal RunOutcome values. The first four have string values deliberately identical to State's
 // four clean-exit values, so mapping between the two is identity, never a lookup table.
+// RunYielded is the one value with no State twin: the run ended on a step that yielded, and is left exactly as it was, at the same row and running.
 const (
 	RunDone     RunOutcome = "done"
 	RunBlocked  RunOutcome = "blocked"
 	RunPaused   RunOutcome = "paused"
 	RunAwaiting RunOutcome = "awaiting"
+	RunYielded  RunOutcome = "yielded"
 )
 
 // Result is what Run reports on a clean exit.

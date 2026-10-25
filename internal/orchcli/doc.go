@@ -8,6 +8,8 @@
 // `start` in a beam claims no prime.
 // It refuses a beam another machine owns, naming the owner and `lyx adopt <slug>`, and a beam whose board entry its landing holds, naming `lyx batten status <slug>`, before it creates anything.
 // The hub-scope origin reconcile runs from the prime whichever orch starts it.
+// `start`, with or without `--continue`, first starts the dobby of the prime and of every beam this machine owns through `dobbyengine.EnsureLive`, each only when it is not live, so one start after a machine restart brings every run back.
+// It does so before the beam refusal and the start lock, and a failure never stops the start: it becomes a `warning` on the envelope naming the failed worktrees and `lyx beam start`.
 // `OrchLive` is the liveness predicate other modules call: the worktree's orch state records a strand that reed tracks and reports live.
 //
 // # The role file and the note

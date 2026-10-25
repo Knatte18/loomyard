@@ -71,6 +71,28 @@ func (s *EpisodeSet) Recover(key, msg string, args ...any) {
 	delete(s.episodes, key)
 }
 
+// Ticks returns a copy of each open episode's failed-tick count, by key.
+func (s *EpisodeSet) Ticks() map[string]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ticks := make(map[string]int, len(s.episodes))
+	for key, episode := range s.episodes {
+		ticks[key] = episode.failedTicks
+	}
+	return ticks
+}
+
+// Restore replaces the set's episodes with ticks, one open episode per key at the given failed-tick count.
+// The next Fail of a restored key continues its episode at Debug, and its Recover logs at Info; a key absent from ticks starts a new episode.
+func (s *EpisodeSet) Restore(ticks map[string]int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.episodes = make(map[string]*Episode, len(ticks))
+	for key, failedTicks := range ticks {
+		s.episodes[key] = &Episode{failedTicks: failedTicks}
+	}
+}
+
 // withFailedTicks returns args followed by the failed_ticks field, without writing into args' backing array.
 func withFailedTicks(args []any, failedTicks int) []any {
 	stamped := make([]any, 0, len(args)+2)

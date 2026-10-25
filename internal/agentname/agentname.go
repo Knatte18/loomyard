@@ -8,6 +8,7 @@
 // # Where names are formed
 //
 // A program sender is "<shortname>:<NAME>" with an upper-case name matching [A-Z][A-Z0-9_]*, formed and parsed by FormatProgram and ParseProgram.
+// A program acting for one beam signs "<shortname>:<slug>:<NAME>", formed by FormatScopedProgram and read by ParseProgram as the same (shortname, name) pair.
 // EXTERNAL is the reserved name of a sender creel cannot place.
 // Reed forms a strand's full name once, in AddStrand under its state lock, and stores it in the strand record, which is the only key delivery and lookup resolve through.
 // Pane titles and Claude session names are display mirrors.
@@ -163,16 +164,44 @@ func FormatProgram(shortname, name string) (string, error) {
 	return shortname + sep + name, nil
 }
 
-// ParseProgram accepts exactly two segments whose second is an upper-case program name and returns them.
+// FormatScopedProgram validates the shortname, the slug and the upper-case program name and joins them as "<shortname>:<slug>:<NAME>".
+// An empty slug gives the two-segment form FormatProgram forms.
+// A scoped sender is a program that acts for one beam, such as the beam's dobby.
+func FormatScopedProgram(shortname, slug, name string) (string, error) {
+	if slug == "" {
+		return FormatProgram(shortname, name)
+	}
+	if err := ValidateShortname(shortname); err != nil {
+		return "", err
+	}
+	if err := ValidateSlug(slug); err != nil {
+		return "", err
+	}
+	if err := validateProgramName(name); err != nil {
+		return "", err
+	}
+	return shortname + sep + slug + sep + name, nil
+}
+
+// ParseProgram accepts "<shortname>:<NAME>" or "<shortname>:<slug>:<NAME>" and returns the shortname and the upper-case program name.
 func ParseProgram(full string) (shortname, name string, err error) {
 	parts := strings.Split(full, sep)
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("agent program name %q is invalid: want <shortname>:<NAME>", full)
+	switch len(parts) {
+	case 2:
+		_, err = FormatProgram(parts[0], parts[1])
+	case 3:
+		if parts[1] == "" {
+			err = fmt.Errorf("empty slug segment")
+		} else {
+			_, err = FormatScopedProgram(parts[0], parts[1], parts[2])
+		}
+	default:
+		return "", "", fmt.Errorf("agent program name %q is invalid: want <shortname>:<NAME> or <shortname>:<slug>:<NAME>", full)
 	}
-	if _, err := FormatProgram(parts[0], parts[1]); err != nil {
+	if err != nil {
 		return "", "", fmt.Errorf("agent program name %q: %w", full, err)
 	}
-	return parts[0], parts[1], nil
+	return parts[0], parts[len(parts)-1], nil
 }
 
 // IsProgram reports whether full parses as a program sender, External included.

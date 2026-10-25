@@ -169,6 +169,9 @@ type Result struct {
 	// Overwritten lists, sorted, each move whose source value replaced the target's template default, as "<source>: <value> replaced <target>'s template default <value>".
 	// Set only by a key move, on a dry run too.
 	Overwritten []string
+	// Copied lists, sorted, the declared key copies that placed a value in this file, each as "<source module>.<source key> -> <target module>.<target key>".
+	// Set only by a key copy, on a dry run too.
+	Copied []string
 	// KeptExtra lists, sorted, each "<path>.<name>" a per-name map of the file holds and the template lacks.
 	// Such a name is kept in place and never pruned.
 	// Set on a dry run too.
@@ -841,6 +844,7 @@ func primeConfig(primeBaseDir, module string) []byte {
 // Legacy files are pruned only when opts.Apply succeeds.
 // The declared key moves run first at the board dir as a base layer, and their results lead the returned slice;
 // under opts.SeedDefaults an absent board source is the prime's copy, so a default seeded in the same pass carries the moved values.
+// The declared key copies follow the moves, and their results follow the moves' in the slice.
 // When opts.Apply is false, nothing is written or removed.
 func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]Result, error) {
 	seedDir := ""
@@ -861,6 +865,11 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 		return nil, err
 	}
 	movedKeys := movedTargetKeys(results)
+	copyResults, err := copyKeys(boardDir, opts.Apply)
+	if err != nil {
+		return nil, err
+	}
+	results = append(results, copyResults...)
 
 	for _, m := range configreg.Modules() {
 		cfgPath := configengine.ConfigFile(boardDir, m.Name)

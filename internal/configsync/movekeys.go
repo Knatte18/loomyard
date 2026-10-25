@@ -219,6 +219,97 @@ func moveKeys(dir, seedDir string, layer configengine.Layer, base, apply bool) (
 	return results, nil
 }
 
+// copyKeys applies configreg.KeyCopies to the base files under boardDir and returns one Result per target file it changes or would change.
+// A key is copied only when the source file sets it and the target file does not; the source keeps its key.
+// The value is placed unexpanded with its line comment replaced by the target template's.
+// An absent target file starts as the header-only base, and a target the copy leaves with units keeps its header.
+// A file that cannot be read or parsed fails the copy with a *FileError before anything is written.
+func copyKeys(boardDir string, apply bool) ([]Result, error) {
+	loaded := map[string]*moveFile{}
+	load := func(module string) (*moveFile, error) {
+		if file, ok := loaded[module]; ok {
+			return file, nil
+		}
+		file := &moveFile{module: module, path: configengine.ConfigFile(boardDir, module), keepHeader: true}
+		loaded[module] = file
+		data, err := os.ReadFile(file.path)
+		switch {
+		case err == nil:
+			file.exists = true
+		case os.IsNotExist(err):
+			data = nil
+		default:
+			return nil, &FileError{Module: module, Path: file.path, Err: fmt.Errorf("read config for %s: %w", module, err)}
+		}
+		if err := file.parse(data); err != nil {
+			return nil, err
+		}
+		return file, nil
+	}
+
+	copied := map[string][]string{}
+	var targets []*moveFile
+	for _, keyCopy := range configreg.KeyCopies() {
+		source, err := load(keyCopy.FromModule)
+		if err != nil {
+			return nil, err
+		}
+		at := mappingIndex(source.root, keyCopy.FromKey)
+		if at < 0 {
+			continue
+		}
+		target, err := load(keyCopy.ToModule)
+		if err != nil {
+			return nil, err
+		}
+		if mappingIndex(target.root, keyCopy.ToKey) >= 0 {
+			continue
+		}
+		registered, ok := configreg.Lookup(keyCopy.ToModule)
+		if !ok {
+			return nil, &FileError{Module: keyCopy.ToModule, Path: target.path, Err: fmt.Errorf("key copy target module %q is not registered", keyCopy.ToModule)}
+		}
+		if len(copied[target.module]) == 0 {
+			targets = append(targets, target)
+		}
+		placeValue(target.root, keyCopy.ToKey, source.root.Content[at+1], templateLineComment([]byte(registered.Template()), keyCopy.ToKey))
+		copied[target.module] = append(copied[target.module], fmt.Sprintf("%s.%s -> %s.%s", keyCopy.FromModule, keyCopy.FromKey, keyCopy.ToModule, keyCopy.ToKey))
+	}
+
+	sort.Slice(targets, func(i, j int) bool { return targets[i].module < targets[j].module })
+	var results []Result
+	for _, target := range targets {
+		sort.Strings(copied[target.module])
+		result := Result{Module: target.module, Layer: configengine.LayerDefault, Copied: copied[target.module]}
+		if apply {
+			if err := target.writeCopied(); err != nil {
+				return nil, err
+			}
+			result.Applied = true
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+// writeCopied saves a copy target as a sparse base: its document, preceded by the base header when the file held no unit before.
+func (file *moveFile) writeCopied() error {
+	data, err := yaml.Marshal(file.doc)
+	if err != nil {
+		return &FileError{Module: file.module, Path: file.path, Err: fmt.Errorf("encode config for %s: %w", file.module, err)}
+	}
+	if !strings.HasPrefix(string(data), "#") {
+		data = append([]byte(configengine.SparseBaseHeader), data...)
+	}
+	if err := os.MkdirAll(filepath.Dir(file.path), 0o755); err != nil {
+		return &FileError{Module: file.module, Path: file.path, Err: fmt.Errorf("mkdir config dir for %s: %w", file.module, err)}
+	}
+	if err := fsx.AtomicWriteBytes(file.path, data); err != nil {
+		return &FileError{Module: file.module, Path: file.path, Err: fmt.Errorf("write config for %s: %w", file.module, err)}
+	}
+	return nil
+}
+
 // parse reads data as the file's document; empty data is an empty mapping.
 func (file *moveFile) parse(data []byte) error {
 	if len(strings.TrimSpace(string(data))) == 0 {

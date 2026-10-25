@@ -30,14 +30,20 @@ func TestFormatParseRoundTrip(t *testing.T) {
 		}
 	}
 
-	programs := []struct{ shortname, name, want string }{
-		{"ly", "BATTEN", "ly:BATTEN"},
-		{"ly", External, "ly:EXTERNAL"},
+	programs := []struct{ shortname, slug, name, want string }{
+		{"ly", "", "BATTEN", "ly:BATTEN"},
+		{"ly", "", External, "ly:EXTERNAL"},
+		{"ly", "agent-naming", "DOBBY", "ly:agent-naming:DOBBY"},
 	}
 	for _, tt := range programs {
-		got, err := FormatProgram(tt.shortname, tt.name)
+		got, err := FormatScopedProgram(tt.shortname, tt.slug, tt.name)
 		if err != nil || got != tt.want {
-			t.Fatalf("FormatProgram(%q,%q) = %q, %v; want %q", tt.shortname, tt.name, got, err, tt.want)
+			t.Fatalf("FormatScopedProgram(%q,%q,%q) = %q, %v; want %q", tt.shortname, tt.slug, tt.name, got, err, tt.want)
+		}
+		if tt.slug == "" {
+			if plain, err := FormatProgram(tt.shortname, tt.name); err != nil || plain != got {
+				t.Fatalf("FormatProgram(%q,%q) = %q, %v; want %q", tt.shortname, tt.name, plain, err, got)
+			}
 		}
 		shortname, name, err := ParseProgram(got)
 		if err != nil || shortname != tt.shortname || name != tt.name {
@@ -46,6 +52,9 @@ func TestFormatParseRoundTrip(t *testing.T) {
 		if !IsProgram(got) {
 			t.Errorf("IsProgram(%q) = false; want true", got)
 		}
+	}
+	if _, err := Parse("ly:agent-naming:DOBBY"); err == nil {
+		t.Error("Parse accepted a scoped program name")
 	}
 }
 
@@ -70,7 +79,7 @@ func TestValidationRejections(t *testing.T) {
 			t.Errorf("Parse(%q) accepted", name)
 		}
 	}
-	for _, name := range []string{"ly:batten", "ly:x:BATTEN", "LY:BATTEN"} {
+	for _, name := range []string{"ly:batten", "LY:BATTEN", "ly:Bad:BATTEN", "ly::BATTEN", "ly:x:batten", "ly:a:b:BATTEN"} {
 		if _, _, err := ParseProgram(name); err == nil {
 			t.Errorf("ParseProgram(%q) accepted", name)
 		}
@@ -78,6 +87,11 @@ func TestValidationRejections(t *testing.T) {
 	for _, tt := range [][2]string{{"ly", "batten"}, {"ly", "BAT-TEN"}, {"LY", "BATTEN"}} {
 		if _, err := FormatProgram(tt[0], tt[1]); err == nil {
 			t.Errorf("FormatProgram(%q,%q) accepted", tt[0], tt[1])
+		}
+	}
+	for _, tt := range [][3]string{{"ly", "Bad", "DOBBY"}, {"ly", "ok", "dobby"}, {"LY", "ok", "DOBBY"}} {
+		if _, err := FormatScopedProgram(tt[0], tt[1], tt[2]); err == nil {
+			t.Errorf("FormatScopedProgram(%q,%q,%q) accepted", tt[0], tt[1], tt[2])
 		}
 	}
 	if _, err := Parse("ly:BATTEN"); err == nil {

@@ -37,6 +37,26 @@ func KeyMoves() []KeyMove {
 	}
 }
 
+// KeyCopy names one key copied, not moved, from a source module's config file to a target module's, under a key name of its own.
+// The copy reads and writes the hub's base layer only.
+type KeyCopy struct {
+	// FromModule and FromKey name the key in the source module, which keeps it.
+	FromModule, FromKey string
+	// ToModule and ToKey name the key in the target module.
+	ToModule, ToKey string
+}
+
+// KeyCopies returns every declared key copy, in the order reconcile applies them.
+// A reconcile places the value in the target module's hub file when the source file sets it and the target file does not.
+func KeyCopies() []KeyCopy {
+	return []KeyCopy{
+		// Until the arbiter keys joined shed.yaml, darn read loom's arbiter keys, so a hub's tuned values carry over to darn's own keys.
+		{FromModule: "loom", FromKey: "arbiter", ToModule: "darn", ToKey: "arbiter"},
+		{FromModule: "loom", FromKey: "arbiter_timeout_min", ToModule: "darn", ToKey: "arbiter_timeout_min"},
+		{FromModule: "loom", FromKey: "arbiter_max_spawns", ToModule: "darn", ToKey: "arbiter_max_spawns"},
+	}
+}
+
 // moveRunSettings returns settings with every declared key move applied, leaving the argument untouched.
 // A moved key lands in the target module's object unless that object already holds it, in which case the target's value is kept and the source key dropped.
 // A module whose value is not an object is passed through for the module loop to refuse.

@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -54,6 +55,10 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 
 	if shutdown == nil {
 		shutdown = func(ctx context.Context) (string, error) { return "", nil }
+	}
+	// Run-Shed's check stats the child's status file, so the fake child keeps one.
+	if err := os.WriteFile(filepath.Join(dir, "loom-status.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
 	c.env = shedrecipe.Env{
@@ -107,7 +112,6 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 			RunDeploy: func(context.Context, string, string, time.Duration) (battenshed.DeployResult, error) {
 				return battenshed.DeployResult{}, nil
 			},
-			ReadyTasks:     func() ([]string, error) { return nil, nil },
 			PruneBoard:     func() error { return nil },
 			PauseRequested: func() (bool, error) { return false, nil },
 			LandLock: battenshed.PrimeLock{
@@ -197,15 +201,17 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: stopWayForward}},
 	}
 	tests := []struct {
-		name          string
-		state         shedengine.State
-		producer      string
-		pauseAfter    string
-		lockErr       error
-		report        fabricengine.OriginReport
-		reconcileErr  error
-		wantOutcome   string
-		wantErrors    []string
+		name         string
+		state        shedengine.State
+		producer     string
+		pauseAfter   string
+		lockErr      error
+		report       fabricengine.OriginReport
+		reconcileErr error
+		wantOutcome  string
+		wantErrors   []string
+		// wantExit is the exit code of a refused pass; 0 reads as 1, and a refusal of a run another machine owns reads 77.
+		wantExit      int
 		wantReconcile int
 		// owner builds the fake owner seams; nil leaves the receiver with no owner check.
 		owner func() *fakeOwners
@@ -213,8 +219,14 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		wantSets []string
 		// wantPulls counts the board pulls the start check made.
 		wantPulls int
+		// yieldReason, when set, makes the step yield with the Run-Shed row's stuck-reason file holding it; the run then stays running.
+		yieldReason string
+		// markerBefore stands an origin-owed marker before the pass; wantMarker is whether one stands after it.
+		markerBefore bool
+		wantMarker   bool
 	}{
 		{name: "running", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1},
+		{name: "yield", state: shedengine.StateRunning, producer: battenrecipe.NameRunShed, wantOutcome: "yielded", wantReconcile: 1, yieldReason: "holding for the child's spawn"},
 		{name: "blocked", state: shedengine.StateBlocked, wantOutcome: "done", wantReconcile: 1},
 		{name: "failed", state: shedengine.StateFailed, wantOutcome: "done", wantReconcile: 1},
 		{name: "paused", state: shedengine.StatePaused, wantOutcome: "done", wantReconcile: 1},
@@ -237,7 +249,20 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		},
 		{
 			name: "reconcile_unreachable", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
-			report: fabricengine.OriginReport{Unreachable: true},
+			report: fabricengine.OriginReport{Unreachable: true}, wantMarker: true,
+		},
+		{
+			name: "a_pass_that_reached_origin_and_exits_0_removes_the_origin_owed_marker", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
+			report: activeReport, markerBefore: true,
+		},
+		{
+			name: "an_unreachable_pass_that_exits_0_keeps_the_origin_owed_marker", state: shedengine.StateRunning, wantOutcome: "done", wantReconcile: 1,
+			report: unreachableReport, markerBefore: true, wantMarker: true,
+		},
+		{
+			name: "a_pass_that_reached_origin_and_exits_non_zero_keeps_the_origin_owed_marker", state: shedengine.StateFailed, producer: battenrecipe.NameWorktreeTeardown, wantReconcile: 1,
+			lockErr: errors.New("prime lock unavailable"), wantErrors: []string{"prime lock unavailable"},
+			report: activeReport, markerBefore: true, wantMarker: true,
 		},
 		{
 			name: "reconcile_error", state: shedengine.StateRunning, wantReconcile: 1,
@@ -248,6 +273,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			name: "owner_elsewhere_verdict_refuses_naming_the_adopt", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
 			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", false)}),
 			report:     elsewhereReport,
+			wantExit:   dobbyengine.PassExitOwnedElsewhere,
 			wantErrors: []string{"there", "lyx adopt " + slug},
 		},
 		{
@@ -275,18 +301,20 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true), lost: map[string]string{slug: "there"}}),
 			report:     activeReport,
 			wantSets:   []string{"slug:" + slug},
+			wantExit:   dobbyengine.PassExitOwnedElsewhere,
 			wantErrors: []string{"there", "lyx adopt " + slug},
 		},
 		{
 			name: "unreachable_origin_with_the_local_board_owned_elsewhere_refuses", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
 			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "there", true)}),
 			report:     unreachableReport,
+			wantExit:   dobbyengine.PassExitOwnedElsewhere,
 			wantErrors: []string{"the local board shows", "there", "once origin answers", "lyx batten run " + slug},
 		},
 		{
 			name: "unreachable_origin_with_an_unowned_run_held_entry_resumes_without_a_write", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
 			owner:  owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true)}),
-			report: unreachableReport,
+			report: unreachableReport, wantMarker: true,
 		},
 		{
 			name: "hub_with_no_prime_owner_records_this_machine_as_the_prime_owner", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
@@ -297,13 +325,14 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 		{
 			name: "unreachable_origin_with_no_prime_owner_resumes_without_a_write", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
 			owner:  owning(fakeOwners{machine: "here", owners: ownedBy("", "", false)}),
-			report: unreachableReport,
+			report: unreachableReport, wantMarker: true,
 		},
 		{
 			name: "failed_prime_claim_warns_and_still_reaches_the_owner_verdict", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
 			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("", "", false), primeSetErr: errors.New("push refused")}),
 			report:     elsewhereReport,
 			wantSets:   []string{"prime"},
+			wantExit:   dobbyengine.PassExitOwnedElsewhere,
 			wantErrors: []string{"there", "lyx adopt " + slug},
 		},
 		{
@@ -345,6 +374,18 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			if tt.lockErr != nil {
 				c.env.PrimeLock.Acquire = func() (func() error, bool, error) { return nil, false, tt.lockErr }
 			}
+			if tt.yieldReason != "" {
+				c.untilStop = func(context.Context, string) ([]byte, error) {
+					return stopEnvelope(t, map[string]any{"ok": true, "outcome": string(shedengine.Yield)}, string(shedengine.StateRunning), battenrecipe.NameRunShed, 0), nil
+				}
+				reasonFile := battenshed.StuckReasonFile(c.env.ScratchDir, battenrecipe.NameRunShed)
+				if err := os.MkdirAll(filepath.Dir(reasonFile), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(reasonFile, []byte(tt.yieldReason+"\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if tt.state != "" {
 				producer := tt.producer
 				if producer == "" {
@@ -356,13 +397,29 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 					PauseAfter:      tt.pauseAfter,
 				})
 			}
+			if tt.markerBefore {
+				marker := shedrun.OriginOwedMarker(c.location, c.slug)
+				if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(marker, []byte("{}"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
 
 			var out bytes.Buffer
 			exitCode := clihelp.Execute(runCommand(c), &out, []string{c.slug})
 
+			if stands, err := OriginOwed(c.location, c.slug); err != nil || stands != tt.wantMarker {
+				t.Errorf("run(%s) origin-owed marker standing = %v, %v; want %v", tt.name, stands, err, tt.wantMarker)
+			}
 			if len(tt.wantErrors) > 0 {
-				if exitCode != 1 {
-					t.Fatalf("run(%s) exit code = %d; want 1; output: %s", tt.name, exitCode, out.String())
+				wantExit := tt.wantExit
+				if wantExit == 0 {
+					wantExit = 1
+				}
+				if exitCode != wantExit {
+					t.Fatalf("run(%s) exit code = %d; want %d; output: %s", tt.name, exitCode, wantExit, out.String())
 				}
 				if !strings.Contains(out.String(), `"ok":false`) {
 					t.Errorf("run(%s) output = %q; want an error envelope", tt.name, out.String())
@@ -388,6 +445,12 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			}
 			if envelope["outcome"] != tt.wantOutcome {
 				t.Errorf("run(%s) envelope[\"outcome\"] = %v; want %q", tt.name, envelope["outcome"], tt.wantOutcome)
+			}
+			if tt.yieldReason != "" {
+				if envelope["reason"] != tt.yieldReason || envelope["halted_producer"] != battenrecipe.NameRunShed || envelope["history_length"] != float64(0) {
+					t.Errorf("run(%s) envelope = %v; want the reason %q, halted at Run-Shed with no history", tt.name, envelope, tt.yieldReason)
+				}
+				return
 			}
 			st, found, err := state.ReadJSONNoMkdir[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 			if err != nil || !found {

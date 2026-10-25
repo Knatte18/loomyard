@@ -36,7 +36,7 @@ func intPointer(value int) *int {
 // TestLoadConfig verifies LoadConfig reads the template defaults when no layer holds shed.yaml, reads a base value and a local override, and refuses an invalid value naming the module.
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
-	templateDefaults := Config{DriverKind: "go", Tackler: "haiku", TacklerTimeoutMin: 10, TacklerMaxSpawns: 4}
+	templateDefaults := Config{DriverKind: "go", Tackler: "haiku", TacklerTimeoutMin: 10, TacklerMaxSpawns: 4, Arbiter: "opus[high]", ArbiterTimeoutMin: 30, ArbiterMaxSpawns: 3}
 
 	tests := []struct {
 		name    string
@@ -48,13 +48,13 @@ func TestLoadConfig(t *testing.T) {
 		{name: "no layer reads the template defaults", want: templateDefaults},
 		{
 			name: "a base value is read",
-			base: "driver_kind: llm\ntackler: sonnet[low]\ntackler_timeout_min: 7\ntackler_max_spawns: 0\n",
-			want: Config{DriverKind: "llm", Tackler: "sonnet[low]", TacklerTimeoutMin: 7, TacklerMaxSpawns: 0},
+			base: "driver_kind: llm\ntackler: sonnet[low]\ntackler_timeout_min: 7\ntackler_max_spawns: 0\narbiter: sonnet[low]\narbiter_timeout_min: 5\narbiter_max_spawns: 0\n",
+			want: Config{DriverKind: "llm", Tackler: "sonnet[low]", TacklerTimeoutMin: 7, TacklerMaxSpawns: 0, Arbiter: "sonnet[low]", ArbiterTimeoutMin: 5, ArbiterMaxSpawns: 0},
 		},
 		{
 			name:  "a local override wins over the template",
-			local: "tackler_max_spawns: 1\n",
-			want:  Config{DriverKind: "go", Tackler: "haiku", TacklerTimeoutMin: 10, TacklerMaxSpawns: 1},
+			local: "tackler_max_spawns: 1\narbiter_max_spawns: 2\n",
+			want:  Config{DriverKind: "go", Tackler: "haiku", TacklerTimeoutMin: 10, TacklerMaxSpawns: 1, Arbiter: "opus[high]", ArbiterTimeoutMin: 30, ArbiterMaxSpawns: 2},
 		},
 		{name: "an invalid value is refused", base: "driver_kind: fast\n", wantErr: "shed config key"},
 	}
@@ -105,6 +105,10 @@ func TestCheckOverride(t *testing.T) {
 		{name: "unparseable tackler", module: "batten", override: Override{Tackler: "not a spec["}, wantErrIn: []string{`batten config key "tackler"`, "batten.yaml"}},
 		{name: "negative timeout", module: "darn", override: Override{TacklerTimeoutMin: -1}, wantErrIn: []string{`darn config key "tackler_timeout_min"`, "must not be negative", "0 for the 10 minute default"}},
 		{name: "negative spawn budget", module: "shed", override: Override{TacklerMaxSpawns: intPointer(-1)}, wantErrIn: []string{`shed config key "tackler_max_spawns"`, "0 to turn the tackler off"}},
+		{name: "zero arbiter spawn budget", module: "batten", override: Override{ArbiterMaxSpawns: intPointer(0)}},
+		{name: "unparseable arbiter", module: "batten", override: Override{Arbiter: "not a spec["}, wantErrIn: []string{`batten config key "arbiter"`, "batten.yaml"}},
+		{name: "negative arbiter timeout", module: "loom", override: Override{ArbiterTimeoutMin: -1}, wantErrIn: []string{`loom config key "arbiter_timeout_min"`, "must not be negative", "0 for the 30 minute default"}},
+		{name: "negative arbiter spawn budget", module: "shed", override: Override{ArbiterMaxSpawns: intPointer(-1)}, wantErrIn: []string{`shed config key "arbiter_max_spawns"`, "0 to turn the arbiter off"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -228,6 +232,80 @@ func TestResolveTackler(t *testing.T) {
 			}
 			if got.Engine != "claude" {
 				t.Errorf("ResolveTackler(%+v, %+v).Engine = %q; want %q (the alias's engine)", tt.cfg, tt.override, got.Engine, "claude")
+			}
+		})
+	}
+}
+
+// TestResolveArbiter verifies ResolveArbiter takes each key from the override, else shed.yaml, else the default, lets a set 0 spawn budget turn the arbiter off, and refuses an unresolvable spec naming the arbiter key.
+func TestResolveArbiter(t *testing.T) {
+	t.Parallel()
+	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
+	if err != nil {
+		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)
+	}
+
+	tests := []struct {
+		name        string
+		cfg         Config
+		override    Override
+		wantSpec    string
+		wantTimeout time.Duration
+		wantSpawns  int
+		wantErrIn   string
+	}{
+		{
+			name:     "shed.yaml's template defaults",
+			cfg:      Config{Arbiter: "opus[high]", ArbiterTimeoutMin: 30, ArbiterMaxSpawns: 3},
+			wantSpec: "opus[high]", wantTimeout: 30 * time.Minute, wantSpawns: 3,
+		},
+		{
+			name:     "a module model-spec and timeout override",
+			cfg:      Config{Arbiter: "opus[high]", ArbiterTimeoutMin: 30, ArbiterMaxSpawns: 3},
+			override: Override{Arbiter: "sonnet[low]", ArbiterTimeoutMin: 5},
+			wantSpec: "sonnet[low]", wantTimeout: 5 * time.Minute, wantSpawns: 3,
+		},
+		{
+			name:     "a module arbiter_max_spawns of 0 turns the arbiter off",
+			cfg:      Config{ArbiterMaxSpawns: 3},
+			override: Override{ArbiterMaxSpawns: intPointer(0)},
+			wantSpec: "opus[high]", wantTimeout: 30 * time.Minute, wantSpawns: 0,
+		},
+		{
+			name:     "a nil override budget inherits shed.yaml's",
+			cfg:      Config{ArbiterMaxSpawns: 2},
+			wantSpec: "opus[high]", wantTimeout: 30 * time.Minute, wantSpawns: 2,
+		},
+		{name: "an unparseable spec", cfg: Config{Arbiter: "not a spec["}, wantErrIn: "arbiter"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := ResolveArbiter(tt.cfg, tt.override, reg)
+			if tt.wantErrIn != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrIn) {
+					t.Fatalf("ResolveArbiter(%+v, %+v) = _, %v; want an error containing %q", tt.cfg, tt.override, err, tt.wantErrIn)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveArbiter(%+v, %+v) = _, %v; want nil error", tt.cfg, tt.override, err)
+			}
+			spec, err := modelspec.Parse(tt.wantSpec)
+			if err != nil {
+				t.Fatalf("modelspec.Parse(%q) = _, %v; want nil error", tt.wantSpec, err)
+			}
+			resolved, err := reg.Resolve(spec)
+			if err != nil {
+				t.Fatalf("reg.Resolve(%q) = _, %v; want nil error", tt.wantSpec, err)
+			}
+			want := ArbiterSettings{ModelChoice: shuttleengine.NewModelChoice(resolved), Timeout: tt.wantTimeout, MaxSpawns: tt.wantSpawns}
+			if got != want {
+				t.Errorf("ResolveArbiter(%+v, %+v) = %+v; want %+v", tt.cfg, tt.override, got, want)
+			}
+			timeout, spawns := ArbiterLimits(tt.cfg, tt.override)
+			if timeout != tt.wantTimeout || spawns != tt.wantSpawns {
+				t.Errorf("ArbiterLimits(%+v, %+v) = %v, %d; want %v, %d", tt.cfg, tt.override, timeout, spawns, tt.wantTimeout, tt.wantSpawns)
 			}
 		})
 	}

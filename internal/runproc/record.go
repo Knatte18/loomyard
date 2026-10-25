@@ -32,6 +32,8 @@ const (
 	RolePush = "push"
 	// RoleSync is a detached board sync.
 	RoleSync = "sync"
+	// RoleDobby is a beam's dobby daemon.
+	RoleDobby = "dobby"
 )
 
 // Record is one registered process of a run.

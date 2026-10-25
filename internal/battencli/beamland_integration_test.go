@@ -71,6 +71,12 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 		if _, err := board.UpsertTask(entry); err != nil {
 			t.Fatalf("seed board entry %v: %v", entry["slug"], err)
 		}
+		// A new task is a draft, which a fresh run refuses.
+		if entry["kind"] == "task" {
+			if err := board.SetStatus(entry["slug"].(string), nil); err != nil {
+				t.Fatalf("release board task %v: %v", entry["slug"], err)
+			}
+		}
 	}
 	for _, request := range []boardengine.OwnerRequest{
 		{Machine: machine, Slugs: []string{"made", "outer", "gone", "c"}, Beam: true},

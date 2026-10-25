@@ -48,23 +48,29 @@ type Config struct {
 	// An empty target means the tree has no tests of its own.
 	// Tree scope is on exactly when it holds a tree.
 	TreeScope map[string]string `yaml:"tree_scope"`
-	// DriverKind, Tackler, TacklerTimeoutMin and TacklerMaxSpawns override shed.yaml's keys of the same names for a darn run;
-	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns of 0 turns the tackler off.
+	// DriverKind, Tackler, TacklerTimeoutMin, TacklerMaxSpawns, Arbiter, ArbiterTimeoutMin and ArbiterMaxSpawns override shed.yaml's keys of the same names for a darn run;
+	// an empty string, a zero and a null inherit shed.yaml, and a set TacklerMaxSpawns or ArbiterMaxSpawns of 0 turns that role off.
 	DriverKind        string `yaml:"driver_kind"`
 	Tackler           string `yaml:"tackler"`
 	TacklerTimeoutMin int    `yaml:"tackler_timeout_min"`
 	TacklerMaxSpawns  *int   `yaml:"tackler_max_spawns"`
+	Arbiter           string `yaml:"arbiter"`
+	ArbiterTimeoutMin int    `yaml:"arbiter_timeout_min"`
+	ArbiterMaxSpawns  *int   `yaml:"arbiter_max_spawns"`
 	// PRReview turns on the PR-Review stub's log line; the stub opens no pull request and acts on nothing either way.
 	PRReview bool `yaml:"pr_review"`
 }
 
-// ShedOverride returns the driver and tackler keys of darn.yaml as the override of shed.yaml's.
+// ShedOverride returns the driver, tackler and arbiter keys of darn.yaml as the override of shed.yaml's.
 func (c Config) ShedOverride() sheddriver.Override {
 	return sheddriver.Override{
 		DriverKind:        c.DriverKind,
 		Tackler:           c.Tackler,
 		TacklerTimeoutMin: c.TacklerTimeoutMin,
 		TacklerMaxSpawns:  c.TacklerMaxSpawns,
+		Arbiter:           c.Arbiter,
+		ArbiterTimeoutMin: c.ArbiterTimeoutMin,
+		ArbiterMaxSpawns:  c.ArbiterMaxSpawns,
 	}
 }
 
@@ -87,6 +93,9 @@ func ConfigSpec() configengine.Spec {
 		"tackler":             configengine.CategoryNone,
 		"tackler_timeout_min": configengine.CategoryNone,
 		"tackler_max_spawns":  configengine.CategoryNone,
+		"arbiter":             configengine.CategoryNone,
+		"arbiter_timeout_min": configengine.CategoryNone,
+		"arbiter_max_spawns":  configengine.CategoryNone,
 		"pr_review":           configengine.CategoryNone,
 	}
 	return configengine.Spec{

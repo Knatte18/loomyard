@@ -1,5 +1,5 @@
 // land.go implements NewLand, the producer that lands a finished child run into the prime:
-// it pulls the prime, runs the hub-wide deploy command, prunes the board and names the tasks the landing made ready.
+// it pulls the prime, runs the hub-wide deploy command, prunes the board and, when the pull's records side stopped, tells the orch.
 
 package battenshed
 
@@ -17,8 +17,6 @@ import (
 )
 
 const (
-	// readySnapshotFileSuffix is the fixed suffix of the marker holding the ready tasks read before the prune, one slug per line, joined onto the row's own name.
-	readySnapshotFileSuffix = "-ready-snapshot"
 	// deployLogFileSuffix is the fixed suffix of the file the deploy command's output goes to, joined onto the row's own name.
 	deployLogFileSuffix = "-deploy.log"
 	// landLockPollBase is the first pause between two attempts on a contended land lock.
@@ -31,11 +29,8 @@ const (
 	primeDirtyPollInterval = 5 * time.Second
 	// deployTimeout is how long the deploy command may run.
 	deployTimeout = 30 * time.Minute
-	// readyMarkerLine is the row-notice marker line recording that the landing notice was posted.
-	// It keeps the literal of the earlier ready-only notice, so a row resumed after one was posted sends no second.
-	readyMarkerLine = "ready"
-	// readyRouteMarkerPrefix leads a row-notice marker line recording that a ready route's own notice was posted, followed by the route's key in brackets.
-	readyRouteMarkerPrefix = "route"
+	// recordsStopMarkerLine is the row-notice marker line recording that the records-stop notice was posted.
+	recordsStopMarkerLine = "records-stop"
 )
 
 // LandingSettings is the part of the hub-wide landing config the Land row reads.
@@ -54,19 +49,6 @@ type DeployResult struct {
 	TimedOut bool
 }
 
-// ReadyRoute is one destination of the Land row's ready notice and the newly ready tasks that destination may start.
-type ReadyRoute struct {
-	// Key names the destination in the row's marker, so a resumed row posts to it once; the prime's key is the empty string.
-	Key string
-	// Slugs are the newly ready tasks the destination's orch may start.
-	Slugs []string
-	// Walked reports that the landing line, which takes the walk up the run's beam chain, already reaches this destination.
-	// A walked route's slugs ride the landing line and the route posts no line of its own.
-	Walked bool
-	// Notify posts one line to the destination's orch with no walk, and reports whether the line was posted.
-	Notify func(ctx context.Context, line string) (queued bool, err error)
-}
-
 // LandDeps carries every outside effect NewLand needs, each behind a seam so this package imports none of them and every path and command is told.
 type LandDeps struct {
 	// ParentBranch returns the child's recorded parent branch; empty means the origin record carries none.
@@ -83,12 +65,6 @@ type LandDeps struct {
 	// RunDeploy runs command in the prime with its output to logPath, ending it after timeout.
 	// An error means the shell could not start.
 	RunDeploy func(ctx context.Context, command, logPath string, timeout time.Duration) (DeployResult, error)
-	// ReadyTasks returns the slugs of the board tasks that are ready to start.
-	ReadyTasks func() ([]string, error)
-	// ReadyRoutes splits the newly ready slugs by the orch that may start them.
-	// A nil ReadyRoutes names every newly ready slug on the landing line.
-	// A slug in no route is named in no notice.
-	ReadyRoutes func(ready []string) ([]ReadyRoute, error)
 	// PruneBoard prunes the done tasks off the board.
 	PruneBoard func() error
 	// LandLock is the hub-level lock one landing holds for its whole body, with the same non-blocking acquire shape as the prime lock.
@@ -117,8 +93,8 @@ type landProducer struct {
 var _ shedengine.ShedProducer = (*landProducer)(nil)
 
 // NewLand returns a shedengine.ShedProducer that lands the task worktree identified by slug.
-// Under the land lock it pulls the prime, runs the deploy command, prunes the board and posts a notice naming the tasks the landing made ready.
-// A failed step is Stuck naming it and posts one notice per failure episode; a pause seen during a wait is Stuck with no notice.
+// Under the land lock it pulls the prime, runs the deploy command and prunes the board, then posts one notice only when the pull's records side stopped.
+// A failed step is Stuck naming it, and a pause seen during a wait is Stuck naming the goto that clears it; neither posts a notice, since the driver's hand-back tells the orch of a stop the stop chain did not settle.
 func NewLand(name, slug string, deps LandDeps, primeLock PrimeLock, scratchDir string) shedengine.ShedProducer {
 	if deps.Sleep == nil {
 		deps.Sleep = waitOrCancel
@@ -140,45 +116,43 @@ func NewLand(name, slug string, deps LandDeps, primeLock PrimeLock, scratchDir s
 }
 
 // stop returns the Stuck verdict for a failed step, or the cancelled-during-run error when ctx ended first.
-// It records the reason and posts the failure notice.
-func (p *landProducer) stop(ctx context.Context, step, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	return p.stuck(ctx, step, reason, true)
+// It records the reason and posts no notice: the orch hears of the stop only if the stop chain gives it back.
+func (p *landProducer) stop(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	return p.stuck(ctx, reason, reportStuck)
 }
 
 // pause returns the Stuck verdict for a pause request honoured while waiting, or the cancelled-during-run error when ctx ended first.
-// It records the reason and posts no notice, since the operator asked for the pause.
+// It records the reason as a wait, since the operator asked for the pause.
 func (p *landProducer) pause(ctx context.Context, reason string) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	return p.stuck(ctx, "", reason, false)
+	return p.stuck(ctx, reason, reportWait)
 }
 
-// stuck records reason and returns the Stuck verdict, posting the failure notice for step only when notify is set.
-func (p *landProducer) stuck(ctx context.Context, step, reason string, notify bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
+// stuck records reason through record and returns the Stuck verdict.
+func (p *landProducer) stuck(ctx context.Context, reason string, record func(producer, reason, scratchDir string, attrs ...any)) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return "", shedengine.OutputPointer{}, cerr
 	}
-	if notify {
-		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
-		p.notifier.failed(ctx, step, reason)
-	} else {
-		reportWait(p.name, reason, p.scratchDir, "slug", p.slug)
-	}
+	record(p.name, reason, p.scratchDir, "slug", p.slug)
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 }
 
 // failure returns the Stuck verdict for a step that failed with err.
 func (p *landProducer) failure(ctx context.Context, step string, err error) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	return p.stop(ctx, step, fmt.Sprintf("%s failed: %s", step, err.Error()))
+	return p.stop(ctx, fmt.Sprintf("%s failed: %s", step, err.Error()))
 }
+
+// PauseHonouredPrefix leads the reason of a Land Stuck that honours a pause request seen while it waited.
+const PauseHonouredPrefix = "pause honoured"
 
 // pausedReason is the reason of a Stuck that honours a pause request seen while waiting for what.
 // Shed's blocked persist leaves the pause flag set, so the way forward clears it with a goto before the run re-enters the row.
 func (p *landProducer) pausedReason(what string) string {
 	return fmt.Sprintf("%s: a pause was requested while waiting for %s; batten stays blocked at %s, so run \"lyx batten goto %s --to %s\" and then \"lyx batten run %s\"",
-		"pause honoured", what, p.name, p.slug, p.name, p.slug)
+		PauseHonouredPrefix, what, p.name, p.slug, p.name, p.slug)
 }
 
 // Call implements shedengine.ShedProducer.
-// It runs, under the land lock, the prime check, the pull, the deploy, the ready snapshot, the board prune and the ready notice, each idempotent so a resume re-runs the row from the top.
+// It runs, under the land lock, the prime check, the pull, the deploy, the board prune and the records-stop notice, each idempotent so a resume re-runs the row from the top.
 // Every failed step, a seam read error included, is Stuck naming the step; only a cancelled context is a hard error.
 func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
@@ -193,7 +167,7 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 		if paused {
 			return p.pause(ctx, reason)
 		}
-		return p.stop(ctx, "land lock", reason)
+		return p.stop(ctx, reason)
 	}
 	defer func() {
 		if rerr := release(); rerr != nil {
@@ -206,7 +180,7 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 		return p.failure(ctx, "prime check", err)
 	}
 	if parent == "" {
-		return p.stop(ctx, "prime check", "prime check failed: the child's origin record carries no parent branch, so it cannot be compared with the prime's branch")
+		return p.stop(ctx, "prime check failed: the child's origin record carries no parent branch, so it cannot be compared with the prime's branch")
 	}
 	primeBranch, err := p.deps.PrimeBranch()
 	if err != nil {
@@ -225,32 +199,14 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 			return p.pause(ctx, reason)
 		}
 		if reason != "" {
-			return p.stop(ctx, "prime check", reason)
+			return p.stop(ctx, reason)
 		}
-		var step string
-		step, reason, recordsStop, err = p.pullAndDeploy(ctx, parent)
+		reason, recordsStop, err = p.pullAndDeploy(ctx, parent)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
 		if reason != "" {
-			return p.stop(ctx, step, reason)
-		}
-	}
-
-	snapshotPath := p.snapshotPath()
-	if _, err := os.Stat(snapshotPath); err != nil {
-		if !os.IsNotExist(err) {
-			return p.failure(ctx, "ready snapshot", err)
-		}
-		ready, err := p.deps.ReadyTasks()
-		if err != nil {
-			return p.failure(ctx, "ready snapshot", err)
-		}
-		if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
-			return p.failure(ctx, "ready snapshot", err)
-		}
-		if err := os.WriteFile(snapshotPath, []byte(strings.Join(ready, "\n")+"\n"), 0o644); err != nil {
-			return p.failure(ctx, "ready snapshot", err)
+			return p.stop(ctx, reason)
 		}
 	}
 
@@ -258,89 +214,60 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 		return p.failure(ctx, "board prune", err)
 	}
 
-	ready, reason := p.newlyReady()
-	if reason != "" {
-		return p.stop(ctx, "ready read", reason)
-	}
-	if cerr := cancelErr(ctx, p.name); cerr != nil {
-		return "", shedengine.OutputPointer{}, cerr
-	}
-	landingSlugs := ready
-	var routes []ReadyRoute
-	if p.deps.ReadyRoutes != nil {
-		routes, err = p.deps.ReadyRoutes(ready)
-		if err != nil {
-			return p.failure(ctx, "ready read", err)
-		}
-		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		landingSlugs = nil
-		for _, route := range routes {
-			if route.Walked {
-				landingSlugs = append(landingSlugs, route.Slugs...)
-			}
-		}
-	}
-	p.notifier.ready(ctx, p.slug, landingSlugs, routes, recordsStop)
+	p.notifier.recordsStopped(ctx, p.slug, recordsStop)
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
-// snapshotPath returns the path of the ready-snapshot marker.
-func (p *landProducer) snapshotPath() string {
-	return filepath.Join(p.scratchDir, p.name+readySnapshotFileSuffix)
-}
-
 // pullAndDeploy pulls the prime under the prime lock and then, outside it, runs the deploy command when the parent branch is one the landing config deploys.
-// A non-empty reason is the Stuck reason of the failed step, which is named by step.
+// A non-empty reason is the Stuck reason of the failed step.
 // A non-empty recordsStop is the records side's stop message from a pull that otherwise succeeded; the deploy runs regardless.
 // A non-nil err is the cancelled-during-run diagnosis.
-func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (step, reason, recordsStop string, err error) {
+func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (reason, recordsStop string, err error) {
 	release, lockReason, err := acquirePrimeLock(ctx, p.name, p.slug, p.primeLock)
 	if err != nil {
 		if ctx.Err() != nil {
-			return "", "", "", err
+			return "", "", err
 		}
-		return "prime lock", "prime lock failed: " + err.Error(), "", nil
+		return "prime lock failed: " + err.Error(), "", nil
 	}
 	if release == nil {
-		return "prime lock", lockReason, "", nil
+		return lockReason, "", nil
 	}
 	recordsStop, pullErr := p.deps.Pull(ctx)
 	if rerr := release(); rerr != nil {
 		logger.Warn("battenshed: release prime lock failed", "producer", p.name, "slug", p.slug, "path", p.primeLock.Path, "error", rerr)
 	}
 	if pullErr != nil {
-		return "pull", "pull failed: " + pullErr.Error(), "", nil
+		return "pull failed: " + pullErr.Error(), "", nil
 	}
 
 	settings, err := p.deps.Landing()
 	if err != nil {
-		return "deploy", "deploy failed: read the landing config: " + err.Error(), recordsStop, nil
+		return "deploy failed: read the landing config: " + err.Error(), recordsStop, nil
 	}
 	if settings.Deploy == "" {
-		return "", "", recordsStop, nil
+		return "", recordsStop, nil
 	}
 	if !slices.Contains(settings.DeployBranches, parent) {
 		logger.Info("battenshed: parent branch is not in deploy_branches; skipping deploy", "producer", p.name, "slug", p.slug, "parent", parent)
-		return "", "", recordsStop, nil
+		return "", recordsStop, nil
 	}
 
 	logPath := filepath.Join(p.scratchDir, p.name+deployLogFileSuffix)
 	if err := os.MkdirAll(p.scratchDir, 0o755); err != nil {
-		return "deploy", "deploy failed: " + err.Error(), recordsStop, nil
+		return "deploy failed: " + err.Error(), recordsStop, nil
 	}
 	wayForward := fmt.Sprintf("log: %s; way forward: fix the cause, then run \"lyx batten run %s\" from the prime", logPath, p.slug)
 	result, err := p.deps.RunDeploy(ctx, settings.Deploy, logPath, deployTimeout)
 	switch {
 	case err != nil:
-		return "deploy", fmt.Sprintf("deploy failed: the shell could not start (%s); %s", err.Error(), wayForward), recordsStop, nil
+		return fmt.Sprintf("deploy failed: the shell could not start (%s); %s", err.Error(), wayForward), recordsStop, nil
 	case result.TimedOut:
-		return "deploy", fmt.Sprintf("deploy failed: timed out after %s; %s", deployTimeout, wayForward), recordsStop, nil
+		return fmt.Sprintf("deploy failed: timed out after %s; %s", deployTimeout, wayForward), recordsStop, nil
 	case result.ExitCode != 0:
-		return "deploy", fmt.Sprintf("deploy failed: exit code %d; %s", result.ExitCode, wayForward), recordsStop, nil
+		return fmt.Sprintf("deploy failed: exit code %d; %s", result.ExitCode, wayForward), recordsStop, nil
 	}
-	return "", "", recordsStop, nil
+	return "", recordsStop, nil
 }
 
 // acquireLandLock takes the land lock, polling a contended one from landLockPollBase doubling to landLockPollCeiling with no time limit.
@@ -418,62 +345,18 @@ func (p *landProducer) waitCleanPrime(ctx context.Context) (stuckReason string, 
 	}
 }
 
-// newlyReady reads the ready tasks again and returns the slugs not in the ready snapshot, sorted.
-// A non-empty stuckReason is a snapshot that cannot be read or a ready read that failed.
-func (p *landProducer) newlyReady() (ready []string, stuckReason string) {
-	data, err := os.ReadFile(p.snapshotPath())
-	if err != nil {
-		return nil, fmt.Sprintf("ready read failed: read the ready snapshot: %s", err.Error())
-	}
-	before := map[string]bool{}
-	for _, slug := range strings.Split(string(data), "\n") {
-		if slug != "" {
-			before[slug] = true
-		}
-	}
-	after, err := p.deps.ReadyTasks()
-	if err != nil {
-		return nil, fmt.Sprintf("ready read failed: %s", err.Error())
-	}
-	for _, slug := range after {
-		if !before[slug] {
-			ready = append(ready, slug)
-		}
-	}
-	slices.Sort(ready)
-	return slices.Compact(ready), ""
-}
-
-// ready posts the landing notice for landed, once per batten run: "landed", with "; newly ready: " and slugs when there are any, and "; the prime's records did not pull: " and recordsStop when it is non-empty.
-// It then posts, once per batten run and route, "<landed>: landed; newly ready: " and the route's slugs to each unwalked route's own orch.
-// A marker line is written only once its notice was posted, and a notice that could not be posted is held back or dropped with a Warn, never retried.
-func (n rowNotifier) ready(ctx context.Context, landed string, slugs []string, routes []ReadyRoute, recordsStop string) {
-	if n.deps.Notify == nil || ctx.Err() != nil {
+// recordsStopped posts the one notice of a landing that succeeded, once per batten run: the landed slug and the stop of the prime's records side.
+// It posts nothing when recordsStop is empty, since the landing then needs nothing from the orch.
+// The marker line is written only once the notice was posted, and a notice that could not be posted is held back or dropped with a Warn, never retried.
+func (n rowNotifier) recordsStopped(ctx context.Context, landed, recordsStop string) {
+	if recordsStop == "" || n.deps.Notify == nil || ctx.Err() != nil {
 		return
 	}
-	if !slices.Contains(n.readMarker(), readyMarkerLine) {
-		line := fmt.Sprintf("%s %s: landed", noticePrefix, landed)
-		if len(slugs) > 0 {
-			line += "; newly ready: " + strings.Join(slugs, ", ")
-		}
-		if recordsStop != "" {
-			line += "; the prime's records did not pull: " + recordsStop
-		}
-		if n.send(ctx, line) {
-			n.setMarkerLine(readyMarkerLine, readyMarkerLine)
-		}
+	if slices.Contains(n.readMarker(), recordsStopMarkerLine) {
+		return
 	}
-	for _, route := range routes {
-		if route.Walked || len(route.Slugs) == 0 || ctx.Err() != nil {
-			continue
-		}
-		marker := fmt.Sprintf("%s[%s]", readyRouteMarkerPrefix, route.Key)
-		if slices.Contains(n.readMarker(), marker) {
-			continue
-		}
-		line := fmt.Sprintf("%s %s: landed; newly ready: %s", noticePrefix, landed, strings.Join(route.Slugs, ", "))
-		if n.deliver(ctx, line, route.Notify) {
-			n.setMarkerLine(marker, marker)
-		}
+	line := fmt.Sprintf("%s %s: landed; the prime's records did not pull: %s", noticePrefix, landed, recordsStop)
+	if n.send(ctx, line) {
+		n.setMarkerLine(recordsStopMarkerLine, recordsStopMarkerLine)
 	}
 }

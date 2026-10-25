@@ -60,3 +60,35 @@ func TestIdleWatchObserve(t *testing.T) {
 		}
 	}
 }
+
+// TestIdleWatch_RestoreKeepsTheWait pins that a watch saved and restored keeps its earlier sightings, and that a restore with no readings starts every wait afresh.
+func TestIdleWatch_RestoreKeepsTheWait(t *testing.T) {
+	t.Parallel()
+
+	const bound = 10 * time.Minute
+	waiting := []AgentState{{Name: "a", Waiting: true}}
+	first := 10 * time.Second
+
+	saved := IdleWatch{Bound: bound}
+	if saved.Observe(waiting, true, first) {
+		t.Fatalf("Observe at %s = true; want a first sighting not idle", first)
+	}
+
+	tests := []struct {
+		name    string
+		waiting map[string]time.Duration
+		want    bool
+	}{
+		{"restored readings keep the wait", saved.Waiting(), true},
+		{"a restore with no readings starts afresh", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			restored := RestoreIdleWatch(bound, tt.waiting)
+			if got := restored.Observe(waiting, true, first+bound); got != tt.want {
+				t.Errorf("Observe at %s after the restore = %v; want %v", first+bound, got, tt.want)
+			}
+		})
+	}
+}

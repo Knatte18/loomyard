@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -261,6 +262,28 @@ func reconcileHub(location *lyxcwd.Location) (fabricengine.OriginReport, error) 
 	return fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 }
 
+// ensureDobbies starts the dobby of the hub's prime and of every local beam this machine owns that is not live already, from the prime or from a beam.
+func ensureDobbies(location *lyxcwd.Location) error {
+	prime, err := resolvePrime(location)
+	if err != nil {
+		return err
+	}
+	_, err = dobbyengine.EnsureLive(hubgeom.DobbyStart(prime))
+	return err
+}
+
+// startDobbiesNotes starts the dobbies and returns the warning line a failure gives, which names the failed worktrees and `lyx beam start` as the way forward.
+// It returns nothing when no start is wired or the start succeeded.
+func (c *orchCLI) startDobbiesNotes() []string {
+	if c.startDobbies == nil {
+		return nil
+	}
+	if err := c.startDobbies(); err != nil {
+		return []string{fmt.Sprintf("the dobbies were not all started (%v); way forward: fix the cause each worktree names, then run `lyx beam start`", err)}
+	}
+	return nil
+}
+
 // claimPrimeNotes claims the hub's prime for this machine and returns the warning lines that report a claim, a claim another machine won or a failure.
 // It returns nothing when the board already records a prime owner or no claim is wired.
 func (c *orchCLI) claimPrimeNotes() []string {
@@ -328,7 +351,8 @@ func (c *orchCLI) startCmd() *cobra.Command {
 		Use:         "start",
 		Short:       "launch the orchestrator session and its watcher",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `start first reconciles the hub's branches against origin, once it holds the
+		Long: `start first starts every dobby this machine owns that is not live; a failure there
+only warns, naming "lyx beam start". It then reconciles the hub's branches against origin, once it holds the
 start lock and before it touches any strand, and never refuses on the result: a
 stop, an unreachable origin or a reconcile error is reported for the orch to act
 on. The envelope gains "reconcile" (the report), "failed_pushes" (the outstanding
@@ -347,8 +371,7 @@ session, recorded under the prime's own directory, as the orchestrator strand;
 With --continue the fresh launch resumes the session orch recorded for its strand at
 launch and after each /clear, the reboot recovery after "lyx orch stop" or a dead
 strand; it is refused alongside --adopt or --handoff, while the strand is live, or
-with no session recorded. A fresh launch that replaces a recorded session names it in
-the envelope hint.
+with no session recorded.
 A watcher that has received SIGINT or SIGTERM and not yet exited is waited for, up to
 three watcher poll intervals, so a kill followed by start spawns a fresh watcher; past
 that bound start reports the watcher live with "watcher_stopping": true.
@@ -394,6 +417,8 @@ session.`,
 				handoffFlag = abs
 			}
 
+			dobbyWarnings := c.startDobbiesNotes()
+
 			if c.beamStart != nil {
 				if err := c.beamStart(); err != nil {
 					return fail(err)
@@ -419,7 +444,7 @@ session.`,
 			// The reconcile never refuses the start: the orch is the session that resolves what it reports.
 			report, reconcileErr := c.reconcile()
 			reconciled = true
-			var reconcileWarnings []string
+			reconcileWarnings := dobbyWarnings
 			if reconcileErr != nil {
 				reconcileWarnings = append(reconcileWarnings, fmt.Sprintf("origin reconcile failed: %v", reconcileErr))
 			}

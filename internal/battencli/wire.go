@@ -30,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -658,12 +659,59 @@ func readSessionStatesByStrand(cfg shuttleengine.Config, anchor string, engines 
 // markBattenWatched writes the batten-watched marker of the task worktree's run while noticesReachDriversParent holds, and removes it otherwise.
 // The marker holds this process's pid and names the batten scratch directory and the Run-Shed row's name, so a Go driver can tell whether this batten has died.
 // It reports whether the marker is held.
-func markBattenWatched(prime, taskLocation *lyxcwd.Location, scratchDir, producer string) (bool, error) {
+func markBattenWatched(prime, taskLocation *lyxcwd.Location, scratchDir, producer string, pid int) (bool, error) {
 	watched, err := noticesReachDriversParent(prime, taskLocation)
 	if err != nil {
 		return false, err
 	}
-	return syncWatchedMarker(shedrun.BattenWatchedMarker(taskLocation, shedrun.SelfRunID), watched, shedrun.BattenWatchedContent(os.Getpid(), scratchDir, producer))
+	return syncWatchedMarker(shedrun.BattenWatchedMarker(taskLocation, shedrun.SelfRunID), watched, shedrun.BattenWatchedContent(pid, scratchDir, producer))
+}
+
+// dobbyReading reads the state record of the dobby of the run's parent worktree: its pid and the machine sleeps it recorded.
+// A dead dobby, a missing record and a worktree absent here read as this process's pid and no sleeps,
+// so a hand pass with no live dobby marks itself and leaves the child's driver to notice for itself.
+// Any other read error is returned.
+func dobbyReading(prime *lyxcwd.Location, slug string) (pid int, sleeps []pauserecord.Interval, err error) {
+	parent, err := hubgeom.ParentOf(prime, slug)
+	if err != nil {
+		return 0, nil, err
+	}
+	if parent == "" {
+		parent = prime.WorktreeName
+	}
+	if info, statErr := os.Stat(filepath.Join(prime.HubPath, parent)); statErr != nil || !info.IsDir() {
+		return os.Getpid(), nil, nil
+	}
+	geometry, err := hubgeom.DobbyGeometry(prime, parent)
+	if err != nil {
+		return 0, nil, err
+	}
+	return dobbyStateReading(geometry.StatePath, func() (bool, error) { return dobbyengine.Live(geometry) })
+}
+
+// dobbyStateReading is dobbyReading over the state record at statePath and a liveness probe of its dobby.
+func dobbyStateReading(statePath string, live func() (bool, error)) (int, []pauserecord.Interval, error) {
+	running, err := live()
+	if err != nil {
+		return 0, nil, err
+	}
+	if !running {
+		return os.Getpid(), nil, nil
+	}
+	record, found, err := dobbyengine.ReadState(statePath)
+	if err != nil {
+		return 0, nil, err
+	}
+	if !found || record.PID == 0 {
+		return os.Getpid(), nil, nil
+	}
+	return record.PID, record.Sleeps, nil
+}
+
+// awakeReading is the clock every pass shares: the wall time since the Unix epoch less the machine sleeps the scheduling dobby recorded.
+// It stops while the machine sleeps and holds one origin across processes, so the idle watches the memory record restores keep measuring awake time.
+func awakeReading(now time.Time, sleeps []pauserecord.Interval) time.Duration {
+	return time.Duration(now.UnixNano()) - pauserecord.Excluded(sleeps, time.Unix(0, 0), now)
 }
 
 // syncWatchedMarker makes the marker at path match watched: absent when not watched, and holding content when watched.
@@ -780,7 +828,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 		if err != nil {
 			return false, err
 		}
-		return markBattenWatched(location, taskLocation, BattenDir(location, slug), battenrecipe.NameRunShed)
+		pid, _, err := dobbyReading(location, slug)
+		if err != nil {
+			return false, err
+		}
+		return markBattenWatched(location, taskLocation, BattenDir(location, slug), battenrecipe.NameRunShed, pid)
 	}
 
 	// readReedDirectory reads the task worktree's reed directory, for the seams that tell a marker's strand live.
@@ -905,7 +957,6 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				res, err := td.RemovePair(teardownRequest(slug))
 				return finishRemoval(res, err, slug)
 			},
-			Notices: rowNotices(location, slug),
 		},
 		Land: landDeps(location, slug, locateTask),
 		InnerRun: battenshed.InnerRunDeps{
@@ -932,7 +983,25 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return arbiterstop.HoldReading(taskLocation, status)
 			},
 			MarkWatched: markWatched,
-			ParentLock:  childParentLock(slug, locateTask, fabricengine.BoardDir(location.HubPath), lockIdleBound(location)),
+			// Sleeps reads the machine sleeps the parent worktree's dobby recorded.
+			Sleeps: func() ([]pauserecord.Interval, error) {
+				_, sleeps, err := dobbyReading(location, slug)
+				return sleeps, err
+			},
+			// Awake is the wall clock less those sleeps, so every pass measures awake time from the same origin.
+			// An unreadable record excludes none, as the Sleeps seam's own error does.
+			Awake: func() time.Duration {
+				_, sleeps, err := dobbyReading(location, slug)
+				if err != nil {
+					logger.Debug("battencli: the dobby's recorded sleeps are unreadable; the awake clock excludes none", "slug", slug, "error", err)
+				}
+				return awakeReading(time.Now(), sleeps)
+			},
+			// ReviveAPIError gives the pair's sessions stalled on an API error tender's revive line.
+			ReviveAPIError: func(ctx context.Context) error {
+				return tendercli.ReviveStalled(location, slug)
+			},
+			ParentLock: childParentLock(slug, locateTask, fabricengine.BoardDir(location.HubPath), lockIdleBound(location)),
 			// OwnerCheck judges, without moving a ref, the slug's run-scope reconcile from the prime and reads its owner verdict.
 			OwnerCheck: func(ctx context.Context) (battenshed.OwnerVerdict, error) {
 				teardown, err := pairteardown.New(location)
@@ -1342,11 +1411,7 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 	}
 
 	// Each setting is read when its row is reached, over the task worktree located then, so a task's run_settings in that worktree's local layer switch a row per task.
-	// --open-terminal answers Open-Window's own setting true for its own run, whatever the task's config says.
 	env.Setting = func(module, key string) (any, error) {
-		if c.openTerminalFlag && module == "batten" && key == "open_window" {
-			return true, nil
-		}
 		taskLocation, err := locateTask()
 		if err != nil {
 			return nil, err

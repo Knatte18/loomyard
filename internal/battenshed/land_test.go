@@ -1,15 +1,13 @@
 //go:build tier0
 
 // land_test.go covers NewLand over fake seams, a fake clock and a recording Notify:
-// the landing dispositions, every failing step, the dirty-prime and land-lock waits and the ready notice.
+// the landing dispositions, every failing step, the dirty-prime and land-lock waits and the records-stop notice.
 
 package battenshed
 
 import (
 	"context"
 	"errors"
-	"maps"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -18,12 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
-
-// readyAnswer is one answer of the fake ReadyTasks seam.
-type readyAnswer struct {
-	slugs []string
-	err   error
-}
 
 // landFixture holds the fake seams of one Land row and what they recorded.
 // The knobs are set before Call; an answer list repeats its last entry once exhausted.
@@ -40,7 +32,6 @@ type landFixture struct {
 	landingErr          error
 	deployResult        DeployResult
 	deployErr           error
-	ready               []readyAnswer
 	pruneErr            error
 	pauseAfterSleeps    int
 	pauseErr            error
@@ -49,22 +40,16 @@ type landFixture struct {
 	primeLockBusy       int
 	historyLen          int
 	onSleep             func()
-	// routes are the ready routes the fake ReadyRoutes answers, each given the fixture's recording Notify; nil leaves ReadyRoutes unset.
-	routes []ReadyRoute
-	// routeFails lists the route keys whose Notify reports the line unposted.
-	routeFails []string
 	// orchUnrecorded makes the orch read as having no strand recorded to receive a notice.
 	orchUnrecorded bool
 
 	calls            []string
 	notices          []string
-	routeNotices     map[string][]string
 	slept            []time.Duration
 	now              time.Time
 	primeHeld        bool
 	deployWithPrime  bool
 	dirtyReads       int
-	readyReads       int
 	deployedCommands []string
 }
 
@@ -75,7 +60,6 @@ func newLandFixture(t *testing.T) *landFixture {
 		parent:     "main",
 		prime:      "main",
 		landing:    LandingSettings{Deploy: "deploy.sh", DeployBranches: []string{"main"}},
-		ready:      []readyAnswer{{}},
 		now:        time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 }
@@ -115,16 +99,10 @@ func (f *landFixture) deps() LandDeps {
 			}
 			return f.deployResult, f.deployErr
 		},
-		ReadyTasks: func() ([]string, error) {
-			i := min(f.readyReads, len(f.ready)-1)
-			f.readyReads++
-			return f.ready[i].slugs, f.ready[i].err
-		},
 		PruneBoard: func() error {
 			f.calls = append(f.calls, "prune")
 			return f.pruneErr
 		},
-		ReadyRoutes: f.readyRoutes(),
 		LandLock: PrimeLock{
 			Path: "/lock/land",
 			Acquire: func() (func() error, bool, error) {
@@ -155,31 +133,6 @@ func (f *landFixture) deps() LandDeps {
 	}
 }
 
-// readyRoutes returns the fake ReadyRoutes seam over f.routes, nil when none are set.
-func (f *landFixture) readyRoutes() func([]string) ([]ReadyRoute, error) {
-	if f.routes == nil {
-		return nil
-	}
-	return func([]string) ([]ReadyRoute, error) {
-		routes := make([]ReadyRoute, len(f.routes))
-		for i, route := range f.routes {
-			key := route.Key
-			routes[i] = route
-			routes[i].Notify = func(_ context.Context, line string) (bool, error) {
-				if slices.Contains(f.routeFails, key) {
-					return false, nil
-				}
-				if f.routeNotices == nil {
-					f.routeNotices = map[string][]string{}
-				}
-				f.routeNotices[key] = append(f.routeNotices[key], line)
-				return true, nil
-			}
-		}
-		return routes, nil
-	}
-}
-
 func (f *landFixture) producer() shedengine.ShedProducer {
 	primeLock := PrimeLock{
 		Path: "/lock/prime",
@@ -203,7 +156,7 @@ func (f *landFixture) producer() shedengine.ShedProducer {
 
 // TestLand_Dispositions asserts which of the pull, the deploy and the prune the row runs for each landing.
 // A parent that is the prime's branch pulls, deploys once and prunes.
-// Every landing queues one landed notice.
+// No landing with a clean pull queues a notice.
 // Another parent skips the pull and the deploy without reading the prime's tree, a parent outside the deploy list pulls only, and an empty deploy command runs nothing.
 func TestLand_Dispositions(t *testing.T) {
 	t.Parallel()
@@ -233,15 +186,14 @@ func TestLand_Dispositions(t *testing.T) {
 			if !slices.Equal(f.calls, tt.wantCalls) {
 				t.Errorf("calls = %v; want %v", f.calls, tt.wantCalls)
 			}
-			if want := []string{"[batten notice] myslug: landed"}; !slices.Equal(f.notices, want) {
-				t.Errorf("notices = %q; want %q", f.notices, want)
+			if len(f.notices) != 0 {
+				t.Errorf("notices = %q; want none for a clean landing", f.notices)
 			}
 		})
 	}
 }
 
-// TestLand_FailingStepsAreStuckWithOneNotice asserts every failing step is Stuck naming the step and the reason, queues one notice naming the step, and queues no second one on a re-entry at the same history length.
-// It also asserts a ready read that failed after the prune sends the ready notice when the re-entry succeeds.
+// TestLand_FailingStepsAreStuckWithOneNotice asserts every failing step is Stuck naming the reason and posts no notice, on the first call and on a re-entry.
 func TestLand_FailingStepsAreStuckWithOneNotice(t *testing.T) {
 	t.Parallel()
 
@@ -249,34 +201,26 @@ func TestLand_FailingStepsAreStuckWithOneNotice(t *testing.T) {
 	tests := []struct {
 		name       string
 		configure  func(f *landFixture)
-		wantStep   string
 		wantReason string
 	}{
-		{name: "DeployNonZeroExit", configure: func(f *landFixture) { f.deployResult = DeployResult{ExitCode: 2} }, wantStep: "deploy", wantReason: "exit code 2; log: "},
-		{name: "DeployTimedOut", configure: func(f *landFixture) { f.deployResult = DeployResult{TimedOut: true} }, wantStep: "deploy", wantReason: "timed out after 30m0s; log: "},
-		{name: "DeployShellCannotStart", configure: func(f *landFixture) { f.deployErr = boom }, wantStep: "deploy", wantReason: "the shell could not start (boom); log: "},
-		{name: "PullRefusal", configure: func(f *landFixture) { f.pullErr = boom }, wantStep: "pull", wantReason: "pull failed: boom"},
-		{name: "PrimeLockWaitSpent", configure: func(f *landFixture) { f.primeLockBusy = -1 }, wantStep: "prime lock", wantReason: "/lock/prime"},
-		{name: "ReadyTasksErrorAtSnapshot", configure: func(f *landFixture) { f.ready = []readyAnswer{{err: boom}} }, wantStep: "ready snapshot", wantReason: "ready snapshot failed: boom"},
-		{name: "PruneFailure", configure: func(f *landFixture) { f.pruneErr = boom }, wantStep: "board prune", wantReason: "board prune failed: boom"},
-		{name: "ReadyTasksErrorAfterPrune", configure: func(f *landFixture) { f.ready = []readyAnswer{{slugs: []string{"a"}}, {err: boom}} }, wantStep: "ready read", wantReason: "ready read failed: boom"},
-		{name: "ParentBranchReadError", configure: func(f *landFixture) { f.parentErr = boom }, wantStep: "prime check", wantReason: "prime check failed: boom"},
-		{name: "ParentBranchEmpty", configure: func(f *landFixture) { f.parent = "" }, wantStep: "prime check", wantReason: "carries no parent branch"},
-		{name: "PrimeBranchReadError", configure: func(f *landFixture) { f.primeErr = boom }, wantStep: "prime check", wantReason: "prime check failed: boom"},
-		{name: "PrimeDirtyReadError", configure: func(f *landFixture) { f.dirtyErr = boom }, wantStep: "prime check", wantReason: "uncommitted paths: boom"},
-		{name: "LandingReadError", configure: func(f *landFixture) { f.landingErr = boom }, wantStep: "deploy", wantReason: "read the landing config: boom"},
+		{name: "DeployNonZeroExit", configure: func(f *landFixture) { f.deployResult = DeployResult{ExitCode: 2} }, wantReason: "exit code 2; log: "},
+		{name: "DeployTimedOut", configure: func(f *landFixture) { f.deployResult = DeployResult{TimedOut: true} }, wantReason: "timed out after 30m0s; log: "},
+		{name: "DeployShellCannotStart", configure: func(f *landFixture) { f.deployErr = boom }, wantReason: "the shell could not start (boom); log: "},
+		{name: "PullRefusal", configure: func(f *landFixture) { f.pullErr = boom }, wantReason: "pull failed: boom"},
+		{name: "PrimeLockWaitSpent", configure: func(f *landFixture) { f.primeLockBusy = -1 }, wantReason: "/lock/prime"},
+		{name: "PruneFailure", configure: func(f *landFixture) { f.pruneErr = boom }, wantReason: "board prune failed: boom"},
+		{name: "ParentBranchReadError", configure: func(f *landFixture) { f.parentErr = boom }, wantReason: "prime check failed: boom"},
+		{name: "ParentBranchEmpty", configure: func(f *landFixture) { f.parent = "" }, wantReason: "carries no parent branch"},
+		{name: "PrimeBranchReadError", configure: func(f *landFixture) { f.primeErr = boom }, wantReason: "prime check failed: boom"},
+		{name: "PrimeDirtyReadError", configure: func(f *landFixture) { f.dirtyErr = boom }, wantReason: "uncommitted paths: boom"},
+		{name: "LandingReadError", configure: func(f *landFixture) { f.landingErr = boom }, wantReason: "read the landing config: boom"},
 		{name: "PauseReadErrorInLandLockWait", configure: func(f *landFixture) {
 			f.landLockBusy, f.pauseErr = 100, boom
-		}, wantStep: "land lock", wantReason: "read the pause flag: boom"},
+		}, wantReason: "read the pause flag: boom"},
 		{name: "PauseReadErrorInDirtyPrimeWait", configure: func(f *landFixture) {
 			f.dirty, f.pauseErr = [][]string{{"a.go"}}, boom
-		}, wantStep: "prime check", wantReason: "read the pause flag: boom"},
-		{name: "LandLockAcquireError", configure: func(f *landFixture) { f.landLockErr = boom }, wantStep: "land lock", wantReason: "acquire \"/lock/land\": boom"},
-		{name: "SnapshotPathOccupiedByDirectory", configure: func(f *landFixture) {
-			if err := os.Mkdir(f.scratchDir+"/Land"+readySnapshotFileSuffix, 0o755); err != nil {
-				t.Fatal(err)
-			}
-		}, wantStep: "ready read", wantReason: "read the ready snapshot"},
+		}, wantReason: "read the pause flag: boom"},
+		{name: "LandLockAcquireError", configure: func(f *landFixture) { f.landLockErr = boom }, wantReason: "acquire \"/lock/land\": boom"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -293,33 +237,18 @@ func TestLand_FailingStepsAreStuckWithOneNotice(t *testing.T) {
 			if !strings.Contains(ptr.Reason, tt.wantReason) {
 				t.Errorf("reason = %q; want it to contain %q", ptr.Reason, tt.wantReason)
 			}
-			if len(f.notices) != 1 || !strings.Contains(f.notices[0], "Land failed at "+tt.wantStep+": ") {
-				t.Fatalf("notices = %v; want one naming the failed step %q", f.notices, tt.wantStep)
-			}
 
 			if outcome, _, err := producer.Call(context.Background()); err != nil || outcome != shedengine.Stuck {
 				t.Fatalf("re-entry Call() = %q, %v; want Stuck, nil", outcome, err)
 			}
-			if len(f.notices) != 1 {
-				t.Errorf("notices after a re-entry at the same history length = %v; want still one", f.notices)
-			}
-
-			if tt.name != "ReadyTasksErrorAfterPrune" {
-				return
-			}
-			f.ready = []readyAnswer{{slugs: []string{"a", "b"}}}
-			f.readyReads = 0
-			if outcome, _, err := producer.Call(context.Background()); err != nil || outcome != shedengine.Done {
-				t.Fatalf("recovered Call() = %q, %v; want Done, nil", outcome, err)
-			}
-			if len(f.notices) != 2 || !strings.HasSuffix(f.notices[1], "landed; newly ready: b") {
-				t.Errorf("notices after the recovered re-entry = %v; want the ready notice naming b", f.notices)
+			if len(f.notices) != 0 {
+				t.Errorf("notices = %v; want none from the row, since the hand-back tells the orch", f.notices)
 			}
 		})
 	}
 }
 
-// TestLand_DirtyPrimeWait asserts a prime that turns clean within the bound lands, one still dirty past the bound is Stuck naming the paths and notices, and a pause during the wait is Stuck with no notice and a reason naming the goto and run way forward.
+// TestLand_DirtyPrimeWait asserts a prime that turns clean within the bound lands, one still dirty past the bound is Stuck naming the paths, and a pause during the wait is Stuck with no notice and a reason naming the goto and run way forward.
 func TestLand_DirtyPrimeWait(t *testing.T) {
 	t.Parallel()
 
@@ -351,8 +280,8 @@ func TestLand_DirtyPrimeWait(t *testing.T) {
 		if want := int(primeDirtyWaitBound / primeDirtyPollInterval); len(f.slept) != want {
 			t.Errorf("sleeps = %d; want %d", len(f.slept), want)
 		}
-		if len(f.notices) != 1 {
-			t.Errorf("notices = %v; want one", f.notices)
+		if len(f.notices) != 0 {
+			t.Errorf("notices = %v; want none from the row", f.notices)
 		}
 		if slices.Contains(f.calls, "pull") {
 			t.Errorf("calls = %v; want no pull while the prime is dirty", f.calls)
@@ -454,47 +383,26 @@ func TestLand_LandLockWait(t *testing.T) {
 	})
 }
 
-// TestLand_ReadyNotice asserts the landing notice names exactly the tasks the landing made ready:
-// one notice for a landing that readies a dependant, a bare landed notice when nothing is readied, one on a restart after the prune with the snapshot present, none repeated on a re-entry after it was queued, and never a task already in the snapshot.
+// TestLand_RecordsStopNotice asserts a landing whose pull reports a records stop still deploys and queues the one records-stop line, once across a resumed row.
 // With no orch strand recorded nothing is queued and one Warn names the slug.
 // It is serial: it captures the process-global logger.
-func TestLand_ReadyNotice(t *testing.T) {
+func TestLand_RecordsStopNotice(t *testing.T) {
 	tests := []struct {
 		name           string
-		snapshot       string
-		ready          []readyAnswer
 		orchUnrecorded bool
-		recordsStop    string
 		wantNotice     string
 		wantHeldWarns  int
-		routes         []ReadyRoute
-		wantRoutes     map[string][]string
 	}{
-		{name: "BeamRouteIsPostedAsItsOwnLineOnce", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, routes: []ReadyRoute{{Key: "beam", Slugs: []string{"b"}}}, wantNotice: "[batten notice] myslug: landed", wantRoutes: map[string][]string{"beam": {"[batten notice] myslug: landed; newly ready: b"}}},
-		{name: "PrimeRouteRidesTheLandingLine", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, routes: []ReadyRoute{{Key: "", Slugs: []string{"b"}, Walked: true}}, wantNotice: "[batten notice] myslug: landed; newly ready: b"},
-		{name: "UnwalkedPrimeRoutePostsToThePrime", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b", "c"}}}, routes: []ReadyRoute{{Key: "", Slugs: []string{"b"}}, {Key: "beam", Slugs: []string{"c"}}}, wantNotice: "[batten notice] myslug: landed", wantRoutes: map[string][]string{"": {"[batten notice] myslug: landed; newly ready: b"}, "beam": {"[batten notice] myslug: landed; newly ready: c"}}},
-		{name: "ASlugInNoRouteIsNamedNowhere", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, routes: []ReadyRoute{{Key: "beam"}}, wantNotice: "[batten notice] myslug: landed"},
-		{name: "NamesARecordsStopAndStillDeploys", recordsStop: "records diverged", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a"}}}, wantNotice: "[batten notice] myslug: landed; the prime's records did not pull: records diverged"},
-		{name: "ReadiesADependant", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, wantNotice: "[batten notice] myslug: landed; newly ready: b"},
-		{name: "ReadiesNothing", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a"}}}, wantNotice: "[batten notice] myslug: landed"},
-		{name: "RestartAfterPruneWithSnapshot", snapshot: "a\n", ready: []readyAnswer{{slugs: []string{"a", "c"}}}, wantNotice: "[batten notice] myslug: landed; newly ready: c"},
-		{name: "TaskAlreadyInSnapshotIsNotNamed", ready: []readyAnswer{{slugs: []string{"a", "b"}}, {slugs: []string{"c", "b", "a"}}}, wantNotice: "[batten notice] myslug: landed; newly ready: c"},
-		{name: "NoOrchStrandWarnsAndQueuesNothing", ready: []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}, orchUnrecorded: true, wantHeldWarns: 1},
+		{name: "NamesTheRecordsStopAndStillDeploys", wantNotice: "[batten notice] myslug: landed; the prime's records did not pull: records diverged"},
+		{name: "NoOrchStrandWarnsAndQueuesNothing", orchUnrecorded: true, wantHeldWarns: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			buf := logcapture.CaptureVerbose(t)
 
 			f := newLandFixture(t)
-			f.ready = tt.ready
 			f.orchUnrecorded = tt.orchUnrecorded
-			f.recordsStop = tt.recordsStop
-			f.routes = tt.routes
-			if tt.snapshot != "" {
-				if err := os.WriteFile(f.scratchDir+"/Land"+readySnapshotFileSuffix, []byte(tt.snapshot), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
+			f.recordsStop = "records diverged"
 			producer := f.producer()
 
 			if outcome, _, err := producer.Call(context.Background()); err != nil || outcome != shedengine.Done {
@@ -507,10 +415,7 @@ func TestLand_ReadyNotice(t *testing.T) {
 			if !slices.Equal(f.notices, want) {
 				t.Fatalf("notices = %q; want %q", f.notices, want)
 			}
-			if !maps.EqualFunc(f.routeNotices, tt.wantRoutes, slices.Equal) {
-				t.Fatalf("route notices = %q; want %q", f.routeNotices, tt.wantRoutes)
-			}
-			if tt.recordsStop != "" && !slices.Contains(f.calls, "deploy") {
+			if !slices.Contains(f.calls, "deploy") {
 				t.Errorf("calls = %v; want the deploy to run after a records stop", f.calls)
 			}
 			const held = "row notice held back; no orch strand is recorded"
@@ -527,40 +432,6 @@ func TestLand_ReadyNotice(t *testing.T) {
 			if !slices.Equal(f.notices, want) {
 				t.Errorf("notices after a re-entry = %q; want %q, none repeated", f.notices, want)
 			}
-			if !maps.EqualFunc(f.routeNotices, tt.wantRoutes, slices.Equal) {
-				t.Errorf("route notices after a re-entry = %q; want %q, none repeated", f.routeNotices, tt.wantRoutes)
-			}
 		})
-	}
-}
-
-// TestLand_ReadyRouteResume asserts a route whose line could not be posted is posted by a resumed row, once, while the landing line already posted is not sent again.
-func TestLand_ReadyRouteResume(t *testing.T) {
-	t.Parallel()
-
-	f := newLandFixture(t)
-	f.ready = []readyAnswer{{slugs: []string{"a"}}, {slugs: []string{"a", "b"}}}
-	f.routes = []ReadyRoute{{Key: "beam", Slugs: []string{"b"}}}
-	f.routeFails = []string{"beam"}
-
-	if outcome, _, err := f.producer().Call(context.Background()); err != nil || outcome != shedengine.Done {
-		t.Fatalf("Call() = %q, %v; want Done, nil", outcome, err)
-	}
-	if len(f.routeNotices["beam"]) != 0 {
-		t.Fatalf("route notices = %q; want none while the route cannot post", f.routeNotices)
-	}
-
-	f.routeFails = nil
-	for range 2 {
-		if outcome, _, err := f.producer().Call(context.Background()); err != nil || outcome != shedengine.Done {
-			t.Fatalf("resumed Call() = %q, %v; want Done, nil", outcome, err)
-		}
-	}
-	wantRoutes := map[string][]string{"beam": {"[batten notice] myslug: landed; newly ready: b"}}
-	if !maps.EqualFunc(f.routeNotices, wantRoutes, slices.Equal) {
-		t.Errorf("route notices = %q; want %q, posted once", f.routeNotices, wantRoutes)
-	}
-	if want := []string{"[batten notice] myslug: landed"}; !slices.Equal(f.notices, want) {
-		t.Errorf("notices = %q; want %q, the landing line once", f.notices, want)
 	}
 }

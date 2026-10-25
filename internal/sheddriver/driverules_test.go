@@ -164,6 +164,15 @@ func TestParseDriveStop(t *testing.T) {
 			},
 			wantKey: StopKey{CurrentProducer: "Finalize", HistoryLength: 5, State: "blocked"},
 		},
+		{
+			name:     "yielded step carries the outcome",
+			envelope: `{"ok":true,"outcome":"yield","state":"running","loop":{"stop":"halted","current_producer":"Run-Shed","history_length":3,"state":"running"}}`,
+			want: Stop{
+				OK: true, Outcome: "yield", State: "running",
+				Stop: "halted", CurrentProducer: "Run-Shed", HistoryLength: 3, LoopState: "running",
+			},
+			wantKey: StopKey{CurrentProducer: "Run-Shed", HistoryLength: 3, State: "running"},
+		},
 		{name: "undecodable bytes are refused", envelope: `{"ok":`, wantErr: true},
 	}
 	for _, tt := range tests {

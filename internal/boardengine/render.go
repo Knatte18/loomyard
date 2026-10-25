@@ -502,9 +502,12 @@ func ageCell(t Task, now time.Time) string {
 	return age + cellBreak + revised
 }
 
-// entryCell is the bold title, with the brief as one bullet under it when there is one, then a code-span bullet naming the run profile when there is one and one per run setting.
+// entryCell is the bold title, led by a `draft` code span for a draft task, with the brief as one bullet under it when there is one, then a code-span bullet naming the run profile when there is one and one per run setting.
 func entryCell(t Task) string {
 	cell := "**" + cellText(t.Title) + "**"
+	if t.Status != nil && *t.Status == StatusDraft {
+		cell = codeSpan(StatusDraft) + " " + cell
+	}
 	if t.Brief != "" {
 		cell += cellBullet + cellText(t.Brief)
 	}

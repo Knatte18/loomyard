@@ -27,7 +27,7 @@ const unreachableOrigin = "http://127.0.0.1:1/board.git"
 // ownerFixture is a board seeded with a few entries and pushed to a bare origin, beside a second clone of that origin.
 // The board is the hub's _board worktree of a weft repository, the shape a rejected push's replay requires.
 // The seed holds alpha and beta, unowned; away, owned by box; and held, run-held and owned by box.
-// It also holds promotable, a task carrying every field that turning it into a project clears.
+// It also holds promotable, a draft task carrying every field that turning it into a project clears.
 // x-weft is a task whose slug ends in the records suffix, grouping a project, and beamer a project that is a beam.
 type ownerFixture struct {
 	bare     string
@@ -51,7 +51,7 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 		{"slug": "beta", "title": "Beta", "kind": "task", "labels": []string{"bug"}},
 		{"slug": "away", "title": "Away", "kind": "task", "labels": []string{"bug"}},
 		{"slug": "held", "title": "Held", "kind": "task", "labels": []string{"bug"}, "status": RunStatus("running", "Webster")},
-		{"slug": "promotable", "title": "Promotable", "kind": "task", "labels": []string{"bug"}, "depends_on": []string{"alpha"}, "recipe": "darn", "profile": "light",
+		{"slug": "promotable", "title": "Promotable", "kind": "task", "labels": []string{"bug"}, "depends_on": []string{"alpha"}, "recipe": "darn", "profile": "light", "status": StatusDraft,
 			"run_settings": map[string]any{"darn": map[string]any{"review_max_bounces": 1}}},
 		{"slug": "x-weft", "title": "Ends in the records suffix", "kind": "task", "labels": []string{"bug"}},
 		{"slug": "grouping", "title": "Grouping", "kind": "project", "labels": []string{"bug"}},
@@ -426,8 +426,8 @@ func TestSetOwners(t *testing.T) {
 			if task.Kind != KindProject || !task.Beam || task.OwnerMachine != "neve" {
 				t.Errorf("origin %s = kind %q, beam %v, owner %q; want a beam project owned by neve", slug, task.Kind, task.Beam, task.OwnerMachine)
 			}
-			if len(task.DependsOn) != 0 || task.Recipe != "" || task.Profile != "" || len(task.RunSettings) != 0 || task.Priority != "" {
-				t.Errorf("origin %s = %+v; want depends_on, recipe, profile, run_settings and priority cleared", slug, task)
+			if len(task.DependsOn) != 0 || task.Recipe != "" || task.Profile != "" || len(task.RunSettings) != 0 || task.Priority != "" || task.Status != nil {
+				t.Errorf("origin %s = %+v; want depends_on, recipe, profile, run_settings, priority and the draft status cleared", slug, task)
 			}
 			if !strings.HasPrefix(task.Handle, projectHandleLetter) || handles[task.Handle] {
 				t.Errorf("origin %s handle = %q; want a P handle no other entry holds", slug, task.Handle)

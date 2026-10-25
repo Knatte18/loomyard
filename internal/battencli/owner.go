@@ -80,12 +80,30 @@ func pullBolt(boardDir string) error {
 	}
 }
 
+// OwnedElsewhereError is the refusal of a run another machine owns, which a pass exits on with its own code.
+type OwnedElsewhereError struct {
+	// Slug is the task whose run is owned elsewhere.
+	Slug string
+	// Owner is the machine that owns it.
+	Owner string
+	// text replaces the standard refusal text when set.
+	text string
+}
+
+// Error returns the refusal text, naming the owner and the way forward.
+func (e *OwnedElsewhereError) Error() string {
+	if e.text != "" {
+		return e.text
+	}
+	return fmt.Sprintf(
+		"battencli: %q is owned by machine %q, so this machine does not start, resume or land it; way forward: run `lyx adopt %s` from this machine's prime, which takes it over and resumes its run, or records the owner when no run exists here, after which `lyx batten run %s` starts it",
+		e.Slug, e.Owner, e.Slug, e.Slug,
+	)
+}
+
 // ownedElsewhereRefusal is the one refusal for a task another machine owns.
 func ownedElsewhereRefusal(slug, owner string) error {
-	return fmt.Errorf(
-		"battencli: %q is owned by machine %q, so this machine does not start, resume or land it; way forward: run `lyx adopt %s` from this machine's prime, which takes it over and resumes its run, or records the owner when no run exists here, after which `lyx batten run %s` starts it",
-		slug, owner, slug, slug,
-	)
+	return &OwnedElsewhereError{Slug: slug, Owner: owner}
 }
 
 // thisMachine returns this machine's name, refusing when it cannot be read or is empty.
@@ -274,7 +292,11 @@ func (c *battenCLI) refuseResumeUnreachable() error {
 		return nil
 	}
 	if boardengine.OwnedElsewhere(owner, machine) {
-		return fmt.Errorf("battencli: the local board shows %q owned by %q; re-run `lyx batten run %s` once origin answers", c.slug, owner, c.slug)
+		return &OwnedElsewhereError{
+			Slug:  c.slug,
+			Owner: owner,
+			text:  fmt.Sprintf("battencli: the local board shows %q owned by %q; re-run `lyx batten run %s` once origin answers", c.slug, owner, c.slug),
+		}
 	}
 	return nil
 }

@@ -85,8 +85,8 @@ func TestSpecFor_FillsRunIdentityForSlug(t *testing.T) {
 			if want := shedrun.LoopEnvelope(loc, "task-a"); spec.Loop.EnvelopePath != want {
 				t.Errorf("Loop.EnvelopePath = %q, want %q", spec.Loop.EnvelopePath, want)
 			}
-			if spec.Loop.IdleTimeout != 0 || spec.Loop.Activity != nil || spec.Hooks.ConsumeAttempt != nil {
-				t.Errorf("Loop.IdleTimeout = %v, Loop.Activity nil = %v, Hooks.ConsumeAttempt nil = %v; want a disarmed watchdog and no consume hook", spec.Loop.IdleTimeout, spec.Loop.Activity == nil, spec.Hooks.ConsumeAttempt == nil)
+			if spec.Loop.IdleTimeout != 0 || spec.Loop.Activity != nil || spec.Hooks.ConsumeAttempt == nil {
+				t.Errorf("Loop.IdleTimeout = %v, Loop.Activity nil = %v, Hooks.ConsumeAttempt nil = %v; want a disarmed watchdog and a consume hook", spec.Loop.IdleTimeout, spec.Loop.Activity == nil, spec.Hooks.ConsumeAttempt == nil)
 			}
 			for row, want := range map[string]string{
 				battenrecipe.NameRunShed:          shedverbs.InterruptPolicyReinvoke,

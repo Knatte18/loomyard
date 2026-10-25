@@ -9,7 +9,6 @@ package loomengine
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/modelspec"
@@ -32,54 +31,6 @@ const LegacyLoomDriverStrandName = "loom-driver"
 // it matches the driver role through agentname.Matches, or is exactly the legacy literal.
 func IsDriverStrand(name string) bool {
 	return agentname.Matches(name, LoomDriverStrandName) || name == LegacyLoomDriverStrandName
-}
-
-// arbiterDefaultModelSpec is the model-spec an empty arbiter key takes.
-const arbiterDefaultModelSpec = "opus[high]"
-
-// arbiterDefaultTimeout is the timeout a zero arbiter_timeout_min takes.
-const arbiterDefaultTimeout = 30 * time.Minute
-
-// ArbiterSettings is the arbiter role's resolved model choice, timeout and spawn budget, threaded onto the arbiter session's launch spec.
-type ArbiterSettings struct {
-	shuttleengine.ModelChoice
-	// Timeout is how long one arbiter spawn may run.
-	Timeout time.Duration
-	// MaxSpawns is how many arbiter spawns a run may use; zero turns the arbiter off.
-	MaxSpawns int
-}
-
-// ResolveArbiter parses and resolves the arbiter role's model-spec from cfg through reg.
-// An empty cfg.Arbiter takes opus[high] and a zero cfg.ArbiterTimeoutMin takes 30 minutes;
-// cfg.ArbiterMaxSpawns passes through.
-// A spec that does not parse or resolve is an error naming the arbiter key.
-func ResolveArbiter(cfg Config, reg modelspec.Registry) (ArbiterSettings, error) {
-	specText := cfg.Arbiter
-	if specText == "" {
-		specText = arbiterDefaultModelSpec
-	}
-	spec, err := modelspec.Parse(specText)
-	if err != nil {
-		return ArbiterSettings{}, fmt.Errorf("loom: ResolveArbiter: arbiter role model-spec: %w", err)
-	}
-	resolved, err := reg.Resolve(spec)
-	if err != nil {
-		return ArbiterSettings{}, fmt.Errorf("loom: ResolveArbiter: arbiter role model-spec: %w", err)
-	}
-
-	return ArbiterSettings{
-		ModelChoice: shuttleengine.NewModelChoice(resolved),
-		Timeout:     ArbiterTimeout(cfg),
-		MaxSpawns:   cfg.ArbiterMaxSpawns,
-	}, nil
-}
-
-// ArbiterTimeout returns how long one arbiter spawn may run: arbiter_timeout_min in minutes, or 30 minutes when it is 0.
-func ArbiterTimeout(cfg Config) time.Duration {
-	if cfg.ArbiterTimeoutMin > 0 {
-		return time.Duration(cfg.ArbiterTimeoutMin) * time.Minute
-	}
-	return arbiterDefaultTimeout
 }
 
 // ResolveDriver parses and resolves the driver role's model-spec from cfg.

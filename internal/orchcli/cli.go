@@ -106,6 +106,9 @@ type orchCLI struct {
 	claimPrime func() (claimed, lostTo string, err error)
 	// pauseOwned pauses the pair of a run another machine owns, which `start` calls for each owned_elsewhere entry of its reconcile; nil skips the pause.
 	pauseOwned func(location *lyxcwd.Location, slug string) error
+	// startDobbies starts the dobby of the prime and of every beam this machine owns, which `start` calls first of all; nil starts none, as in a hand-built harness.
+	// Its failure never stops the start: it becomes a warning.
+	startDobbies func() error
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -224,6 +227,7 @@ Every verb runs from the hub's prime worktree or from a beam.`,
 				c.claimPrime = func() (string, string, error) { return claimPrimeFor(location) }
 			}
 			c.pauseOwned = installedOwnerPause()
+			c.startDobbies = func() error { return ensureDobbies(location) }
 			return nil
 		},
 	}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -57,17 +58,25 @@ const (
 // noticeDriverBusyCondition is the condition text of the notice for a resume held back by a busy driver pane.
 const noticeDriverBusyCondition = "driver pane busy: clear the draft in the driver's pane; batten resumes the child"
 
+// apiErrorReviveStreak is how many api-error episodes in a row, each revived with no write of the child's status file between, make the orch noticed at the last of them.
+const apiErrorReviveStreak = 3
+
 // noticeAPIErrorIdle is how long an agent run whose newest turn end is an API error must stay inactive before the api-error notice goes.
 const noticeAPIErrorIdle = 2 * time.Minute
 
-// observeClocks folds one check's wall and awake readings into the wait's sleep watch.
-func (w *childWait) observeClocks(wall time.Time, awake time.Duration) {
-	w.sleep.Observe(wall, awake)
-}
-
-// awakeSince returns how long ago at was as of now, less the sleeps the watch saw after at and the paused intervals.
-func (w *childWait) awakeSince(now, at time.Time, paused []pauserecord.Interval) time.Duration {
-	return pauserecord.AwakeSince(at, now, w.sleep.Sleeps(), paused)
+// recordedSleeps returns the machine sleeps deps.Sleeps reports, which the idle clocks leave out.
+// A nil Sleeps reports none, and a read error warns once per episode and reports none.
+func (p *innerRunProducer) recordedSleeps() []pauserecord.Interval {
+	if p.deps.Sleeps == nil {
+		return nil
+	}
+	sleeps, err := p.deps.Sleeps()
+	if err != nil {
+		p.seamFailed(failSleepsUnreadable, err)
+		return nil
+	}
+	p.seamRecovered(failSleepsUnreadable)
+	return sleeps
 }
 
 // noticeEpisodeFile returns the path of the marker holding one episode key per line.
@@ -211,7 +220,7 @@ type agentReading struct {
 	waitLive bool
 }
 
-// noticeDelivery is the in-process record of the attempts to send one notice.
+// noticeDelivery is the record of the attempts to send one notice.
 type noticeDelivery struct {
 	attempts int
 	lastTry  time.Time
@@ -221,15 +230,15 @@ type noticeDelivery struct {
 	dropped bool
 }
 
-// noticeEpisode is the producer's in-process record of the child's current state episode and of the delivery of its notices.
-// It outlives a Call, so a pause or an error return does not restart it, and ends when the child's state changes.
+// noticeEpisode is the producer's record of the child's current state episode and of the delivery of its notices.
+// It rides in the memory record, so it outlives a pass, and ends when the child's state changes.
 type noticeEpisode struct {
 	known bool
 	state shedengine.State
 	// since is the status file's modification time at the first sight of the child in this state.
 	// A rewrite of the file in the same state does not move it; only a batten start reads it from the file.
 	since time.Time
-	// arbiterOffAt is the first time this process saw the arbiter off while the stop was eligible in this episode; zero until then.
+	// arbiterOffAt is the first time a pass saw the arbiter off while the stop was eligible in this episode; zero until then.
 	arbiterOffAt time.Time
 	deliveries   map[string]*noticeDelivery
 }
@@ -244,6 +253,8 @@ func (p *innerRunProducer) observeState(state shedengine.State, at time.Time) {
 		at = p.deps.Now()
 	}
 	p.episode = noticeEpisode{known: true, state: state, since: at, deliveries: map[string]*noticeDelivery{}}
+	// A reason is logged at Info once per state of the child, so a new episode forgets the keys logged.
+	p.cur.reasonKeys = nil
 }
 
 // noticeStep sends the notice the child's current status calls for, once per episode, when it may go.
@@ -255,7 +266,7 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait) {
 	}
 	status := w.status
 	old := readNoticeKeys(noticeEpisodeFile(p.scratchDir, p.name))
-	finding, activity := p.noticeCondition(ctx, w)
+	finding, activity := p.noticeCondition(ctx, w, old)
 	kept := keepEpisode(old, status.State, p.episode.since.UnixNano(), activity)
 
 	condition := finding.condition
@@ -269,6 +280,11 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait) {
 			p.saveEpisode(kept, old)
 			return
 		}
+	}
+
+	if condition == noticeAPIError && p.deps.ReviveAPIError != nil && !p.apiErrorNoticeDue(ctx, key, w.baseline) {
+		p.saveEpisode(kept, old)
+		return
 	}
 
 	var report string
@@ -291,6 +307,30 @@ func (p *innerRunProducer) noticeStep(ctx context.Context, w *childWait) {
 		kept = append(kept, key)
 	}
 	p.saveEpisode(kept, old)
+}
+
+// apiErrorNoticeDue revives the stalled sessions through deps.ReviveAPIError when the api-error episode key has not been revived yet, and reports whether the orch is noticed now.
+// The first sight of an episode revives and notices nothing; the same episode standing at a later probe check after its revive is noticed.
+// So is the third revived episode in a row with no write of the child's status file between them, which has its revive sent too.
+// statusTime is the status file's modification time; a write since the last revive resets the count of episodes in a row.
+// A revive error warns once per episode and still counts as the revive.
+func (p *innerRunProducer) apiErrorNoticeDue(ctx context.Context, key string, statusTime time.Time) bool {
+	if p.apiReviveKey == key {
+		return true
+	}
+	if statusTime.After(p.apiReviveStatusTime) {
+		p.apiRevives = 0
+	}
+	if err := p.deps.ReviveAPIError(ctx); err != nil {
+		if ctx.Err() == nil {
+			p.seamFailed(failAPIErrorRevive, err)
+		}
+	} else {
+		p.seamRecovered(failAPIErrorRevive)
+	}
+	p.apiReviveKey, p.apiReviveStatusTime = key, statusTime
+	p.apiRevives++
+	return p.apiRevives >= apiErrorReviveStreak
 }
 
 // noticeDriverBusy posts one orch notice as creel mail per stall on a busy driver pane, and does nothing once one is posted or when no Notify was wired.
@@ -318,12 +358,18 @@ func (p *innerRunProducer) noticeDriverBusy(ctx context.Context, w *childWait, c
 // noticeCondition returns the condition the child is in, with the stamp of its episode key, and the newest agent activity the check could read.
 // A done child is in no condition, since it sends no notice.
 // A dead driver strand is checked before the agents, so an agent-based condition needs a live driver.
-func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait) (noticeFinding, activityStamp) {
+// A halted or awaiting child reports its state change first; once that notice is among sent, the keys of the episode, it reports the driver-dead condition when a revive of its driver strand failed in the episode.
+// A running child whose driver is dead reports the cap of respawns when it was respawned that many times with no progress.
+func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait, sent []string) (noticeFinding, activityStamp) {
 	if w.status.State == shedengine.StateDone {
 		return noticeFinding{}, activityStamp{}
 	}
 	if w.status.State != shedengine.StateRunning {
-		return noticeFinding{condition: noticeStateChanged, stamp: p.episode.since.UnixNano()}, activityStamp{}
+		stamp := p.episode.since.UnixNano()
+		if slices.Contains(sent, noticeKey(noticeStateChanged, w.status.State, stamp)) && p.reviveFailed() {
+			return noticeFinding{condition: noticeDriverDead, stamp: stamp, text: driverNotRevivedText}, activityStamp{}
+		}
+		return noticeFinding{condition: noticeStateChanged, stamp: stamp}, activityStamp{}
 	}
 	// A running child under a pause has no agents at work and no driver to wait for, so none of its conditions is an event.
 	if w.pause.Covered {
@@ -334,9 +380,29 @@ func (p *innerRunProducer) noticeCondition(ctx context.Context, w *childWait) (n
 		return noticeFinding{}, activityStamp{}
 	}
 	if !alive {
-		return noticeFinding{condition: noticeDriverDead, stamp: p.episode.since.UnixNano()}, activityStamp{}
+		finding := noticeFinding{condition: noticeDriverDead, stamp: p.episode.since.UnixNano()}
+		if p.respawns >= respawnCap {
+			finding.text = fmt.Sprintf("driver strand is dead; respawned %d times without progress; %s", respawnCap, loomStartRemedy)
+		}
+		return finding, activityStamp{}
 	}
 	return p.judgeAgents(ctx, w)
+}
+
+// loomStartRemedy is the step the operator takes to bring a driver back, which `lyx loom resume` does not: it never spawns an LLM driver.
+const loomStartRemedy = `run "lyx loom start" in the task worktree to bring a driver back`
+
+// driverNotRevivedText is the driver-dead condition text of a halted or awaiting child whose driver strand a revive failed to bring back.
+const driverNotRevivedText = "driver strand could not be revived; " + loomStartRemedy
+
+// reviveFailed reports whether the revive marker says the revive of the episode's driver strand failed.
+func (p *innerRunProducer) reviveFailed() bool {
+	raw, err := os.ReadFile(revivedFile(p.scratchDir, p.name))
+	if err != nil {
+		return false
+	}
+	fields := strings.Fields(string(raw))
+	return len(fields) == 2 && fields[1] == "failed"
 }
 
 // agentActivity reads deps.Activity at most once per probe and reuses the answer on the checks between.
@@ -358,13 +424,16 @@ func (p *innerRunProducer) agentActivity(ctx context.Context, w *childWait) (rea
 // judgeAgents returns the api-error or quiet finding of a running child with a live driver, and the newest agent activity.
 // With several live runs, api-error needs any one and quiet needs every run idle.
 // With no live run found, quiet falls back to the later of the child's newest history entry and the state episode's since.
-// Both idle clocks measure awake unpaused time: every sleep the watch saw and every paused interval after an activity is subtracted from the time since it, so a sleep or a pause can delay a notice and never raise one earlier.
+// Both idle clocks measure awake unpaused time: every recorded sleep and every paused interval after an activity is subtracted from the time since it, so a sleep or a pause can delay a notice and never raise one earlier.
 func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (noticeFinding, activityStamp) {
 	reading, ok := p.agentActivity(ctx, w)
 	now := p.deps.Now()
-	w.observeClocks(now, p.deps.Awake())
 	if !ok {
 		return noticeFinding{}, activityStamp{}
+	}
+	sleeps := p.recordedSleeps()
+	awakeSince := func(at time.Time) time.Duration {
+		return pauserecord.AwakeSince(at, now, sleeps, w.pause.Intervals)
 	}
 
 	if len(reading.runs) == 0 {
@@ -375,7 +444,7 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 			}
 		}
 		stamp := activityStamp{nanos: newest.UnixNano(), known: true}
-		if idle := w.awakeSince(now, newest, w.pause.Intervals); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
+		if idle := awakeSince(newest); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
 			text := fmt.Sprintf("no agent activity readable for %s", idle.Round(time.Second))
 			return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
 		}
@@ -390,13 +459,13 @@ func (p *innerRunProducer) judgeAgents(ctx context.Context, w *childWait) (notic
 	}
 	stamp := activityStamp{nanos: newest.UnixNano(), known: true}
 	for _, run := range reading.runs {
-		if run.APIError && w.awakeSince(now, run.LastActivity, w.pause.Intervals) >= noticeAPIErrorIdle {
+		if run.APIError && awakeSince(run.LastActivity) >= noticeAPIErrorIdle {
 			text := fmt.Sprintf("agent %s hit an API error: %s", run.Producer, oneLine(run.APIErrorText, noticeErrorMax))
 			p.logSessionStatesAtNotice(reading.runs, noticeAPIError)
 			return noticeFinding{condition: noticeAPIError, stamp: stamp.nanos, text: text}, stamp
 		}
 	}
-	if idle := w.awakeSince(now, newest, w.pause.Intervals); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
+	if idle := awakeSince(newest); p.noticeQuiet > 0 && !reading.waitLive && idle >= p.noticeQuiet {
 		text := fmt.Sprintf("agents idle for %s", idle.Round(time.Second))
 		p.logSessionStatesAtNotice(reading.runs, noticeQuiet)
 		return noticeFinding{condition: noticeQuiet, stamp: stamp.nanos, text: text}, stamp
@@ -547,7 +616,7 @@ func (p *innerRunProducer) deliver(ctx context.Context, key, condition, line str
 // A state change reads as what the child's state says happened; every other condition leads with that state, then `; `, then its own text.
 func conditionText(finding noticeFinding, status shedengine.Status) string {
 	text := finding.text
-	if finding.condition == noticeDriverDead {
+	if finding.condition == noticeDriverDead && text == "" {
 		text = "driver strand is dead"
 	}
 	if text == "" {

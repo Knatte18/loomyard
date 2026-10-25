@@ -1,6 +1,6 @@
 //go:build tier0
 
-// create_test.go drives the create sequence over fake deps: each refusal with its text, a fresh create running its four steps in order, and a re-run finishing only the steps whose result is not yet there.
+// create_test.go drives the create sequence over fake deps: each refusal with its text, a fresh create running its steps in order with the dobby start last, and a re-run finishing only the steps whose result is not yet there.
 
 package beamcli
 
@@ -28,6 +28,7 @@ type createWorld struct {
 	onOrigin map[string]bool
 	lost     map[string]string
 	addOpts  fabricengine.AddOptions
+	dobbyErr error
 	calls    []string
 }
 
@@ -95,7 +96,11 @@ func (w *createWorld) deps() createDeps {
 			return "/hub/repo.code-workspace", nil
 		},
 		WorktreePath: func(slug string) string { return "/hub/" + slug },
-		HubPath:      "/hub",
+		StartDobby: func(string) (bool, error) {
+			w.calls = append(w.calls, "dobby")
+			return w.dobbyErr == nil, w.dobbyErr
+		},
+		HubPath: "/hub",
 	}
 }
 
@@ -119,7 +124,7 @@ func TestCreate(t *testing.T) {
 		{
 			name:      "FreshCreateRunsTheFourStepsInOrder",
 			slug:      "group",
-			wantCalls: []string{"owner", "add", "push", "workspace"},
+			wantCalls: []string{"owner", "add", "push", "workspace", "dobby"},
 			wantAdd:   fabricengine.AddOptions{Beam: true},
 		},
 		{
@@ -129,7 +134,7 @@ func TestCreate(t *testing.T) {
 				w.beams["group"] = "outer"
 				w.pairs["outer"] = true
 			},
-			wantCalls: []string{"owner", "add", "push", "workspace"},
+			wantCalls: []string{"owner", "add", "push", "workspace", "dobby"},
 			wantAdd:   fabricengine.AddOptions{Parent: "outer", Beam: true},
 		},
 		{
@@ -138,7 +143,7 @@ func TestCreate(t *testing.T) {
 			setup: func(w *createWorld) {
 				w.owners.Entries["group"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here}
 			},
-			wantCalls: []string{"add", "push", "workspace"},
+			wantCalls: []string{"add", "push", "workspace", "dobby"},
 			wantAdd:   fabricengine.AddOptions{Beam: true},
 		},
 		{
@@ -148,7 +153,7 @@ func TestCreate(t *testing.T) {
 				w.owners.Entries["group"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here}
 				w.pairs["group"], w.marked["group"] = true, true
 			},
-			wantCalls: []string{"push", "workspace"},
+			wantCalls: []string{"push", "workspace", "dobby"},
 		},
 		{
 			name: "BeamProjectWithNoOwnerGetsOneAndItsPair",
@@ -156,7 +161,7 @@ func TestCreate(t *testing.T) {
 			setup: func(w *createWorld) {
 				w.owners.Entries["group"] = boardengine.OwnerEntry{IsProject: true, Beam: true}
 			},
-			wantCalls: []string{"owner", "add", "push", "workspace"},
+			wantCalls: []string{"owner", "add", "push", "workspace", "dobby"},
 			wantAdd:   fabricengine.AddOptions{Beam: true},
 		},
 		{
@@ -165,7 +170,16 @@ func TestCreate(t *testing.T) {
 			setup: func(w *createWorld) {
 				w.pairs["group"] = true
 			},
-			wantCalls: []string{"owner", "mark", "push", "workspace"},
+			wantCalls: []string{"owner", "mark", "push", "workspace", "dobby"},
+		},
+		{
+			name: "FailedDobbyStartNamesBeamStartAfterEveryOtherStep",
+			slug: "group",
+			setup: func(w *createWorld) {
+				w.dobbyErr = errors.New("spawn failed")
+			},
+			wantErr:   []string{"spawn failed", "lyx beam start"},
+			wantCalls: []string{"owner", "add", "push", "workspace", "dobby"},
 		},
 		{
 			name: "ParentBeamAbsentOffOriginNamesItsCreate",

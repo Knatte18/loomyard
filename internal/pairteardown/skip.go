@@ -78,7 +78,7 @@ func (t *Teardown) EndBeforeSessionDown(ctx context.Context, slug string) ([]run
 	if err := t.awaitOrPass(ctx, slug, covered, hubEntry, "`lyx reed down`"); err != nil {
 		return nil, err
 	}
-	ended, err := t.endOwned(slug)
+	ended, err := t.endOwned(slug, runproc.RoleDobby)
 	var survivors *runproc.SurvivorsError
 	if errors.As(err, &survivors) {
 		return ended, fmt.Errorf("processes of pair %q survived the end: %s; run `lyx reed down` again once they are gone: %w", slug, survivorNames(survivors.Survivors), err)

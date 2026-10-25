@@ -1,4 +1,4 @@
-// adopt.go is the takeover sequence of "lyx adopt": it validates the request, reconciles the hub against origin, then per named entry drops or keeps local commits, adds the missing pair, records this machine as owner, lifts the owner pause and resumes the run.
+// adopt.go is the takeover sequence of "lyx adopt": it validates the request, reconciles the hub against origin, refuses an adopt that would leave no dobby here to drive what it takes over, then per named entry drops or keeps local commits, adds the missing pair, records this machine as owner, lifts the owner pause, resumes the run and starts the dobbies.
 
 package adoptcli
 
@@ -61,7 +61,7 @@ type slugOutcome struct {
 	Error         string       `json:"error,omitempty"`
 }
 
-// outcome is the verb's envelope: the reconcile's report, the mutation record of every step, whether that record is non-empty, the prime's owner write and each entry's slugOutcome.
+// outcome is the verb's envelope: the reconcile's report, the mutation record of every step, whether that record is non-empty, the prime's owner write, each entry's slugOutcome and the warning of a dobby start that failed.
 type outcome struct {
 	Reconcile     fabricengine.OriginReport
 	Mutations     []fabricengine.Mutation
@@ -69,30 +69,33 @@ type outcome struct {
 	PrimeRecorded bool
 	PrimeLost     string
 	Slugs         []slugOutcome
+	DobbyWarning  string
 }
 
 // adoptDeps holds the seam of every step, which hubDeps fills over the hub and the tests fake.
 // LocalPair reports whether this machine holds the slug's pair worktree.
 // ParentOf names the slug of the pair a slug was forked from, or "" for the prime.
-// ResumeRun returns the envelope "lyx batten run <slug> --window" prints, and an envelope whose "ok" is false is a refusal.
+// ResumeRun starts the run's first pass detached, driven on by its parent's dobby, and returns the envelope of that start, where an envelope whose "ok" is false is a refusal.
+// StartDobbies starts the dobby of the prime and of every beam this machine owns that is not live, and runs last; nil starts none.
 // HubPath roots the mutation record.
 type adoptDeps struct {
-	Machine     func() (string, error)
-	ReadOwners  func() (boardengine.Owners, error)
-	ParentOf    func(slug string) (string, error)
-	Reconcile   func() (fabricengine.OriginReport, error)
-	LocalPair   func(slug string) bool
-	LivePair    func(slug string) (bool, error)
-	AddPair     func(slug string) (fabricengine.AddResult, error)
-	DropLocal   func(rec *fabricengine.Mutations, slug string) (fabricengine.DropLocalResult, error)
-	SetOwners   func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error)
-	PauseRecord func() (pauserecord.Record, error)
-	Lift        func(ref tenderengine.EntryRef) error
-	RunRecord   func(slug string) (shedengine.Status, bool, error)
-	ResumeRun   func(slug string) (map[string]any, error)
-	ChildStatus func(slug string) (shedengine.Status, bool, error)
-	ResumeChild func(slug string) error
-	HubPath     string
+	Machine      func() (string, error)
+	ReadOwners   func() (boardengine.Owners, error)
+	ParentOf     func(slug string) (string, error)
+	Reconcile    func() (fabricengine.OriginReport, error)
+	LocalPair    func(slug string) bool
+	LivePair     func(slug string) (bool, error)
+	AddPair      func(slug string) (fabricengine.AddResult, error)
+	DropLocal    func(rec *fabricengine.Mutations, slug string) (fabricengine.DropLocalResult, error)
+	SetOwners    func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error)
+	PauseRecord  func() (pauserecord.Record, error)
+	Lift         func(ref tenderengine.EntryRef) error
+	RunRecord    func(slug string) (shedengine.Status, bool, error)
+	ResumeRun    func(slug string) (map[string]any, error)
+	ChildStatus  func(slug string) (shedengine.Status, bool, error)
+	ResumeChild  func(slug string) error
+	StartDobbies func() error
+	HubPath      string
 }
 
 // adopt takes the requested entries over from another machine, and returns what each step did.
@@ -147,6 +150,20 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 		outcomes[slug] = &slugOutcome{Slug: slug}
 	}
 
+	var going []string
+	for _, slug := range slugs {
+		stops, err := wouldStop(deps, req, report, slug)
+		if err != nil {
+			return finish(), fmt.Errorf("lyx adopt: read whether the pair of %s is live, so nothing ran: %w; %s", slug, err, reentry)
+		}
+		if !stops {
+			going = append(going, slug)
+		}
+	}
+	if err := adoptRefusal(deps, req, report, here, owners, going, primeNamed); err != nil {
+		return finish(), err
+	}
+
 	var adoptable []string
 	for _, slug := range slugs {
 		if takeOverSlug(deps, req, rec, report, owners, outcomes[slug]) {
@@ -191,6 +208,12 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 			resumeSlug(deps, here, after, outcomes[slug])
 		}
 		resumeHaltedChildren(deps, here, after, adopted, result.PrimeRecorded, outcomes)
+	}
+
+	if deps.StartDobbies != nil {
+		if err := deps.StartDobbies(); err != nil {
+			result.DobbyWarning = fmt.Sprintf("the dobbies were not all started (%v); way forward: fix the cause each worktree names, then run `lyx beam start`", err)
+		}
 	}
 
 	result.Slugs = collect(slugs, outcomes)

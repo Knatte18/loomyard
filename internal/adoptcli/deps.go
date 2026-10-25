@@ -1,4 +1,4 @@
-// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift, the run resume and the child resume.
+// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift, the run resume, the child resume and the dobby start.
 
 package adoptcli
 
@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -89,7 +90,7 @@ func hubDepsAs(prime *lyxcwd.Location, machine func() (string, error)) (adoptDep
 			return readStatus(shedrun.StatusFile(prime, slug))
 		},
 		ResumeRun: func(slug string) (map[string]any, error) {
-			return battencli.ResumeInWindow(prime, slug)
+			return battencli.StartFirstPass(prime, slug)
 		},
 		ChildStatus: func(slug string) (shedengine.Status, bool, error) {
 			pairPath := fabricengine.WorktreePath(prime, slug)
@@ -104,6 +105,10 @@ func hubDepsAs(prime *lyxcwd.Location, machine func() (string, error)) (adoptDep
 		},
 		ResumeChild: func(slug string) error {
 			return resumeChild(fabricengine.WorktreePath(prime, slug))
+		},
+		StartDobbies: func() error {
+			_, err := dobbyengine.EnsureLive(hubgeom.DobbyStart(prime))
+			return err
 		},
 		HubPath: prime.HubPath,
 	}, nil

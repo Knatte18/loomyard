@@ -92,7 +92,8 @@ func worktreeTeardownEntry(row RowIdentity, cfg Config, env Env) (shedengine.She
 // It reads driver_exit_grace_s the same way, defaulting to defaultInnerRunDriverExitGraceS, and notice_quiet_min likewise, defaulting to defaultInnerRunNoticeQuietMin and set on the deps as InnerRunDeps.NoticeQuiet.
 // It reads notice_probe_s the same way, defaulting to defaultInnerRunNoticeProbeS and set on the deps as InnerRunDeps.NoticeProbe.
 // poll_attempts is retired: the wait lives in the producer's own call, not on a Config key this entry reads, so poll_attempts is rejected as an unrecognised key rather than silently read.
-// It validates Env.Slug, Env.ScratchDir, and Env.InnerRun.Spawn/ResolveStatus/ReadStatus/ReadDecision/DriverAlive -- and not Env.InnerRun.Sleep or Env.InnerRun.Now, whose nil values are legitimate and select the production sleep and clock.
+// It validates Env.Slug, Env.ScratchDir, and Env.InnerRun.Spawn/ResolveStatus/ReadStatus/ReadDecision/DriverAlive -- and not Env.InnerRun.Now, whose nil value is legitimate and selects the production clock.
+// poll_interval_s stays a validated key whose one effect is NewInnerRun's sub-second floor Warn.
 // It returns battenshed.NewInnerRun(name, env.Slug, env.InnerRun, time.Duration(pollIntervalS)*time.Second, env.ScratchDir, time.Duration(driverExitGraceS)*time.Second).
 func innerRunEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	pollIntervalS, err := configInt(cfg, "poll_interval_s", false)
@@ -201,7 +202,7 @@ func seedChildEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 }
 
 // landEntry is the Constructor for the "Land" registry row: it rejects any Config key.
-// It validates Env.Slug, Env.ScratchDir, Env.PrimeLock.Acquire, Env.PrimeLock.Path, Env.Land.LandLock.Acquire, Env.Land.LandLock.Path and the Env.Land seams ParentBranch, PrimeBranch, PrimeDirty, Pull, Landing, RunDeploy, ReadyTasks, PruneBoard and PauseRequested.
+// It validates Env.Slug, Env.ScratchDir, Env.PrimeLock.Acquire, Env.PrimeLock.Path, Env.Land.LandLock.Acquire, Env.Land.LandLock.Path and the Env.Land seams ParentBranch, PrimeBranch, PrimeDirty, Pull, Landing, RunDeploy, PruneBoard and PauseRequested.
 // It returns battenshed.NewLand(name, env.Slug, env.Land, env.PrimeLock, env.ScratchDir).
 // It does not validate Env.Land.Sleep, Env.Land.Now or Env.Land.Notices, whose nil values are legitimate defaults.
 func landEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
@@ -236,7 +237,6 @@ func landEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, e
 		{"Land.Pull", env.Land.Pull},
 		{"Land.Landing", env.Land.Landing},
 		{"Land.RunDeploy", env.Land.RunDeploy},
-		{"Land.ReadyTasks", env.Land.ReadyTasks},
 		{"Land.PruneBoard", env.Land.PruneBoard},
 		{"Land.PauseRequested", env.Land.PauseRequested},
 	} {

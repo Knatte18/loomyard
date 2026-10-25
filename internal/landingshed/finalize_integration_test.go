@@ -348,7 +348,7 @@ func requireOneConfigNotice(t *testing.T, notices []string, taskBranch string) {
 		t.Fatal("no notice queued; want one naming the changed config file")
 	}
 	last := notices[len(notices)-1]
-	for _, want := range []string{taskBranch, "loom.yaml"} {
+	for _, want := range []string{taskBranch, "loom.yaml", "loom.task_setting: base absent, tip " + taskBranch} {
 		if !strings.Contains(last, want) {
 			t.Errorf("notice %q does not carry %q", last, want)
 		}

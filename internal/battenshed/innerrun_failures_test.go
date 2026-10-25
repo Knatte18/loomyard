@@ -1,7 +1,7 @@
 //go:build tier0
 
-// innerrun_failures_test.go covers how the inner-run wait logs a polled seam that keeps failing, and the attempts it repeats:
-// one Warn per episode with Debug lines while it lasts and one Info at recovery, and Info only for the first attempt of a retried goto, resume or spawn.
+// innerrun_failures_test.go covers how the inner-run passes log a seam that keeps failing, and the attempts they repeat:
+// one Warn per episode across passes with Debug lines while it lasts and one Info at recovery, and Info only for the first attempt of a retried goto, resume or spawn.
 // The tests capture the process-global logger, so they do not run in parallel.
 
 package battenshed
@@ -252,6 +252,9 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 			_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{{status: tt.status, found: true}}, clock)
 			clock.pauseAtSleep = 8
 			deps.NoticeProbe = 0
+			// The idle watch keeps its readings across passes, so the awake clock is the one the passes share.
+			started := clock.Now()
+			deps.Awake = func() time.Duration { return clock.Now().Sub(started) }
 			deps.Notify = func(context.Context, string) (bool, error) { return true, nil }
 			deps.PairDir = func() (string, error) { return "/pair", nil }
 			if tt.covered {
@@ -261,7 +264,10 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 			}
 			tt.wire(&deps, failFirstCalls(3))
 
-			shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, time.Second, t.TempDir(), testGrace), shedengine.Stuck)
+			scratchDir := t.TempDir()
+			shedfake.RequireOutcome(t, clock.passes(func() shedengine.ShedProducer {
+				return NewInnerRun("innerrun", "myslug", deps, time.Second, scratchDir, testGrace)
+			}, time.Second), shedengine.Stuck)
 
 			assertRepeatedFailureEpisode(t, buf.String(), tt.message)
 		})
@@ -274,7 +280,7 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 		h.dirty = []string{"src/a.go"}
 		h.probe = time.Second
 
-		h.call(h.producer(), 8)
+		h.call(8)
 
 		const skipped = "not re-stepping the halted child on the new build"
 		if info, debug := countLogLines(buf.String(), "INFO", skipped), countLogLines(buf.String(), "DEBUG", skipped); info != 1 || debug != 3 {
@@ -315,7 +321,10 @@ func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
 			return nil
 		}
 
-		shedfake.RequireOutcome(t, NewInnerRun("innerrun", "myslug", deps, 10*time.Second, t.TempDir(), testGrace), shedengine.Stuck)
+		scratchDir := t.TempDir()
+		shedfake.RequireOutcome(t, clock.passes(func() shedengine.ShedProducer {
+			return NewInnerRun("innerrun", "myslug", deps, 10*time.Second, scratchDir, testGrace)
+		}, 10*time.Second), shedengine.Stuck)
 
 		if attempts != 3 {
 			t.Fatalf("Spawn calls = %d; want 3 (two refusals, then landed)", attempts)

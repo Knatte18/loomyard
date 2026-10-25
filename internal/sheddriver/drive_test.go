@@ -70,6 +70,9 @@ func TestGoDriver_Settle(t *testing.T) {
 	done := func(t *testing.T) []byte {
 		return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "done"}, map[string]any{"state": "done", "current_producer": "Build", "history_length": 3})
 	}
+	yielded := func(t *testing.T) []byte {
+		return driveEnvelopeJSON(t, map[string]any{"ok": true, "outcome": "yield", "state": "running"}, map[string]any{"stop": "halted", "state": "running", "current_producer": "Build", "history_length": 2})
+	}
 	doneFrictionFailed := func(t *testing.T) []byte {
 		return driveEnvelopeJSON(t, map[string]any{"ok": true, "state": "done", "friction": "failed"}, map[string]any{"state": "done", "current_producer": "Build", "history_length": 3})
 	}
@@ -208,6 +211,10 @@ func TestGoDriver_Settle(t *testing.T) {
 		wantBuild string
 	}{
 		{name: "done commits and exits with no park", steps: []func(*testing.T) []byte{done}, wantCalls: []string{"step", "commit-records"}, wantExit: ExitDone},
+		{
+			name: "a yielded step ends the pass with nothing decided: no settle record, report, park or hand-back", steps: []func(*testing.T) []byte{yielded}, escalation: true, buildChanged: true,
+			wantCalls: []string{"step"}, wantExit: ExitYield,
+		},
 		{
 			name: "done with friction failed writes its report, notifies and parks nothing", steps: []func(*testing.T) []byte{doneFrictionFailed},
 			orchRecorded: true, wantCalls: []string{"step", "commit-records"}, wantReports: 1, wantNotifies: 1, wantExit: ExitDone,
