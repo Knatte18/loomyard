@@ -358,8 +358,8 @@ stop, an unreachable origin or a reconcile error is reported for the orch to act
 on. The envelope gains "reconcile" (the report), "failed_pushes" (the outstanding
 failed pushes), "mutations" and "partial", and a fresh launch's prompt gains a line
 summarising the report and the failed pushes. start then ensures the runs strand,
-the overview of the batten runs in flight, in the session's overview window; a
-failure there only warns. start is
+the window "beam: <slug>" ("beam: prime" in the prime); a failure there only
+warns. start is
 idempotent. With a live orchestrator strand and a live watcher it changes
 nothing and reports them. With a live strand and no watcher it spawns the watcher.
 With a dead or absent strand it removes the corpse, launches a fresh session and

@@ -1,4 +1,4 @@
-// runs.go ensures the prime's `runs` strand: the session's overview window, running `lyx batten overview`, which `start` brings up before the orchestrator strand.
+// runs.go ensures the `runs` strand of the prime or a beam: the session's overview window, named `beam: <slug>`, running `lyx batten overview`, which `start` brings up before the orchestrator strand.
 
 package orchcli
 
@@ -13,18 +13,32 @@ import (
 	"github.com/Knatte18/loomyard/internal/statuspane"
 )
 
-// runsStrandName is the role the runs strand is added and addressed by in the prime's reed session.
+// runsStrandName is the role the runs strand is added and addressed by in the reed session of the prime or a beam.
 const runsStrandName = "runs"
 
 // runsSidecarFile is the filename, under the orch directory, of the sidecar recording the runs strand's guid and the lyx build that launched it.
 const runsSidecarFile = "runs-strand.json"
 
-// runsStrandAddSpec builds the runs strand's reedengine.AddSpec for the given pane command: the session's overview window, with no size, no segment and no color.
-func runsStrandAddSpec(cmd string) reedengine.AddSpec {
+// runsWindowPrefix opens the name of the runs strand's window, which the beam's slug or runsWindowPrimeLabel completes.
+const runsWindowPrefix = "beam: "
+
+// runsWindowPrimeLabel completes the runs strand's window name in the prime.
+const runsWindowPrimeLabel = "prime"
+
+// runsWindowTitleOf returns the name of the runs strand's window in the worktree named worktree: `beam: <worktree>` when it is a beam, `beam: prime` otherwise.
+func runsWindowTitleOf(worktree string, beam bool) string {
+	if beam {
+		return runsWindowPrefix + worktree
+	}
+	return runsWindowPrefix + runsWindowPrimeLabel
+}
+
+// runsStrandAddSpec builds the runs strand's reedengine.AddSpec for the given pane command and window title: the session's overview window, with no size, no segment and no color.
+func runsStrandAddSpec(cmd, title string) reedengine.AddSpec {
 	return reedengine.AddSpec{
 		NameOverride: runsStrandName,
 		Cmd:          cmd,
-		Display:      render.Display{Anchor: render.AnchorOverview},
+		Display:      render.Display{Anchor: render.AnchorOverview, Title: title},
 	}
 }
 
@@ -49,7 +63,7 @@ func (c *orchCLI) ensureRunsStrand() {
 	}
 
 	sidecarPath := filepath.Join(c.paths.Dir, runsSidecarFile)
-	spec := runsStrandAddSpec(runsStrandCmd(shell.ForGOOS(), exe))
+	spec := runsStrandAddSpec(runsStrandCmd(shell.ForGOOS(), exe), c.runsWindowTitle)
 
 	var (
 		strand reedengine.Strand

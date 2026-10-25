@@ -1,4 +1,4 @@
-// overvieworch.go reads the orch session's state and thresholds for the batten overview pane and renders the orch line drawn above the runs in flight.
+// overvieworch.go reads the orch sessions' state and thresholds for a beam's window and renders the orch lines drawn below its dobby.
 
 package battencli
 
@@ -112,14 +112,8 @@ func loadOverviewThresholds(location *lyxcwd.Location) overviewThresholds {
 	return overviewThresholds{Soft: cfg.SoftThreshold(), Hard: cfg.Threshold(), Known: true}
 }
 
-// overviewOrchLine renders the prime's orch line for orch against thresholds; false when there is no orch state file to show.
-// The line reads `orch  <tokens> / soft <soft> / hard <hard>  <phase>  cycles <n>`, with `  watcher down` appended once the watcher has exited.
-func overviewOrchLine(orch orchStatePoll, thresholds overviewThresholds) (string, bool) {
-	return overviewLabeledOrchLine("", orch, thresholds)
-}
-
-// overviewLabeledOrchLine renders the orch line of the orch that label names, the beam's slug, and the prime's orch line when label is empty.
-// A beam's line reads `orch <label>  ...` where the prime's reads `orch  ...`.
+// overviewLabeledOrchLine renders the orch line for orch against thresholds of the orch that label names, the beam's slug, and the prime's orch line when label is empty; false when there is no orch state file to show.
+// The prime's line reads `orch  <tokens> / soft <soft> / hard <hard>  <phase>  cycles <n>`, with `  watcher down` appended once the watcher has exited, and a beam's reads `orch <label>  ...`.
 func overviewLabeledOrchLine(label string, orch orchStatePoll, thresholds overviewThresholds) (string, bool) {
 	prefix := overviewOrchModule
 	if label != "" {

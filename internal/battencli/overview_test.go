@@ -1,6 +1,6 @@
 //go:build tier0
 
-// overview_test.go pins the runs overview: renderOverview over built runs, and the source that reads a prime's runs from disk.
+// overview_test.go pins a beam's window: the cells of a run over built polls, DobbyRunCells reading runs from disk, the orch lines and which orchs a window shows.
 
 package battencli
 
@@ -17,7 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/configengine"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -53,256 +53,236 @@ func foundStatus(state shedengine.State, producer string, history ...shedengine.
 	}
 }
 
-func TestRenderOverview(t *testing.T) {
+func TestOverviewRunCells(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		orch       orchStatePoll
-		thresholds overviewThresholds
-		runs       []overviewRun
-		want       []string
+		name string
+		run  overviewRun
+		want RunCells
 	}{
 		{
-			name: "two runs are ordered by start with their six fields, oldest first",
-			runs: []overviewRun{
-				{
-					Slug: "beta", StartedAt: minutesAgo(60), PairExists: true, Session: "beta-s",
-					Batten: foundStatus(shedengine.StateBlocked, "Publish", shedengine.HistoryEntry{At: stamp(minutesAgo(10)), LastAt: stamp(minutesAgo(5))}),
-				},
-				{
-					Slug: "alpha", StartedAt: minutesAgo(120), PairExists: true, Session: "alpha-s", Recipe: shedrun.RecipeBatten,
-					Batten: foundStatus(shedengine.StateRunning, "Land", shedengine.HistoryEntry{At: stamp(minutesAgo(45))}),
-				},
-			},
-			want: []string{
-				"alpha  running  7. Land  45m  2h00m  alpha-s",
-				"beta   blocked  Publish  5m   1h00m  beta-s",
-			},
+			name: "a batten stage is numbered from the run's recipe and timed from its last entry",
+			run:  overviewRun{StartedAt: minutesAgo(120), Recipe: shedrun.RecipeBatten, Batten: foundStatus(shedengine.StateRunning, "Land", shedengine.HistoryEntry{At: stamp(minutesAgo(45))})},
+			want: RunCells{State: "running", Stage: "7. Land", InStage: "45m"},
 		},
 		{
-			name: "runs with no known start come after the dated ones, by slug",
-			runs: []overviewRun{
-				{Slug: "mid", PairExists: true, Session: "s", Batten: foundStatus(shedengine.StateRunning, "Plan")},
-				{Slug: "zeta", StartedAt: minutesAgo(30), PairExists: true, Session: "s", Batten: foundStatus(shedengine.StateRunning, "Plan")},
-				{Slug: "aaa", PairExists: true, Session: "s", Batten: foundStatus(shedengine.StateRunning, "Plan")},
-			},
-			want: []string{
-				"zeta  running  Plan  30m  30m  s",
-				"aaa   running  Plan  -    -    s",
-				"mid   running  Plan  -    -    s",
-			},
+			name: "an entry's last_at wins over its at",
+			run:  overviewRun{StartedAt: minutesAgo(60), Batten: foundStatus(shedengine.StateBlocked, "Publish", shedengine.HistoryEntry{At: stamp(minutesAgo(10)), LastAt: stamp(minutesAgo(5))})},
+			want: RunCells{State: "blocked", Stage: "Publish", InStage: "5m"},
 		},
 		{
-			name: "a run creating its worktree shows before its pair exists",
-			runs: []overviewRun{
-				{Slug: "new", StartedAt: minutesAgo(5), Session: "new-s", Recipe: shedrun.RecipeBatten, Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameWorktreeCreate)},
-			},
-			want: []string{"new  running  1. Worktree-Create  5m  5m  new-s"},
+			name: "a run creating its worktree shows its numbered stage",
+			run:  overviewRun{StartedAt: minutesAgo(5), Recipe: shedrun.RecipeBatten, Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameWorktreeCreate)},
+			want: RunCells{State: "running", Stage: "1. Worktree-Create", InStage: "5m"},
 		},
 		{
 			name: "a seeded run with no status, or whose first status poll failed, shows as starting with no stage",
-			runs: []overviewRun{{Slug: "fresh", StartedAt: minutesAgo(3), Session: "fresh-s"}},
-			want: []string{"fresh  starting  -  3m  3m  fresh-s"},
+			run:  overviewRun{StartedAt: minutesAgo(3)},
+			want: RunCells{State: "starting", Stage: "-", InStage: "3m"},
 		},
 		{
-			name: "a done run and a non-done run whose pair is gone are hidden",
-			runs: []overviewRun{
-				{Slug: "finished", StartedAt: minutesAgo(90), PairExists: true, Batten: foundStatus(shedengine.StateDone, "Land")},
-				{Slug: "orphan", StartedAt: minutesAgo(90), Batten: foundStatus(shedengine.StateRunning, "Land")},
-			},
-			want: []string{"no runs in flight"},
-		},
-		{
-			name: "a failed run with its pair shows",
-			runs: []overviewRun{
-				{Slug: "bad", StartedAt: minutesAgo(10), PairExists: true, Session: "bad-s", Batten: foundStatus(shedengine.StateFailed, "Publish")},
-			},
-			want: []string{"bad  failed  Publish  10m  10m  bad-s"},
+			name: "a run with no known start and no history has no time in stage",
+			run:  overviewRun{Batten: foundStatus(shedengine.StateFailed, "Plan")},
+			want: RunCells{State: "failed", Stage: "Plan", InStage: "-"},
 		},
 		{
 			name: "a run in Run-Shed shows the child's producer, numbered under Run-Shed's number, and its time",
-			runs: []overviewRun{
-				{
-					Slug: "run", StartedAt: minutesAgo(100), PairExists: true, Session: "run-s", Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
-					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
-					Child:  foundStatus(shedengine.StateRunning, "Plan-Write", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
-				},
+			run: overviewRun{
+				StartedAt: minutesAgo(100), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
+				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
+				Child:  foundStatus(shedengine.StateRunning, "Plan-Write", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 			},
-			want: []string{"run  running  6.6 Plan-Write  30m  1h40m  run-s"},
+			want: RunCells{State: "running", Stage: "6.6 Plan-Write", InStage: "30m"},
 		},
 		{
 			name: "a child row in a review segment takes its segment's number",
-			runs: []overviewRun{
-				{
-					Slug: "run", StartedAt: minutesAgo(100), PairExists: true, Session: "run-s", Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
-					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
-					Child:  foundStatus(shedengine.StateRunning, "Plan-Burler-Review", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
-				},
+			run: overviewRun{
+				StartedAt: minutesAgo(100), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
+				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
+				Child:  foundStatus(shedengine.StateRunning, "Plan-Burler-Review", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 			},
-			want: []string{"run  running  6.7 Plan-Burler-Review  30m  1h40m  run-s"},
+			want: RunCells{State: "running", Stage: "6.7 Plan-Burler-Review", InStage: "30m"},
 		},
 		{
-			name: "a child row shows alone when the child recipe is unknown or does not hold it, and a run with an unreadable seed shows the name alone",
-			runs: []overviewRun{
-				{
-					Slug: "a-unknown", StartedAt: minutesAgo(100), PairExists: true, Session: "s", Recipe: shedrun.RecipeBatten,
-					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
-					Child:  foundStatus(shedengine.StateRunning, "Plan-Write", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
-				},
-				{
-					Slug: "b-missing", StartedAt: minutesAgo(99), PairExists: true, Session: "s", Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
-					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
-					Child:  foundStatus(shedengine.StateRunning, "Elsewhere", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
-				},
-				{Slug: "c-unreadable-seed", StartedAt: minutesAgo(98), PairExists: true, Session: "s", Batten: foundStatus(shedengine.StateRunning, "Land")},
+			name: "a child row shows alone when the child recipe is unknown",
+			run: overviewRun{
+				StartedAt: minutesAgo(100), Recipe: shedrun.RecipeBatten,
+				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
+				Child:  foundStatus(shedengine.StateRunning, "Plan-Write", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 			},
-			want: []string{
-				"a-unknown          running  Plan-Write  30m    1h40m  s",
-				"b-missing          running  Elsewhere   30m    1h39m  s",
-				"c-unreadable-seed  running  Land        1h38m  1h38m  s",
+			want: RunCells{State: "running", Stage: "Plan-Write", InStage: "30m"},
+		},
+		{
+			name: "a child row shows alone when the child recipe does not hold it",
+			run: overviewRun{
+				StartedAt: minutesAgo(99), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
+				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(90))}),
+				Child:  foundStatus(shedengine.StateRunning, "Elsewhere", shedengine.HistoryEntry{At: stamp(minutesAgo(30))}),
 			},
+			want: RunCells{State: "running", Stage: "Elsewhere", InStage: "30m"},
+		},
+		{
+			name: "a run with an unreadable seed shows its stage's name alone, timed from its start",
+			run:  overviewRun{StartedAt: minutesAgo(98), Batten: foundStatus(shedengine.StateRunning, "Land")},
+			want: RunCells{State: "running", Stage: "Land", InStage: "1h38m"},
 		},
 		{
 			name: "a child with no history takes batten's last entry as its stage start",
-			runs: []overviewRun{
-				{
-					Slug: "run", StartedAt: minutesAgo(100), PairExists: true, Session: "run-s", Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
-					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(40))}),
-					Child:  foundStatus(shedengine.StateRunning, "Plan-Write"),
-				},
+			run: overviewRun{
+				StartedAt: minutesAgo(100), Recipe: shedrun.RecipeBatten, ChildRecipe: shedrun.RecipeLoom,
+				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(40))}),
+				Child:  foundStatus(shedengine.StateRunning, "Plan-Write"),
 			},
-			want: []string{"run  running  6.6 Plan-Write  40m  1h40m  run-s"},
+			want: RunCells{State: "running", Stage: "6.6 Plan-Write", InStage: "40m"},
 		},
 		{
 			name: "a run in Run-Shed whose child status is not found shows batten's producer",
-			runs: []overviewRun{
-				{
-					Slug: "run", StartedAt: minutesAgo(100), PairExists: true, Session: "run-s", Recipe: shedrun.RecipeBatten,
-					Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(20))}),
-				},
+			run: overviewRun{
+				StartedAt: minutesAgo(100), Recipe: shedrun.RecipeBatten,
+				Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed, shedengine.HistoryEntry{At: stamp(minutesAgo(20))}),
 			},
-			want: []string{"run  running  6. Run-Shed  20m  1h40m  run-s"},
+			want: RunCells{State: "running", Stage: "6. Run-Shed", InStage: "20m"},
 		},
 		{
-			name: "an unreadable status shows beside a normal line, and so does an unreadable child",
-			runs: []overviewRun{
-				{Slug: "broken", PairExists: true, Session: "s", Batten: statuspane.StatusPoll{Unreadable: true}},
-				{Slug: "child", PairExists: true, Session: "s", Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed), Child: statuspane.StatusPoll{Unreadable: true}},
-				{Slug: "ok-run", PairExists: true, Session: "s", Batten: foundStatus(shedengine.StateRunning, "Plan")},
-			},
-			want: []string{
-				"broken  status unreadable",
-				"child   status unreadable",
-				"ok-run  running  Plan  -  -  s",
-			},
+			name: "an unreadable status is unreadable",
+			run:  overviewRun{Batten: statuspane.StatusPoll{Unreadable: true}},
+			want: RunCells{Unreadable: true},
+		},
+		{
+			name: "an unreadable child of a run in Run-Shed is unreadable",
+			run:  overviewRun{Batten: foundStatus(shedengine.StateRunning, battenrecipe.NameRunShed), Child: statuspane.StatusPoll{Unreadable: true}},
+			want: RunCells{Unreadable: true},
 		},
 		{
 			name: "a running run a live pause covers shows paused with the minutes since the pause",
-			runs: []overviewRun{
-				{Slug: "a", StartedAt: minutesAgo(30), PairExists: true, Session: "s", PausedAt: minutesAgo(7), Batten: foundStatus(shedengine.StateRunning, "Plan")},
-			},
-			want: []string{"a  paused 7m  Plan  30m  30m  s"},
+			run:  overviewRun{StartedAt: minutesAgo(30), PausedAt: minutesAgo(7), Batten: foundStatus(shedengine.StateRunning, "Plan")},
+			want: RunCells{State: "paused 7m", Stage: "Plan", InStage: "30m"},
 		},
 		{
-			name: "a batten-paused run a live pause covers shows the minutes, and an uncovered one the bare state",
-			runs: []overviewRun{
-				{Slug: "covered", StartedAt: minutesAgo(30), PairExists: true, Session: "s", PausedAt: minutesAgo(12), Batten: foundStatus(shedengine.StatePaused, "Plan")},
-				{Slug: "bare", StartedAt: minutesAgo(20), PairExists: true, Session: "s", Batten: foundStatus(shedengine.StatePaused, "Plan")},
-			},
-			want: []string{
-				"covered  paused 12m  Plan  30m  30m  s",
-				"bare     paused      Plan  20m  20m  s",
-			},
+			name: "a batten-paused run a live pause covers shows the minutes",
+			run:  overviewRun{StartedAt: minutesAgo(30), PausedAt: minutesAgo(12), Batten: foundStatus(shedengine.StatePaused, "Plan")},
+			want: RunCells{State: "paused 12m", Stage: "Plan", InStage: "30m"},
+		},
+		{
+			name: "a batten-paused run no pause covers shows the bare state",
+			run:  overviewRun{StartedAt: minutesAgo(20), Batten: foundStatus(shedengine.StatePaused, "Plan")},
+			want: RunCells{State: "paused", Stage: "Plan", InStage: "20m"},
 		},
 		{
 			name: "a starting run a live pause covers shows paused with the minutes and stage -",
-			runs: []overviewRun{{Slug: "fresh", StartedAt: minutesAgo(3), Session: "fresh-s", PausedAt: minutesAgo(2)}},
-			want: []string{"fresh  paused 2m  -  3m  3m  fresh-s"},
+			run:  overviewRun{StartedAt: minutesAgo(3), PausedAt: minutesAgo(2)},
+			want: RunCells{State: "paused 2m", Stage: "-", InStage: "3m"},
 		},
 		{
-			name: "a blocked, an awaiting and a failed run keep their own state when a pause covers them",
-			runs: []overviewRun{
-				{Slug: "b", StartedAt: minutesAgo(30), PairExists: true, Session: "s", PausedAt: minutesAgo(5), Batten: foundStatus(shedengine.StateBlocked, "Plan")},
-				{Slug: "w", StartedAt: minutesAgo(20), PairExists: true, Session: "s", PausedAt: minutesAgo(5), Batten: foundStatus(shedengine.StateAwaiting, "Plan")},
-				{Slug: "f", StartedAt: minutesAgo(10), PairExists: true, Session: "s", PausedAt: minutesAgo(5), Batten: foundStatus(shedengine.StateFailed, "Plan")},
-			},
-			want: []string{
-				"b  blocked   Plan  30m  30m  s",
-				"w  awaiting  Plan  20m  20m  s",
-				"f  failed    Plan  10m  10m  s",
-			},
+			name: "a blocked run keeps its own state when a pause covers it",
+			run:  overviewRun{StartedAt: minutesAgo(30), PausedAt: minutesAgo(5), Batten: foundStatus(shedengine.StateBlocked, "Plan")},
+			want: RunCells{State: "blocked", Stage: "Plan", InStage: "30m"},
+		},
+		{
+			name: "an awaiting run keeps its own state when a pause covers it",
+			run:  overviewRun{StartedAt: minutesAgo(20), PausedAt: minutesAgo(5), Batten: foundStatus(shedengine.StateAwaiting, "Plan")},
+			want: RunCells{State: "awaiting", Stage: "Plan", InStage: "20m"},
+		},
+		{
+			name: "a failed run keeps its own state when a pause covers it",
+			run:  overviewRun{StartedAt: minutesAgo(10), PausedAt: minutesAgo(5), Batten: foundStatus(shedengine.StateFailed, "Plan")},
+			want: RunCells{State: "failed", Stage: "Plan", InStage: "10m"},
 		},
 		{
 			name: "a pause that began after the poll's clock shows paused 0m",
-			runs: []overviewRun{
-				{Slug: "a", StartedAt: minutesAgo(30), PairExists: true, Session: "s", PausedAt: overviewNow.Add(5 * time.Minute), Batten: foundStatus(shedengine.StateRunning, "Plan")},
-			},
-			want: []string{"a  paused 0m  Plan  30m  30m  s"},
-		},
-		{
-			name: "no runs renders the one line",
-			want: []string{"no runs in flight"},
-		},
-		{
-			name:       "a found idle orch state draws its line above the runs, tokens rounded down to thousands",
-			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212999, LastContextKnown: true, CycleCount: 3}},
-			thresholds: orchThresholds,
-			runs: []overviewRun{
-				{Slug: "beta", StartedAt: minutesAgo(60), PairExists: true, Session: "beta-s", Batten: foundStatus(shedengine.StateRunning, "Plan")},
-				{Slug: "alpha", StartedAt: minutesAgo(120), PairExists: true, Session: "alpha-s", Batten: foundStatus(shedengine.StateRunning, "Land")},
-			},
-			want: []string{
-				"orch  212k / soft 300k / hard 400k  idle  cycles 3",
-				"alpha  running  Land  2h00m  2h00m  alpha-s",
-				"beta   running  Plan  1h00m  1h00m  beta-s",
-			},
-		},
-		{
-			name:       "an unknown reading draws - for the tokens and the phase as persisted",
-			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseCompacting}},
-			thresholds: orchThresholds,
-			want:       []string{"orch  - / soft 300k / hard 400k  compacting  cycles 0", "no runs in flight"},
-		},
-		{
-			name:       "999 tokens draw plain",
-			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 999, LastContextKnown: true}},
-			thresholds: orchThresholds,
-			want:       []string{"orch  999 / soft 300k / hard 400k  idle  cycles 0", "no runs in flight"},
-		},
-		{
-			name:       "1000 tokens draw as 1k",
-			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 1000, LastContextKnown: true}},
-			thresholds: orchThresholds,
-			want:       []string{"orch  1k / soft 300k / hard 400k  idle  cycles 0", "no runs in flight"},
-		},
-		{
-			name:       "an exited watcher ends the line with watcher down",
-			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212500, LastContextKnown: true, CycleCount: 3, WatcherExit: "bye"}},
-			thresholds: orchThresholds,
-			want:       []string{"orch  212k / soft 300k / hard 400k  idle  cycles 3  watcher down", "no runs in flight"},
-		},
-		{
-			name: "unknown thresholds draw -",
-			orch: orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212500, LastContextKnown: true, CycleCount: 3}},
-			want: []string{"orch  212k / soft - / hard -  idle  cycles 3", "no runs in flight"},
-		},
-		{
-			name:       "an unreadable orch state draws the broken line above the runs",
-			orch:       orchStatePoll{Unreadable: true},
-			thresholds: orchThresholds,
-			runs: []overviewRun{
-				{Slug: "a", StartedAt: minutesAgo(30), PairExists: true, Session: "s", Batten: foundStatus(shedengine.StateRunning, "Plan")},
-			},
-			want: []string{"orch  state unreadable", "a  running  Plan  30m  30m  s"},
+			run:  overviewRun{StartedAt: minutesAgo(30), PausedAt: overviewNow.Add(5 * time.Minute), Batten: foundStatus(shedengine.StateRunning, "Plan")},
+			want: RunCells{State: "paused 0m", Stage: "Plan", InStage: "30m"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := renderOverview(tt.orch, tt.thresholds, tt.runs, overviewNow)
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Errorf("renderOverview mismatch (-want +got):\n%s", diff)
+			if got := overviewRunCells(tt.run, overviewNow); got != tt.want {
+				t.Errorf("overviewRunCells() = %+v; want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOverviewLabeledOrchLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		label      string
+		orch       orchStatePoll
+		thresholds overviewThresholds
+		want       string
+		wantShown  bool
+	}{
+		{
+			name:       "a found idle state draws its line, tokens rounded down to thousands",
+			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212999, LastContextKnown: true, CycleCount: 3}},
+			thresholds: orchThresholds,
+			want:       "orch  212k / soft 300k / hard 400k  idle  cycles 3",
+			wantShown:  true,
+		},
+		{
+			name:       "a beam's line carries its label",
+			label:      "b",
+			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212999, LastContextKnown: true, CycleCount: 3}},
+			thresholds: orchThresholds,
+			want:       "orch b  212k / soft 300k / hard 400k  idle  cycles 3",
+			wantShown:  true,
+		},
+		{
+			name:       "an unknown reading draws - for the tokens and the phase as persisted",
+			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseCompacting}},
+			thresholds: orchThresholds,
+			want:       "orch  - / soft 300k / hard 400k  compacting  cycles 0",
+			wantShown:  true,
+		},
+		{
+			name:       "999 tokens draw plain",
+			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 999, LastContextKnown: true}},
+			thresholds: orchThresholds,
+			want:       "orch  999 / soft 300k / hard 400k  idle  cycles 0",
+			wantShown:  true,
+		},
+		{
+			name:       "1000 tokens draw as 1k",
+			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 1000, LastContextKnown: true}},
+			thresholds: orchThresholds,
+			want:       "orch  1k / soft 300k / hard 400k  idle  cycles 0",
+			wantShown:  true,
+		},
+		{
+			name:       "an exited watcher ends the line with watcher down",
+			orch:       orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212500, LastContextKnown: true, CycleCount: 3, WatcherExit: "bye"}},
+			thresholds: orchThresholds,
+			want:       "orch  212k / soft 300k / hard 400k  idle  cycles 3  watcher down",
+			wantShown:  true,
+		},
+		{
+			name:      "unknown thresholds draw -",
+			orch:      orchStatePoll{Found: true, State: orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212500, LastContextKnown: true, CycleCount: 3}},
+			want:      "orch  212k / soft - / hard -  idle  cycles 3",
+			wantShown: true,
+		},
+		{
+			name:       "an unreadable state draws the broken line",
+			orch:       orchStatePoll{Unreadable: true},
+			thresholds: orchThresholds,
+			want:       "orch  state unreadable",
+			wantShown:  true,
+		},
+		{
+			name:       "no state file draws no line",
+			thresholds: orchThresholds,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, shown := overviewLabeledOrchLine(tt.label, tt.orch, tt.thresholds)
+			if got != tt.want || shown != tt.wantShown {
+				t.Errorf("overviewLabeledOrchLine(%q) = (%q, %v); want (%q, %v)", tt.label, got, shown, tt.want, tt.wantShown)
 			}
 		})
 	}
@@ -332,7 +312,16 @@ func writeOverviewStatus(t *testing.T, path string, status shedengine.Status, mo
 	writeOverviewFile(t, path, data, modTime)
 }
 
-func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
+// viewRuns returns the ViewRuns of slugs, which is all DobbyRunCells.Of reads of them.
+func viewRuns(slugs ...string) []dobbyengine.ViewRun {
+	runs := make([]dobbyengine.ViewRun, len(slugs))
+	for i, slug := range slugs {
+		runs[i] = dobbyengine.ViewRun{Slug: slug}
+	}
+	return runs
+}
+
+func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
@@ -342,9 +331,6 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	seedBatten := func(slug, startedAt string) {
 		t.Helper()
 		if err := shedrun.WriteSeed(prime, slug, shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo, StartedAt: startedAt}); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(fabricengine.WorktreePath(prime, slug), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -357,63 +343,50 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 	runBStatus := shedrun.StatusFile(prime, "run-b")
 	writeOverviewStatus(t, runBStatus, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan"}, minutesAgo(50))
 
-	// A seed of another recipe is not a batten run.
-	if err := shedrun.WriteSeed(prime, "other", shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
-		t.Fatal(err)
-	}
-
-	// A seed with an unknown key decodes and is listed like any other; its `-` columns come from the seed lacking started_at.
-	futureKeySeed := shedrun.SeedFile(prime, "future-key")
-	writeOverviewFile(t, futureKeySeed, []byte(`{"recipe":"batten","driver":"go","unknown":1}`), minutesAgo(100))
+	// A seed with an unknown key decodes like any other; its `-` time comes from the seed lacking started_at.
+	writeOverviewFile(t, shedrun.SeedFile(prime, "future-key"), []byte(`{"recipe":"batten","driver":"go","unknown":1}`), minutesAgo(100))
 	writeOverviewStatus(t, shedrun.StatusFile(prime, "future-key"), shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan"}, minutesAgo(100))
-	if err := os.MkdirAll(fabricengine.WorktreePath(prime, "future-key"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 
 	pauseRecordPath := filepath.Join(t.TempDir(), "pause.json")
-	source := newOverviewSource(prime, pauseRecordPath, overviewThresholds{}, func() time.Time { return overviewNow })
-	source.childStatus = func(string) (string, error) { return childStatusPath, nil }
+	cells := NewDobbyRunCells(prime, pauseRecordPath)
+	cells.childStatus = func(string) (string, error) { return childStatusPath, nil }
 	childPair := locationkit.Location(t.TempDir(), "run-a", ".")
-	source.childPair = func(string) (*lyxcwd.Location, error) { return childPair, nil }
+	cells.childPair = func(string) (*lyxcwd.Location, error) { return childPair, nil }
 	if err := shedrun.WriteSeed(childPair, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatal(err)
 	}
+	runs := viewRuns("run-a", "run-b", "future-key")
 
-	want := []string{
-		"run-a       running  6.6 Plan-Write  2h00m  2h00m  run-a",
-		"run-b       running  Plan            1h00m  1h00m  run-b",
-		"future-key  running  Plan            -      -      future-key",
+	check := func(read string, want map[string]RunCells) {
+		t.Helper()
+		if diff := cmp.Diff(want, cells.Of(runs, overviewNow)); diff != "" {
+			t.Errorf("%s mismatch (-want +got):\n%s", read, diff)
+		}
 	}
-	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
-		t.Fatalf("first frame mismatch (-want +got):\n%s", diff)
+
+	want := map[string]RunCells{
+		"run-a":      {State: "running", Stage: "6.6 Plan-Write", InStage: "2h00m"},
+		"run-b":      {State: "running", Stage: "Plan", InStage: "1h00m"},
+		"future-key": {State: "running", Stage: "Plan", InStage: "-"},
 	}
+	check("first read", want)
 
 	// A seed is write-once, so run-a keeps its child number from the cached recipe once the seed file is gone.
 	if err := os.Remove(shedrun.SeedFile(childPair, shedrun.SelfRunID)); err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
-		t.Fatalf("frame after the child seed is removed mismatch (-want +got):\n%s", diff)
-	}
+	check("read after the child seed is removed", want)
 
-	// The child's file goes and run-b's status turns undecodable: run-a falls back to batten's producer, and run-b keeps its line for one frame.
+	// The child's file goes and run-b's status turns undecodable: run-a falls back to batten's producer, and run-b keeps its cells for one read.
 	if err := os.Remove(childStatusPath); err != nil {
 		t.Fatal(err)
 	}
 	writeOverviewFile(t, runBStatus, []byte("{not json"), minutesAgo(40))
-	want = []string{
-		"run-a       running  6. Run-Shed  2h00m  2h00m  run-a",
-		"run-b       running  Plan         1h00m  1h00m  run-b",
-		"future-key  running  Plan         -      -      future-key",
-	}
-	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
-		t.Errorf("second frame mismatch (-want +got):\n%s", diff)
-	}
+	want["run-a"] = RunCells{State: "running", Stage: "6. Run-Shed", InStage: "2h00m"}
+	check("second read", want)
 
-	want[1] = "run-b       status unreadable"
-	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
-		t.Errorf("third frame mismatch (-want +got):\n%s", diff)
-	}
+	want["run-b"] = RunCells{Unreadable: true}
+	check("third read", want)
 
 	// run-b's status is decodable again, at a modification time other than the failed write's.
 	writeOverviewStatus(t, runBStatus, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan"}, minutesAgo(35))
@@ -427,54 +400,44 @@ func TestOverviewSource_ReadsThePrimesRunsFromDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeOverviewFile(t, pauseRecordPath, record, minutesAgo(1))
-	want = []string{
-		"run-a       paused 10m  6. Run-Shed  2h00m  2h00m  run-a",
-		"run-b       paused 4m   Plan         1h00m  1h00m  run-b",
-		"future-key  paused 4m   Plan         -      -      future-key",
-	}
-	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
-		t.Errorf("fourth frame mismatch (-want +got):\n%s", diff)
-	}
+	check("fourth read", map[string]RunCells{
+		"run-a":      {State: "paused 10m", Stage: "6. Run-Shed", InStage: "2h00m"},
+		"run-b":      {State: "paused 4m", Stage: "Plan", InStage: "1h00m"},
+		"future-key": {State: "paused 4m", Stage: "Plan", InStage: "-"},
+	})
 
-	// A record that does not decode never blanks the pane.
+	// A record that does not decode covers nothing.
 	writeOverviewFile(t, pauseRecordPath, []byte("{not json"), minutesAgo(1))
-	want = []string{
-		"run-a       running  6. Run-Shed  2h00m  2h00m  run-a",
-		"run-b       running  Plan         1h00m  1h00m  run-b",
-		"future-key  running  Plan         -      -      future-key",
-	}
-	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
-		t.Errorf("fifth frame mismatch (-want +got):\n%s", diff)
-	}
+	check("fifth read", map[string]RunCells{
+		"run-a":      {State: "running", Stage: "6. Run-Shed", InStage: "2h00m"},
+		"run-b":      {State: "running", Stage: "Plan", InStage: "1h00m"},
+		"future-key": {State: "running", Stage: "Plan", InStage: "-"},
+	})
 
 	// A child pair with no seed, and a pair that cannot be resolved, each leave the child row alone.
-	hub2 := t.TempDir()
-	prime2 := locationkit.Location(hub2, "prime", ".")
+	prime2 := locationkit.Location(t.TempDir(), "prime", ".")
 	for _, slug := range []string{"run-c", "run-d"} {
 		if err := shedrun.WriteSeed(prime2, slug, shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo, StartedAt: stamp(minutesAgo(120))}); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.MkdirAll(fabricengine.WorktreePath(prime2, slug), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		writeOverviewStatus(t, shedrun.StatusFile(prime2, slug), shedengine.Status{State: shedengine.StateRunning, CurrentProducer: battenrecipe.NameRunShed}, minutesAgo(100))
 	}
 	writeOverviewStatus(t, childStatusPath, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Write"}, minutesAgo(100))
 	seedless := locationkit.Location(t.TempDir(), "run-c", ".")
-	source2 := newOverviewSource(prime2, pauseRecordPath, overviewThresholds{}, func() time.Time { return overviewNow })
-	source2.childStatus = func(string) (string, error) { return childStatusPath, nil }
-	source2.childPair = func(slug string) (*lyxcwd.Location, error) {
+	cells2 := NewDobbyRunCells(prime2, pauseRecordPath)
+	cells2.childStatus = func(string) (string, error) { return childStatusPath, nil }
+	cells2.childPair = func(slug string) (*lyxcwd.Location, error) {
 		if slug == "run-d" {
 			return nil, errors.New("no pair")
 		}
 		return seedless, nil
 	}
-	want = []string{
-		"run-c  running  Plan-Write  2h00m  2h00m  run-c",
-		"run-d  running  Plan-Write  2h00m  2h00m  run-d",
+	wantSeedless := map[string]RunCells{
+		"run-c": {State: "running", Stage: "Plan-Write", InStage: "2h00m"},
+		"run-d": {State: "running", Stage: "Plan-Write", InStage: "2h00m"},
 	}
-	if diff := cmp.Diff(want, source2.frame().Lines); diff != "" {
-		t.Errorf("seedless child frame mismatch (-want +got):\n%s", diff)
+	if diff := cmp.Diff(wantSeedless, cells2.Of(viewRuns("run-c", "run-d"), overviewNow)); diff != "" {
+		t.Errorf("seedless child read mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -483,53 +446,52 @@ func TestOverviewSource_DrawsTheOrchLine(t *testing.T) {
 
 	prime := locationkit.Location(t.TempDir(), "prime", ".")
 	orchPaths := orchcli.PrimePaths(prime)
-	source := newOverviewSource(prime, filepath.Join(t.TempDir(), "pause.json"), orchThresholds, func() time.Time { return overviewNow })
+	source := newOverviewSource(prime, prime, orchThresholds, func() time.Time { return overviewNow })
 
-	writeState := func(state orchengine.State, modTime time.Time) {
+	writeState := func(path string, state orchengine.State, modTime time.Time) {
 		t.Helper()
 		data, err := json.Marshal(state)
 		if err != nil {
 			t.Fatal(err)
 		}
-		writeOverviewFile(t, orchPaths.StatePath, data, modTime)
+		writeOverviewFile(t, path, data, modTime)
 	}
 	idle := orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212500, LastContextKnown: true, CycleCount: 3}
 	idleLine := "orch  212k / soft 300k / hard 400k  idle  cycles 3"
 	exited := idle
 	exited.WatcherExit = "bye"
 	exitedLine := idleLine + "  watcher down"
-	noRuns := "no runs in flight"
 
-	check := func(frame string, want ...string) {
+	check := func(source *overviewSource, frame string, want ...string) {
 		t.Helper()
 		if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
 			t.Errorf("%s mismatch (-want +got):\n%s", frame, diff)
 		}
 	}
 
-	check("frame 1, no state file", noRuns)
+	check(source, "frame 1, no state file")
 	if _, err := os.Stat(orchPaths.Dir); !os.IsNotExist(err) {
 		t.Errorf("polling an absent state created %s (stat err %v)", orchPaths.Dir, err)
 	}
 
 	writeOverviewFile(t, orchPaths.StatePath, []byte("{not json"), minutesAgo(50))
-	check("frame 2, first failure with no good state", noRuns)
+	check(source, "frame 2, first failure with no good state")
 
-	writeState(idle, minutesAgo(40))
-	check("frame 3, good state", idleLine, noRuns)
+	writeState(orchPaths.StatePath, idle, minutesAgo(40))
+	check(source, "frame 3, good state", idleLine)
 
-	writeState(orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 100000, LastContextKnown: true}, minutesAgo(40))
-	check("frame 4, unchanged modification time is not re-read", idleLine, noRuns)
+	writeState(orchPaths.StatePath, orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 100000, LastContextKnown: true}, minutesAgo(40))
+	check(source, "frame 4, unchanged modification time is not re-read", idleLine)
 
 	writeOverviewFile(t, orchPaths.StatePath, []byte("{not json"), minutesAgo(30))
-	check("frame 5, first failure keeps the last good line", idleLine, noRuns)
-	check("frame 6, repeat of the failed modification time", "orch  state unreadable", noRuns)
+	check(source, "frame 5, first failure keeps the last good line", idleLine)
+	check(source, "frame 6, repeat of the failed modification time", "orch  state unreadable")
 
-	writeState(exited, minutesAgo(20))
-	check("frame 7, watcher down", exitedLine, noRuns)
+	writeState(orchPaths.StatePath, exited, minutesAgo(20))
+	check(source, "frame 7, watcher down", exitedLine)
 
 	writeOverviewFile(t, orchPaths.StatePath, []byte("{not json"), minutesAgo(10))
-	check("frame 8, a good decode cleared the failure count", exitedLine, noRuns)
+	check(source, "frame 8, a good decode cleared the failure count", exitedLine)
 
 	if _, err := os.Stat(orchPaths.StateLockPath); !os.IsNotExist(err) {
 		t.Errorf("polling took or created the state lock (stat err %v)", err)
@@ -541,48 +503,75 @@ func TestOverviewSource_DrawsTheOrchLine(t *testing.T) {
 	if err := os.WriteFile(orchPaths.Dir, []byte("not a directory"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	check("frame 10, a stat failure with no modification time is a second failure", "orch  state unreadable", noRuns)
+	check(source, "frame 9, a stat failure with no modification time is a second failure", "orch  state unreadable")
 
 	if err := os.Remove(orchPaths.Dir); err != nil {
 		t.Fatal(err)
 	}
-	writeState(idle, minutesAgo(5))
-	runsDir := filepath.Dir(filepath.Dir(shedrun.SeedFile(prime, "x")))
-	if err := os.MkdirAll(filepath.Dir(runsDir), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(runsDir, []byte("not a directory"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	check("frame 11, the orch line draws above runs unreadable", idleLine, "runs unreadable")
-
-	if err := os.Remove(orchPaths.StatePath); err != nil {
-		t.Fatal(err)
-	}
-	check("frame 12, an absent state draws no orch line", "runs unreadable")
-
 	beam := locationkit.Location(t.TempDir(), "beam-b", ".")
 	beamPaths := orchcli.PrimePaths(beam)
 	source.orchs = func() ([]orchengine.Paths, []string, error) {
 		return []orchengine.Paths{orchPaths, beamPaths}, []string{"", "b"}, nil
 	}
-	writeState(idle, minutesAgo(5))
-	data, err := json.Marshal(exited)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeOverviewFile(t, beamPaths.StatePath, data, minutesAgo(5))
+	writeState(orchPaths.StatePath, idle, minutesAgo(5))
+	writeState(beamPaths.StatePath, exited, minutesAgo(5))
 	beamExitedLine := "orch b  212k / soft 300k / hard 400k  idle  cycles 3  watcher down"
-	check("frame 13, the prime's orch line then each beam's, labelled", idleLine, beamExitedLine, "runs unreadable")
+	check(source, "frame 10, every listed orch's line, labelled", idleLine, beamExitedLine)
 
 	writeOverviewFile(t, beamPaths.StatePath, []byte("{not json"), minutesAgo(1))
-	check("frame 14, a beam's first failure keeps its last good line", idleLine, beamExitedLine, "runs unreadable")
-	check("frame 15, a beam's repeated failure marks its own line only", idleLine, "orch b  state unreadable", "runs unreadable")
+	check(source, "frame 11, a beam's first failure keeps its last good line", idleLine, beamExitedLine)
+	check(source, "frame 12, a beam's repeated failure marks its own line only", idleLine, "orch b  state unreadable")
 
 	source.orchs = func() ([]orchengine.Paths, []string, error) {
 		return nil, nil, errors.New("listing failed")
 	}
-	check("frame 16, an orch list that fails falls back to the prime's line", idleLine, "runs unreadable")
+	check(source, "frame 13, an orch list that fails falls back to the window's own orch", idleLine)
+
+	// A beam's window over a hub whose worktrees do not list falls back to the beam's own orch, labelled with its slug.
+	writeState(beamPaths.StatePath, idle, minutesAgo(1))
+	beamSource := newOverviewSource(prime, beam, orchThresholds, func() time.Time { return overviewNow })
+	check(beamSource, "a beam's fallback frame", "orch beam-b  212k / soft 300k / hard 400k  idle  cycles 3")
+}
+
+func TestOrchsAtOrBelow(t *testing.T) {
+	t.Parallel()
+
+	parents := map[string]string{"a": "", "a-child": "a", "a-grandchild": "a-child", "b": "", "loop-x": "loop-y", "loop-y": "loop-x"}
+	parentOf := func(slug string) (string, error) {
+		parent, ok := parents[slug]
+		if !ok {
+			return "", errors.New("no origin record")
+		}
+		return parent, nil
+	}
+	var locations []*lyxcwd.Location
+	for _, name := range []string{"main", "a", "a-child", "a-grandchild", "b", "broken", "loop-x", "loop-y"} {
+		locations = append(locations, &lyxcwd.Location{WorktreeName: name})
+	}
+
+	tests := []struct {
+		name     string
+		worktree string
+		want     []string
+	}{
+		{"ThePrimesWindowShowsEveryOrch", "main", []string{"main", "a", "a-child", "a-grandchild", "b", "broken", "loop-x", "loop-y"}},
+		{"ABeamsWindowShowsItsOwnAndEveryBeamBelowIt", "a", []string{"a", "a-child", "a-grandchild"}},
+		{"ANestedBeamsWindowLeavesOutItsParent", "a-child", []string{"a-child", "a-grandchild"}},
+		{"ABeamWithNoBeamBelowShowsItsOwnAlone", "b", []string{"b"}},
+		{"ACyclicParentChainIsLeftOut", "a", []string{"a", "a-child", "a-grandchild"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var got []string
+			for _, location := range orchsAtOrBelow("main", tt.worktree, locations, parentOf) {
+				got = append(got, location.WorktreeName)
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("orchsAtOrBelow(%q) mismatch (-want +got):\n%s", tt.worktree, diff)
+			}
+		})
+	}
 }
 
 // TestLoadOverviewThresholds does not call t.Parallel: logcapture redirects the process-global logger.

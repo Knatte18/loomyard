@@ -388,7 +388,8 @@
 // A viewer elsewhere is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.
 // An automatic switch races an operator's own window change by at most one switch.
 //
-// Overview anchor: the overview anchor places one strand per session, alone in a window of its own named overview that opens at the lowest index and never joins a group.
+// Overview anchor: the overview anchor places one strand per session, alone in a window of its own that opens at the lowest index and never joins a group.
+// The window takes the display's Title as its name, overview when the display carries none; the orch's runs strand names it after its beam.
 // Everything that reads a window of its own, reconcile, presentPanes, the strands' window resolver and the relaunch's old-pane kill, treats an overview pane as an own-window one (isOwnWindow); only the placement, the name, the unseen mark, the one-per-session refusal and the focus rules ask isOverview.
 // The window carries @lyx_own like an own window and sets neither @lyx_unseen nor @strand_color, so its button takes the plain window-button style.
 // An overview display takes no window group, and UpdateStrand refuses a move between the overview and own-window anchors.

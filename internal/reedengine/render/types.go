@@ -62,4 +62,7 @@ type Display struct {
 	// WindowSize is the number of strands the spawner puts in the Window group; 0 reads as 1.
 	// It is read only for an own-window strand.
 	WindowSize int `json:"windowSize,omitempty"`
+	// Title names the overview window; empty names it overview.
+	// It is read only for an overview strand.
+	Title string `json:"title,omitempty"`
 }

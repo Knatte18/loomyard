@@ -78,8 +78,8 @@
 //
 // # status
 //
-// `status` prints, once, the view the overview window draws for a dobby, for the prime and for each local beam `hubgeom.DobbyStart` lists, the prime's first.
-// Each entry carries the worktree's label, the structured `dobbyengine.View` that `battencli.DobbyViewReader` reads, and the lines `battencli.DobbyLines` renders from it.
+// `status` prints, once, the dobby section a beam's window draws, for the prime and for each local beam `hubgeom.DobbyStart` lists, the prime's first.
+// Each entry carries the worktree's label, the structured `dobbyengine.View` that `battencli.DobbyViewReader` reads, and the lines `battencli.DobbyLines` renders from it with each run's cells from `battencli.DobbyRunCells`.
 // A view that does not read carries its error in its entry, the others still read, and the verb fails naming each.
 // It reads files only.
 //
@@ -97,7 +97,7 @@
 // # The dobby's seams
 //
 // `hubDobbyDeps` fills every seam of the engine from told paths, the dobby's working directory being the hub root and never a worktree:
-//   - the local batten status files of the prime and the board's tasks through `battencli.DobbyRuns`, `battencli.DobbyLandings` and `battencli.DobbyTasks`, which the overview reads too, and each run's parent through `hubgeom.ParentOf`;
+//   - the local batten status files of the prime and the board's tasks through `battencli.DobbyRuns`, `battencli.DobbyLandings` and `battencli.DobbyTasks`, which a beam's window reads too, and each run's parent through `hubgeom.ParentOf`;
 //   - the board and the owners through `boardengine`, and the pause record through `pauserecord`;
 //   - the file watch through `internal/fswatch`, one watcher per directory merged into the loop's one channel;
 //   - the pass spawn of `lyx batten run`, started in the prime's anchor;
