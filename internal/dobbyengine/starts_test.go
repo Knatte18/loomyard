@@ -178,6 +178,55 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 		}
 	})
 
+	t.Run("done runs take no slot, get no pass and leave the state record", func(t *testing.T) {
+		t.Parallel()
+		done := func(slug string) RunView {
+			run := runningRun(slug)
+			run.State = runStateDone
+			return run
+		}
+		h := newPassHarness(t, done("x"), done("y"))
+		h.fake.maxRuns = 1
+		h.fake.tasks = []TaskView{readyTask("a")}
+		h.d.owesAll = true
+		err := UpdateState(h.d.geom.StatePath, func(s *State) error {
+			s.Runs = map[string]RunState{"x": {FullPassOwed: true}}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("UpdateState() = %v; want nil", err)
+		}
+		h.tick(true)
+		if got := h.fake.spawned; len(got) != 1 || got[0].slug != "a" {
+			t.Errorf("passes = %+v; want only the first pass of the ready task", got)
+		}
+		if runs := h.stateRecord().Runs; len(runs) != 0 {
+			t.Errorf("state runs = %+v; want no entry for a done run", runs)
+		}
+	})
+
+	t.Run("a done run keeps its slot until its pass in flight exits", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t, runningRun("r"))
+		h.fake.maxRuns = 1
+		h.fake.hold = true
+		h.tick(true)
+		h.fake.runs[0].State = runStateDone
+		h.fake.tasks = []TaskView{readyTask("a")}
+		h.tick(true)
+		if len(h.fake.spawnsOf("a")) != 0 {
+			t.Fatalf("a task started in the slot of a done run whose pass is in flight")
+		}
+		h.fake.open["r"] <- PassExit{}
+		h.tick(true)
+		if len(h.fake.spawnsOf("a")) != 1 {
+			t.Errorf("passes of the ready task = %d; want it started once the done run's pass exited", len(h.fake.spawnsOf("a")))
+		}
+		if _, kept := h.stateRecord().Runs["r"]; kept {
+			t.Errorf("the done run's state entry is kept after its pass exited; want it dropped")
+		}
+	})
+
 	t.Run("two refusals with different texts send two notices, and a claim clears the noticed texts", func(t *testing.T) {
 		t.Parallel()
 		h := newPassHarness(t)

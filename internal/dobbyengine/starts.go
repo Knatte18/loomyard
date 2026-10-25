@@ -45,7 +45,7 @@ func readyToStart(task TaskView, here string, covered bool) bool {
 
 // startReady starts each ready task of the local board while fewer than max_runs runs it drives are in flight.
 // Starting is the run's first pass, a full pass, which claims the task as batten does; a slug with a pass in flight is never started twice.
-// The runs counted are the ones listed for this tick, halted ones included and ones recorded owned elsewhere not, plus first passes that have not yet left a status file.
+// The runs counted are the ones listed for this tick, halted ones included and done ones and ones recorded owned elsewhere not, plus first passes that have not yet left a status file.
 // A task whose backoff has not run out waits, unless its entry changed since the refusal.
 func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 	cfg, err := d.deps.LoadConfig()

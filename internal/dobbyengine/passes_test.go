@@ -185,11 +185,16 @@ func (h *passHarness) state() RunState {
 
 func (h *passHarness) stateOf(slug string) RunState {
 	h.t.Helper()
+	return h.stateRecord().Runs[slug]
+}
+
+func (h *passHarness) stateRecord() State {
+	h.t.Helper()
 	record, _, err := ReadState(h.d.geom.StatePath)
 	if err != nil {
 		h.t.Fatalf("ReadState() = %v; want nil", err)
 	}
-	return record.Runs[slug]
+	return record
 }
 
 func runningRun(slug string) RunView {

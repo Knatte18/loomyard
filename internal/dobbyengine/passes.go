@@ -14,6 +14,8 @@ import (
 const (
 	// runStateRunning is the batten status state of a run that has not halted, paused, failed or finished.
 	runStateRunning = "running"
+	// runStateDone is the batten status state of a run that finished, which dobby drives no further.
+	runStateDone = "done"
 	// producerRunShed is the batten producer that waits on the child run, the only row a continue pass may re-enter.
 	producerRunShed = "Run-Shed"
 	// failingPassNoticeAfter is how many failures in a row with one text post the notice.
@@ -123,6 +125,7 @@ type flight struct {
 }
 
 // drivePasses reads exited passes, owes full passes, and spawns the pass each listed run's trigger calls for.
+// A done run is driven no further: unless a pass of it is in flight, it takes no slot, is planned no pass, and its state entry is dropped.
 // It leaves d.busy set while any run is in flight or could be given a pass on the next probe tick.
 func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 	d.tickCtx = ctx
@@ -131,6 +134,10 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 	if err != nil {
 		return fmt.Errorf("list the runs: %w", err)
 	}
+	runs = slices.DeleteFunc(runs, func(run RunView) bool {
+		_, inFlight := d.flights[run.Slug]
+		return run.State == runStateDone && !inFlight
+	})
 	d.runs = runs
 	if err := d.recordOwed(runs); err != nil {
 		return err
