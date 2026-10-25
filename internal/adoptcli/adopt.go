@@ -1,4 +1,4 @@
-// adopt.go is the takeover sequence of "lyx adopt": it validates the request, reconciles the hub against origin, refuses an adopt that would leave no dobby here to drive what it takes over, then per named entry drops or keeps local commits, adds the missing pair, records this machine as owner, lifts the owner pause, resumes the run and starts the dobbies.
+// adopt.go is the takeover sequence of "lyx adopt": it validates the request, reconciles the hub against origin, refuses an adopt that would leave no dobby here to drive what it takes over, then per named entry drops or keeps local commits, adds the missing pair, records this machine as owner, lifts the owner pause, resumes the run, starts the dobbies and starts the test suite.
 
 package adoptcli
 
@@ -61,7 +61,13 @@ type slugOutcome struct {
 	Error         string       `json:"error,omitempty"`
 }
 
-// outcome is the verb's envelope: the reconcile's report, the mutation record of every step, whether that record is non-empty, the prime's owner write, each entry's slugOutcome and the warning of a dobby start that failed.
+// suiteStart names the detached test suite an adopt started: its pid and the log its output goes to.
+type suiteStart struct {
+	PID int    `json:"pid"`
+	Log string `json:"log"`
+}
+
+// outcome is the verb's envelope: the reconcile's report, the mutation record of every step, whether that record is non-empty, the prime's owner write, each entry's slugOutcome, the warning of a dobby start that failed, and the test suite started or the warning of a start that failed.
 type outcome struct {
 	Reconcile     fabricengine.OriginReport
 	Mutations     []fabricengine.Mutation
@@ -70,13 +76,16 @@ type outcome struct {
 	PrimeLost     string
 	Slugs         []slugOutcome
 	DobbyWarning  string
+	Suite         *suiteStart
+	SuiteWarning  string
 }
 
 // adoptDeps holds the seam of every step, which hubDeps fills over the hub and the tests fake.
 // LocalPair reports whether this machine holds the slug's pair worktree.
 // ParentOf names the slug of the pair a slug was forked from, or "" for the prime.
 // ResumeRun starts the run's first pass detached, driven on by its parent's dobby, and returns the envelope of that start, where an envelope whose "ok" is false is a refusal.
-// StartDobbies starts the dobby of the prime and of every beam this machine owns that is not live, and runs last; nil starts none.
+// StartDobbies starts the dobby of the prime and of every beam this machine owns that is not live, and runs after the resumes; nil starts none.
+// StartSuite starts the hub's finalize gate in the prime as a detached process and returns at once, so a break this machine brings to the landed code shows at adopt time; it runs last, once per call that recorded an owner.
 // HubPath roots the mutation record.
 type adoptDeps struct {
 	Machine      func() (string, error)
@@ -95,6 +104,7 @@ type adoptDeps struct {
 	ChildStatus  func(slug string) (shedengine.Status, bool, error)
 	ResumeChild  func(slug string) error
 	StartDobbies func() error
+	StartSuite   func() (suiteStart, error)
 	HubPath      string
 }
 
@@ -213,6 +223,15 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 	if deps.StartDobbies != nil {
 		if err := deps.StartDobbies(); err != nil {
 			result.DobbyWarning = fmt.Sprintf("the dobbies were not all started (%v); way forward: fix the cause each worktree names, then run `lyx beam start`", err)
+		}
+	}
+
+	if len(adopted) > 0 || result.PrimeRecorded {
+		suite, err := deps.StartSuite()
+		if err != nil {
+			result.SuiteWarning = fmt.Sprintf("the test suite was not started (%v); way forward: run `lyx gate test --gate finalize` in the prime", err)
+		} else {
+			result.Suite = &suite
 		}
 	}
 

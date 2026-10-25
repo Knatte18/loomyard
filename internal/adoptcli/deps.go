@@ -1,4 +1,4 @@
-// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift, the run resume, the child resume and the dobby start.
+// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift, the run resume, the child resume, the dobby start and the test suite start.
 
 package adoptcli
 
@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
@@ -20,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/tendercli"
@@ -110,6 +112,9 @@ func hubDepsAs(prime *lyxcwd.Location, machine func() (string, error)) (adoptDep
 			_, err := dobbyengine.EnsureLive(hubgeom.DobbyStart(prime))
 			return err
 		},
+		StartSuite: func() (suiteStart, error) {
+			return startSuite(prime.AnchorPath(), filepath.Join(fabricengine.AdoptScratchDir(prime.HubPath), suiteLogName))
+		},
 		HubPath: prime.HubPath,
 	}, nil
 }
@@ -145,6 +150,46 @@ func readStatus(path string) (shedengine.Status, bool, error) {
 		return shedengine.Status{}, false, fmt.Errorf("decode %s: %w", path, err)
 	}
 	return status, true, nil
+}
+
+// suiteLogName is the file the adopt's test suite writes its output to.
+const suiteLogName = "suite.log"
+
+// suiteArgs is the lyx command line of the adopt's test suite: the hub's finalize gate, waiting for gate slots.
+var suiteArgs = []string{"gate", "test", "--gate", "finalize", "--wait"}
+
+// startSuite starts the adopt's test suite detached in dir, with its output in the log at logPath, truncated first, and returns its pid and the log.
+// The suite is started and never waited for, so the adopt returns while it runs.
+// It starts nothing and returns an error in a test binary, where forking the running binary would re-run the test suite.
+func startSuite(dir, logPath string) (suiteStart, error) {
+	if testing.Testing() {
+		return suiteStart{}, errors.New("the test suite is not started under go test")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return suiteStart{}, fmt.Errorf("locate the lyx executable: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		return suiteStart{}, fmt.Errorf("create the suite log directory: %w", err)
+	}
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		return suiteStart{}, fmt.Errorf("open the suite log: %w", err)
+	}
+	defer logFile.Close()
+
+	command := exec.Command(executable, suiteArgs...)
+	command.Dir = dir
+	command.Stdout = logFile
+	command.Stderr = logFile
+	proc.Detach(command)
+	if err := command.Start(); err != nil {
+		logger.Warn("adoptcli: the test suite did not start", "exe", executable, "args", suiteArgs, "dir", dir, "error", err)
+		return suiteStart{}, err
+	}
+	pid := command.Process.Pid
+	logger.Info("adoptcli: spawned the test suite", "exe", executable, "args", suiteArgs, "dir", dir, "pid", pid, "log", logPath)
+	return suiteStart{PID: pid, Log: logPath}, nil
 }
 
 // resumeChild runs "lyx loom resume" in the task worktree at pairPath and waits for it.

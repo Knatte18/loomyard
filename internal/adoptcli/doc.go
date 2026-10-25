@@ -58,15 +58,25 @@
 // Step 5 resumes each adopted task whose batten run record is not done as a detached first pass through `battencli.StartFirstPass`, driven on by the parent's dobby, so the run's own driver lock refuses a second driver.
 // A resume failure is the slug's error and the other slugs go on; a task with no run record gets its owner and no run.
 //
-// Last, after the resumes, `StartDobbies` starts the dobby of the prime and of every beam this machine owns that is not live, through `dobbyengine.EnsureLive`, so a dobby runs wherever the adopted runs' parent now is.
+// After the resumes, `StartDobbies` starts the dobby of the prime and of every beam this machine owns that is not live, through `dobbyengine.EnsureLive`, so a dobby runs wherever the adopted runs' parent now is.
 // A failure is the envelope's `dobby_warning`, naming `lyx beam start`.
+//
+// # Step 6: the test suite
+//
+// Machines differ in OS and toolchain, so code landed on one can break on another.
+// After the dobbies, a call that recorded this machine as the owner of an entry or of the prime starts `lyx gate test --gate finalize --wait` once, detached, in the prime, the spawn logged through `logger`.
+// One call is one adoption session: adopting the prime and two beams together starts one suite, and a tier the gate's green record holds green for the prime's tree is carried and runs nothing.
+// The suite's output goes to `suite.log` under `fabricengine.AdoptScratchDir` in the hub's board-level `.lyx` directory, truncated at each start, and the envelope's `suite` names its pid and that log.
+// A red suite only reports there, since the owner write and the resumes have already taken effect.
+// A spawn that fails is the envelope's `suite_warning`, naming `lyx gate test --gate finalize` in the prime, and changes no slug's outcome.
+// Bound: two separate adopt calls each start a suite, which the gate slots serialize.
 //
 // A child halted at Finalize's owner halt, read as a blocked child status whose error opens with `landingshed.OwnerHaltPrefix`, is resumed with `lyx loom resume` spawned in its task worktree, the spawn logged through `logger`.
 // That holds both when the child's own slug is adopted and when `--prime` or a parent slug adopts its parent while this machine owns the child's run; a child halted for any other reason stays halted.
 //
 // # The envelope
 //
-// It carries `reconcile`, `mutations` and `partial`, `dobby_warning` when a dobby did not start, and per slug what happened: a stop with its branches, pair added, owner recorded, pause lifted or standing, run resumed or none, the error, and a warning when this machine does not own the slug's parent, since that run halts at Finalize here.
+// It carries `reconcile`, `mutations` and `partial`, `dobby_warning` when a dobby did not start, `suite` or `suite_warning` for the test suite, and per slug what happened: a stop with its branches, pair added, owner recorded, pause lifted or standing, run resumed or none, the error, and a warning when this machine does not own the slug's parent, since that run halts at Finalize here.
 //
 // # The bounds
 //

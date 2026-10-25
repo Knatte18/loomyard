@@ -432,6 +432,7 @@ User-facing modules each get one `lyx <module>` namespace:
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
 - **adopt** — the takeover of tasks, beams or the prime from another machine of the operator, as one verb (`internal/adoptcli`; `lyx adopt <slug>...`, `lyx adopt --prime [<slug>...]` and `lyx adopt --all`, with `--keep-local` and `--drop-local`, from the prime and from any beam).
   It reconciles the hub against origin, stops an entry whose pair holds local commits origin lacks or is live, adds the missing pair, records this machine as the owner in one pushed owner write, lifts the owner pause and resumes the run as a detached first pass, driven on by its parent's dobby.
+  A call that recorded an owner then starts the hub's `finalize` gate once, detached, in the prime, so a break this machine brings to the landed code shows at adopt time.
   It calls each owning module's function in-process and has no engine package of its own.
   ✅ Implemented. See the `internal/adoptcli` package documentation.
 - **beam** — the making, promoting, landing and starting of a beam, a long-lived pair that groups board work, and dobby, the daemon every beam and the prime run (`internal/beamcli` + `internal/dobbyengine`; `lyx beam create <slug>`, `lyx beam promote <slug>`, `lyx beam land <slug>` and `lyx beam start`, from the prime and from any beam, and the hidden `lyx beam dobby`).

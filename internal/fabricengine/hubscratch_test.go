@@ -63,6 +63,12 @@ func TestHubScratchAndLogsDir(t *testing.T) {
 	if gotArchive != wantArchive {
 		t.Errorf("LogArchiveDir(%q) = %q; want %q", hub, gotArchive, wantArchive)
 	}
+
+	gotAdopt := fabricengine.AdoptScratchDir(hub)
+	wantAdopt := filepath.Join(got, lyxdirs.AdoptDirName)
+	if gotAdopt != wantAdopt {
+		t.Errorf("AdoptScratchDir(%q) = %q; want %q", hub, gotAdopt, wantAdopt)
+	}
 }
 
 // TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLyx asserts the second half of the

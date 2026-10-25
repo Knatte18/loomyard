@@ -1,6 +1,6 @@
 //go:build tier0
 
-// deps_test.go covers the hub-only pause reading that makes a pair under a slug-scope pause read live.
+// deps_test.go covers the hub-only pause reading that makes a pair under a slug-scope pause read live, and the suite start's guard under go test.
 
 package adoptcli
 
@@ -54,4 +54,15 @@ func TestHubOnlyPaused(t *testing.T) {
 			t.Errorf("hubOnlyPaused over an undecodable record returned no error")
 		}
 	})
+}
+
+func TestStartSuiteStartsNothingUnderTest(t *testing.T) {
+	t.Parallel()
+	logPath := filepath.Join(t.TempDir(), "adopt", suiteLogName)
+	if suite, err := startSuite(t.TempDir(), logPath); err == nil {
+		t.Errorf("startSuite under go test = %+v, nil; want an error", suite)
+	}
+	if _, err := os.Stat(filepath.Dir(logPath)); !os.IsNotExist(err) {
+		t.Errorf("startSuite under go test left the log directory behind: stat error %v", err)
+	}
 }

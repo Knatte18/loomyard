@@ -168,6 +168,12 @@ func HubScratchDir(hub string) string {
 	return filepath.Join(BoardDir(hub), lyxdirs.DotLyxDirName)
 }
 
+// AdoptScratchDir returns the directory that holds the log of the test suite an adopt starts:
+// <hub>/_board/.lyx/adopt.
+func AdoptScratchDir(hub string) string {
+	return filepath.Join(HubScratchDir(hub), lyxdirs.AdoptDirName)
+}
+
 // HubLogsDir returns the hub-level directory where the shared per-hub reed server writes its
 // runtime log: <hub>/_board/.lyx/logs.
 // It is hub-anchored so one server per hub resolves to one deterministic place, and it lives
