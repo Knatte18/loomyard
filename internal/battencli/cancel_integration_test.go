@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -80,15 +81,18 @@ func boardStatusOf(t *testing.T, h *hubforge.Hub, slug string) (status *string, 
 	return task.Status, found
 }
 
-// overviewListsSlug reports whether the prime's overview pane draws a line for slug.
-func overviewListsSlug(h *hubforge.Hub, slug string) bool {
-	source := newOverviewSource(h.Location, filepath.Join(h.Path, "no-pause.json"), overviewThresholds{}, time.Now)
-	for _, line := range source.frame().Lines {
-		if strings.Contains(line, slug) {
-			return true
-		}
+// overviewListsSlug reports whether the prime's dobby, which the prime's window draws, lists a run for slug.
+func overviewListsSlug(t *testing.T, h *hubforge.Hub, slug string) bool {
+	t.Helper()
+	reader, err := NewDobbyViewReader(h.Location, h.Location.WorktreeName)
+	if err != nil {
+		t.Fatalf("place the prime's dobby: %v", err)
 	}
-	return false
+	view, err := reader.Read(time.Now())
+	if err != nil {
+		t.Fatalf("read the prime's dobby: %v", err)
+	}
+	return slices.ContainsFunc(view.Runs, func(run dobbyengine.ViewRun) bool { return run.Slug == slug })
 }
 
 // TestCancelIntegration_BlockedRunWithNoPair cancels a run blocked at Worktree-Create with no pair, a claim and a tackler marker naming a guid no strand holds:
@@ -104,7 +108,7 @@ func TestCancelIntegration_BlockedRunWithNoPair(t *testing.T) {
 	if err := sheddriver.WriteTacklerMarker(shedrun.TacklerMarker(h.Location, slug), sheddriver.TacklerMarker{Attempt: 1, StrandGUID: guid}); err != nil {
 		t.Fatalf("write the tackler marker: %v", err)
 	}
-	if !overviewListsSlug(h, slug) {
+	if !overviewListsSlug(t, h, slug) {
 		t.Fatal("the overview draws no line for the blocked run before the cancel; the check after it would prove nothing")
 	}
 
@@ -125,7 +129,7 @@ func TestCancelIntegration_BlockedRunWithNoPair(t *testing.T) {
 	if status, found := boardStatusOf(t, h, slug); !found || status == nil || *status != boardengine.StatusDraft {
 		t.Errorf("board entry status = %v, found %v; want the entry kept as a draft", status, found)
 	}
-	if overviewListsSlug(h, slug) {
+	if overviewListsSlug(t, h, slug) {
 		t.Error("the overview still draws a line for the cancelled run")
 	}
 	if pathExists(shedrun.CancelMarker(h.Location, slug)) {

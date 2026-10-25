@@ -10,13 +10,22 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 )
 
 // shellWindowName is the name of the window that holds the operator console pane.
 const shellWindowName = "shell"
 
-// overviewWindowName is the name of the window that holds the overview strand.
+// overviewWindowName is the name of the window that holds an overview strand whose display carries no title.
 const overviewWindowName = "overview"
+
+// overviewWindowTitle returns the name of the window an overview strand with display d opens: its Title, or overviewWindowName when it has none.
+func overviewWindowTitle(d render.Display) string {
+	if d.Title == "" {
+		return overviewWindowName
+	}
+	return d.Title
+}
 
 // shellCheckFailedOption is the session option that records an open episode of failures to repair the shell window.
 const shellCheckFailedOption = "@lyx_shell_check_failed"

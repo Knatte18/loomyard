@@ -97,6 +97,8 @@ type orchCLI struct {
 	executable func() (string, error)
 	// currentBuild identifies the running lyx build, which tells a runs strand of this build from an older one.
 	currentBuild func() (statuspane.BuildIdentity, error)
+	// runsWindowTitle names the runs strand's window: `beam: prime` in the prime, `beam: <slug>` in a beam.
+	runsWindowTitle string
 	// reconcile judges and moves the hub's branches against origin, which `start` runs before it decides anything about the strand.
 	reconcile func() (fabricengine.OriginReport, error)
 	// beamStart refuses a start in a beam that another machine owns or that its landing holds, which `start` calls before it creates anything; nil in the prime, and in a hand-built harness, skips it.
@@ -189,6 +191,7 @@ Every verb runs from the hub's prime worktree or from a beam.`,
 			reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 
 			c.location = location
+			c.runsWindowTitle = runsWindowTitleOf(location.WorktreeName, beam)
 			c.cfg = orchCfg
 			c.shuttleCfg = shuttleCfg
 			engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(location))

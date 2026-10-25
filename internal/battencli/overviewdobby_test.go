@@ -1,42 +1,40 @@
 //go:build tier0
 
-// overviewdobby_test.go pins the dobby's lines: DobbyLines over built views, and the overview frame that draws them below the runs.
+// overviewdobby_test.go pins the dobby's lines: DobbyLines over built views and cells, and the window frame that draws them above the orchs.
 
 package battencli
 
 import (
+	"encoding/json"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
-	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 )
 
 func TestDobbyLines(t *testing.T) {
 	t.Parallel()
-	runShed := overviewStage(shedrun.RecipeBatten, battenrecipe.NameRunShed)
-	land := overviewStage(shedrun.RecipeBatten, battenrecipe.NameLand)
-	pad := func(stage string) string { return padRight(stage, max(len([]rune(runShed)), len([]rune(land)))) }
 
 	tests := []struct {
-		name string
-		view dobbyengine.View
-		want []string
+		name  string
+		view  dobbyengine.View
+		cells map[string]RunCells
+		want  []string
 	}{
 		{
-			name: "AnAliveDobbyShowsItsRunsAndWhyEachTaskWaits",
+			name: "AnAliveDobbyShowsItsRunsWithTheirCellsAndWhyEachTaskWaits",
 			view: dobbyengine.View{
 				Alive: true, MaxRuns: 2,
 				Runs: []dobbyengine.ViewRun{
-					{Slug: "flying", State: "running", Producer: battenrecipe.NameRunShed, PassInFlight: true},
-					{Slug: "failing", State: "blocked", Producer: battenrecipe.NameLand, LastPassExit: minutesAgo(12), FullPassOwed: true, FailingPassCount: 2, FailingPassError: "pre-run refused\nmore detail"},
+					{Slug: "flying", PassInFlight: true},
+					{Slug: "failing", LastPassExit: minutesAgo(12), FullPassOwed: true, FailingPassCount: 2, FailingPassError: "pre-run refused\nmore detail"},
 				},
 				Waiting: []dobbyengine.WaitingTask{
 					{Slug: "ready"},
@@ -46,10 +44,14 @@ func TestDobbyLines(t *testing.T) {
 					{Slug: "capped", AtMaxRuns: true},
 				},
 			},
+			cells: map[string]RunCells{
+				"flying":  {State: "running", Stage: "6.6 Plan-Write", InStage: "30m"},
+				"failing": {State: "blocked", Stage: "7. Land", InStage: "1h12m"},
+			},
 			want: []string{
 				"dobby prime: alive, max_runs 2",
-				"  flying   running  " + pad(runShed) + "  pass in flight",
-				"  failing  blocked  " + pad(land) + "  last pass 12m ago, full pass owed, failing 2× in a row: pre-run refused",
+				"  flying   running  6.6 Plan-Write  30m    pass in flight",
+				"  failing  blocked  7. Land         1h12m  last pass 12m ago, full pass owed, failing 2× in a row: pre-run refused",
 				"  ready    ready to start",
 				"  deps     waits on dependencies x, y; a pause",
 				"  refused  waits on a refused start (dirty source), retry in 4m",
@@ -58,11 +60,25 @@ func TestDobbyLines(t *testing.T) {
 			},
 		},
 		{
-			name: "ADeadDobbyNamesTheWayForwardAndARunWithNoPassSaysSo",
-			view: dobbyengine.View{MaxRuns: 3, Runs: []dobbyengine.ViewRun{{Slug: "r", State: "running", Producer: battenrecipe.NameRunShed}}},
+			name:  "ADeadDobbyNamesTheWayForwardAndARunWithNoPassSaysSo",
+			view:  dobbyengine.View{MaxRuns: 3, Runs: []dobbyengine.ViewRun{{Slug: "r"}}},
+			cells: map[string]RunCells{"r": {State: "paused 4m", Stage: "6. Run-Shed", InStage: "-"}},
 			want: []string{
 				"dobby prime: not running; way forward: lyx beam start",
-				"  r  running  " + runShed + "  no pass yet",
+				"  r  paused 4m  6. Run-Shed  -  no pass yet",
+			},
+		},
+		{
+			name: "AnUnreadableRunTakesNoPartInTheColumnWidths",
+			view: dobbyengine.View{Alive: true, MaxRuns: 3, Runs: []dobbyengine.ViewRun{{Slug: "broken"}, {Slug: "ok"}}},
+			cells: map[string]RunCells{
+				"broken": {Unreadable: true},
+				"ok":     {State: "running", Stage: "Plan", InStage: "5m"},
+			},
+			want: []string{
+				"dobby prime: alive, max_runs 3",
+				"  broken  status unreadable  no pass yet",
+				"  ok      running  Plan  5m  no pass yet",
 			},
 		},
 		{
@@ -74,29 +90,39 @@ func TestDobbyLines(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if diff := cmp.Diff(tt.want, DobbyLines(dobbyengine.PrimeLabel, tt.view, overviewNow)); diff != "" {
+			if diff := cmp.Diff(tt.want, DobbyLines(dobbyengine.PrimeLabel, tt.view, tt.cells, overviewNow)); diff != "" {
 				t.Errorf("DobbyLines() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}
 }
 
-func TestOverviewSource_DrawsTheDobbyBelowTheRuns(t *testing.T) {
+func TestOverviewSource_DrawsTheDobbyAboveTheOrchs(t *testing.T) {
 	t.Parallel()
 	prime := locationkit.Location(t.TempDir(), "prime", ".")
-	source := newOverviewSource(prime, filepath.Join(t.TempDir(), "pause.json"), overviewThresholds{}, func() time.Time { return overviewNow })
+	source := newOverviewSource(prime, prime, orchThresholds, func() time.Time { return overviewNow })
 	var drawnAt time.Time
 	source.dobby = func(now time.Time) []string {
 		drawnAt = now
 		return []string{"dobby prime: alive, max_runs 3", "  no runs driven"}
 	}
 
-	want := []string{overviewNoRuns, "", "dobby prime: alive, max_runs 3", "  no runs driven"}
+	want := []string{"dobby prime: alive, max_runs 3", "  no runs driven"}
 	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
-		t.Errorf("frame() mismatch (-want +got):\n%s", diff)
+		t.Errorf("frame() with no orch state mismatch (-want +got):\n%s", diff)
 	}
 	if !drawnAt.Equal(overviewNow) {
 		t.Errorf("the dobby was drawn at %v; want the frame's time %v", drawnAt, overviewNow)
+	}
+
+	data, err := json.Marshal(orchengine.State{Phase: orchengine.PhaseIdle, LastContextTokens: 212500, LastContextKnown: true, CycleCount: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeOverviewFile(t, orchcli.PrimePaths(prime).StatePath, data, minutesAgo(5))
+	want = append(want, "", "orch  212k / soft 300k / hard 400k  idle  cycles 3")
+	if diff := cmp.Diff(want, source.frame().Lines); diff != "" {
+		t.Errorf("frame() with an orch state mismatch (-want +got):\n%s", diff)
 	}
 }
 

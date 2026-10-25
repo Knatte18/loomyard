@@ -43,7 +43,7 @@ type statusResult struct {
 	Dobbies []statusEntry `json:"dobbies"`
 }
 
-// statusEntry is one dobby's view in `beam status`: the structured view and the lines the overview draws for it, or why it did not read.
+// statusEntry is one dobby's view in `beam status`: the structured view and the lines a beam's window draws for it, or why it did not read.
 type statusEntry struct {
 	Worktree string            `json:"worktree"`
 	View     *dobbyengine.View `json:"view,omitempty"`
@@ -57,9 +57,9 @@ func statusCmd() *cobra.Command {
 		Use:         "status",
 		Short:       "show the dobby of the prime and of every local beam: alive, runs driven, tasks waiting and why",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Prints, once, what the overview window draws for a dobby, for the hub's prime and
+		Long: `Prints, once, what a beam's window draws for a dobby, for the hub's prime and
 for every local beam: whether the dobby is alive and its max_runs, each run it
-drives with its state, stage and last pass, and each released task it has not
+drives with its state, stage, time in the stage and last pass, and each released task it has not
 started with what the task waits on -- open dependencies, another machine's
 ownership, a pause, a refused start and its retry, or max_runs. Each entry
 carries the structured view and its rendered lines. It reads files only.
@@ -84,6 +84,11 @@ func dobbyStatus(prime *lyxcwd.Location, now time.Time) (statusResult, error) {
 	if err != nil {
 		return statusResult{}, fmt.Errorf("lyx beam status: list the local beams: %w", err)
 	}
+	pause, err := hubgeom.PauseGeometry(prime)
+	if err != nil {
+		return statusResult{}, fmt.Errorf("lyx beam status: locate the pause record: %w", err)
+	}
+	cells := battencli.NewDobbyRunCells(prime, pause.RecordPath)
 	worktrees := []string{prime.WorktreeName}
 	for _, beam := range beams {
 		worktrees = append(worktrees, beam.Slug)
@@ -102,7 +107,7 @@ func dobbyStatus(prime *lyxcwd.Location, now time.Time) (statusResult, error) {
 			failures = append(failures, fmt.Errorf("%s: %w", label, err))
 		} else {
 			entry.View = &view
-			entry.Lines = battencli.DobbyLines(label, view, now)
+			entry.Lines = battencli.DobbyLines(label, view, cells.Of(view.Runs, now), now)
 		}
 		result.Dobbies = append(result.Dobbies, entry)
 	}

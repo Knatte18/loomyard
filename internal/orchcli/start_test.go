@@ -162,6 +162,7 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c.cfg.Model, c.cfg.Effort = "opus", "high"
 	c.stencilsDir = stencilkit.Seed(t)
 	c.location = locationkit.Location(t.TempDir(), "main", "")
+	c.runsWindowTitle = "beam: prime"
 	boardDir := fabricengine.BoardDir(c.location.HubPath)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -247,7 +248,7 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 	t.Parallel()
 
 	otherBuild := statuspane.BuildIdentity{Path: "/older/lyx", Size: 9, ModTime: 9}
-	wantDisplay := render.Display{Anchor: render.AnchorOverview}
+	wantDisplay := render.Display{Anchor: render.AnchorOverview, Title: "beam: prime"}
 	tests := []struct {
 		name    string
 		strands []reedengine.StrandStatus
@@ -329,7 +330,7 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 			}
 			for _, spec := range specs {
 				if spec.NameOverride != "runs" || spec.Segment != "" || spec.Display != wantDisplay {
-					t.Errorf("runs strand spec = %+v; want the runs name, no segment and the top content display", spec)
+					t.Errorf("runs strand spec = %+v; want the runs name, no segment and the overview display titled after the beam", spec)
 				}
 				sh := shell.ForGOOS()
 				if want := sh.Invoke(h.exe) + " " + sh.Quote("batten") + " " + sh.Quote("overview"); spec.Cmd != want {
@@ -343,6 +344,27 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 				t.Errorf("sidecar = %+v; want none", sidecar)
 			case tt.wantSidecarGUID != "" && (sidecar == nil || sidecar.GUID != tt.wantSidecarGUID || sidecar.Build != h.build):
 				t.Errorf("sidecar = %+v; want guid %q with the current build", sidecar, tt.wantSidecarGUID)
+			}
+		})
+	}
+}
+
+func TestRunsWindowTitleOf(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		worktree string
+		beam     bool
+		want     string
+	}{
+		{"PrimeReadsPrime", "main", false, "beam: prime"},
+		{"BeamReadsItsSlug", "workspaces", true, "beam: workspaces"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := runsWindowTitleOf(tt.worktree, tt.beam); got != tt.want {
+				t.Errorf("runsWindowTitleOf(%q, %v) = %q; want %q", tt.worktree, tt.beam, got, tt.want)
 			}
 		})
 	}

@@ -295,14 +295,15 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		assertFollow("off")
 	})
 
-	t.Run("ReplacingTheOverviewKeepsOverviewAgentsInStartOrderThenShell", func(t *testing.T) {
+	t.Run("ReplacingTheOverviewWithATitleKeepsItFirstUnderTheTitleThenAgentsInStartOrderThenShell", func(t *testing.T) {
 		agents := agentNames()
+		const title = "beam: prime"
 		var err error
-		overview, err = e.ReplaceStrand(overview.GUID, AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: overviewDisplay})
+		overview, err = e.ReplaceStrand(overview.GUID, AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOverview, Title: title}})
 		if err != nil {
 			t.Fatalf("ReplaceStrand(overview): %v", err)
 		}
-		want := append(append([]string{overviewWindowName}, agents...), shellWindowName)
+		want := append(append([]string{title}, agents...), shellWindowName)
 		for _, w := range windows() {
 			if w.Hidden {
 				want = append(want, w.Name)

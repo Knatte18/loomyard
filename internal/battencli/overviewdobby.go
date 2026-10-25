@@ -1,4 +1,4 @@
-// overviewdobby.go renders the View of a worktree's dobby as the lines the overview pane draws below the runs and `lyx beam status` prints.
+// overviewdobby.go renders the View of a worktree's dobby as the lines a beam's window draws above its orchs and `lyx beam status` prints.
 
 package battencli
 
@@ -10,7 +10,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/durfmt"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 const (
@@ -23,9 +22,10 @@ const (
 )
 
 // DobbyLines renders view, the View of the dobby label names, as lines at now:
-// a header saying whether the dobby lives and its max_runs, one line per run it drives with its state, stage and last pass, and one line per released task it has not started with everything that holds the task back.
+// a header saying whether the dobby lives and its max_runs, one line per run it drives with its cells from runCells and its last pass, and one line per released task it has not started with everything that holds the task back.
+// A run whose cells are unreadable draws `status unreadable` in their place and takes no part in their column widths.
 // Every time still growing renders in whole minutes, so the lines change at most once a minute.
-func DobbyLines(label string, view dobbyengine.View, now time.Time) []string {
+func DobbyLines(label string, view dobbyengine.View, runCells map[string]RunCells, now time.Time) []string {
 	header := fmt.Sprintf("dobby %s: alive, max_runs %d", label, view.MaxRuns)
 	if !view.Alive {
 		header = fmt.Sprintf("dobby %s: not running; way forward: lyx beam start", label)
@@ -43,17 +43,26 @@ func DobbyLines(label string, view dobbyengine.View, now time.Time) []string {
 	if len(view.Runs) == 0 {
 		lines = append(lines, dobbyIndent+dobbyNoRuns)
 	}
-	runCells := make([][]string, len(view.Runs))
-	stateWidth, stageWidth := 0, 0
-	for i, run := range view.Runs {
-		stage := overviewStage(shedrun.RecipeBatten, run.Producer)
-		runCells[i] = []string{run.State, stage, dobbyRunPass(run, now)}
-		stateWidth = max(stateWidth, len([]rune(run.State)))
-		stageWidth = max(stageWidth, len([]rune(stage)))
+	stateWidth, stageWidth, inStageWidth := 0, 0, 0
+	for _, run := range view.Runs {
+		cells := runCells[run.Slug]
+		if cells.Unreadable {
+			continue
+		}
+		stateWidth = max(stateWidth, len([]rune(cells.State)))
+		stageWidth = max(stageWidth, len([]rune(cells.Stage)))
+		inStageWidth = max(inStageWidth, len([]rune(cells.InStage)))
 	}
-	for i, run := range view.Runs {
-		cells := []string{padRight(run.Slug, slugWidth), padRight(runCells[i][0], stateWidth), padRight(runCells[i][1], stageWidth), runCells[i][2]}
-		lines = append(lines, dobbyIndent+strings.Join(cells, overviewColumnGap))
+	for _, run := range view.Runs {
+		cells := runCells[run.Slug]
+		drawn := []string{padRight(run.Slug, slugWidth)}
+		if cells.Unreadable {
+			drawn = append(drawn, overviewStatusBroken)
+		} else {
+			drawn = append(drawn, padRight(cells.State, stateWidth), padRight(cells.Stage, stageWidth), padRight(cells.InStage, inStageWidth))
+		}
+		drawn = append(drawn, dobbyRunPass(run, now))
+		lines = append(lines, dobbyIndent+strings.Join(drawn, overviewColumnGap))
 	}
 	for _, task := range view.Waiting {
 		lines = append(lines, dobbyIndent+padRight(task.Slug, slugWidth)+overviewColumnGap+dobbyTaskWait(task, view.MaxRuns, now))
@@ -61,14 +70,14 @@ func DobbyLines(label string, view dobbyengine.View, now time.Time) []string {
 	return lines
 }
 
-// overviewDobbyLines reads the View of the dobby reader names and renders it at now; a view that does not read renders the one unreadable line.
-func overviewDobbyLines(reader *DobbyViewReader, now time.Time) []string {
+// overviewDobbyLines reads the View of the dobby reader names and the cells of its runs, and renders them at now; a view that does not read renders the one unreadable line.
+func overviewDobbyLines(reader *DobbyViewReader, cells *DobbyRunCells, now time.Time) []string {
 	view, err := reader.Read(now)
 	if err != nil {
 		logger.Debug("batten: reading the dobby for the overview failed", "dobby", reader.Label(), "err", err)
 		return []string{fmt.Sprintf(dobbyUnreadableFormat, reader.Label())}
 	}
-	return DobbyLines(reader.Label(), view, now)
+	return DobbyLines(reader.Label(), view, cells.Of(view.Runs, now), now)
 }
 
 // dobbyRunPass renders a run's pass cell: a pass in flight, or the minutes since its last pass exited, then what the dobby's record says of it.
