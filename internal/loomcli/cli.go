@@ -171,10 +171,8 @@ type loomCLI struct {
 	ownerOf func(l *lyxcwd.Location, slug string) (ownerVerdict, error)
 }
 
-// newLoomCLI is the only place production code may build a *loomCLI: it is what keeps
-// suppressWatchdogSpawn and spawnWatchdog set identically on every constructed receiver, so neither
-// of this package's two constructors (Command, StartAliasCommand) can forget one and leave a nil
-// spawnWatchdog to panic rather than degrade.
+// newLoomCLI is the only place production code may build a *loomCLI: it is what keeps suppressWatchdogSpawn and spawnWatchdog set identically on every constructed receiver,
+// so no constructor can forget one and leave a nil spawnWatchdog to panic rather than degrade.
 func newLoomCLI() *loomCLI {
 	c := &loomCLI{
 		suppressWatchdogSpawn: testing.Testing(),
@@ -423,9 +421,9 @@ the paused run's pause_reason; shed is reserved for lyx's own automatic steps
 and refused.
 
 A bare pause, with no flag, refuses for a loom run: it no longer stops
-anything. The refusal names the two ways forward: "lyx pause <slug>" stops
-the run's agents now, and "--after <current_producer>" halts the run at its
-next producer boundary.
+anything. The refusal names the two ways forward: "lyx tender pause <slug>"
+stops the run's agents now, and "--after <current_producer>" halts the run at
+its next producer boundary.
 
 --after naming a row that waits for the parent lock also ends that wait
 mid-row, halting the run at the row; the condition stays recorded until

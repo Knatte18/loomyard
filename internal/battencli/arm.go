@@ -661,7 +661,7 @@ func (c *battenCLI) refuseContinuePass() error {
 	return nil
 }
 
-// refuseCovered returns the refusal naming "lyx resume" when a live pause entry covers this run's slug, and nil otherwise.
+// refuseCovered returns the refusal naming "lyx tender resume" when a live pause entry covers this run's slug, and nil otherwise.
 // A geometry or record that cannot be read refuses nothing and logs one Warn, so a corrupt file never blocks a run.
 func (c *battenCLI) refuseCovered() error {
 	geometry, err := hubgeom.PauseGeometry(c.location)

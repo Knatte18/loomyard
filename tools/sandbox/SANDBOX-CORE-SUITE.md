@@ -262,7 +262,7 @@ This is the supervisor skill's literal first instruction, so it is the first thi
 Then write both fixtures and continue.
 Does `lyx loom status` round-trip the fixture's own `slug`/`parent`/`current_producer`/`state`/`activity`/`history` values back out through its JSON envelope unchanged -- this also pins that envelope against the status contract?
 Does the same envelope carry an `interrupt_policy` matching the fixture's own `current_producer` -- `handback` for `Webster`, `reinvoke` for every other row name, absent for a name that is no row at all?
-Does a bare `lyx loom pause` refuse naming both ways forward -- `lyx pause <slug>` to stop the run's agents now and `lyx loom pause --after <current_producer>` to halt it at the next producer boundary -- and leave the status file unchanged?
+Does a bare `lyx loom pause` refuse naming both ways forward -- `lyx tender pause <slug>` to stop the run's agents now and `lyx loom pause --after <current_producer>` to halt it at the next producer boundary -- and leave the status file unchanged?
 Does `lyx loom pause --after <a row name>` record `pause_after` as that row while leaving every other field -- `current_producer`, `state`, `activity`, `history`, and `product` -- untouched?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -325,12 +325,12 @@ Does `lyx cleanup` run from a task worktree instead refuse, name the prime workt
 
 **Covers:** tender
 
-**Watch:** Does `lyx pause` print one `{"ok":true}` envelope under `pause` that names the hub scope and reports empty lists, and does a second `lyx pause` report `already_paused` and add no entry?
+**Watch:** Does `lyx p` print one `{"ok":true}` envelope under `pause` that names the hub scope and reports empty lists, and does a second `lyx p` report `already_paused` and add no entry?
 Does `lyx tender status` list the one live entry and change nothing?
-While the pause stands, does `lyx board` print one line that names the pause and the `lyx resume` that lifts it, and then continue only after the resume?
-Does `lyx resume` lift the entry, and does a second `lyx resume` report nothing resumed?
+While the pause stands, does `lyx board` print one line that names the pause and the `lyx tender resume` that lifts it, and then continue only after the resume?
+Does `lyx r` lift the entry, and does a second `lyx r` report nothing resumed?
 Does `lyx tender revive` with nothing stalled print an empty report and succeed?
-Does `lyx pause no-such-slug` refuse and list the slugs that have a pair, and does `lyx pause --grace 61` refuse and name the range 0 to 60?
+Does `lyx p no-such-slug` refuse and list the slugs that have a pair, and does `lyx p --grace 61` refuse and name the range 0 to 60?
 
 **Verdict:** `OK` / `WARN` / `FAIL`
 

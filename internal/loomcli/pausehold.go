@@ -35,7 +35,7 @@ func (c *loomCLI) pausedExtras() map[string]any {
 	}
 }
 
-// refuseCovered returns the refusal naming "lyx resume" and the retry when a live pause entry covers this worktree's slug, and nil otherwise.
+// refuseCovered returns the refusal naming "lyx tender resume" and the retry when a live pause entry covers this worktree's slug, and nil otherwise.
 // A geometry or record that cannot be read refuses nothing and logs one Warn, so a corrupt file never blocks a restart.
 func (c *loomCLI) refuseCovered(retry string) error {
 	geometry, err := hubgeom.PauseGeometry(c.location)

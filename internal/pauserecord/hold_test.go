@@ -67,12 +67,12 @@ func TestWaitUncovered(t *testing.T) {
 	}{
 		{name: "no entry returns at once with no line", slug: "a"},
 		{
-			name: "a hub entry holds until resumed, with one line naming lyx resume",
+			name: "a hub entry holds until resumed, with one line naming lyx tender resume",
 			live: []Entry{hub}, slug: "a",
 			onSleep:    func(t *testing.T, call int, path string) { resumeLive(t, path) },
 			wantDelays: []time.Duration{second},
 			wantLines:  1,
-			wantLine:   `lyx: held by a hub-wide pause since 2026-01-10T12:00:00Z; it continues after "lyx resume"`,
+			wantLine:   `lyx: held by a hub-wide pause since 2026-01-10T12:00:00Z; it continues after "lyx tender resume"`,
 		},
 		{
 			name: "a slug entry holds its slug and names both resumes",
@@ -80,7 +80,7 @@ func TestWaitUncovered(t *testing.T) {
 			onSleep:    func(t *testing.T, call int, path string) { resumeLive(t, path) },
 			wantDelays: []time.Duration{second},
 			wantLines:  1,
-			wantLine:   `lyx: held by the pause of a since 2026-01-10T12:00:00Z; it continues after "lyx resume" or "lyx resume a"`,
+			wantLine:   `lyx: held by the pause of a since 2026-01-10T12:00:00Z; it continues after "lyx tender resume" or "lyx tender resume a"`,
 		},
 		{name: "a slug entry does not hold another slug", live: []Entry{slugEntry}, slug: "b"},
 		{name: "an exempt caller passes a slug entry", live: []Entry{slugEntry}, slug: "a", exempt: true},

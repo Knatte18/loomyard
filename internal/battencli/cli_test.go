@@ -257,7 +257,7 @@ func TestStartFirstPass(t *testing.T) {
 		{
 			name:        "CoveredSlugIsRefusedBeforeAnythingStarts",
 			pauseCovers: true,
-			wantRefusal: []string{"lyx resume"},
+			wantRefusal: []string{"lyx tender resume"},
 		},
 	}
 	for _, tt := range tests {

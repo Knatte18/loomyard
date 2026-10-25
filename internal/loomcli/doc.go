@@ -4,7 +4,6 @@
 // Friction-Reflect, the last row, runs the Tier 2 friction reflection under run and under step alike, before the run records done.
 // A `blocked` or `failed` halt, and an interrupted stop, write their Go halt note and spawn no reflection, so no stop holds the driver lock for a friction session and `lyx loom resume` never waits on one; the note waits for the run's Friction-Reflect row, which reflects every note in the friction directory.
 // An interrupted stop's note carries the `interrupted-stop` anomaly kind, never `producer-hard-failure`, with the stop's cause as its reason and the in-flight step's trace file where the stop knows it.
-// `lyx start` is the same start verb mounted a second time at the root, resolving the full engine stack exactly as `lyx loom start` does.
 //
 // A run seeded with the recipe `beam` is a beam's landing run, batten's Seed-Child seeds it in the beam's pair.
 // Its shed has two rows, Beam-Describe and Finalize, and no reroute edge, no plan and no review segment.

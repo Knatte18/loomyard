@@ -235,7 +235,7 @@ func TestAdopt(t *testing.T) {
 			}
 		}},
 		{name: "RefusesNote", req: request{Slugs: []string{"note1"}}, wantErr: "lyx board promote"},
-		{name: "RefusesDoneTaskNamingResume", req: request{Slugs: []string{"done1"}}, wantErr: "lyx resume done1"},
+		{name: "RefusesDoneTaskNamingResume", req: request{Slugs: []string{"done1"}}, wantErr: "lyx tender resume done1"},
 		{name: "RefusesKeepWithDrop", req: request{Slugs: []string{"alpha"}, KeepLocal: true, DropLocal: true}, wantErr: "pass one of them"},
 		{name: "RefusesNoSlugWithoutPrimeOrAll", req: request{}, wantErr: "--prime or --all"},
 		{name: "UnreachableOriginRefusesNamingTheRerun", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.report.Unreachable = true }, wantErr: "once origin answers", check: func(t *testing.T, w *world, _ outcome) {
@@ -360,15 +360,15 @@ func TestAdopt(t *testing.T) {
 			if !alpha.PauseLifted || alpha.PauseStanding != "" {
 				t.Errorf("alpha = %+v, want its pause lifted and none standing", alpha)
 			}
-			if !beta.PauseLifted || !strings.Contains(beta.PauseStanding, "lyx resume beta") {
-				t.Errorf("beta = %+v, want the owner pause lifted and the unlabelled one named with lyx resume beta", beta)
+			if !beta.PauseLifted || !strings.Contains(beta.PauseStanding, "lyx tender resume beta") {
+				t.Errorf("beta = %+v, want the owner pause lifted and the unlabelled one named with lyx tender resume beta", beta)
 			}
 		}},
 		{name: "HubPauseStandingIsNamedWithBareResume", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
 			w.record.Live = []pauserecord.Entry{{Scope: pauserecord.ScopeHub, Caller: "operator"}}
 		}, check: func(t *testing.T, _ *world, got outcome) {
-			if standing := slugOf(t, got, "alpha").PauseStanding; !strings.Contains(standing, "`lyx resume`") {
-				t.Errorf("pause standing = %q, want the hub pause named with lyx resume", standing)
+			if standing := slugOf(t, got, "alpha").PauseStanding; !strings.Contains(standing, "`lyx tender resume`") {
+				t.Errorf("pause standing = %q, want the hub pause named with lyx tender resume", standing)
 			}
 		}},
 		{name: "ResumesEachRunOnceAndReportsAFailureBesideTheNext", req: request{Slugs: []string{"alpha", "beta"}}, setup: func(w *world) { w.resumeErr["alpha"] = errors.New("window failed") }, check: func(t *testing.T, w *world, got outcome) {

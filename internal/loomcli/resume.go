@@ -250,7 +250,7 @@ and a retry shortly for the kind "driver_not_parked", while the driver
 finishes its post-run work or a Go driver is still settling the stop. An
 unfinished merge in the worktree is refused with the kind "merge_in_progress",
 and a run another machine owns with the kind "owned_elsewhere".
-While a pause covers this task it refuses and names "lyx resume".
+While a pause covers this task it refuses and names "lyx tender resume".
 
 Example:
   lyx loom resume`,

@@ -262,9 +262,9 @@ func Excluded(intervals []Interval, from, to time.Time) time.Duration {
 
 // CoveredError renders the refusal an entry point returns when entry covers its run, naming the resume that lifts the hold and the retry to make after it.
 func CoveredError(e Entry, slug, retry string) error {
-	pause, resume := "a hub-wide pause", `"lyx resume"`
+	pause, resume := "a hub-wide pause", `"lyx tender resume"`
 	if e.Scope != ScopeHub {
-		pause, resume = fmt.Sprintf("the pause of %s", slug), fmt.Sprintf(`"lyx resume %s"`, slug)
+		pause, resume = fmt.Sprintf("the pause of %s", slug), fmt.Sprintf(`"lyx tender resume %s"`, slug)
 	}
 	return fmt.Errorf("pause: %s has held this run since %s; way forward: run %s, then %s",
 		pause, e.PausedAt.Format(time.RFC3339), resume, retry)

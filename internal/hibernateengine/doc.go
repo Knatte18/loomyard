@@ -36,7 +36,7 @@
 // Otherwise the request is written cancelled with the requester as the reason, a live daemon is killed, and the pause entry the request owns is lifted by identity, resume lines included.
 // The request is read again after the kill, since the daemon may have recorded its entry between the hold and the kill.
 // A request that owns no entry lifts nothing, so a hub pause that stood before the request stays.
-// Bound: a daemon killed between its pause's record write and the write of its owned entry leaves that entry live and unowned, which `lyx resume` lifts; the window is one file write.
+// Bound: a daemon killed between its pause's record write and the write of its owned entry leaves that entry live and unowned, which `lyx tender resume` lifts; the window is one file write.
 //
 // # Status
 //
@@ -78,18 +78,18 @@
 // The wake is a sleep the clock gap watch records ending after the hibernate call, seen within five minutes of awake time; a hibernate error or no wake fails the request with the owned entry lifted and one notice.
 // After the wake and the move to resuming the daemon reconciles the hub with origin, through the `Reconcile` seam, before it lifts anything.
 // The engine imports no fabric package: `WakeReconcile` is its own view of the report, with whether origin was unreachable, the stop on a branch every pair shares, one `WakeRun` per stopped, ended or owned-elsewhere entry and one rendered line per mutation.
-// A hub entry the request does not own that is live skips the reconcile and the exemption, only an owned entry is lifted, and the notice names the standing entry, `lyx resume`, and that `lyx orch start` or `lyx cleanup --apply` runs the reconcile after that lift.
+// A hub entry the request does not own that is live skips the reconcile and the exemption, only an owned entry is lifted, and the notice names the standing entry, `lyx tender resume`, and that `lyx orch start` or `lyx cleanup --apply` runs the reconcile after that lift.
 // Otherwise the owned entry, when live, is exempted from the network gate through `ExemptNetwork` until the reconcile returns, so only the reconcile's own network calls pass and every other process and entry stays held; with no hub entry live the reconcile runs with nothing to exempt.
 // The daemon has no envelope, so each mutation line is logged at Info and never enters the notice.
 // Unreachable through the retry bound, or a reconcile error, moves nothing further: the owned entry is lifted and the notice names the cause and `lyx cleanup --apply`.
-// A stop on a shared branch keeps the hub entry live, and the notice names the stop and `lyx resume` as the way forward once it is settled.
+// A stop on a shared branch keeps the hub entry live, and the notice names the stop and `lyx tender resume` as the way forward once it is settled.
 // Otherwise each stopped run, and each ended run still busy, gets a plain pair pause entry through `Pause`, not recorded as owned so it outlives the request; the owned entry is then lifted.
 // A pair whose pause fails is left unheld and named with `lyx tender pause <slug>`.
 // A run whose `WakeRun.Owner` is set is owned by another machine: its pair pause carries the owner caller, so a slug entry already standing adds none, and the notice names the owner and `lyx adopt <slug>` from this machine's prime.
 // Once an owner pause is added, `Deps.EndOwned` ends the run's owned processes on this machine; the hub's wiring fills it with `tendercli.EndOwnedElsewhere`, which spares a Finalize past its parent-side merge and the calling process and its ancestors.
 // An end error is logged and leaves the notice as it was, and a nil `EndOwned` skips the end.
 // A failed owner pause is named with "the next wake or `lyx orch start` pauses it again", never with `lyx tender pause`, whose entry would carry no owner label.
-// The notice names per stopped run its way forward then `lyx resume <slug>`, only `lyx resume <slug>` for a pair busy on a parked push, and `lyx cleanup --apply` in place of the resume for a pair stopped as gone; a busy ended run is named with its landing or removal and `lyx cleanup --apply`, and the other ended runs are listed.
+// The notice names per stopped run its way forward then `lyx tender resume <slug>`, only `lyx tender resume <slug>` for a pair busy on a parked push, and `lyx cleanup --apply` in place of the resume for a pair stopped as gone; a busy ended run is named with its landing or removal and `lyx cleanup --apply`, and the other ended runs are listed.
 // A `TenderStatus` error before the reconcile fails the request with the owned entry lifted.
 // Otherwise the owned entry is lifted by identity, so an entry already resumed, with another hub entry added meanwhile, lifts nothing, and the request ends done with one notice saying what became of the pause.
 package hibernateengine

@@ -54,38 +54,11 @@ func TestResolvePersistentPreRun_SkipsSlugGroups(t *testing.T) {
 	}
 }
 
-// TestStartAliasCommand_StaysOneCommandWithSubtreeVerb guards StartAliasCommand and the subtree's own
-// startCmd against drifting into two different commands: the alias must carry a non-empty Short, its
-// Use must be the bare verb ("start"), it must expose the same --parent flag the subtree's own start
-// verb does, and its Use must equal the subtree verb's own Use so the alias and the subtree verb can
-// never drift apart.
-func TestStartAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
+// TestCommand_StartVerbCarriesParentAndHiddenNoAttach pins the start verb under the loom parent command:
+// it exposes --parent, and it accepts --no-attach, hidden, for existing callers.
+func TestCommand_StartVerbCarriesParentAndHiddenNoAttach(t *testing.T) {
 	t.Parallel()
 
-	alias := StartAliasCommand()
-
-	if alias.Short == "" {
-		t.Error("StartAliasCommand() has empty Short")
-	}
-	if alias.Use != "start" {
-		t.Errorf("StartAliasCommand().Use = %q; want %q", alias.Use, "start")
-	}
-	if alias.Flags().Lookup("parent") == nil {
-		t.Error("StartAliasCommand() is missing the --parent flag the subtree's start verb exposes")
-	}
-
-	subtreeVerb := (&loomCLI{}).startCmd()
-	if alias.Use != subtreeVerb.Use {
-		t.Errorf("StartAliasCommand().Use = %q; want it to equal the subtree verb's own Use %q", alias.Use, subtreeVerb.Use)
-	}
-	if noAttach := alias.Flags().Lookup("no-attach"); noAttach == nil {
-		t.Error("StartAliasCommand() is missing the --no-attach flag the subtree's start verb accepts")
-	} else if !noAttach.Hidden {
-		t.Error("StartAliasCommand()'s --no-attach flag is not hidden")
-	}
-
-	// The start verb registered under the loom parent command, not just its bare-root alias, accepts --no-attach, hidden:
-	// it is the flag's primary home.
 	var registered *cobra.Command
 	for _, sub := range Command().Commands() {
 		if sub.Name() == "start" {
@@ -94,6 +67,9 @@ func TestStartAliasCommand_StaysOneCommandWithSubtreeVerb(t *testing.T) {
 	}
 	if registered == nil {
 		t.Fatal(`"start" verb is not registered under the loom parent command`)
+	}
+	if registered.Flags().Lookup("parent") == nil {
+		t.Error(`"loom start" is missing the --parent flag`)
 	}
 	if noAttach := registered.Flags().Lookup("no-attach"); noAttach == nil {
 		t.Error(`"loom start" is missing the --no-attach flag`)
@@ -117,9 +93,9 @@ func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 	}
 }
 
-// TestNewLoomCLI_SetsInjectedSeams pins newLoomCLI's own fields, since neither Command() nor StartAliasCommand() exposes the receiver each constructs and neither may grow an accessor purely for a test.
+// TestNewLoomCLI_SetsInjectedSeams pins newLoomCLI's own fields, since Command() does not expose the receiver it constructs and may not grow an accessor purely for a test.
 //
-//testtiming:keep pins newLoomCLI setting spawnWatchdog, midMerge, recordedParentBranch and suppressWatchdogSpawn, fields neither constructor's callers expose; its covering tests build the CLI without asserting them
+//testtiming:keep pins newLoomCLI setting spawnWatchdog, midMerge, recordedParentBranch and suppressWatchdogSpawn, fields the constructor's callers do not expose; its covering tests build the CLI without asserting them
 func TestNewLoomCLI_SetsInjectedSeams(t *testing.T) {
 	c := newLoomCLI()
 
@@ -390,7 +366,7 @@ func TestSpecFor_ScratchAndFrictionDir(t *testing.T) {
 }
 
 // TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward runs loom's pause verb on a hand-populated receiver over a running status at Plan-Write:
-// a flagless pause refuses naming `lyx pause <slug>` and `lyx loom pause --after Plan-Write`, and leaves the status file byte-identical.
+// a flagless pause refuses naming `lyx tender pause <slug>` and `lyx loom pause --after Plan-Write`, and leaves the status file byte-identical.
 func TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward(t *testing.T) {
 	t.Parallel()
 
@@ -416,7 +392,7 @@ func TestPauseCmd_BareLoomPauseRefusesNamingBothWaysForward(t *testing.T) {
 	if exitCode := clihelp.Execute(loomVerbCommand(c, "pause"), &out, nil); exitCode != 1 {
 		t.Fatalf("bare pause exit code = %d; want 1; output: %s", exitCode, out.String())
 	}
-	for _, want := range []string{`lyx pause some-slug`, `lyx loom pause --after Plan-Write`} {
+	for _, want := range []string{`lyx tender pause some-slug`, `lyx loom pause --after Plan-Write`} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("bare pause output %q does not name %q", out.String(), want)
 		}

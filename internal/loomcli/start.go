@@ -490,7 +490,7 @@ kind "driver_not_parked" while a live loom driver over a halted run is still
 writing its stop report; retry that one a few seconds later.
 It refuses with the kind "owned_elsewhere" over a run another machine owns,
 naming the owner and "lyx adopt".
-While a pause covers this task it refuses and names "lyx resume".
+While a pause covers this task it refuses and names "lyx tender resume".
 
 Example:
   lyx loom start
@@ -604,27 +604,5 @@ Example:
 	cmd.Flags().BoolVar(&noAttachFlag, "no-attach", false, "accepted and ignored; kept for existing callers")
 	_ = cmd.Flags().MarkHidden("no-attach")
 
-	return cmd
-}
-
-// StartAliasCommand returns the start verb registered a second time, as a bare root child ("lyx
-// start"), alongside the full "lyx loom start" subtree.
-//
-// It builds a fresh receiver and takes that receiver's own startCmd unchanged -- it carries no seam
-// functions of its own, because it delegates entirely into the subtree's verb -- and attaches that
-// same receiver's resolvePersistentPreRun as the returned command's own PersistentPreRunE. That
-// attachment is necessary here, not optional: a root child gets no parent group's PersistentPreRunE
-// to inherit, so without it the alias would run with location, cwd, env, and shedPaths all left
-// unresolved.
-// The group short-circuit inside resolvePersistentPreRun (its cmd.Name() == "loom" check) does not
-// fire for this command, since this command's own Name() is "start", never "loom" -- so the alias
-// always resolves the full engine stack exactly as "lyx loom start" does.
-//
-// The alias is not registered inside Command(); the root command registers it as a sibling of the
-// "loom" group, in a later batch.
-func StartAliasCommand() *cobra.Command {
-	c := newLoomCLI()
-	cmd := c.startCmd()
-	cmd.PersistentPreRunE = c.resolvePersistentPreRun
 	return cmd
 }

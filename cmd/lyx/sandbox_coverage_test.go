@@ -39,10 +39,6 @@ var excludedModules = []scankit.Entry{
 		Why: "create files a real GitHub issue",
 	},
 	{
-		Key: "start",
-		Why: "alias of loom's own bootstrap verb; covered by the loom module's scenario",
-	},
-	{
 		Key: "shed",
 		Why: "armed re-exposure of loom's and batten's own verbs; covered by those two modules' own scenarios",
 	},

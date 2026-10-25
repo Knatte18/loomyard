@@ -160,8 +160,8 @@ func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 					t.Errorf("output missing %q; got %q", want, body)
 				}
 			}
-			if strings.Contains(body, "lyx resume") {
-				t.Errorf("output %q names `lyx resume`, which would lift the operator's pause", body)
+			if strings.Contains(body, "lyx tender resume") {
+				t.Errorf("output %q names `lyx tender resume`, which would lift the operator's pause", body)
 			}
 			if tt.wantRecord != "" {
 				if got, err := os.ReadFile(recordPath); err != nil || string(got) != tt.wantRecord {

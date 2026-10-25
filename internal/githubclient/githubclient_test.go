@@ -570,8 +570,8 @@ func TestAuthRT_WaitsWhileAPauseCoversTheProcess(t *testing.T) {
 		t.Fatalf("server hits after the first wake = %d; want 0 while the pause covers the process", len(captured))
 	}
 	mu.Lock()
-	if len(lines) != 1 || !strings.Contains(lines[0], `"lyx resume"`) {
-		t.Fatalf("gate lines = %q; want exactly one naming lyx resume", lines)
+	if len(lines) != 1 || !strings.Contains(lines[0], `"lyx tender resume"`) {
+		t.Fatalf("gate lines = %q; want exactly one naming lyx tender resume", lines)
 	}
 	mu.Unlock()
 

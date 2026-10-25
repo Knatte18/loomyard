@@ -34,7 +34,7 @@
 // # Resume
 //
 // An empty slug resumes every live entry; a slug resumes that pair's own entry.
-// A slug that only a live hub entry covers is refused, naming `lyx resume`.
+// A slug that only a live hub entry covers is refused, naming `lyx tender resume`.
 // Under the record lock each resumed entry moves to the resumed list, and each session it owns that another live entry still covers moves to that entry with no line.
 // After the lock, each remaining non-orch session gets `pauserecord.ResumeLine` once through the guarded send.
 // There is no busy pre-check: a recorded session gets its attempt whatever its state reads now.

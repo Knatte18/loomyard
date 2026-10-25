@@ -185,8 +185,8 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 	}
 
 	slugResume, code := verb(t, Command(), prime, "resume", pairSlug)
-	if slugResume.OK || code == 0 || !strings.Contains(slugResume.Error, `"lyx resume"`) {
-		t.Errorf("resume <slug> under a hub entry: ok=%v error=%q; want a refusal naming lyx resume", slugResume.OK, slugResume.Error)
+	if slugResume.OK || code == 0 || !strings.Contains(slugResume.Error, `"lyx tender resume"`) {
+		t.Errorf("resume <slug> under a hub entry: ok=%v error=%q; want a refusal naming lyx tender resume", slugResume.OK, slugResume.Error)
 	}
 
 	// A fresh resolution from another worktree still sees the entry on disk.

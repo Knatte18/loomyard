@@ -23,7 +23,7 @@ import (
 )
 
 // TestBattenRun_RefusesWhileAPauseCoversTheSlug runs the run verb's driveRun over a prime whose record holds a live entry:
-// an entry covering the slug refuses naming `lyx resume <slug>` with nothing seeded, the run verb exiting with the covered code, and an entry for another slug seeds as before.
+// an entry covering the slug refuses naming `lyx tender resume <slug>` with nothing seeded, the run verb exiting with the covered code, and an entry for another slug seeds as before.
 func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 	t.Parallel()
 
@@ -69,8 +69,8 @@ func TestBattenRun_RefusesWhileAPauseCoversTheSlug(t *testing.T) {
 				}
 				return
 			}
-			if driveExit != dobbyengine.PassExitCovered || !strings.Contains(driveOut.String(), "lyx resume") {
-				t.Errorf("run exit = %d, output %q; want exit %d and a refusal naming %q", driveExit, driveOut.String(), dobbyengine.PassExitCovered, "lyx resume")
+			if driveExit != dobbyengine.PassExitCovered || !strings.Contains(driveOut.String(), "lyx tender resume") {
+				t.Errorf("run exit = %d, output %q; want exit %d and a refusal naming %q", driveExit, driveOut.String(), dobbyengine.PassExitCovered, "lyx tender resume")
 			}
 			if !os.IsNotExist(statErr) {
 				t.Errorf("status file stat = %v; want it absent, nothing seeded", statErr)

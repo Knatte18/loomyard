@@ -1,5 +1,5 @@
 // Package tendercli builds the `lyx tender` group with `lyx tender pause [<slug>]`, `lyx tender resume [<slug>]`, `lyx tender revive [<slug>]`, `lyx tender status` and `lyx tender reap` over internal/tenderengine, and installs the network gate every lyx process in a hub runs under.
-// `lyx pause` and `lyx resume` are shortcuts for the first two, so the operator spelling stays short.
+// `lyx p` and `lyx r` are shortcuts for the first two, so the operator spelling stays short.
 //
 // Every verb runs from any worktree of the hub and resolves it with lyxcwd.Resolve.
 // The hub's fixed dependency set bars cliwire from serving them, since it admits neither lyxcwd nor fabricengine.

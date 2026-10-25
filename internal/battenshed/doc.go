@@ -167,7 +167,7 @@
 // Every spawn on an existing run reads a ChildOwnedElsewhereError as that verdict: the respawn of an unconfirmed running child returns a budget-exempt Stuck naming the owner, and the awaiting resume, and the binary re-step pause, write no marker and keep waiting.
 // While an owner stands every spawn waits, and the spawn hold re-runs the owner check once per probe until it reads the run as owned here, so a failed owner pause never makes the wait spawn and re-reconcile in a loop.
 // Bound: the child can act until the full pass the dobby owes after a wake runs the check, and for as long as origin stays unreachable.
-// A Finalize past its parent-side merge finishes its landing here, and once it is done its batten waits under the owner pause until "lyx resume <slug>" lifts it, then goes on to Land.
+// A Finalize past its parent-side merge finishes its landing here, and once it is done its batten waits under the owner pause until "lyx tender resume <slug>" lifts it, then goes on to Land.
 //
 // Its counterpart is equally by design: a driver that finishes NORMALLY leaves its strand and its
 // run directory behind. Nothing here tears either down as part of a clean finish -- only the

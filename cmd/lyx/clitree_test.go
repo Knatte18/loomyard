@@ -153,11 +153,11 @@ func TestCLITree_EveryCommand(t *testing.T) {
 		}
 	})
 
-	// The root alias for loom's bootstrap verb is named "start"; a surviving "run" child would mean the retired alias is still registered.
-	t.Run("root carries no bare run child", func(t *testing.T) {
+	// Loom's bootstrap verb lives only under loom; a bare "run" or "start" child would mean a retired root alias is still registered.
+	t.Run("root carries no bare alias of loom's bootstrap verb", func(t *testing.T) {
 		for _, child := range root.Commands() {
-			if child.Name() == "run" {
-				t.Errorf("newRoot() root tree carries a bare child command named %q; the retired root alias must not survive the rename", child.Name())
+			if child.Name() == "run" || child.Name() == "start" {
+				t.Errorf("newRoot() root tree carries a bare child command named %q; run it as lyx loom start", child.Name())
 			}
 		}
 	})

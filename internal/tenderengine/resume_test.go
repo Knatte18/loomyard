@@ -148,14 +148,14 @@ func TestResume(t *testing.T) {
 				t.Errorf("report %+v, err %v; want the orch left to its watcher", report, err)
 			}
 		}},
-		{"a slug that only a hub entry covers refuses naming lyx resume and changes nothing", func(t *testing.T) {
+		{"a slug that only a hub entry covers refuses naming lyx tender resume and changes nothing", func(t *testing.T) {
 			e := newEnv(t, newPair("p1"))
 			e.seedLive(hubEntry(e.clock.Now()))
 
 			_, err := e.resume("p1")
 
-			if err == nil || !strings.Contains(err.Error(), `"lyx resume"`) {
-				t.Fatalf("err = %v; want a refusal naming lyx resume", err)
+			if err == nil || !strings.Contains(err.Error(), `"lyx tender resume"`) {
+				t.Fatalf("err = %v; want a refusal naming lyx tender resume", err)
 			}
 			if live := e.record().Live; len(live) != 1 {
 				t.Errorf("live entries = %+v; want the hub entry untouched", live)

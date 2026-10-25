@@ -23,7 +23,7 @@ skipped — they are pending first surface, not dead. Already-live strands are
 left untouched (no double send-keys). A not-live strand whose done-when paths
 all exist is finished: it is dropped from state instead of relaunched, and
 counted in the envelope's dropped. While a pause covers this pair, its strands
-are left down and named in the envelope's held, until "lyx resume".
+are left down and named in the envelope's held, until "lyx tender resume".
 
 Example:
   lyx reed resume`,

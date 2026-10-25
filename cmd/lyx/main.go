@@ -128,7 +128,7 @@ all modules are discoverable via "lyx --help" and every subcommand carries
 its own --help and --json help output; --json prints the help as JSON and
 never runs the command.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, start, quarry, batten, shed, orch, cleanup, adopt, beam, report, tender, hibernate, drift, gate, creel, help.
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, quarry, batten, shed, orch, cleanup, adopt, beam, report, tender, hibernate, drift, gate, creel, help.
 Shortcuts, declared in internal/shortcutcli's embedded file, are listed under their own heading in lyx --help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -182,11 +182,6 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		adoptcli.Command(),
 		beamcli.Command(),
 		reportcli.Command(),
-		// StartAliasCommand registers the same "start" verb as loomcli.Command()'s
-		// subtree already carries, a second time, as a bare root child rather
-		// than spliced into the argument vector, so it is discoverable in help
-		// and covered by the help-tree and registration guards.
-		loomcli.StartAliasCommand(),
 		tendercli.Command(),
 		hibernatecli.Command(),
 		driftcli.Command(),
