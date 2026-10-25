@@ -1,4 +1,4 @@
-// Package beamcli is the beam module: `lyx beam create <slug>`, the making of a beam from a board project entry, `lyx beam promote <slug>`, the turning of a spawned task into one, `lyx beam land <slug>`, the landing of a beam into its parent, `lyx beam start`, the start of every dobby this machine owns, and the hidden `lyx beam dobby`, the dobby process itself.
+// Package beamcli is the beam module: `lyx beam create <slug>`, the making of a beam from a board project entry, `lyx beam promote <slug>`, the turning of a spawned task into one, `lyx beam land <slug>`, the landing of a beam into its parent, `lyx beam start`, the start of every dobby this machine owns, `lyx beam status`, the view of every local dobby, and the hidden `lyx beam dobby`, the dobby process itself.
 // The verbs only call each owning module's function in-process, so no module learns another's state; the daemon's engine is `internal/dobbyengine`, and this package wires its seams over the hub.
 //
 // # The verbs
@@ -76,6 +76,13 @@
 // `start` runs `dobbyengine.EnsureLive` over `hubgeom.DobbyStart` from the prime or any beam, and prints `started` or `live` per worktree, with the owner of a prime another machine owns.
 // It is idempotent.
 //
+// # status
+//
+// `status` prints, once, the view the overview window draws for a dobby, for the prime and for each local beam `hubgeom.DobbyStart` lists, the prime's first.
+// Each entry carries the worktree's label, the structured `dobbyengine.View` that `battencli.DobbyViewReader` reads, and the lines `battencli.DobbyLines` renders from it.
+// A view that does not read carries its error in its entry, the others still read, and the verb fails naming each.
+// It reads files only.
+//
 // # dobby
 //
 // `dobby <worktree root>` is hidden and internal: `dobbyengine.SpawnDetached` launches it, with the hub root as its working directory.
@@ -90,12 +97,13 @@
 // # The dobby's seams
 //
 // `hubDobbyDeps` fills every seam of the engine from told paths, the dobby's working directory being the hub root and never a worktree:
-//   - the local batten status files of the prime, and each run's parent through `hubgeom.ParentOf`;
+//   - the local batten status files of the prime and the board's tasks through `battencli.DobbyRuns`, `battencli.DobbyLandings` and `battencli.DobbyTasks`, which the overview reads too, and each run's parent through `hubgeom.ParentOf`;
 //   - the board and the owners through `boardengine`, and the pause record through `pauserecord`;
 //   - the file watch through `internal/fswatch`, one watcher per directory merged into the loop's one channel;
 //   - the pass spawn of `lyx batten run`, started in the prime's anchor;
 //   - the owner pause and the parent lock release through `tendercli` and `battencli`;
 //   - the notice through `orchcli.NotifyFromScoped`, signed `ly:DOBBY` for the prime and `ly:<slug>:DOBBY` for a beam;
 //   - `beam.yaml` through `dobbyengine.LoadConfig`, and the binary check through `internal/selfexec`;
+//   - the log line onto the process's standard output, which `dobbyengine.SpawnDetached` points at the marker directory's `dobby.log`;
 //   - the board-tidy agent's shuttle runner from the worktree's own reed geometry, its model `sonnet[medium]` resolved through the model registry, and the stencils directory.
 package beamcli

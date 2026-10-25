@@ -822,7 +822,7 @@ func TestGoDriver_Settle(t *testing.T) {
 	}
 }
 
-// TestDriveVerb pins the driver lock around a driver: a held lock refuses at once with the recipe's refusal and touches nothing, a lock directory that cannot be created ends the recipe's retry clause, a free lock clears the stale files, runs once and prints the run's fields, and a run that released the lock early for a hand-over leaves it free with no double release.
+// TestDriveVerb pins the driver lock around a driver: a lock held past the grace refuses with the recipe's refusal and touches nothing, a lock released within the grace is taken, a lock directory that cannot be created ends the recipe's retry clause, a free lock clears the stale files, runs once and prints the run's fields, and a run that released the lock early for a hand-over leaves it free with no double release.
 func TestDriveVerb(t *testing.T) {
 	t.Parallel()
 
@@ -830,8 +830,10 @@ func TestDriveVerb(t *testing.T) {
 	const retryClause = "re-run the test verb"
 
 	tests := []struct {
-		name         string
-		holdLock     bool
+		name     string
+		holdLock bool
+		// holdBriefly releases the held lock shortly after the verb starts, as a momentary probe does.
+		holdBriefly  bool
 		blockLockDir bool
 		releaseEarly bool
 		wantCode     int
@@ -841,6 +843,7 @@ func TestDriveVerb(t *testing.T) {
 		wantText  string
 	}{
 		{name: "a held lock refuses with the recipe's refusal, never runs and leaves the stale files", holdLock: true, wantCode: 1, wantRuns: 0, wantStale: true, wantText: refusal},
+		{name: "a lock released within the grace is taken and the driver runs", holdLock: true, holdBriefly: true, wantCode: 0, wantRuns: 1, wantText: `"drove":true`},
 		{name: "a lock directory that cannot be created ends in the retry clause", blockLockDir: true, wantCode: 1, wantRuns: 0, wantStale: true, wantText: "way forward: transient, " + retryClause},
 		{name: "a free lock removes the stale files, runs once, prints the run's fields and leaves the lock free", wantCode: 0, wantRuns: 1, wantText: `"drove":true`},
 		{name: "a run that released early for a hand-over leaves the lock free with no double release", releaseEarly: true, wantCode: 0, wantRuns: 1},
@@ -872,6 +875,12 @@ func TestDriveVerb(t *testing.T) {
 					t.Fatalf("test could not take the driver lock: acquired %t, %v", acquired, err)
 				}
 				t.Cleanup(func() { _ = held.Release() })
+				if tt.holdBriefly {
+					go func() {
+						time.Sleep(20 * time.Millisecond)
+						_ = held.Release()
+					}()
+				}
 			}
 
 			runs := 0

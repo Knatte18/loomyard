@@ -22,25 +22,30 @@ type TaskView struct {
 	Kind string
 	// Status is the entry's status, nil or empty when the task is released and not yet started, and draft until then.
 	Status *string
-	// DependenciesDone reports whether every entry the task depends on is done.
-	DependenciesDone bool
-	// Parent is the name of the task's parent worktree, the prime's name for the prime.
+	// PendingDependencies holds the slugs of the entries the task depends on that are not done.
+	PendingDependencies []string
+	// Parent is the name of the task's parent worktree, the prime's name for the prime; read only for a released task.
 	Parent string
-	// OwnedElsewhere reports whether the entry's effective owner is another machine.
+	// OwnedElsewhere reports whether the entry's effective owner is another machine; read only for a released task.
 	OwnedElsewhere bool
 	// Fingerprint changes whenever the entry does.
 	Fingerprint string
 }
 
+// released reports whether task is released to the dobby of the worktree named here: a task with an empty status whose parent is here.
+func released(task TaskView, here string) bool {
+	return task.Kind == boardengine.KindTask && boardengine.IsEmptyStatus(task.Status) && task.Parent == here
+}
+
+// heldByEntry reports whether a released task waits for its entry or the pause record: a dependency not done, another machine's ownership, or a pause entry covering the hub or the slug.
+func heldByEntry(task TaskView, covered bool) bool {
+	return len(task.PendingDependencies) > 0 || task.OwnedElsewhere || covered
+}
+
 // readyToStart reports whether dobby of the worktree named here starts task:
 // the entry is a task with an empty status and every dependency done, its parent is here, no other machine owns it, and no pause entry covers the hub or the slug.
 func readyToStart(task TaskView, here string, covered bool) bool {
-	return task.Kind == boardengine.KindTask &&
-		boardengine.IsEmptyStatus(task.Status) &&
-		task.DependenciesDone &&
-		task.Parent == here &&
-		!task.OwnedElsewhere &&
-		!covered
+	return released(task, here) && !heldByEntry(task, covered)
 }
 
 // startReady starts each ready task of the local board while fewer than max_runs runs it drives are in flight.
@@ -101,15 +106,23 @@ func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 // runsInFlight counts the runs this dobby drives that take a slot: the listed ones not recorded owned elsewhere, and first passes that left no run yet.
 func (d *daemon) runsInFlight(current State) int {
 	listed := make(map[string]bool, len(d.runs))
-	count := 0
 	for _, run := range d.runs {
 		listed[run.Slug] = true
-		if !current.Runs[run.Slug].OwnedElsewhere {
+	}
+	count := slotsTaken(d.runs, current)
+	for slug, f := range d.flights {
+		if f.first && !listed[slug] {
 			count++
 		}
 	}
-	for slug, f := range d.flights {
-		if f.first && !listed[slug] {
+	return count
+}
+
+// slotsTaken counts the runs of runs that take a slot under max_runs: every one the record does not mark owned elsewhere.
+func slotsTaken(runs []RunView, record State) int {
+	count := 0
+	for _, run := range runs {
+		if !record.Runs[run.Slug].OwnedElsewhere {
 			count++
 		}
 	}
@@ -124,6 +137,7 @@ func (d *daemon) startFirstPass(task TaskView, now time.Time) {
 		d.refusedStart(task.Slug, task.Fingerprint, err.Error(), now)
 		return
 	}
+	d.logLine(now, "start "+task.Slug)
 	d.flights[task.Slug] = flight{exit: exit, full: true, first: true, fingerprint: task.Fingerprint}
 }
 
@@ -164,7 +178,7 @@ func (d *daemon) refusedStart(slug, fingerprint, text string, now time.Time) {
 			*s = StartState{}
 		}
 		*s = nextStartTry(*s, now, d.probe)
-		s.EntryFingerprint = fingerprint
+		s.EntryFingerprint, s.Refusal = fingerprint, text
 		noticeDue = !slices.Contains(s.Noticed, text)
 	})
 	if err != nil {
@@ -201,7 +215,7 @@ func (d *daemon) updateStart(slug string, mutate func(*StartState)) error {
 		st := s.Starts[slug]
 		mutate(&st)
 		switch {
-		case st.NextTry.IsZero() && st.Interval == 0 && len(st.Noticed) == 0 && st.EntryFingerprint == "":
+		case st.NextTry.IsZero() && st.Interval == 0 && len(st.Noticed) == 0 && st.Refusal == "" && st.EntryFingerprint == "":
 			delete(s.Starts, slug)
 		default:
 			if s.Starts == nil {

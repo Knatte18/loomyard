@@ -96,10 +96,13 @@ type Deps struct {
 	StencilsDir string
 	// NearestOrch returns the name of the nearest live orch the tidy agent's parent directive names; empty means there is none.
 	NearestOrch func() (string, error)
+	// Log writes one line to the dobby's log: one for each task start and each pass spawned.
+	// A nil Log logs nothing.
+	Log func(line string)
 }
 
 // Run drives one dobby for geom until ctx ends or another machine owns the beam.
-// It takes geom.LockPath without blocking and returns ErrDobbyRunning at once when another dobby holds it.
+// It waits lock.ProbeGrace for geom.LockPath and returns ErrDobbyRunning when another dobby still holds it.
 // It reads the beam's owner at start and on every probe tick, and returns nil, logging why, when another machine owns it.
 // A state record holding this process's pid is a re-exec, which owes no new full pass; any other pid, or no record, is a start.
 // A tick that fails is logged once per episode and the loop goes on; a cancelled context ends it after the tick in flight.
@@ -107,7 +110,7 @@ func Run(ctx context.Context, geom Geometry, deps Deps) error {
 	if err := os.MkdirAll(filepath.Dir(geom.LockPath), 0o755); err != nil {
 		return err
 	}
-	held, acquired, err := lock.TryAcquireWriteLock(geom.LockPath)
+	held, acquired, err := lock.AcquireWriteLockWithin(geom.LockPath, lock.ProbeGrace)
 	if err != nil {
 		return err
 	}

@@ -1,11 +1,12 @@
-// overview.go implements the hidden `overview` batten verb, the pane process of the prime's runs strand, and the pure rendering of the runs in flight it draws:
-// one line per batten run with its state, stage, time in stage, age and reed session, below the orch line (overvieworch.go).
+// overview.go implements the hidden `overview` batten verb, the pane process of the runs strand, and the pure rendering of the runs in flight it draws:
+// one line per batten run with its state, stage, time in stage, age and reed session, below the orch line (overvieworch.go) and above the dobby's lines (overviewdobby.go).
 
 package battencli
 
 import (
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/durfmt"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -278,6 +280,8 @@ type overviewSource struct {
 	pairs map[string]*lyxcwd.Location
 	// childRecipes holds the recipe a child's seed names by slug; a seed is write-once, so a decoded one is never read again.
 	childRecipes map[string]string
+	// dobby renders the lines of the pane's own worktree's dobby at now; nil draws no dobby section.
+	dobby func(now time.Time) []string
 }
 
 // newOverviewSource returns a source over the orch state of every orch of the hub, drawn against thresholds, and the prime's runs and the pause record at pauseRecord, that reads the time from now.
@@ -385,15 +389,24 @@ func (s *overviewSource) resolveChildRecipe(slug string) (string, error) {
 	return seed.Recipe, nil
 }
 
-// frame polls the state of every orch and the prime's runs and returns the overview frame.
-// It reads the orch states, the run records and the status files without their locks, and writes nothing.
+// frame polls the state of every orch, the prime's runs and the pane's own dobby, and returns the overview frame: the orch and run lines, then a blank line and the dobby's lines.
+// It reads the orch states, the run records, the status files and the dobby's record without their locks, and writes nothing.
 func (s *overviewSource) frame() statuspane.Frame {
+	lines := s.runsLines()
+	if s.dobby != nil {
+		lines = append(append(lines, ""), s.dobby(s.now())...)
+	}
+	return statuspane.Frame{Lines: lines}
+}
+
+// runsLines polls the state of every orch and the prime's runs and returns the orch lines above the run lines.
+func (s *overviewSource) runsLines() []string {
 	orchLines := s.orchLines()
 
 	slugs, err := shedrun.List(s.prime)
 	if err != nil {
 		logger.Debug("batten: listing the runs for the overview failed", "err", err)
-		return statuspane.Frame{Lines: append(orchLines, overviewRunsBroken)}
+		return append(orchLines, overviewRunsBroken)
 	}
 
 	record, err := pauserecord.Read(s.pauseRecord)
@@ -411,7 +424,7 @@ func (s *overviewSource) frame() statuspane.Frame {
 			runs = append(runs, run)
 		}
 	}
-	return statuspane.Frame{Lines: append(orchLines, renderOverview(orchStatePoll{}, s.thresholds, runs, s.now())...)}
+	return append(orchLines, renderOverview(orchStatePoll{}, s.thresholds, runs, s.now())...)
 }
 
 // poll builds the overviewRun of slug; false when its seed names another recipe.
@@ -477,20 +490,36 @@ func cacheFor(caches map[string]*statuspane.StatusCache, slug string) *statuspan
 	return cache
 }
 
-// overviewCmd builds the hidden `overview` subcommand: the pane process of the prime's runs strand.
-// It reads the orch state, the orch config once at start, the run records and status files only.
+// worktreeHasDobby reports whether the worktree named worktree runs a dobby: the prime, or a beam among those beams lists.
+// A task pair has none.
+func worktreeHasDobby(prime *lyxcwd.Location, worktree string, beams func() ([]dobbyengine.BeamPair, error)) (bool, error) {
+	if worktree == prime.WorktreeName {
+		return true, nil
+	}
+	pairs, err := beams()
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(pairs, func(pair dobbyengine.BeamPair) bool { return pair.Slug == worktree }), nil
+}
+
+// overviewCmd builds the hidden `overview` subcommand: the pane process of the runs strand of the prime and of each beam.
+// It reads the orch state, the orch config once at start, the run records and status files, and the dobby's records.
 func (c *battenCLI) overviewCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "overview",
-		Short:       "draw the orch's context and the runs in flight in a pane (run by the prime's runs strand)",
+		Short:       "draw the orch's context and the runs in flight in a pane (run by the runs strand of the prime and of each beam)",
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `overview first draws the orch line -- the orch session's context reading
 against the soft and hard thresholds, its cycle phase and cycle count -- then one
 line per batten run in flight -- its state, stage, time in the stage, age and
-reed session -- redrawing in place until it is signalled.
-The prime's runs strand runs it, and every line is drawn uncut. It reads
-files only, and runs from the prime and from any beam.`,
+reed session -- then the dobby of the worktree it runs in: whether it is alive,
+the runs it drives with their stage and last pass, and each released task it
+has not started with what the task waits on. It redraws in place until it is
+signalled.
+The runs strand runs it, and every line is drawn uncut. It reads files and
+probes locks for an instant, and runs from the prime and from any beam.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -509,6 +538,7 @@ files only, and runs from the prime and from any beam.`,
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
+			acting := location.WorktreeName
 			location, err = ResolveBattenPrime(location)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
@@ -521,6 +551,16 @@ files only, and runs from the prime and from any beam.`,
 			}
 
 			source := newOverviewSource(location, pauseGeom.RecordPath, loadOverviewThresholds(location), time.Now)
+			hasDobby, err := worktreeHasDobby(location, acting, hubgeom.DobbyStart(location).Beams)
+			if err != nil {
+				logger.Warn("batten: the overview cannot tell whether its worktree has a dobby and draws no dobby section", "worktree", acting, "err", err)
+			} else if !hasDobby {
+				logger.Debug("batten: the overview's worktree has no dobby and draws no dobby section", "worktree", acting)
+			} else if reader, err := NewDobbyViewReader(location, acting); err != nil {
+				logger.Warn("batten: the overview cannot place its worktree's dobby and draws no dobby section", "worktree", acting, "err", err)
+			} else {
+				source.dobby = func(now time.Time) []string { return overviewDobbyLines(reader, now) }
+			}
 			pane := statuspane.Pane{
 				Out:     out,
 				Size:    statuspane.TerminalSize(os.Stdout),

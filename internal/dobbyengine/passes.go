@@ -62,6 +62,19 @@ const (
 	passFullNoReopen
 )
 
+// String names the kind as dobby's log line does.
+func (k passKind) String() string {
+	switch k {
+	case passContinue:
+		return "continue"
+	case passFull:
+		return "full"
+	case passFullNoReopen:
+		return "full-no-reopen"
+	}
+	return "none"
+}
+
 // passTrigger is what woke the planner for one run.
 type passTrigger struct {
 	// ProbeTick is a probe tick, once per probe interval.
@@ -233,7 +246,15 @@ func (d *daemon) spawn(slug string, kind passKind, now time.Time) {
 		d.passExited(slug, full, 1, err.Error(), now)
 		return
 	}
+	d.logLine(now, "pass "+slug+" "+kind.String())
 	d.flights[slug] = flight{exit: exit, full: full}
+}
+
+// logLine writes one line to the dobby's log, stamped with at.
+func (d *daemon) logLine(at time.Time, text string) {
+	if d.deps.Log != nil {
+		d.deps.Log(at.UTC().Format(time.RFC3339) + " " + text)
+	}
 }
 
 // collectExits reads the exit of every pass that has ended, without waiting for one that has not.

@@ -18,6 +18,9 @@ import (
 // boundedWaitRetryDelay is the pause between acquisition attempts while a bounded wait polls a held lock.
 const boundedWaitRetryDelay = 10 * time.Millisecond
 
+// ProbeGrace is how long an acquirer that refuses a held lock waits first, so a read-only probe that briefly takes the lock to learn whether it is held never makes the acquirer refuse.
+const ProbeGrace = 250 * time.Millisecond
+
 // FileLock wraps a file-based advisory lock (gofrs/flock) for both exclusive and shared access.
 type FileLock struct {
 	fl *flock.Flock

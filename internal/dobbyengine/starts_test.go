@@ -14,7 +14,7 @@ func TestReadyToStart(t *testing.T) {
 	t.Parallel()
 	draft := "draft"
 	empty := ""
-	ready := TaskView{Slug: "task", Kind: "task", Status: &empty, DependenciesDone: true, Parent: "prime"}
+	ready := TaskView{Slug: "task", Kind: "task", Status: &empty, Parent: "prime"}
 
 	tests := []struct {
 		name    string
@@ -25,7 +25,7 @@ func TestReadyToStart(t *testing.T) {
 		{"EmptyStatusWithDoneDependenciesStarts", nil, false, true},
 		{"AbsentStatusStarts", func(task *TaskView) { task.Status = nil }, false, true},
 		{"DraftDoesNotStart", func(task *TaskView) { task.Status = &draft }, false, false},
-		{"OpenDependencyDoesNotStart", func(task *TaskView) { task.DependenciesDone = false }, false, false},
+		{"OpenDependencyDoesNotStart", func(task *TaskView) { task.PendingDependencies = []string{"dep"} }, false, false},
 		{"CoveringPauseDoesNotStart", nil, true, false},
 		{"OwnedElsewhereDoesNotStart", func(task *TaskView) { task.OwnedElsewhere = true }, false, false},
 		{"AnotherBeamsTaskDoesNotStart", func(task *TaskView) { task.Parent = "other-beam" }, false, false},
@@ -67,7 +67,7 @@ func TestNextStartTry(t *testing.T) {
 // readyTask is a board entry that is ready to start under the prime's dobby.
 func readyTask(slug string) TaskView {
 	empty := ""
-	return TaskView{Slug: slug, Kind: "task", Status: &empty, DependenciesDone: true, Parent: "prime", Fingerprint: slug + "-v1"}
+	return TaskView{Slug: slug, Kind: "task", Status: &empty, Parent: "prime", Fingerprint: slug + "-v1"}
 }
 
 func TestStartReady_RefusalsAndBackoff(t *testing.T) {
@@ -106,6 +106,9 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 		if len(h.fake.spawned) != 1 || len(h.fake.notices) != 1 || h.fake.notices[0] != "a: dobby could not start the task: pre-run refused" {
 			t.Fatalf("passes, notices after the first refusal = %d, %q; want 1 pass and the one notice", len(h.fake.spawned), h.fake.notices)
 		}
+		if got := h.stateRecord().Starts["a"].Refusal; got != "pre-run refused" {
+			t.Errorf("start record refusal = %q; want the refusal text", got)
+		}
 		h.tick(true)
 		if len(h.fake.spawned) != 2 {
 			t.Fatalf("passes one probe interval after the refusal = %d; want the retry, 2", len(h.fake.spawned))
@@ -128,6 +131,24 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 		h.tick(true)
 		if len(h.fake.spawned) != 4 {
 			t.Errorf("passes after the entry changed = %d; want one at once, 4", len(h.fake.spawned))
+		}
+	})
+
+	t.Run("a retry whose pass leaves a status file clears the refusal text", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t)
+		h.fake.tasks = []TaskView{readyTask("a")}
+		h.fake.exits = []PassExit{refused("pre-run refused"), {}}
+		h.tick(true)
+		h.tick(true)
+		if got := h.stateRecord().Starts["a"].Refusal; got != "pre-run refused" {
+			t.Fatalf("start record refusal = %q; want the refusal text before the retry", got)
+		}
+		h.fake.statuses = map[string]bool{"a": true}
+		h.tick(true)
+		h.tick(true)
+		if got, found := h.stateRecord().Starts["a"]; found {
+			t.Errorf("start record after the claiming pass = %+v; want none", got)
 		}
 	})
 

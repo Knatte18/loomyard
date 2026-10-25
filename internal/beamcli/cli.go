@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -26,15 +27,98 @@ import (
 func Command() *cobra.Command {
 	beam := &cobra.Command{
 		Use:   "beam",
-		Short: "make, promote, land and start beams, the long-lived pairs that group board work",
+		Short: "make, promote, land and start beams, the long-lived pairs that group board work, and show their dobbies",
 		Long: `A beam is a long-lived pair that groups board work: its tasks fork from the
 beam's own branch and land back into it, it can run an orch of its own, and its
 dobby drives the runs of its tasks. Every verb runs from the hub's prime worktree
 and from any beam, and acts on the prime's location.`,
 		RunE: clihelp.GroupRunE,
 	}
-	beam.AddCommand(createCmd(), promoteCmd(), landCmd(), startCmd(), dobbyCmd())
+	beam.AddCommand(createCmd(), promoteCmd(), landCmd(), startCmd(), statusCmd(), dobbyCmd())
 	return beam
+}
+
+// statusResult is the envelope of `beam status`: one entry per local dobby, the prime's first.
+type statusResult struct {
+	Dobbies []statusEntry `json:"dobbies"`
+}
+
+// statusEntry is one dobby's view in `beam status`: the structured view and the lines the overview draws for it, or why it did not read.
+type statusEntry struct {
+	Worktree string            `json:"worktree"`
+	View     *dobbyengine.View `json:"view,omitempty"`
+	Lines    []string          `json:"lines"`
+	Error    string            `json:"error,omitempty"`
+}
+
+// statusCmd returns the `beam status` verb.
+func statusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "status",
+		Short:       "show the dobby of the prime and of every local beam: alive, runs driven, tasks waiting and why",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Prints, once, what the overview window draws for a dobby, for the hub's prime and
+for every local beam: whether the dobby is alive and its max_runs, each run it
+drives with its state, stage and last pass, and each released task it has not
+started with what the task waits on -- open dependencies, another machine's
+ownership, a pause, a refused start and its retry, or max_runs. Each entry
+carries the structured view and its rendered lines. It reads files only.
+
+It runs from the prime and from any beam.
+
+Example:
+  lyx beam status`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runVerb(cmd, func(_ context.Context, _ string, prime *lyxcwd.Location) (any, error) {
+				return dobbyStatus(prime, time.Now())
+			})
+		},
+	}
+}
+
+// dobbyStatus reads the view of the prime's dobby and of the dobby of every local beam at now.
+// A view that does not read is reported in its entry and joins the returned error, and the others still read.
+func dobbyStatus(prime *lyxcwd.Location, now time.Time) (statusResult, error) {
+	beams, err := hubgeom.DobbyStart(prime).Beams()
+	if err != nil {
+		return statusResult{}, fmt.Errorf("lyx beam status: list the local beams: %w", err)
+	}
+	worktrees := []string{prime.WorktreeName}
+	for _, beam := range beams {
+		worktrees = append(worktrees, beam.Slug)
+	}
+	result := statusResult{Dobbies: make([]statusEntry, 0, len(worktrees))}
+	var failures []error
+	for _, worktree := range worktrees {
+		label := worktree
+		if worktree == prime.WorktreeName {
+			label = dobbyengine.PrimeLabel
+		}
+		entry := statusEntry{Worktree: label, Lines: []string{}}
+		view, err := readDobbyView(prime, worktree, now)
+		if err != nil {
+			entry.Error = err.Error()
+			failures = append(failures, fmt.Errorf("%s: %w", label, err))
+		} else {
+			entry.View = &view
+			entry.Lines = battencli.DobbyLines(label, view, now)
+		}
+		result.Dobbies = append(result.Dobbies, entry)
+	}
+	if err := errors.Join(failures...); err != nil {
+		return result, fmt.Errorf("lyx beam status: %w; way forward: fix the cause each names, then run `lyx beam status` again", err)
+	}
+	return result, nil
+}
+
+// readDobbyView reads the view of the dobby of the worktree named worktree at now.
+func readDobbyView(prime *lyxcwd.Location, worktree string, now time.Time) (dobbyengine.View, error) {
+	reader, err := battencli.NewDobbyViewReader(prime, worktree)
+	if err != nil {
+		return dobbyengine.View{}, err
+	}
+	return reader.Read(now)
 }
 
 // startResult is the envelope of `beam start`: the outcome per worktree.
@@ -117,7 +201,7 @@ func runDobby(ctx context.Context, out io.Writer, root string) int {
 	if err := registerDobby(fabricengine.RunProcDir(prime.HubPath), geom); err != nil {
 		return output.Err(out, fmt.Sprintf("lyx beam dobby: register the dobby: %v", err))
 	}
-	deps, err := hubDobbyDeps(prime, geom)
+	deps, err := hubDobbyDeps(prime, geom, out)
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("lyx beam dobby: wire the dobby over the hub: %v", err))
 	}
