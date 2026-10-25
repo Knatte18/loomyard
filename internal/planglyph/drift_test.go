@@ -12,34 +12,68 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
 )
 
-// TestDetectDrift_ExactTierRenameAutoRepairsAndAmends covers an exact-tier rename rewriting the
-// plan, revalidating clean, and appending exactly one amendment carrying all six fields.
-func TestDetectDrift_ExactTierRenameAutoRepairsAndAmends(t *testing.T) {
+// TestDetectDrift_RenameAutoRepairsAndAmends covers a rename rewriting the plan, revalidating clean, and appending exactly one amendment carrying all six fields.
+// It runs for a rename quarry proves and for one the batch's implementer reports.
+// A reported rename's old glyph is typically in the delta's Deleted, since quarry could not pair it, and must not come back as a deleted-symbol finding beside its repair.
+// When both tiers name the same old glyph, the exact tier's destination wins.
+func TestDetectDrift_RenameAutoRepairsAndAmends(t *testing.T) {
 	t.Parallel()
 
-	worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc New() {}\n"})
-
-	dir, plan := writePlanFixture(t, map[int]string{
-		1: "**Uses:**\n- `sub#Old`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n",
-	})
-
-	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
-		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}}},
-	}}
-
-	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", driftTestTimestamp)
-	if err != nil {
-		t.Fatalf("DetectDrift(...) returned error: %v", err)
+	exactOldToNew := []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}}}
+	tests := []struct {
+		name     string
+		delta    quarry.DeltaAnswer
+		reported []planindex.Rename
+		wantTier string
+	}{
+		{"ExactTier", quarry.DeltaAnswer{Renamed: exactOldToNew}, nil, "exact"},
+		{
+			"Reported_OldGlyphDeleted",
+			quarry.DeltaAnswer{Deleted: []quarry.Symbol{{ID: "sub#Old"}}},
+			[]planindex.Rename{{Old: "sub#Old", New: "sub#New"}},
+			"reported",
+		},
+		{
+			"Reported_OldGlyphHasRenameCandidates",
+			quarry.DeltaAnswer{
+				Deleted:          []quarry.Symbol{{ID: "sub#Old"}},
+				RenameCandidates: []quarry.RenameCandidateEntry{{ID: "sub#Old", Candidates: []quarry.RenameCandidate{{ID: "sub#New", File: "sub/a.go"}}}},
+			},
+			[]planindex.Rename{{Old: "sub#Old", New: "sub#New"}},
+			"reported",
+		},
+		{
+			"ExactTierWinsOverReported",
+			quarry.DeltaAnswer{Renamed: exactOldToNew},
+			[]planindex.Rename{{Old: "sub#Old", New: "sub#Other"}},
+			"exact",
+		},
 	}
-	if len(findings) != 0 {
-		t.Fatalf("findings = %+v; want none for an auto-repaired exact-tier rename", findings)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	requireExactTierRepair(t, dir, []string{driftTestTimestamp, "1-card1", "sub#Old", "sub#New", "exact", "deadbeef"})
+			worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc New() {}\n"})
+			dir, plan := writePlanFixture(t, map[int]string{
+				1: "**Uses:**\n- `sub#Old`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n",
+			})
+
+			findings, err := DetectDrift(plan, plan, dir, worktree, quarry.GitDeltaAnswer{DeltaAnswer: tt.delta}, tt.reported, "deadbeef", driftTestTimestamp)
+			if err != nil {
+				t.Fatalf("DetectDrift(...) returned error: %v", err)
+			}
+			if len(findings) != 0 {
+				t.Fatalf("findings = %+v; want none for an auto-repaired rename", findings)
+			}
+
+			requireExactTierRepair(t, dir, []string{driftTestTimestamp, "1-card1", "sub#Old", "sub#New", "Tier: " + tt.wantTier, "deadbeef"})
+		})
+	}
 }
 
 // TestDetectDrift_HandBuiltDelta covers the findings and side effects of DetectDrift's gates over a hand-built delta.
@@ -66,6 +100,7 @@ func TestDetectDrift_HandBuiltDelta(t *testing.T) {
 		// pendingFirstCard drops every card but card 1 from the pending view, as record-batch does for the card it records.
 		pendingFirstCard bool
 		delta            quarry.DeltaAnswer
+		reported         []planindex.Rename
 		wantFindings     []wantFinding
 		// detailContains are substrings of the first finding's detail.
 		detailContains []string
@@ -116,6 +151,16 @@ func TestDetectDrift_HandBuiltDelta(t *testing.T) {
 			noAmendment:   true,
 		},
 		{
+			name:  "reported rename matching a card's own pair produces no finding and no amendment",
+			files: newOnly,
+			cards: map[int]string{
+				1: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
+			},
+			reported:      []planindex.Rename{{Old: "sub#Old", New: "sub#New"}},
+			unchangedCard: 1,
+			noAmendment:   true,
+		},
+		{
 			name:  "renamed symbol nothing references is logged only",
 			files: newOnly,
 			cards: map[int]string{1: editOther},
@@ -123,6 +168,23 @@ func TestDetectDrift_HandBuiltDelta(t *testing.T) {
 				{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}},
 			}},
 			unchangedCard: 1,
+		},
+		{
+			name:          "reported rename nothing references is logged only",
+			files:         newOnly,
+			cards:         map[int]string{1: editOther},
+			reported:      []planindex.Rename{{Old: "sub#Old", New: "sub#New"}},
+			unchangedCard: 1,
+			noAmendment:   true,
+		},
+		{
+			// A reported rename of another glyph accounts for nothing but its own old glyph.
+			name:         "deleted and still referenced with no reported replacement is blocking",
+			files:        newOnly,
+			cards:        map[int]string{1: usesGoneEditOther},
+			delta:        quarry.DeltaAnswer{Deleted: []quarry.Symbol{{ID: "sub#Gone"}}},
+			reported:     []planindex.Rename{{Old: "sub#Old", New: "sub#New"}},
+			wantFindings: []wantFinding{{"plan-references-deleted-symbol", SeverityBlocking}},
 		},
 		{
 			name:         "deleted and still referenced is blocking",
@@ -193,7 +255,7 @@ func TestDetectDrift_HandBuiltDelta(t *testing.T) {
 				before = readCardFile(t, dir, tc.unchangedCard, fmt.Sprintf("card%d", tc.unchangedCard))
 			}
 
-			findings, err := DetectDrift(fullPlan, pending, dir, worktree, quarry.GitDeltaAnswer{DeltaAnswer: tc.delta}, "deadbeef", driftTestTimestamp)
+			findings, err := DetectDrift(fullPlan, pending, dir, worktree, quarry.GitDeltaAnswer{DeltaAnswer: tc.delta}, tc.reported, "deadbeef", driftTestTimestamp)
 			if err != nil {
 				t.Fatalf("DetectDrift(...) returned error: %v", err)
 			}
@@ -228,34 +290,43 @@ func TestDetectDrift_HandBuiltDelta(t *testing.T) {
 // glyph quarry answers not_found for passed the step described as "revalidated" in silence, and the
 // amendment was appended as if the repair had worked — so the plan carried webster's own edit to a
 // symbol that is not there, with nothing reported.
+// A reported rename into a glyph that does not resolve takes the same path, so its later card goes to review rather than passing silently.
 func TestDetectDrift_RepairIntoAnUnresolvableGlyphIsReported(t *testing.T) {
 	t.Parallel()
 
-	// The fixture repo carries neither sub#Old nor sub#Gone: the rename quarry reports as exact names
-	// a destination that does not exist in the tree the repair is validated against.
-	worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Kept() {}\n"})
-
-	dir, plan := writePlanFixture(t, map[int]string{
-		1: "**Uses:**\n- `sub#Old`\n\n**Edit:**\n- `sub#Kept`\n\n**Intent:** one\n",
-	})
-
-	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
-		Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#Gone"}}},
-	}}
-
-	findings, err := DetectDrift(plan, plan, dir, worktree, delta, "deadbeef", driftTestTimestamp)
-	if err != nil {
-		t.Fatalf("DetectDrift(...) returned error: %v", err)
+	tests := []struct {
+		name     string
+		delta    quarry.DeltaAnswer
+		reported []planindex.Rename
+	}{
+		{"ExactTier", quarry.DeltaAnswer{Renamed: []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#Gone"}}}}, nil},
+		{"Reported", quarry.DeltaAnswer{Deleted: []quarry.Symbol{{ID: "sub#Old"}}}, []planindex.Rename{{Old: "sub#Old", New: "sub#Gone"}}},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	var reported bool
-	for _, f := range findings {
-		if f.Check == "glyph-not-found" && strings.Contains(f.Detail, "sub#Gone") {
-			reported = true
-		}
-	}
-	if !reported {
-		t.Errorf("findings = %+v; want a glyph-not-found naming sub#Gone — the repair rewrote the plan to a symbol that is not in the tree", findings)
+			// The fixture repo carries neither sub#Old nor sub#Gone: the rename names a destination that does not exist in the tree the repair is validated against.
+			worktree := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Kept() {}\n"})
+			dir, plan := writePlanFixture(t, map[int]string{
+				1: "**Uses:**\n- `sub#Old`\n\n**Edit:**\n- `sub#Kept`\n\n**Intent:** one\n",
+			})
+
+			findings, err := DetectDrift(plan, plan, dir, worktree, quarry.GitDeltaAnswer{DeltaAnswer: tt.delta}, tt.reported, "deadbeef", driftTestTimestamp)
+			if err != nil {
+				t.Fatalf("DetectDrift(...) returned error: %v", err)
+			}
+
+			var reported bool
+			for _, f := range findings {
+				if f.Check == "glyph-not-found" && f.Severity == SeverityBlocking && strings.Contains(f.Detail, "sub#Gone") {
+					reported = true
+				}
+			}
+			if !reported {
+				t.Errorf("findings = %+v; want a blocking glyph-not-found naming sub#Gone — the repair rewrote the plan to a symbol that is not in the tree", findings)
+			}
+		})
 	}
 }
 

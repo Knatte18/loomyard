@@ -59,6 +59,11 @@
 // A fork's whole return contract is the minimal report shape report.go
 // implements (Report/ParseReport/WriteReport): `status: OK`, `status:
 // FAILED` or `status: NEEDS_PARENT` with its `need`, and the `head_sha` the fork left the worktree at.
+// The plan's glyph names are the fork's contract, so a fork renames a planned symbol only when its name collides with an existing symbol or breaks a language or lint rule.
+// It lists each such rename under `renames`, as an `old` glyph, a `new` glyph and a `reason`, and ParseReport refuses an entry missing `old` or `new` or naming one glyph twice; the reason is never enforced.
+// The digest carries the list as `renames`, so record-batch and recover-batch both hand it to drift detection.
+// Drift detection rewrites every pending card still naming an `old` glyph through the exact tier's repair path, under the amendment tier `reported`.
+// A reported `new` glyph that does not resolve is a later-card drift warning, refused at that card's begin-batch.
 // An older fork's `deviations` key is accepted and ignored.
 // The digest's `deviations` list is the glyph scope guard's file list over the batch delta, the files changed outside the batch's own targets.
 // Record-batch and recover-batch fill it.

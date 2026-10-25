@@ -81,7 +81,10 @@
 //
 // `lyx loom insert-card <position> <slug> --intent <intent>`, `lyx loom remove-card <position>` and `lyx loom restore-renumber` are the sanctioned way to add or drop one card of the plan and renumber the cards after it.
 // A renumber moves each later card's file name prefix, heading number, explicit `Commit:` prefix and Card Index number, and writes a heading-only stub for an inserted card, which the agent fills with Edit or Write.
-// The success envelope carries `plan_dir`, `moved`, `created` or `removed`, and `prose_mentions`, the lines that name a moved card by its old number; they are never rewritten, so the agent checks each by hand.
+// A card id naming a moved card, `<N>-<slug>` or its zero-padded file form `<NN>-<slug>`, is rewritten to the card's new number in the overview and every card file, since the slug pins which card it means.
+// The success envelope carries `plan_dir`, `moved`, `created` or `removed`, `rewritten_refs` and `prose_mentions`.
+// `rewritten_refs` holds one `file`, `line`, `from` and `to` per rewritten card id.
+// `prose_mentions` holds the lines that name a moved card by its bare old number; they are never rewritten, since a bare number may already mean the new numbering, so the agent checks each by hand.
 // `restore-renumber` reports `plan_dir`, `journal`, `restored` and `removed`.
 //
 // Each verb takes webster's state-mutation lease first and releases it before it prints, so no begin-batch records a batch between the bound check and the renumber.

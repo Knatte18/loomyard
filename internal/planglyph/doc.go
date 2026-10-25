@@ -116,6 +116,8 @@
 //     Under a go plan, a handle the delta matches only in its directory's other package, `<dir>_test` for `<dir>` and the reverse, binds to that glyph (planparser.GoPackageCounterpart).
 //   - plan-references-deleted-symbol (blocking), rename-candidate (informational) — DetectDrift
 //     (drift.go), the exact-tier and evidence-tier halves of drift detection.
+//     A rename the batch's implementer reports is repaired as an exact-tier one is, under the amendment tier `reported`, and its old glyph gets neither finding;
+//     a reported new glyph that does not resolve is the post-repair resolve's blocking finding.
 //   - scope-outside-plan (informational) — ScopeGuard (scope.go), a symbol a completed batch's
 //     delta touched outside its own cards' targets (a file target covers every symbol in that
 //     file, a package target every symbol in a file directly in its directory), and a changed file

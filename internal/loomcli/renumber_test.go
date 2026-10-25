@@ -35,7 +35,7 @@ func newCardVerbFixture(t *testing.T, cards ...plankit.Card) cardVerbFixture {
 	t.Helper()
 	if len(cards) == 0 {
 		cards = []plankit.Card{
-			{Number: 1, Slug: "alpha", Intent: "Stands apart; see card 2."},
+			{Number: 1, Slug: "alpha", Intent: "Stands apart; see card 2. Feeds 3-gamma."},
 			{Number: 2, Slug: "beta"},
 			{Number: 3, Slug: "gamma"},
 		}
@@ -219,8 +219,16 @@ func TestRenumberVerbs(t *testing.T) {
 					t.Errorf("moved = %v; want gamma and beta moved up by one, gamma first", e["moved"])
 				}
 				mentions, _ := e["prose_mentions"].([]any)
-				if len(mentions) != 1 || mentions[0].(map[string]any)["file"] != "01-alpha.md" || mentions[0].(map[string]any)["text"] != "**Intent:** Stands apart; see card 2." {
+				if len(mentions) != 1 || mentions[0].(map[string]any)["file"] != "01-alpha.md" || mentions[0].(map[string]any)["text"] != "**Intent:** Stands apart; see card 2. Feeds 4-gamma." {
 					t.Errorf("prose_mentions = %v; want alpha's line naming card 2", e["prose_mentions"])
+				}
+				refs, _ := e["rewritten_refs"].([]any)
+				if len(refs) != 1 {
+					t.Fatalf("rewritten_refs = %v; want one entry", e["rewritten_refs"])
+				}
+				ref, _ := refs[0].(map[string]any)
+				if ref["file"] != "01-alpha.md" || ref["from"] != "3-gamma" || ref["to"] != "4-gamma" || ref["line"] == nil {
+					t.Errorf("rewritten_refs[0] = %v; want alpha's 3-gamma rewritten to 4-gamma", ref)
 				}
 			},
 		},

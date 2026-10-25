@@ -1,10 +1,8 @@
-// drift.go implements DetectDrift: noticing when the code moved out from under the plan, and
-// repairing only what quarry itself asserts. The signal is deterministic — the delta's deleted
-// symbols intersected with the remaining plan's own references — and every rewrite this file
-// performs is gated twice before it ever touches a byte: a rename matching a declared Rename
-// card's own pair is that card's expected outcome, never drift, and a renamed symbol nothing in
-// the plan references is logged only. Only the exact tier auto-repairs; the evidence tier (card
-// 37) never calls RewriteRefs or AppendAmendment at all.
+// drift.go implements DetectDrift: noticing when the code moved out from under the plan, and repairing only what quarry itself asserts or the batch's implementer reports.
+// The signal is deterministic: the delta's deleted symbols intersected with the remaining plan's own references.
+// Every rewrite this file performs is gated twice before it ever touches a byte:
+// a rename matching a declared Rename card's own pair is that card's expected outcome, never drift, and a renamed symbol nothing in the plan references is logged only.
+// Only the exact tier and reported renames auto-repair; the evidence tier never calls RewriteRefs or AppendAmendment at all.
 
 package planglyph
 
@@ -14,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/quarry/quarry"
 )
@@ -55,8 +54,10 @@ func renameCardPairs(plan *planparser.Plan) map[string][]string {
 // driftRepair is one exact-tier auto-repair DetectDrift queues: the old->new substitution and the
 // cards that referenced the old glyph, so exactly one Amendment can be appended per repair once the
 // plan-wide rewrite and revalidation both succeed.
+// tier is the amendment's tier word: "exact" for a rename quarry proves, "reported" for one the batch's implementer reported.
 type driftRepair struct {
 	oldID, newID string
+	tier         string
 	cards        []planparser.Card
 }
 
@@ -90,6 +91,12 @@ type driftRepair struct {
 // deliberately leaves both endpoints in place, so this function excludes every RenameCandidates
 // entry from the sweep itself.
 //
+// reported holds the renames the batch's implementer reported, which quarry may not prove, such as a function renamed and changed in one commit.
+// Each passes the same two gates and joins the same rewrite, revalidation and amendment as an exact-tier rename, with the amendment tier "reported";
+// its old glyph is excluded from both sweeps, as an exact pair's constituents are.
+// A reported pair whose old glyph the exact tier already renamed is skipped, so the AST-proven answer wins.
+// A reported new glyph that does not resolve is the post-repair resolve's blocking finding.
+//
 // now and sha are taken as parameters rather than read from a clock or a repository inside this
 // function, so the whole detector is deterministic and testable without a fixture.
 //
@@ -99,7 +106,7 @@ type driftRepair struct {
 // absent from pending; every reference question — refCards for the repair set and both sweeps —
 // reads pending, DetectDrift's own stated signal (the delta intersected with what the plan still
 // has to do). A caller with no completed cards passes the same *Plan for both.
-func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot string, delta quarry.GitDeltaAnswer, sha, now string) ([]Finding, error) {
+func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot string, delta quarry.GitDeltaAnswer, reported []planindex.Rename, sha, now string) ([]Finding, error) {
 	renamePairs := renameCardPairs(fullPlan)
 	refCards := targetCards(pending)
 
@@ -107,21 +114,33 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 	subs := make(map[string]string)
 	var repairs []driftRepair
 
-	for _, rp := range delta.Renamed {
-		oldID, newID := rp.From.ID, rp.To.ID
-
+	queue := func(oldID, newID, tier string) {
 		if slices.Contains(renamePairs[oldID], newID) {
-			continue // Gate one: the declared Rename card's own expected outcome.
+			return // Gate one: the declared Rename card's own expected outcome.
 		}
 
 		cards := refCards[oldID]
 		if len(cards) == 0 {
-			logger.Debug("planglyph: renamed symbol has no plan reference; logging only, no repair", "old_id", oldID, "new_id", newID)
-			continue // Gate two: nothing in the remaining plan references it.
+			logger.Debug("planglyph: renamed symbol has no plan reference; logging only, no repair", "old_id", oldID, "new_id", newID, "tier", tier)
+			return // Gate two: nothing in the remaining plan references it.
 		}
 
 		subs[oldID] = newID
-		repairs = append(repairs, driftRepair{oldID: oldID, newID: newID, cards: cards})
+		repairs = append(repairs, driftRepair{oldID: oldID, newID: newID, tier: tier, cards: cards})
+	}
+
+	exactOld := make(map[string]bool, len(delta.Renamed))
+	for _, rp := range delta.Renamed {
+		exactOld[rp.From.ID] = true
+		queue(rp.From.ID, rp.To.ID, "exact")
+	}
+	reportedOld := make(map[string]bool, len(reported))
+	for _, r := range reported {
+		if exactOld[r.Old] || reportedOld[r.Old] {
+			continue
+		}
+		reportedOld[r.Old] = true
+		queue(r.Old, r.New, "reported")
 	}
 
 	// Every symbol quarry offered evidence-tier rename candidates for is excluded from the
@@ -136,8 +155,9 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 		hasCandidates[entry.ID] = true
 	}
 
+	// A queued repair's old glyph is accounted for by the repair, whose post-repair resolve judges it.
 	for _, s := range delta.Deleted {
-		if hasCandidates[s.ID] {
+		if _, repaired := subs[s.ID]; repaired || hasCandidates[s.ID] {
 			continue
 		}
 		cards := refCards[s.ID]
@@ -162,7 +182,7 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 	// carried through unchanged: never re-sorted, re-ranked, or truncated.
 	for _, entry := range delta.RenameCandidates {
 		cards := refCards[entry.ID]
-		if len(cards) == 0 {
+		if _, repaired := subs[entry.ID]; repaired || len(cards) == 0 {
 			continue
 		}
 
@@ -262,7 +282,7 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 			Card:      card,
 			OldGlyph:  r.oldID,
 			NewGlyph:  r.newID,
-			Tier:      "exact",
+			Tier:      r.tier,
 			SHA:       sha,
 		}); err != nil {
 			return findings, err

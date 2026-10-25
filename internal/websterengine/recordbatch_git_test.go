@@ -237,6 +237,44 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 	})
 
+	// The same rename-and-rewrite quarry only offers as a candidate is repaired when the fork reports it:
+	// the pending card names the new glyph, and neither a candidate nor a later-card warning is left.
+	t.Run("a reported rename quarry cannot prove rewrites the later card", func(t *testing.T) {
+		fx := s.restart(t, forkReturned())
+		planDir := seedDriftPlanDir(t, []string{"internal/foo#WillMove"})
+		fx.Deps.Geom.PlanDir = planDir
+		fx.Deps.State.PlanFingerprint = mustFingerprint(t, planDir)
+
+		withSymbol := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillMove() int { return 1 }\n", "01.2: add WillMove")
+		fx.Deps.State.Batches[1].StartSHA = withSymbol
+		headSHA := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Moved() int {\n\ttotal := 1\n\ttotal += 0\n\treturn total\n}\n", "01.3: rename and rewrite")
+		writeReport(t, fx.ReportsDir, validReport(headSHA)+"renames:\n  - old: internal/foo#WillMove\n    new: internal/foo#Moved\n    reason: WillMove breaks a lint rule\n")
+		addPendingCard(fx, []string{"internal/foo#WillMove"})
+
+		result, err := websterengine.RecordBatch(fx.Deps, 1)
+		if err != nil {
+			t.Fatalf("RecordBatch() error = %v; want nil", err)
+		}
+		if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
+			t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
+		}
+		for _, w := range result.Warnings {
+			if strings.Contains(w, "rename-candidate") || strings.Contains(w, "later card:") {
+				t.Errorf("RecordResult.Warnings = %v; want no candidate or later-card warning for a repaired rename", result.Warnings)
+			}
+		}
+		pending, readErr := os.ReadFile(filepath.Join(planDir, "02-pending.md"))
+		if readErr != nil {
+			t.Fatalf("read 02-pending.md: %v", readErr)
+		}
+		if !strings.Contains(string(pending), "internal/foo#Moved") || strings.Contains(string(pending), "internal/foo#WillMove") {
+			t.Errorf("02-pending.md = %q; want the reported new glyph in place of the old one", pending)
+		}
+		if want, err := websterengine.Fingerprint(planDir); err != nil || fx.Deps.State.PlanFingerprint != want {
+			t.Errorf("State.PlanFingerprint = %q; want the rewritten plan's %q (err %v)", fx.Deps.State.PlanFingerprint, want, err)
+		}
+	})
+
 	// The batch being recorded is excluded from drift detection. Its work is exactly what the delta reports, so a Delete card
 	// referencing the symbol it just deleted was reporting its own success as
 	// plan-references-deleted-symbol — and no Delete card could ever be recorded at all.

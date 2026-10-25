@@ -541,6 +541,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		StartSHA:  bs.StartSHA,
 		HeadSHA:   report.HeadSHA,
 		Label:     polledID,
+		Renames:   report.Renames,
 	})
 	warnings = append(warnings, postWarnings...)
 	if err != nil {
@@ -780,7 +781,8 @@ func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA
 // Completed names every card whose work landed BEFORE this batch, so drift detection can scope itself to the plan's remaining work;
 // StartSHA is the bracket record's captured start SHA and HeadSHA the reconciled report head;
 // Label names the batch in warnings;
-// Batch is the record being finished, which later-card drift warnings are recorded onto.
+// Batch is the record being finished, which later-card drift warnings are recorded onto;
+// Renames are the glyph renames the batch's report lists, which drift detection repairs in the cards not yet begun.
 type postBatchInputs struct {
 	Plan      *planparser.Plan
 	State     *State
@@ -792,6 +794,7 @@ type postBatchInputs struct {
 	StartSHA  string
 	HeadSHA   string
 	Label     string
+	Renames   []ReportRename
 }
 
 // The bind reasons postBatchChecks decides itself, beside the two the index reports.
@@ -1012,7 +1015,12 @@ func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err err
 	// in.Plan rides along as DetectDrift's fullPlan so gate one can recognize THIS batch's own
 	// declared Rename outcome — the pending view excludes exactly the cards whose renames the
 	// delta reports.
-	driftFindings, driftErr := delta.DetectDrift(in.Plan, in.Completed, in.Geom.PlanDir, in.Geom.WorktreeRoot, in.HeadSHA, time.Now().UTC().Format(time.RFC3339))
+	// The report's renames ride along, so a later card naming a glyph the batch renamed is rewritten even where quarry cannot prove the rename.
+	reported := make([]planindex.Rename, len(in.Renames))
+	for i, r := range in.Renames {
+		reported[i] = planindex.Rename{Old: r.Old, New: r.New}
+	}
+	driftFindings, driftErr := delta.DetectDrift(in.Plan, in.Completed, reported, in.Geom.PlanDir, in.Geom.WorktreeRoot, in.HeadSHA, time.Now().UTC().Format(time.RFC3339))
 	// The exact-tier repair's own RewriteRefs lands on disk before this call reports anything, and
 	// its blocking plan-references-deleted-symbol finding is computed from a different part of the
 	// same delta, so re-baseline here for exactly the reason BindHandles does above.

@@ -1,4 +1,5 @@
-// renumber.go implements InsertCard and RemoveCard, the plan's write paths that add or drop one card and renumber the cards after it, plus the plan scratch paths and the journal that makes an interrupted call restorable.
+// renumber.go implements InsertCard and RemoveCard, the plan's write paths that add or drop one card, renumber the cards after it and rewrite the card ids naming them.
+// It also holds the plan scratch paths and the journal that makes an interrupted call restorable.
 
 package planparser
 
@@ -70,12 +71,23 @@ type ProseMention struct {
 	Text string
 }
 
+// RewrittenRef is one card-id reference to a moved card that a renumber rewrote to the card's new number.
+// File is the plan file as the renumber leaves it, and From and To are the reference before and after.
+type RewrittenRef struct {
+	File string
+	Line int
+	From string
+	To   string
+}
+
 // RenumberResult is what InsertCard and RemoveCard changed.
-// Created holds the inserted card's file name, Removed the removed card's, and ProseMentions the lines that refer to a moved card by its old number.
+// Created holds the inserted card's file name, and Removed the removed card's.
+// RewrittenRefs holds the card-id references rewritten to a moved card's new number, and ProseMentions the lines that refer to a moved card by its bare old number.
 type RenumberResult struct {
 	Moved         []MovedCard
 	Created       []string
 	Removed       []string
+	RewrittenRefs []RewrittenRef
 	ProseMentions []ProseMention
 }
 
@@ -244,6 +256,8 @@ func applyRenumber(ops RenumberIO, planDir, journalPath string, plan *Plan, edit
 		return data, nil
 	}
 
+	moves := movedSlugs(plan, edit.moved)
+	var rewritten []RewrittenRef
 	journal := renumberJournal{Files: map[string][]byte{}}
 	newBytes := make(map[string][]byte, len(edit.moved))
 	for _, m := range edit.moved {
@@ -252,8 +266,31 @@ func applyRenumber(ops RenumberIO, planDir, journalPath string, plan *Plan, edit
 			return nil, err
 		}
 		journal.Files[m.OldFile] = data
-		newBytes[m.NewFile] = moveCardBytes(data, m.OldNumber, m.NewNumber)
+		moved, refs := rewriteCardIDs(string(moveCardBytes(data, m.OldNumber, m.NewNumber)), m.NewFile, moves)
+		newBytes[m.NewFile] = []byte(moved)
+		rewritten = append(rewritten, refs...)
 		journal.Created = append(journal.Created, m.NewFile)
+	}
+
+	// A card that keeps its number is rewritten in place, and journaled only when a reference in it changes.
+	var stayed []string
+	for _, c := range sortedCards(plan) {
+		name := cardFileName(c.Number, c.Slug)
+		if _, moving := moves[c.Number]; moving || name == edit.removed {
+			continue
+		}
+		data, err := read(name)
+		if err != nil {
+			return nil, err
+		}
+		after, refs := rewriteCardIDs(string(data), name, moves)
+		if len(refs) == 0 {
+			continue
+		}
+		journal.Files[name] = data
+		newBytes[name] = []byte(after)
+		rewritten = append(rewritten, refs...)
+		stayed = append(stayed, name)
 	}
 	if edit.removed != "" {
 		data, err := read(edit.removed)
@@ -275,12 +312,20 @@ func applyRenumber(ops RenumberIO, planDir, journalPath string, plan *Plan, edit
 	if err != nil {
 		return nil, err
 	}
+	newOverview, overviewRefs := rewriteCardIDs(newOverview, overviewFileName, moves)
+	rewritten = append(rewritten, overviewRefs...)
+	sort.SliceStable(rewritten, func(i, j int) bool {
+		if rewritten[i].File != rewritten[j].File {
+			return rewritten[i].File < rewritten[j].File
+		}
+		return rewritten[i].Line < rewritten[j].Line
+	})
 
 	if err := writeRenumberJournal(ops, journalPath, journal); err != nil {
 		return nil, err
 	}
 
-	result := &RenumberResult{Moved: edit.moved}
+	result := &RenumberResult{Moved: edit.moved, RewrittenRefs: rewritten}
 	var steps []func() error
 	if edit.removed != "" {
 		steps = append(steps, func() error { return ops.Remove(filepath.Join(planDir, edit.removed)) })
@@ -291,6 +336,9 @@ func applyRenumber(ops RenumberIO, planDir, journalPath string, plan *Plan, edit
 			func() error { return ops.WriteFile(filepath.Join(planDir, m.NewFile), newBytes[m.NewFile], 0o644) },
 			func() error { return ops.Remove(filepath.Join(planDir, m.OldFile)) },
 		)
+	}
+	for _, name := range stayed {
+		steps = append(steps, func() error { return ops.WriteFile(filepath.Join(planDir, name), newBytes[name], 0o644) })
 	}
 	if edit.created != "" {
 		steps = append(steps, func() error {
@@ -320,6 +368,107 @@ func applyRenumber(ops RenumberIO, planDir, journalPath string, plan *Plan, edit
 		}
 	}
 	return result, nil
+}
+
+// cardIDMove is the slug of a moved card and the number it moves to, keyed by its old number.
+type cardIDMove struct {
+	slug string
+	to   int
+}
+
+// movedSlugs indexes every moved card of plan by its old number.
+func movedSlugs(plan *Plan, moved []MovedCard) map[int]cardIDMove {
+	newNumbers := make(map[int]int, len(moved))
+	for _, m := range moved {
+		newNumbers[m.OldNumber] = m.NewNumber
+	}
+	moves := make(map[int]cardIDMove, len(moved))
+	for _, c := range plan.Cards {
+		if to, ok := newNumbers[c.Number]; ok {
+			moves[c.Number] = cardIDMove{slug: c.Slug, to: to}
+		}
+	}
+	return moves
+}
+
+// cardIDNumberRe matches the number and hyphen a card-id token opens with.
+var cardIDNumberRe = regexp.MustCompile(`\d+-`)
+
+// cardIDToken is one card-id token of a line: its byte span, the number it names, and the width its number is padded to, zero when unpadded.
+type cardIDToken struct {
+	start, end int
+	number     int
+	width      int
+}
+
+// cardIDTokens returns every token of line that spells a card id `<N>-<slug>`, zero-padded or not, for a card slugOf knows.
+// A token is bounded on both sides, so a number inside a longer word or a slug that runs on into a longer one is no token.
+func cardIDTokens(line string, slugOf func(number int) (string, bool)) []cardIDToken {
+	var tokens []cardIDToken
+	for _, m := range cardIDNumberRe.FindAllStringIndex(line, -1) {
+		if m[0] > 0 && isCardIDByte(line[m[0]-1]) {
+			continue
+		}
+		digits := line[m[0] : m[1]-1]
+		number, err := strconv.Atoi(digits)
+		if err != nil {
+			continue
+		}
+		slug, ok := slugOf(number)
+		if !ok || !strings.HasPrefix(line[m[1]:], slug) {
+			continue
+		}
+		end := m[1] + len(slug)
+		if end < len(line) && isCardIDByte(line[end]) && !(line[end] == '-' && (end+1 == len(line) || !isCardIDByte(line[end+1]))) {
+			continue
+		}
+		// A leading zero keeps its width; a card file name is the zero-padded file form whatever its number.
+		width := 0
+		switch {
+		case len(digits) > 1 && digits[0] == '0':
+			width = len(digits)
+		case strings.HasPrefix(line[end:], ".md"):
+			width = 2
+		}
+		tokens = append(tokens, cardIDToken{start: m[0], end: end, number: number, width: width})
+	}
+	return tokens
+}
+
+// isCardIDByte reports whether b can continue a card number or slug, which a card-id token may not touch.
+func isCardIDByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '-' || b == '_'
+}
+
+// rewriteCardIDs rewrites every card-id token in text that names a moved card by its old number to the card's new number, padded as the token is.
+// Every token is read against the pre-renumber numbering in one pass, so a reference is never moved twice.
+// It returns the rewritten text and one RewrittenRef per token, located in file.
+func rewriteCardIDs(text, file string, moves map[int]cardIDMove) (string, []RewrittenRef) {
+	slugOf := func(number int) (string, bool) {
+		m, ok := moves[number]
+		return m.slug, ok
+	}
+	lines := strings.Split(text, "\n")
+	var refs []RewrittenRef
+	for i, line := range lines {
+		tokens := cardIDTokens(line, slugOf)
+		if len(tokens) == 0 {
+			continue
+		}
+		var b strings.Builder
+		last := 0
+		for _, tok := range tokens {
+			m := moves[tok.number]
+			to := fmt.Sprintf("%0*d-%s", tok.width, m.to, m.slug)
+			b.WriteString(line[last:tok.start])
+			b.WriteString(to)
+			last = tok.end
+			refs = append(refs, RewrittenRef{File: file, Line: i + 1, From: line[tok.start:tok.end], To: to})
+		}
+		b.WriteString(line[last:])
+		lines[i] = b.String()
+	}
+	return strings.Join(lines, "\n"), refs
 }
 
 // movedOldNumbers returns the old number of every moved card.
@@ -497,7 +646,7 @@ var cardMentionRe = regexp.MustCompile(`\b[Cc]ards?\s+\d+(?:(?:\s*,\s*(?:and\s+)
 var mentionNumberRe = regexp.MustCompile(`\d+|[–—-]`)
 
 // proseMentions scans the overview and every card file of plan for a card reference that names one of oldNumbers, a range's interior included.
-// A card's heading line and the Card Index lines are skipped, and no line is rewritten.
+// A card's heading line, the Card Index lines and every card id of plan are skipped, and no line is rewritten.
 func proseMentions(ops RenumberIO, planDir string, plan *Plan, oldNumbers []int) ([]ProseMention, error) {
 	old := make(map[int]bool, len(oldNumbers))
 	for _, n := range oldNumbers {
@@ -505,8 +654,14 @@ func proseMentions(ops RenumberIO, planDir string, plan *Plan, oldNumbers []int)
 	}
 
 	names := []string{overviewFileName}
+	slugs := make(map[int]string, len(plan.Cards))
 	for _, c := range sortedCards(plan) {
 		names = append(names, cardFileName(c.Number, c.Slug))
+		slugs[c.Number] = c.Slug
+	}
+	slugOf := func(number int) (string, bool) {
+		slug, ok := slugs[number]
+		return slug, ok
 	}
 
 	var mentions []ProseMention
@@ -533,12 +688,27 @@ func proseMentions(ops RenumberIO, planDir string, plan *Plan, oldNumbers []int)
 			if i >= skipFrom && i < skipTo && cardIndexLineRe.MatchString(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "- "))) {
 				continue
 			}
-			if namesOldNumber(line, old) {
+			if namesOldNumber(maskCardIDs(line, slugOf), old) {
 				mentions = append(mentions, ProseMention{File: name, Line: i + 1, Text: strings.TrimSpace(line)})
 			}
 		}
 	}
 	return mentions, nil
+}
+
+// maskCardIDs blanks every card-id token of line for a card slugOf knows, so a card id is never read as a bare card number.
+func maskCardIDs(line string, slugOf func(number int) (string, bool)) string {
+	tokens := cardIDTokens(line, slugOf)
+	if len(tokens) == 0 {
+		return line
+	}
+	masked := []byte(line)
+	for _, tok := range tokens {
+		for i := tok.start; i < tok.end; i++ {
+			masked[i] = ' '
+		}
+	}
+	return string(masked)
 }
 
 // namesOldNumber reports whether line holds a card reference naming a number in old.

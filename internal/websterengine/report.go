@@ -3,9 +3,9 @@
 // and the strict parser that reads it back.
 // webster's flat card format carries no per-batch Scope, so there is nothing to
 // justify an out-of-scope entry against;
-// a fork simply reports whether it succeeded, or that it waits on a step only its parent can take, and the head SHA it left.
+// a fork simply reports whether it succeeded, or that it waits on a step only its parent can take, the head SHA it left, and the glyphs it renamed.
 // An older fork's deviations key is still accepted and never read;
-// ParseReport fails only on Status/HeadSHA/Need shape violations.
+// ParseReport fails only on Status/HeadSHA/Need/Renames shape violations.
 
 package websterengine
 
@@ -35,9 +35,18 @@ type Report struct {
 	HeadSHA string `yaml:"head_sha"`
 	// Need is the one-line step only the parent can take, required with ReportStatusNeedsParent and refused with any other status.
 	Need string `yaml:"need,omitempty"`
+	// Renames lists every glyph the batch renamed, so a later card still naming the old glyph is rewritten to the new one.
+	Renames []ReportRename `yaml:"renames,omitempty"`
 	// Deviations is accepted and never read: an older fork's report carries the key,
 	// and the known-fields decoding must keep accepting it.
 	Deviations []string `yaml:"deviations,omitempty"`
+}
+
+// ReportRename is one glyph rename a fork reports: the glyph before the batch, the glyph that replaced it, and why the fork could not keep the plan's name.
+type ReportRename struct {
+	Old    string `yaml:"old" json:"old"`
+	New    string `yaml:"new" json:"new"`
+	Reason string `yaml:"reason" json:"reason"`
 }
 
 // ReportFileName returns the per-batch report file's name, "NN-<slug>.yaml", webster's own naming.
@@ -46,7 +55,8 @@ func ReportFileName(number int, slug string) string {
 }
 
 // ParseReport reads and strictly decodes the fork-return report YAML file at path, then enforces strict validation.
-// Status must be one of the three legal values, head_sha must be non-empty, and need must be non-empty exactly when status is ReportStatusNeedsParent.
+// Status must be one of the three legal values, head_sha must be non-empty, need must be non-empty exactly when status is ReportStatusNeedsParent,
+// and each renames entry must name two different, non-empty glyphs.
 // Each violation is returned as its own distinct wrapped error.
 func ParseReport(path string) (*Report, error) {
 	data, err := os.ReadFile(path)
@@ -86,6 +96,15 @@ func validateReportFields(path string, r Report) error {
 	}
 	if r.Status != ReportStatusNeedsParent && hasNeed {
 		return fmt.Errorf("websterengine: report %s: %q is allowed only with status %q, not %q", path, "need", ReportStatusNeedsParent, r.Status)
+	}
+
+	for i, rn := range r.Renames {
+		if strings.TrimSpace(rn.Old) == "" || strings.TrimSpace(rn.New) == "" {
+			return fmt.Errorf("websterengine: report %s: renames entry %d needs %q and %q", path, i+1, "old", "new")
+		}
+		if rn.Old == rn.New {
+			return fmt.Errorf("websterengine: report %s: renames entry %d names %q as both its old and its new glyph", path, i+1, rn.Old)
+		}
 	}
 
 	return nil

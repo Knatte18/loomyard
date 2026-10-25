@@ -295,7 +295,8 @@ Numbers run from the overview's `first_card:` (default `1`) upward with no gap, 
 The per-card file prefix `NN` (zero-padded) must equal the heading `N`.
 
 A card is inserted or removed with `lyx loom insert-card` or `lyx loom remove-card`, which move every later card by one in file name prefix, heading number, explicit `Commit:` prefix and Card Index number.
-They report lines that name a moved number in prose, and never rewrite them.
+They rewrite every card id naming a moved card, `<N>-<slug>` or its zero-padded file form `<NN>-<slug>`, to the new number, so a card that refers to another card names it by its card id.
+They report lines that name a moved number bare in prose, and never rewrite them.
 
 The **default commit subject is `N: <name>`** — the card heading's `<name>`;
 there is no separate `<short what>` seed.

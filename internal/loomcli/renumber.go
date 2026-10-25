@@ -179,7 +179,8 @@ func renumberRefusal(verb string, err error) string {
 }
 
 // renumberEnvelope is the success envelope of insert-card and remove-card.
-// The prose mentions are lines naming a moved card by its old number, which the agent checks by hand.
+// The rewritten refs are the card ids the renumber moved to their new numbers;
+// the prose mentions are lines naming a moved card by its bare old number, which the agent checks by hand.
 func renumberEnvelope(planDir string, res *planparser.RenumberResult) map[string]any {
 	moved := make([]map[string]any, 0, len(res.Moved))
 	for _, m := range res.Moved {
@@ -190,6 +191,10 @@ func renumberEnvelope(planDir string, res *planparser.RenumberResult) map[string
 			"new_file":   m.NewFile,
 		})
 	}
+	rewritten := make([]map[string]any, 0, len(res.RewrittenRefs))
+	for _, r := range res.RewrittenRefs {
+		rewritten = append(rewritten, map[string]any{"file": r.File, "line": r.Line, "from": r.From, "to": r.To})
+	}
 	mentions := make([]map[string]any, 0, len(res.ProseMentions))
 	for _, p := range res.ProseMentions {
 		mentions = append(mentions, map[string]any{"file": p.File, "line": p.Line, "text": p.Text})
@@ -198,6 +203,7 @@ func renumberEnvelope(planDir string, res *planparser.RenumberResult) map[string
 	envelope := map[string]any{
 		"plan_dir":       planDir,
 		"moved":          moved,
+		"rewritten_refs": rewritten,
 		"prose_mentions": mentions,
 	}
 	if len(res.Created) > 0 {
@@ -219,9 +225,11 @@ func (c *loomCLI) insertCardCmd() *cobra.Command {
 		Long: `insert-card adds a card numbered N and moves every card from N up by one:
 its file name prefix, its heading number, its explicit Commit: prefix and its
 Card Index number. The new card is a heading-only stub the agent fills with
-Edit or Write, and its Card Index line carries --intent. Lines that name a
-moved card by its old number are reported under prose_mentions and never
-rewritten, so check each by hand.
+Edit or Write, and its Card Index line carries --intent. A card id naming a
+moved card, <N>-<slug> or its zero-padded file form, is rewritten to the new
+number in the overview and every card file and reported under rewritten_refs.
+Lines that name a moved card by its bare old number are reported under
+prose_mentions and never rewritten, so check each by hand.
 
 N runs from first_card to one past the last card, and must come after the last
 card webster has begun. The call is journaled, and an interrupted one is
@@ -251,8 +259,11 @@ func (c *loomCLI) removeCardCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `remove-card deletes card N and moves every later card down by one: its file
 name prefix, its heading number, its explicit Commit: prefix and its Card Index
-number. Lines that name a moved card by its old number are reported under
-prose_mentions and never rewritten, so check each by hand.
+number. A card id naming a moved card, <N>-<slug> or its zero-padded file
+form, is rewritten to the new number in the overview and every card file and
+reported under rewritten_refs. Lines that name a moved card by its bare old
+number are reported under prose_mentions and never rewritten, so check each
+by hand.
 
 N runs from first_card to the last card, must come after the last card webster
 has begun, and cannot be the plan's only card. The call is journaled, and an

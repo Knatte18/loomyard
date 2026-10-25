@@ -1,7 +1,7 @@
 //go:build tier0
 
-// report_test.go covers Report's round-trip through WriteReport->ParseReport for every status and both empty and populated deviation lists.
-// It also covers ParseReport's strict-decode rejections: an unknown key, a missing head_sha, an unrecognized status, a need missing or misplaced, malformed YAML, an empty file and a missing file.
+// report_test.go covers Report's round-trip through WriteReport->ParseReport for every status, both empty and populated deviation lists, and a renames list carried into the digest.
+// It also covers ParseReport's strict-decode rejections: an unknown key, a missing head_sha, an unrecognized status, a need missing or misplaced, a malformed rename, malformed YAML, an empty file and a missing file.
 // Tier 1: no git, only t.TempDir().
 
 package websterengine
@@ -9,6 +9,7 @@ package websterengine
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -47,6 +48,17 @@ func TestReport_RoundTrip(t *testing.T) {
 			wantFile: "04-needs.yaml",
 			want:     &Report{Status: ReportStatusNeedsParent, HeadSHA: "fed789", Need: "raise the hub's tier 2 timeout in gate.yaml"},
 		},
+		{
+			name:     "OK with renames",
+			number:   6,
+			slug:     "renames",
+			wantFile: "06-renames.yaml",
+			want: &Report{
+				Status:  ReportStatusOK,
+				HeadSHA: "abc123",
+				Renames: []ReportRename{{Old: "internal/gatecli#runGuardStep", New: "internal/gatecli#guardStepRun", Reason: "runGuardStep collides with an existing method"}},
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -75,6 +87,12 @@ func TestReport_RoundTrip(t *testing.T) {
 			if got.Need != tt.want.Need {
 				t.Errorf("Need = %q; want %q", got.Need, tt.want.Need)
 			}
+			if !reflect.DeepEqual(got.Renames, tt.want.Renames) {
+				t.Errorf("Renames = %+v; want %+v", got.Renames, tt.want.Renames)
+			}
+			if digest := distill(got); !reflect.DeepEqual(digest.Renames, tt.want.Renames) {
+				t.Errorf("distill(report).Renames = %+v; want %+v", digest.Renames, tt.want.Renames)
+			}
 		})
 	}
 }
@@ -93,6 +111,9 @@ func TestParseReport_Rejects(t *testing.T) {
 		{name: "an unrecognized status", content: "status: MAYBE\nhead_sha: abc123\ndeviations: []\n"},
 		{name: "NEEDS_PARENT without a need", content: "status: NEEDS_PARENT\nhead_sha: abc123\nneed: \"  \"\n"},
 		{name: "a need on an OK report", content: "status: OK\nhead_sha: abc123\nneed: change gate.yaml\n"},
+		{name: "a rename with no new glyph", content: "status: OK\nhead_sha: abc123\nrenames:\n  - old: sub#Old\n    reason: collides\n"},
+		{name: "a rename with an empty old glyph", content: "status: OK\nhead_sha: abc123\nrenames:\n  - old: \" \"\n    new: sub#New\n    reason: collides\n"},
+		{name: "a rename to the same glyph", content: "status: OK\nhead_sha: abc123\nrenames:\n  - old: sub#Same\n    new: sub#Same\n    reason: collides\n"},
 		{name: "malformed YAML", content: "status: [this is not a mapping\n"},
 		{name: "an empty file", content: ""},
 		{name: "a missing file", missing: true},

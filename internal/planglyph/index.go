@@ -110,6 +110,6 @@ func (d batchDelta) ScopeGuard(plan *planparser.Plan, cards []planparser.Card) [
 }
 
 // DetectDrift checks the plan pending after completed, the same view PendingPlan builds.
-func (d batchDelta) DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, planDir, worktreeRoot, sha, now string) ([]Finding, error) {
-	return DetectDrift(fullPlan, PendingPlan(fullPlan, completed), planDir, worktreeRoot, d.answer, sha, now)
+func (d batchDelta) DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, reported []planindex.Rename, planDir, worktreeRoot, sha, now string) ([]Finding, error) {
+	return DetectDrift(fullPlan, PendingPlan(fullPlan, completed), planDir, worktreeRoot, d.answer, reported, sha, now)
 }
