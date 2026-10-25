@@ -22,6 +22,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn clones against an empty weft remote and
@@ -70,6 +71,7 @@ func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
 // TestCloneHub_NonEmptyWeftRemoteBranchUnchanged is the counter-test: the ordinary clone path must
 // keep pairing the suffixed branch with the cloned HEAD rather than gaining an extra empty commit
 // from the unborn-branch repair.
+// The only commit the clone adds on top is the fresh bind's anchor marker.
 //
 //testtiming:keep the ordinary clone path pairing the suffixed branch with the cloned HEAD without an extra empty commit; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_NonEmptyWeftRemoteBranchUnchanged(t *testing.T) {
@@ -96,10 +98,13 @@ func TestCloneHub_NonEmptyWeftRemoteBranchUnchanged(t *testing.T) {
 	weftPrimary := filepath.Join(res.HubPath, "warp-weft")
 	suffixed := fabricengine.RecordsBranchName("main")
 
-	suffixedSHA := gitOutput(t, weftPrimary, "rev-parse", "refs/heads/"+suffixed)
+	suffixedParentSHA := gitOutput(t, weftPrimary, "rev-parse", "refs/heads/"+suffixed+"^")
 	clonedSHA := gitOutput(t, weftPrimary, "rev-parse", "refs/remotes/origin/main")
-	if suffixedSHA != clonedSHA {
-		t.Errorf("refs/heads/%s = %s; want the cloned HEAD %s — the unborn repair must not add a commit on a non-empty remote",
-			suffixed, suffixedSHA, clonedSHA)
+	if suffixedParentSHA != clonedSHA {
+		t.Errorf("parent of refs/heads/%s = %s; want the cloned HEAD %s — the unborn repair must not add a commit on a non-empty remote",
+			suffixed, suffixedParentSHA, clonedSHA)
+	}
+	if changed := gitOutput(t, weftPrimary, "diff", "--name-only", clonedSHA, "refs/heads/"+suffixed); changed != lyxcwd.AnchorFileName {
+		t.Errorf("files the clone changed on refs/heads/%s = %q; want only %q", suffixed, changed, lyxcwd.AnchorFileName)
 	}
 }

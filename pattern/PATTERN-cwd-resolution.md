@@ -7,7 +7,10 @@
 - It exposes only `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel`, `WorktreePath()` and `AnchorPath()`.
 - Every cwd or worktree-root query goes through `lyxcwd.Getwd()` or `Resolve()`; raw `os.Getwd` and `git rev-parse --show-toplevel` are banned elsewhere.
 - A module's own durable subdirectory is its own constant joined onto `AnchorPath()`, never a `lyxcwd` call.
-- `lyxcwd` imports the standard library and `internal/dotgit` only.
+- A worktree's anchor comes from its own `.lyx-anchor` at the root of its weft branch, with the hub-wide Bolt marker as the fallback and `"."` after that.
+- `lyxcwd.NamedWorktree(hubPath, name)` is how code outside `lyxcwd` gets another worktree's `Location`, at that worktree's own anchor.
+- Only `fabricengine` writes the marker or reads it from git; `lyxcwd` reads the working tree alone.
+- `lyxcwd` imports the standard library, `internal/dotgit` and `internal/weftname` only.
 
 ## Told geometry
 

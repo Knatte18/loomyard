@@ -301,14 +301,9 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	l := h.Location
 
-	// Record the anchor marker alongside the repo-wide fabric.yaml
-	// hubforge.NewHub already seeded, mirroring what fabric clone commits
-	// onto weft:main.
+	// The prime's weft root holds the anchor marker clone committed there, beside the repo-wide fabric.yaml hubforge.NewHub already seeded on weft:main.
 	boardDir := fabricengine.BoardDir(l.HubPath)
-	anchorPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
-	if err := os.WriteFile(anchorPath, []byte(".\n"), 0o644); err != nil {
-		t.Fatalf("seed .lyx-anchor: %v", err)
-	}
+	anchorPath := filepath.Join(h.PrimeRecords(), lyxcwd.AnchorFileName)
 	fabricConfigPath := configengine.ConfigFile(boardDir, "fabric")
 
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
@@ -340,40 +335,100 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 // resolves to the repo's COMMON gitdir, so unwiring one worktree used to strip the exclusion its
 // siblings' still-live junctions depend on, making every one of them report untracked dirt in git
 // status and trip Remove's no-force dirty gate.
+//
+// Each row unwires one pair of a hub whose prime is at ".", after the rows' pairs are re-anchored, and asserts which exclude lines the unwire left.
+// A legacy bare line matches at every depth, so it stays while any worktree wires the name at any anchor; an anchored line stays while another worktree links the same anchored path.
 func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
 	t.Parallel()
 
 	const keptSlug = "unwire-sibling-kept"
 	const unwiredSlug = "unwire-sibling-torn-down"
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	l := h.Location
-	for _, slug := range []string{keptSlug, unwiredSlug} {
-		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
+	tests := []struct {
+		name          string
+		unwiredAnchor string
+		keptAnchor    string
+		// plantBareLine writes a legacy bare `_lyx` line into the exclude file beside the anchored ones.
+		plantBareLine bool
+		wantKept      []string
+		wantStripped  []string
+	}{
+		{"PairsAtTheHubAnchor", ".", ".", false, []string{"/_lyx"}, nil},
+		{"UnwiredPairAloneAtItsAnchor", "sub", ".", true, []string{"_lyx", "/_lyx"}, []string{"/sub/_lyx"}},
+		{"KeptPairAtTheSameAnchor", "sub", "sub", false, []string{"/sub/_lyx"}, nil},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	keptLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, keptSlug))
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", keptSlug, err)
-	}
-	unwiredLayout, err := lyxcwd.Resolve(fabricengine.WorktreePath(l, unwiredSlug))
-	if err != nil {
-		t.Fatalf("lyxcwd.Resolve(%s): %v", unwiredSlug, err)
-	}
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			l := h.Location
+			for _, slug := range []string{keptSlug, unwiredSlug} {
+				hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true})
+			}
+			hubforge.ReanchorPair(t, h, keptSlug, tt.keptAnchor)
+			hubforge.ReanchorPair(t, h, unwiredSlug, tt.unwiredAnchor)
 
-	if status := worktreeStatusPorcelain(t, keptLayout.WorktreePath()); status != "" {
-		t.Fatalf("setup: kept worktree already dirty: %q", status)
-	}
+			keptLayout, err := lyxcwd.Resolve(filepath.Join(fabricengine.WorktreePath(l, keptSlug), tt.keptAnchor))
+			if err != nil {
+				t.Fatalf("lyxcwd.Resolve(%s): %v", keptSlug, err)
+			}
+			unwiredLayout, err := lyxcwd.Resolve(filepath.Join(fabricengine.WorktreePath(l, unwiredSlug), tt.unwiredAnchor))
+			if err != nil {
+				t.Fatalf("lyxcwd.Resolve(%s): %v", unwiredSlug, err)
+			}
 
-	if _, err := fabricengine.Unwire(unwiredLayout.AnchorPath(), true); err != nil {
-		t.Fatalf("Unwire(%s): %v", unwiredSlug, err)
-	}
+			excludePath := gitkit.Git(t, h.PrimeWorktree(), "rev-parse", "--git-path", "info/exclude")
+			if !filepath.IsAbs(excludePath) {
+				excludePath = filepath.Join(h.PrimeWorktree(), excludePath)
+			}
+			if tt.plantBareLine {
+				existing, err := os.ReadFile(excludePath)
+				if err != nil {
+					t.Fatalf("read %s: %v", excludePath, err)
+				}
+				if err := os.WriteFile(excludePath, append(existing, []byte("_lyx\n")...), 0o644); err != nil {
+					t.Fatalf("plant the legacy bare line: %v", err)
+				}
+			}
 
-	if status := worktreeStatusPorcelain(t, keptLayout.WorktreePath()); status != "" {
-		t.Errorf("git status in the untouched worktree = %q; want clean — unwiring a sibling stripped its exclude entries", status)
-	}
-	if isLink, err := fslink.IsLink(fabricengine.WarpLyxLinkHere(keptLayout)); err != nil || !isLink {
-		t.Errorf("kept worktree's _lyx junction: isLink=%v err=%v; want it still wired", isLink, err)
+			others := []string{h.PrimeWorktree(), keptLayout.WorktreePath()}
+			before := make([]string, len(others))
+			for i, other := range others {
+				before[i] = worktreeStatusPorcelain(t, other)
+			}
+			if before[1] != "" {
+				t.Fatalf("setup: kept worktree already dirty: %q", before[1])
+			}
+
+			if _, err := fabricengine.Unwire(unwiredLayout.AnchorPath(), true); err != nil {
+				t.Fatalf("Unwire(%s): %v", unwiredSlug, err)
+			}
+
+			content, err := os.ReadFile(excludePath)
+			if err != nil {
+				t.Fatalf("read %s: %v", excludePath, err)
+			}
+			lines := strings.Split(string(content), "\n")
+			for _, line := range tt.wantKept {
+				if !slices.Contains(lines, line) {
+					t.Errorf("exclude lacks %q after the unwire; want it kept for the worktrees still wiring it\n%s", line, content)
+				}
+			}
+			for _, line := range tt.wantStripped {
+				if slices.Contains(lines, line) {
+					t.Errorf("exclude still holds %q after the unwire; want it stripped\n%s", line, content)
+				}
+			}
+			for i, other := range others {
+				if status := worktreeStatusPorcelain(t, other); status != before[i] {
+					t.Errorf("git status in %s = %q; want %q — unwiring a sibling stripped its exclude entries", other, status, before[i])
+				}
+			}
+			if isLink, err := fslink.IsLink(fabricengine.WarpLyxLinkHere(keptLayout)); err != nil || !isLink {
+				t.Errorf("kept worktree's _lyx junction: isLink=%v err=%v; want it still wired", isLink, err)
+			}
+		})
 	}
 }
 

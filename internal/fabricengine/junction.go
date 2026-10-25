@@ -562,8 +562,10 @@ func unseedJunctionRecords(rec *Mutations, container string, junctions []WarpJun
 // seedGitExclude uses to detect presence). The remaining lines are rewritten in their original
 // order.
 //
-// A name another warp worktree in the same hub still has wired is deliberately KEPT, even though
-// this call was made against a worktree that no longer wires it.
+// A line another warp worktree in the same hub still needs is deliberately KEPT, even though
+// this call was made against a worktree that no longer wires it:
+// the anchored line while another worktree has the name linked at the same anchored path,
+// and the bare line while another worktree has the name linked at any anchor.
 // git resolves info/exclude to the repo's COMMON gitdir, so there is exactly one exclude file per
 // repo, not one per worktree: removing an entry here used to make every sibling worktree's
 // still-live junctions show up as untracked dirt in git status, which in turn tripped Remove's
@@ -581,17 +583,20 @@ func unseedGitExclude(rec *Mutations, l *lyxcwd.Location, slug string, names []s
 	excludePath, changed, err := mutateGitExclude(WorktreePath(l, slug), func(content string) (string, error) {
 		// The sibling census runs INSIDE the lock, so the answer it gives cannot be invalidated by a
 		// concurrent wire in another worktree between the census and the write it feeds.
-		keep := namesWiredInSiblingWorktrees(l, slug, names)
+		wired := namesWiredInSiblingWorktrees(l, slug, names)
 		stripSet := make(map[string]bool)
 		for _, j := range WarpJunctions(l, slug, names) {
-			if keep[j.Name] {
-				continue
+			// Both spellings are stripped when nothing still needs them.
+			// They are the anchored pattern this binary writes and the legacy bare name an earlier one wrote.
+			// Stripping both keeps a hub wired before the narrowing reverting cleanly.
+			// Only worktrees linked at the same anchored path share the anchored line.
+			// A bare line matches at every depth, so every worktree wiring the name shares it.
+			if !wired.sameAnchor[j.Name] {
+				stripSet[excludePatternFor(l.AnchorRel, j.Name)] = true
 			}
-			// Both spellings are stripped: the anchored pattern this binary writes, and the legacy
-			// bare name an earlier one wrote, so unwiring a hub wired before the narrowing still
-			// reverts cleanly.
-			stripSet[excludePatternFor(l.AnchorRel, j.Name)] = true
-			stripSet[j.Name] = true
+			if !wired.anyAnchor[j.Name] {
+				stripSet[j.Name] = true
+			}
 		}
 		if len(stripSet) == 0 {
 			return content, nil
@@ -624,26 +629,38 @@ func unseedGitExclude(rec *Mutations, l *lyxcwd.Location, slug string, names []s
 	return changed, nil
 }
 
-// namesWiredInSiblingWorktrees reports, per name, whether some OTHER warp worktree registered in
-// this repo still has a link of that name at its own anchored directory.
-// It is what keeps one worktree's unwire from dirtying every sibling: the exclude file it would
-// edit is repo-wide, so an entry is only genuinely dead once no worktree wires it any more.
+// siblingWiring is the census of the names the other warp worktrees of a repo still have linked.
+type siblingWiring struct {
+	// sameAnchor holds the names some other worktree has linked at the census worktree's own anchored path.
+	sameAnchor map[string]bool
+	// anyAnchor holds the names some other worktree has linked at its own anchored directory, whichever anchor that is.
+	anyAnchor map[string]bool
+}
+
+// namesWiredInSiblingWorktrees takes the census of names over the OTHER warp worktrees registered in this repo, each checked at its own anchored directory.
+// It is what keeps one worktree's unwire from dirtying every sibling:
+// the exclude file it would edit is repo-wide.
+// An anchored entry is only genuinely dead once no worktree links the same anchored path.
+// A bare entry, which matches at every depth, is dead once no worktree wires the name at any anchor.
 //
-// A failure to enumerate worktrees is answered conservatively — every name is reported as still
-// wired — because the cost of keeping a dead exclude line is a stale line in a file only lyx
-// writes, while the cost of removing a live one is untracked-junction noise in a working tree the
-// caller never asked to touch.
-func namesWiredInSiblingWorktrees(l *lyxcwd.Location, slug string, names []string) map[string]bool {
-	wired := make(map[string]bool, len(names))
+// A failure to enumerate worktrees, and a sibling whose anchor cannot be read, are answered conservatively, every name reported as still wired.
+// Keeping a dead exclude line costs a stale line in a file only lyx writes.
+// Removing a live one costs untracked-junction noise in a working tree the caller never asked to touch.
+func namesWiredInSiblingWorktrees(l *lyxcwd.Location, slug string, names []string) siblingWiring {
+	wired := siblingWiring{sameAnchor: make(map[string]bool, len(names)), anyAnchor: make(map[string]bool, len(names))}
+	markAllWired := func() {
+		for _, name := range names {
+			wired.sameAnchor[name] = true
+			wired.anyAnchor[name] = true
+		}
+	}
 
 	entries, err := List(WorktreePath(l, slug))
 	if err != nil {
 		entries, err = List(l.WorktreePath())
 	}
 	if err != nil {
-		for _, name := range names {
-			wired[name] = true
-		}
+		markAllWired()
 		return wired
 	}
 
@@ -653,13 +670,20 @@ func namesWiredInSiblingWorktrees(l *lyxcwd.Location, slug string, names []strin
 		if entryPath == ownPath {
 			continue
 		}
+		sibling, err := lyxcwd.NamedWorktree(l.HubPath, filepath.Base(entryPath))
+		if err != nil {
+			markAllWired()
+			return wired
+		}
+		sameAnchor := filepath.Clean(sibling.AnchorRel) == filepath.Clean(l.AnchorRel)
 		for _, name := range names {
-			if wired[name] {
+			isLink, linkErr := fslink.IsLink(filepath.Join(entryPath, sibling.AnchorRel, name))
+			if linkErr != nil || !isLink {
 				continue
 			}
-			isLink, linkErr := fslink.IsLink(filepath.Join(entryPath, l.AnchorRel, name))
-			if linkErr == nil && isLink {
-				wired[name] = true
+			wired.anyAnchor[name] = true
+			if sameAnchor {
+				wired.sameAnchor[name] = true
 			}
 		}
 	}

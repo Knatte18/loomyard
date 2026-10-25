@@ -190,8 +190,8 @@ func CheckFloor() error {
 
 // runCore spawns git with args in cwd and captures its output, a remote subcommand bounded by remoteDeadline.
 // RunGit and RunStdin are thin wrappers over this shared core, and Run is RunStdin with an empty stdin.
-func runCore(args []string, cwd, stdin string) (stdout, stderr string, exitCode int, err error) {
-	return runCoreWithin(args, cwd, stdin, remoteDeadline)
+func runCore(args []string, cwd, stdin string, extraEnv []string) (stdout, stderr string, exitCode int, err error) {
+	return runCoreWithin(args, cwd, stdin, extraEnv, remoteDeadline)
 }
 
 // runCoreWithin spawns git with args in cwd and captures its output.
@@ -204,25 +204,25 @@ func runCore(args []string, cwd, stdin string) (stdout, stderr string, exitCode 
 // a local one runs unbounded.
 // A remote subcommand killed for a stall runs once more, since it received nothing from the remote and so changed nothing there.
 // A remote subcommand first waits while a pause covers the process, through the installed network gate, if any, and its bounds start only once it runs.
-// Every child gets the process environment less GIT_DIR, GIT_WORK_TREE and GIT_OPTIONAL_LOCKS, with GIT_OPTIONAL_LOCKS=0 set.
-func runCoreWithin(args []string, cwd, stdin string, deadline time.Duration) (stdout, stderr string, exitCode int, err error) {
+// Every child gets the process environment less GIT_DIR, GIT_WORK_TREE and GIT_OPTIONAL_LOCKS, with GIT_OPTIONAL_LOCKS=0 set, and extraEnv after all of it.
+func runCoreWithin(args []string, cwd, stdin string, extraEnv []string, deadline time.Duration) (stdout, stderr string, exitCode int, err error) {
 	if floorErr := CheckFloor(); floorErr != nil {
 		return "", "", -1, floorErr
 	}
 	if !remoteSubcommands[subcommand(args)] {
-		stdout, stderr, exitCode, _, err = runAttempt(args, cwd, stdin, false, deadline)
+		stdout, stderr, exitCode, _, err = runAttempt(args, cwd, stdin, extraEnv, false, deadline)
 		return stdout, stderr, exitCode, err
 	}
 
 	// The hold comes before the bounds' timers, so a command held by a pause starts its bounds only when it runs.
 	_, done := pauserecord.Network(subcommand(args))
 	defer done()
-	stdout, stderr, exitCode, stalled, err := runAttempt(args, cwd, stdin, true, deadline)
+	stdout, stderr, exitCode, stalled, err := runAttempt(args, cwd, stdin, extraEnv, true, deadline)
 	if !stalled {
 		return stdout, stderr, exitCode, err
 	}
 	logger.Warn("gitexec: remote sent no answer, retrying once", "subcommand", subcommand(args), "dir", cwd, "stall_bound", stallBound)
-	stdout, stderr, exitCode, stalled, err = runAttempt(args, cwd, stdin, true, deadline)
+	stdout, stderr, exitCode, stalled, err = runAttempt(args, cwd, stdin, extraEnv, true, deadline)
 	if stalled {
 		return stdout, stderr, -1, &GitError{Args: args, Dir: cwd, ExitCode: -1, Stderr: stderr, Timeout: stallBound, Stalled: true}
 	}
@@ -233,7 +233,7 @@ func runCoreWithin(args []string, cwd, stdin string, deadline time.Duration) (st
 // A remote attempt runs under deadline, in its own process group, with lowSpeedEnv and a packet trace file added to the environment.
 // When stallBound passes under deadline and the trace file is still empty, the remote has sent no answer:
 // the attempt is killed and reports stalled, with a nil err and exit code -1.
-func runAttempt(args []string, cwd, stdin string, remote bool, deadline time.Duration) (stdout, stderr string, exitCode int, stalled bool, err error) {
+func runAttempt(args []string, cwd, stdin string, extraEnv []string, remote bool, deadline time.Duration) (stdout, stderr string, exitCode int, stalled bool, err error) {
 	logger.Debug("gitexec: spawn", "subcommand", subcommand(args), "dir", cwd)
 
 	var cmd *exec.Cmd
@@ -255,7 +255,7 @@ func runAttempt(args []string, cwd, stdin string, remote bool, deadline time.Dur
 		defer cancel()
 		cmd = exec.CommandContext(ctx, "git", args...)
 		cmd.WaitDelay = remoteWaitDelay
-		cmd.Env = childEnv(append(append([]string(nil), lowSpeedEnv...), "GIT_TRACE_PACKET="+tracePath))
+		cmd.Env = childEnv(append(append(append([]string(nil), lowSpeedEnv...), "GIT_TRACE_PACKET="+tracePath), extraEnv...))
 		proc.ConfigureGroupKill(cmd, func(pid int, groupErr error) {
 			reportKill(args, pid, groupErr)
 		})
@@ -271,7 +271,7 @@ func runAttempt(args []string, cwd, stdin string, remote bool, deadline time.Dur
 		}
 	} else {
 		cmd = exec.Command("git", args...)
-		cmd.Env = childEnv(nil)
+		cmd.Env = childEnv(extraEnv)
 	}
 	cmd.Dir = cwd
 	if stdin != "" {
@@ -327,7 +327,7 @@ func childEnv(extra []string) []string {
 // A git below lyx's floor returns the *toolfloor.FloorError with exit code -1, which is no *GitError.
 // A remote command that outlives its deadline or stalls twice is returned as a *GitError with a non-zero Timeout, though git did not exit on its own.
 func RunGit(args []string, cwd string) (stdout, stderr string, exitCode int, err error) {
-	stdout, stderr, exitCode, err = runCore(args, cwd, "")
+	stdout, stderr, exitCode, err = runCore(args, cwd, "", nil)
 	if err != nil {
 		return "", "", -1, err
 	}
@@ -351,7 +351,7 @@ func Run(args []string, cwd string) (string, error) {
 // RunWithin is Run with a remote command bounded by deadline instead of the package-wide bound, for a caller that must give up on an unreachable remote sooner.
 // A local command ignores deadline, and a deadline at or under the stall bound leaves the stall check unarmed.
 func RunWithin(args []string, cwd string, deadline time.Duration) (string, error) {
-	stdout, stderr, exitCode, err := runCoreWithin(args, cwd, "", deadline)
+	stdout, stderr, exitCode, err := runCoreWithin(args, cwd, "", nil, deadline)
 	if err != nil {
 		return "", err
 	}
@@ -364,7 +364,18 @@ func RunWithin(args []string, cwd string, deadline time.Duration) (string, error
 // RunStdin is Run with stdin fed to git's standard input, for a command such as `cat-file --batch-check` that reads its operands there.
 // It reports a non-zero exit, an exec-level failure, the floor error, a remote deadline and a stall exactly as Run does, and an empty stdin behaves as Run.
 func RunStdin(args []string, cwd, stdin string) (string, error) {
-	stdout, stderr, exitCode, err := runCore(args, cwd, stdin)
+	return runWithStdinAndEnv(args, cwd, stdin, nil)
+}
+
+// RunWithEnv is Run with extraEnv, entries of the form NAME=value, appended to the child's environment after the variables gitexec sets.
+// It is the one way to give a local git child a variable such as GIT_INDEX_FILE, and reports every failure exactly as Run does.
+func RunWithEnv(args []string, cwd string, extraEnv []string) (string, error) {
+	return runWithStdinAndEnv(args, cwd, "", extraEnv)
+}
+
+// runWithStdinAndEnv is the body of RunStdin and RunWithEnv: a non-zero exit is a *GitError beside the stdout git wrote.
+func runWithStdinAndEnv(args []string, cwd, stdin string, extraEnv []string) (string, error) {
+	stdout, stderr, exitCode, err := runCore(args, cwd, stdin, extraEnv)
 	if err != nil {
 		return "", err
 	}

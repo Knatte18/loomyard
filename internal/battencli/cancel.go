@@ -402,6 +402,9 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 		case fabricengine.EntryOwnedElsewhere:
 			return false, cancelOwnedElsewhere(slug, entry.Owner)
 		case fabricengine.EntryStopped:
+			if stoppedOnlyByAnchor(slug, report.Branches) {
+				break
+			}
 			return false, stoppedRefusal(slug, "cancel", fmt.Sprintf("then run %s again", rerun), entry, report.Branches)
 		case fabricengine.EntryEnded:
 			if entry.How != "done" {
@@ -417,6 +420,28 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 		}
 	}
 	return false, nil
+}
+
+// stoppedOnlyByAnchor reports whether every branch stopping the entry of slug is anchor_stopped, and at least one is.
+// The `--set` an anchor stop names refuses a worktree with an unfinished run, so the cancel that clears the run is the exit to take first.
+// The branches counted are the ones stoppedRefusal names: the entry's own, bar its run's busy records branch, and those every pair shares, bar a busy one.
+func stoppedOnlyByAnchor(slug string, branches []fabricengine.BranchOutcome) bool {
+	anchorStopped := false
+	for _, branch := range branches {
+		own := branch.Slug == slug && !(branch.Repo == sideRecords && branch.State == fabricengine.BranchBusy)
+		shared := branch.Repo == sideBolt || (branch.Repo == sideRecords && branch.Prime)
+		if !own && !(shared && branch.State != fabricengine.BranchBusy) {
+			continue
+		}
+		if branch.WayForward == "" {
+			continue
+		}
+		if branch.State != fabricengine.BranchAnchorStopped {
+			return false
+		}
+		anchorStopped = true
+	}
+	return anchorStopped
 }
 
 // cancelOwnedElsewhere words the refusal of a cancel on a machine that does not own the slug.

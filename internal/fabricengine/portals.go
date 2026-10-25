@@ -110,9 +110,18 @@ func retiredHubArtifactsPresent(l *lyxcwd.Location) bool {
 // Anything that is not a fabric-shaped portal link, or a file or link at the retired workspace path, is kept.
 // A refusal never stops the sweep; an absent artifact is a no-op that records nothing.
 // The workspace file is left alone when the prime cannot be resolved.
+// Both are keyed on the prime's own anchor, whichever worktree runs the sweep.
 func sweepRetiredHubArtifacts(rec *Mutations, l *lyxcwd.Location) []string {
-	details := sweepRetiredPortals(rec, l)
-	return append(details, sweepRetiredHubWorkspace(rec, l)...)
+	prime, err := PrimeName(l)
+	if err != nil {
+		return sweepRetiredPortals(rec, l)
+	}
+	primeLoc, err := lyxcwd.NamedWorktree(l.HubPath, prime)
+	if err != nil {
+		return []string{fmt.Sprintf("left %s untouched: read the prime's anchor: %v", portalsDirName, err)}
+	}
+	details := sweepRetiredPortals(rec, primeLoc)
+	return append(details, sweepRetiredHubWorkspace(rec, primeLoc)...)
 }
 
 // keptDetail words a sweep detail naming path, shown hub-relative, and the reason it was kept.

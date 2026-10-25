@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
 
@@ -336,6 +337,53 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 			if _, marked := ws["lyx.generated"]; marked != want {
 				t.Errorf("%s carries the generated mark = %v; want %v", filepath.Base(file), marked, want)
 			}
+		}
+	})
+
+	t.Run("PlacesAReanchoredBeamAtItsOwnAnchorFromAnyWorktree", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, "b", beamAddOptions)
+		hubforge.ReanchorPair(t, h, "b", "sub")
+		beamLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("b"))
+		if err != nil {
+			t.Fatalf("resolve the beam's location: %v", err)
+		}
+		beamPath := fabricengine.BeamWorkspacePath(h.Location, "b")
+
+		path, _ := regenerateHub(t, h)
+		hubFile, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read the hub file: %v", err)
+		}
+		beamFile, err := os.ReadFile(beamPath)
+		if err != nil {
+			t.Fatalf("read the beam file: %v", err)
+		}
+
+		prime := primeBranch(t, h)
+		wantDirs := map[string]string{prime: h.PrimeWorktree(), "b": filepath.Join(h.PairCodeWorktree("b"), "sub")}
+		for _, file := range []string{path, beamPath} {
+			for _, f := range readWorkspaceFolders(t, file) {
+				want, ok := wantDirs[f.Name]
+				if !ok {
+					continue
+				}
+				if got := filepath.Join(filepath.Dir(file), filepath.FromSlash(f.Path)); got != want {
+					t.Errorf("%s folder %q resolves to %q; want %q", filepath.Base(file), f.Name, got, want)
+				}
+			}
+		}
+		requireFolderNames(t, beamPath, "b", prime, "Bolt")
+
+		if _, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(h.Path), beamLocation); err != nil {
+			t.Fatalf("RegenerateHubWorkspace from the beam: %v", err)
+		}
+		if got, _ := os.ReadFile(path); !slices.Equal(got, hubFile) {
+			t.Errorf("hub file regenerated from the beam differs from the prime's:\n%s\nwant\n%s", got, hubFile)
+		}
+		if got, _ := os.ReadFile(beamPath); !slices.Equal(got, beamFile) {
+			t.Errorf("beam file regenerated from the beam differs from the prime's:\n%s\nwant\n%s", got, beamFile)
 		}
 	})
 

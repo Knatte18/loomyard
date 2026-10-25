@@ -55,6 +55,9 @@ type StartDeps struct {
 	Beams func() ([]BeamPair, error)
 	// Geometry tells the paths of the dobby of the worktree named worktree.
 	Geometry func(worktree string) (Geometry, error)
+	// MoveInProgress reports whether an anchor change stands on the worktree named worktree or on the prime, with the way forward that settles it.
+	// A nil MoveInProgress reads as no change standing.
+	MoveInProgress func(worktree string) (wayForward string, standing bool, err error)
 	// Live reports whether the dobby described by geom is running.
 	Live func(geom Geometry) (bool, error)
 	// Spawn starts the dobby described by geom as a detached process.
@@ -145,10 +148,20 @@ func EnsureLive(deps StartDeps) (StartReport, error) {
 }
 
 // ensureOne starts the dobby of the worktree named worktree unless it is live, and reports it under label.
+// A worktree with an anchor change standing is refused with the change's way forward as the detail and starts nothing, and an unreadable record is a failure.
 func ensureOne(deps StartDeps, label, worktree string) StartEntry {
 	geom, err := deps.Geometry(worktree)
 	if err != nil {
 		return StartEntry{Worktree: label, Outcome: OutcomeFailed, Detail: err.Error()}
+	}
+	if deps.MoveInProgress != nil {
+		wayForward, standing, err := deps.MoveInProgress(worktree)
+		if err != nil {
+			return StartEntry{Worktree: label, Outcome: OutcomeFailed, Detail: fmt.Sprintf("read whether an anchor change stands: %v", err)}
+		}
+		if standing {
+			return StartEntry{Worktree: label, Outcome: OutcomeRefused, Detail: wayForward}
+		}
 	}
 	live, err := deps.Live(geom)
 	if err != nil {

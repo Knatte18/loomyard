@@ -48,6 +48,7 @@ const (
 // CodeWorktree is set for a records record only: the pair's code worktree, where every fabric verb runs.
 // Prime marks a code record of the hub prime's own branch.
 // Paths, Commits and OriginHead are set where the failure has them, such as a replay stop or a rewind.
+// WayForward is set for the anchor-change class only, which carries its own commands.
 type FailedPush struct {
 	Repo         string           `json:"repo"`
 	RepoPath     string           `json:"repo_path"`
@@ -59,6 +60,7 @@ type FailedPush struct {
 	Paths        []string         `json:"paths,omitempty"`
 	Commits      []string         `json:"commits,omitempty"`
 	OriginHead   string           `json:"origin_head,omitempty"`
+	WayForward   string           `json:"way_forward,omitempty"`
 	FirstSeen    time.Time        `json:"first_seen"`
 	LastSeen     time.Time        `json:"last_seen"`
 	Count        int              `json:"count"`
@@ -221,6 +223,8 @@ func FailedPushWayForward(f FailedPush) string {
 		return recordsConflictWayForward(f.RepoPath, f.Branch, f.Paths, f.Commits, pushStep(f))
 	case PushFailureRewound:
 		return rewoundWayForward(f.RepoPath, f.Branch, f.OriginHead, f.Commits)
+	case PushFailureAnchorChange:
+		return f.WayForward
 	case PushFailureGone:
 		pairWorktree := f.RepoPath
 		if f.Repo == failedPushSideRecords {

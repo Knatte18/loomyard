@@ -15,8 +15,10 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
@@ -36,11 +38,26 @@ type CheckoutResult struct {
 // an all-or-nothing operation, refusing if the weft worktree has uncommitted changes, forking new
 // weft branches when their suffixed siblings don't exist, re-pointing junctions, and refreshing the
 // correspondence index — rolling back both sides on failure to preserve all-or-nothing semantics.
+// A weft that carries a move record, a weft whose own anchor marker is empty, and a target weft branch anchored elsewhere than the worktree, are refused with an error wrapping ErrAnchorChange before anything is switched.
 func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
 	weftWorktree := RecordsWorktree(l)
+
+	// A blank marker is refused ahead of the dirtiness check it would otherwise trip, so its own way forward is the one named.
+	if stop := emptyMarkerStop(weftWorktree); stop != nil {
+		return CheckoutResult{}, fmt.Errorf("%w: %s", stop, stop.WayForward)
+	}
+
+	// A standing move record is refused too: its re-run recovers against the branch the record was written on, which a switch would leave behind.
+	moveStop, err := moveRecordStop(weftWorktree)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
+	if moveStop != nil {
+		return CheckoutResult{}, fmt.Errorf("%w: %s", moveStop, moveStop.WayForward)
+	}
 
 	// A coordinated branch switch out of a half-merged pair is refused: record-only, since the
 	// foreign-state disposition belongs to Commit alone.
@@ -59,6 +76,11 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 	}
 	if weftDirty {
 		return CheckoutResult{}, fmt.Errorf("weft worktree has uncommitted changes; stash or commit before checkout")
+	}
+
+	// A target weft branch anchored elsewhere would leave the pair's wiring and its worktree's anchor apart, so it is refused before anything is switched.
+	if err := refuseTargetAnchorChange(l, branch); err != nil {
+		return CheckoutResult{}, err
 	}
 
 	// Capture both original branches for rollback on later failure.
@@ -122,6 +144,79 @@ func (t *Topology) Checkout(l *lyxcwd.Location, branch string) (res CheckoutResu
 		Branch:          branch,
 		RecordsWorktree: weftWorktree,
 	}, nil
+}
+
+// refuseTargetAnchorChange refuses a checkout of branch when the weft branch it would switch to carries another anchor than the worktree's own.
+// The target's tip is read from the local branch, else from origin, whose tip is fetched into its remote-tracking ref only so that no local branch is created.
+// A target that exists nowhere is forked from the current weft branch and inherits its marker, so it is never refused.
+// An unreachable origin is the error the switch itself would hit, raised before anything is switched.
+// The refusal wraps ErrAnchorChange and names the commands that settle it with the cost of each:
+// the anchor change commits the new marker on the branch being left, which every machine that checks it out shares,
+// and an anchor directory the current warp checkout does not track is first brought in by a code commit on that same branch.
+func refuseTargetAnchorChange(l *lyxcwd.Location, branch string) error {
+	weftBranch := RecordsBranchName(branch)
+	weftRepoRoot, err := RecordsRepoRoot(l)
+	if err != nil {
+		return fmt.Errorf("resolve the weft repo to read %q: %w", weftBranch, err)
+	}
+
+	tip, err := targetWeftTip(weftRepoRoot, weftBranch)
+	if err != nil || tip == "" {
+		return err
+	}
+	names, err := RepoWiredNames(l)
+	if err != nil {
+		return fmt.Errorf("load fabric config to compare anchors: %w", err)
+	}
+	targetAnchor, err := treeAnchor(weftRepoRoot, tip, names, l.AnchorRel)
+	if err != nil {
+		return err
+	}
+	if targetAnchor == l.AnchorRel {
+		return nil
+	}
+
+	tracked := targetAnchor == "."
+	if !tracked {
+		listed, err := gitexec.Run([]string{"ls-tree", "-d", "HEAD", "--", filepath.ToSlash(targetAnchor)}, l.WorktreePath())
+		if err != nil {
+			return fmt.Errorf("check whether the warp checkout tracks %q: %w", targetAnchor, err)
+		}
+		tracked = strings.TrimSpace(listed) != ""
+	}
+	steps := fmt.Sprintf("run `lyx fabric anchor --set %s`, which commits the new marker on the weft branch being left, shared by every machine that checks it out, so their pulls and pushes then stop until each integrates it; then run the checkout again", targetAnchor)
+	if !tracked {
+		steps = fmt.Sprintf("first update this warp checkout by hand to a commit that tracks %s, such as merging the target warp branch %s into the current one or committing the %s directory on it, which is a code commit on the branch being left, shared by every machine that checks it out; then %s",
+			targetAnchor, branch, targetAnchor, steps)
+	}
+	return fmt.Errorf("%w: checkout of %q refused, since its weft branch %s is anchored at %q and this worktree at %q; %s",
+		ErrAnchorChange, branch, weftBranch, targetAnchor, l.AnchorRel, steps)
+}
+
+// targetWeftTip returns a ref naming the tip of weftBranch as a checkout would switch to it, or "" when it exists nowhere and a checkout would fork it.
+// A local branch is that ref.
+// Otherwise a branch on origin is fetched into its remote-tracking ref, which is returned, and no local branch is created.
+// A repo with no origin remote has no such branch.
+func targetWeftTip(weftRepoRoot, weftBranch string) (string, error) {
+	local, err := gitrepo.New(weftRepoRoot).BranchExists(weftBranch)
+	if err != nil {
+		return "", fmt.Errorf("check whether weft branch %q exists: %w", weftBranch, err)
+	}
+	if local {
+		return "refs/heads/" + weftBranch, nil
+	}
+	if _, urlErr := gitrepo.New(weftRepoRoot).RemoteURL(originRemoteName); urlErr != nil {
+		return "", nil
+	}
+	tip, err := remoteHeadTip(weftRepoRoot, weftBranch)
+	if err != nil || tip == "" {
+		return "", err
+	}
+	tracking := "refs/remotes/" + originRemoteName + "/" + weftBranch
+	if _, err := gitexec.Run([]string{"fetch", "--no-tags", originRemoteName, "refs/heads/" + weftBranch + ":" + tracking}, weftRepoRoot); err != nil {
+		return "", fmt.Errorf("fetch weft branch %q from %q: %w", weftBranch, originRemoteName, err)
+	}
+	return tracking, nil
 }
 
 // switchOrForkWeft switches the weft worktree to the weft branch matching the warp target: the local branch, else the branch on origin adopted as a local tracking branch, else a fork of the current weft branch.

@@ -24,11 +24,14 @@ type promoteWorld struct {
 	parentBranch map[string]string
 	endErr       error
 	resetCommits bool
+	// anchors maps a slug to the own and parent anchors Anchors answers; a slug it lacks answers equal ones.
+	anchors    map[string][2]string
+	anchorsErr error
 }
 
 // newPromoteWorld returns a hub with a running task "run1" owned by here, its pair present, and the fixtures of newCreateWorld.
 func newPromoteWorld() *promoteWorld {
-	w := &promoteWorld{createWorld: newCreateWorld(), parentBranch: map[string]string{}, resetCommits: true}
+	w := &promoteWorld{createWorld: newCreateWorld(), parentBranch: map[string]string{}, resetCommits: true, anchors: map[string][2]string{}}
 	w.owners.Entries["run1"] = boardengine.OwnerEntry{Owner: here, IsTask: true, RunHeld: true}
 	w.pairs["run1"] = true
 	return w
@@ -56,6 +59,12 @@ func (w *promoteWorld) deps() promoteDeps {
 		ResetRecords: func(*fabricengine.Mutations, string) (fabricengine.ResetRecordsResult, error) {
 			w.calls = append(w.calls, "reset")
 			return fabricengine.ResetRecordsResult{Committed: w.resetCommits}, nil
+		},
+		Anchors: func(slug string) (string, string, error) {
+			if pair, set := w.anchors[slug]; set {
+				return pair[0], pair[1], w.anchorsErr
+			}
+			return ".", ".", w.anchorsErr
 		},
 	}
 }
@@ -139,6 +148,24 @@ func TestPromote(t *testing.T) {
 			name:      "RunningTaskRunsTheSevenStepsInOrderAndStartsTheDobbyLast",
 			slug:      "run1",
 			wantCalls: []string{"end", "mark", "push", "clear", "reset", "push", "owner", "workspace", "dobby"},
+		},
+		{
+			name: "TaskAtAnotherAnchorThanItsParentsRecordsRefusedAfterTheRunIsEndedAndBeforeTheReset",
+			slug: "run1",
+			setup: func(w *promoteWorld) {
+				w.anchors["run1"] = [2]string{".", "sub"}
+			},
+			wantErr:   []string{"run1 sits at anchor . and its parent's records at sub", "`lyx fabric anchor run1 --set sub`", "`lyx beam promote run1`"},
+			wantCalls: []string{"end", "mark", "push", "clear"},
+		},
+		{
+			name: "UnreadableAnchorsRefusedNamingTheSlugAndTheRerun",
+			slug: "run1",
+			setup: func(w *promoteWorld) {
+				w.anchorsErr = errors.New("parent records branch is gone")
+			},
+			wantErr:   []string{"run1", "parent records branch is gone", "run `lyx beam promote run1` again"},
+			wantCalls: []string{"end", "mark", "push", "clear"},
 		},
 		{
 			name: "FailedDobbyStartNamesBeamStart",

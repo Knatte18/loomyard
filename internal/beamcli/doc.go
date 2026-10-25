@@ -16,13 +16,19 @@
 // The steps run in order, each skipped when its result is already there, so a re-run finishes a stopped create:
 //
 //  1. `boardengine.SetOwners` records this machine as the owner with the beam flag.
-//  2. `Topology.Add` makes the pair from the prime, or from the parent beam `boardengine.ParentBeam` names for a nested beam, with the beam mark in the same origin commit; an existing pair gets the mark through `fabricengine.MarkBeam`.
+//  2. `Topology.Add` makes the pair from the prime, or from the parent beam `boardengine.ParentBeam` names for a nested beam, with the beam mark in the same origin commit.
+//     An existing pair first has its anchor settled through `Topology.EnsureAnchor`, which recovers a standing move record, and then gets the mark through `fabricengine.MarkBeam`.
 //     A parent beam whose pair is absent here is refused naming `lyx beam create <parent>`, or `lyx adopt <parent>` when its branch is on origin.
 //  3. `fabricengine.SpawnPairPush` spawns the pair's push.
 //  4. `fabricengine.RegenerateHubWorkspace` rewrites the workspace files.
 //  5. The `StartDobby` seam starts the beam's dobby when it is not live, and the envelope reports `dobby_started`; a failure is a step failure naming `lyx beam start`.
 //
-// Writing the flag first makes a member started mid-create stop at Worktree-Create and resume into the beam rather than fork from the prime for good.
+// `--anchor <dir>` gives the new pair `dir` of the code checkout as its anchor instead of its parent's, through `AddOptions.Anchor`; `lyx beam promote` and `lyx fabric add` take no such flag.
+// The directory is validated in the commit the beam forks from, the pair's records content moves there under a move record, and a failure rolls the pair back.
+// A kill leaves the record standing, and the same `lyx beam create <slug>` finishes the move.
+// On an existing pair the flag must name the pair's own anchor, and any other is refused naming `lyx fabric anchor <slug> --set <dir>`, then the same create again.
+//
+// Writing the beam flag first makes a member started mid-create stop at Worktree-Create and resume into the beam rather than fork from the prime for good.
 // Members already spawned under the grouping project keep the prime as their parent.
 // The envelope names the beam's worktree and `lyx orch start` there as the way to give it an orch; the verb starts no orch.
 //

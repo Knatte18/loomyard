@@ -159,6 +159,7 @@ type daemon struct {
 	lastTick   time.Time
 	failures   logger.Episode
 	ownerRead  logger.Episode
+	moveStands logger.Episode
 
 	// tickCtx is the context of the tick in flight, for the seams a pass exit reaches.
 	tickCtx context.Context
@@ -247,8 +248,20 @@ func (d *daemon) beamOwnedElsewhere() (bool, string) {
 	return false, ""
 }
 
+// standingMove returns the path of the first anchor-move record of the geometry that exists, empty when none does.
+func (d *daemon) standingMove() string {
+	for _, path := range d.geom.MoveRecords {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
 // tick folds one awake reading into the sleep watch, keeps the state record's pid and sleeps, and runs the per-tick work.
 // A sleep the watch sees, and a record found without a pid, owe every run a full pass until a tick returns nil.
+// While an anchor-move record of the geometry exists, a tick spawns no pass, starts no task and runs no tidy step, and owes what it owed before.
+// That is logged once per episode, and the state record's upkeep and the landing count go on.
 func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	d.sleepWatch.Observe(now, d.deps.Awake())
 	seen := d.sleepWatch.Sleeps()
@@ -273,17 +286,27 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	if err := d.drivePasses(ctx, now); err != nil {
-		return err
+	moving := d.standingMove()
+	if moving != "" {
+		d.moveStands.Fail("dobbyengine: an anchor change stands; the dobby schedules nothing until it ends", "worktree", d.geom.WorktreeName, "record", moving)
+	} else {
+		d.moveStands.Recover("dobbyengine: the anchor change ended; the dobby schedules again", "worktree", d.geom.WorktreeName)
 	}
-	if err := d.startReady(ctx, now); err != nil {
-		return err
+	if moving == "" {
+		if err := d.drivePasses(ctx, now); err != nil {
+			return err
+		}
+		if err := d.startReady(ctx, now); err != nil {
+			return err
+		}
 	}
 	if err := d.countLandings(now); err != nil {
 		return err
 	}
-	if err := d.tidyStep(ctx, now); err != nil {
-		return err
+	if moving == "" {
+		if err := d.tidyStep(ctx, now); err != nil {
+			return err
+		}
 	}
 	d.inFlight = d.busy
 	if d.deps.Tick != nil {
@@ -293,7 +316,9 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 			return err
 		}
 	}
-	d.owesAll = false
+	if moving == "" {
+		d.owesAll = false
+	}
 	return nil
 }
 

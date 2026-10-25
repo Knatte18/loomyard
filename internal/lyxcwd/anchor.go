@@ -1,19 +1,22 @@
-// anchor.go implements the recorded lyx-anchor subpath marker: the plain single-line ".lyx-anchor"
-// file at the board root that records the repo-wide subpath a fabric clone anchors lyx at (e.g.
-// "backend" or ".").
-// It is read here, never written — the write side lives in fabricengine's board-root commit choke
-// point (see the plan's "record wins" shared decision).
-// This file stays stdlib-only so lyxcwd never gains a YAML dependency.
+// anchor.go implements the recorded lyx-anchor subpath marker.
+// The marker is the plain single-line ".lyx-anchor" file that records the subpath lyx anchors at (e.g. "backend" or ".").
+// A worktree's own marker sits at the root of its records sibling, and the legacy hub-wide marker sits at the board root.
+// The read order is the own marker, then the board marker, then ".".
+// It is read here, never written: only fabricengine writes the marker or reads it from git.
+// This file imports the standard library and internal/weftname only, so lyxcwd never gains a YAML dependency.
 
 package lyxcwd
 
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // boardDirName is the name of the board data directory inside the hub (i.e.
@@ -29,11 +32,11 @@ func boardDir(hub string) string {
 	return filepath.Join(hub, boardDirName)
 }
 
-// AnchorFileName is the filename of the recorded lyx-anchor subpath marker at the board root
-// (<boardDir(hub)>/.lyx-anchor).
+// AnchorFileName is the filename of the recorded lyx-anchor subpath marker.
+// It sits at the root of a worktree's records sibling for that worktree's own anchor.
+// It sits at the board root (<boardDir(hub)>/.lyx-anchor) for the legacy hub-wide fallback the own marker overrides.
 // It holds only the subpath string (e.g. "backend" or ".").
-// This is a structural geometry artifact — a fixed per-repo anchor recorded once at clone/create —
-// never a config/env override;
+// This is a structural geometry artifact recorded when the worktree is created or moved, never a config/env override;
 // per the Cwd Resolution Invariant, only lyxcwd constructs and reads this path.
 // There is no compatibility fallback read for the pre-rename ".fabric-anchor" name: the marker
 // anchors the whole repo, not the fabric module, so the old name is simply wrong now, not
@@ -140,25 +143,42 @@ func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 		ErrCwdOutsideAnchor, cwd, anchorAbs, AnchorFileName)
 }
 
-// readRecordedAnchor reads the recorded lyx-anchor subpath marker from
-// <BoardDir(hub)>/.lyx-anchor and reports whether a usable anchor was
-// found. It returns ("", false, nil) on any error — an absent board directory, an
-// absent marker file, or an unreadable file — because every one of those
-// cases means the caller must fall back to today's cwd-derived RelPath
-// (mid-clone, a gitkit fixture repo standing in for a hub, or a non-fabric git repo). An
-// empty or whitespace-only marker after trimming is also treated as absent:
-// an anchor must never resolve to an empty subpath. This helper spawns no
-// git and stays stdlib-only.
+// readRecordedAnchor reads the recorded lyx-anchor subpath marker of the worktree named worktreeName in hub.
+// It reports whether a usable anchor was found.
+// It reads the worktree's own marker at the root of its records sibling first.
+// It reads the legacy hub-wide marker at <BoardDir(hub)>/.lyx-anchor second.
+// An own marker that fails ValidateAnchorRel is an error naming the file;
+// an empty or whitespace-only own marker counts as absent and the read falls through to the board marker.
+// An own marker that exists but cannot be read is an error naming the file, as an invalid one is.
+// It returns ("", false, nil) when neither marker is usable:
+// an absent directory, an absent file or an empty one each mean the caller must fall back to "."
+// (mid-clone, a gitkit fixture repo standing in for a hub, or a non-fabric git repo).
+// An anchor must never resolve to an empty subpath.
+// This helper spawns no git.
 //
-// The one absence that is NOT a fallback is a hub whose board still carries the pre-rename
-// StaleAnchorFileName marker and no renamed one: that hub did record a subpath, under the old name,
-// and answering "." for it re-anchors the whole repo at its root — after which `lyx fabric
-// reconcile` wires a second junction set there. That case returns ErrStaleAnchorMarker so every
-// resolver refuses rather than guessing.
-func readRecordedAnchor(hub string) (anchor string, found bool, err error) {
+// The one absence that is NOT a fallback is a hub whose board still carries the pre-rename StaleAnchorFileName marker, no renamed one and no own marker.
+// That hub did record a subpath under the old name.
+// Answering "." for it re-anchors the whole repo at its root, after which `lyx fabric reconcile` wires a second junction set there.
+// That case returns ErrStaleAnchorMarker so every resolver refuses rather than guessing.
+func readRecordedAnchor(hub, worktreeName string) (anchor string, found bool, err error) {
+	ownMarker := filepath.Join(weftname.SiblingPath(hub, worktreeName), AnchorFileName)
+	data, readErr := os.ReadFile(ownMarker)
+	switch {
+	case readErr == nil:
+		if trimmed := strings.TrimSpace(string(data)); trimmed != "" {
+			validated, validateErr := ValidateAnchorRel(trimmed)
+			if validateErr != nil {
+				return "", false, fmt.Errorf("recorded anchor at %s is unusable: %w", ownMarker, validateErr)
+			}
+			return validated, true, nil
+		}
+	case !errors.Is(readErr, fs.ErrNotExist):
+		return "", false, fmt.Errorf("recorded anchor at %s cannot be read: %w", ownMarker, readErr)
+	}
+
 	board := boardDir(hub)
 
-	data, readErr := os.ReadFile(filepath.Join(board, AnchorFileName))
+	data, readErr = os.ReadFile(filepath.Join(board, AnchorFileName))
 	if readErr != nil {
 		if _, staleErr := os.Stat(filepath.Join(board, StaleAnchorFileName)); staleErr == nil {
 			return "", false, fmt.Errorf("%w: rename %s to %s in the hub's %s worktree and commit it (at %s)",

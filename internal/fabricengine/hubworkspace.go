@@ -75,10 +75,14 @@ func regenerateHubWorkspace(rec *Mutations, l *lyxcwd.Location, lockWait time.Du
 	if err != nil {
 		return "", err
 	}
-	if retiredHubArtifactsPresent(l) {
+	primeLoc, err := lyxcwd.NamedWorktree(l.HubPath, prime)
+	if err != nil {
+		return "", fmt.Errorf("read the prime's anchor: %w", err)
+	}
+	if retiredHubArtifactsPresent(primeLoc) {
 		logger.Warn(`fabricengine: the hub still holds retired portal links or the old _launchers workspace file; run "lyx fabric reconcile" to remove them`)
 	}
-	settings, err := vscode.ReadSettings(filepath.Join(WorktreePath(l, prime), l.AnchorRel))
+	settings, err := vscode.ReadSettings(filepath.Join(WorktreePath(l, prime), primeLoc.AnchorRel))
 	if err != nil {
 		return "", fmt.Errorf("read prime settings: %w", err)
 	}
@@ -225,7 +229,11 @@ func hubWorkspaceFolders(l *lyxcwd.Location, primeName string) (workspaceLayout,
 	var primeFolder, boltFolder *vscode.WorkspaceFolder
 
 	primeRoot := WorktreePath(l, primeName)
-	primeAnchor := filepath.Join(primeRoot, l.AnchorRel)
+	primeLoc, err := lyxcwd.NamedWorktree(l.HubPath, primeName)
+	if err != nil {
+		return workspaceLayout{}, fmt.Errorf("read the prime's anchor: %w", err)
+	}
+	primeAnchor := filepath.Join(primeRoot, primeLoc.AnchorRel)
 	present, err := dirPresent(primeAnchor)
 	if err != nil {
 		return workspaceLayout{}, err

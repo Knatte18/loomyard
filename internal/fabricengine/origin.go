@@ -118,8 +118,12 @@ func ReadOrigin(l *lyxcwd.Location) (Origin, bool, error) {
 // It creates no directory and seeds no exclude in the other pair's weft worktree,
 // so reading a half-present pair never recreates a weft path it has already lost.
 func ReadOriginFor(l *lyxcwd.Location, slug string) (Origin, bool, error) {
-	weftPath := RecordsWorktreePath(l, slug)
-	path := OriginRecordPathFor(l, slug)
+	pair, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return Origin{}, false, err
+	}
+	weftPath := RecordsWorktreePath(pair, slug)
+	path := OriginRecordPathFor(pair, slug)
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return Origin{}, false, nil
@@ -143,12 +147,16 @@ func ReadOriginFor(l *lyxcwd.Location, slug string) (Origin, bool, error) {
 // a caller repairing its own worktree passes that worktree's own name, which resolves to the same
 // file the read side reaches through the junction.
 func WriteOrigin(rec *Mutations, l *lyxcwd.Location, slug string, o Origin) error {
-	weftPath := RecordsWorktreePath(l, slug)
+	pair, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return err
+	}
+	weftPath := RecordsWorktreePath(pair, slug)
 	lockPath, err := originLockPath(weftPath)
 	if err != nil {
 		return err
 	}
-	path := OriginRecordPathFor(l, slug)
+	path := OriginRecordPathFor(pair, slug)
 	if err := state.WriteJSON(path, lockPath, o); err != nil {
 		return err
 	}
@@ -166,13 +174,17 @@ const beamMarkSubjectPrefix = "fabric: mark beam "
 // A pair with no origin record is refused: a mark on a missing record would invent its parents.
 // The caller pushes the commit through the pair's detached push; MarkBeam pushes nothing.
 func MarkBeam(rec *Mutations, l *lyxcwd.Location, slug string) (bool, error) {
-	weftPath := RecordsWorktreePath(l, slug)
+	pair, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return false, err
+	}
+	weftPath := RecordsWorktreePath(pair, slug)
 	origin, found, err := ReadOriginFor(l, slug)
 	if err != nil {
 		return false, err
 	}
 	if !found {
-		return false, missingOriginRecordError(l, slug, weftPath)
+		return false, missingOriginRecordError(pair, slug, weftPath)
 	}
 	if origin.Beam {
 		return false, nil
@@ -181,10 +193,15 @@ func MarkBeam(rec *Mutations, l *lyxcwd.Location, slug string) (bool, error) {
 	if err := WriteOrigin(rec, l, slug, origin); err != nil {
 		return false, err
 	}
-	if _, _, err := CommitRecordsPaths(rec, weftPath, l.AnchorRel, []string{OriginRecordRel()}, beamMarkSubjectPrefix+slug, SyncOptions{}); err != nil {
+	if _, _, err := CommitRecordsPaths(rec, weftPath, pair.AnchorRel, []string{OriginRecordRel()}, beamMarkSubjectPrefix+slug, SyncOptions{}); err != nil {
 		return false, fmt.Errorf("commit the beam mark of %s: %w", slug, err)
 	}
 	return true, nil
+}
+
+// rootPairNoParentError refuses a verb that needs the parent of slug's pair, a root pair that has none, and names the way forward.
+func rootPairNoParentError(slug string) error {
+	return fmt.Errorf("pair %q is a root pair with no parent to reset its records to; way forward: a root pair cannot become a beam, so create a project entry through `lyx board upsert` under a slug of its own and run `lyx beam create` on it", slug)
 }
 
 // missingOriginRecordError refuses a beam mark on slug's pair that has no origin record, naming the way forward for each of the two causes.

@@ -31,6 +31,19 @@
 // The stop names the weft branch, the paths and the way forward.
 // For a conflict that is the two ways to settle it, each followed by `lyx fabric push`, so a re-run `lyx fabric pull` replays nothing.
 // For an uncommitted change it is committing the named paths with `lyx fabric commit` and re-running the pull.
+// A weft never crosses a change of its anchor marker on the pull and push paths (anchorstop.go).
+// `weftAnchorStop` is the one comparison: it reads `treeAnchor` of the weft tip, of the upstream tip and of their merge base, and stops when the upstream has commits the tip lacks and the two tips' anchors differ.
+// A tip that already contains the upstream never stops, so a re-anchor not yet pushed goes through, and a markerless tip compares by the anchor its content implies.
+// Its `wantAnchor` is the upstream's anchor when only the upstream moved the marker and the tip's otherwise, and names the `lyx fabric anchor <slug> --set <anchor>` way forward.
+// A weft whose own marker is empty stops the same way, and its way forward is restoring the marker.
+// `Pull` returns the stop as a `*WeftStopError` wrapping `ErrAnchorChange` before the warp arm runs, so neither side moves.
+// `FastForwardPair` skips the weft pull with a warning that names the way forward, and goes on with the code side.
+// A push that must replay returns an `*AnchorStopError` before changing anything, recorded as the failed-push class `anchor_change` with the way forward in the record, never as the not-fast-forward class, whose way forward would carry the other marker in by hand.
+// `Checkout` and `DropLocal` refuse before they switch, tag or move anything, with an error wrapping `ErrAnchorChange`.
+// `Checkout` refuses an empty own marker, then reads the tip of the target weft branch from the local branch or from origin, fetching an origin tip into its remote-tracking ref only, and refuses when that tip's anchor differs from the worktree's own.
+// A target with no weft branch is forked and inherits the marker, so it is never refused.
+// The refusal names `lyx fabric anchor --set <anchor>` with its cost, a marker commit on the branch being left that every machine checking it out shares, and when the current warp checkout does not track the anchor directory it names the code commit that brings it in first.
+// `DropLocal` refuses an empty own marker of the records branch, then compares its anchor with the origin tip it would reset to through `weftAnchorStop` with `reset` set, so a local re-anchor not yet pushed differs from origin's tip as well.
 // `Pull` never returns success with `WeftPulled` false for a moved origin.
 // The call's result is `PullResult`, which reports what each side did and, after a reconcile, the re-anchor baseline —
 // see pull.go's own doc comment for
@@ -60,7 +73,12 @@
 // `judgeBranch` reads a branch as level, fast_forward, ahead, rewound, rewritten, diverged, needs_replay or gone.
 // A code branch is read through the reflog of its tracking ref, as `Fabric.Pull` reads it: rewound takes precedence over ahead, and rewritten is a history origin replaced with commits this machine never held.
 // A records branch neither side contains is needs_replay, which a moving reconcile replaces with the result of its replay.
-// The states a move adds, dirty, busy and live, and the stops themselves, carry a `WayForward` line, the repair step alone; each caller appends its own re-entry.
+// The states a move adds, dirty, busy, live and anchor_stopped, and the stops themselves, carry a `WayForward` line, the repair step alone; each caller appends its own re-entry.
+// A weft records branch that is not Bolt and needs a move, hub-wide or run-scoped, first refuses an empty own marker and then runs `weftAnchorStop` on its tip and origin's head, falling back to the `NamedWorktree` anchor of its pair or the prime.
+// Either stop leaves the weft unmoved and reports anchor_stopped, with `BranchOutcome.Anchor` the anchor the way forward sets, empty for an empty marker, and the reconcile goes on with the other branches and returns no error.
+// The pair's code branch still moves, since it changes no marker.
+// The way forward of a pair is `lyx fabric anchor <slug> --set <anchor>` in its code worktree; the prime's first names ending every reed session of the hub and waiting out every live batten run, then the `--set`, then `lyx orch start`.
+// An anchor_stopped branch stops its entry, and one on the prime's records branch stops every entry.
 // `classifyEntry` turns the verdicts on an entry's branches into active, ended, owned_elsewhere or stopped, in that precedence.
 //
 // After judging and before the ended set, `readOriginOwners` reads `board.json` at origin's fetched Bolt tip and asks `OriginSeams.OwnerOf`, an `OwnerReader`, once per recorded pair whether another machine owns it.
@@ -447,7 +465,7 @@
 // and the dissolution of `lyx init`, replacing the earlier two-step "clone, then `lyx init`" flow
 // with a single command that leaves a worktree fully wired. `CloneHub` (clone.go) drives warp+weft
 // clone, `_board` worktree materialization, and lyx-anchor resolution in one call;
-// the CLI layer (`internal/fabriccli`) then records the anchor and the repo-wide `fabric.yaml` onto
+// the CLI layer (`internal/fabriccli`) then records the repo-wide `fabric.yaml` onto
 // `weft:main`, creates every warp junction (`_lyx`, `.lyx`), and runs
 // `configsync.ReconcileAll` — so a fresh clone or `worktree add` leaves every junction wired and
 // every config materialized without a second command. Every junction is excluded through the warp's
@@ -461,9 +479,12 @@
 // repo-wide flock across read, rewrite and write and replaces the file by same-directory rename, so
 // a concurrent reader sees either the whole old file or the whole new one.
 //
-// The lyx-anchor subpath (e.g. `backend` or `.`) is recorded once, on `weft:main`, as the plain
-// `.lyx-anchor` marker at `BoardDir(Hub)` (see `internal/lyxcwd/anchor.go`);
-// `lyxcwd.Resolve` is the reader. `Resolve` treats the record as truth once present — it sets
+// The lyx-anchor subpath (e.g. `backend` or `.`) is recorded per worktree, as the plain
+// `.lyx-anchor` marker at the root of that worktree's own weft branch (see `internal/lyxcwd/anchor.go`);
+// `lyxcwd.Resolve` is the reader.
+// `CloneHub` records the prime's marker first, committing it on the prime's weft branch (`commitAnchorMarker`, anchormarker.go) on a fresh bind and adopting it from there on a re-clone.
+// The Bolt marker at `BoardDir(Hub)` is read only as the fallback of a hub whose prime weft is still markerless, until `lyx fabric reconcile` migrates it.
+// `Resolve` treats the record as truth once present — it sets
 // `AnchorRel` from the marker, then hard-errors if cwd does not equal the anchored directory
 // exactly — and falls back to `AnchorRel` `"."` only when no marker is recorded yet (mid-clone, a
 // gitkit synthetic hub, or a non-fabric git repo).
@@ -471,18 +492,33 @@
 // renamed marker beside it is NOT such a fallback case: it recorded a real subpath under the old
 // name, so every resolver returns `lyxcwd.ErrStaleAnchorMarker` rather than answering `"."` — which
 // would re-anchor the repo at its root and let `lyx fabric reconcile` wire a second junction set
-// there. `CloneHub` refuses the same state at clone time, naming the same literal from the same
-// single declarer.
+// there. `CloneHub` refuses the same state at clone time, on its Bolt fallback read only, naming the
+// same literal from the same single declarer.
 //
 // A marker that is PRESENT but empty after trimming is a third state, and it is fabric's to refuse
 // rather than lyxcwd's: `lyxcwd` deliberately treats it as absent and falls back to `"."`, which is
 // exactly right for a hub that never recorded an anchor and exactly wrong for one whose marker was
 // truncated.
 // Since `Reconcile` is the only verb that wires junctions, it is the only verb that can turn that
-// fallback into the second-junction-set damage above, so it reads the marker directly (see
-// `refuseEmptyAnchorMarker`) and aborts the pass, leaving `lyxcwd`'s documented fallback untouched.
+// fallback into the second-junction-set damage above, so it judges each present weft's own marker before wiring that pair (`migrateWeftMarker`, reconcile.go):
+// a blank one fails that pair alone through `refuseEmptyOwnMarker`, with its wiring untouched and the pass going on, leaving `lyxcwd`'s documented fallback untouched.
 //
-// The warp binding is a fourth repo-wide record beside the anchor and the repo-wide `fabric.yaml`
+// A weft with no committed marker is migrated by the same pass.
+// `committedMarker` reads the file from git objects, and `treeAnchor` is the one rule for the anchor of a branch that records none:
+// the committed non-blank marker at the revision, else the shallowest directory of the revision's tree that holds one of the wired names (`.` when the root holds one, a tie at one depth going to the byte-wise smaller path), else the caller's fallback, which is the resolution of `lyxcwd.NamedWorktree`.
+// `Reconcile` commits that value with `commitAnchorMarker` under `fabric reconcile: record anchor <value>`, the prime's weft first, hands the commit to the detached push `SpawnPairPush` spawns, and wires the pair at the anchor read back through `NamedWorktree`.
+// `Topology.Add` does the same for an adopted weft branch with no committed marker or a blank one, right after the branch's worktree is added, and builds every path for the pair at its own anchor; an adopted branch that carries a marker uses it.
+//
+// The Bolt marker is retired once every weft carries its own.
+// After the pair loop `retireBoltAnchorMarker` (anchormarker.go) runs a census over local refs, with no network call:
+// the prime's weft and every local pair's weft carry a non-blank committed marker at `HEAD`, and every weft branch, local or fetched, whose warp sibling is on origin carries one on its already-fetched remote-tracking ref.
+// A weft branch with no warp sibling on origin is an orphan and is not counted.
+// A branch whose ref is not fetched, a marker commit not yet pushed or a blank committed marker keeps the Bolt marker for a later reconcile.
+// When the census holds, `_board/.lyx-anchor` and a leftover `.fabric-anchor` beside it are deleted through an `os.Root` in one board commit written by `Bolt.PullThenCommitWritten`, so it never writes over a stale board, and then pushed.
+// `ReconcileResult.BoltAnchor` carries the verdict (`removed`, or `kept: <reason>` with the first branch that keeps it or the skip's detail), `lyx fabric reconcile` reports it as `bolt_anchor`, and a hub with no Bolt marker reports nothing.
+// `lyx fabric unwire` keeps leaving every marker.
+//
+// The warp binding is a repo-wide record beside the repo-wide `fabric.yaml`
 // config, held as a plain single-line file, `.lyx-warp`, at the board root (`<BoardDir>/.lyx-warp`,
 // see codebinding.go), containing the warp URL only.
 // `CloneHub` resolves the effective warp URL from that record when the caller supplies no warp URL,
@@ -502,7 +538,7 @@
 // `lyx fabric shortname [<shortname>]` prints the recorded shortname, or records one on a hub that has none, which is how a repo bound before shortnames existed gets its shortname.
 // The grammar and the way reed uses the shortname are in internal/agentname's package doc.
 //
-// The anchor, the repo-wide config, and the warp binding are the three repo-wide records that let a
+// The worktree's anchor marker, the repo-wide config, and the warp binding are the records that let a
 // later `lyx fabric reconcile` re-wire a hub with no re-clone at all;
 // `Unwire` leaves all three untouched.
 //
@@ -868,7 +904,7 @@
 // stand-in by hand, and therefore names both sides), `internal/boardengine` (the pre-existing board
 // carve-out, since board lives at `weft:main`), `internal/configsync` (string literals and
 // comments, never identifiers, for the on-disk legacy config filenames `warp.yaml`/`weft.yaml`).
-// `internal/hubforge` also sits in the narrower `weftname`-import subset alongside
+// `internal/hubforge` and `internal/lyxcwd` also sit in the narrower `weftname`-import subset alongside
 // `internal/fabricengine`, `internal/fabriccli`, and `internal/gitkit`.
 // `tools/` and `sandbox/` are deliberately NOT in that owner set: the enforcement walk covers
 // `internal/` and `cmd/` only, so an owner entry for them would be a rule that never matches —
@@ -1248,6 +1284,42 @@
 // `SnapshotUncommitted` serves the force case: under one try-acquire of the weft write lock it keeps the task worktree's uncommitted paths, under `warp/`, and the weft worktree's uncommitted paths outside the record pathspec, under `weft/`, untracked ones included, in one parentless commit under an annotated `set-aside/<slug>/<sha>` tag.
 // The commit is built from loose blobs and `git mktree`, so no branch moves and neither worktree's index is touched; with nothing uncommitted it writes nothing.
 // `SnapshotTagged` reports whether such an annotated tag of a slug exists, which tells a later run that an earlier one took the snapshot.
+//
+// # Changing an anchor
+//
+// A worktree's anchor changes in three calls a CLI interleaves with its session, run and dobby checks: `Topology.BeginAnchorChange`, `AnchorChange.Apply` and `AnchorChange.Finish`, with `Close` ending every path (anchorchange.go).
+// A is the anchor the worktree leaves and B the one it takes.
+//
+// **The record.** A change with something to do leaves a move record, `anchor-move.json` in the weft's lock directory (moverecord.go), written before the weft is touched and removed when the change finishes or is undone.
+// It holds A, B, the kind, the upstream tip U an integration rebuilds on, and the pid and start time of the process holding the move lock.
+// `MoveInProgress` reads it for every weft writer, so a held lock names a change in progress when the record's pid and start time are a live process and a change still starting otherwise, and a free lock names the interrupted change and the `lyx fabric anchor <slug> --set <B>` run that recovers it.
+//
+// **Begin.** `BeginAnchorChange` refuses before it moves anything, each refusal naming its next step: an empty own marker; a target the warp checkout cannot hold; a held move lock; and, with a record standing, a target other than the record's B.
+// `validateAnchorTarget` requires a target that passes `lyxcwd.ValidateAnchorRel`, has no segment that is a link or a wired, `.lyx`, `.scratch` or hub-reserved name, is a directory the warp checkout's HEAD tracks, and holds no real wired name, since a junction cannot be wired over one.
+// A target HEAD lacks while the warp's fetched upstream tracks it names the update of the warp checkout, and one neither tracks names the commit that brings it in; both cost a code commit on the checked-out warp branch, shared by every machine that checks it out.
+// With no record the weft needs a committed marker and no uncommitted or untracked path under A's wired names or in its marker, the never-tracked `.lyx` apart.
+// The kind is `integrate` when the weft's fetched upstream has commits its tip lacks and the two tips carry different anchors, else `move` when B differs from A, else none.
+// A change of kind none takes no lock and writes no record, and its `Apply` and `Finish` do nothing.
+// Any other holds the move lock until `Close` and writes the record, a standing record keeping its other fields.
+// `Close` before `Apply` removes a record this `BeginAnchorChange` wrote, and keeps one it found standing.
+//
+// **Apply.** `Apply` unwires the pair's junctions, exclude entries and root scratch link at A through the destruction chokepoint, holds the weft write lock, and moves the weft.
+// A move runs `moveWeftContent` (anchormove.go): it moves each wired name's tracked content with `git mv`, renames `A/.lyx` to `B/.lyx`, writes the marker B last through an `os.Root` at the weft, and commits those paths, the marker among them, in one weft commit.
+// An integration writes U into the record, runs `integrateWeft`, which replays the weft's local commits onto U and re-roots the result to B, and then renames `A/.lyx` to `B/.lyx`.
+// `Apply` then wires the junctions and scratch link at B, writes the launchers under `_launchers/<B>/<slug>` and removes `_launchers/<A>/<slug>`, and regenerates the hub and beam workspace files.
+// The prime has no launcher directory, so it loses the menu launcher of A instead.
+// `Finish` removes the record and spawns the pair's detached push, which carries the commit.
+//
+// **Failure and recovery.** A failure before the commit, or before the integration moves the branch, restores the weft's paths and `.lyx`, rewires A and removes the record, and `Apply` returns `landed` false.
+// The restore is `restoreMovePathsToHead` (destroy.go), the executor that resets the index to HEAD for A's and B's wired names and the marker, restores the tracked files, and removes the untracked files git does not ignore.
+// When a restoring step itself fails, the record stays and the error names the re-run.
+// A failure after the commit, or after the branch moved, leaves the record, returns `landed` true, and names the re-run that skips the move and finishes the wiring.
+// A re-run finds the record, and the record's A, B, kind and U govern.
+// The change landed when HEAD's committed marker is B, an integration also holding U among HEAD's ancestors; no U means not landed.
+// A re-run of a change that did not land recovers it first: it refuses when both `A/.lyx` and `B/.lyx` stand, naming both and the merge by hand, moves a lone `B/.lyx` back to A, restores the paths to HEAD and judges the tree clean.
+// A re-run of a change that landed moves a lone `A/.lyx` to B and does the wiring.
+//
+// `UpstreamRunUnfinished` reads the pair's own run status at the tree of its weft's fetched upstream tip, since a weft stopped by a marker change keeps a checked-out status that goes stale.
 //
 // # The merge surface
 //

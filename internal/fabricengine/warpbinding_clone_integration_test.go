@@ -533,6 +533,9 @@ func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
 	if !strings.Contains(err.Error(), "check the argument order") {
 		t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), "check the argument order")
 	}
+	if want := lyxcwd.AnchorFileName + " on weft:main or main-weft"; !strings.Contains(err.Error(), want) {
+		t.Errorf("CloneHub() error = %q; want it to contain %q", err.Error(), want)
+	}
 
 	noProbeResidueInParent(t, cloneParent, fabricengine.DeriveWarpName(filepath.ToSlash(warpBare)))
 
@@ -554,21 +557,38 @@ func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
 func TestCloneHub_AnchorBearingWeftPassesGuard(t *testing.T) {
 	t.Parallel()
 
-	fixtures := t.TempDir()
-
-	warpBare := makeBareRemote(t, fixtures, "guard-pass-warp")
-	weftBare := makeBareRemote(t, fixtures, "guard-pass-weft")
-	commitFileOnBranch(t, fixtures, weftBare, "main", lyxcwd.AnchorFileName, ".\n")
-
-	cloneParent := t.TempDir()
-	res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
-		WeftURL: filepath.ToSlash(weftBare),
-		WarpURL: filepath.ToSlash(warpBare),
-	})
-	if err != nil {
-		t.Fatalf("CloneHub() error = %v; want nil (an anchor-bearing weft passes the guard without ForceBootstrap)", err)
+	tests := []struct {
+		name string
+		// branch is the weft bare's branch the marker is committed on.
+		branch string
+	}{
+		{"MarkerAtHead", "main"},
+		{"MarkerOnlyOnMainWeft", "main-weft"},
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixtures := t.TempDir()
+
+			warpBare := makeBareRemote(t, fixtures, "guard-pass-warp")
+			weftBare := makeBareRemote(t, fixtures, "guard-pass-weft")
+			if tt.branch != "main" {
+				seedWeftBranchFromMain(t, fixtures, weftBare, tt.branch)
+			}
+			commitFileOnBranch(t, fixtures, weftBare, tt.branch, lyxcwd.AnchorFileName, ".\n")
+
+			cloneParent := t.TempDir()
+			res, err := fabricengine.CloneHub(cloneParent, fabricengine.CloneOptions{
+				WeftURL: filepath.ToSlash(weftBare),
+				WarpURL: filepath.ToSlash(warpBare),
+			})
+			if err != nil {
+				t.Fatalf("CloneHub() error = %v; want nil (an anchor-bearing weft passes the guard without ForceBootstrap)", err)
+			}
+			t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
+		})
+	}
 }
 
 // TestCloneHub_ForceBootstrapOverridesGuard asserts that the same ordinary-source-repo weft candidate

@@ -394,7 +394,12 @@ func docsLinkScan(t *testing.T, base string, roots []string, allow []scankit.Ent
 // tasks to fix, per _mill/discussion.md's allowlist-is-keyed-and-self-expiring decision. It is keyed
 // by (file, target) and never by line number; every entry names its owning task; and an entry whose
 // key is not matched by any break in a scan is reported by docsLinkScan as deletable.
-var docsLinkAllowlist = []scankit.Entry{}
+var docsLinkAllowlist = []scankit.Entry{
+	{
+		Key: "docs/research/codex-astra-solo-bench-2026-10-25/data/reviews/P4/opus-medium-r1.md pattern/PATTERN-owner-machine.md",
+		Why: "the codex-astra-solo-bench record keeps a reviewer's output verbatim, and the link is a quoted PATTERN.md line that resolves from the repository root",
+	},
+}
 
 // TestEnforcement_MarkdownLinks is the permanent guard behind the Markdown Link Integrity invariant:
 // every inline markdown link in a .md file under docs/ must resolve, both its file part

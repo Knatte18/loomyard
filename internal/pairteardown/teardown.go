@@ -342,7 +342,11 @@ func survivorsBusyError(slug string, survivors []runproc.Ended) error {
 // driverLockBusyError builds the ErrDriverBusy refusal for a driver lock held after the owned processes were ended.
 // retry names the step the operator retries once the holder is gone.
 func (t *Teardown) driverLockBusyError(slug, retry string) error {
-	lockPath := shedrun.DriverLock(&lyxcwd.Location{HubPath: t.prime.HubPath, WorktreeName: slug, AnchorRel: t.prime.AnchorRel}, shedrun.SelfRunID)
+	pair, err := lyxcwd.NamedWorktree(t.prime.HubPath, slug)
+	if err != nil {
+		return fmt.Errorf("locate the driver lock of pair %q: %w", slug, err)
+	}
+	lockPath := shedrun.DriverLock(pair, shedrun.SelfRunID)
 	var wayForward string
 	switch {
 	case t.goos != "windows":
@@ -496,7 +500,11 @@ func (t *Teardown) busyError(slug string, st quietState) error {
 	case st.goDriver:
 		blocker = "the Go driver is live"
 	}
-	attach := fmt.Sprintf("lyx reed attach, run from %s", t.taskAnchor(slug))
+	anchor, err := t.taskAnchor(slug)
+	if err != nil {
+		return fmt.Errorf("locate the anchor of pair %q: %w", slug, err)
+	}
+	attach := fmt.Sprintf("lyx reed attach, run from %s", anchor)
 	wayForward := fmt.Sprintf("retry once the driver has written its report, or pause the run with `lyx tender pause %s` and run the removal again, which the pause lets through", slug)
 	if st.loop {
 		wayForward = fmt.Sprintf("pause the run with `lyx shed pause %s --after <current_producer>`, or retry once the loop stops; %s", slug, wayForward)
@@ -520,9 +528,13 @@ func (t *Teardown) ownedProcessesText(slug string) string {
 	return fmt.Sprintf(" (live owned processes: %s)", strings.Join(names, ", "))
 }
 
-// taskAnchor returns the task worktree's anchor path.
-func (t *Teardown) taskAnchor(slug string) string {
-	return filepath.Join(fabricengine.WorktreePath(t.prime, slug), t.prime.AnchorRel)
+// taskAnchor returns the task worktree's anchor path, at the task's own anchor.
+func (t *Teardown) taskAnchor(slug string) (string, error) {
+	pair, err := lyxcwd.NamedWorktree(t.prime.HubPath, slug)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(fabricengine.WorktreePath(t.prime, slug), pair.AnchorRel), nil
 }
 
 // topology loads the hub's fabric config fresh and builds a topology over it.

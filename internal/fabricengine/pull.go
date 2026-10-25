@@ -178,6 +178,27 @@ func (f *Fabric) weftHasUpstream() (bool, error) {
 	return hasUpstream, err
 }
 
+// weftAnchorStopBeforePull runs the checks a weft pull makes before it moves anything, for a weft with an upstream.
+// It stops on a standing move record, then on an empty own anchor marker, then fetches the weft branch and stops when taking origin's tip in would cross an anchor change.
+// A fetch that fails is warned past: the pull itself fails the same way and is warned past in turn.
+func (f *Fabric) weftAnchorStopBeforePull() (*AnchorStopError, error) {
+	if stop, err := moveRecordStop(f.weftPath); err != nil || stop != nil {
+		return stop, err
+	}
+	if stop := emptyMarkerStop(f.weftPath); stop != nil {
+		return stop, nil
+	}
+	if err := f.records.Fetch(); err != nil {
+		logger.Warn("fabricengine: weft anchor comparison skipped, the fetch failed", "weft", f.weftPath, "err", err)
+		return nil, nil
+	}
+	upstream, hasUpstream, err := upstreamSHAAt(f.weftPath)
+	if err != nil || !hasUpstream {
+		return nil, err
+	}
+	return upstreamAnchorStop(f.weftPath, f.warpPath, upstream)
+}
+
 // warpWorktreeDirty reports whether the warp worktree carries uncommitted TRACKED changes — the
 // state ResetHard would silently destroy.
 // Untracked files are deliberately excluded: reset --hard leaves them alone, so they are no reason
@@ -240,6 +261,8 @@ func (f *Fabric) warpUpstreamSHA() (string, error) {
 // The commits of a run origin has ended are kept under a local tag instead.
 // A replay that stops on a conflict, or an uncommitted change that blocks the move, never stalls the warp side.
 // The warp fetch/reconcile runs regardless, and Pull then returns a *WeftStopError naming the weft branch, the paths and the way forward, beside the warp result.
+// A weft whose own anchor marker is empty, and one whose origin tip carries commits and another anchor marker, stop the pull before either side moves:
+// Pull returns a *WeftStopError wrapping ErrAnchorChange, naming `lyx fabric anchor` as the way forward, and warp is not touched.
 // A weft whose origin cannot be reached is warned past and leaves PullResult.WeftPulled false.
 // A weft infrastructure failure that is neither a stop nor an unreachable origin, such as an unreadable hub location, a failed weft write lock or a replay that failed for another reason, returns at once, before the warp arm runs:
 // warp is reset against the weft's correspondence, which such a failure leaves unknown.
@@ -270,6 +293,10 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 	if err != nil {
 		return result, err
 	}
+	// An anchor stop leaves warp alone as well: a pull that moved warp past a weft it could not bring level would split the pair across the marker change.
+	if weftStop != nil && errors.Is(weftStop, ErrAnchorChange) {
+		return result, weftStop
+	}
 
 	warpErr := f.pullWarpArm(rec, &result)
 	switch {
@@ -287,6 +314,7 @@ func (f *Fabric) Pull(opts SyncOptions) (res PullResult, err error) {
 // It counts as pulled rather than surfacing git's "no tracking information" failure.
 // A failed probe or an unreachable origin is warned past, so the warp side still runs, and leaves result.WeftPulled false.
 // A weft stop is returned as a *WeftStopError beside a nil error, and any other failure as the error.
+// Once the weft has an upstream, a standing move record, an empty own anchor marker and an upstream with another anchor marker are weft stops raised before the pull moves anything.
 func (f *Fabric) pullWeftArm(rec *Mutations, result *PullResult, opts SyncOptions) (*WeftStopError, error) {
 	weftHasUpstream, err := f.weftHasUpstream()
 	if err != nil {
@@ -296,6 +324,18 @@ func (f *Fabric) pullWeftArm(rec *Mutations, result *PullResult, opts SyncOption
 	if !weftHasUpstream {
 		result.WeftPulled = true
 		return nil, nil
+	}
+
+	anchorStop, err := f.weftAnchorStopBeforePull()
+	if err != nil {
+		return nil, err
+	}
+	if anchorStop != nil {
+		branch, err := f.records.CurrentBranch()
+		if err != nil {
+			return nil, fmt.Errorf("fabricengine: read the weft branch in %s: %w", f.weftPath, err)
+		}
+		return anchorStop.weftStop(branch), nil
 	}
 
 	// Sample the weft SHA before and after the pull, and record KindRepoAdvanced only on a

@@ -447,6 +447,29 @@ func TestCancelRun(t *testing.T) {
 			marker:  "none",
 		},
 		{
+			name: "AnchorStoppedBranchLetsTheCancelThrough",
+			setup: func(f *cancelFake) {
+				f.worktreePresent = true
+				f.report = entry(fabricengine.EntryStopped)
+				f.report.Branches = []fabricengine.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabricengine.BranchAnchorStopped, WayForward: "run the set"}}
+			},
+			marker: "removed",
+		},
+		{
+			name: "AnchorStoppedWithADivergedBranchStillRefuses",
+			setup: func(f *cancelFake) {
+				f.worktreePresent = true
+				f.report = entry(fabricengine.EntryStopped)
+				f.report.Branches = []fabricengine.BranchOutcome{
+					{Branch: "some-slug", Repo: "code", Slug: cancelSlug, State: fabricengine.BranchDiverged, WayForward: "reset it"},
+					{Branch: "some-slug-records", Repo: "records", Slug: cancelSlug, State: fabricengine.BranchAnchorStopped, WayForward: "run the set"},
+				}
+			},
+			wantErr: `cannot cancel "some-slug": branch some-slug is diverged against origin; reset it; then run "lyx batten cancel some-slug" again`,
+			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
+			marker:  "none",
+		},
+		{
 			name:    "ReconcileErrorRefuses",
 			setup:   func(f *cancelFake) { f.worktreePresent = true; f.reconcileErr = errors.New("git is gone") },
 			wantErr: `git is gone; way forward: fix the cause it names, then run "lyx batten cancel some-slug" again`,

@@ -23,10 +23,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 )
 
-// CloneAndWire clones a hub via fabricengine.CloneHub and drives the wiring sequence that makes
-// "clone does everything" true: hub-wide config materialization, the weft:main anchor+config
-// commit and push, warp junction wiring, per-worktree config reconciliation, and a commit of the
-// resulting per-worktree module configs on the weft primary branch, with no push.
+// CloneAndWire clones a hub via fabricengine.CloneHub and drives the wiring sequence that makes "clone does everything" true:
+// hub-wide config materialization, the weft:main config commit and push, warp junction wiring, per-worktree config reconciliation,
+// and a commit of the resulting per-worktree module configs on the weft primary branch, with no push.
+// The anchor marker is already committed on the prime's weft branch by CloneHub.
 //
 // It is the single wiring sequence shared by the cobra clone handler and
 // internal/hubforge's hub factory; a second copy of this sequence anywhere is the
@@ -75,7 +75,7 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	}
 
 	b := fabricengine.NewBolt(res.BoardDir)
-	sha, committed, err := b.Commit("fabric clone: record anchor + repo-wide config", fabricengine.SyncOptions{})
+	sha, committed, err := b.Commit("fabric clone: record repo-wide config", fabricengine.SyncOptions{})
 	if err != nil {
 		// An untracked marker would make the next start verb's walk see a marked board and skip its one-time strip.
 		if boardSeededFromNothing {

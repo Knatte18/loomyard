@@ -198,6 +198,10 @@ func (j *pushJob) record(class PushFailureClass, cause error, paths, commits []s
 	if j.side == failedPushSideRecords {
 		f.CodeWorktree = pairedCodeWorktree(j.hubPath, j.path)
 	}
+	var anchorStop *AnchorStopError
+	if errors.As(cause, &anchorStop) {
+		f.WayForward = anchorStop.WayForward
+	}
 	if err := RecordPushFailure(j.hubPath, f, time.Now()); err != nil {
 		logger.Warn("fabricengine: failed-push record not written", "side", j.side, "branch", j.branch, "error", err)
 	}
@@ -216,11 +220,15 @@ func (j *pushJob) deferral() error {
 }
 
 // classifyFailure records the failure of a push that was run and returns it as a *PushFailedError.
+// An *AnchorStopError is recorded under its own class ahead of the rejection classes, with the way forward it names, so the record never points at a merge that would carry the other marker in by hand.
 // An error that matches no named class is returned unchanged and unrecorded, with classified false.
 func (j *pushJob) classifyFailure(err error) (failed error, classified bool) {
 	var conflict *replayConflict
 	var refusal *destructiveRefusal
+	var anchorStop *AnchorStopError
 	switch {
+	case errors.As(err, &anchorStop):
+		return j.fail(PushFailureAnchorChange, err, nil, nil, ""), true
 	case errors.Is(err, gitrepo.ErrPushAuthRefused):
 		return j.fail(PushFailureAuth, err, nil, nil, ""), true
 	case errors.Is(err, gitrepo.ErrPushRejected):
@@ -460,7 +468,11 @@ func goneEntryEnded(hubPath, branch string) (bool, error) {
 // It fetches the weft branch and origin's Bolt branch, then try-acquires the weft write lock while the caller holds the push lock.
 // A held write lock and an uncommitted change on a path the replay touches report a deferral, with nothing changed.
 // A replay that stops returns ErrReplayConflict with the conflicting paths, and a second rejection returns gitrepo.ErrPushRejected.
+// A weft whose own anchor marker is empty, one whose upstream carries commits and another anchor marker, and one that carries a move record while its upstream has commits it lacks, return an *AnchorStopError before anything is replayed or changed.
 func retryWeftPush(rec *Mutations, hubPath, weftPath string) (deferred bool, err error) {
+	if stop := emptyMarkerStop(weftPath); stop != nil {
+		return false, stop
+	}
 	repo := gitrepo.New(weftPath)
 	if err := repo.Fetch(); err != nil {
 		return false, fmt.Errorf("fabricengine: fetch the weft branch in %s: %w", weftPath, err)
@@ -491,13 +503,34 @@ func retryWeftPush(rec *Mutations, hubPath, weftPath string) (deferred bool, err
 		if err != nil {
 			return false, err
 		}
-		ahead, err := repo.CommitsNotIn(head, upstream)
-		if err != nil {
-			return false, err
-		}
 		slug, ok := WeftWarpSlug(filepath.Base(weftPath))
 		if !ok {
 			return false, fmt.Errorf("fabricengine: %s is no weft sibling worktree", weftPath)
+		}
+		// A replay rewrites the weft's commits, which a standing move record forbids; a push that needs no replay is no write to the weft.
+		behind, err := repo.CommitsNotIn(upstream, head)
+		if err != nil {
+			return false, err
+		}
+		if len(behind) > 0 {
+			moveStop, err := moveRecordStop(weftPath)
+			if err != nil {
+				return false, err
+			}
+			if moveStop != nil {
+				return false, moveStop
+			}
+		}
+		stop, err := upstreamAnchorStop(weftPath, filepath.Join(hubPath, slug), upstream)
+		if err != nil {
+			return false, err
+		}
+		if stop != nil {
+			return false, stop
+		}
+		ahead, err := repo.CommitsNotIn(head, upstream)
+		if err != nil {
+			return false, err
 		}
 		l, err := lyxcwd.ResolveWorktree(filepath.Join(filepath.Dir(weftPath), slug))
 		if err != nil {

@@ -14,6 +14,7 @@ import (
 // ParentBeam names the beam a board entry belongs to over its project links, "" for the prime.
 // PairPresent reports whether this machine holds the slug's pair worktree.
 // BranchOnOrigin reports whether the slug's task branch is on origin.
+// EnsureAnchor settles the anchor of the slug's present pair: it recovers a standing move record, and with an anchor refuses a pair that sits at another one.
 // StartDobby starts the dobby of the slug's beam when it is not live, and reports whether it started one.
 // HubPath roots the mutation record.
 type createDeps struct {
@@ -25,6 +26,7 @@ type createDeps struct {
 	BranchOnOrigin      func(slug string) (bool, error)
 	SetOwners           func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error)
 	AddPair             func(slug string, opts fabricengine.AddOptions) (fabricengine.AddResult, error)
+	EnsureAnchor        func(rec *fabricengine.Mutations, slug, anchor string) error
 	MarkBeam            func(rec *fabricengine.Mutations, slug string) (bool, error)
 	SpawnPush           func(slug string) error
 	RegenerateWorkspace func(rec *fabricengine.Mutations) (string, error)
@@ -49,9 +51,10 @@ type createResult struct {
 }
 
 // create makes the project entry slug a beam on this machine, and returns what each step did.
+// A non-empty anchor is the directory of the code checkout the new pair takes as its anchor; empty keeps its parent's.
 // A refusal before any step runs returns the error with the result gathered so far.
 // The push is the one step a re-run repeats, since the detached push carries whatever is unpushed.
-func create(deps createDeps, slug string) (createResult, error) {
+func create(deps createDeps, slug, anchor string) (createResult, error) {
 	result := createResult{Slug: slug, Worktree: deps.WorktreePath(slug)}
 
 	here, err := deps.Machine()
@@ -72,7 +75,7 @@ func create(deps createDeps, slug string) (createResult, error) {
 		result.Partial = rec.Len() > 0
 		return result
 	}
-	if err := createSteps(deps, rec, owners.Entries[slug], here, slug, &result); err != nil {
+	if err := createSteps(deps, rec, owners.Entries[slug], here, slug, anchor, &result); err != nil {
 		return finish(), err
 	}
 	return finish(), nil
@@ -103,7 +106,8 @@ func judgeCreateEntry(deps createDeps, owners boardengine.Owners, here, slug str
 
 // createSteps runs the five steps in order, each skipped when its result stands, and records what it did on result.
 // The dobby start is the last, so a beam never exists without a daemon to drive its runs.
-func createSteps(deps createDeps, rec *fabricengine.Mutations, entry boardengine.OwnerEntry, here, slug string, result *createResult) error {
+// A present pair first has its anchor settled, so a standing move record is recovered before the mark commits into the pair's records.
+func createSteps(deps createDeps, rec *fabricengine.Mutations, entry boardengine.OwnerEntry, here, slug, anchor string, result *createResult) error {
 	rerun := "run `lyx beam create " + slug + "` again"
 
 	if !entry.Beam || entry.Owner != here {
@@ -118,6 +122,9 @@ func createSteps(deps createDeps, rec *fabricengine.Mutations, entry boardengine
 	}
 
 	if deps.PairPresent(slug) {
+		if err := deps.EnsureAnchor(rec, slug, anchor); err != nil {
+			return fmt.Errorf("lyx beam create: settle the anchor of the pair of %s: %w", slug, err)
+		}
 		marked, err := deps.MarkBeam(rec, slug)
 		if err != nil {
 			return fmt.Errorf("lyx beam create: mark the pair of %s as a beam: %w; way forward: fix the cause it names, then %s", slug, err, rerun)
@@ -131,7 +138,7 @@ func createSteps(deps createDeps, rec *fabricengine.Mutations, entry boardengine
 		if err := requireParentBeamPair(deps, slug, parent); err != nil {
 			return err
 		}
-		added, err := deps.AddPair(slug, fabricengine.AddOptions{Parent: parent, Beam: true})
+		added, err := deps.AddPair(slug, fabricengine.AddOptions{Parent: parent, Beam: true, Anchor: anchor})
 		rec.Extend(added.Mutated())
 		if err != nil {
 			return fmt.Errorf("lyx beam create: add the pair of %s: %w; way forward: fix the cause it names, then %s", slug, err, rerun)

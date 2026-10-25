@@ -258,6 +258,72 @@ func TestPushFailureClasses(t *testing.T) {
 		}
 	})
 
+	t.Run("AWeftPushThatMustReplayStopsOnAnAnchorChange", func(t *testing.T) {
+		tests := []struct {
+			name string
+			// arrange makes the pair's weft push need a replay, and returns what the way forward must name.
+			arrange func(t *testing.T, p *pairFixture) string
+		}{
+			{
+				"OntoAnUpstreamCarryingAnotherMarker",
+				func(t *testing.T, p *pairFixture) string {
+					p.originCommit(p.weftBranch, lyxcwd.AnchorFileName, "sub\n", "other machine re-anchored")
+					gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
+					return "lyx fabric anchor"
+				},
+			},
+			{
+				"WhileTheOwnMarkerIsEmpty",
+				func(t *testing.T, p *pairFixture) string {
+					p.originCommit(p.weftBranch, "other.txt", "other\n", "other machine")
+					gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
+					if err := os.WriteFile(filepath.Join(p.weftPath, lyxcwd.AnchorFileName), []byte("\n"), 0o644); err != nil {
+						t.Fatalf("truncate the marker: %v", err)
+					}
+					return lyxcwd.AnchorFileName
+				},
+			},
+			{
+				"WhileAMoveRecordStands",
+				func(t *testing.T, p *pairFixture) string {
+					p.originCommit(p.weftBranch, "other.txt", "other\n", "other machine")
+					gitkit.CommitFile(t, p.weftPath, "local.txt", "local\n", "local")
+					writeMoveRecord(t, p.weftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
+					return "lyx fabric anchor"
+				},
+			},
+		}
+		for i, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				p := newPairFixture(t, fmt.Sprintf("anchorstop%d", i))
+				wantNamed := tt.arrange(t, p)
+				weftHeadWas := gitkit.RevParse(t, p.weftPath, "HEAD")
+				originTipWas := bareBranchTip(t, p.hub.RecordsBare, p.weftBranch)
+
+				_, err := fabricengine.PushPairAnchored(p.location, opts, fabricengine.LockWaitUnbounded)
+
+				var failed *fabricengine.PushFailedError
+				if !errors.As(err, &failed) || !errors.Is(err, fabricengine.ErrAnchorChange) {
+					t.Fatalf("PushPairAnchored() error = %v; want a *PushFailedError wrapping ErrAnchorChange", err)
+				}
+				record := requireOneFailedPush(t, p.hub.Location.HubPath, "records", fabricengine.PushFailureAnchorChange)
+				wayForward := fabricengine.FailedPushWayForward(record)
+				if !strings.Contains(wayForward, wantNamed) || strings.Contains(wayForward, "git merge") {
+					t.Errorf("way forward = %q; want it to name %q and no git merge", wayForward, wantNamed)
+				}
+				if got := gitkit.RevParse(t, p.weftPath, "HEAD"); got != weftHeadWas {
+					t.Errorf("weft HEAD = %s; want unchanged %s", got, weftHeadWas)
+				}
+				if got := bareBranchTip(t, p.hub.RecordsBare, p.weftBranch); got != originTipWas {
+					t.Errorf("origin tip = %s; want unchanged %s", got, originTipWas)
+				}
+				if len(p.fake.lines) != 1 || !strings.Contains(p.fake.lines[0], wayForward) {
+					t.Errorf("mails = %q; want one carrying the record's way forward", p.fake.lines)
+				}
+			})
+		}
+	})
+
 	t.Run("RepeatedAuthRefusalsShareOneRecordAndOneMailAndALandedPushRemovesIt", func(t *testing.T) {
 		f, fake := newFailureFixture(t)
 		weft, branch := f.primeWeft()

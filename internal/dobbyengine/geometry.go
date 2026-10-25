@@ -45,4 +45,7 @@ type Geometry struct {
 	PrimeRunsDir string
 	// LyxExecutable is the absolute path of the lyx binary dobby re-executes and spawns passes with.
 	LyxExecutable string
+	// MoveRecords are the paths of the anchor-move records whose standing keeps this dobby from scheduling: the record on its own worktree's records worktree and the one on the prime's.
+	// An empty list gates nothing.
+	MoveRecords []string
 }

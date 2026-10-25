@@ -115,8 +115,11 @@ type orchCLI struct {
 
 // Command returns the cobra command tree for the orch module.
 func Command() *cobra.Command {
-	c := &orchCLI{}
+	return commandOf(&orchCLI{})
+}
 
+// commandOf returns the orch command tree whose verbs hang off c, so a test can read what PersistentPreRunE wires into c.
+func commandOf(c *orchCLI) *cobra.Command {
 	parent := &cobra.Command{
 		Use:   "orch",
 		Short: "run the hub orchestrator as a reed strand with automatic handoff",

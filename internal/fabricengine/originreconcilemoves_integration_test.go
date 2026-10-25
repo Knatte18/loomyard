@@ -218,6 +218,73 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		}
 	})
 
+	t.Run("A weft whose origin tip carries another anchor marker, or whose own marker is empty, is left unmoved as anchor_stopped while the code branch moves", func(t *testing.T) {
+		pair := newMovesPair(t)
+		originCommitFile(t, pair.RecordsBare, pair.recordsName, ".lyx-anchor", "sub\n")
+		originCommitFile(t, pair.RecordsBare, pair.primeRecords, ".lyx-anchor", "sub\n")
+		codeHead := originCommitFile(t, pair.CodeBare, pair.codeBranch, "moved.txt", "moved")
+		pairBefore := gitkit.RevParse(t, pair.records, "HEAD")
+		primeBefore := gitkit.RevParse(t, pair.PrimeRecords(), "HEAD")
+
+		report := moveReconcile(t, pair.originHub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{})
+
+		wantPair := "run `lyx fabric anchor task --set sub` in " + pair.code
+		pairOutcome := requireState(t, report, "records", pair.recordsName, fabricengine.BranchAnchorStopped)
+		if pairOutcome.WayForward != wantPair || pairOutcome.Anchor != "sub" || pairOutcome.Moved {
+			t.Errorf("pair weft outcome = %+v; want WayForward %q, Anchor sub and nothing moved", pairOutcome, wantPair)
+		}
+		primeOutcome := requireState(t, report, "records", pair.primeRecords, fabricengine.BranchAnchorStopped)
+		for _, want := range []string{"`lyx reed down`", "`lyx fabric anchor --set sub` in " + pair.PrimeWorktree(), "`lyx orch start`"} {
+			if !strings.Contains(primeOutcome.WayForward, want) {
+				t.Errorf("prime weft WayForward = %q; want it to name %s", primeOutcome.WayForward, want)
+			}
+		}
+		if got := gitkit.RevParse(t, pair.records, "HEAD"); got != pairBefore {
+			t.Errorf("pair weft HEAD = %q; want %q, nothing moved", got, pairBefore)
+		}
+		if got := gitkit.RevParse(t, pair.PrimeRecords(), "HEAD"); got != primeBefore {
+			t.Errorf("prime weft HEAD = %q; want %q, nothing moved", got, primeBefore)
+		}
+		code := requireState(t, report, "code", pair.codeBranch, fabricengine.BranchLevel)
+		if !code.Moved || gitkit.RevParse(t, pair.code, "HEAD") != codeHead {
+			t.Errorf("pair code outcome = %+v, HEAD = %q; want it fast-forwarded to %q", code, gitkit.RevParse(t, pair.code, "HEAD"), codeHead)
+		}
+		entry := requireEntry(t, report, "task", fabricengine.EntryStopped)
+		if entry.WayForward != wantPair {
+			t.Errorf("entry WayForward = %q; want its own branch's line %q", entry.WayForward, wantPair)
+		}
+
+		report = moveReconcile(t, pair.originHub, fabricengine.ReconcileScope{Run: "task"}, fabricengine.OriginSeams{})
+		pairOutcome = requireState(t, report, "records", pair.recordsName, fabricengine.BranchAnchorStopped)
+		if pairOutcome.WayForward != wantPair {
+			t.Errorf("run-scoped pair weft WayForward = %q; want %q", pairOutcome.WayForward, wantPair)
+		}
+
+		writeFile(t, filepath.Join(pair.records, ".lyx-anchor"), "\n")
+		report = moveReconcile(t, pair.originHub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{})
+		pairOutcome = requireState(t, report, "records", pair.recordsName, fabricengine.BranchAnchorStopped)
+		if pairOutcome.Anchor != "" || !strings.Contains(pairOutcome.WayForward, ".lyx-anchor") {
+			t.Errorf("empty-marker pair weft outcome = %+v; want no Anchor and a way forward naming .lyx-anchor", pairOutcome)
+		}
+	})
+
+	t.Run("A move record on a pair's weft leaves it unmoved as anchor_stopped with the move's way forward", func(t *testing.T) {
+		pair := newMovesPair(t)
+		originCommitFile(t, pair.RecordsBare, pair.recordsName, "moved.txt", "moved")
+		writeMoveRecord(t, pair.records, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
+		pairBefore := gitkit.RevParse(t, pair.records, "HEAD")
+
+		report := moveReconcile(t, pair.originHub, fabricengine.ReconcileScope{}, fabricengine.OriginSeams{})
+
+		outcome := requireState(t, report, "records", pair.recordsName, fabricengine.BranchAnchorStopped)
+		if outcome.MoveWayForward == "" || outcome.WayForward != outcome.MoveWayForward || !strings.Contains(outcome.WayForward, "`lyx fabric anchor task --set x`") || outcome.Moved {
+			t.Errorf("pair weft outcome = %+v; want the move's way forward naming `lyx fabric anchor task --set x`, and nothing moved", outcome)
+		}
+		if got := gitkit.RevParse(t, pair.records, "HEAD"); got != pairBefore {
+			t.Errorf("pair weft HEAD = %q; want %q, nothing moved", got, pairBefore)
+		}
+	})
+
 	t.Run("A tracked change on a path the prime weft's or a pair's code branch fast-forward touches is dirty with that branch's own line", func(t *testing.T) {
 		pair := newMovesPair(t)
 		gitkit.CommitFile(t, pair.PrimeRecords(), "notes/p.md", "base\n", "base prime note")

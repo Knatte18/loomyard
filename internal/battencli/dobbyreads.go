@@ -66,6 +66,7 @@ type dobbyRun struct {
 
 // dobbyParentRuns lists the batten runs of the prime whose parent worktree is geom's, read from the prime's local status files whatever each run's state.
 // A run whose seed or parent cannot be read is left out with one Warn, so one broken run never stops the rest.
+// A run whose pair holds an invalid anchor marker is no such read failure: it returns an error naming the pair and wrapping lyxcwd.ErrInvalidAnchor.
 func dobbyParentRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents) ([]dobbyRun, error) {
 	slugs, err := shedrun.List(prime)
 	if err != nil {
@@ -82,6 +83,9 @@ func dobbyParentRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents 
 			continue
 		}
 		parent, err := parents.Of(slug)
+		if errors.Is(err, lyxcwd.ErrInvalidAnchor) {
+			return nil, err
+		}
 		if err != nil {
 			logger.Warn("battencli: a run's parent is unreadable and the run is left out", "slug", slug, "error", err)
 			continue
@@ -137,7 +141,10 @@ func DobbyRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 			Producer: run.status.CurrentProducer,
 			Covered:  record.CoverageOf(slug, now).Covered,
 		}
-		pair := &lyxcwd.Location{HubPath: prime.HubPath, WorktreeName: slug, AnchorRel: prime.AnchorRel}
+		pair, err := lyxcwd.NamedWorktree(prime.HubPath, slug)
+		if err != nil {
+			return nil, fmt.Errorf("locate the pair %s: %w", slug, err)
+		}
 		reads := []func() error{
 			func() (err error) { view.StatusModified, err = modTimeOf(shedrun.StatusFile(prime, slug)); return },
 			func() (err error) {

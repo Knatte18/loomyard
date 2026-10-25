@@ -272,7 +272,7 @@ func assertRealHub(t *testing.T, h *Hub) {
 		t.Errorf("_board at %s: want a real directory, got mode %v", h.BoardDir(), boardInfo.Mode())
 	}
 
-	anchorMarker := filepath.Join(h.BoardDir(), lyxcwd.AnchorFileName)
+	anchorMarker := filepath.Join(h.PrimeRecords(), lyxcwd.AnchorFileName)
 	if _, err := os.Stat(anchorMarker); err != nil {
 		t.Errorf("%s marker missing at %s: %v", lyxcwd.AnchorFileName, anchorMarker, err)
 	}

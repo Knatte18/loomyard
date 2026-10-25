@@ -9,14 +9,15 @@
 // `lyx fabric clone` wires the whole hub in one command, with no follow-up activation step.
 // Warp junctions are excluded through the warp's `.git/info/exclude`, never a committed `.gitignore`.
 //
-// The warp binding is a single-line record at the board root holding the warp URL only (`fabricengine.WarpBindingFileName`), committed onto weft:main beside the recorded anchor subpath the first time a warp URL is supplied for an unbound weft.
+// The warp binding is a single-line record at the board root holding the warp URL only (`fabricengine.WarpBindingFileName`), committed onto weft:main the first time a warp URL is supplied for an unbound weft.
 // The one-argument form derives the warp URL, and so the hub name, from that binding;
 // a supplied warp URL that disagrees with a recorded binding is refused.
 // The shortname is recorded the same way (`fabricengine.ShortnameFileName`): a recorded shortname is adopted, a differing `--shortname` is refused, and a bound weft with no record clones with a warning.
 //
 // `--reset` tears down only a real fabric hub, one holding a `_board` entry or a weft sibling.
 // The hub name is derived rather than typed, so a directory that merely carries a `<name>-LYXHUB` name is reported and left alone.
-// `--subpath` must stay inside the warp repo: an absolute path, or one escaping through `..`, is refused before anything is cloned, and a value that disagrees with the subpath recorded on weft:main is refused on a re-clone.
+// `--subpath` must stay inside the warp repo: an absolute path, or one escaping through `..`, is refused before anything is cloned, and a value that disagrees with the subpath recorded in the main-weft marker, or in the Bolt marker when main-weft carries none, is refused on a re-clone.
+// A fresh bind commits the `.lyx-anchor` marker at the root of the prime's weft branch and writes none on the board.
 // `--force-bootstrap` bypasses the weft-candidate guard in exactly one case, a brand-new weft remote that is neither empty nor lyx-anchored;
 // it is ignored in the one-argument form and whenever a binding is recorded.
 //
@@ -80,6 +81,36 @@
 // `--apply` deletes only candidates, leased to the tip observed, and a failed deletion exits non-zero with its reason in `warp_entries[].error`.
 // When GitHub cannot be reached, through a non-GitHub origin, no token or a network error, the sweep is skipped, every task branch is kept and `warp_skipped_reason` names the cause, while the weft sweep runs and the exit code is unaffected.
 // Its dry run makes read-only network calls: ls-remote and the open pull request listing.
+//
+// # Anchor
+//
+// `lyx fabric anchor [<slug>] [--set <dir>]` prints the anchor of the named worktree, the acting one when none is named, or with `--set` moves it (anchor.go).
+// `<slug>` names the prime by its worktree name or a pair present on this machine, else the verb refuses naming `lyx fabric pairs`.
+// The engine's `AnchorChange` does the move; this verb is the layer above it that holds the session, run and dobby steps, as `pairteardown` sits above removal.
+// Each seam it reads or acts through is one field of `anchorDeps`, filled over the hub by `hubAnchorDeps`.
+//
+// A move is refused, before the engine is asked, naming its way forward, in this order:
+//
+//   - The board names another machine as the worktree's effective owner and the target differs from the anchor the weft's fetched upstream tip records, or that tip does not exist.
+//     The refusal names `lyx adopt` here, the `--set` run on the owner machine, and, when the tip's marker differs from the checked-out anchor, the `--set` to that marker, which this refusal lets through.
+//     A worktree whose weft has a standing move record is exempt, so a re-run recovering a killed move always runs.
+//   - The worktree's reed state holds a session or a strand, its run driver lock is held, a registered batten run of it is live, or its run status names an unfinished run.
+//     For a worktree another machine owns the status is read at the weft's fetched upstream tip, since the weft pull that would refresh the checked-out copy stops at the marker change, and an unfinished one names `lyx batten cancel <slug>` on the owner machine, `lyx fabric pull` and the `--set`.
+//     A pair's batten status in the prime counts too.
+//   - On Windows, where ending a process signals nothing, a live dobby the move would end, named by pid.
+//   - For the prime, any reed state of the hub holding a session or a strand, any live batten run, any held gate slot and a live hibernate daemon.
+//     The creel daemon is not refused.
+//
+// The engine then adds its own refusals, and an equal anchor is reported as a no-op with nothing ended.
+// A move waits, printing what it waits on to stderr, until no dobby it will end has a pass in flight, takes the parent lock of the worktree's branch, and ends the worktree's dobby when it is a beam, or every dobby of the machine for the prime, sparing the push and sync roles.
+// It moves the trace sink to the weft's lock directory while the move record stands, calls `Apply`, and reopens the sink at the anchor `Apply` left.
+//
+// A failure is settled by the record, read after `Close` has removed one this call wrote and nothing had moved:
+// with the record gone the dobbies it ended start again and the error is returned;
+// with it standing nothing starts and the error names the re-run of the same `--set`, which recovers the record.
+// A `Finish` error after it removed the record fails nothing: the envelope reports it as `push_error` and the dobby start goes on.
+// The worktree's dobby then starts when it is a beam this machine owns and its lock reads free, or `EnsureLive` runs for the prime, and a start that fails is `dobby_start_error` with the way forward `lyx beam start`, the verb exiting 0.
+// The verb holds no lock against a session, a hand pass or a hidden `lyx beam dobby` started meanwhile, and its help says so.
 //
 // # Merge
 //

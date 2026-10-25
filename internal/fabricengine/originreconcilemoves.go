@@ -400,6 +400,29 @@ func (m *originMover) move(i int, busy string) error {
 		return nil
 	}
 
+	if target.side == failedPushSideRecords {
+		moveWayForward, standing, err := MoveInProgress(filepath.Base(target.codeWorktree), target.worktree)
+		if err != nil {
+			return err
+		}
+		if standing {
+			outcome.State = BranchAnchorStopped
+			outcome.MoveWayForward = moveWayForward
+			outcome.WayForward = outcome.stopWayForward()
+			return nil
+		}
+		stopped, anchor, err := m.weftAnchorStopped(target, outcome.OriginHead)
+		if err != nil {
+			return err
+		}
+		if stopped {
+			outcome.State = BranchAnchorStopped
+			outcome.Anchor = anchor
+			outcome.WayForward = outcome.stopWayForward()
+			return nil
+		}
+	}
+
 	location := m.l
 	if target.slug != "" && target.slug != m.scope.Run {
 		var err error
@@ -419,6 +442,26 @@ func (m *originMover) move(i int, busy string) error {
 	outcome.Moved = moved.Moved
 	outcome.WayForward = outcome.stopWayForward()
 	return nil
+}
+
+// weftAnchorStopped reports whether moving the weft target to originHead is held back.
+// An empty own marker stops it with no anchor.
+// Otherwise it stops when taking originHead in would cross a change of the anchor marker, and anchor is the one the way forward sets.
+// The anchor of a markerless tip falls back to that of the pair's, or the prime's, own worktree.
+func (m *originMover) weftAnchorStopped(target originTarget, originHead string) (stopped bool, anchor string, err error) {
+	if emptyMarkerStop(target.worktree) != nil {
+		return true, "", nil
+	}
+	own, err := lyxcwd.NamedWorktree(m.l.HubPath, filepath.Base(target.codeWorktree))
+	if err != nil {
+		return false, "", err
+	}
+	names, err := RepoWiredNames(own)
+	if err != nil {
+		return false, "", fmt.Errorf("fabricengine: load the wired names to compare anchor markers: %w", err)
+	}
+	anchor, stopped, err = weftAnchorStop(target.worktree, "HEAD", originHead, names, own.AnchorRel, false)
+	return stopped, anchor, err
 }
 
 // pairLive reports whether the pair slug is live, asking the seam once per pair.

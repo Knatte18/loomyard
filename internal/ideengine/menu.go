@@ -56,7 +56,12 @@ func Menu(l *lyxcwd.Location, in io.Reader, out io.Writer) error {
 
 		slug := filepath.Base(entry.Path)
 
-		lyxPath := filepath.Join(entry.Path, l.AnchorRel, lyxdirs.LyxDirName)
+		own, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+		if err != nil {
+			logger.Warn("worktree left out of the menu: its anchor cannot be read", "slug", slug, "error", err)
+			continue
+		}
+		lyxPath := filepath.Join(entry.Path, own.AnchorRel, lyxdirs.LyxDirName)
 		stat, err := os.Stat(lyxPath)
 		if err != nil || !stat.IsDir() {
 			continue

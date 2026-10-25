@@ -267,6 +267,7 @@ func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err e
 }
 
 // fastForwardWeft pulls the weft the way Pull's weft arm does: a weft with no upstream is skipped, a failure is logged, and a weft HEAD that moved appends KindRepoAdvanced.
+// A weft that carries a move record, one with an empty own anchor marker, and one whose upstream carries another marker, are not pulled: the warning names the way forward, and the code side goes on.
 func (f *Fabric) fastForwardWeft(rec *Mutations, opts SyncOptions) {
 	hasUpstream, err := f.weftHasUpstream()
 	if err != nil {
@@ -274,6 +275,15 @@ func (f *Fabric) fastForwardWeft(rec *Mutations, opts SyncOptions) {
 		return
 	}
 	if !hasUpstream {
+		return
+	}
+	stop, err := f.weftAnchorStopBeforePull()
+	if err != nil {
+		logger.Warn("fabricengine: fast-forward: weft anchor comparison failed, continuing to the code side", "weft", f.weftPath, "err", err)
+		return
+	}
+	if stop != nil {
+		logger.Warn("fabricengine: fast-forward: weft pull failed, continuing to the code side", "weft", f.weftPath, "err", stop.Error(), "way_forward", stop.WayForward)
 		return
 	}
 	before, beforeErr := weftSHAOrEmpty(f)

@@ -7,6 +7,7 @@ package ideengine
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -96,7 +97,29 @@ func TestSpawnAnchoredScenario(t *testing.T) {
 	h := hubforge.NewHub(t, "wts/some-task")
 	step := spawnStepRunner(t, h)
 
-	step("prime writes the hub workspace", func(t *testing.T) {
+	if !step("prime writes the hub workspace", func(t *testing.T) {
 		checkPrimeWritesHubWorkspace(t, h)
+	}) {
+		return
+	}
+	step("task at its own anchor is seeded and opened there", func(t *testing.T) {
+		const slug = "own-anchor"
+		const taskAnchor = "other"
+		launched := recordLauncher(t)
+		hubforge.AddPair(t, h, slug)
+		hubforge.ReanchorPair(t, h, slug, taskAnchor)
+		anchorDir := filepath.Join(fabricengine.WorktreePath(h.Location, slug), taskAnchor)
+
+		if err := SeedTask(h.Location, slug); err != nil {
+			t.Fatalf("SeedTask: %v", err)
+		}
+		assertAttachTaskOnly(t, anchorDir)
+		if err := OpenTask(h.Location, slug); err != nil {
+			t.Fatalf("OpenTask: %v", err)
+		}
+
+		if len(*launched) != 1 || (*launched)[0] != anchorDir {
+			t.Errorf("CodeLauncher calls = %v, want [%s]", *launched, anchorDir)
+		}
 	})
 }

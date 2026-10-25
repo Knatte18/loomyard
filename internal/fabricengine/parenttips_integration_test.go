@@ -15,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // pushFromSecondClone commits one new file on main in a fresh clone of bareDir, pushes it and returns the new upstream tip.
@@ -353,50 +354,78 @@ func TestHoldsWork(t *testing.T) {
 }
 
 // TestFastForwardPair_MovesBehindPairToUpstream asserts the code side lands on the upstream tip, and that a weft whose upstream also moved is advanced and recorded.
+// A weft whose upstream carries another anchor marker stays where it is while the code side still moves.
 func TestFastForwardPair_MovesBehindPairToUpstream(t *testing.T) {
 	t.Parallel()
 
-	fixturesDir := t.TempDir()
-	f, warpPath, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
+	tests := []struct {
+		name string
+		// originRel and originContent are the file the weft's origin gains from a second clone.
+		originRel, originContent string
+		wantWeftMoves            bool
+		// moveRecord stands a move record on the weft before the fast-forward.
+		moveRecord bool
+	}{
+		{"WeftWhoseUpstreamAlsoMovedIsAdvanced", "from-clone-b.txt", "b", true, false},
+		{"WeftWhoseUpstreamCarriesAnotherMarkerStaysPut", lyxcwd.AnchorFileName, "sub\n", false, false},
+		{"WeftWithAMoveRecordStaysPut", "from-clone-b.txt", "b", false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	weftBranch := fabricengine.RecordsBranchName("main")
-	gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "push", "-u", "origin", weftBranch)
-	cloneB := filepath.Join(fixturesDir, "weft-cloneB")
-	gitkit.MustRun(t, fixturesDir, "git", "clone", "-q", "-b", weftBranch, weftFixture.RecordsBare, cloneB)
-	gitkit.Git(t, cloneB, "config", "user.email", "test@test.com")
-	gitkit.Git(t, cloneB, "config", "user.name", "Test")
-	weftTip := gitkit.CommitFile(t, cloneB, "from-clone-b.txt", "b", "b")
-	gitkit.MustRun(t, cloneB, "git", "push", "-q")
+			fixturesDir := t.TempDir()
+			f, warpPath, bareDir, weftFixture, _, _, _ := buildReconcileFixture(t, fixturesDir, 1)
+			weftWas := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeRecords())
 
-	upstream := pushFromSecondClone(t, fixturesDir, bareDir, "other")
+			weftBranch := fabricengine.RecordsBranchName("main")
+			gitkit.MustRun(t, weftFixture.PrimeRecords(), "git", "push", "-u", "origin", weftBranch)
+			cloneB := filepath.Join(fixturesDir, "weft-cloneB")
+			gitkit.MustRun(t, fixturesDir, "git", "clone", "-q", "-b", weftBranch, weftFixture.RecordsBare, cloneB)
+			gitkit.Git(t, cloneB, "config", "user.email", "test@test.com")
+			gitkit.Git(t, cloneB, "config", "user.name", "Test")
+			weftTip := gitkit.CommitFile(t, cloneB, tt.originRel, tt.originContent, "b")
+			gitkit.MustRun(t, cloneB, "git", "push", "-q")
 
-	res, err := f.FastForwardPair(fabricengine.SyncOptions{})
-	if err != nil {
-		t.Fatalf("FastForwardPair() error = %v", err)
-	}
-	if res.Refusal != "" || res.NewHead != upstream {
-		t.Errorf("FastForwardPair() Refusal = %q, NewHead = %q; want no refusal and %q", res.Refusal, res.NewHead, upstream)
-	}
-	if got := fabricengine.CurrentSHAForTest(t, warpPath); got != upstream {
-		t.Errorf("code HEAD = %q; want the upstream tip %q", got, upstream)
-	}
-	if got := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeRecords()); got != weftTip {
-		t.Errorf("weft HEAD = %q; want its upstream tip %q", got, weftTip)
-	}
+			upstream := pushFromSecondClone(t, fixturesDir, bareDir, "other")
+			if tt.moveRecord {
+				writeMoveRecord(t, weftFixture.PrimeRecords(), fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
+			}
 
-	var kinds []fabricengine.Kind
-	var details []string
-	for _, entry := range res.Mutated().Entries() {
-		kinds = append(kinds, entry.Kind)
-		details = append(details, entry.Detail)
-	}
-	if !slices.Contains(kinds, fabricengine.KindWorktreeReset) {
-		t.Errorf("record kinds = %v; want the reset entry", kinds)
-	}
-	for _, advance := range []string{weftTip, upstream} {
-		if !slices.Contains(details, advance) {
-			t.Errorf("record details = %v; want an advance entry carrying %q", details, advance)
-		}
+			res, err := f.FastForwardPair(fabricengine.SyncOptions{})
+			if err != nil {
+				t.Fatalf("FastForwardPair() error = %v", err)
+			}
+			if res.Refusal != "" || res.NewHead != upstream {
+				t.Errorf("FastForwardPair() Refusal = %q, NewHead = %q; want no refusal and %q", res.Refusal, res.NewHead, upstream)
+			}
+			if got := fabricengine.CurrentSHAForTest(t, warpPath); got != upstream {
+				t.Errorf("code HEAD = %q; want the upstream tip %q", got, upstream)
+			}
+			wantWeft := weftWas
+			if tt.wantWeftMoves {
+				wantWeft = weftTip
+			}
+			if got := fabricengine.CurrentSHAForTest(t, weftFixture.PrimeRecords()); got != wantWeft {
+				t.Errorf("weft HEAD = %q; want %q", got, wantWeft)
+			}
+
+			var kinds []fabricengine.Kind
+			var details []string
+			for _, entry := range res.Mutated().Entries() {
+				kinds = append(kinds, entry.Kind)
+				details = append(details, entry.Detail)
+			}
+			if !slices.Contains(kinds, fabricengine.KindWorktreeReset) {
+				t.Errorf("record kinds = %v; want the reset entry", kinds)
+			}
+			if !slices.Contains(details, upstream) {
+				t.Errorf("record details = %v; want an advance entry carrying %q", details, upstream)
+			}
+			if slices.Contains(details, weftTip) != tt.wantWeftMoves {
+				t.Errorf("record details = %v; want the weft advance entry %q present: %v", details, weftTip, tt.wantWeftMoves)
+			}
+		})
 	}
 }
 

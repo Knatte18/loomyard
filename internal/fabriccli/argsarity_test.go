@@ -41,6 +41,7 @@ func TestCommand_EveryVerbRejectsExtraPositionalArgs(t *testing.T) {
 		"list":      {"a"},
 		"pairs":     {"a"},
 		"reconcile": {"a"},
+		"anchor":    {"a", "b"},
 		"prune":     {"a"},
 		"cleanup":   {"a"},
 		"unwire":    {"a"},

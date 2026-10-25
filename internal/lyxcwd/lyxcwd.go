@@ -110,8 +110,29 @@ func ResolveWithAnchor(cwd, anchor string) (*Location, error) {
 	return resolveWithAnchorCore(cwd, anchor, false)
 }
 
+// NamedWorktree builds the Location of the worktree called name in the hub at hubPath.
+// AnchorRel is that worktree's own recorded anchor, with the hub-wide fallback and then "." when none is recorded.
+// It applies no cwd gate, spawns no git, and needs neither the worktree nor its records sibling to exist.
+// It is how code outside this package gets the Location of a worktree other than the acting one.
+func NamedWorktree(hubPath, name string) (*Location, error) {
+	anchorRel := "."
+	anchor, found, err := readRecordedAnchor(hubPath, name)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		anchorRel = anchor
+	}
+	return &Location{
+		RepoName:     strings.TrimSuffix(filepath.Base(hubPath), hubSuffix),
+		HubPath:      hubPath,
+		WorktreeName: name,
+		AnchorRel:    anchorRel,
+	}, nil
+}
+
 // resolveCore is the shared body behind Resolve and ResolveWorktree.
-// It finds the worktree root, reads the recorded anchor for AnchorRel, and optionally applies the strict cwd gate.
+// It finds the worktree root, reads the worktree's own recorded anchor for AnchorRel, and optionally applies the strict cwd gate.
 // applyGate is true only for Resolve's entry-point cwd.
 // ResolveWorktree passes false because its input is a worktree root, not an acting cwd, and must never be gated against itself.
 func resolveCore(cwd string, applyGate bool) (*Location, error) {
@@ -127,7 +148,7 @@ func resolveCore(cwd string, applyGate bool) (*Location, error) {
 	// otherwise resolve to a different place depending on where the user
 	// happened to stand.
 	anchorRel := "."
-	anchor, found, err := readRecordedAnchor(hubPath)
+	anchor, found, err := readRecordedAnchor(hubPath, filepath.Base(workTreeRoot))
 	if err != nil {
 		return nil, err
 	}

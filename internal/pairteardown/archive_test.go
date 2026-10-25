@@ -80,7 +80,10 @@ func countArchiveLogLines(log, level, text string) int {
 func pairWithLogs(t *testing.T, slug string) (td *Teardown, traceLog string) {
 	t.Helper()
 	td = &Teardown{prime: &lyxcwd.Location{HubPath: t.TempDir(), AnchorRel: "."}}
-	anchor := td.taskAnchor(slug)
+	anchor, err := td.taskAnchor(slug)
+	if err != nil {
+		t.Fatalf("taskAnchor(%q) = %v; want nil", slug, err)
+	}
 	traceLog = filepath.Join(logger.LogsDirAt(anchor), "trace.log")
 	writeArchiveFile(t, traceLog, "trace")
 	writeArchiveFile(t, filepath.Join(verifytree.Dir(anchor), "verify-1.log"), "verify")

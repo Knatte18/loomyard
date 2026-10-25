@@ -30,7 +30,7 @@ const (
 // stopsEntries reports whether a shared branch in this state stops every entry; a busy one does not, since a lock holder ends on its own.
 func stopsEntries(state fabricengine.BranchState) bool {
 	switch state {
-	case fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged, fabricengine.BranchGone, fabricengine.BranchDirty, fabricengine.BranchLive:
+	case fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged, fabricengine.BranchGone, fabricengine.BranchDirty, fabricengine.BranchLive, fabricengine.BranchAnchorStopped:
 		return true
 	}
 	return false

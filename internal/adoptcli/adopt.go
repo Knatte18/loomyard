@@ -84,32 +84,35 @@ type outcome struct {
 // LocalPair reports whether this machine holds the slug's pair worktree.
 // ParentOf names the slug of the pair a slug was forked from, or "" for the prime.
 // ResumeRun starts the run's first pass detached, driven on by its parent's dobby, and returns the envelope of that start, where an envelope whose "ok" is false is a refusal.
+// MoveInProgress reports whether an anchor change stands in the worktree called worktree, "" naming the prime, and returns the way forward it names; nil reads as no record standing.
 // StartDobbies starts the dobby of the prime and of every beam this machine owns that is not live, and runs after the resumes; nil starts none.
 // StartSuite starts the hub's finalize gate in the prime as a detached process and returns at once, so a break this machine brings to the landed code shows at adopt time; it runs last, once per call that recorded an owner.
 // HubPath roots the mutation record.
 type adoptDeps struct {
-	Machine      func() (string, error)
-	ReadOwners   func() (boardengine.Owners, error)
-	ParentOf     func(slug string) (string, error)
-	Reconcile    func() (fabricengine.OriginReport, error)
-	LocalPair    func(slug string) bool
-	LivePair     func(slug string) (bool, error)
-	AddPair      func(slug string) (fabricengine.AddResult, error)
-	DropLocal    func(rec *fabricengine.Mutations, slug string) (fabricengine.DropLocalResult, error)
-	SetOwners    func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error)
-	PauseRecord  func() (pauserecord.Record, error)
-	Lift         func(ref tenderengine.EntryRef) error
-	RunRecord    func(slug string) (shedengine.Status, bool, error)
-	ResumeRun    func(slug string) (map[string]any, error)
-	ChildStatus  func(slug string) (shedengine.Status, bool, error)
-	ResumeChild  func(slug string) error
-	StartDobbies func() error
-	StartSuite   func() (suiteStart, error)
-	HubPath      string
+	Machine        func() (string, error)
+	ReadOwners     func() (boardengine.Owners, error)
+	ParentOf       func(slug string) (string, error)
+	Reconcile      func() (fabricengine.OriginReport, error)
+	LocalPair      func(slug string) bool
+	LivePair       func(slug string) (bool, error)
+	AddPair        func(slug string) (fabricengine.AddResult, error)
+	DropLocal      func(rec *fabricengine.Mutations, slug string) (fabricengine.DropLocalResult, error)
+	SetOwners      func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error)
+	PauseRecord    func() (pauserecord.Record, error)
+	Lift           func(ref tenderengine.EntryRef) error
+	RunRecord      func(slug string) (shedengine.Status, bool, error)
+	ResumeRun      func(slug string) (map[string]any, error)
+	ChildStatus    func(slug string) (shedengine.Status, bool, error)
+	ResumeChild    func(slug string) error
+	MoveInProgress func(worktree string) (wayForward string, standing bool, err error)
+	StartDobbies   func() error
+	StartSuite     func() (suiteStart, error)
+	HubPath        string
 }
 
 // adopt takes the requested entries over from another machine, and returns what each step did.
 // A refusal before any entry is touched returns the error with the outcome gathered so far, so the envelope still carries the reconcile and its mutation record.
+// A standing anchor change in a worktree it would act under refuses before the reconcile, with an empty outcome.
 func adopt(deps adoptDeps, req request) (outcome, error) {
 	if req.KeepLocal && req.DropLocal {
 		return outcome{}, errors.New("lyx adopt: --keep-local and --drop-local answer the same local commits in opposite ways: pass one of them")
@@ -131,6 +134,10 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 	}
 	slugs, primeNamed, err := namedEntries(owners, req)
 	if err != nil {
+		return outcome{}, err
+	}
+
+	if err := refuseStandingMove(deps, slugs); err != nil {
 		return outcome{}, err
 	}
 
@@ -287,7 +294,7 @@ func sharedStopText(report fabricengine.OriginReport) string {
 			reenters = true
 		case fabricengine.BranchBusy:
 			reenters = !branch.PushLockHeld
-		case fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged:
+		case fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged, fabricengine.BranchAnchorStopped:
 		default:
 			continue
 		}
@@ -308,7 +315,7 @@ func stoppedBranches(report fabricengine.OriginReport, slug string) []branchStop
 			continue
 		}
 		switch branch.State {
-		case fabricengine.BranchNeedsReplay, fabricengine.BranchAhead, fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged:
+		case fabricengine.BranchNeedsReplay, fabricengine.BranchAhead, fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged, fabricengine.BranchAnchorStopped:
 			stops = append(stops, branchStop{Branch: branch.Branch, State: string(branch.State)})
 		}
 	}

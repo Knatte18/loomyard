@@ -37,6 +37,7 @@ var guardVerbs = map[string]guardVerb{
 	"remove":      {args: []string{"remove", "slug"}},
 	"checkout":    {args: []string{"checkout"}},
 	"reconcile":   {args: []string{"reconcile"}},
+	"anchor":      {args: []string{"anchor"}},
 	"unwire":      {args: []string{"unwire"}},
 	"commit":      {args: []string{"commit"}},
 	"push":        {args: []string{"push"}},

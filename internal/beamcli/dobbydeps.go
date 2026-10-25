@@ -204,9 +204,13 @@ func fileExists(path string) (bool, error) {
 	return true, nil
 }
 
-// pairLocation returns slug's task pair as a location built from the prime's, with no git call.
-func pairLocation(prime *lyxcwd.Location, slug string) *lyxcwd.Location {
-	return &lyxcwd.Location{HubPath: prime.HubPath, WorktreeName: slug, AnchorRel: prime.AnchorRel}
+// pairLocation returns slug's task pair as a location at the pair's own anchor, with no git call.
+func pairLocation(prime *lyxcwd.Location, slug string) (*lyxcwd.Location, error) {
+	pair, err := lyxcwd.NamedWorktree(prime.HubPath, slug)
+	if err != nil {
+		return nil, fmt.Errorf("locate the pair %s: %w", slug, err)
+	}
+	return pair, nil
 }
 
 // liftOwnerPause lifts the live pause entry of slug's own scope that carries the owner caller.

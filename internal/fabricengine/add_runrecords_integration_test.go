@@ -227,4 +227,51 @@ func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(fabricengine.RecordsWorktreePath(l, slug), l.AnchorRel, shedrun.RunsRootRel())); !os.IsNotExist(err) {
 		t.Errorf("run-records root exists on the pair's weft disk (stat err = %v)", err)
 	}
+
+	// A parent pair re-anchored at another directory than the hub's holds its run records under its own anchor, and the child forked from it drops them there.
+	t.Run("ParentPairAtAnotherAnchor", func(t *testing.T) {
+		const parentSlug, childSlug, parentAnchor = "anchored-parent", "anchored-child", "other"
+
+		hubforge.AddPairWith(t, h, parentSlug, fabricengine.AddOptions{SkipPush: true})
+		hubforge.ReanchorPair(t, h, parentSlug, parentAnchor)
+		parentL, err := lyxcwd.NamedWorktree(h.Path, parentSlug)
+		if err != nil {
+			t.Fatalf("NamedWorktree(%q): %v", parentSlug, err)
+		}
+		if parentL.AnchorRel != parentAnchor {
+			t.Fatalf("parent AnchorRel = %q; want %q after ReanchorPair", parentL.AnchorRel, parentAnchor)
+		}
+
+		parentWeftPath := fabricengine.RecordsWorktreePath(l, parentSlug)
+		for _, rel := range runRecordFiles {
+			gitkit.CommitFile(t, parentWeftPath, filepath.Join(parentAnchor, rel), "{}\n", "seed run records under the parent's anchor")
+		}
+		parentRecordsBranch := fabricengine.RecordsBranchName(gitkit.Git(t, fabricengine.WorktreePath(l, parentSlug), "rev-parse", "--abbrev-ref", "HEAD"))
+		forkPoint := gitkit.RevParse(t, weftRoot, parentRecordsBranch)
+		if got := trackedUnderRoot(t, parentL, weftRoot, parentRecordsBranch); got == "" {
+			t.Fatalf("setup: the parent's records branch tracks no run records under %q", parentAnchor)
+		}
+
+		if _, err := h.Topology.Add(l, childSlug, fabricengine.AddOptions{SkipPush: true, Parent: parentSlug}); err != nil {
+			t.Fatalf("Add(%q, Parent %q): %v", childSlug, parentSlug, err)
+		}
+
+		childBranch := fabricengine.RecordsBranchName(childSlug)
+		if _, err := os.Stat(filepath.Join(fabricengine.RecordsWorktreePath(l, childSlug), parentAnchor, shedrun.RunsRootRel())); !os.IsNotExist(err) {
+			t.Errorf("run-records root exists on the child's records disk under %q (stat err = %v)", parentAnchor, err)
+		}
+		if got := trackedUnderRoot(t, parentL, weftRoot, childBranch); got != "" {
+			t.Errorf("child records branch still tracks run records under %q:\n%s", parentAnchor, got)
+		}
+		deleted := 0
+		diff := gitkit.Git(t, weftRoot, "diff", "--name-status", forkPoint, childBranch)
+		for _, line := range strings.Split(diff, "\n") {
+			if strings.HasPrefix(line, "D\t"+filepath.ToSlash(filepath.Join(parentAnchor, shedrun.RunsRootRel()))) {
+				deleted++
+			}
+		}
+		if deleted != len(runRecordFiles) {
+			t.Errorf("the child's first records commit deletes %d run records under %q; want %d\ndiff:\n%s", deleted, parentAnchor, len(runRecordFiles), diff)
+		}
+	})
 }

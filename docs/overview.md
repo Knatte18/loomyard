@@ -65,11 +65,12 @@ Internal Go feature packages follow the `<module>cli` / `<module>engine` split (
 **All cwd resolution goes through `internal/lyxcwd`, and nothing else.** `lyxcwd` owns cwd resolution alone — never a records path, a junction path, or any per-module subdirectory;
 those are each owned by the module that constructs them.
 
-`internal/lyxcwd` exposes a three-operation contract:
+`internal/lyxcwd` exposes this contract:
 
 - `Getwd()` — the only permitted call to `os.Getwd` outside `cmd/lyx/main.go`.
 - `Resolve(cwd)` → `*Location` — resolves the current cwd into a legal worktree's coordinates, applying the strict cwd gate.
 - `ResolveWithAnchor(cwd, anchor)` / `ResolveWorktree(root)` — the two ungated variants, for callers that hold something other than an acting cwd (see `docs/shared-libs/lyxcwd.md`).
+- `NamedWorktree(hubPath, name)` → `*Location` — the coordinates of another worktree of the hub, at that worktree's own anchor.
 
 `Location` carries exactly four fields — `RepoName`, `HubPath`, `WorktreeName`, `AnchorRel` — plus two derived accessors, `WorktreePath()` and `AnchorPath()`.
 Every other geometry token (records paths, junctions, `_lyx/<module>`, launchers, the hub-reserved name set) is a per-module constructor, joined onto `Location`'s coordinates by the module that owns that token — see [PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) for the full per-token ownership map.
