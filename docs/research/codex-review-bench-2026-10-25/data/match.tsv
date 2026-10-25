@@ -1,0 +1,69 @@
+input	setting	codex_finding	label	claude_finding	claude_severity	note
+D1	luna-medium	F1	shared	F5	MEDIUM	repeated re-entry of Plan-Review has no cap
+D1	sol-medium	F1	shared	F1	BLOCKING	amendment record atomicity on failure; Codex adds that a failed later call erases earlier pending amendments
+D1	sol-medium	F2	codex-only real			whole-second timestamp cannot order an amendment after a settle in the same second; the record states whole-second UTC
+D1	sol-medium	F3	codex-only real			the wrong-label bound claims a wrong Extends never surfaces silently; a wrong label can merge cleanly
+D1	astra-medium	F1	shared	F1	BLOCKING	same as sol F1
+D1	astra-medium	F2	codex-only real			same as sol F3
+D1	astra-medium	F3	codex-only real			all documentation work under Extends against the label's review rule; D6 tells the plan writer to write a card's docs under Extends while the rubric check flags an Extends on a ref the card rewrites, and a doc update often rewrites existing text; the round's fixer report and bouncer verdict do not touch it
+D1	astra-medium	F4	codex-only real			root-first path resolution can attribute a package test failure to a root file; D9 step 1 places a path that already exists at Head as written before it tries the package directory, so a bare name existing at the root wins; the fixer report does not touch it
+D2	luna-medium	F1	codex-only real			green-record retention rule undefined; D4 keeps "recent" whole-green commits with no count, and the round's fixer report (Claude F2) then fixed it by keeping each tier's 20 newest
+D2	luna-medium	F2	false			--window routing edge has no stated bound; D10 already limits --window to the value Env.Setting answers for batten.open_window, and a criterion states the effect, which is the bound the finding asks to add
+D2	luna-medium	F3	shared	F8	MEDIUM	D13's discovery check is left to the first retagging card
+D2	sol-medium	F1	shared	F2	MEDIUM	whole-green base taken from an incompatible or filtered run
+D2	sol-medium	F2	codex-only real			exact args matching makes a repeated -count=1 request carry instead of rerun
+D2	sol-medium	F3	shared	F7	MEDIUM	zero-tests refusal rejects filtered runs
+D2	astra-medium	F1	shared	F2	MEDIUM	same as sol F1
+D2	astra-medium	F2	shared	F7	MEDIUM	same as sol F3
+D2	astra-medium	F3	codex-only real			same as sol F2
+D3	luna-medium	F1	shared	F9	MEDIUM	MTP unmatched-filter behaviour left as a risk
+D3	luna-medium	F2	shared	F8	MEDIUM	VSTest exit behaviour assumed without evidence
+D3	luna-medium	F3	shared	F7	MEDIUM	carry-false guarantee broken by explicit targets
+D3	sol-medium	F1	shared	F8	MEDIUM	runner exit behaviour unsupported
+D3	sol-medium	F2	shared	F2	MEDIUM	empty test scope omits the shared-build opt-in
+D3	sol-medium	F3	codex-only real			a narrowed PATTERN background line is declared as no PATTERN change; arguable, minor
+D3	astra-medium	F1	shared	F8	MEDIUM	same as sol F1
+D3	astra-medium	F2	shared	F10	MEDIUM	inert-scope skip contradicts forced whole runs
+D3	astra-medium	F3	shared	F2	MEDIUM	same as sol F2
+D4	luna-medium	F1	shared	F13	LOW	step 2 and step 5 run-lock wait; Codex overstates it as a self-deadlock
+D4	luna-medium	F2	shared	F7	MEDIUM	stale local board read under an unreachable origin
+D4	luna-medium	F3	codex-only unchecked			several premises left as risks for Plan to discover; not graded: the finding bundles four premises and asks for research before Plan rather than naming a defect in the text, and its one checkable part, the older-binary risk, is the Sol F4 row
+D4	luna-medium	F4	codex-only real			support-log Turn 3 picks refusal on an unreachable origin while D2 proceeds
+D4	sol-medium	F1	codex-only real			landed-work refusal goes stale while cancel waits; step 3 of D3 reads the landed state once, D4 step 1 then waits for the write locks before End, and no recheck is stated; the fixer report and bouncer verdict do not touch it
+D4	sol-medium	F2	shared	F7	MEDIUM	offline escape hatch states no bound
+D4	sol-medium	F3	shared	F9	MEDIUM	claim cleared before final cleanup, retry impossible
+D4	sol-medium	F4	codex-only real			tender reap cannot recover older-binary processes; checked against internal/tenderengine/processes.go
+D4	astra-medium	F1	shared	F7	MEDIUM	same as sol F2
+D4	astra-medium	F2	shared	F9	MEDIUM	same as sol F3
+D4	astra-medium	F3	codex-only real			same as sol F4
+D5	luna-medium	F1	shared	F9	LOW	linked layout premise has no recorded evidence
+D5	sol-medium	F1	shared	F1	BLOCKING	fabric commit does not commit the code checkout dirt
+D5	sol-medium	F2	shared	F4	MEDIUM	merge-record admit still permits cleanup advice
+D5	sol-medium	F3	shared	F9	LOW	directory-link premise lacks its source
+D5	astra-medium	F1	shared	F4	MEDIUM	same as sol F2
+D5	astra-medium	F2	shared	F1	BLOCKING	same as sol F1
+D6	luna-medium	F1	shared	F2	BLOCKING	network-gate holder state has no source
+D6	luna-medium	F2	shared	F8	MEDIUM	unregistered-orphan reading not established
+D6	luna-medium	F3	false			no lyx run process handles SIGTERM, stated without source; the support log states it as a fact, and at the code commit only orchcli, creelcli and gatecli install a SIGTERM handler
+D6	luna-medium	F4	shared	F11	LOW	sixty-minute bound has no evidence
+D6	luna-medium	F5	shared	F15	LOW	support-log decision numbers are stale
+D6	sol-medium	F1	shared	F2	BLOCKING	same as luna F1
+D6	sol-medium	F2	shared	F4	BLOCKING	children in separate process groups survive End
+D6	sol-medium	F3	shared	F8	MEDIUM	orphan fallback does not enforce the reap bound
+D6	sol-medium	F4	shared	F5	BLOCKING	reed down authorization and lock policy ambiguous
+D6	sol-medium	F5	shared	F11	LOW	same as luna F4
+D6	sol-medium	F6	shared	F15	LOW	same as luna F5
+P1	sol-medium	F1	shared	F3	MEDIUM	retag cards use Custom on a false premise
+P1	sol-medium	F2	codex-only real			transitional hub check can pass without checking any tier command; card 24's awk Verify tests only lines matching an eight-space command key, so a tier with no such line passes; the fixer report does not touch card 24
+P1	sol-medium	F3	codex-only real			retag leaves the tree-sitter link guard on retired tags; cmd/lyx/treesitterlink_integration_test.go lists under -tags integration,tmux,llm at the code commit, and no plan file mentions the guard or tree-sitter
+P1	sol-medium	F4	codex-only real			card 20 removes the Command switch key, and internal/shedbuild/build_engines_test.go still sets it, with no card to migrate it
+P1	sol-medium	F5	shared	F4	MEDIUM	card 4 changes a signature before its test callers migrate
+P1	sol-medium	F6	shared	F4	MEDIUM	result-signature changes lack re-sign arrows
+P1	sol-medium	F7	shared	F3	MEDIUM	scan-after-last-retag departs from D5
+P2	sol-medium	F1	shared	F1	BLOCKING	generic qualifier defeats the declared-name fallback
+P3	sol-medium	F1	codex-only real			dead non-leaf holders keep the canonical name; card 6 exempts a holder with children, which the decision record settles nowhere, though the card states the exemption and its reason, so Sol's "silently" and its BLOCKING severity overstate it
+P3	sol-medium	F2	shared	F1	BLOCKING	static handoff wording pinned by tests
+P3	sol-medium	F3	codex-only real			package documentation coverage incomplete; no card edits internal/loomcli/doc.go or internal/shuttleengine/claudeengine/doc.go, though cards 4 and 3 change behavior of those packages and both doc.go files describe the touched areas
+P4	luna-medium	F1	false			takeover not bounded to adopt; the overview and cards 3, 8 and 16 already say only lyx adopt sets Takeover and every other writer leaves it false
+P4	sol-medium	F1	shared	F8	LOW	owner checks vanish without a batten record
+P4	sol-medium	F2	shared	F9	LOW	exported prerequisites bundled into the adopt CLI card
