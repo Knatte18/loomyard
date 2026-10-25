@@ -153,6 +153,11 @@ type ReconcileResult struct {
 	// HubDetails names each retired hub artifact the sweep kept or could not remove, one entry per path.
 	// Like WarpBinding it is a once-per-Reconcile, hub-level field, never a per-pair one.
 	HubDetails []string `json:"hub_details,omitempty"`
+
+	// BoltAnchor is the verdict on the hub-wide anchor marker on the board: "removed", or "kept: <reason>" while it stays.
+	// It is empty for a hub with no such marker.
+	// Like WarpBinding it is a once-per-Reconcile, hub-level field, never a per-pair one.
+	BoltAnchor string `json:"bolt_anchor,omitempty"`
 }
 
 // Reconcile walks all warp worktrees reachable from layout l and applies corrective actions to
@@ -160,14 +165,15 @@ type ReconcileResult struct {
 // For each warp worktree it applies a sequence of rules: recreate missing weft worktrees, re-point
 // broken junctions, adopt raw (non-lyx) worktrees, or report unmanaged pairs.
 // Per-worktree errors are recorded in ReconcilePairResult.Error.
-// After the pair loop it sweeps the retired portal links and the old hub workspace file, reporting what it kept in HubDetails.
+// It judges each present weft's own anchor marker before wiring that pair, the prime first.
+// A blank marker fails that pair alone and leaves its wiring untouched.
+// A weft that carries a move record fails its pair the same way, with the record's way forward as the error.
+// A weft with no committed marker gets the one its content implies, committed and handed to a detached push.
+// After the pair loop it retires the hub-wide marker on the board once every weft carries its own, reporting the verdict in BoltAnchor.
+// It then sweeps the retired portal links and the old hub workspace file, reporting what it kept in HubDetails.
 func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
-
-	if err := refuseEmptyAnchorMarker(l); err != nil {
-		return ReconcileResult{}, err
-	}
 
 	entries, err := List(l.WorktreePath())
 	if err != nil {
@@ -234,11 +240,34 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 		// ReconcileActionRawAdopted deliberately does NOT fall through, since a raw-adopted pair is
 		// dormant by design and wired by the next pass.
 		repairWiring := weftWorktreeExists || (pr.Action == ReconcileActionWeftRecreated && pr.Error == "")
+		// A standing move record fails the pair before anything of it is touched: its weft is mid-change, and wiring it at either anchor could lay a second junction set.
+		moveStands := false
 		if weftWorktreeExists {
+			wayForward, standing, moveErr := MoveInProgress(slug, weftPath)
+			switch {
+			case moveErr != nil:
+				pr.Error = moveErr.Error()
+				moveStands = true
+			case standing:
+				pr.Error = wayForward
+				moveStands = true
+			}
+		}
+		if weftWorktreeExists && !moveStands {
 			restoreWeftLockDir(rec, weftPath, &pr)
 		}
-		if repairWiring {
-			t.repairPairWiring(rec, warpLayout, slug, warpBranch, &pr, weftWorktreeExists)
+		if moveStands {
+			if pr.Action == "" {
+				pr.Action = ReconcileActionUnmanagedReported
+			}
+		} else if repairWiring {
+			// Read after any recreation above, so a pair whose weft came back carrying its own marker is wired at that anchor.
+			wiredLayout, markerOK := migrateWeftMarker(rec, l.HubPath, weftPath, slug, &pr)
+			if markerOK {
+				t.repairPairWiring(rec, wiredLayout, slug, warpBranch, &pr, weftWorktreeExists)
+			} else if pr.Action == "" {
+				pr.Action = ReconcileActionUnmanagedReported
+			}
 		}
 
 		// The pre-check above closes only the window between enumeration and the start of this
@@ -254,6 +283,13 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 		result.Pairs = append(result.Pairs, pr)
 	}
 
+	// The board marker goes before the binding backfill, so the backfill finds a clean board.
+	boltAnchor, boltAnchorErr := retireBoltAnchorMarker(rec, l)
+	if boltAnchorErr != nil {
+		boltAnchor = boltAnchorKeptPrefix + boltAnchorErr.Error()
+	}
+	result.BoltAnchor = boltAnchor
+
 	result.WarpBinding, result.WarpBindingDetail = t.reconcileWarpBinding(rec, l)
 
 	// The sweep runs before the regeneration so the regeneration's own retired-artifact warning stays silent for what the sweep removed.
@@ -264,35 +300,56 @@ func (t *Topology) Reconcile(l *lyxcwd.Location) (res ReconcileResult, err error
 	return result, nil
 }
 
-// refuseEmptyAnchorMarker aborts a reconcile pass when the hub's recorded lyx-anchor marker exists
-// but is empty after trimming.
+// migrateWeftMarker judges the anchor marker of the present weft worktree at weftPath, which belongs to the pair slug, before the pair is wired.
+// It reports the pair's Location, read from its own marker, and whether wiring may go on.
 //
-// lyxcwd deliberately treats an empty marker as ABSENT, so `Resolve` falls back to the `"."` anchor
-// and succeeds at the warp worktree root — correct for a hub that never recorded one, and a trap
-// for a hub that did.
-// Reconcile is the only verb that wires junctions, so on a subpath-anchored hub whose marker was
-// truncated it is the verb that materialises a SECOND junction set at the repo root beside the
-// still-live set at the real anchor — exactly the damage lyxcwd.ErrStaleAnchorMarker exists to
-// prevent for the pre-rename spelling.
-// A present-but-empty marker is a corrupt record rather than an absent one, so the repair verb
-// refuses it here instead, leaving lyxcwd's own documented fallback untouched.
-//
-// A marker that cannot be read at all (including a genuinely absent one) is the legitimate
-// root-anchored case and passes.
-func refuseEmptyAnchorMarker(l *lyxcwd.Location) error {
-	markerPath := filepath.Join(BoardDir(l.HubPath), lyxcwd.AnchorFileName)
-
-	data, err := os.ReadFile(markerPath)
+// A marker that is blank in the working tree fails the pair in pr.Error, since lyxcwd reads a blank marker as absent and wiring against that fallback would lay a second junction set at the repo root beside the live one.
+// A weft with no committed marker gets the anchor derived from its tree committed on it, hands the commit to a detached push, and notes the value in pr.Detail;
+// a failed spawn of that push is a Detail note too, since the next detached push carries the commit.
+func migrateWeftMarker(rec *Mutations, hubPath, weftPath, slug string, pr *ReconcilePairResult) (*lyxcwd.Location, bool) {
+	current, err := lyxcwd.NamedWorktree(hubPath, slug)
 	if err != nil {
-		return nil
+		pr.Error = fmt.Sprintf("read the anchor: %v", err)
+		return nil, false
 	}
-	if strings.TrimSpace(string(data)) != "" {
-		return nil
+	if err := refuseEmptyOwnMarker(weftPath); err != nil {
+		pr.Error = err.Error()
+		return current, false
+	}
+	_, found, err := committedMarker(weftPath, "HEAD")
+	if err != nil {
+		pr.Error = err.Error()
+		return current, false
+	}
+	if found {
+		return current, true
 	}
 
-	return fmt.Errorf(
-		"recorded anchor marker at %s is empty; write the repo's subpath into it (or %q for the repo root) in the hub's %s worktree and commit, then re-run — reconciling against an empty marker would wire a second junction set at the warp repo root",
-		markerPath, ".", BoardDirName)
+	names, err := RepoWiredNames(current)
+	if err != nil {
+		pr.Error = fmt.Sprintf("record the anchor: load fabric config: %v", err)
+		return current, false
+	}
+	anchor, err := treeAnchor(weftPath, "HEAD", names, current.AnchorRel)
+	if err != nil {
+		pr.Error = fmt.Sprintf("record the anchor: %v", err)
+		return current, false
+	}
+	if _, err := commitAnchorMarker(rec, weftPath, anchor, "fabric reconcile: record anchor "+anchor); err != nil {
+		pr.Error = fmt.Sprintf("record the anchor: %v", err)
+		return current, false
+	}
+	appendPrDetail(pr, fmt.Sprintf("recorded anchor %s in %s", anchor, lyxcwd.AnchorFileName))
+
+	migrated, err := lyxcwd.NamedWorktree(hubPath, slug)
+	if err != nil {
+		pr.Error = fmt.Sprintf("read the recorded anchor: %v", err)
+		return current, false
+	}
+	if err := SpawnPairPush(migrated); err != nil {
+		appendPrDetail(pr, fmt.Sprintf("the recorded anchor is not pushed yet: %v", err))
+	}
+	return migrated, true
 }
 
 // reconcileWarpBinding backfills the once-per-hub .lyx-warp record from the warp side's origin

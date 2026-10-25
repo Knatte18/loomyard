@@ -15,6 +15,7 @@ import (
 // promoteDeps holds the seam of every promote step beside create's, which hubPromoteDeps fills over the hub and TestPromote fakes.
 // OriginRecord reads the origin record of the slug's pair, false when there is none.
 // EndRun ends the slug's batten run and keeps its pair, and ClearRun removes the run's records and clears its claim.
+// Anchors answers the anchor of the slug's pair and that of the parent records the reset would copy.
 type promoteDeps struct {
 	createDeps
 	ReadTasks    func() ([]boardengine.Task, error)
@@ -22,6 +23,7 @@ type promoteDeps struct {
 	EndRun       func(ctx context.Context, slug string) error
 	ClearRun     func(ctx context.Context, slug string) error
 	ResetRecords func(rec *fabricengine.Mutations, slug string) (fabricengine.ResetRecordsResult, error)
+	Anchors      func(slug string) (own, parent string, err error)
 }
 
 // promoteResult is the verb's envelope: create's fields for a project it makes a beam of, and for a task what each step did.
@@ -94,7 +96,7 @@ func promoteProject(deps promoteDeps, owners boardengine.Owners, here, slug stri
 			return result, nil
 		}
 	}
-	created, err := create(deps.createDeps, slug)
+	created, err := create(deps.createDeps, slug, "")
 	result.createResult = created
 	return result, err
 }
@@ -193,6 +195,14 @@ func promoteSteps(ctx context.Context, deps promoteDeps, rec *fabricengine.Mutat
 			return err
 		}
 		result.RunCleared = true
+	}
+
+	own, parent, err := deps.Anchors(slug)
+	if err != nil {
+		return fail("read the anchors of the pair and its parent's records", err)
+	}
+	if own != parent {
+		return fmt.Errorf("lyx beam promote: %s sits at anchor %s and its parent's records at %s; way forward: run `lyx fabric anchor %s --set %s`, then `lyx beam promote %s`", slug, own, parent, slug, parent, slug)
 	}
 
 	reset, err := deps.ResetRecords(rec, slug)

@@ -16,7 +16,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
@@ -40,10 +39,7 @@ func TestStatus_DetectsWarpPollutionUnderSubpathAnchor(t *testing.T) {
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", subDir, err)
 	}
-	anchorMarker := filepath.Join(fabricengine.BoardDir(l.HubPath), lyxcwd.AnchorFileName)
-	if err := os.WriteFile(anchorMarker, []byte(anchor+"\n"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", anchorMarker, err)
-	}
+	seedAnchorMarker(t, h, anchor)
 
 	anchoredLayout, err := lyxcwd.Resolve(subDir)
 	if err != nil {

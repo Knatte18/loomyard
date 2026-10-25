@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -439,6 +440,68 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 	if diff := cmp.Diff(wantSeedless, cells2.Of(viewRuns("run-c", "run-d"), overviewNow)); diff != "" {
 		t.Errorf("seedless child read mismatch (-want +got):\n%s", diff)
 	}
+}
+
+func TestDobbyRunCells_ResolvesTheChildPairAgainInEachRunShedSpell(t *testing.T) {
+	t.Parallel()
+
+	hub := t.TempDir()
+	prime := locationkit.Location(hub, "prime", ".")
+	const slug = "run-a"
+
+	// A directory the repository walk accepts as the task worktree's root.
+	worktree := filepath.Join(hub, slug)
+	for _, dir := range []string{filepath.Join(worktree, ".git", "objects"), filepath.Join(worktree, ".git", "refs")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeOverviewFile(t, filepath.Join(worktree, ".git", "HEAD"), []byte("ref: refs/heads/main\n"), minutesAgo(200))
+	// The hub-wide marker anchors every worktree that records none of its own.
+	marker := filepath.Join(fabricengine.BoardDir(hub), lyxcwd.AnchorFileName)
+	setAnchor := func(anchorRel string) {
+		t.Helper()
+		writeOverviewFile(t, marker, []byte(anchorRel+"\n"), minutesAgo(1))
+	}
+
+	if err := shedrun.WriteSeed(prime, slug, shedrun.Seed{Recipe: shedrun.RecipeBatten, Driver: shedrun.DriverGo, StartedAt: stamp(minutesAgo(120))}); err != nil {
+		t.Fatal(err)
+	}
+	battenStatus := shedrun.StatusFile(prime, slug)
+	writeChildStatus := func(anchorRel, producer string, modTime time.Time) {
+		t.Helper()
+		writeOverviewStatus(t, shedrun.StatusFile(locationkit.Location(hub, slug, anchorRel), shedrun.SelfRunID), shedengine.Status{State: shedengine.StateRunning, CurrentProducer: producer}, modTime)
+	}
+	cells := NewDobbyRunCells(prime, filepath.Join(t.TempDir(), "pause.json"))
+	check := func(read string, want RunCells) {
+		t.Helper()
+		if diff := cmp.Diff(map[string]RunCells{slug: want}, cells.Of(viewRuns(slug), overviewNow)); diff != "" {
+			t.Errorf("%s mismatch (-want +got):\n%s", read, diff)
+		}
+	}
+
+	setAnchor(".")
+	writeChildStatus(".", "Plan-Write", minutesAgo(100))
+	writeOverviewStatus(t, battenStatus, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: battenrecipe.NameRunShed}, minutesAgo(100))
+	if err := shedrun.WriteSeed(locationkit.Location(hub, slug, "."), shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeLoom, Driver: shedrun.DriverGo}); err != nil {
+		t.Fatal(err)
+	}
+	check("read in the first Run-Shed spell", RunCells{State: "running", Stage: "6.6 Plan-Write", InStage: "2h00m"})
+
+	// The run leaves Run-Shed, the pair's anchor moves, and a new run enters Run-Shed again.
+	writeOverviewStatus(t, battenStatus, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan"}, minutesAgo(50))
+	check("read between the spells", RunCells{State: "running", Stage: "Plan", InStage: "2h00m"})
+	setAnchor("sub")
+	writeChildStatus("sub", "Review", minutesAgo(45))
+	writeOverviewStatus(t, battenStatus, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: battenrecipe.NameRunShed}, minutesAgo(40))
+	check("read in the second Run-Shed spell", RunCells{State: "running", Stage: "Review", InStage: "2h00m"})
+
+	// A third spell in the moved pair has no seed, so it must not keep the recipe the first spell's seed named.
+	writeOverviewStatus(t, battenStatus, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan"}, minutesAgo(30))
+	check("read between the second and third spells", RunCells{State: "running", Stage: "Plan", InStage: "2h00m"})
+	writeChildStatus("sub", "Plan-Write", minutesAgo(20))
+	writeOverviewStatus(t, battenStatus, shedengine.Status{State: shedengine.StateRunning, CurrentProducer: battenrecipe.NameRunShed}, minutesAgo(10))
+	check("read in the third Run-Shed spell", RunCells{State: "running", Stage: "Plan-Write", InStage: "2h00m"})
 }
 
 func TestOverviewSource_DrawsTheOrchLine(t *testing.T) {

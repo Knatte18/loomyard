@@ -31,7 +31,7 @@ var KeybindingsPath = vscode.UserKeybindingsPath
 // Spawn regenerates a worktree's .vscode/ config on every call and launches VS Code.
 // It keeps .vscode/ out of git through info/exclude and never writes a .gitignore;
 // a tracked .vscode/tasks.json is left alone with a warning, and the launch still happens.
-// A task slug launches its bare folder <hub>/<slug>/<AnchorRel> and writes no workspace file.
+// A task slug launches its bare folder <hub>/<slug>/<its own anchor> and writes no workspace file.
 // When slug names the prime, Spawn regenerates the hub workspace file <hub>/<RepoName>.code-workspace, whose settings carry the prime's .vscode/settings.json, and launches that file instead;
 // every error on that path is returned, never degraded to the bare folder.
 // A failure to resolve the prime's name is logged and degrades to the bare-folder path.
@@ -39,6 +39,10 @@ var KeybindingsPath = vscode.UserKeybindingsPath
 // a skipped seed never fails the spawn.
 func Spawn(l *lyxcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	worktreeDir, color, primeName, primeResolved := resolveSpawnTarget(l, slug, targetUnknown)
+	own, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return vscode.KeybindingsResult{}, fmt.Errorf("read the anchor of %q: %w", slug, err)
+	}
 
 	if err := writeWorktreeConfig(l, worktreeDir, slug, color); err != nil {
 		return vscode.KeybindingsResult{}, err
@@ -46,7 +50,7 @@ func Spawn(l *lyxcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 
 	keybindings := seedKeybindings()
 
-	openDir := filepath.Join(worktreeDir, l.AnchorRel)
+	openDir := filepath.Join(worktreeDir, own.AnchorRel)
 	if primeResolved && slug == primeName {
 		workspacePath, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(l.HubPath), l)
 		if err != nil {
@@ -65,16 +69,24 @@ func SeedTask(l *lyxcwd.Location, slug string) error {
 	return writeWorktreeConfig(l, worktreeDir, slug, color)
 }
 
-// OpenTask launches VS Code on task slug's bare folder, as Spawn does for a task pair, and writes nothing.
+// OpenTask launches VS Code on task slug's bare folder at the task's own anchor, as Spawn does for a task pair, and writes nothing.
 func OpenTask(l *lyxcwd.Location, slug string) error {
-	return CodeLauncher(filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel))
+	own, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return fmt.Errorf("read the anchor of %q: %w", slug, err)
+	}
+	return CodeLauncher(filepath.Join(fabricengine.WorktreePath(l, slug), own.AnchorRel))
 }
 
-// writeWorktreeConfig writes the worktree's .vscode/ config through writeVSCodeConfig, stamping in the absolute lyx path.
+// writeWorktreeConfig writes slug's .vscode/ config at slug's own anchor through writeVSCodeConfig, stamping in the absolute lyx path.
 // The path degrades to the empty string on error so vscode.WriteConfig's own bare-name fallback rule applies.
 func writeWorktreeConfig(l *lyxcwd.Location, worktreeDir, slug, color string) error {
+	own, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return fmt.Errorf("read the anchor of %q: %w", slug, err)
+	}
 	lyxPath, _ := os.Executable()
-	return writeVSCodeConfig(l, worktreeDir, slug, color, lyxPath)
+	return writeVSCodeConfig(own, worktreeDir, slug, color, lyxPath)
 }
 
 // seedKeybindings seeds the user's keybindings.json through the KeybindingsPath seam; a path it cannot resolve is a skip.

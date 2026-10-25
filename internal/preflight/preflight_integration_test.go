@@ -170,10 +170,7 @@ func TestHealthyHub(t *testing.T) {
 			t.Fatalf("mkdir %s: %v", sub, err)
 		}
 
-		anchorPath := filepath.Join(fabricengine.BoardDir(h.Location.HubPath), lyxcwd.AnchorFileName)
-		if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
-			t.Fatalf("write %s: %v", anchorPath, err)
-		}
+		gitkit.CommitFile(t, h.PrimeRecords(), lyxcwd.AnchorFileName, "sub\n", "test fixture: re-anchor the prime at sub")
 
 		report, loc, err := preflight.Check(sub)
 		if err != nil {
@@ -574,7 +571,8 @@ func TestResolveMode(t *testing.T) {
 		h, _ := setupFixture(t)
 		cwd := h.PrimeWorktree()
 
-		anchorPath := filepath.Join(h.BoardDir(), lyxcwd.AnchorFileName)
+		// The stale guard applies to the Bolt read only, so the prime's own marker goes.
+		anchorPath := filepath.Join(h.PrimeRecords(), lyxcwd.AnchorFileName)
 		if err := os.Remove(anchorPath); err != nil {
 			t.Fatalf("remove %s: %v", anchorPath, err)
 		}

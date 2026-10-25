@@ -192,6 +192,11 @@ func (t *Topology) removePair(l *lyxcwd.Location, slug string, force, remote, lo
 	if err != nil {
 		return RemoveResult{}, err
 	}
+	// Read before the teardown deletes the records worktree that holds the pair's own marker.
+	pairLoc, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return RemoveResult{}, fmt.Errorf("read the anchor of %q: %w", slug, err)
+	}
 	steps := []string{}
 
 	// Registered before the teardown lock, so it runs after the lock's release on every exit past the refusals.
@@ -276,10 +281,10 @@ func (t *Topology) removePair(l *lyxcwd.Location, slug string, force, remote, lo
 	// removeLaunchers is best-effort: an operational failure is discarded exactly as
 	// before, but a gate refusal must surface rather than vanish at the verb the slice's worst defect
 	// came from.
-	if err := surfaceRefusal(removeLaunchers(rec, l, slug)); err != nil {
+	if err := surfaceRefusal(removeLaunchers(rec, pairLoc, slug)); err != nil {
 		return RemoveResult{}, err
 	}
-	if pair.launchers && !pathPresent(LauncherDir(l, slug)) {
+	if pair.launchers && !pathPresent(LauncherDir(pairLoc, slug)) {
 		steps = append(steps, RemoveStepLaunchers)
 	}
 
@@ -292,9 +297,9 @@ func (t *Topology) removePair(l *lyxcwd.Location, slug string, force, remote, lo
 	// A task worktree that is gone, or a path there that is not a registered linked worktree, has no junctions of fabric's to sweep and nothing for the directory removal to take.
 	linksRemoved := 0
 	if pair.taskWorktree {
-		if scannedNames, scanErr := scanOnDiskJunctionNames(l, slug); scanErr == nil {
-			ownedNames := withoutRootScratchLink(l, scannedNames)
-			removeErr := removeWarpJunction(rec, l, slug, ownedNames)
+		if scannedNames, scanErr := scanOnDiskJunctionNames(pairLoc, slug); scanErr == nil {
+			ownedNames := withoutRootScratchLink(pairLoc, scannedNames)
+			removeErr := removeWarpJunction(rec, pairLoc, slug, ownedNames)
 			if err := surfaceRefusal(removeErr); err != nil {
 				return RemoveResult{}, err
 			}
@@ -302,7 +307,7 @@ func (t *Topology) removePair(l *lyxcwd.Location, slug string, force, remote, lo
 				linksRemoved = len(ownedNames)
 			}
 		}
-		if err := surfaceRefusal(unlinkScratchLink(rec, l, slug)); err != nil {
+		if err := surfaceRefusal(unlinkScratchLink(rec, pairLoc, slug)); err != nil {
 			return RemoveResult{}, err
 		}
 		if err := removeWarpWorktreeDir(rec, l, target, force, t.leftover); err != nil {
@@ -567,7 +572,11 @@ func (t *Topology) inspectPair(l *lyxcwd.Location, slug string) (pairState, erro
 		}
 	}
 	s.siblingWorktree = pathPresent(RecordsWorktreePath(l, slug))
-	s.launchers = pathPresent(LauncherDir(l, slug))
+	pairLoc, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return pairState{}, fmt.Errorf("read the anchor of %q: %w", slug, err)
+	}
+	s.launchers = pathPresent(LauncherDir(pairLoc, slug))
 
 	taskBranch, err := localBranchExists(l.WorktreePath(), t.cfg.BranchPrefix+slug)
 	if err != nil {
@@ -788,7 +797,11 @@ func (t *Topology) RemoveRefusal(l *lyxcwd.Location, slug string, force bool) er
 	if err != nil {
 		return fmt.Errorf("load the record pathspec: %w", err)
 	}
-	return refuseDirtyWeftWorktree(RecordsWorktreePath(l, slug), l.AnchorRel, names)
+	pairLoc, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return fmt.Errorf("read the anchor of %q: %w", slug, err)
+	}
+	return refuseDirtyWeftWorktree(RecordsWorktreePath(l, slug), pairLoc.AnchorRel, names)
 }
 
 // commitPendingRecords commits the pair's sibling worktree's uncommitted changes inside the record pathspec, so the archive tag that follows covers them.
@@ -801,6 +814,10 @@ func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug, warpBranch s
 	if _, statErr := os.Stat(weftTarget); os.IsNotExist(statErr) {
 		return false, nil
 	}
+	pairLoc, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return false, fmt.Errorf("read the anchor of %q: %w", slug, err)
+	}
 
 	names, err := PathspecNames(ConfigDirs(l))
 	if err != nil {
@@ -809,7 +826,7 @@ func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug, warpBranch s
 	// git add refuses a pathspec that matches nothing, and a configured optional directory may not exist in this pair.
 	present := make([]string, 0, len(names))
 	for _, name := range names {
-		if _, err := os.Lstat(filepath.Join(weftTarget, l.AnchorRel, name)); err == nil {
+		if _, err := os.Lstat(filepath.Join(weftTarget, pairLoc.AnchorRel, name)); err == nil {
 			present = append(present, name)
 		}
 	}
@@ -827,9 +844,9 @@ func commitPendingRecords(rec *Mutations, l *lyxcwd.Location, slug, warpBranch s
 		msg = appendWarpSHATrailer(msg, warpSHA)
 	}
 	if try {
-		committed, err = commitRecordsPathsTry(rec, weftTarget, l.AnchorRel, present, msg)
+		committed, err = commitRecordsPathsTry(rec, weftTarget, pairLoc.AnchorRel, present, msg)
 	} else {
-		_, committed, err = CommitRecordsPaths(rec, weftTarget, l.AnchorRel, present, msg, SyncOptions{})
+		_, committed, err = CommitRecordsPaths(rec, weftTarget, pairLoc.AnchorRel, present, msg, SyncOptions{})
 	}
 	if err != nil {
 		return false, fmt.Errorf("commit the pair's pending records: %w", err)

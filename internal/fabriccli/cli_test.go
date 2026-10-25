@@ -150,19 +150,14 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		}
 	}
 
-	// The .lyx-anchor marker and repo-wide fabric.yaml must be committed
-	// onto weft:main (the board worktree), not merely present on disk. This
-	// checks tracked-ness directly (git ls-files) rather than a blanket
-	// `git status --porcelain` cleanliness assertion: CommitWeftAt/PushWeftAt
-	// bypass ensureWeftLockDir's exclude-seeding (by design — see recordsgit.go's CommitWeftAt doc comment),
-	// so gitrepo's own
-	// .gitrepo-push.lock can legitimately surface as untracked dirt on the
-	// board worktree; that is a pre-existing gap in boardengine.Sync's own
-	// identical CommitWeftAt/PushWeftAt pairing, not something this batch's
-	// clone orchestration introduces or is responsible for fixing.
+	// The repo-wide fabric.yaml and warp binding must be committed onto weft:main (the board worktree), not merely present on disk.
+	// The .lyx-anchor marker is tracked at the root of the prime's weft worktree and absent from the board.
+	// This checks tracked-ness directly (git ls-files) rather than a blanket `git status --porcelain` cleanliness assertion:
+	// CommitWeftAt/PushWeftAt bypass ensureWeftLockDir's exclude-seeding (by design — see recordsgit.go's CommitWeftAt doc comment),
+	// so gitrepo's own .gitrepo-push.lock can legitimately surface as untracked dirt on the board worktree;
+	// that is a pre-existing gap in boardengine.Sync's own identical CommitWeftAt/PushWeftAt pairing, not something this batch's clone orchestration introduces or is responsible for fixing.
 	boardDir := fabricengine.BoardDir(hubPath)
 	for _, relPath := range []string{
-		lyxcwd.AnchorFileName,
 		filepath.Join(lyxdirs.LyxDirName, "config", "fabric.yaml"),
 		fabricengine.WarpBindingFileName,
 	} {
@@ -170,6 +165,13 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 		if tracked == "" {
 			t.Errorf("%s is not tracked on weft:main at %s", relPath, boardDir)
 		}
+	}
+	primeWeft := weftname.SiblingPath(hubPath, "clonecli-warp")
+	if tracked := strings.TrimSpace(gitOutputCLI(t, primeWeft, "ls-files", "--", lyxcwd.AnchorFileName)); tracked != lyxcwd.AnchorFileName {
+		t.Errorf("prime weft tracks %q for the anchor marker; want %q", tracked, lyxcwd.AnchorFileName)
+	}
+	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", lyxcwd.AnchorFileName)); tracked != "" {
+		t.Errorf("board tracks %q for the anchor marker; want none", tracked)
 	}
 
 	// A per-worktree module's repo default (e.g. "loom") must have been seeded on the board;
@@ -188,7 +190,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", markerRel)); tracked != markerRel {
 		t.Errorf("board tracks %q for the base-sparse marker; want %q", tracked, markerRel)
 	}
-	const cloneCommit = "fabric clone: record anchor + repo-wide config"
+	const cloneCommit = "fabric clone: record repo-wide config"
 	if added := strings.TrimSpace(gitOutputCLI(t, boardDir, "log", "--diff-filter=A", "--format=%s", "--", markerRel)); added != cloneCommit {
 		t.Errorf("commit adding the base-sparse marker = %q; want %q", added, cloneCommit)
 	}

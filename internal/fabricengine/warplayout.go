@@ -12,12 +12,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
-// warpLayoutFor returns the per-warp-worktree Location for a hub sibling
-// (spawn-free optimization, constructed inline below now that
-// lyxcwd.Location.SiblingLayout no longer exists) or, for a worktree
-// outside the hub, by falling back to the spawning, gate-free
-// lyxcwd.ResolveWorktree. Both paths are equivalent; the guard is purely
-// a spawn-count optimization.
+// warpLayoutFor returns the per-warp-worktree Location at that worktree's own anchor.
+// A hub sibling is named through lyxcwd.NamedWorktree without spawning git;
+// a worktree outside the hub falls back to the spawning, gate-free lyxcwd.ResolveWorktree.
+// Both paths answer the same Location; the guard is purely a spawn-count optimization.
 func warpLayoutFor(l *lyxcwd.Location, worktreeRoot string) (*lyxcwd.Location, error) {
 	if filepath.Dir(worktreeRoot) != l.HubPath {
 		// worktreeRoot is not a direct child of l.HubPath, so reusing l.HubPath below
@@ -25,15 +23,7 @@ func warpLayoutFor(l *lyxcwd.Location, worktreeRoot string) (*lyxcwd.Location, e
 		return lyxcwd.ResolveWorktree(worktreeRoot)
 	}
 
-	// A hub sibling shares the hub-wide recorded anchor with l, so AnchorRel is
-	// reused directly rather than re-read from the marker. RepoName is carried over for the same
-	// reason — it derives from the hub directory name, which is identical for every sibling — and
-	// omitting it would leave this branch returning a Location the ResolveWorktree branch below
-	// would have filled in, making the two "equivalent" paths quietly disagree.
-	return &lyxcwd.Location{
-		RepoName:     l.RepoName,
-		HubPath:      l.HubPath,
-		WorktreeName: filepath.Base(filepath.Clean(worktreeRoot)),
-		AnchorRel:    l.AnchorRel,
-	}, nil
+	// A hub sibling gets its own anchor from its own marker, so the Location is named rather than copied from l.
+	// No git is spawned.
+	return lyxcwd.NamedWorktree(l.HubPath, filepath.Base(filepath.Clean(worktreeRoot)))
 }

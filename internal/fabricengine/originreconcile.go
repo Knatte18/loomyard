@@ -145,12 +145,14 @@ const (
 	BranchBusy BranchState = "busy"
 	// BranchLive means the branch belongs to a pair that is live, which a reconcile never moves.
 	BranchLive BranchState = "live"
+	// BranchAnchorStopped means a weft branch was left unmoved because taking origin's tip in would cross a change of its anchor marker, or its own marker is empty.
+	BranchAnchorStopped BranchState = "anchor_stopped"
 )
 
 // stops reports whether a branch in this state stops its entry or the scope.
 func (s BranchState) stops() bool {
 	switch s {
-	case BranchRewound, BranchRewritten, BranchDiverged, BranchGone, BranchDirty, BranchBusy, BranchLive:
+	case BranchRewound, BranchRewritten, BranchDiverged, BranchGone, BranchDirty, BranchBusy, BranchLive, BranchAnchorStopped:
 		return true
 	}
 	return false
@@ -162,22 +164,26 @@ func (s BranchState) stops() bool {
 // Paths are the conflicting or dirty paths, and Commits those a rewind dropped or a replay stopped on.
 // BusyLock names the held lock of a busy branch, and PushLockHeld is set when it was the push lock, which a parked push holds.
 // WayForward is the one line every reader of a stop takes, the repair step alone, with no re-entry verb.
+// Anchor is the anchor the way forward of an anchor_stopped branch names, empty when the stop is the weft's own empty marker.
+// MoveWayForward is the way forward of an anchor_stopped branch whose weft carries a move record, and replaces the one the anchor would name.
 // Moved is set by a moving reconcile once it brought the branch up to origin's head, State then reading level, or ahead when replayed commits sit on it.
 type BranchOutcome struct {
-	Branch       string
-	Repo         string
-	Slug         string
-	Prime        bool
-	Worktree     string
-	CodeWorktree string
-	State        BranchState
-	OriginHead   string
-	Paths        []string
-	Commits      []string
-	BusyLock     string
-	PushLockHeld bool
-	WayForward   string
-	Moved        bool
+	Branch         string
+	Repo           string
+	Slug           string
+	Prime          bool
+	Worktree       string
+	CodeWorktree   string
+	State          BranchState
+	OriginHead     string
+	Paths          []string
+	Commits        []string
+	BusyLock       string
+	PushLockHeld   bool
+	WayForward     string
+	Anchor         string
+	MoveWayForward string
+	Moved          bool
 }
 
 // EntryState is the verdict on one entry, the run a pair carries.
@@ -293,6 +299,9 @@ func (b BranchOutcome) rerunsCleanup() bool {
 // stopWayForward returns the repair step for a stopped branch, built through the failed-push helpers where one applies.
 // A state that does not stop returns the empty string.
 func (b BranchOutcome) stopWayForward() string {
+	if b.MoveWayForward != "" {
+		return b.MoveWayForward
+	}
 	record := FailedPush{Repo: b.Repo, RepoPath: b.Worktree, CodeWorktree: b.CodeWorktree, Branch: b.Branch, Prime: b.Prime}
 	switch b.State {
 	case BranchRewound:
@@ -319,8 +328,27 @@ func (b BranchOutcome) stopWayForward() string {
 		return fmt.Sprintf("wait for the holder of the %s lock to end", b.BusyLock)
 	case BranchLive:
 		return "no step now: the run's own Parent-Align judges and moves its pair, and `lyx cleanup --apply` re-judges it once the run has ended"
+	case BranchAnchorStopped:
+		return b.anchorStopWayForward()
 	}
 	return ""
+}
+
+// anchorStopWayForward names the step that settles an anchor_stopped weft.
+// An empty own marker names the marker file and its repair.
+// A pair's weft names the `--set` to run in its code worktree.
+// The prime's weft names first ending every reed session of the hub and waiting out every live batten run, since the `--set` refuses both, then the `--set`, then starting the orch again.
+func (b BranchOutcome) anchorStopWayForward() string {
+	if b.Anchor == "" {
+		if err := refuseEmptyOwnMarker(b.Worktree); err != nil {
+			return err.Error()
+		}
+		return fmt.Sprintf("restore the anchor marker of %s", b.Worktree)
+	}
+	if b.Slug != "" {
+		return fmt.Sprintf("run `lyx fabric anchor %s --set %s` in %s", b.Slug, b.Anchor, b.CodeWorktree)
+	}
+	return fmt.Sprintf("end every reed session of the hub, the orch's included, with `lyx reed down` in each, and wait until no batten run of the hub is live; then run `lyx fabric anchor --set %s` in %s; then run `lyx orch start` again", b.Anchor, b.CodeWorktree)
 }
 
 // dirtyWayForward names where each uncommitted path of a dirty branch is committed or restored.

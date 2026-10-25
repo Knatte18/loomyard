@@ -7,6 +7,7 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 )
 
 // TestDropLocal covers a records branch and a code branch ahead of origin tagged and moved to origin's tips with the mutations recorded, and a dirty tracked path refusing with nothing tagged or moved.
@@ -90,6 +92,76 @@ func TestDropLocal(t *testing.T) {
 		}
 		if len(res.Tags) != 0 || res.Mutated().Len() != 0 {
 			t.Errorf("DropLocal() result = %+v; want no tags and no mutations", res)
+		}
+	})
+
+	t.Run("A records branch and origin's tip at different anchors refuse before any tag or move", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			// arrange leaves the records branch ahead of origin and the two anchors apart, and returns what the refusal must contain.
+			arrange func(t *testing.T, pair *movesPair) []string
+		}{
+			{
+				"OriginsTipCarriesAnotherMarker",
+				func(t *testing.T, pair *movesPair) []string {
+					originCommitFile(t, pair.RecordsBare, pair.recordsName, lyxcwd.AnchorFileName, "sub\n")
+					gitkit.Git(t, pair.records, "fetch", "origin")
+					gitkit.CommitFile(t, pair.records, "notes/local.md", "records", "local records")
+					return []string{"lyx fabric anchor task --set sub", "lyx adopt task --drop-local"}
+				},
+			},
+			{
+				"LocalWeftAheadWithAReAnchorNotYetPushed",
+				func(t *testing.T, pair *movesPair) []string {
+					gitkit.CommitFile(t, pair.records, lyxcwd.AnchorFileName, "sub\n", "re-anchor")
+					return []string{"lyx fabric anchor task --set .", "lyx adopt task --drop-local"}
+				},
+			},
+			{
+				"OwnMarkerEmpty",
+				func(t *testing.T, pair *movesPair) []string {
+					gitkit.CommitFile(t, pair.records, "notes/local.md", "records", "local records")
+					writeFile(t, filepath.Join(pair.records, lyxcwd.AnchorFileName), "\n")
+					return []string{lyxcwd.AnchorFileName}
+				},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				pair := newMovesPair(t)
+				codeTip := gitkit.CommitFile(t, pair.code, "local-code.txt", "code", "local code")
+				want := tt.arrange(t, pair)
+				recordsTip := gitkit.RevParse(t, pair.records, "HEAD")
+
+				res, err := fabricengine.DropLocal(fabricengine.NewMutations(pair.Location.HubPath), pair.Location, "task")
+
+				if !errors.Is(err, fabricengine.ErrAnchorChange) {
+					t.Fatalf("DropLocal() error = %v; want it to wrap ErrAnchorChange", err)
+				}
+				for _, text := range want {
+					if !strings.Contains(err.Error(), text) {
+						t.Errorf("DropLocal() error = %q; want it to contain %q", err, text)
+					}
+				}
+				if got := gitkit.RevParse(t, pair.code, "HEAD"); got != codeTip {
+					t.Errorf("code HEAD = %q; want %q, nothing moved", got, codeTip)
+				}
+				if got := gitkit.RevParse(t, pair.records, "HEAD"); got != recordsTip {
+					t.Errorf("records HEAD = %q; want %q, nothing moved", got, recordsTip)
+				}
+				for _, dir := range []string{pair.code, pair.records} {
+					if tags := gitkit.Git(t, dir, "tag", "--list", "archive/*"); strings.TrimSpace(tags) != "" {
+						t.Errorf("tags in %s = %q; want none", dir, tags)
+					}
+				}
+				if len(res.Tags) != 0 || res.Mutated().Len() != 0 {
+					t.Errorf("DropLocal() result = %+v; want no tags and no mutations", res)
+				}
+			})
 		}
 	})
 }

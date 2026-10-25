@@ -31,7 +31,12 @@ func dobbyWatchDirs(prime *lyxcwd.Location, pauseRecordPath, boardDir string) fu
 		for _, slug := range slugs {
 			battenStatus := shedrun.StatusFile(prime, slug)
 			dirs[filepath.Dir(battenStatus)] = []string{filepath.Base(battenStatus)}
-			childStatus := shedrun.StatusFile(pairLocation(prime, slug), shedrun.SelfRunID)
+			pair, err := pairLocation(prime, slug)
+			if err != nil {
+				logger.Warn("beamcli: locating a pair for the watch failed; the pair is left out", "slug", slug, "error", err)
+				continue
+			}
+			childStatus := shedrun.StatusFile(pair, shedrun.SelfRunID)
 			dirs[filepath.Dir(childStatus)] = []string{filepath.Base(childStatus)}
 		}
 		return dirs

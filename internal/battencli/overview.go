@@ -181,9 +181,11 @@ type DobbyRunCells struct {
 	childCaches  map[string]*statuspane.StatusCache
 	// seeds holds the decoded seed by slug; a seed is write-once, so a decoded one is never read again.
 	seeds map[string]shedrun.Seed
-	// pairs holds the resolved task worktree location by slug, for as long as its directory exists.
+	// pairs holds the resolved task worktree location by slug, for as long as its directory exists and the run stays in Run-Shed;
+	// the pair's anchor can move between two runs, so a later Run-Shed spell resolves it again.
 	pairs map[string]*lyxcwd.Location
-	// childRecipes holds the recipe a child's seed names by slug; a seed is write-once, so a decoded one is never read again.
+	// childRecipes holds the recipe a child's seed names by slug; a seed is write-once, so a decoded one is never read again while the run stays in Run-Shed.
+	// The entry goes with the pair's, since a later run in the pair has a seed of its own.
 	childRecipes map[string]string
 }
 
@@ -222,7 +224,7 @@ func (r *DobbyRunCells) Of(runs []dobbyengine.ViewRun, now time.Time) map[string
 	return cells
 }
 
-// resolveChildPair resolves the task worktree of slug once while its directory exists.
+// resolveChildPair resolves the task worktree of slug once per Run-Shed spell while its directory exists.
 func (r *DobbyRunCells) resolveChildPair(slug string) (*lyxcwd.Location, error) {
 	pair, ok := r.pairs[slug]
 	if !ok {
@@ -302,6 +304,9 @@ func (r *DobbyRunCells) poll(slug string) overviewRun {
 			logger.Debug("batten: reading a child seed for the overview failed", "slug", slug, "err", err)
 		}
 		run.ChildRecipe = recipe
+	} else {
+		delete(r.pairs, slug)
+		delete(r.childRecipes, slug)
 	}
 	return run
 }

@@ -40,6 +40,25 @@ func SetScratchBeforeLinkHookForTest(t *testing.T, hook func()) {
 	t.Cleanup(func() { scratchBeforeLinkHook = nil })
 }
 
+// SetAnchorFailHookForTest sets anchorFailHook until the test ends.
+// It changes process-global state, so the calling test must not be parallel.
+func SetAnchorFailHookForTest(t *testing.T, hook func(afterCommit bool) error) {
+	t.Helper()
+
+	anchorFailHook = hook
+	t.Cleanup(func() { anchorFailHook = nil })
+}
+
+// SetWeftHeadSHAForTest swaps weftHeadSHA for fn until the test ends.
+// It changes process-global state, so the calling test must not be parallel.
+func SetWeftHeadSHAForTest(t *testing.T, fn func(weftPath string) (string, error)) {
+	t.Helper()
+
+	original := weftHeadSHA
+	weftHeadSHA = fn
+	t.Cleanup(func() { weftHeadSHA = original })
+}
+
 // SetScratchPathTrackedForTest swaps scratchPathTracked for fn until the test ends.
 // It changes process-global state, so the calling test must not be parallel.
 func SetScratchPathTrackedForTest(t *testing.T, fn func(worktreeDir, relPath string) (bool, error)) {
@@ -76,6 +95,14 @@ const WarpProbeDirPrefixForTest = warpProbeDirPrefix
 // ExcludePatternForTest re-exports excludePatternFor for package fabricengine_test files that
 // assert on the anchored .git/info/exclude pattern without duplicating its spelling.
 var ExcludePatternForTest = excludePatternFor
+
+// IntegrateWeftForTest runs integrateWeft on the weft at weftPath with a recorder of its own, for package fabricengine_test files that drive the integration directly.
+func IntegrateWeftForTest(weftPath, upstream, target string, names []string, fallback string) (IntegrateOutcome, error) {
+	return integrateWeft(NewMutations(filepath.Dir(weftPath)), weftPath, upstream, target, names, fallback)
+}
+
+// MoveLockPathForTest re-exports moveLockPath for package fabricengine_test files that hold the move lock of a weft.
+var MoveLockPathForTest = moveLockPath
 
 // MatchParentBranchForTest re-exports matchParentBranch for package fabricengine_test files that
 // need to drive it directly with hand-built WorktreeEntry slices, without a hubforge fixture.
@@ -404,6 +431,9 @@ func swapPushRecorder(t *testing.T) *pushRecorder {
 	t.Cleanup(func() { spawnDetachedPushFn = original })
 	return recorder
 }
+
+// TreeAnchorForTest re-exports treeAnchor, the rule that derives the anchor of a branch recording none, for the table that pins it.
+var TreeAnchorForTest = treeAnchor
 
 // WriteWeftConfigContentForTest re-exports writeWeftConfigContent (relocated fixture helper, formerly
 // syncweft_integration_test.go): commit_partial_integration_test.go, commit_gating_integration_test.go,

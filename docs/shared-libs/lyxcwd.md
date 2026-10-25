@@ -3,7 +3,7 @@
 The **entry gate** that converts "the process started somewhere" into "these are the coordinates of a legal lyx worktree, or here is why this is not one".
 It is deliberately no longer a geometry owner — it does not construct any path from a structural token — it resolves the active `Location` from a working directory and exposes the handful of typed accessors every caller derives from that `Location`.
 
-**Dependency direction (test-enforced):** `internal/lyxcwd`'s own imports are capped at stdlib plus `internal/dotgit` — nothing else, ever.
+**Dependency direction (test-enforced):** `internal/lyxcwd`'s own imports are capped at stdlib plus `internal/dotgit` and the leaf package that names a worktree's records sibling — nothing else, ever.
 With no `gitexec` import the package cannot spawn git: it finds the worktree root in-process.
 This ceiling is what keeps `fabricengine` → `logger` → `lyxcwd` acyclic: any wider import set would risk a cycle back through one of the packages `lyxcwd` itself sits below.
 The cap is an allowlist enforced by `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`), not by the Go compiler — a same-cycle-free but out-of-allowlist import would compile fine and only this test catches it.
@@ -30,7 +30,7 @@ On failure, an error (e.g. the cwd no longer exists).
 
 ### `Resolve(cwd string) (*Location, error)`
 
-Builds a `Location` from `cwd` by finding the worktree root in-process through `internal/dotgit`, reading the recorded `.lyx-anchor` marker for `AnchorRel` (defaulting to `"."` when none is recorded), and then requires `cwd` to equal the anchored directory exactly — the strict cwd gate.
+Builds a `Location` from `cwd` by finding the worktree root in-process through `internal/dotgit`, reading the worktree's recorded `.lyx-anchor` marker for `AnchorRel`, and then requires `cwd` to equal the anchored directory exactly — the strict cwd gate.
 The walk to the worktree root starts from `cwd` with its symlinks resolved, as `git rev-parse --show-toplevel` starts, so a hub reached through a symlinked path, to the root or below it, gets the same `Location` as through its real path.
 
 **Returns:** On success, the resolved `*Location`.
@@ -46,6 +46,22 @@ Builds a `Location` exactly as `Resolve` does, but takes the anchor as a paramet
 **This is a deliberate bypass, not a general-purpose resolver.**
 A caller reaching for `ResolveWithAnchor` to escape a gate failure is misusing it — the correct fix is to stand in the anchored directory.
 It stays ungated because both its production callers stand somewhere the strict gate would reject: fabric's clone passes the freshly-cloned worktree root while the anchor may be a non-`"."` subpath, and `gitkit`'s primitive repo fixtures inject anchors the same way to build them.
+
+### The recorded anchor
+
+A worktree's anchor is read in this order:
+
+1. the worktree's own `.lyx-anchor`, at the root of its records sibling; an empty one counts as absent, and one that fails `ValidateAnchorRel` is an error naming the file;
+2. the legacy hub-wide `.lyx-anchor` at the board root, where a stale pre-rename `.fabric-anchor` with no renamed marker beside it is `ErrStaleAnchorMarker`; the guard applies to this read only;
+3. `"."`.
+
+Only `fabricengine` writes the marker or reads it from git; `lyxcwd` reads the working tree alone.
+
+### `NamedWorktree(hubPath, name string) (*Location, error)`
+
+Builds the `Location` of the worktree `name` in the hub at `hubPath`, reading that worktree's anchor in the order above.
+It applies no cwd gate, spawns no git, and needs neither the worktree nor its records sibling to exist, so both absent answer the board marker's value or `"."`.
+It is how production code outside `lyxcwd` gets the `Location` of a worktree other than the acting one.
 
 ### `ResolveWorktree(root string) (*Location, error)`
 
@@ -120,6 +136,6 @@ Matching is **whole-token** (exact equality after `strconv.Unquote`, not substri
 Test files (`*_test.go`) are excluded from the scan — test geometry is a code-review obligation, not machine-enforced.
 A `scanned_non_empty` sub-test guards against a misconfigured walk that would silently produce a vacuous pass.
 
-A third, separately-filed test — `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) — enforces the import cap described above: it walks this package's own production `.go` files and fails on any import outside stdlib plus `internal/dotgit`.
+A third, separately-filed test — `internal/lyxcwd/leaf_enforcement_test.go` (`TestLeafInvariant_AllowlistOnly`) — enforces the import cap described above: it walks this package's own production `.go` files and fails on any import outside stdlib plus `internal/dotgit` and the records-sibling naming leaf.
 
 See [PATTERN.md](../../PATTERN.md) for the full invariant specification, the current per-token ownership map, and guidance for new code.

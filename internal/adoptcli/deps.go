@@ -108,6 +108,16 @@ func hubDepsAs(prime *lyxcwd.Location, machine func() (string, error)) (adoptDep
 		ResumeChild: func(slug string) error {
 			return resumeChild(fabricengine.WorktreePath(prime, slug))
 		},
+		MoveInProgress: func(worktree string) (string, bool, error) {
+			if worktree == "" {
+				worktree = prime.WorktreeName
+			}
+			pair, err := lyxcwd.NamedWorktree(prime.HubPath, worktree)
+			if err != nil {
+				return "", false, err
+			}
+			return fabricengine.MoveInProgress(worktree, fabricengine.RecordsWorktreePath(pair, worktree))
+		},
 		StartDobbies: func() error {
 			_, err := dobbyengine.EnsureLive(hubgeom.DobbyStart(prime))
 			return err

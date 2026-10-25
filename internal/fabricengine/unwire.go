@@ -2,9 +2,9 @@
 // teardown successor to the deleted `lyx init --undo`.
 // Without `apply` the verb only reports what it would remove and changes nothing.
 //
-// Unwire is per-worktree and never touches the repo-wide `weft:main` records (`.lyx-anchor`,
-// `<BoardDir>/_lyx/config/fabric.yaml`) — those are per-repo facts a later `lyx fabric reconcile`
-// re-wire still needs.
+// Unwire is per-worktree and never touches the repo-wide `weft:main` records (`<BoardDir>/_lyx/config/fabric.yaml`).
+// It leaves every worktree's `.lyx-anchor` marker at its weft root alone too.
+// A later `lyx fabric reconcile` re-wire still needs all of them.
 // An applied Unwire removes every fabric junction on disk but the root scratch link, which stays with its `/.scratch` exclude line.
 // It is distinct from Reconcile: Reconcile converges wiring toward the repo-wide pathspec (may add,
 // re-point, or remove junctions), while an applied Unwire always removes every fabric junction present on disk
@@ -57,7 +57,7 @@ type UnwireVerbResult struct {
 // Ownership is decided by where a link resolves (see scanOnDiskJunctionNames): a hand-authored
 // symlink checked into the warp repo beside the junctions is never claimed or removed.
 // It never deletes weft-side content: every weft-side directory, including `.lyx`, is left intact.
-// Unwire never touches the repo-wide weft:main records;
+// Unwire never touches the repo-wide weft:main records or any worktree's `.lyx-anchor` marker at its weft root;
 // a later `lyx fabric reconcile` re-wire can recreate this worktree's wiring.
 func Unwire(cwd string, apply bool) (res UnwireVerbResult, err error) {
 	var rec *Mutations

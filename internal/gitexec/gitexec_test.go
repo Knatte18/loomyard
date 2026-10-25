@@ -196,6 +196,16 @@ func TestRun(t *testing.T) {
 			t.Errorf("GIT_OPTIONAL_LOCKS values in the child environment = %v; want [0]", values)
 		}
 	})
+
+	t.Run("RunWithEnv reaches the child's environment", func(t *testing.T) {
+		got, err := gitexec.RunWithEnv([]string{"var", "GIT_AUTHOR_IDENT"}, t.TempDir(), []string{"GIT_AUTHOR_NAME=Env Author", "GIT_AUTHOR_EMAIL=env@example.com"})
+		if err != nil {
+			t.Fatalf("RunWithEnv(var GIT_AUTHOR_IDENT) error = %v", err)
+		}
+		if !strings.HasPrefix(got, "Env Author <env@example.com>") {
+			t.Errorf("RunWithEnv(var GIT_AUTHOR_IDENT) = %q; want it to start with the author set through extraEnv", got)
+		}
+	})
 }
 
 // TestRun_StdoutOnError tests that stdout is still returned alongside a *GitError, using a command that writes to stdout and then exits non-zero:
@@ -228,6 +238,9 @@ func TestRun_StdoutOnError(t *testing.T) {
 	forms := map[string]func() (string, error){
 		"Run":      func() (string, error) { return gitexec.Run(diffArgs, tempDir) },
 		"RunStdin": func() (string, error) { return gitexec.RunStdin(diffArgs, tempDir, "ignored\n") },
+		"RunWithEnv": func() (string, error) {
+			return gitexec.RunWithEnv(diffArgs, tempDir, []string{"GIT_AUTHOR_NAME=Env Author"})
+		},
 	}
 	for name, form := range forms {
 		stdout, err := form()
@@ -568,10 +581,11 @@ func TestCheckFloor(t *testing.T) {
 
 		_, runErr := gitexec.Run([]string{"--version"}, dir)
 		_, stdinErr := gitexec.RunStdin([]string{"--version"}, dir, "")
+		_, envErr := gitexec.RunWithEnv([]string{"--version"}, dir, []string{"GIT_AUTHOR_NAME=Env Author"})
 		_, _, exitCode, rawErr := gitexec.RunGit([]string{"--version"}, dir)
 		checkErr := gitexec.CheckFloor()
 
-		for name, err := range map[string]error{"Run": runErr, "RunStdin": stdinErr, "RunGit": rawErr, "CheckFloor": checkErr} {
+		for name, err := range map[string]error{"Run": runErr, "RunStdin": stdinErr, "RunWithEnv": envErr, "RunGit": rawErr, "CheckFloor": checkErr} {
 			var floorErr *toolfloor.FloorError
 			if !errors.As(err, &floorErr) {
 				t.Errorf("%s error = %v; want a *toolfloor.FloorError", name, err)

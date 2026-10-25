@@ -36,16 +36,15 @@ type warpProbeResult struct {
 	RecordedWarpURL string
 	// Found is true only when WarpBindingFileName is present in the probe's HEAD commit.
 	Found bool
-	// WeftLooksLikeWeft is true when the candidate has an unborn HEAD (a genuinely empty weft
-	// remote) or its HEAD commit carries lyxcwd.AnchorFileName (or the stale pre-rename marker) at
-	// the root.
+	// WeftLooksLikeWeft is true when the candidate has an unborn HEAD (a genuinely empty weft remote).
+	// It is also true when its HEAD commit or main-weft branch carries lyxcwd.AnchorFileName at the root, or its HEAD commit carries the stale pre-rename marker there.
 	WeftLooksLikeWeft bool
 	// RecordedShortname is the repo shortname read from the probe's HEAD commit, valid only when ShortnameFound is true;
 	// a blank or grammar-failing value reports ShortnameFound false, like ReadShortname.
 	RecordedShortname string
 	// ShortnameFound is true only when ShortnameFileName is present at the probe's HEAD with a usable value.
 	ShortnameFound bool
-	// AnchorFound is true when lyxcwd.AnchorFileName is present at the probe's HEAD.
+	// AnchorFound is true when lyxcwd.AnchorFileName is present at the probe's HEAD or at the root of its main-weft branch.
 	AnchorFound bool
 }
 
@@ -57,7 +56,7 @@ func (p warpProbeResult) freshBind() bool { return !p.Found && !p.AnchorFound }
 // warp-binding and anchor evidence its HEAD commit carries, then removes the clone before returning.
 // It performs, in order: an unborn-HEAD check (a genuinely empty weft remote), a presence check for
 // the recorded warp binding, and — only when the binding is absent — a presence check for the anchor
-// marker (both the current and the stale pre-rename name) used by CloneHub's old-order bootstrap
+// marker (at HEAD and on main-weft, and the stale pre-rename name at HEAD) used by CloneHub's old-order bootstrap
 // guard.
 //
 // The probe lives in cwd, never os.TempDir(): cwd is provably writable (the hub is about to be
@@ -109,6 +108,12 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 	if err != nil {
 		return warpProbeResult{}, err
 	}
+	if !anchorPresent {
+		anchorPresent, err = probeMainWeftHasPath(weftURL, probeDir, lyxcwd.AnchorFileName)
+		if err != nil {
+			return warpProbeResult{}, err
+		}
+	}
 
 	bindingPresent, err := probeTreeHasPath(weftURL, probeDir, WarpBindingFileName)
 	if err != nil {
@@ -155,6 +160,29 @@ func probeWeftBinding(cwd, weftURL string) (warpProbeResult, error) {
 // failure to run git at all is a hard error.
 func probeTreeHasPath(weftURL, probeDir, path string) (bool, error) {
 	stdout, err := gitexec.Run([]string{"ls-tree", "HEAD", "--name-only", "--", path}, probeDir)
+	if err != nil {
+		return false, wrapProbeError(weftURL, "ls-tree", err)
+	}
+	return strings.TrimSpace(stdout) != "", nil
+}
+
+// probeMainWeftHasPath reports whether path is present at the root of the weft candidate's main-weft branch (RecordsBranchName of "main").
+// A hub's prime weft carries its anchor marker on that branch while the candidate's HEAD may name another.
+// It fetches the branch into the probe clone.
+// A candidate without the branch answers false, and any other git failure is an error.
+func probeMainWeftHasPath(weftURL, probeDir, path string) (bool, error) {
+	branchRef := "refs/heads/" + RecordsBranchName("main")
+	listed, err := gitexec.Run([]string{"ls-remote", "--heads", "origin", branchRef}, probeDir)
+	if err != nil {
+		return false, wrapProbeError(weftURL, "ls-remote", err)
+	}
+	if strings.TrimSpace(listed) == "" {
+		return false, nil
+	}
+	if _, err := gitexec.Run([]string{"fetch", "--depth", "1", "origin", branchRef}, probeDir); err != nil {
+		return false, wrapProbeError(weftURL, "fetch", err)
+	}
+	stdout, err := gitexec.Run([]string{"ls-tree", "FETCH_HEAD", "--name-only", "--", path}, probeDir)
 	if err != nil {
 		return false, wrapProbeError(weftURL, "ls-tree", err)
 	}

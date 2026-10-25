@@ -51,13 +51,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", subDir, err)
 	}
-	anchorPath := filepath.Join(fabricengine.BoardDir(l.HubPath), lyxcwd.AnchorFileName)
-	if err := os.MkdirAll(filepath.Dir(anchorPath), 0o755); err != nil {
-		t.Fatalf("mkdir board dir: %v", err)
-	}
-	if err := os.WriteFile(anchorPath, []byte("sub"), 0o644); err != nil {
-		t.Fatalf("write %s: %v", anchorPath, err)
-	}
+	seedAnchorMarker(t, h, "sub")
 	nestedLayout, err := lyxcwd.Resolve(subDir)
 	if err != nil {
 		t.Fatalf("lyxcwd.Resolve(%s): %v", subDir, err)
@@ -95,6 +89,63 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 	if _, statErr := os.Lstat(nestedPatternLink); !os.IsNotExist(statErr) {
 		t.Errorf("nested _extra junction %s still exists after Remove", nestedPatternLink)
 	}
+
+	t.Run("PairAtItsOwnAnchorRemovedFromThePrime", func(t *testing.T) {
+		t.Parallel()
+
+		const reanchored = "remove-own-anchor"
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, reanchored, fabricengine.AddOptions{SkipPush: true})
+		hubforge.ReanchorPair(t, h, reanchored, "sub")
+		pairLauncherDir := h.PairLauncherDir(reanchored)
+		if err := os.MkdirAll(pairLauncherDir, 0o755); err != nil {
+			t.Fatalf("plant the pair's launcher directory %s: %v", pairLauncherDir, err)
+		}
+		primeAnchorLauncherDir := fabricengine.LauncherDir(h.Location, reanchored)
+		if _, err := os.Stat(primeAnchorLauncherDir); err != nil {
+			t.Fatalf("setup: the launcher directory Add wrote at the prime's anchor %s: %v", primeAnchorLauncherDir, err)
+		}
+
+		result, err := h.Topology.Remove(h.Location, reanchored, true, false)
+		if err != nil {
+			t.Fatalf("Remove: %v", err)
+		}
+
+		// Exactly the two wired junctions (_lyx, .lyx) at the pair's own anchor.
+		if result.LinksRemoved != 2 {
+			t.Errorf("LinksRemoved = %d; want 2 (_lyx, .lyx at <slug>/sub)", result.LinksRemoved)
+		}
+		assertAbsent(t, pairLauncherDir)
+		assertPresent(t, primeAnchorLauncherDir)
+		assertAbsent(t, h.PairCodeWorktree(reanchored))
+	})
+
+	t.Run("PairWhoseRecordsWorktreeIsGone", func(t *testing.T) {
+		t.Parallel()
+
+		const reanchored = "remove-gone-records"
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, reanchored, fabricengine.AddOptions{SkipPush: true})
+		hubforge.ReanchorPair(t, h, reanchored, "sub")
+		if err := os.RemoveAll(h.PairRecordsSibling(reanchored)); err != nil {
+			t.Fatalf("delete the records worktree by hand: %v", err)
+		}
+
+		if _, found, err := fabricengine.ReadOriginFor(h.Location, reanchored); found || err != nil {
+			t.Errorf("ReadOriginFor() = found %v, err %v; want not found with no error", found, err)
+		}
+		result, err := h.Topology.Remove(h.Location, reanchored, true, false)
+		if err != nil {
+			t.Fatalf("Remove: %v", err)
+		}
+
+		assertAbsent(t, h.PairCodeWorktree(reanchored))
+		for _, m := range result.Mutations.Entries() {
+			if strings.HasPrefix(filepath.ToSlash(m.Target), reanchored+"/sub") {
+				t.Errorf("Remove recorded %+v; want no step under %s/sub", m, reanchored)
+			}
+		}
+	})
 }
 
 // TestRemove_SweepsAnchoredLinksOnSubpathHub proves Remove's link sweep reads the pair's ANCHORED
@@ -116,7 +167,7 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(h.Location.WorktreePath(), anchor), 0o755); err != nil {
 		t.Fatalf("create anchored directory in prime: %v", err)
 	}
-	seedAnchorMarker(t, h.Location.HubPath, anchor)
+	seedAnchorMarker(t, h, anchor)
 
 	l, err := lyxcwd.ResolveWorktree(h.Location.WorktreePath())
 	if err != nil {
@@ -186,15 +237,8 @@ func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
 	}
 }
 
-// seedAnchorMarker records anchor as the hub-wide subpath the same way a real clone does, by writing
-// the marker into the hub's board directory.
-func seedAnchorMarker(t *testing.T, hubPath, anchor string) {
+// seedAnchorMarker records anchor as the prime's subpath the same way a real clone does, by committing the marker at the root of the prime's weft worktree, where it wins over any Bolt marker.
+func seedAnchorMarker(t *testing.T, h *hubforge.Hub, anchor string) {
 	t.Helper()
-	boardDir := fabricengine.BoardDir(hubPath)
-	if err := os.MkdirAll(boardDir, 0o755); err != nil {
-		t.Fatalf("mkdir board dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(boardDir, lyxcwd.AnchorFileName), []byte(anchor+"\n"), 0o644); err != nil {
-		t.Fatalf("write anchor marker: %v", err)
-	}
+	gitkit.CommitFile(t, h.PrimeRecords(), lyxcwd.AnchorFileName, anchor+"\n", "test fixture: re-anchor the prime at "+anchor)
 }

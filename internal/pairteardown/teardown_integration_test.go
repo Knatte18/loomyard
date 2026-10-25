@@ -423,6 +423,34 @@ func TestRun_TeardownScenario(t *testing.T) {
 				t.Errorf("board status after Run = %v, want the run status left unchanged", status)
 			}
 		}},
+		{"BusyRefusalsNameThePairsOwnAnchor", func(t *testing.T) {
+			p := addLivePair(t, h, cfg.Tmux, "pt-anchor")
+			hubforge.ReanchorPair(t, h, p.slug, "sub")
+			task, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(h.Location, p.slug))
+			if err != nil {
+				t.Fatalf("ResolveWorktree: %v", err)
+			}
+			driverLockPath := shedrun.DriverLock(task, shedrun.SelfRunID)
+			if err := os.MkdirAll(filepath.Dir(driverLockPath), 0o755); err != nil {
+				t.Fatalf("create the driver lock directory: %v", err)
+			}
+			held, ok, err := lock.TryAcquireWriteLock(driverLockPath)
+			if err != nil || !ok {
+				t.Fatalf("take the driver lock at the pair's own anchor: ok = %v, err = %v", ok, err)
+			}
+			t.Cleanup(func() { _ = held.Release() })
+			pairAnchor := filepath.Join(fabricengine.WorktreePath(h.Location, p.slug), "sub")
+
+			_, err = p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug, RefuseWhenBusy: true})
+			if !errors.Is(err, pairteardown.ErrDriverBusy) || !strings.Contains(err.Error(), "lyx reed attach, run from "+pairAnchor) {
+				t.Errorf("Run error = %v; want ErrDriverBusy naming `lyx reed attach, run from %s`", err, pairAnchor)
+			}
+
+			_, err = p.td.Run(context.Background(), pairteardown.Request{Slug: p.slug, RefuseWhenBusy: true, Verdict: fabricengine.EntryEnded})
+			if !errors.Is(err, pairteardown.ErrDriverBusy) || !strings.Contains(err.Error(), driverLockPath) {
+				t.Errorf("Run error = %v; want ErrDriverBusy naming the driver lock %s", err, driverLockPath)
+			}
+		}},
 		{"TaskWorktreeRemovedByHandEndsTheSessionByName", func(t *testing.T) {
 			// Runs last: it ends the only live session on the hub's server, so the server's socket file must go.
 			p := addLivePair(t, h, cfg.Tmux, "pt-gone")

@@ -170,7 +170,11 @@ func (a logArchive) remove(path string) bool {
 // archivePairLogs copies the pair's trace and verify logs into the hub's log archive, after pruning it.
 // It is best effort: a failure logs a Warn and changes nothing about the teardown, and the pair's own files are copied, never moved.
 func (t *Teardown) archivePairLogs(slug string) {
-	anchor := t.taskAnchor(slug)
+	anchor, err := t.taskAnchor(slug)
+	if err != nil {
+		logger.Warn("pairteardown: could not locate the pair's logs for the archive", "slug", slug, "cause", err)
+		return
+	}
 	verifyDir := verifytree.Dir(anchor)
 	verifyPaths := verifytree.NewPaths(anchor, verifyDir)
 	traceFiles, traceErr := regularFilesIn(logger.LogsDirAt(anchor), func(string) bool { return true })

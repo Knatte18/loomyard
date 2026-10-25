@@ -420,8 +420,9 @@ never deleted by unwire.
 This is distinct from "lyx fabric reconcile", which converges wiring toward
 the repo-wide pathspec (adding or re-pointing junctions as needed); unwire
 always tears wiring down. It leaves the repo-wide weft:main records intact
-(.lyx-anchor, the .lyx-warp binding, and fabric.yaml), so a later
-"lyx fabric reconcile" can re-wire this worktree.
+(the .lyx-warp binding and fabric.yaml) and every worktree's .lyx-anchor
+marker at its weft root, so a later "lyx fabric reconcile" can re-wire this
+worktree.
 
 Example:
   lyx fabric unwire
@@ -453,6 +454,8 @@ Example:
   lyx fabric shortname ly`,
 		RunE: clihelp.WrapRunCtx(runShortname),
 	})
+
+	cmd.AddCommand(anchorCommand())
 
 	// Wire the weft-git content-sync verbs (status/commit/push/pull/sync), their
 	// own --weft-path bypass flag, and their scoped PersistentPreRunE.
@@ -703,6 +706,7 @@ func runPairs(ctx context.Context, out io.Writer, _ []string) int {
 // failing downgrades the reported outcome to WarpBindingOutcomeRecordFailed — a CLI-only value
 // Topology.Reconcile itself never returns — and fails the verb with the envelope kept, as does a commit or push failure of the hub-wide config.
 // A heal skipped because the board could not be brought up to date is reported under hub_config_detail and is no failure.
+// The verdict on the hub-wide anchor marker, when the board holds one, is reported under bolt_anchor.
 // A pair failure takes precedence over these as the error the verb returns.
 func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
@@ -727,7 +731,11 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	boardDir := fabricengine.BoardDir(l.HubPath)
 	primeBaseDir := ""
 	if primeName, primeErr := fabricengine.PrimeName(l); primeErr == nil {
-		primeBaseDir = filepath.Join(l.HubPath, primeName, l.AnchorRel)
+		primeLoc, err := lyxcwd.NamedWorktree(l.HubPath, primeName)
+		if err != nil {
+			return output.Err(out, fmt.Sprintf("read the anchor of the prime %q: %v", primeName, err))
+		}
+		primeBaseDir = filepath.Join(l.HubPath, primeName, primeLoc.AnchorRel)
 	}
 
 	// The board is pulled first, and the files are written and committed in _board under the board write lock.
@@ -883,6 +891,9 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	}
 	if len(r.HubDetails) > 0 {
 		envelope["hub_details"] = r.HubDetails
+	}
+	if r.BoltAnchor != "" {
+		envelope["bolt_anchor"] = r.BoltAnchor
 	}
 
 	// A pair carrying an Error is a repair this verb was asked to perform and did not, so it must

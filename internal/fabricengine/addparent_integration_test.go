@@ -14,9 +14,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
 // gitOut returns the trimmed stdout of git args in dir, failing the test on any git error.
@@ -127,6 +130,23 @@ func TestAdd_FromParentPair(t *testing.T) {
 				gitOut(t, fabricengine.WorktreePath(l, "switched"), "checkout", "-b", "elsewhere")
 				return "switched"
 			}, []string{"switched", "\"elsewhere\"", "lyx fabric checkout "}},
+			{"EmptyForkPointMarker", func(t *testing.T) string {
+				marker := filepath.Join(beamWeftPath, lyxcwd.AnchorFileName)
+				if err := os.WriteFile(marker, []byte("  \n"), 0o644); err != nil {
+					t.Fatalf("truncate %s: %v", marker, err)
+				}
+				t.Cleanup(func() { gitOut(t, beamWeftPath, "restore", lyxcwd.AnchorFileName) })
+				return "beam"
+			}, []string{lyxcwd.AnchorFileName, "git -C"}},
+			{"MoveRecordOnForkPoint_LockFree", func(t *testing.T) string {
+				writeMoveRecord(t, beamWeftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
+				return "beam"
+			}, []string{"interrupted", "lyx fabric anchor beam --set x"}},
+			{"MoveRecordOnForkPoint_LockHeld", func(t *testing.T) string {
+				writeMoveRecord(t, beamWeftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
+				holdMoveLock(t, beamWeftPath)
+				return "beam"
+			}, []string{"starting in another process", "run the verb again"}},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -153,5 +173,68 @@ func TestAdd_FromParentPair(t *testing.T) {
 			t.Fatalf("Add without Parent from a dirty prime error = %v; want *ErrSourceDirty", err)
 		}
 		assertNothingCreated(t, "no-parent")
+	})
+
+	t.Run("a forked pair takes the fork point's anchor", func(t *testing.T) {
+		const anchor = "x"
+		hubforge.ReanchorPair(t, h, "beam", anchor)
+		gitOut(t, beamPath, "checkout", "--", tracked)
+		beamLocation, err := lyxcwd.ResolveWorktree(beamPath)
+		if err != nil {
+			t.Fatalf("ResolveWorktree(%s): %v", beamPath, err)
+		}
+		if beamLocation.AnchorRel != anchor {
+			t.Fatalf("beam AnchorRel = %q; want %q after ReanchorPair", beamLocation.AnchorRel, anchor)
+		}
+
+		tests := []struct {
+			name string
+			add  func(slug string) error
+		}{
+			{"NamedParent", func(slug string) error {
+				_, err := addSkippingPush(slug, "beam", false)
+				return err
+			}},
+			{"ActingWorktreeAsForkPoint", func(slug string) error {
+				_, err := h.Topology.Add(beamLocation, slug, fabricengine.AddOptions{SkipPush: true})
+				return err
+			}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				slug := "anchored-" + strings.ToLower(tt.name)
+				if err := tt.add(slug); err != nil {
+					t.Fatalf("Add(%q): %v", slug, err)
+				}
+
+				weftPath := fabricengine.RecordsWorktreePath(l, slug)
+				marker, err := os.ReadFile(filepath.Join(weftPath, lyxcwd.AnchorFileName))
+				if err != nil {
+					t.Fatalf("read the pair's marker: %v", err)
+				}
+				if got := strings.TrimSpace(string(marker)); got != anchor {
+					t.Errorf("%s in the pair's records worktree = %q; want %q", lyxcwd.AnchorFileName, got, anchor)
+				}
+
+				pairPath := fabricengine.WorktreePath(l, slug)
+				for _, name := range []string{lyxdirs.LyxDirName, lyxdirs.DotLyxDirName} {
+					link := filepath.Join(pairPath, anchor, name)
+					if isLink, err := fslink.IsLink(link); err != nil || !isLink {
+						t.Errorf("%s: IsLink = (%v, %v); want a junction at the fork point's anchor", link, isLink, err)
+					}
+				}
+				wantScratch := filepath.Join(weftPath, anchor, lyxdirs.DotLyxDirName, "scratch")
+				if got, err := fslink.PointsTo(filepath.Join(pairPath, ".scratch")); err != nil || filepath.Clean(got) != wantScratch {
+					t.Errorf("scratch link of %s = (%q, %v); want it to point at %s", slug, got, err, wantScratch)
+				}
+
+				if _, err := os.Stat(filepath.Join(weftPath, anchor, fabricengine.OriginRecordRel())); err != nil {
+					t.Errorf("origin record at %s/%s in the records worktree: %v", anchor, fabricengine.OriginRecordRel(), err)
+				}
+				if _, err := os.Stat(filepath.Join(h.Path, "_launchers", anchor, slug)); err != nil {
+					t.Errorf("launcher directory under _launchers/%s/%s: %v", anchor, slug, err)
+				}
+			})
+		}
 	})
 }

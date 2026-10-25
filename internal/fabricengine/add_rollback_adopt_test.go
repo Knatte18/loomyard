@@ -157,6 +157,8 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 			clone := t.TempDir()
 			gitkit.MustRun(t, clone, "git", "clone", "--quiet", h.RecordsBare, ".")
 			gitkit.MustRun(t, clone, "git", "checkout", "--quiet", "-b", weftBranch)
+			// The branch records its anchor, as a live pair's does, so adopting it commits nothing of its own that the rollback would leave on top of origin's tip.
+			gitkit.CommitFile(t, clone, lyxcwd.AnchorFileName, l.AnchorRel+"\n", "record the anchor")
 			gitkit.CommitFile(t, clone, "first.txt", "first\n", "first origin work")
 			gitkit.MustRun(t, clone, "git", "push", "--quiet", "origin", weftBranch)
 			if tc.localBehind {

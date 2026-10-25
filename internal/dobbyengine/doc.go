@@ -11,6 +11,7 @@
 //   - The PassExit codes are what a `lyx batten run` pass exits with for a refusal dobby reads by code.
 //   - EnsureLive starts the dobby of the prime and of every local beam pair this machine owns, each only when Live reads its lock free, through SpawnDetached.
 //     It records this machine as the prime owner first when none is recorded, and reports per worktree; it is idempotent.
+//     A worktree with an anchor change standing on its own records worktree or the prime's is refused with the change's way forward and starts nothing, through StartDeps.MoveInProgress, and a nil one reads as no change standing.
 //   - Config is beam.yaml, loaded strictly because dobby only ever runs inside a hub.
 //   - Run is the daemon loop, with every seam it reads in Deps.
 //   - BuildView is the View of one dobby a reader outside its process sees, built from what it is told: its liveness, its state record, beam.yaml, its runs and the board.
@@ -26,6 +27,9 @@
 //     Where the watch does not open, as on WSL or through a junction, the timer alone drives the loop at the probe cadence, and no wake is shorter than a second.
 //   - Between ticks it calls the binary check, which re-execs onto a changed lyx binary.
 //   - A tick's failure is logged once per episode and the loop goes on; a cancelled context ends it after the tick in flight.
+//   - While any path of Geometry.MoveRecords exists, an anchor change stands on the dobby's own records worktree or the prime's, and a tick spawns no pass, starts no task and runs no board-tidy step, the tidy agent being a strand whose state sits at the anchor.
+//     The state record's upkeep and the landing count go on, a full pass the dobby owes stays owed, and the first tick of the episode logs it once.
+//     An empty list, as a hand-built Geometry leaves it, gates nothing.
 //   - Each task start and each pass spawned writes one line through the Log seam: the time, `start <slug>` or `pass <slug> <kind>`, the kind being `continue`, `full` or `full-no-reopen`.
 //
 // The passes:

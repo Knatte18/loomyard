@@ -262,7 +262,8 @@ func placeDobby(root string) (*lyxcwd.Location, dobbyengine.Geometry, error) {
 
 // createCmd returns the `beam create` verb.
 func createCmd() *cobra.Command {
-	return &cobra.Command{
+	var anchor string
+	cmd := &cobra.Command{
 		Use:         "create <slug>",
 		Short:       "make a project entry a beam: record its owner and make its pair",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
@@ -274,15 +275,22 @@ Steps, in order, each skipped when its result is already there, so a re-run
 finishes a stopped create:
   1. record this machine as the project's owner with the beam flag
   2. make the pair from the prime, or from the parent beam of a nested beam,
-     and mark it as a beam; an existing pair is marked
+     and mark it as a beam; an existing pair first has its anchor settled, then is marked
   3. spawn the pair's push
   4. regenerate the workspace files
+
+With --anchor <dir> the new pair takes <dir> of the code checkout as its anchor
+instead of its parent's; the directory must be tracked in the commit the beam forks
+from. The pair's records content moves there under a move record, and a killed create
+is finished by running the same command again. A pair that already exists sits at
+its own anchor, which "lyx fabric anchor" moves.
 
 The envelope names the beam's worktree, where "lyx orch start" gives it an orch;
 the verb starts none.
 
 Example:
-  lyx beam create payments`,
+  lyx beam create payments
+  lyx beam create payments --anchor services/payments`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, func(_ context.Context, _ string, prime *lyxcwd.Location) (any, error) {
@@ -290,10 +298,12 @@ Example:
 				if err != nil {
 					return nil, err
 				}
-				return create(deps, args[0])
+				return create(deps, args[0], anchor)
 			})
 		},
 	}
+	cmd.Flags().StringVar(&anchor, "anchor", "", "a path relative to the code repo root, validated in the commit the beam forks from; without it the beam inherits its parent's anchor")
+	return cmd
 }
 
 // landCmd returns the `beam land` verb.

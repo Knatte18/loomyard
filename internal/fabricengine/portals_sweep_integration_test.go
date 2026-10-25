@@ -130,7 +130,7 @@ func TestReconcile_SweepsRetiredHubArtifacts(t *testing.T) {
 
 			t.Run("RemovesLinksChainAndFileThenNothingMore", func(t *testing.T) {
 				t.Parallel()
-				for _, from := range []string{"prime", "pair"} {
+				for _, from := range []string{"prime", "pair", "reanchoredPair"} {
 					t.Run(from, func(t *testing.T) {
 						t.Parallel()
 						h := hubforge.CopyHub(t, shape)
@@ -139,7 +139,11 @@ func TestReconcile_SweepsRetiredHubArtifacts(t *testing.T) {
 						plantPortalLink(t, h, "gone")
 						file := plantRetiredWorkspaceFile(t, h)
 						l := h.Location
-						if from == "pair" {
+						if from == "reanchoredPair" {
+							// The portals are keyed on the prime's anchor, whatever anchor the acting pair sits at.
+							hubforge.ReanchorPair(t, h, "live", "sub")
+						}
+						if from != "prime" {
 							pairLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("live"))
 							if err != nil {
 								t.Fatalf("resolve the pair's location: %v", err)

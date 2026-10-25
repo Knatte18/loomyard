@@ -239,9 +239,14 @@ func (h *Hub) PairRecordsSibling(slug string) string {
 	return fabricengine.RecordsWorktreePath(h.Location, slug)
 }
 
-// PairLauncherDir returns the path to slug's mirrored launcher directory.
+// PairLauncherDir returns the path to slug's mirrored launcher directory, at slug's own anchor.
+// It panics when slug's recorded anchor is unusable, which no fixture produces.
 func (h *Hub) PairLauncherDir(slug string) string {
-	return fabricengine.LauncherDir(h.Location, slug)
+	pair, err := lyxcwd.NamedWorktree(h.Path, slug)
+	if err != nil {
+		panic(fmt.Sprintf("hubforge: read the anchor of %q: %v", slug, err))
+	}
+	return fabricengine.LauncherDir(pair, slug)
 }
 
 // NewHub builds a real fabric hub at anchor ("." or "backend"): it copies the cached bare template

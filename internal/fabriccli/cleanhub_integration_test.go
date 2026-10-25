@@ -174,10 +174,14 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 				t.Errorf("mutation record holds %d KindFileWritten entries for the sparse marker; want exactly 1\nentries: %+v", markerWritten, entries)
 			}
 			weftTarget := hubRelativeWeftTarget(t, h)
+			weftCommits := 0
 			for _, e := range entries {
 				if e.Kind == fabricengine.KindCommitCreated && e.Target == weftTarget {
-					t.Errorf("mutation record holds a commit targeting the weft worktree %q; want none (the prime carries no config commit)", weftTarget)
+					weftCommits++
 				}
+			}
+			if weftCommits != 1 {
+				t.Errorf("mutation record holds %d commits targeting the weft worktree %q; want exactly 1 (the anchor marker, since the prime carries no config commit)", weftCommits, weftTarget)
 			}
 		}},
 		{"PairsReturnsPairsKey", func(t *testing.T) {

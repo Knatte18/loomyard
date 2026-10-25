@@ -76,7 +76,11 @@ func onlyRuns(ended EndedSet, runs []string) EndedSet {
 // pairHasLocalPart reports whether this machine holds any part of slug's pair: its task worktree path, its sibling worktree path, its launchers or either local branch.
 // A branch counts when it is named by the slug alone.
 func pairHasLocalPart(l *lyxcwd.Location, slug string) (bool, error) {
-	if pathPresent(WorktreePath(l, slug)) || pathPresent(RecordsWorktreePath(l, slug)) || pathPresent(LauncherDir(l, slug)) {
+	pair, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return false, err
+	}
+	if pathPresent(WorktreePath(l, slug)) || pathPresent(RecordsWorktreePath(l, slug)) || pathPresent(LauncherDir(pair, slug)) {
 		return true, nil
 	}
 	taskBranch, err := localBranchExists(l.WorktreePath(), slug)

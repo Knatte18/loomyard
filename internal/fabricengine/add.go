@@ -49,6 +49,10 @@ type AddOptions struct {
 	// The adopted branch is checked out into the new worktree and is never deleted by a rollback.
 	// It is set only by a command naming the flag, so an unattended run never adopts a stale branch left under a reused slug.
 	AdoptLocal bool
+	// Anchor is the directory of the warp checkout the new pair takes as its anchor, relative to the warp root.
+	// Empty, or equal to the fork point's anchor, keeps the fork point's own.
+	// It is set only by a command naming the flag, and a pair over an existing weft branch refuses it.
+	Anchor string
 }
 
 // syncOptions returns the options the records helpers take.
@@ -188,6 +192,13 @@ func (e *ErrLocalAddOverOrdinary) Error() string {
 // When the adopted branch is the warp's default branch the origin record names no parent branch and no parent worktree, a root pair.
 // With opts.Parent naming a pair of the hub, the warp branch forks from that pair's last commit and the weft branch from its records branch, the origin record names the parent's branch and slug,
 // and no tracked dirt is checked in either worktree; a parent that cannot be forked from is refused before any mutation.
+// A forked pair takes the anchor of its fork point, the named parent or else the acting worktree, through the marker its weft branch inherits:
+// its launchers, junctions, scratch link and origin record sit at that anchor.
+// A fork point whose own marker is present but empty is refused before any mutation.
+// With opts.Anchor naming another directory, the pair takes that anchor instead:
+// the anchor is validated against the fork point's warp checkout before any mutation, the forked weft's content and marker are moved there in one commit under a move record,
+// and the record is removed once the pair is wired at the anchor.
+// A failure anywhere rolls the whole pair back, the record with it.
 // An adopted weft branch that already has an origin record keeps its parent fields; with opts.Beam the record gains the beam mark in an origin commit.
 func (t *Topology) Add(l *lyxcwd.Location, slug string, opts AddOptions) (AddResult, error) {
 	return t.add(l, slug, opts, false)
@@ -234,6 +245,34 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 			return AddResult{}, &ErrSourceDirty{Paths: dirtyPaths}
 		}
 	}
+
+	// The fork point supplies the anchor a forked pair takes, through the marker its weft branch inherits.
+	// An empty marker there would leave the pair with no readable anchor, so it is refused before anything is created.
+	fork := l
+	if opts.Parent != "" {
+		fork = parent.location
+	}
+	forkWeft := RecordsWorktreePath(fork, fork.WorktreeName)
+	if err := refuseEmptyOwnMarker(forkWeft); err != nil {
+		return AddResult{}, err
+	}
+	// A weft whose anchor is mid-change has no settled content for the new pair to fork from.
+	moveStop, err := moveRecordStop(forkWeft)
+	if err != nil {
+		return AddResult{}, err
+	}
+	if moveStop != nil {
+		return AddResult{}, fmt.Errorf("%w: %s", moveStop, moveStop.WayForward)
+	}
+	// A requested anchor other than the fork point's is judged against the fork point's warp checkout, so a refusal leaves nothing created.
+	anchorTo, err := newPairAnchor(fork, opts.Anchor)
+	if err != nil {
+		return AddResult{}, err
+	}
+	// pairAt is the Location the new pair's launchers, junctions, scratch link and origin record are built at.
+	// An adopted weft branch carries its own anchor, and the adopt step below replaces pairAt with the adopted pair's Location.
+	// A pair moved to a requested anchor takes it once the move has committed.
+	pairAt := fork
 
 	warpBranch := t.cfg.BranchPrefix + slug
 	weftBranch := RecordsBranchName(warpBranch)
@@ -355,6 +394,12 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		}
 	}
 
+	// A live weft branch is adopted at the anchor it records, which no flag of this add moves.
+	if opts.Anchor != "" && weftOld.live {
+		return AddResult{}, fmt.Errorf("the weft branch %q already exists, so the pair is made over it at the anchor it records and cannot take the anchor %s; run the verb without the anchor, then `lyx fabric anchor %s --set %s`",
+			weftBranch, opts.Anchor, slug, opts.Anchor)
+	}
+
 	// The pre-flight refusals have passed: every exit from here, a rollback included, regenerates the hub workspace file.
 	defer regenerateAfterVerb(rec, l, "add")
 
@@ -398,7 +443,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 
 	if addFailAfterWarpHook != nil {
 		if hookErr := addFailAfterWarpHook(); hookErr != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, hookErr
 		}
 	}
@@ -413,7 +458,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 	weftPath := RecordsWorktreePath(l, slug)
 	weftRepoRoot, weftRepoRootErr := RecordsRepoRoot(l)
 	if weftRepoRootErr != nil {
-		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+		_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 		return AddResult{}, fmt.Errorf("resolve weft repo root: %w", weftRepoRootErr)
 	}
 
@@ -422,7 +467,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 	// so a branch that moved since the pre-flight is never rewound or overwritten.
 	if weftOld.fastForwardTo != "" {
 		if _, err := gitexec.Run([]string{"fetch", "--no-tags", originRemoteName, "refs/heads/" + weftBranch + ":refs/heads/" + weftBranch}, weftRepoRoot); err != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("fast-forward weft branch %q to its tip on %q failed: %w", weftBranch, originRemoteName, err)
 		}
 		rec.Append(KindRepoAdvanced, weftRepoRoot, weftBranch+" "+weftOld.fastForwardTo)
@@ -432,9 +477,12 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 	if weftOld.live {
 		weftAdopted, _, err = resolveWeftBranch(rec, l, weftBranch, !opts.SkipGit && !opts.SkipPush)
 		if err != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, err
 		}
+	}
+	if weftAdopted {
+		pairAt = l
 	}
 
 	// runRecordsTracked is whether the fork point tracked run records that step 8 dropped from the new worktree.
@@ -446,41 +494,68 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 			return []string{"worktree", "add", worktreePath, weftBranch}
 		})
 		if err != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed: %w", weftBranch, err)
 		}
 		if _, err := ensureWeftLockDirAt(weftPath); err != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed: create weft lock dir in %q: %w", weftBranch, weftPath, err)
 		}
+		// An adopted branch keeps its own marker; one with none is given the anchor its tree implies, and every path built below uses the adopted pair's own anchor.
+		adoptNames, err := RepoWiredNames(l)
+		if err != nil {
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed: load fabric config: %w", weftBranch, err)
+		}
+		adoptedOwn, err := recordAdoptedWeftAnchor(rec, l.HubPath, slug, weftPath, adoptNames)
+		if err != nil {
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			return AddResult{}, fmt.Errorf("adopt weft worktree for branch %q failed: record its anchor: %w", weftBranch, err)
+		}
+		// pairAt stays on the acting worktree, which the rollback runs git in, and takes the adopted pair's own anchor.
+		adoptedAt := *l
+		adoptedAt.AnchorRel = adoptedOwn.AnchorRel
+		pairAt = &adoptedAt
 	} else {
 		// Create: fork from the parent's weft branch without checking the run-records root out, so the pair never inherits another run's seed or status;
 		// step 10c commits the root's deletion.
 		// The adopt path above drops nothing: an existing branch's own records are its own.
 		var err error
-		runRecordsTracked, err = createWeftWorktreeDroppingRuns(rec, l, slug, weftBranch, parentWeftBranch)
+		runRecordsTracked, err = createWeftWorktreeDroppingRuns(rec, pairAt, slug, weftBranch, parentWeftBranch)
 		if err != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, err
+		}
+		// A requested anchor moves the forked content before anything is wired or written at the new anchor.
+		// The move commit carries the deletion of the run records the fork left off the disk, so step 10c has none to stage.
+		if anchorTo != "" {
+			if err := moveForkedWeftToAnchor(rec, fork, slug, anchorTo, runRecordsTracked); err != nil {
+				_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+				return AddResult{}, fmt.Errorf("move the weft of %q to the anchor %s: %w", slug, anchorTo, err)
+			}
+			runRecordsTracked = false
+			movedAt := *fork
+			movedAt.AnchorRel = anchorTo
+			pairAt = &movedAt
 		}
 	}
 
 	// Both worktrees exist: a local pair marks its two branches before the origin record's commit, so no push can carry that commit out.
 	if local {
 		if err := gitrepo.New(l.WorktreePath()).MarkBranchLocal(warpBranch); err != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, err
 		}
 		if err := gitrepo.New(weftRepoRoot).MarkBranchLocal(weftBranch); err != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, err
 		}
 	}
 
 	// A local pair gets no launchers.
 	if !local {
-		if err := writeLaunchers(rec, l, slug); err != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+		if err := writeLaunchers(rec, pairAt, slug); err != nil {
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, err
 		}
 	}
@@ -493,11 +568,11 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 	// back the whole pair via the existing post-step-7 path.
 	names, err := RepoWiredNames(l)
 	if err != nil {
-		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+		_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 		return AddResult{}, fmt.Errorf("wire junctions: load fabric config: %w", err)
 	}
-	if err := WireJunctionsWith(rec, l, slug, names); err != nil {
-		_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+	if err := WireJunctionsWith(rec, pairAt, slug, names); err != nil {
+		_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 		return AddResult{}, fmt.Errorf("wire junctions: %w", err)
 	}
 
@@ -510,7 +585,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 	writeOrigin := true
 	if weftAdopted {
 		if existing, found, readErr := ReadOriginFor(l, slug); readErr != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("read adopted origin record: %w", readErr)
 		} else if found {
 			origin = existing
@@ -519,8 +594,8 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		}
 	}
 	if writeOrigin {
-		if err := WriteOrigin(rec, l, slug, origin); err != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+		if err := WriteOrigin(rec, pairAt, slug, origin); err != nil {
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("record parent branch: %w", err)
 		}
 		// The commit's sha and committed returns are not read here: CommitRecordsPaths records the
@@ -532,9 +607,17 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 		if runRecordsTracked {
 			commitPaths = append(commitPaths, shedrun.RunsRootRel())
 		}
-		if _, _, err := CommitRecordsPaths(rec, weftPath, l.AnchorRel, commitPaths, OriginRecordSubject(slug), opts.syncOptions()); err != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+		if _, _, err := CommitRecordsPaths(rec, weftPath, pairAt.AnchorRel, commitPaths, OriginRecordSubject(slug), opts.syncOptions()); err != nil {
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("commit parent branch record: %w", err)
+		}
+	}
+
+	// The pair is wired and recorded at its requested anchor: the move is finished.
+	if anchorTo != "" {
+		if err := RemoveMoveRecord(weftPath); err != nil {
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			return AddResult{}, err
 		}
 	}
 
@@ -555,7 +638,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 			force:     false,
 		})
 		if delErr != nil {
-			_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 			return AddResult{}, fmt.Errorf("replace leftover weft branch %q on origin: %w", weftBranch, delErr)
 		}
 	}
@@ -582,7 +665,7 @@ func (t *Topology) add(l *lyxcwd.Location, slug string, opts AddOptions, local b
 				for i, branch := range cleared {
 					_ = clearedRepos[i].MarkBranchLocal(branch)
 				}
-				_ = t.rollbackAdd(rec, l, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
+				_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, warpTok, &warpPush)
 				return AddResult{}, clearErr
 			}
 			if wasMarked {

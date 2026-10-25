@@ -29,7 +29,10 @@ type createWorld struct {
 	lost     map[string]string
 	addOpts  fabricengine.AddOptions
 	dobbyErr error
-	calls    []string
+	// ensureErr is what EnsureAnchor refuses with, and ensured the anchor of each of its calls.
+	ensureErr error
+	ensured   []string
+	calls     []string
 }
 
 // newCreateWorld returns a hub owned by here with a grouping project, a beam project owned by there, a task, a note and a done project.
@@ -79,6 +82,10 @@ func (w *createWorld) deps() createDeps {
 			w.pairs[slug], w.marked[slug] = true, opts.Beam
 			return fabricengine.AddResult{}, nil
 		},
+		EnsureAnchor: func(_ *fabricengine.Mutations, _, anchor string) error {
+			w.ensured = append(w.ensured, anchor)
+			return w.ensureErr
+		},
 		MarkBeam: func(_ *fabricengine.Mutations, slug string) (bool, error) {
 			if w.marked[slug] {
 				return false, nil
@@ -108,13 +115,15 @@ func TestCreate(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name  string
-		slug  string
-		setup func(w *createWorld)
+		name   string
+		slug   string
+		anchor string
+		setup  func(w *createWorld)
 		// wantErr is empty for a create that finishes, else every substring the refusal names.
-		wantErr   []string
-		wantCalls []string
-		wantAdd   fabricengine.AddOptions
+		wantErr     []string
+		wantCalls   []string
+		wantAdd     fabricengine.AddOptions
+		wantEnsured []string
 	}{
 		{name: "AbsentEntryRefused", slug: "ghost", wantErr: []string{"lyx board upsert", "project"}},
 		{name: "NoteRefused", slug: "note1", wantErr: []string{"lyx board upsert", "project"}},
@@ -153,7 +162,8 @@ func TestCreate(t *testing.T) {
 				w.owners.Entries["group"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here}
 				w.pairs["group"], w.marked["group"] = true, true
 			},
-			wantCalls: []string{"push", "workspace", "dobby"},
+			wantCalls:   []string{"push", "workspace", "dobby"},
+			wantEnsured: []string{""},
 		},
 		{
 			name: "BeamProjectWithNoOwnerGetsOneAndItsPair",
@@ -171,6 +181,37 @@ func TestCreate(t *testing.T) {
 				w.pairs["group"] = true
 			},
 			wantCalls: []string{"owner", "mark", "push", "workspace", "dobby"},
+			// A present pair with no anchor still passes through EnsureAnchor, with an empty one.
+			wantEnsured: []string{""},
+		},
+		{
+			name:      "AnchorReachesTheNewPair",
+			slug:      "group",
+			anchor:    "y",
+			wantCalls: []string{"owner", "add", "push", "workspace", "dobby"},
+			wantAdd:   fabricengine.AddOptions{Beam: true, Anchor: "y"},
+		},
+		{
+			name:   "AnchorOnAPresentPairIsSettledBeforeTheMark",
+			slug:   "group",
+			anchor: "y",
+			setup: func(w *createWorld) {
+				w.pairs["group"] = true
+			},
+			wantCalls:   []string{"owner", "mark", "push", "workspace", "dobby"},
+			wantEnsured: []string{"y"},
+		},
+		{
+			name:   "RefusedAnchorOnAPresentPairStopsBeforeEveryLaterStep",
+			slug:   "group",
+			anchor: "y",
+			setup: func(w *createWorld) {
+				w.pairs["group"] = true
+				w.ensureErr = errors.New("sits at the anchor . not y; run `lyx fabric anchor group --set y`")
+			},
+			wantErr:     []string{"lyx fabric anchor group --set y"},
+			wantCalls:   []string{"owner"},
+			wantEnsured: []string{"y"},
 		},
 		{
 			name: "FailedDobbyStartNamesBeamStartAfterEveryOtherStep",
@@ -219,8 +260,11 @@ func TestCreate(t *testing.T) {
 				tt.setup(w)
 			}
 
-			got, err := create(w.deps(), tt.slug)
+			got, err := create(w.deps(), tt.slug, tt.anchor)
 
+			if !slices.Equal(w.ensured, tt.wantEnsured) {
+				t.Errorf("create(%q, %q) settled the anchor with %q; want %q", tt.slug, tt.anchor, w.ensured, tt.wantEnsured)
+			}
 			if len(tt.wantErr) > 0 {
 				if err == nil {
 					t.Fatalf("create(%q) = nil; want a refusal naming %v", tt.slug, tt.wantErr)
@@ -241,7 +285,7 @@ func TestCreate(t *testing.T) {
 			if !slices.Equal(w.calls, tt.wantCalls) {
 				t.Errorf("create(%q) ran %v; want %v", tt.slug, w.calls, tt.wantCalls)
 			}
-			if slices.Contains(tt.wantCalls, "add") && (w.addOpts.Parent != tt.wantAdd.Parent || w.addOpts.Beam != tt.wantAdd.Beam) {
+			if slices.Contains(tt.wantCalls, "add") && (w.addOpts.Parent != tt.wantAdd.Parent || w.addOpts.Beam != tt.wantAdd.Beam || w.addOpts.Anchor != tt.wantAdd.Anchor) {
 				t.Errorf("create(%q) added the pair with %+v; want %+v", tt.slug, w.addOpts, tt.wantAdd)
 			}
 			if got.Worktree != "/hub/"+tt.slug || !strings.Contains(got.WayForward, "lyx orch start") || !strings.Contains(got.WayForward, got.Worktree) {
@@ -258,7 +302,7 @@ func TestCreate_StepFailureNamesTheRerun(t *testing.T) {
 	deps := w.deps()
 	deps.SpawnPush = func(string) error { return errors.New("spawn failed") }
 
-	got, err := create(deps, "group")
+	got, err := create(deps, "group", "")
 
 	if err == nil || !strings.Contains(err.Error(), "spawn failed") || !strings.Contains(err.Error(), "lyx beam create group") {
 		t.Fatalf("create = %v; want the push failure and a re-run of `lyx beam create group`", err)

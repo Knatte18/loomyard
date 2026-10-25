@@ -9,6 +9,10 @@
 // Before anything runs, `adopt` reads the local Bolt and refuses an unknown slug (naming `lyx board list`), a note (naming `lyx board promote`), a done task (naming that it already landed, and `lyx tender resume <slug>` to let a run that landed there go on to Land under its owner pause), `--keep-local` with `--drop-local`, and no slug without `--prime` or `--all`.
 // `--all` names the prime, every task that is not done and has an owner or a run status, and every beam project (a project entry whose `beam` is true) that is not done and has an owner, passing over a done entry.
 //
+// It then asks `adoptDeps.MoveInProgress`, filled from `fabricengine.MoveInProgress`, for the prime and for each named entry's own worktree when this machine holds its pair and each named entry's parent worktree, and refuses with an empty outcome when an anchor change stands in any of them.
+// The refusal carries the record's way forward, a change in progress to wait for or `lyx fabric anchor <worktree> --set <anchor>` to finish an interrupted one, and then the same `lyx adopt` again, so no pair is added, no run resumed and no gate suite started under a moving anchor.
+// A nil `MoveInProgress` reads as no record standing.
+//
 // A beam project is admitted as a started task is: adopt takes over its owner and adds its pair when its branches are on origin.
 // Adopting a beam moves the beam only, its members keeping their own owners.
 // A project whose `beam` is false has no pair to take over, so it is refused naming `lyx beam create <slug>`, where a note is refused naming `lyx board promote`.
@@ -19,7 +23,7 @@
 // Its `pairteardown` seams take a `HubPaused` from `hubOnlyPaused`, which covers a slug only by a live hub entry, so a pair whose strands are alive under any slug-scope pause, an owner pause included, reads live.
 // An unreachable origin refuses naming a re-run once origin answers, a reconcile error refuses naming it and the re-run, and a stop on Bolt or the prime's records branch refuses with the report and that branch's way forward; nothing below runs then.
 //
-// A named slug the report reads owned_elsewhere stops before its owner write when a branch of it was judged `needs_replay`, `ahead`, `rewound`, `rewritten` or `diverged`, or when adopt's own `LivePair` call, made for every such slug with a local pair, reads it live.
+// A named slug the report reads owned_elsewhere stops before its owner write when a branch of it was judged `needs_replay`, `ahead`, `rewound`, `rewritten`, `diverged` or `anchor_stopped`, or when adopt's own `LivePair` call, made for every such slug with a local pair, reads it live.
 // The slug's envelope entry names each branch and its state and the two ways forward, `lyx adopt <slug> --keep-local` and `lyx adopt <slug> --drop-local`, and the other slugs go on.
 // `--keep-local` records the owner over those local commits and over a live pair.
 // `--drop-local` refuses a live pair naming `--keep-local`, and otherwise calls `fabricengine.DropLocal`, which keeps each local tip origin lacks under an `archive/<slug>/<tip>` tag before it moves the branch, and records into adopt's mutation record.

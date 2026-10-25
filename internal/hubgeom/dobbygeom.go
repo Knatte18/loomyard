@@ -17,9 +17,10 @@ import (
 )
 
 // DobbyGeometry tells dobbyengine its paths for the worktree named worktree, the prime's name or a beam's slug.
-// The lock, state and marker paths lie under that worktree's `.lyx/beam/` directory at the hub's anchor, and the batten runs directory under the prime.
+// The lock, state and marker paths lie under that worktree's `.lyx/beam/` directory at the worktree's own anchor, and the batten runs directory under the prime.
 // The slug is empty for the prime.
-// A worktree with no directory in the hub is an error naming it, and so is a lyx executable that cannot be located.
+// MoveRecords holds the anchor-move record paths of the worktree's own records worktree and of the prime's, the prime's once when the worktree is the prime.
+// A worktree with no directory in the hub is an error naming it, and so is a lyx executable that cannot be located or an anchor that cannot be read.
 func DobbyGeometry(prime *lyxcwd.Location, worktree string) (dobbyengine.Geometry, error) {
 	root := filepath.Join(prime.HubPath, worktree)
 	if info, err := os.Stat(root); err != nil || !info.IsDir() {
@@ -29,11 +30,20 @@ func DobbyGeometry(prime *lyxcwd.Location, worktree string) (dobbyengine.Geometr
 	if err != nil {
 		return dobbyengine.Geometry{}, fmt.Errorf("hubgeom: locate the lyx executable: %w", err)
 	}
-	beamDir := filepath.Join(root, prime.AnchorRel, lyxdirs.DotLyxDirName, lyxdirs.BeamDirName)
 	slug := worktree
+	anchorRel := prime.AnchorRel
+	moveRecords := []string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(prime, prime.WorktreeName))}
 	if worktree == prime.WorktreeName {
 		slug = ""
+	} else {
+		own, err := lyxcwd.NamedWorktree(prime.HubPath, worktree)
+		if err != nil {
+			return dobbyengine.Geometry{}, fmt.Errorf("hubgeom: read the anchor of the worktree %q: %w", worktree, err)
+		}
+		anchorRel = own.AnchorRel
+		moveRecords = append([]string{fabricengine.MoveRecordPath(fabricengine.RecordsWorktreePath(own, worktree))}, moveRecords...)
 	}
+	beamDir := filepath.Join(root, anchorRel, lyxdirs.DotLyxDirName, lyxdirs.BeamDirName)
 	return dobbyengine.Geometry{
 		HubRoot:       prime.HubPath,
 		BoardDir:      fabricengine.BoardDir(prime.HubPath),
@@ -46,11 +56,13 @@ func DobbyGeometry(prime *lyxcwd.Location, worktree string) (dobbyengine.Geometr
 		MarkerDir:     filepath.Join(beamDir, dobbyengine.MarkerDirName),
 		PrimeRunsDir:  shedrun.RunsRoot(prime),
 		LyxExecutable: executable,
+		MoveRecords:   moveRecords,
 	}, nil
 }
 
 // DobbyStart fills dobbyengine.StartDeps over the hub of prime.
 // The owners come from the board, the prime owner claim is the one a batten resume makes, and the local beams are the pairs whose origin record carries the beam mark, each with the owner it effectively reads as through ParentOf.
+// An anchor change standing on a worktree's own records worktree or on the prime's reads through fabricengine.MoveInProgress.
 func DobbyStart(prime *lyxcwd.Location) dobbyengine.StartDeps {
 	boardDir := fabricengine.BoardDir(prime.HubPath)
 	return dobbyengine.StartDeps{
@@ -69,9 +81,26 @@ func DobbyStart(prime *lyxcwd.Location) dobbyengine.StartDeps {
 		PrimeName: prime.WorktreeName,
 		Beams:     func() ([]dobbyengine.BeamPair, error) { return localBeams(prime, boardDir) },
 		Geometry:  func(worktree string) (dobbyengine.Geometry, error) { return DobbyGeometry(prime, worktree) },
-		Live:      dobbyengine.Live,
-		Spawn:     dobbyengine.SpawnDetached,
+		MoveInProgress: func(worktree string) (string, bool, error) {
+			for _, slug := range moveGateSlugs(prime, worktree) {
+				wayForward, standing, err := fabricengine.MoveInProgress(slug, fabricengine.RecordsWorktreePath(prime, slug))
+				if err != nil || standing {
+					return wayForward, standing, err
+				}
+			}
+			return "", false, nil
+		},
+		Live:  dobbyengine.Live,
+		Spawn: dobbyengine.SpawnDetached,
 	}
+}
+
+// moveGateSlugs returns the worktrees whose anchor change stops the dobby of worktree: worktree itself, then the prime, once when they are the same.
+func moveGateSlugs(prime *lyxcwd.Location, worktree string) []string {
+	if worktree == prime.WorktreeName {
+		return []string{worktree}
+	}
+	return []string{worktree, prime.WorktreeName}
 }
 
 // localBeams lists the pairs of the hub present on this machine whose origin record carries the beam mark, each with the owner it effectively reads as.

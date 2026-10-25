@@ -2,7 +2,7 @@
 
 ## Paths and geometry
 
-- `PATTERN-cwd-resolution` — Resolving a cwd or worktree root: only `internal/lyxcwd`; an engine is handed absolute paths and never imports it; hub-level containers and the hub's workspace files stay reachable from the hub only. — [background](pattern/PATTERN-cwd-resolution.md)
+- `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `internal/lyxcwd`, from the worktree's own weft-root `.lyx-anchor`; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lyxcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
 - `PATTERN-lyx-temp-root` — Creating temp file or dir: under `internal/lyxtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lyx-temp-root.md)
 - `PATTERN-durable-vs-ephemeral-state` — Adding file: tracked under `_lyx`, never-tracked under `.lyx`, same subpath; only `internal/lyxdirs` names either, bar a `tools/` script's variable block. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-leaf-packages` — Importing into a leaf package: only closed import set. — [background](pattern/PATTERN-leaf-packages.md)

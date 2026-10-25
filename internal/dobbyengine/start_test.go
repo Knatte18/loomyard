@@ -15,12 +15,15 @@ import (
 )
 
 // fakeStart is an in-memory stand-in for the hub: it serves the owners it holds, records the claims and spawns, and reads a spawned worktree as live afterwards.
+// A worktree in moving has an anchor change standing, and one in moveErr fails the read of whether it does.
 type fakeStart struct {
 	primeOwner string
 	claimErr   error
 	claimLost  string
 	beams      []BeamPair
 	failSpawn  map[string]bool
+	moving     map[string]bool
+	moveErr    map[string]error
 
 	claims  []string
 	spawned []string
@@ -42,7 +45,16 @@ func (f *fakeStart) deps() StartDeps {
 		PrimeName: "hub-prime",
 		Beams:     func() ([]BeamPair, error) { return f.beams, nil },
 		Geometry:  func(worktree string) (Geometry, error) { return Geometry{WorktreeName: worktree}, nil },
-		Live:      func(geom Geometry) (bool, error) { return f.live[geom.WorktreeName], nil },
+		MoveInProgress: func(worktree string) (string, bool, error) {
+			if err := f.moveErr[worktree]; err != nil {
+				return "", false, err
+			}
+			if f.moving[worktree] {
+				return "run `lyx fabric anchor " + worktree + " --set sub`", true, nil
+			}
+			return "", false, nil
+		},
+		Live: func(geom Geometry) (bool, error) { return f.live[geom.WorktreeName], nil },
 		Spawn: func(geom Geometry) error {
 			if f.failSpawn[geom.WorktreeName] {
 				return errors.New("exec failed")
@@ -68,6 +80,8 @@ func TestEnsureLive(t *testing.T) {
 		wantErr string
 		// wantDetails are the texts the prime's entry detail carries.
 		wantDetails []string
+		// wantBeamDetail is a text the first beam's entry detail carries; empty wants none.
+		wantBeamDetail string
 	}{
 		{
 			name:        "NoPrimeOwnerRecordsThisMachineAndStartsThePrimeAndAnOwnedBeam",
@@ -118,6 +132,27 @@ func TestEnsureLive(t *testing.T) {
 			wantSpawned: []string{"hub-prime", "b2"},
 			wantErr:     "b1: start the dobby: exec failed",
 		},
+		{
+			name:           "ABeamWithAnAnchorChangeStandingIsRefusedWithTheWayForwardWhileTheOthersStart",
+			fake:           fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1"}, {Slug: "b2"}}, moving: map[string]bool{"b1": true}},
+			wantEntries:    []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeStarted}, {Worktree: "b1", Outcome: OutcomeRefused}, {Worktree: "b2", Outcome: OutcomeStarted}},
+			wantSpawned:    []string{"hub-prime", "b2"},
+			wantBeamDetail: "lyx fabric anchor b1 --set sub",
+		},
+		{
+			name:        "APrimeWithAnAnchorChangeStandingIsRefusedAndTheBeamsStart",
+			fake:        fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1"}}, moving: map[string]bool{"hub-prime": true}},
+			wantEntries: []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeRefused}, {Worktree: "b1", Outcome: OutcomeStarted}},
+			wantSpawned: []string{"b1"},
+			wantDetails: []string{"lyx fabric anchor hub-prime --set sub"},
+		},
+		{
+			name:        "AFailedReadOfWhetherAChangeStandsReportsTheWorktreeFailed",
+			fake:        fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1"}, {Slug: "b2"}}, moveErr: map[string]error{"b1": errors.New("record unreadable")}},
+			wantEntries: []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeStarted}, {Worktree: "b1", Outcome: OutcomeFailed}, {Worktree: "b2", Outcome: OutcomeStarted}},
+			wantSpawned: []string{"hub-prime", "b2"},
+			wantErr:     "b1: read whether an anchor change stands: record unreadable",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -151,6 +186,9 @@ func TestEnsureLive(t *testing.T) {
 				if !strings.Contains(report.Entries[0].Detail, want) {
 					t.Errorf("EnsureLive() prime detail = %q; want it to carry %q", report.Entries[0].Detail, want)
 				}
+			}
+			if tt.wantBeamDetail != "" && !strings.Contains(report.Entries[1].Detail, tt.wantBeamDetail) {
+				t.Errorf("EnsureLive() first beam detail = %q; want it to carry %q", report.Entries[1].Detail, tt.wantBeamDetail)
 			}
 			if !slices.Equal(fake.claims, tt.wantClaims) {
 				t.Errorf("EnsureLive() claims = %v; want %v", fake.claims, tt.wantClaims)

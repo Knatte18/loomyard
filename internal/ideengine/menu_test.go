@@ -166,6 +166,32 @@ func TestMenuScenario(t *testing.T) {
 		return
 	}
 
+	if !t.Run("probes each worktree at its own anchor", func(t *testing.T) {
+		addChildWorktree(t, container, mainWorktreePath, "anchored", false)
+		sibling := fabricengine.RecordsWorktreePath(layout, "anchored")
+		if err := os.MkdirAll(sibling, 0o755); err != nil {
+			t.Fatalf("failed to create the records sibling: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(sibling, lyxcwd.AnchorFileName), []byte("sub\n"), 0o644); err != nil {
+			t.Fatalf("failed to write the anchor marker: %v", err)
+		}
+		if err := os.MkdirAll(filepath.Join(container, "anchored", "sub", lyxdirs.LyxDirName), 0o755); err != nil {
+			t.Fatalf("failed to create the anchored _lyx: %v", err)
+		}
+
+		var out bytes.Buffer
+
+		if err := Menu(layout, strings.NewReader("q\n"), &out); err != nil {
+			t.Fatalf("Menu failed: %v", err)
+		}
+
+		if output := out.String(); !strings.Contains(output, "1) anchored") {
+			t.Fatalf("expected the worktree whose _lyx sits at its own anchor, got: %q", output)
+		}
+	}) {
+		return
+	}
+
 	t.Run("numeric selection", func(t *testing.T) {
 		addChildWorktree(t, container, mainWorktreePath, "child1", true)
 		addChildWorktree(t, container, mainWorktreePath, "child2", true)

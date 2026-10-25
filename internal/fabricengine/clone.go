@@ -33,6 +33,7 @@ import (
 // It has no compatibility fallback read (lyxcwd.AnchorFileName does not read it);
 // it is named here only so CloneHub can detect an old clone's leftover marker and hard-error rather
 // than silently re-anchoring at the wrong subpath.
+// CloneHub's guard runs on the Bolt fallback read only: a marker at the prime's weft root supersedes it.
 const staleFabricAnchorName = lyxcwd.StaleAnchorFileName
 
 // CloneOptions carries CloneHub's parameters as named fields rather than positionals.
@@ -125,10 +126,11 @@ type CloneResult struct {
 //     step 3's clone, freshly orphan-created otherwise; on failure, teardown
 //     and return the error.
 //  5. Resolve the lyx-anchor subpath adopt-or-create (adopt: read the marker
-//     already committed on weft:main; create: validate subpath exists in the
-//     warp worktree, then write the marker to the board worktree on disk —
-//     the CLI commits it), write the warp-binding record when it is new, and
-//     return the resolved CloneResult.
+//     already committed at the root of the prime's weft worktree, else the Bolt
+//     legacy marker on weft:main, writing nothing; create: validate subpath
+//     exists in the warp worktree, then commit the marker on the prime's weft
+//     branch), write the warp-binding record when it is new, and return the
+//     resolved CloneResult.
 //
 // Any clone OR worktree-add failure triggers teardownHub, which removes the
 // entire Hub directory; if removal also fails, the error mentions both the
@@ -196,7 +198,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 			// only in this two-argument form, so ForceBootstrap is structurally ignored everywhere
 			// else — no usage error, no warning.
 			return CloneResult{}, fmt.Errorf(
-				"refusing to bootstrap %s as a weft: its history carries neither %s nor an empty tree — check the argument order, clone now takes <weft-url> [<warp-url>]",
+				"refusing to bootstrap %s as a weft: its history carries neither %s on weft:main or main-weft nor an empty tree — check the argument order, clone now takes <weft-url> [<warp-url>]",
 				opts.WeftURL, lyxcwd.AnchorFileName)
 		}
 	} else {
@@ -280,15 +282,14 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	// Hook installation is non-fatal: a failure is logged but does not abort
 	// the clone (the hook is belt-and-suspenders for usability, not correctness).
 	//
-	// hubPath and name are already in scope from steps 2 and 1; a direct
-	// struct construction is a simplification, not a correctness fix, since
-	// InstallPostCheckoutHook reads exactly one field (WorktreePath()) — it
-	// needs a path, not a resolution. Step 3 above aborts the clone if the hub
-	// already exists and step 4 creates it fresh, so at this point the hub is
-	// provably empty, <hubPath>/_board cannot exist, and a Resolve call here
-	// would always have succeeded — there is no failure path left to log.
-	hookLocation := &lyxcwd.Location{HubPath: hubPath, WorktreeName: name}
-	if hookErr := InstallPostCheckoutHook(hookLocation); hookErr != nil {
+	// InstallPostCheckoutHook reads exactly one field (WorktreePath()): it needs a path, not a resolution.
+	// Step 3 above aborts the clone if the hub already exists and step 4 creates it fresh.
+	// At this point no marker exists, so the Location answers "." for its anchor.
+	hookLocation, hookErr := lyxcwd.NamedWorktree(hubPath, name)
+	if hookErr == nil {
+		hookErr = InstallPostCheckoutHook(hookLocation)
+	}
+	if hookErr != nil {
 		logger.Warn("fabricengine: post-checkout hook install failed (non-fatal)", "verb", "clone", "hub", hubPath, "error", hookErr)
 	}
 
@@ -345,19 +346,32 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	}
 	rec.Append(KindDirCreated, scratchDir, "")
 
-	// Step 8: Resolve the lyx-anchor subpath adopt-or-create, and write the
-	// marker to the board worktree ON DISK. The CLI layer commits it onto
-	// weft:main (config materialization and the commit both live in
-	// internal/fabriccli to avoid the fabricengine → configsync import cycle).
-	//
-	// A leftover pre-rename .fabric-anchor with no .lyx-anchor beside it is a
-	// hard error, not a silent fallback: without this check, an old clone
-	// would fall through to the create path below and re-anchor at "."
-	// (or the requested --subpath) even though a real anchor was already
-	// recorded under the old name, silently resolving _lyx to the wrong place
-	// for a subpath-anchored repo.
-	if _, statErr := os.Stat(filepath.Join(boardDir, staleFabricAnchorName)); statErr == nil {
-		if _, newErr := os.Stat(filepath.Join(boardDir, lyxcwd.AnchorFileName)); os.IsNotExist(newErr) {
+	// Step 8: Resolve the lyx-anchor subpath adopt-or-create.
+	// A fresh bind commits the marker on the prime's weft branch right here;
+	// the Bolt commit the CLI layer makes later carries config and no anchor.
+	primeData, primeReadErr := os.ReadFile(filepath.Join(weftPath, lyxcwd.AnchorFileName))
+	boardMarkerPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
+	var anchor string
+	if primeReadErr == nil {
+		// Adopt path: the prime's weft worktree carries a committed marker at its root, so this is a re-clone of a hub that already recorded one.
+		// The marker wins over the Bolt legacy marker, and nothing is written.
+		anchor, err = adoptRecordedAnchor(primeData, "on "+RecordsBranchName(warpBranch), requestedAnchor, subpathRequestedExplicitly)
+		if err != nil {
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
+		}
+	} else if boardData, boardReadErr := os.ReadFile(boardMarkerPath); boardReadErr == nil {
+		// Legacy adopt path: only the Bolt marker exists.
+		// The hub keeps resolving through it until `lyx fabric reconcile` migrates it onto the prime's weft.
+		anchor, err = adoptRecordedAnchor(boardData, "on weft:main", requestedAnchor, subpathRequestedExplicitly)
+		if err != nil {
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
+		}
+	} else {
+		// A leftover pre-rename .fabric-anchor with no .lyx-anchor beside it is a hard error, not a silent fallback:
+		// without this check, an old clone would fall through to the create path below and re-anchor at "." (or the requested --subpath).
+		// A real anchor was already recorded under the old name, so _lyx would silently resolve to the wrong place for a subpath-anchored repo.
+		// It runs on the Bolt fallback only, since a marker at the prime's weft root already supersedes the Bolt read.
+		if _, statErr := os.Stat(filepath.Join(boardDir, staleFabricAnchorName)); statErr == nil {
 			// The remedy names the marker rename, never "re-clone": this error is emitted BY a
 			// clone, so telling the operator to clone again just reproduces it. The record lives on
 			// weft:main, so migrating it is a rename plus a commit in an existing hub's board
@@ -367,33 +381,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 				staleFabricAnchorName, lyxcwd.AnchorFileName, boardDir,
 				BoardDirName, staleFabricAnchorName, lyxcwd.AnchorFileName))
 		}
-	}
 
-	markerPath := filepath.Join(boardDir, lyxcwd.AnchorFileName)
-	var anchor string
-	if data, statErr := os.ReadFile(markerPath); statErr == nil {
-		// Adopt path: ensureBoardWorktree checked out weft:main, which already
-		// carries a committed marker from a prior clone — this is a re-clone.
-		// The recorded value is validated too, not trusted: an older binary could have recorded an
-		// absolute or escaping anchor, and adopting one produces a hub whose every weft commit
-		// fails.
-		recorded, recordedErr := lyxcwd.ValidateAnchorRel(strings.TrimSpace(string(data)))
-		if recordedErr != nil {
-			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("recorded anchor in %s on weft:main is unusable: %w", lyxcwd.AnchorFileName, recordedErr))
-		}
-		if subpathRequestedExplicitly && requestedAnchor != recorded {
-			// An explicitly requested subpath disagrees with the recorded anchor: never silently
-			// re-anchor, the record is authoritative.
-			// "." is not exempted. It used to be, because the CLI's own flag default was "." and the
-			// two cases were indistinguishable — so `--subpath .` against a hub recorded at a real
-			// subpath was silently adopted, the one value that escaped the never-silently-re-anchor
-			// rule. The flag now defaults to the empty string, which normalises to "." with
-			// subpathRequestedExplicitly false, so an explicit "." can be honoured as explicit here.
-			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf(
-				"requested --subpath %q does not match the recorded anchor %q for this hub", requestedAnchor, recorded))
-		}
-		anchor = recorded
-	} else {
 		// Create path: first-ever clone of this weft, no marker committed yet.
 		// Validate the requested subpath exists in the warp worktree before
 		// recording it, so a typo like "backedn" fails loudly instead of
@@ -402,19 +390,14 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		if info, statErr := os.Stat(filepath.Join(warpWorktreePath, anchor)); statErr != nil || !info.IsDir() {
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("subpath %q does not exist as a directory in the cloned warp repo", anchor))
 		}
-		if err := os.WriteFile(markerPath, []byte(anchor+"\n"), 0o644); err != nil {
-			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf("write %s: %w", markerPath, err))
+		if _, err := commitAnchorMarker(rec, weftPath, anchor, "fabric clone: record anchor"); err != nil {
+			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 		}
-		// Create branch only: the adopt branch above found a marker already committed and wrote
-		// nothing, so recording there would claim a write that never happened.
-		rec.Append(KindFileWritten, markerPath, "")
 	}
 
-	// Immediately after the anchor block writes .lyx-anchor (both the adopt and the create branch
-	// fall through to this point), write the warp-binding record when this clone is the one that
-	// determined it. This is the clone-time backfill too: a re-clone of a pre-binding hub has
-	// .lyx-anchor already committed but no .lyx-warp, so found is false, writeRecord is true, and
-	// the record is written here with no special casing.
+	// Immediately after the anchor block (the adopt and the create branches both fall through to this point), write the warp-binding record when this clone is the one that determined it.
+	// This is the clone-time backfill too:
+	// a re-clone of a pre-binding hub has .lyx-anchor already committed but no .lyx-warp, so found is false, writeRecord is true, and the record is written here with no special casing.
 	var warpBindingRecorded bool
 	if writeRecord {
 		if err := writeWarpBinding(boardDir, effective); err != nil {
@@ -434,7 +417,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		shortnameRecorded = true
 	}
 
-	// Resolve the prime layout now that the marker exists on disk, so
+	// Resolve the prime layout now that the marker is recorded, so
 	// RelPath — and therefore WeftBase — reflects the resolved anchor.
 	primeCwd := filepath.Join(warpWorktreePath, anchor)
 	l, err := lyxcwd.Resolve(primeCwd)
@@ -458,6 +441,23 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		ShortnameRecorded:   shortnameRecorded,
 		Warning:             shortnameWarning,
 	}, nil
+}
+
+// adoptRecordedAnchor validates a marker's recorded value and checks it against the requested subpath.
+// source names where the marker was read, for the error text.
+// The recorded value is validated, not trusted.
+// An older binary could have recorded an absolute or escaping anchor, and adopting one produces a hub whose every weft commit fails.
+// An explicitly requested subpath that disagrees with the recorded anchor is refused, never silently re-anchored;
+// "." is not exempt, since the flag defaults to the empty string and an explicit "." is distinguishable from no request.
+func adoptRecordedAnchor(markerData []byte, source, requestedAnchor string, requestedExplicitly bool) (string, error) {
+	recorded, err := lyxcwd.ValidateAnchorRel(strings.TrimSpace(string(markerData)))
+	if err != nil {
+		return "", fmt.Errorf("recorded anchor in %s %s is unusable: %w", lyxcwd.AnchorFileName, source, err)
+	}
+	if requestedExplicitly && requestedAnchor != recorded {
+		return "", fmt.Errorf("requested --subpath %q does not match the recorded anchor %q for this hub", requestedAnchor, recorded)
+	}
+	return recorded, nil
 }
 
 // checkedOutBranch returns the branch checked out at dir, born or unborn; role names dir in the

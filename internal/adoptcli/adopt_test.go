@@ -46,6 +46,8 @@ type world struct {
 	resumed      []string
 	children     map[string]shedengine.Status
 	childResumed []string
+	// moving is the target anchor of the move record standing in each worktree, "" keying the prime.
+	moving map[string]string
 	// order is the run resumes, child resumes, dobby starts and suite starts in the order they came, and dobbyErr and suiteErr what the dobby and suite starts answer.
 	order    []string
 	dobbyErr error
@@ -76,6 +78,7 @@ func newWorld() *world {
 		resumeErr: map[string]error{},
 		runs:      map[string]shedengine.Status{"alpha": running, "beta": running},
 		children:  map[string]shedengine.Status{},
+		moving:    map[string]string{},
 	}
 }
 
@@ -159,6 +162,17 @@ func (w *world) deps() adoptDeps {
 			w.order = append(w.order, "child:"+slug)
 			return nil
 		},
+		MoveInProgress: func(worktree string) (string, bool, error) {
+			target, standing := w.moving[worktree]
+			if !standing {
+				return "", false, nil
+			}
+			name := worktree
+			if name == "" {
+				name = "main"
+			}
+			return "a change of the anchor of " + name + " was interrupted; run `lyx fabric anchor " + name + " --set " + target + "` to finish it", true, nil
+		},
 		StartDobbies: func() error {
 			w.order = append(w.order, "dobbies")
 			return w.dobbyErr
@@ -222,6 +236,14 @@ func TestAdopt(t *testing.T) {
 			fabricengine.EntryOutcome{Slug: "t1", State: fabricengine.EntryOwnedElsewhere, Owner: there})
 	}
 
+	// requireNothingRan fails the test when a step ran, which a refusal ahead of the origin reconcile leaves undone.
+	requireNothingRan := func(t *testing.T, w *world) {
+		t.Helper()
+		if w.reconciled || w.ownerReq.Machine != "" || len(w.resumed) != 0 || len(w.dropped) != 0 || len(w.order) != 0 {
+			t.Errorf("a refused call ran: reconciled %v, owner request %+v, resumed %v, dropped %v, steps %v; want nothing", w.reconciled, w.ownerReq, w.resumed, w.dropped, w.order)
+		}
+	}
+
 	tests := []struct {
 		name    string
 		req     request
@@ -232,6 +254,23 @@ func TestAdopt(t *testing.T) {
 		{name: "RefusesUnknownSlug", req: request{Slugs: []string{"nope"}}, wantErr: "lyx board list", check: func(t *testing.T, w *world, _ outcome) {
 			if w.reconciled {
 				t.Errorf("the reconcile ran after a refusal before anything runs")
+			}
+		}},
+		{name: "StandingMoveRecordOnThePrimeRefusesNamingTheSetAndTheRerun", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.moving[""] = "sub" }, wantErr: "lyx fabric anchor main --set sub", check: func(t *testing.T, w *world, _ outcome) {
+			requireNothingRan(t, w)
+		}},
+		{name: "StandingMoveRecordOnANamedEntrysWorktreeRefuses", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.moving["alpha"] = "sub" }, wantErr: "lyx fabric anchor alpha --set sub", check: func(t *testing.T, w *world, _ outcome) {
+			requireNothingRan(t, w)
+		}},
+		{name: "StandingMoveRecordOnANamedEntrysParentRefuses", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
+			w.parents["alpha"] = "gamma"
+			w.moving["gamma"] = "sub"
+		}, wantErr: "lyx fabric anchor gamma --set sub` to finish it; then re-run lyx adopt with the same arguments", check: func(t *testing.T, w *world, _ outcome) {
+			requireNothingRan(t, w)
+		}},
+		{name: "StandingMoveRecordOnAnUnrelatedWorktreeDoesNotRefuse", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.moving["unrelated"] = "sub" }, check: func(t *testing.T, _ *world, got outcome) {
+			if !slugOf(t, got, "alpha").OwnerRecorded {
+				t.Errorf("alpha = %+v, want it adopted beside a record in an unrelated worktree", slugOf(t, got, "alpha"))
 			}
 		}},
 		{name: "RefusesNote", req: request{Slugs: []string{"note1"}}, wantErr: "lyx board promote"},
@@ -247,6 +286,13 @@ func TestAdopt(t *testing.T) {
 		{name: "BoltStopRefuses", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
 			w.report.Branches = []fabricengine.BranchOutcome{{Branch: "main", Repo: "bolt", State: fabricengine.BranchDiverged, WayForward: "reset bolt"}}
 		}, wantErr: "reset bolt"},
+		{name: "PrimeRecordsAnchorStopRefusesWithItsWayForward", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
+			w.report.Branches = []fabricengine.BranchOutcome{{Branch: "records-main", Repo: "records", Prime: true, State: fabricengine.BranchAnchorStopped, Anchor: "sub", WayForward: "run the set"}}
+		}, wantErr: "records-main (anchor_stopped): run the set", check: func(t *testing.T, w *world, _ outcome) {
+			if w.ownerReq.Machine != "" {
+				t.Errorf("an owner was written after a stop on the prime's records branch")
+			}
+		}},
 		{name: "PrimeRecordsStopRefuses", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
 			w.report.Branches = []fabricengine.BranchOutcome{{Branch: "records-main", Repo: "records", Prime: true, State: fabricengine.BranchDirty, WayForward: "commit the records"}}
 		}, wantErr: "commit the records; then re-run lyx adopt"},
@@ -267,6 +313,14 @@ func TestAdopt(t *testing.T) {
 		{name: "NeedsReplayRecordsBranchStopsTheSlug", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.stopBranch("alpha", fabricengine.BranchNeedsReplay) }, check: func(t *testing.T, _ *world, got outcome) {
 			if alpha := slugOf(t, got, "alpha"); !alpha.Stopped || alpha.Branches[0].State != "needs_replay" {
 				t.Errorf("alpha = %+v, want stopped on needs_replay", alpha)
+			}
+		}},
+		{name: "AnchorStoppedRecordsBranchStopsTheSlugBeforeItsOwnerWrite", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
+			w.report.Branches = append(w.report.Branches, fabricengine.BranchOutcome{Branch: "records-alpha", Repo: "records", Slug: "alpha", State: fabricengine.BranchAnchorStopped, Anchor: "sub", WayForward: "run the set"})
+		}, check: func(t *testing.T, w *world, got outcome) {
+			alpha := slugOf(t, got, "alpha")
+			if !alpha.Stopped || alpha.OwnerRecorded || len(alpha.Branches) != 1 || alpha.Branches[0] != (branchStop{Branch: "records-alpha", State: "anchor_stopped"}) {
+				t.Errorf("alpha = %+v, want stopped on records-alpha in state anchor_stopped with no owner", alpha)
 			}
 		}},
 		{name: "LivePairStopsTheSlug", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.live["alpha"] = true }, check: func(t *testing.T, _ *world, got outcome) {

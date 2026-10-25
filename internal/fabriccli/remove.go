@@ -158,7 +158,7 @@ func stoppedRemoveRefusal(slug string, branches []fabricengine.BranchOutcome) er
 func stopsRemoval(state fabricengine.BranchState) bool {
 	switch state {
 	case fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged, fabricengine.BranchGone,
-		fabricengine.BranchDirty, fabricengine.BranchBusy, fabricengine.BranchLive:
+		fabricengine.BranchDirty, fabricengine.BranchBusy, fabricengine.BranchLive, fabricengine.BranchAnchorStopped:
 		return true
 	}
 	return false

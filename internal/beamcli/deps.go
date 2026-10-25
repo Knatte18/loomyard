@@ -47,6 +47,13 @@ func hubCreateDeps(prime *lyxcwd.Location) (createDeps, error) {
 		AddPair: func(slug string, opts fabricengine.AddOptions) (fabricengine.AddResult, error) {
 			return topology.Add(prime, slug, opts)
 		},
+		EnsureAnchor: func(rec *fabricengine.Mutations, slug, anchor string) error {
+			pair, err := lyxcwd.NamedWorktree(prime.HubPath, slug)
+			if err != nil {
+				return err
+			}
+			return topology.EnsureAnchor(rec, pair, anchor)
+		},
 		MarkBeam: func(rec *fabricengine.Mutations, slug string) (bool, error) {
 			return fabricengine.MarkBeam(rec, prime, slug)
 		},
@@ -100,6 +107,9 @@ func hubPromoteDeps(prime *lyxcwd.Location) (promoteDeps, error) {
 		},
 		ResetRecords: func(rec *fabricengine.Mutations, slug string) (fabricengine.ResetRecordsResult, error) {
 			return fabricengine.ResetRecordsToParent(rec, prime, slug)
+		},
+		Anchors: func(slug string) (string, string, error) {
+			return fabricengine.ParentRecordsAnchor(prime, slug)
 		},
 	}, nil
 }

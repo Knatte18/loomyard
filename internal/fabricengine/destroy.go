@@ -1,5 +1,5 @@
 // destroy.go is the only file in package fabricengine permitted to perform a destructive primitive.
-// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), resetting a warp checkout hard (ResetHard, and ResetPairCode for a task pair's checkout, both through resetHardTo), dropping seed commits from the hub's own board checkout (dropSeedCommits: a `reset --keep` to upstream and a replay of the other commits), and moving a pair's branches to origin's tips (DropLocal: a `reset --keep` per branch, after the local tip is kept under an archive tag), and replacing a pair's records content with its parent's (ResetRecordsToParent: a read-tree, a forced checkout-index and the removal of the tracked files the parent lacks).
+// The primitives are: removing a path (os.RemoveAll/os.Remove), removing a git worktree (git worktree remove), removing or re-pointing a link (fslink.Remove), deleting a branch (git branch -D), deleting a branch on a remote (git push <remote> --delete), moving a branch on a remote (a leased force push, updateRemoteBranch), resetting a warp checkout hard (ResetHard, and ResetPairCode for a task pair's checkout, both through resetHardTo), dropping seed commits from the hub's own board checkout (dropSeedCommits: a `reset --keep` to upstream and a replay of the other commits), and moving a pair's branches to origin's tips (DropLocal: a `reset --keep` per branch, after the local tip is kept under an archive tag), and replacing a pair's records content with its parent's (ResetRecordsToParent: a read-tree, a forced checkout-index and the removal of the tracked files the parent lacks), and moving a weft branch to a tip built from its upstream and its local commits (resetWeftToIntegrated: a `reset --keep`), and putting the paths of an unfinished anchor move back to HEAD (restoreMovePathsToHead: a reset, a checkout and a clean).
 // Every one of them is reached only through one of this file's executors, and every executor runs the shared check pipeline before performing its act — the gate executes, it does not merely approve.
 //
 // The pipeline runs four checks, always in this fixed order, stopping at the first failure:
@@ -306,6 +306,7 @@ const (
 	pathOwnershipDriftedWiredJunction
 	pathOwnershipPairWarpCheckout
 	pathOwnershipBoardWorktree
+	pathOwnershipMovePathspecs
 )
 
 // pathOwnership declares which of the closed set of ownership kinds a pathRequest's target must
@@ -322,6 +323,8 @@ type pathOwnership struct {
 	// weftDir and parentBranch serve ownedPairWarpCheckout only.
 	weftDir      string
 	parentBranch string
+	// pathspecs serves ownedMovePathspecs only, with root as the weft worktree they are relative to.
+	pathspecs []string
 }
 
 // ownedRegisteredLinkedWorktree declares target as owned when it is registered in repoDir's worktree
@@ -351,6 +354,12 @@ func ownedPairWarpCheckout(repoDir, weftDir, parentBranch string) pathOwnership 
 // A directory that merely shares the name, or a `_board` of another hub, fails the predicate.
 func ownedBoardWorktree() pathOwnership {
 	return pathOwnership{kind: pathOwnershipBoardWorktree}
+}
+
+// ownedMovePathspecs declares target as owned when it lies at or under one of pathspecs, each a slash path relative to the weft worktree at weftPath.
+// The pathspecs are the paths an anchor move rewrites: A/<names>, B/<names> and the root marker, never `.lyx`.
+func ownedMovePathspecs(weftPath string, pathspecs []string) pathOwnership {
+	return pathOwnership{kind: pathOwnershipMovePathspecs, root: weftPath, pathspecs: pathspecs}
 }
 
 // ownedFabricHub declares target as owned when it structurally looks like a fabric hub — a `_board`
@@ -615,6 +624,20 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 			return false, fmt.Sprintf("%s is not the %s worktree of a weft repo in its hub", target, BoardDirName)
 		}
 		return true, ""
+
+	case pathOwnershipMovePathspecs:
+		rel, err := filepath.Rel(filepath.Clean(own.root), filepath.Clean(target))
+		if err != nil {
+			return false, fmt.Sprintf("relate %s to the weft worktree %s: %v", target, own.root, err)
+		}
+		rel = filepath.ToSlash(rel)
+		for _, spec := range own.pathspecs {
+			spec = pathpkg.Clean(spec)
+			if rel == spec || strings.HasPrefix(rel, spec+"/") {
+				return true, ""
+			}
+		}
+		return false, fmt.Sprintf("%s lies under none of the paths the anchor move rewrites", target)
 
 	case pathOwnershipFabricHub:
 		if !looksLikeHub(target) {
@@ -1850,6 +1873,7 @@ type dropLocalPlan struct {
 // DropLocal moves the code and records branches of the pair slug to the tips origin last held for them, after keeping each branch's local tip under a local `archive/<slug>/<tip>` tag.
 // Only a branch holding commits its origin tracking ref lacks is touched, and a branch with no tracking ref is left alone.
 // The gate runs against every branch before any is tagged or moved: a tracked change on a path the move rewrites refuses with those paths named, and nothing is tagged or moved.
+// So does a records branch whose own anchor marker is empty, and one whose anchor differs from the anchor of the origin tip it would move to, ancestry ignored: the refusal wraps ErrAnchorChange and names the commands that settle it.
 // Each move is a `reset --keep` in the branch's own worktree; nothing is fetched or pushed, and the tags stay local.
 // It appends a tag_created entry per tag and a commits_dropped entry per moved branch, with the dropped commits' SHAs as the detail, each after its effect, to rec and to the result.
 func DropLocal(rec *Mutations, l *lyxcwd.Location, slug string) (res DropLocalResult, err error) {
@@ -1879,6 +1903,11 @@ func DropLocal(rec *Mutations, l *lyxcwd.Location, slug string) (res DropLocalRe
 		}
 		if len(localOnly) == 0 {
 			continue
+		}
+		if target.side == failedPushSideRecords {
+			if err := refuseDropLocalAnchorChange(l, slug, target.worktree, target.tracking); err != nil {
+				return res, err
+			}
 		}
 		touched, err := pathsChangedBetween(target.worktree, "HEAD", target.tracking)
 		if err != nil {
@@ -2038,6 +2067,104 @@ func cherryPickOnto(rec *Mutations, req pathRequest, repo *gitrepo.Repo, onto st
 		rec.Append(KindRepoAdvanced, req.target, endTip)
 	}
 	return dropped, nil
+}
+
+// resetWeftToIntegrated is the executor that moves the weft branch checked out at weftPath to onto, a commit built from its upstream and its local commits.
+// It runs the pipeline against the replay request of weftPath, any worktree of the weft's repository being owned and the dirtiness check refusing a tracked change on a path onto rewrites against HEAD, then resets the branch to onto keeping uncommitted changes.
+// A refusal of the dirtiness check, and a reset git refuses over a local change, return ErrReplayDirty with nothing changed.
+// It appends KindRepoAdvanced, with onto as the detail, once the branch moved, and nothing on a refusal or a failure.
+func resetWeftToIntegrated(rec *Mutations, weftPath, onto string) error {
+	touched, err := diffNames(weftPath, "HEAD", onto, nil)
+	if err != nil {
+		return fmt.Errorf("list the paths %s rewrites in %s: %w", onto, weftPath, err)
+	}
+	req := replayRequest(weftPath, ownedWarpCheckout(weftPath), touched)
+	if err := checkPathRequest(req); err != nil {
+		var refusal *destructiveRefusal
+		if errors.As(err, &refusal) && refusal.Check == CheckDirtiness {
+			return fmt.Errorf("%w: %s", ErrReplayDirty, refusal.Reason)
+		}
+		return err
+	}
+	repo := gitrepo.New(weftPath)
+	startTip, err := repo.CurrentSHA()
+	if err != nil {
+		return err
+	}
+	if err := repo.ResetKeep(onto); err != nil {
+		if gitrepo.IsLocalChangeRefusal(err) {
+			return fmt.Errorf("%w: %w", ErrReplayDirty, err)
+		}
+		return fmt.Errorf("reset %s to %s: %w", weftPath, onto, err)
+	}
+	if endTip, err := repo.CurrentSHA(); err == nil && endTip != startTip {
+		rec.Append(KindRepoAdvanced, weftPath, endTip)
+	}
+	return nil
+}
+
+// restoreMovePathsToHead is the executor that puts the paths an unfinished anchor move rewrote in the weft worktree at weftPath back to HEAD.
+// pathspecs are slash paths relative to weftPath: A/<names>, B/<names> and the root marker of the move, never `.lyx`.
+// It runs the pipeline against every pathspec, owning what lies under the move's pathspecs and declaring the dirtiness check not applicable.
+// The move record, or the failing step that raised it, proves the changes under them are the move's own.
+// It then resets the index to HEAD for the pathspecs, restores the tracked files from it and removes the untracked files git does not ignore.
+// Nothing HEAD does not track stays under them.
+// It appends KindWorktreeReset, with HEAD as the detail, when it found a change to undo, and nothing on a refusal, a failure or a clean tree.
+func restoreMovePathsToHead(rec *Mutations, weftPath string, pathspecs []string) error {
+	const what = "restore the paths of an anchor move to HEAD"
+	own := ownedMovePathspecs(weftPath, pathspecs)
+	for _, spec := range pathspecs {
+		clean := pathpkg.Clean(spec)
+		if pathpkg.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+			return &destructiveRefusal{Check: CheckContainment, What: what, Target: spec, Reason: "the pathspec does not name a path below the weft worktree"}
+		}
+		req := pathRequest{
+			what:      what,
+			container: weftPath,
+			target:    filepath.Join(weftPath, filepath.FromSlash(clean)),
+			ownership: own,
+			dirtiness: dirtinessNA("the move record, or the failing step that raised it, proves the changes under the move's paths are the move's own"),
+			force:     false,
+		}
+		if err := checkPathRequest(req); err != nil {
+			return err
+		}
+	}
+
+	literal := []string{"GIT_LITERAL_PATHSPECS=1"}
+	git := func(args ...string) (string, error) {
+		return gitexec.RunWithEnv(args, weftPath, literal)
+	}
+	status, err := git(append([]string{"status", "--porcelain", "--untracked-files=all", "--"}, pathspecs...)...)
+	if err != nil {
+		return fmt.Errorf("list the changes under the move's paths in %s: %w", weftPath, err)
+	}
+	if strings.TrimSpace(status) == "" {
+		return nil
+	}
+	if _, err := git(append([]string{"reset", "-q", "HEAD", "--"}, pathspecs...)...); err != nil {
+		return fmt.Errorf("reset the index under the move's paths in %s: %w", weftPath, err)
+	}
+	var tracked []string
+	for _, spec := range pathspecs {
+		listed, err := git("ls-files", "-z", "--", spec)
+		if err != nil {
+			return fmt.Errorf("list the tracked files of %s in %s: %w", spec, weftPath, err)
+		}
+		if listed != "" {
+			tracked = append(tracked, spec)
+		}
+	}
+	if len(tracked) > 0 {
+		if _, err := git(append([]string{"checkout", "--"}, tracked...)...); err != nil {
+			return fmt.Errorf("restore the tracked files under the move's paths in %s: %w", weftPath, err)
+		}
+	}
+	if _, err := git(append([]string{"clean", "-f", "-d", "-q", "--"}, pathspecs...)...); err != nil {
+		return fmt.Errorf("remove the untracked files under the move's paths in %s: %w", weftPath, err)
+	}
+	rec.Append(KindWorktreeReset, weftPath, "HEAD")
+	return nil
 }
 
 // ResetHard resets the warp checkout's HEAD, index, and working tree to sha, discarding any local
@@ -2209,16 +2336,20 @@ const resetRecordsSubjectPrefix = "fabric: reset records of "
 // A pair whose content already equals that tree commits nothing and reports Committed false, so a re-run after a stop finishes the reset.
 // The caller pushes the commits through the pair's detached push; ResetRecordsToParent pushes nothing.
 func ResetRecordsToParent(rec *Mutations, l *lyxcwd.Location, slug string) (ResetRecordsResult, error) {
-	weftPath := RecordsWorktreePath(l, slug)
+	pair, err := lyxcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		return ResetRecordsResult{}, err
+	}
+	weftPath := RecordsWorktreePath(pair, slug)
 	origin, found, err := ReadOriginFor(l, slug)
 	if err != nil {
 		return ResetRecordsResult{}, err
 	}
 	if !found {
-		return ResetRecordsResult{}, missingOriginRecordError(l, slug, weftPath)
+		return ResetRecordsResult{}, missingOriginRecordError(pair, slug, weftPath)
 	}
 	if origin.ParentBranch == "" {
-		return ResetRecordsResult{}, fmt.Errorf("pair %q is a root pair with no parent to reset its records to; way forward: a root pair cannot become a beam, so create a project entry through `lyx board upsert` under a slug of its own and run `lyx beam create` on it", slug)
+		return ResetRecordsResult{}, rootPairNoParentError(slug)
 	}
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -2276,13 +2407,13 @@ func ResetRecordsToParent(rec *Mutations, l *lyxcwd.Location, slug string) (Rese
 	if err != nil {
 		return result, err
 	}
-	if err := replaceRecordsContent(l, weftPath, parentTip); err != nil {
+	if err := replaceRecordsContent(pair, weftPath, parentTip); err != nil {
 		return result, err
 	}
 	if err := WriteOrigin(rec, l, slug, origin); err != nil {
 		return result, fmt.Errorf("restore the origin record of %s: %w", slug, err)
 	}
-	sha, committed, err := CommitRecordsPaths(rec, weftPath, l.AnchorRel, []string{"."}, resetRecordsSubjectPrefix+slug+" to its parent", SyncOptions{})
+	sha, committed, err := CommitRecordsPaths(rec, weftPath, pair.AnchorRel, []string{"."}, resetRecordsSubjectPrefix+slug+" to its parent", SyncOptions{})
 	if err != nil {
 		return result, fmt.Errorf("commit the reset of the records of %s: %w", slug, err)
 	}

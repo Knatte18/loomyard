@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 // writeAnchor writes the recorded .lyx-anchor marker into hub's board
@@ -63,7 +64,7 @@ func requireAnchorRel(t *testing.T, cwd, want string) {
 // TestResolve_AnchorScenario copies one git checkout and runs each resolution case as a step over it, in the order below; each step starts from the anchor marker state the step before it left.
 // The steps run serially, and the top-level test calls t.Parallel and no step does, because the steps share the one checkout and its recorded marker.
 //
-// Steps: no marker recorded; a root (".") anchor; a subpath ("backend") anchor; a stale pre-rename marker.
+// Steps: no marker recorded; a root (".") anchor; a subpath ("backend") anchor; a stale pre-rename marker; symlinked, linked, pruned and nested-repository starts; two worktrees with different own markers.
 func TestResolve_AnchorScenario(t *testing.T) {
 	t.Parallel()
 
@@ -275,7 +276,7 @@ func TestResolve_AnchorScenario(t *testing.T) {
 	}
 
 	// A gitfile naming a removed git dir, and a linked worktree whose commondir target was removed, are both refused with the bare sentinel rather than resolved to the enclosing checkout.
-	t.Run("pruned gitfile and missing commondir", func(t *testing.T) {
+	if !t.Run("pruned gitfile and missing commondir", func(t *testing.T) {
 		prunedDir := filepath.Join(root, "pruned")
 		if err := os.MkdirAll(prunedDir, 0o755); err != nil {
 			t.Fatalf("mkdir: %v", err)
@@ -301,6 +302,34 @@ func TestResolve_AnchorScenario(t *testing.T) {
 				}
 			})
 		}
+	}) {
+		return
+	}
+
+	// Each worktree reads its own marker, so two worktrees of one hub anchor at different subpaths, and each refuses the other's anchored directory.
+	// This step runs last so the own markers it writes never mask the stale-marker step's board-only guard.
+	t.Run("own markers differ per worktree", func(t *testing.T) {
+		secondDir := filepath.Join(filepath.Dir(root), "second")
+		gitkit.Git(t, root, "worktree", "add", "-b", "second", secondDir)
+		secondFrontendDir := filepath.Join(secondDir, "frontend")
+		if err := os.MkdirAll(secondFrontendDir, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", secondFrontendDir, err)
+		}
+
+		for worktreeRoot, anchor := range map[string]string{root: "backend", secondDir: "frontend"} {
+			ownRoot := weftname.SiblingPath(base.HubPath, filepath.Base(worktreeRoot))
+			if err := os.MkdirAll(ownRoot, 0o755); err != nil {
+				t.Fatalf("mkdir %s: %v", ownRoot, err)
+			}
+			if err := os.WriteFile(filepath.Join(ownRoot, lyxcwd.AnchorFileName), []byte(anchor+"\n"), 0o644); err != nil {
+				t.Fatalf("write own marker for %s: %v", worktreeRoot, err)
+			}
+		}
+
+		requireAnchorRel(t, backendDir, "backend")
+		requireAnchorRel(t, secondFrontendDir, "frontend")
+		requireOutsideAnchor(t, root)
+		requireOutsideAnchor(t, secondDir)
 	})
 }
 

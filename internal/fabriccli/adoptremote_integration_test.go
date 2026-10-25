@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
@@ -316,6 +317,7 @@ func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
 			weftClone := t.TempDir()
 			gitkit.MustRun(t, weftClone, "git", "clone", "--quiet", h.RecordsBare, ".")
 			gitkit.MustRun(t, weftClone, "git", "checkout", "--quiet", "-b", weftBranch)
+			gitkit.CommitFile(t, weftClone, lyxcwd.AnchorFileName, h.Location.AnchorRel+"\n", "record the anchor")
 			gitkit.CommitFile(t, weftClone, originMarkerFile, "from origin\n", "origin-only weft work")
 			weftTip := gitkit.CommitFile(t, weftClone, runRecord, "run record\n", "origin-only run record")
 			gitkit.MustRun(t, weftClone, "git", "push", "--quiet", "origin", weftBranch)

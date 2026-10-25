@@ -563,9 +563,34 @@ type divergedWeftFixture struct {
 	weftHeadWas string
 }
 
+// removeMarker, as a marker argument of newDivergedWeftFixture, commits the removal of the weft's anchor marker.
+const removeMarker = "<remove the marker>"
+
+// commitWeftSide commits rel with content, and then the anchor marker as marker says, in the weft checkout at dir.
+// An empty rel commits no file and an empty marker leaves the marker alone; removeMarker deletes it and any other value is written.
+// It returns the checkout's HEAD.
+func commitWeftSide(t *testing.T, dir, rel, content, marker, message string) string {
+	t.Helper()
+
+	if rel != "" {
+		gitkit.CommitFile(t, dir, rel, content, message)
+	}
+	switch marker {
+	case "":
+	case removeMarker:
+		gitkit.Git(t, dir, "rm", "--quiet", lyxcwd.AnchorFileName)
+		gitkit.Git(t, dir, "commit", "--quiet", "-m", message+": drop the marker")
+	default:
+		gitkit.CommitFile(t, dir, lyxcwd.AnchorFileName, marker+"\n", message+": set the marker")
+	}
+	return gitkit.RevParse(t, dir, "HEAD")
+}
+
 // newDivergedWeftFixture commits originRel on the weft's origin from a second clone and localRel on this machine's weft, each with its own content.
+// originMarker and localMarker, when set, change the anchor marker in a commit of their side after the file's; removeMarker deletes it.
+// An empty originRel and originMarker mean origin gains no commit, and an empty localRel and localMarker mean the weft gains none.
 // It then advances warp's remote with a clean commit, so a Pull has both arms to run.
-func newDivergedWeftFixture(t *testing.T, originRel, originContent, localRel, localContent string) divergedWeftFixture {
+func newDivergedWeftFixture(t *testing.T, originRel, originContent, originMarker, localRel, localContent, localMarker string) divergedWeftFixture {
 	t.Helper()
 	boardkit.InstallReplay(t)
 
@@ -580,11 +605,11 @@ func newDivergedWeftFixture(t *testing.T, originRel, originContent, localRel, lo
 	gitkit.MustRun(t, fixturesDir, "git", "clone", "-q", "-b", weftBranch, weftFixture.RecordsBare, cloneB)
 	gitkit.Git(t, cloneB, "config", "user.email", "test@test.com")
 	gitkit.Git(t, cloneB, "config", "user.name", "Test")
-	originSHA := gitkit.CommitFile(t, cloneB, originRel, originContent, "origin weft change")
+	originSHA := commitWeftSide(t, cloneB, originRel, originContent, originMarker, "origin weft change")
 	gitkit.MustRun(t, cloneB, "git", "push", "-q")
 
 	// Diverge local weft too, so `git pull --ff-only` cannot fast-forward.
-	localSHA := gitkit.CommitFile(t, weftPath, localRel, localContent, "local weft change")
+	localSHA := commitWeftSide(t, weftPath, localRel, localContent, localMarker, "local weft change")
 
 	// Advance warp's remote with a clean, non-rewritten commit -- no history rewrite is involved.
 	clone := filepath.Join(fixturesDir, "warp-clone-weft-diverge")
@@ -608,7 +633,7 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 
 	t.Run("A local weft commit replays onto origin's and the pull succeeds", func(t *testing.T) {
 		t.Parallel()
-		fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "local-only.txt", "local weft change")
+		fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "", "local-only.txt", "local weft change", "")
 
 		result, err := fx.f.Pull(fabricengine.SyncOptions{})
 		if err != nil {
@@ -632,7 +657,7 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 
 	t.Run("A both-sides change returns a weft stop after warp advanced", func(t *testing.T) {
 		t.Parallel()
-		fx := newDivergedWeftFixture(t, "status.json", "from origin", "status.json", "from this machine")
+		fx := newDivergedWeftFixture(t, "status.json", "from origin", "", "status.json", "from this machine", "")
 
 		result, err := fx.f.Pull(fabricengine.SyncOptions{})
 		var stop *fabricengine.WeftStopError
@@ -660,7 +685,7 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 
 	t.Run("An uncommitted change on a replayed path returns a weft stop naming it", func(t *testing.T) {
 		t.Parallel()
-		fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "local-only.txt", "local weft change")
+		fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "", "local-only.txt", "local weft change", "")
 		dirtyFile := filepath.Join(fx.weftPath, "local-only.txt")
 		if err := os.WriteFile(dirtyFile, []byte("uncommitted edit"), 0o644); err != nil {
 			t.Fatalf("dirty %s: %v", dirtyFile, err)
@@ -688,13 +713,148 @@ func TestPull_WeftDivergedWarpAdvancesCleanly(t *testing.T) {
 			t.Errorf("uncommitted weft edit after the stop = %q, %v; want it kept", data, readErr)
 		}
 	})
+
+	t.Run("A marker change on either side stops the pull before warp or the weft moves", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name string
+			// fixture builds the diverged weft with the marker changes of the row.
+			fixture func(t *testing.T) divergedWeftFixture
+			// wantSet is the anchor the way forward must name.
+			wantSet string
+		}{
+			{
+				"OriginChangesTheMarkerAndTheWeftHasNoLocalCommit",
+				func(t *testing.T) divergedWeftFixture {
+					return newDivergedWeftFixture(t, "from-clone-b.txt", "b", "sub", "", "", "")
+				},
+				"sub",
+			},
+			{
+				"BothSidesChangeItDifferently",
+				func(t *testing.T) divergedWeftFixture {
+					return newDivergedWeftFixture(t, "from-clone-b.txt", "b", "sub", "local-only.txt", "local", "other")
+				},
+				"other",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				fx := tt.fixture(t)
+				warpHeadWas := fabricengine.CurrentSHAForTest(t, fx.warpPath)
+
+				result, err := fx.f.Pull(fabricengine.SyncOptions{})
+
+				var stop *fabricengine.WeftStopError
+				if !errors.As(err, &stop) || !errors.Is(err, fabricengine.ErrAnchorChange) {
+					t.Fatalf("Pull() error = %v (%T); want a *fabricengine.WeftStopError wrapping ErrAnchorChange", err, err)
+				}
+				for _, want := range []string{"lyx fabric anchor", "--set " + tt.wantSet} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("Pull() error = %q; want it to name %q", err.Error(), want)
+					}
+				}
+				if result.WarpAdvanced || result.WeftPulled {
+					t.Errorf("Pull() WarpAdvanced=%v WeftPulled=%v; want neither side moved", result.WarpAdvanced, result.WeftPulled)
+				}
+				if got := fabricengine.CurrentSHAForTest(t, fx.warpPath); got != warpHeadWas {
+					t.Errorf("warp HEAD after the stop = %q; want unchanged %q", got, warpHeadWas)
+				}
+				if got := fabricengine.CurrentSHAForTest(t, fx.weftPath); got != fx.weftHeadWas {
+					t.Errorf("weft HEAD after the stop = %q; want unchanged %q", got, fx.weftHeadWas)
+				}
+			})
+		}
+	})
+
+	t.Run("Markerless commits whose content sits at the local marker replay with no stop", func(t *testing.T) {
+		t.Parallel()
+		fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", removeMarker, "local-only.txt", "local weft change", "")
+
+		result, err := fx.f.Pull(fabricengine.SyncOptions{})
+		if err != nil {
+			t.Fatalf("Pull() error = %v; want nil, the markerless tip compares equal by its content's anchor", err)
+		}
+		if !result.WeftPulled {
+			t.Errorf("Pull() WeftPulled = false; want the weft brought level")
+		}
+	})
+
+	t.Run("A weft ahead of origin with a re-anchor not yet pushed is no stop", func(t *testing.T) {
+		t.Parallel()
+		fx := newDivergedWeftFixture(t, "", "", "", "", "", "sub")
+
+		result, err := fx.f.Pull(fabricengine.SyncOptions{})
+		if err != nil {
+			t.Fatalf("Pull() error = %v; want nil, origin has nothing the weft lacks", err)
+		}
+		if !result.WeftPulled || !result.WarpAdvanced {
+			t.Errorf("Pull() WeftPulled=%v WarpAdvanced=%v; want both arms run", result.WeftPulled, result.WarpAdvanced)
+		}
+		if got := fabricengine.CurrentSHAForTest(t, fx.weftPath); got != fx.weftHeadWas {
+			t.Errorf("weft HEAD after Pull() = %q; want the unpushed re-anchor %q kept", got, fx.weftHeadWas)
+		}
+	})
+
+	t.Run("An empty own marker stops the pull naming the marker file", func(t *testing.T) {
+		t.Parallel()
+		fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "", "local-only.txt", "local weft change", "")
+		warpHeadWas := fabricengine.CurrentSHAForTest(t, fx.warpPath)
+		if err := os.WriteFile(filepath.Join(fx.weftPath, lyxcwd.AnchorFileName), []byte("\n"), 0o644); err != nil {
+			t.Fatalf("truncate the marker: %v", err)
+		}
+
+		result, err := fx.f.Pull(fabricengine.SyncOptions{})
+
+		var stop *fabricengine.WeftStopError
+		if !errors.As(err, &stop) || !errors.Is(err, fabricengine.ErrAnchorChange) {
+			t.Fatalf("Pull() error = %v (%T); want a *fabricengine.WeftStopError wrapping ErrAnchorChange", err, err)
+		}
+		if !strings.Contains(err.Error(), lyxcwd.AnchorFileName) {
+			t.Errorf("Pull() error = %q; want it to name %s", err.Error(), lyxcwd.AnchorFileName)
+		}
+		if result.WarpAdvanced {
+			t.Errorf("Pull() WarpAdvanced = true; want warp left alone")
+		}
+		if got := fabricengine.CurrentSHAForTest(t, fx.warpPath); got != warpHeadWas {
+			t.Errorf("warp HEAD after the stop = %q; want unchanged %q", got, warpHeadWas)
+		}
+	})
+
+	t.Run("A move record on the weft stops the pull before warp or the weft moves", func(t *testing.T) {
+		t.Parallel()
+		fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "", "local-only.txt", "local weft change", "")
+		warpHeadWas := fabricengine.CurrentSHAForTest(t, fx.warpPath)
+		writeMoveRecord(t, fx.weftPath, fabricengine.MoveRecord{A: ".", B: "x", Kind: fabricengine.MoveKindMove, PID: 4242})
+
+		result, err := fx.f.Pull(fabricengine.SyncOptions{})
+
+		var stop *fabricengine.WeftStopError
+		if !errors.As(err, &stop) || !errors.Is(err, fabricengine.ErrAnchorChange) {
+			t.Fatalf("Pull() error = %v (%T); want a *fabricengine.WeftStopError wrapping ErrAnchorChange", err, err)
+		}
+		if !strings.Contains(stop.WayForward, "lyx fabric anchor") || !strings.Contains(stop.WayForward, "--set x") {
+			t.Errorf("WeftStopError way forward = %q; want the move record's `lyx fabric anchor` re-run", stop.WayForward)
+		}
+		if result.WarpAdvanced || result.WeftPulled {
+			t.Errorf("Pull() WarpAdvanced=%v WeftPulled=%v; want neither side moved", result.WarpAdvanced, result.WeftPulled)
+		}
+		if got := fabricengine.CurrentSHAForTest(t, fx.warpPath); got != warpHeadWas {
+			t.Errorf("warp HEAD after the stop = %q; want unchanged %q", got, warpHeadWas)
+		}
+		if got := fabricengine.CurrentSHAForTest(t, fx.weftPath); got != fx.weftHeadWas {
+			t.Errorf("weft HEAD after the stop = %q; want unchanged %q", got, fx.weftHeadWas)
+		}
+	})
 }
 
 // TestPull_WeftUpstreamUnreadableIsAnError covers a weft whose pull fails because origin is unreachable and whose tracking ref names an object the repository lacks, so its commits against head cannot be listed.
 // A failed local read is an infrastructure error: Pull returns it rather than a nil error with WeftPulled false.
 func TestPull_WeftUpstreamUnreadableIsAnError(t *testing.T) {
 	t.Parallel()
-	fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "local-only.txt", "local weft change")
+	fx := newDivergedWeftFixture(t, "from-clone-b.txt", "b", "", "local-only.txt", "local weft change", "")
 	gitkit.Git(t, fx.weftPath, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "no-such-origin"))
 	trackingRef := strings.TrimSpace(gitkit.Git(t, fx.weftPath, "rev-parse", "--path-format=absolute", "--git-path", "refs/remotes/origin/"+fx.weftBranch))
 	if err := os.MkdirAll(filepath.Dir(trackingRef), 0o755); err != nil {
@@ -803,7 +963,7 @@ func TestPull_ReflogJudgesUnpushedAndRewinds(t *testing.T) {
 
 	t.Run("A weft with only commits that replay empty pulls clean", func(t *testing.T) {
 		t.Parallel()
-		fx := newDivergedWeftFixture(t, "same.txt", "same", "same.txt", "same")
+		fx := newDivergedWeftFixture(t, "same.txt", "same", "", "same.txt", "same", "")
 
 		result, err := fx.f.Pull(fabricengine.SyncOptions{})
 		if err != nil {

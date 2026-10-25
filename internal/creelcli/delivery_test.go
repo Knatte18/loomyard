@@ -741,7 +741,7 @@ func TestHubDelivery_SkipsAWorktreeThatNoLongerResolves(t *testing.T) {
 
 	t.Run("AnUnusableRecordedAnchorFailsTheCall", func(t *testing.T) {
 		hub, prime, pair := newHub(t)
-		anchorFile := filepath.Join(hub.BoardDir(), lyxcwd.AnchorFileName)
+		anchorFile := filepath.Join(hub.PrimeRecords(), lyxcwd.AnchorFileName)
 		if err := os.WriteFile(anchorFile, []byte("../escape\n"), 0o644); err != nil {
 			t.Fatalf("WriteFile(%q) = %v", anchorFile, err)
 		}

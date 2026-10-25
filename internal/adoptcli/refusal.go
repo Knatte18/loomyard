@@ -1,4 +1,4 @@
-// refusal.go holds the two refusals that run before adopt's first mutation: an entry adopted without the parent that drives it, and a beam or the prime adopted without the members another machine owns.
+// refusal.go holds the refusals that run before adopt's first mutation: a standing anchor change, an entry adopted without the parent that drives it, and a beam or the prime adopted without the members another machine owns.
 
 package adoptcli
 
@@ -14,6 +14,41 @@ import (
 
 // primeSubject names the prime among the subjects adoptRefusal reasons over; no slug is empty.
 const primeSubject = ""
+
+// refuseStandingMove refuses an adopt while an anchor change stands in a worktree it would act under: the prime, each named entry's own worktree when this machine holds its pair, and each named entry's parent worktree.
+// The refusal carries the way forward the standing record names, then the re-run, so no pair is added, no run resumed and no gate suite started under a moving anchor.
+// A read error refuses naming it, and nil MoveInProgress reads as no record standing.
+func refuseStandingMove(deps adoptDeps, slugs []string) error {
+	if deps.MoveInProgress == nil {
+		return nil
+	}
+	subjects := []string{primeSubject}
+	for _, slug := range slugs {
+		if deps.LocalPair(slug) {
+			subjects = append(subjects, slug)
+		}
+		parent, err := deps.ParentOf(slug)
+		if err != nil {
+			return fmt.Errorf("lyx adopt: read the parent of %s, so nothing ran: %w; %s", slug, err, reentry)
+		}
+		subjects = append(subjects, parent)
+	}
+	checked := map[string]bool{}
+	for _, subject := range subjects {
+		if checked[subject] {
+			continue
+		}
+		checked[subject] = true
+		wayForward, standing, err := deps.MoveInProgress(subject)
+		if err != nil {
+			return fmt.Errorf("lyx adopt: read whether an anchor change stands in %q, so nothing ran: %w; %s", subject, err, reentry)
+		}
+		if standing {
+			return fmt.Errorf("lyx adopt: an anchor change stands, so nothing ran: %s; %s", wayForward, reentry)
+		}
+	}
+	return nil
+}
 
 // wouldStop answers, from the read-only part of step 1 alone, whether takeOverSlug would stop slug there: its pair holds local commits origin lacks or is live, or --drop-local meets a live pair.
 // An entry no other machine owns, one with no pair here and any entry under --keep-local pass step 1.

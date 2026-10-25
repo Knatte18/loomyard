@@ -4,7 +4,8 @@
 // outside internal/lyxcwd reaches for raw cwd or top-level git geometry, keeps internal/lyxcwd
 // the sole geometry owner, and (via TestEnforcement_FabricVocabulary) keeps the fabric-vocabulary
 // leak fabric-weft-visibility-cleanup closed.
-// All three enforcement tests walk through scankit.
+// TestEnforcement_LocationLiterals keeps every Location outside lyxcwd built from lyxcwd.
+// Every enforcement test walks through scankit.
 
 package lyxcwd
 
@@ -543,6 +544,8 @@ var weftnameImportOwners = map[string]bool{
 	// assertion of what does, so this entry is correct even though hub.go imports no weftname
 	// identifier today.
 	"internal/hubforge": true,
+	// internal/lyxcwd reads a worktree's own anchor marker at the root of its records sibling, whose path weftname.SiblingPath names.
+	"internal/lyxcwd": true,
 }
 
 // weftnameImportPath is the fully-qualified import path TestEnforcement_FabricVocabulary's
@@ -565,6 +568,7 @@ var vocabScanAllowlist = []vocabScanAllowlistEntry{
 	{"docs/research/", "measurement reports record one run and are not rewritten"},
 	{"internal/lyxcwd/enforcement_test.go", "this scan's own test file spells the tokens it bans"},
 	{"internal/lyxcwd/vocabscan_test.go", "this scan's own test file spells the tokens it bans"},
+	{"internal/lyxcwd/leaf_enforcement_test.go", "the import cap names the side-named package lyxcwd imports, which this file does not"},
 }
 
 // vocabScanSkippedRoots are the first path segments the extended scan never enters.
@@ -896,6 +900,80 @@ func TestEnforcement_FabricVocabulary(t *testing.T) {
 
 		if len(failures) > 0 {
 			t.Errorf("fabric-vocabulary leak found:\n%s", strings.Join(failures, "\n"))
+		}
+	})
+}
+
+// isLocationLiteral reports whether n is a composite literal whose type is lyxcwd.Location, bare or under &.
+// A slice or map literal of *lyxcwd.Location has another type and is not one.
+func isLocationLiteral(n ast.Node) bool {
+	literal, ok := n.(*ast.CompositeLit)
+	if !ok {
+		return false
+	}
+	selector, ok := literal.Type.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, ok := selector.X.(*ast.Ident)
+	return ok && pkg.Name == "lyxcwd" && selector.Sel.Name == "Location"
+}
+
+// TestEnforcement_LocationLiterals verifies that no production file outside internal/lyxcwd and internal/testkit builds a lyxcwd.Location by composite literal.
+// A Location carries its worktree's own anchor, which only lyxcwd reads, so another worktree's Location comes from lyxcwd.NamedWorktree.
+//
+//lyx:guard
+func TestEnforcement_LocationLiterals(t *testing.T) {
+	t.Run("tree-scan", func(t *testing.T) {
+		var failures []string
+		scanned := scankit.Walk(t, scankit.Options{}, func(f *scankit.File) {
+			if strings.HasPrefix(f.Rel, "internal/lyxcwd/") || strings.HasPrefix(f.Rel, "internal/testkit/") {
+				return
+			}
+			file := f.AST(t, parser.SkipObjectResolution)
+			fset := f.FileSet()
+			ast.Inspect(file, func(n ast.Node) bool {
+				if isLocationLiteral(n) {
+					failures = append(failures, fset.Position(n.Pos()).String())
+				}
+				return true
+			})
+		})
+
+		scankit.RequireFloor(t, scanned, 1, "Location literal scan")
+		if len(failures) > 0 {
+			t.Errorf("lyxcwd.Location composite literals found outside internal/lyxcwd, use lyxcwd.NamedWorktree:\n%s", strings.Join(failures, "\n"))
+		}
+	})
+
+	t.Run("predicate", func(t *testing.T) {
+		tests := []struct {
+			name string
+			expr string
+			want bool
+		}{
+			{"EmptyAddressOf", "&lyxcwd.Location{}", true},
+			{"BareWithField", "lyxcwd.Location{HubPath: h}", true},
+			{"SliceOfPointers", "[]*lyxcwd.Location{p}", false},
+			{"MapOfPointers", "map[string]*lyxcwd.Location{}", false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				expr, err := parser.ParseExpr(tt.expr)
+				if err != nil {
+					t.Fatalf("parse %q: %v", tt.expr, err)
+				}
+				got := false
+				ast.Inspect(expr, func(n ast.Node) bool {
+					if isLocationLiteral(n) {
+						got = true
+					}
+					return true
+				})
+				if got != tt.want {
+					t.Errorf("isLocationLiteral(%q) = %v; want %v", tt.expr, got, tt.want)
+				}
+			})
 		}
 	})
 }

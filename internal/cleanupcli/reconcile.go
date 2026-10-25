@@ -91,7 +91,7 @@ func sharedStopText(report fabricengine.OriginReport) string {
 			reenters = true
 		case fabricengine.BranchBusy:
 			reenters = !branch.PushLockHeld
-		case fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged:
+		case fabricengine.BranchRewound, fabricengine.BranchRewritten, fabricengine.BranchDiverged, fabricengine.BranchAnchorStopped:
 		default:
 			continue
 		}
