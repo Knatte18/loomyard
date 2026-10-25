@@ -430,7 +430,7 @@ func TestMasterTemplate_QuotesBulletLists(t *testing.T) {
 		heading string
 		want    []string
 	}{
-		{"digest fields", digestSectionHeading, []string{"batch", "status", "head_sha", "deviations", "departures", "dead_reason", "need", "elapsed_s"}},
+		{"digest fields", digestSectionHeading, []string{"batch", "status", "head_sha", "deviations", "departures", "renames", "dead_reason", "need", "elapsed_s"}},
 		{"outcome schema keys", outcomeKeysHeadingSub, []string{"outcome", "stuck_reason", "batches_done"}},
 	}
 	for _, tc := range cases {

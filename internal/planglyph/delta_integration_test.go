@@ -165,7 +165,7 @@ func TestRealGitDelta(t *testing.T) {
 		})
 		before := readCardFile(t, dir, 2, "card2")
 
-		findings, err := DetectDrift(plan, plan, dir, f.root, delta, "deadbeef", driftTestTimestamp)
+		findings, err := DetectDrift(plan, plan, dir, f.root, delta, nil, "deadbeef", driftTestTimestamp)
 		if err != nil {
 			t.Fatalf("DetectDrift(...) returned error: %v", err)
 		}
@@ -190,7 +190,7 @@ func TestRealGitDelta(t *testing.T) {
 			1: "**Edit:**\n- `sub#Kept`\n\n**Uses:**\n- `sub#Old`\n\n**Intent:** one\n",
 		})
 
-		findings, err := DetectDrift(plan, plan, dir, f.root, delta, "deadbeef", driftTestTimestamp)
+		findings, err := DetectDrift(plan, plan, dir, f.root, delta, nil, "deadbeef", driftTestTimestamp)
 		if err != nil {
 			t.Fatalf("DetectDrift(...) returned error: %v", err)
 		}

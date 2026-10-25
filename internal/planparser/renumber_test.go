@@ -336,6 +336,127 @@ func TestRenumber(t *testing.T) {
 	}
 }
 
+// newCardIDFixture writes cards alpha, beta, gamma and delta numbered from 8, whose framing, alpha's intent and delta's intent name cards by card id.
+// Numbering from 8 makes a move cross from one digit to two.
+func newCardIDFixture(t *testing.T) renumberFixture {
+	t.Helper()
+	root := t.TempDir()
+	planDir := filepath.Join(root, "plan")
+	plankit.Write(t, planDir, plankit.Plan{
+		FirstCard: 8,
+		Framing:   "Order: 9-beta then 10-gamma; card 9 is bare.",
+		Cards: []plankit.Card{
+			{Number: 8, Slug: "alpha", Summary: "intent of alpha", Intent: "Feeds `10-gamma` and `09-beta.md`; see 9-beta, not 9-betamax, 9-beta-two or x10-gamma."},
+			{Number: 9, Slug: "beta", Summary: "intent of beta"},
+			{Number: 10, Slug: "gamma", Summary: "intent of gamma"},
+			{Number: 11, Slug: "delta", Summary: "intent of delta", Intent: "Follows 10-gamma, run with `--card 9-beta`."},
+		},
+	})
+	return renumberFixture{root: root, planDir: planDir, journalPath: filepath.Join(root, "scratch", renumberJournalName), first: 8}
+}
+
+// TestRenumber_RewritesCardIDs covers the card-id rewrite of a renumber: every `<N>-<slug>` and zero-padded file form naming a moved card moves to the new number, in a moved card, a card that keeps its number and the overview.
+// A token that runs on into a longer slug or word, a removed card's id and a bare number stay, and a rewritten id is not reported again as a prose mention.
+func TestRenumber_RewritesCardIDs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		call renumberCall
+		// wantLines are lines each named plan file must hold afterwards.
+		wantLines map[string]string
+		// wantRewritten are the rewritten refs as "file: from -> to", in report order.
+		wantRewritten []string
+		// wantMentions are the prose mentions as "file: text".
+		wantMentions []string
+	}{
+		{
+			name: "Insert",
+			call: insertAt(1),
+			wantLines: map[string]string{
+				renumberOverview: "Order: 10-beta then 11-gamma; card 9 is bare.",
+				"08-alpha.md":    "**Intent:** Feeds `11-gamma` and `10-beta.md`; see 10-beta, not 9-betamax, 9-beta-two or x10-gamma.",
+				"12-delta.md":    "**Intent:** Follows 11-gamma, run with `--card 10-beta`.",
+			},
+			wantRewritten: []string{
+				renumberOverview + ": 9-beta -> 10-beta",
+				renumberOverview + ": 10-gamma -> 11-gamma",
+				"08-alpha.md: 10-gamma -> 11-gamma",
+				"08-alpha.md: 09-beta -> 10-beta",
+				"08-alpha.md: 9-beta -> 10-beta",
+				"12-delta.md: 10-gamma -> 11-gamma",
+				"12-delta.md: 9-beta -> 10-beta",
+			},
+			wantMentions: []string{renumberOverview + ": Order: 10-beta then 11-gamma; card 9 is bare."},
+		},
+		{
+			name: "Remove",
+			call: removeAt(1),
+			wantLines: map[string]string{
+				renumberOverview: "Order: 9-beta then 9-gamma; card 9 is bare.",
+				"08-alpha.md":    "**Intent:** Feeds `9-gamma` and `09-beta.md`; see 9-beta, not 9-betamax, 9-beta-two or x10-gamma.",
+				"10-delta.md":    "**Intent:** Follows 9-gamma, run with `--card 9-beta`.",
+			},
+			wantRewritten: []string{
+				renumberOverview + ": 10-gamma -> 9-gamma",
+				"08-alpha.md: 10-gamma -> 9-gamma",
+				"10-delta.md: 10-gamma -> 9-gamma",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fx := newCardIDFixture(t)
+
+			result, err := tt.call(planparser.OSRenumberIO(), fx)
+			if err != nil {
+				t.Fatalf("renumber failed: %v", err)
+			}
+			after := snapshot(t, fx.planDir)
+
+			for file, want := range tt.wantLines {
+				if !slices.Contains(strings.Split(after[file], "\n"), want) {
+					t.Errorf("%s = %q; want a line %q", file, after[file], want)
+				}
+			}
+
+			var gotRewritten []string
+			for _, r := range result.RewrittenRefs {
+				gotRewritten = append(gotRewritten, r.File+": "+r.From+" -> "+r.To)
+				lines := strings.Split(after[r.File], "\n")
+				if r.Line < 1 || r.Line > len(lines) || !strings.Contains(lines[r.Line-1], r.To) {
+					t.Errorf("RewrittenRef %+v does not point at its line", r)
+				}
+			}
+			if !slices.Equal(gotRewritten, tt.wantRewritten) {
+				t.Errorf("RewrittenRefs = %q; want %q", gotRewritten, tt.wantRewritten)
+			}
+
+			var gotMentions []string
+			for _, p := range result.ProseMentions {
+				gotMentions = append(gotMentions, p.File+": "+p.Text)
+			}
+			if !slices.Equal(gotMentions, tt.wantMentions) {
+				t.Errorf("ProseMentions = %q; want %q", gotMentions, tt.wantMentions)
+			}
+		})
+	}
+}
+
+// TestRenumber_CardIDRewriteFailureReversed covers a renumber that fails writing a card it rewrote in place: every file, that card included, is back as it was.
+func TestRenumber_CardIDRewriteFailureReversed(t *testing.T) {
+	t.Parallel()
+	fx := newCardIDFixture(t)
+	before := snapshot(t, fx.root)
+
+	_, err := insertAt(1)(faultyIO(&fault{op: "WriteFile", base: "08-alpha.md", times: 1}), fx)
+	if !errors.Is(err, planparser.ErrRenumberIOFailed) {
+		t.Fatalf("InsertCard() error = %v; want ErrRenumberIOFailed", err)
+	}
+	requireSameTree(t, before, snapshot(t, fx.root))
+}
+
 func TestRenumber_Refusals(t *testing.T) {
 	t.Parallel()
 

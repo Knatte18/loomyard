@@ -130,8 +130,8 @@ func (d fakeDelta) ScopeGuard(plan *planparser.Plan, cards []planparser.Card) []
 	return planglyph.ScopeGuard(plan, cards, d.answer)
 }
 
-func (d fakeDelta) DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, planDir, worktreeRoot, sha, now string) ([]planindex.Finding, error) {
-	return planglyph.DetectDrift(fullPlan, planglyph.PendingPlan(fullPlan, completed), planDir, worktreeRoot, d.answer, sha, now)
+func (d fakeDelta) DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, reported []planindex.Rename, planDir, worktreeRoot, sha, now string) ([]planindex.Finding, error) {
+	return planglyph.DetectDrift(fullPlan, planglyph.PendingPlan(fullPlan, completed), planDir, worktreeRoot, d.answer, reported, sha, now)
 }
 
 var _ websterengine.Git = (*fakeGit)(nil)

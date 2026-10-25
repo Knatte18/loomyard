@@ -695,6 +695,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 		StartSHA:  bs.StartSHA,
 		HeadSHA:   head,
 		Label:     fmt.Sprintf("%02d-%s", number, slug),
+		Renames:   digest.Renames,
 	})
 	if err != nil {
 		if !errors.Is(err, ErrCardNotDone) {

@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/Knatte18/quarry/quarry"
@@ -772,6 +773,56 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 		}
 		if want, err := websterengine.Fingerprint(planDir); err != nil || fx.Deps.State.PlanFingerprint != want {
 			t.Errorf("State.PlanFingerprint = %q; want the plan directory's own %q (err %v)", fx.Deps.State.PlanFingerprint, want, err)
+		}
+	})
+
+	// A recovery's reported rename is repaired exactly as a fork's is, even where the delta only reports the old glyph deleted.
+	t.Run("a recovered reported rename rewrites the pending card", func(t *testing.T) {
+		fx := newRecoverFixture(t)
+		clk := &recoverFakeClock{now: time.Unix(0, 0)}
+		writeWorktreeFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Moved() int { return 1 }\n")
+		fx.Index.delta = quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Deleted: []quarry.Symbol{{ID: "internal/foo#WillMove"}}}}
+
+		planDir := t.TempDir()
+		base := []plankit.Group{{Label: "Prosa", Targets: []string{"//base.txt"}}}
+		plankit.Write(t, planDir, plankit.Plan{
+			Approved: true,
+			Language: "go",
+			Framing:  "A two-card fixture whose second card names a glyph the first card's batch renamed.",
+			Cards: []plankit.Card{
+				{Number: 1, Slug: "json-flag", Summary: "the recovered card", Groups: base, Intent: "The recovered card."},
+				{Number: 2, Slug: "pending", Summary: "the not-yet-built card", Groups: base, Uses: []string{"internal/foo#WillMove"}, Intent: "The pending card."},
+			},
+		})
+		plan, err := planparser.ParsePlan(planDir)
+		if err != nil {
+			t.Fatalf("ParsePlan(%q) returned error: %v", planDir, err)
+		}
+		fx.Deps.Geom.PlanDir = planDir
+		fx.Deps.Plan = plan
+		fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards[:1]}, {Cards: plan.Cards[1:]}}
+		if err := websterengine.RestampPlanBaseline(fx.Deps.State, planDir, fx.Deps.Geom.WebsterDir); err != nil {
+			t.Fatalf("RestampPlanBaseline() error = %v", err)
+		}
+
+		if first, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk); err != nil || !first.Spawned || !first.Running {
+			t.Fatalf("RecoverBatch() first call = %+v, %v; want a running spawned recovery", first, err)
+		}
+		writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+fx.Git.head+"\nrenames:\n  - old: internal/foo#WillMove\n    new: internal/foo#Moved\n    reason: WillMove collides with an existing symbol\n")
+		recovered, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+		if err != nil {
+			t.Fatalf("RecoverBatch() second call error = %v; want nil", err)
+		}
+		if recovered.Digest == nil || recovered.Digest.Status != websterengine.DigestStatusDone {
+			t.Fatalf("recovered Digest = %+v; want a terminal done digest", recovered.Digest)
+		}
+
+		pending, readErr := os.ReadFile(filepath.Join(planDir, "02-pending.md"))
+		if readErr != nil {
+			t.Fatalf("read 02-pending.md: %v", readErr)
+		}
+		if !strings.Contains(string(pending), "internal/foo#Moved") || strings.Contains(string(pending), "internal/foo#WillMove") {
+			t.Errorf("02-pending.md = %q; want the reported new glyph in place of the old one", pending)
 		}
 	})
 }

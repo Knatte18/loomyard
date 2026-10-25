@@ -68,6 +68,12 @@ type BindOutcome struct {
 	Reason BindReason
 }
 
+// Rename is one glyph rename a batch's implementer reports it made: the glyph a later card may still name, and the glyph that replaced it.
+type Rename struct {
+	Old string
+	New string
+}
+
 // Index is the code index a plan gate calls.
 // An infrastructure failure of the index is an error wrapping ErrQuarryUnavailable, distinct from any finding.
 type Index interface {
@@ -103,5 +109,6 @@ type Delta interface {
 	// ScopeGuard reports the delta's changes outside the targets the cards declare.
 	ScopeGuard(plan *planparser.Plan, cards []planparser.Card) []Finding
 	// DetectDrift reports the plan references the delta invalidates among the cards not in completed.
-	DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, planDir, worktreeRoot, sha, now string) ([]Finding, error)
+	// It repairs a rename quarry proves and each of reported, the renames the batch's implementer reported.
+	DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, reported []Rename, planDir, worktreeRoot, sha, now string) ([]Finding, error)
 }
