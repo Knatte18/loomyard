@@ -1,0 +1,4 @@
+P4 gpt-6-astra-medium-r1 rc=0 wall=166 in=729620 cached=652800 out=4086 reason=988 verdict=BLOCKING n=4 five_hour_used_percent=15 weekly_used_percent=18
+P1 gpt-6-astra-medium-r1 rc=0 wall=184 in=1097777 cached=1005056 out=4400 reason=1989 verdict=BLOCKING n=2 five_hour_used_percent=37 weekly_used_percent=21
+P4 opus-medium-r1 rc=0 wall=389 fresh=128230 cache_read=2468332 out=30436 verdict=APPROVED n=6
+P1 opus-medium-r1 rc=0 wall=563 fresh=206429 cache_read=6482958 out=49293 verdict=BLOCKING n=6
