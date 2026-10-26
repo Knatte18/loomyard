@@ -841,6 +841,54 @@ func TestValidate_RenameMechanicMissing(t *testing.T) {
 	})
 }
 
+// TestValidate_RenameLeavesTest covers rename-leaves-test: under go, a symbol Rename pair whose same-named tests a card still lists under Edit, with no Rename pair of their own, is one finding per test ref, attributed to the renaming card.
+func TestValidate_RenameLeavesTest(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		language  string
+		oldSide   string
+		testPairs []planparser.MovePair
+		edited    []string
+		want      int
+	}{
+		{"test named after the symbol", "go", "internal/foo#Old", nil, []string{"internal/foo#TestOld"}, 1},
+		{"test case named after the symbol", "go", "internal/foo#Old", nil, []string{"internal/foo#TestOld_Empty", "internal/foo#TestOld"}, 2},
+		{"method test named after the type and method", "go", "internal/foo#Cache.Get", nil, []string{"internal/foo#TestCache_Get"}, 1},
+		{"test of a longer name is not the symbol's", "go", "internal/foo#Old", nil, []string{"internal/foo#TestOldest"}, 0},
+		{"test in another unit is not the symbol's", "go", "internal/foo#Old", nil, []string{"internal/bar#TestOld"}, 0},
+		{"test in the external test package is the symbol's", "go", "internal/foo#Old", nil, []string{"internal/foo_test#TestOld"}, 1},
+		{"test renamed by its own pair", "go", "internal/foo#Old", []planparser.MovePair{{Old: "internal/foo#TestOld", New: "plan:internal/foo#TestNew"}}, []string{"internal/foo#TestOld"}, 0},
+		{"csharp plan is not checked", "csharp", "Foo.Bar#Old", nil, []string{"Foo.Bar#TestOld"}, 0},
+		{"none plan is not checked", "none", "internal/foo#Old", nil, []string{"internal/foo#TestOld"}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			renaming := renameCard(1, "rename", tt.oldSide, "plan:internal/foo#New")
+			renaming.Pairs = append(renaming.Pairs, tt.testPairs...)
+			renaming.TargetGroups[0].Pairs = renaming.Pairs
+			editing := cardOfType(2, "edit", planparser.CardTypeEdit, tt.edited)
+			plan := &planparser.Plan{Format: 5, Approved: true, Language: tt.language, RenameMechanic: "mechanic", Cards: []planparser.Card{renaming, editing}}
+
+			var got []planparser.ValidationError
+			for _, f := range planparser.Validate(plan, t.TempDir()) {
+				if f.Check == "rename-leaves-test" {
+					got = append(got, f)
+				}
+			}
+			if len(got) != tt.want {
+				t.Fatalf("Validate() rename-leaves-test findings = %v; want %d", got, tt.want)
+			}
+			for _, f := range got {
+				if f.Card != "1-rename" {
+					t.Errorf("Validate() rename-leaves-test card = %q; want the renaming card 1-rename", f.Card)
+				}
+			}
+		})
+	}
+}
+
 // TestValidate_CardMissingField covers card-missing-field: every card must carry Intent:, and a card of type Edit or Delete must also carry ImpactSummary: — a Create, Rename, Move, Prosa, or Custom card without ImpactSummary produces no finding.
 //
 //testtiming:keep pins the card-missing-field finding per card type, which its covering tests do not assert

@@ -109,6 +109,11 @@ func (d batchDelta) ScopeGuard(plan *planparser.Plan, cards []planparser.Card) [
 	return ScopeGuard(plan, cards, d.answer)
 }
 
+// RemovedTargets checks the plan pending after completed, the same view PendingPlan builds.
+func (d batchDelta) RemovedTargets(fullPlan *planparser.Plan, completed, own []planparser.Card, reported []planindex.Rename) []Finding {
+	return RemovedTargets(PendingPlan(fullPlan, completed), own, d.answer, reported)
+}
+
 // DetectDrift checks the plan pending after completed, the same view PendingPlan builds.
 func (d batchDelta) DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, reported []planindex.Rename, planDir, worktreeRoot, sha, now string) ([]Finding, error) {
 	return DetectDrift(fullPlan, PendingPlan(fullPlan, completed), planDir, worktreeRoot, d.answer, reported, sha, now)

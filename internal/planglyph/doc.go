@@ -118,6 +118,9 @@
 //     (drift.go), the exact-tier and evidence-tier halves of drift detection.
 //     A rename the batch's implementer reports is repaired as an exact-tier one is, under the amendment tier `reported`, and its old glyph gets neither finding;
 //     a reported new glyph that does not resolve is the post-repair resolve's blocking finding.
+//   - later-target-removed (blocking) — RemovedTargets (drift.go), a symbol a batch's delta deleted that a pending card targets or uses,
+//     unless quarry renamed it exactly, the batch's implementer reported its rename, or a card of the batch declares it as a Delete target or a Rename pair's old side.
+//     It reads and writes nothing, and its finding names any evidence-tier rename candidates.
 //   - scope-outside-plan (informational) — ScopeGuard (scope.go), a symbol a completed batch's
 //     delta touched outside its own cards' targets (a file target covers every symbol in that
 //     file, a package target every symbol in a file directly in its directory), and a changed file

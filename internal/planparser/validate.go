@@ -1,6 +1,6 @@
 // validate.go implements ValidateFormat and Validate, format-5 plan-format's machine check sets
 // (contracts/specs/loom-plan-spec.md), run in this fixed order.
-// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-language-mismatch (checkLanguageMismatch), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), resign-not-member (checkResignNotMember), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), extends-overlap (checkExtendsOverlap, extends.go), extends-resign (checkExtendsResign, extends.go),uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), rename-namespace-pair (checkRenameNamespacePair), commit-subject-mismatch (checkCommitSubjectMismatch), verify-nested-module (checkVerifyNestedModule, verifymodule.go), verify-module-wide (checkVerifyModuleWide, verifymodule.go), verify-package-missing (checkVerifyPackageMissing, verifypackage.go), and pattern-entry-line-cap (checkPatternEntryLineCap, patternentry.go).
+// ValidateFormat emits every one of the following distinct ValidationError.Check IDs but plan-unapproved; Validate emits them all: format-unrecognized (checkFormatRecognized), plan-language-unrecognized (checkLanguageRecognized), plan-language-mismatch (checkLanguageMismatch), plan-unapproved (checkApproved), index-file-mismatch (checkIndexFileConsistency), card-type-missing (checkCardTypeMissing), card-custom-not-alone (checkCustomNotAlone), card-retired-label (checkCardRetiredLabel), card-path-malformed (checkCardPathMalformed), bare-symbol-target (checkBareSymbolTarget), directory-target (checkDirectoryTarget), glyph-malformed (checkGlyphMalformed), rename-format (checkRenameFormat), handle-dangling, handle-collision (both checkHandleConsistency), handle-malformed (checkHandleMalformed), resign-not-member (checkResignNotMember), rename-to-not-handle, rename-from-not-glyph (both checkRenamePairShape), rename-mechanic-missing (checkRenameMechanicMissing), rename-leaves-test (checkRenameLeavesTest), card-missing-field (checkCardMissingField), card-field-empty (checkCardFieldEmpty), card-field-overlap (checkCardFieldOverlap), extends-overlap (checkExtendsOverlap, extends.go), extends-resign (checkExtendsResign, extends.go),uses-later-target (checkUsesLaterTarget), redundant-package-target (checkRedundantPackageTarget, redundancy.go), impact-summary-multiline (checkImpactSummaryMultiline), prosa-symbol-target (checkProsaSymbolTarget), card-numbering (checkCardNumbering), path-missing (checkPathMissing), rename-namespace-pair (checkRenameNamespacePair), commit-subject-mismatch (checkCommitSubjectMismatch), verify-nested-module (checkVerifyNestedModule, verifymodule.go), verify-module-wide (checkVerifyModuleWide, verifymodule.go), verify-package-missing (checkVerifyPackageMissing, verifypackage.go), and pattern-entry-line-cap (checkPatternEntryLineCap, patternentry.go).
 // The plan gate's context checks verify-raw-command, verify-gate-no-wait and plan-verify-retired are appended by loomshed outside both entry points, over VerifyCommands.
 // Findings are keyed by card (flat `N-<slug>`), not batch: the format has no batch concept,
 // and there is no ValidateCaps because there is no oversized-batch cap to configure.
@@ -88,6 +88,7 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkResignNotMember(plan)...)
 	findings = append(findings, checkRenamePairShape(plan)...)
 	findings = append(findings, checkRenameMechanicMissing(plan)...)
+	findings = append(findings, checkRenameLeavesTest(plan)...)
 	findings = append(findings, checkCardMissingField(plan)...)
 	findings = append(findings, checkCardFieldEmpty(plan)...)
 	findings = append(findings, checkCardFieldOverlap(plan)...)
@@ -898,6 +899,73 @@ func checkRenameMechanicMissing(plan *Plan) []ValidationError {
 	}
 
 	return findings
+}
+
+// checkRenameLeavesTest implements rename-leaves-test, under go only, since it reads Go's test naming:
+// a symbol Rename pair renaming `unit#Name`, or the method `unit#T.M`, while a card lists a test named after it, `Test<base>` or `Test<base>_<case>` with base Name or T_M, under Edit in the same unit or its external test package and no Rename pair renames that test.
+// An implementer renames such a test along with its symbol, so a later card still naming the old test refuses at its begin-batch.
+// The finding is attributed to the renaming card, where the test's own Rename pair belongs.
+func checkRenameLeavesTest(plan *Plan) []ValidationError {
+	var findings []ValidationError
+	if !plan.GoToolchain() {
+		return findings
+	}
+
+	renamed := make(map[string]bool)
+	for _, c := range plan.Cards {
+		for _, p := range c.Pairs {
+			renamed[p.Old] = true
+		}
+	}
+
+	for _, c := range plan.Cards {
+		for _, p := range c.Pairs {
+			if isFileRenamePair(plan, p) {
+				continue
+			}
+			old, err := ParseRef(plan, p.Old)
+			if err != nil || old.IsSelf() || len(old.Owner) > 1 {
+				continue
+			}
+			base := old.Name
+			if len(old.Owner) == 1 {
+				base = old.Owner[0] + "_" + old.Name
+			}
+			for _, editor := range plan.Cards {
+				for _, g := range editor.TargetGroups {
+					if g.Type != CardTypeEdit {
+						continue
+					}
+					for _, ref := range g.Refs {
+						if renamed[ref] {
+							continue
+						}
+						test, err := ParseRef(plan, ref)
+						if err != nil || goPackageDir(test.Unit) != goPackageDir(old.Unit) || len(test.Owner) != 0 || !namesTestOf(test.Name, base) {
+							continue
+						}
+						findings = append(findings, ValidationError{
+							Check: "rename-leaves-test",
+							Card:  cardID(c),
+							Ref:   ref,
+							Detail: fmt.Sprintf(
+								"card %d renames %q, but card %d lists its test %q under Edit and no Rename pair renames the test; an implementer renames the test with its symbol, so add the test's rename as a Rename pair on card %d",
+								c.Number, p.Old, editor.Number, ref, c.Number,
+							),
+						})
+					}
+				}
+			}
+		}
+	}
+
+	return findings
+}
+
+// namesTestOf reports whether name is a Go test function named after base: `Test<base>`, or `Test<base>_<case>`.
+func namesTestOf(name, base string) bool {
+	rest, ok := strings.CutPrefix(name, "Test"+base)
+	return ok && (rest == "" || strings.HasPrefix(rest, "_"))
 }
 
 // cardFieldLabel pairs a card field's Has-presence bool with its bold label.

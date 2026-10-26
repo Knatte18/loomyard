@@ -824,6 +824,60 @@ func TestRecordBatchCmd_DeleteReferencedByLaterCard(t *testing.T) {
 	}
 }
 
+// TestRecordBatchCmd_LaterTargetRemovedEnvelope proves a batch that removed a symbol a later card names exits non-zero with later_target_removed naming the symbol and card.
+// The open batch is saved marked handed back.
+func TestRecordBatchCmd_LaterTargetRemovedEnvelope(t *testing.T) {
+	t.Setenv("FABRIC_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	root := fx.CLI.geom.WorktreeRoot
+	// The fixture's own single-card plan is replaced, so its card file goes too.
+	if err := os.Remove(filepath.Join(fx.CLI.geom.PlanDir, "01-only.md")); err != nil {
+		t.Fatalf("remove the fixture's card file: %v", err)
+	}
+	plankit.Write(t, fx.CLI.geom.PlanDir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "Framing.",
+		Cards: []plankit.Card{
+			{Number: 1, Slug: "first", Summary: "edits a.go", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"sub/a.go"}}}, Intent: "edit it.", ImpactSummary: "Edits a.go."},
+			{Number: 2, Slug: "second", Summary: "edits Gone", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"sub#Gone"}}}, Intent: "edit it.", ImpactSummary: "Edits Gone."},
+		},
+	})
+	st := fx.initState(t)
+	startSHA := gitkit.CommitFile(t, root, "sub/a.go", "package sub\n\nfunc Gone() {}\n", "01.1: add the target")
+	headSHA := gitkit.CommitFile(t, root, "sub/a.go", "package sub\n", "01.2: remove the target")
+	st.Batches[1] = &websterengine.BatchState{Slug: "first", StartSHA: startSHA, Kind: "fork"}
+	st.CurrentBatch = 1
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	fx.Engine.Audit = shuttleengine.ForkAudit{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/fork1.jsonl", ReportReturned: true}}}
+	if err := os.MkdirAll(fx.CLI.geom.ReportsDir, 0o755); err != nil {
+		t.Fatalf("mkdir reports dir: %v", err)
+	}
+	report := &websterengine.Report{Status: websterengine.ReportStatusOK, HeadSHA: headSHA}
+	if err := websterengine.WriteReport(filepath.Join(fx.CLI.geom.ReportsDir, websterengine.ReportFileName(1, "first")), report); err != nil {
+		t.Fatalf("write batch report: %v", err)
+	}
+
+	var out strings.Builder
+	if code := clihelp.Execute(fx.CLI.recordBatchCmd(), &out, []string{"1"}); code == 0 {
+		t.Fatalf("record-batch 1 = 0; want non-zero, output: %s", out.String())
+	}
+	for _, want := range []string{`"later_target_removed":true`, `"batch":"01-first"`, "2-second", "sub#Gone", "way forward:"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("record-batch output missing %q; got %q", want, out.String())
+		}
+	}
+	loaded, err := websterengine.LoadState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir)
+	if err != nil {
+		t.Fatalf("LoadState() error = %v", err)
+	}
+	if bs := loaded.Batches[1]; bs.Terminal || !bs.LaterTargetsReturned {
+		t.Errorf("saved batch record: terminal %v, LaterTargetsReturned %v; want an open batch marked handed back", bs.Terminal, bs.LaterTargetsReturned)
+	}
+}
+
 // TestRecordBatchCmd_ReportArchivedEnvelope proves a report with no begin record is archived, the call exits non-zero with report_archived, and the report is gone from its live path.
 func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "1")

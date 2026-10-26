@@ -292,6 +292,59 @@ func DetectDrift(fullPlan, pending *planparser.Plan, planDir, worktreeRoot strin
 	return findings, nil
 }
 
+// RemovedTargets reports every symbol delta deleted that a card of pending targets or uses, as one blocking later-target-removed finding per card and symbol.
+// It is the batch-end check that hands a batch back to its implementer while the implementer still holds the batch's context, to keep the name or report the rename.
+// A symbol quarry renamed exactly is no finding, since quarry drops it from the deleted list, and neither is one reported lists as an old glyph.
+// Nor is a symbol a card of own declares as a Delete target or a Rename pair's old side: a declared removal a later card still names is the plan's defect, not the implementer's.
+// A finding names the evidence-tier rename candidates quarry offered for its symbol.
+// It reads and writes nothing, so a caller may refuse on its findings before any plan rewrite.
+func RemovedTargets(pending *planparser.Plan, own []planparser.Card, delta quarry.GitDeltaAnswer, reported []planindex.Rename) []Finding {
+	declared := make(map[string]bool)
+	for _, c := range own {
+		for _, g := range c.TargetGroups {
+			if g.Type == planparser.CardTypeDelete {
+				for _, ref := range g.Refs {
+					declared[ref] = true
+				}
+			}
+		}
+		for _, p := range c.Pairs {
+			declared[p.Old] = true
+		}
+	}
+	for _, r := range reported {
+		declared[r.Old] = true
+	}
+
+	candidates := make(map[string][]string, len(delta.RenameCandidates))
+	for _, entry := range delta.RenameCandidates {
+		for _, cand := range entry.Candidates {
+			candidates[entry.ID] = append(candidates[entry.ID], cand.ID)
+		}
+	}
+
+	refCards := targetCards(pending)
+	var findings []Finding
+	for _, s := range delta.Deleted {
+		if declared[s.ID] {
+			continue
+		}
+		offered := ""
+		if ids := candidates[s.ID]; len(ids) > 0 {
+			offered = fmt.Sprintf(" (quarry's rename candidates: %s)", strings.Join(ids, ", "))
+		}
+		for _, c := range sortedCards(refCards[s.ID]) {
+			findings = append(findings, Finding{
+				Check:    "later-target-removed",
+				Card:     c.ID(),
+				Detail:   fmt.Sprintf("card %d names %q, which the batch removed without reporting a rename%s; keep the name, or list the rename under the report's renames", c.Number, s.ID, offered),
+				Severity: SeverityBlocking,
+			})
+		}
+	}
+	return findings
+}
+
 // ensurePostRepairCoverage reports the ErrQuarryUnavailable-wrapped infrastructure error DetectDrift
 // returns when results does not carry an answer for every entry of targets: the per-key answer
 // coverage guard for DetectDrift's post-repair resolve, mirroring doneCheckVerdicts' own per-key

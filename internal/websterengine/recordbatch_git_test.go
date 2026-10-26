@@ -60,6 +60,14 @@ func forkReturned() []shuttleengine.ForkAudit {
 	}
 }
 
+// forkRewroteReport scripts the next audits as the handed-back fork resumed: its bracket transcript wrote the batch's report again.
+func forkRewroteReport(fx *recordFixture) {
+	report := filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))
+	fx.Audit.scripted = []shuttleengine.ForkAudit{
+		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", WritePaths: []string{report}, ReportReturned: true}}},
+	}
+}
+
 // seedDriftPlanDir writes a real, parseable two-card plan directory whose second card's Uses field
 // names every ref in uses. RecordBatch's own drift repair calls planparser.RewriteRefs against this
 // directory, which re-parses it from disk rather than reading RecordDeps.Plan, so a repair scenario
@@ -158,9 +166,9 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 	})
 
-	// A symbol the delta reports deleted, with no corresponding rename, that the plan still references
-	// warns about the later card and persists a terminal digest.
-	t.Run("drift on a deleted still-referenced symbol warns about the later card", func(t *testing.T) {
+	// A symbol the delta reports deleted with no corresponding rename, that the plan still references, hands the batch back to its fork once, leaving the batch open and its report in place;
+	// the next call warns about the later card and persists a terminal digest.
+	t.Run("drift on a deleted still-referenced symbol hands back once, then warns about the later card", func(t *testing.T) {
 		fx := s.restart(t, forkReturned())
 		// A symbol must exist at the delta's START side to be reported deleted — the fixture's own
 		// StartSHA (base.txt only) predates internal/foo entirely, so the batch's own start boundary is
@@ -176,9 +184,25 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		writeReport(t, fx.ReportsDir, validReport(headSHA))
 		addPendingCard(fx, []string{"internal/foo#WillGoAway"})
 
+		_, err := websterengine.RecordBatch(fx.Deps, 1)
+		var handBack *websterengine.LaterTargetRemovedError
+		if !errors.As(err, &handBack) {
+			t.Fatalf("RecordBatch() error = %v; want a *LaterTargetRemovedError", err)
+		}
+		if !strings.Contains(err.Error(), "internal/foo#WillGoAway") || !strings.Contains(err.Error(), "way forward:") || !strings.Contains(err.Error(), "lyx webster record-batch 01") {
+			t.Errorf("RecordBatch() error = %q; want the removed symbol and the record-batch way forward", err)
+		}
+		if bs := fx.Deps.State.Batches[1]; bs.Terminal || !bs.LaterTargetsReturned {
+			t.Errorf("batch record after the hand-back: terminal %v, LaterTargetsReturned %v; want an open batch marked handed back", bs.Terminal, bs.LaterTargetsReturned)
+		}
+		if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, fx.Deps.State.Batches[1].Slug))); statErr != nil {
+			t.Errorf("stat the batch report after the hand-back: %v; want the report left in place", statErr)
+		}
+
+		forkRewroteReport(fx)
 		result, err := websterengine.RecordBatch(fx.Deps, 1)
 		if err != nil {
-			t.Fatalf("RecordBatch() error = %v; want nil — drift about a later card warns, it does not fail this batch", err)
+			t.Fatalf("RecordBatch() second call error = %v; want nil — after the one hand-back, drift about a later card warns, it does not fail this batch", err)
 		}
 		if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
 			t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
@@ -203,11 +227,10 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 	})
 
-	// DetectDrift's mixed severity set is split rather than blanket-blocked: an inexact rename quarry classifies as an evidence-tier
-	// candidate rather than an exact pair produces an informational rename-candidate finding, which
-	// must ride out on Warnings and let the batch terminate — a finding that kills the batch never
-	// reaches the reviewer whose decision the tier exists to inform.
-	t.Run("an evidence-tier rename candidate warns and does not block", func(t *testing.T) {
+	// An inexact rename quarry classifies as an evidence-tier candidate hands the batch back once, naming the candidate.
+	// The next call lets the batch terminate with the informational rename-candidate finding on Warnings:
+	// a finding that kills the batch never reaches the reviewer whose decision the tier exists to inform.
+	t.Run("an evidence-tier rename candidate hands back once, then warns and does not block", func(t *testing.T) {
 		fx := s.restart(t, forkReturned())
 		// The symbol must exist at the delta's start side to be reported deleted, so the batch's own
 		// start boundary moves to a commit that already carries it.
@@ -219,9 +242,14 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		writeReport(t, fx.ReportsDir, validReport(headSHA))
 		addPendingCard(fx, []string{"internal/foo#WillMove"})
 
+		if _, err := websterengine.RecordBatch(fx.Deps, 1); !errors.Is(err, websterengine.ErrLaterTargetRemoved) || !strings.Contains(err.Error(), "internal/foo#Moved") {
+			t.Fatalf("RecordBatch() error = %v; want ErrLaterTargetRemoved naming the candidate internal/foo#Moved", err)
+		}
+
+		forkRewroteReport(fx)
 		result, err := websterengine.RecordBatch(fx.Deps, 1)
 		if err != nil {
-			t.Fatalf("RecordBatch() error = %v; want nil — an informational rename-candidate must never fail the batch", err)
+			t.Fatalf("RecordBatch() second call error = %v; want nil — an informational rename-candidate must never fail the batch", err)
 		}
 		if result.Digest == nil || result.Digest.Status != websterengine.DigestStatusDone {
 			t.Fatalf("RecordBatch() digest = %+v; want a terminal done digest", result.Digest)
@@ -272,6 +300,29 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		}
 		if want, err := websterengine.Fingerprint(planDir); err != nil || fx.Deps.State.PlanFingerprint != want {
 			t.Errorf("State.PlanFingerprint = %q; want the rewritten plan's %q (err %v)", fx.Deps.State.PlanFingerprint, want, err)
+		}
+	})
+
+	// A FAILED report goes to a recovery strand, so its batch is never handed back to its fork over a removed later target.
+	t.Run("a failed report is never handed back over a removed later target", func(t *testing.T) {
+		fx := s.restart(t, forkReturned())
+		withSymbol := gitkit.CommitFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc WillGoAway() {}\n", "01.2: add WillGoAway")
+		fx.Deps.State.Batches[1].StartSHA = withSymbol
+		if err := os.Remove(filepath.Join(fx.Worktree, "internal/foo/impl.go")); err != nil {
+			t.Fatalf("remove impl.go: %v", err)
+		}
+		gitkit.Git(t, fx.Worktree, "add", "-A")
+		gitkit.Git(t, fx.Worktree, "commit", "-m", "01.3: remove WillGoAway")
+		headSHA := gitkit.RevParse(t, fx.Worktree, "HEAD")
+		writeReport(t, fx.ReportsDir, "status: FAILED\nhead_sha: "+headSHA+"\n")
+		addPendingCard(fx, []string{"internal/foo#WillGoAway"})
+
+		_, err := websterengine.RecordBatch(fx.Deps, 1)
+		if err != nil {
+			t.Fatalf("RecordBatch() error = %v; want nil: a FAILED report is recorded, never handed back over a removed later target", err)
+		}
+		if fx.Deps.State.Batches[1].LaterTargetsReturned {
+			t.Error("LaterTargetsReturned is set after a FAILED report; want it unset")
 		}
 	})
 
@@ -356,6 +407,17 @@ func TestRecordBatch_PostBatchChecks(t *testing.T) {
 		writeReport(t, fx.ReportsDir, validReport(headSHA))
 		addPendingCard(fx, []string{"internal/foo#WillMove", "internal/foo#WillGoAway"})
 
+		// The first call hands back the plain deletion only: the exact-tier rename is quarry's own pair, never a removed target.
+		_, err := websterengine.RecordBatch(fx.Deps, 1)
+		var handBack *websterengine.LaterTargetRemovedError
+		if !errors.As(err, &handBack) {
+			t.Fatalf("RecordBatch() error = %v; want a *LaterTargetRemovedError for the deletion", err)
+		}
+		if !strings.Contains(err.Error(), "internal/foo#WillGoAway") || strings.Contains(err.Error(), "internal/foo#WillMove") {
+			t.Errorf("RecordBatch() error = %q; want the deleted symbol named and the exact-renamed one absent", err)
+		}
+
+		forkRewroteReport(fx)
 		if _, err := websterengine.RecordBatch(fx.Deps, 1); err != nil {
 			t.Fatalf("RecordBatch() error = %v; want nil — the deleted-and-still-referenced symbol warns about a later card", err)
 		}

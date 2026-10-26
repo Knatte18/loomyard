@@ -167,6 +167,10 @@ You message your parent only on the `waiting` rung below and under "A parent dec
   A refusal of the reset, a second head mismatch, or a way forward that also needs a parent merge-in redone ends the run: write `outcome: stuck` to `{{.outcome_path}}`, with a `stuck_reason` quoting the refusal's message, and stop, since a merge-in is not Master's to redo.
   Run `reset --to report-head` for a batch at most once, and no other reset.
 - `record-batch` refuses with `{"report_archived": true}` → the report could not be attributed and was archived: call `lyx webster begin-batch <NN>` and re-fork that batch from its fresh prompt.
+- `record-batch <NN>` refuses with `{"later_target_removed": true}` → the batch removed a symbol a later card names, and the batch is still open with its report in place.
+  Send the refusal's message verbatim to that batch's fork by `SendMessage`, addressed by the agent id its completion notification carried, and end your turn; on the fork's next completion notification, call `lyx webster record-batch <NN>` again.
+  When the fork cannot be reached, such as after a resume, call `lyx webster record-batch <NN>` again at once: the refusal comes once per batch, so the second call records the batch.
+  Never begin a later batch, re-fork, or call `recover-batch` for this refusal.
 - `begin-batch <NN>` refuses because the batch **already has a report** (a resumed run found a crashed session's leftover) → do NOT fork;
   the refusal names the batch's recorded state and the one remedy that state calls for, and you follow exactly that remedy:
   `record-batch` or `recover-batch` for the batch (the latter backgrounded, per the rung above), or, for a finished batch, beginning the next one.
@@ -241,7 +245,8 @@ Standalone, the operator edits the plan and runs `lyx webster rebaseline --card 
 
 The batch's own mechanical done-checks run against the worktree's real post-batch tree, immediately before the digest would have been persisted.
 They find declared work missing: a Create target that still does not resolve, a Delete target that still does, or a `plan:` handle that bound to nothing.
-A finding about a later card (drift, or a symbol this batch deleted that a later card still references) comes back on the envelope's `warnings` and the batch still records;
+A symbol the batch removed that a later card names, with no rename in the report, first comes back once as `{"later_target_removed": true}`, handled by its rung of the failure ladder above.
+Every other finding about a later card (drift, a symbol this batch's cards delete that a later card still references, or a removal still unanswered after the hand-back) comes back on the envelope's `warnings` and the batch still records;
 that later card's own `begin-batch` refuses it, naming "edit the plan so the named cards match the tree, run "lyx webster rebaseline --card NN" naming each card you edited, then begin-batch NN again".
 A done-check failure comes back as `{"batch_failed": true}`, handled by the `batch_failed` rung of the failure ladder above.
 The batch is already terminal-failed and its report archived, so you never retry `record-batch` and never edit a target file yourself (see "What you never do" below).

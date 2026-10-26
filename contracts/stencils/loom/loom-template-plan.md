@@ -151,6 +151,9 @@ The left-hand token is the handle you just invented; the right-hand token is the
 
 On a `**Rename:**` pair renaming an existing symbol, the grammar is asymmetric: the `Old` side is always a real glyph (looked up via `lyx quarry`, exactly like any other target), and the `New` side is always a `plan:` handle you invent for the renamed name — never a glyph, since the symbol under its new name does not exist until the rename lands. A file-rename pair (old and new both plain file paths) is unaffected by this rule.
 
+A card that renames a symbol also renames the tests named after it, `Test<Name>` and `Test<Name>_<case>` (`Test<Type>_<Method>` for a method), as `**Rename:**` pairs on the same card, since the implementer renames them with the symbol and a later card naming the old test would no longer match the tree.
+The plan gate refuses a renamed symbol whose same-named test a card still lists under `**Edit:**` with no pair of its own (`rename-leaves-test`).
+
 Every new member a card creates is declared as a `plan:` handle, whether or not a later card references it.
 A handle referenced but never declared, or two `Create:` bullets declaring the same handle, are each hard findings (`handle-dangling`, `handle-collision`) — every handle you invent must be declared exactly once.
 

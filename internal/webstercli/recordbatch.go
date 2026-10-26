@@ -84,6 +84,10 @@ batch failed whatever its report says. A report that cannot be attributed to a
 fork of this bracket is archived and committed, and the call exits non-zero
 with {"report_archived": true, "batch": "NN-<slug>"}; the error names
 "lyx webster begin-batch NN", which re-drives the batch.
+A batch that removed a symbol a later card names, with no rename
+reported, is handed back to its fork once: it stays open and the call
+exits non-zero with {"later_target_removed": true, "batch": "NN-<slug>"};
+the next record-batch records it.
 
 Example:
   lyx webster record-batch 3`,
@@ -172,6 +176,26 @@ Example:
 					resultWarnings = result.Warnings
 				}
 				clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, c.batchFailedFields(batchName, resultWarnings, err)))
+				return nil
+			}
+			if errors.Is(err, websterengine.ErrLaterTargetRemoved) {
+				// The batch stays open for its fork, and the record notes the hand-back, so the whole state is saved.
+				batchName := fmt.Sprintf("%02d-%s", batchNumber, st.Batches[batchNumber].Slug)
+				saveErr := websterengine.SaveState(c.geom.WebsterDir, c.geom.ScratchDir, st)
+				_ = mutateLock.Release()
+				mutateHeld = false
+				if saveErr != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("%s; additionally, persisting the hand-back failed: %v; re-run `lyx webster record-batch %02d`", err.Error(), saveErr, batchNumber)))
+					return nil
+				}
+				msg := err.Error()
+				if _, syncErr := fabricSync(c.openFabric, c.anchorRel, fmt.Sprintf("record-batch %s handed back", batchName)); syncErr != nil {
+					msg = fmt.Sprintf("%s; additionally, the fabric sync failed: %v; %s", msg, syncErr, fabricSyncWayForward)
+				}
+				clihelp.SetExit(cmd.Context(), output.ErrFields(out, msg, map[string]any{
+					"later_target_removed": true,
+					"batch":                batchName,
+				}))
 				return nil
 			}
 			if errors.Is(err, websterengine.ErrReportArchived) {
