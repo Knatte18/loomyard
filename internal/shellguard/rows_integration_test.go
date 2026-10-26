@@ -137,57 +137,6 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 		{"python", "after_a_command_substitution", "echo $(python3 x)", true},
 		{"python", "after_a_subshell_paren", "(python3 x)", true},
 
-		{"in-place-edit", "sed_dash_i", "sed -i 's/a/b/' f", true},
-		{"in-place-edit", "sed_dash_i_suffix", "sed -i.bak s/a/b/ f", true},
-		{"in-place-edit", "sed_cluster_ni", "sed -ni 3p f", true},
-		{"in-place-edit", "sed_long_in_place", "sed --in-place s/a/b/ f", true},
-		{"in-place-edit", "sed_long_in_place_suffix", "sed --in-place=.bak s/a/b/ f", true},
-		{"in-place-edit", "sed_long_abbreviation", "sed --in s/a/b/ f", true},
-		{"in-place-edit", "sed_long_abbreviation_suffix", "sed --in-pl=.bak s/a/b/ f", true},
-		{"in-place-edit", "sed_flag_after_script", "sed -n 3p f -i", true},
-		{"in-place-edit", "perl_cluster_pi", "perl -pi -e s/a/b/ f", true},
-		{"in-place-edit", "path_prefixed_sed", "/usr/bin/sed -i s/a/b/ f", true},
-		{"in-place-edit", "after_and_separator", "cd x && sed -i s/a/b/ f", true},
-		{"in-place-edit", "after_semicolon", "true; sed -i s/a/b/ f", true},
-		{"in-place-edit", "after_pipe", "cat f | sed -i s/a/b/ f", true},
-		{"in-place-edit", "sed_print_range", "sed -n 1,5p f", false},
-		{"in-place-edit", "sed_substitute_to_stdout", "sed s/a/b/ f", false},
-		{"in-place-edit", "sed_long_quiet", "sed --quiet 3p f", false},
-		{"in-place-edit", "sed_long_silent", "sed --silent 3p f", false},
-		{"in-place-edit", "sed_read_then_grep_dash_i_on_next_line", "sed -n 3p f\ngrep -i x f", false},
-		{"in-place-edit", "grep_dash_i", "grep -i x f", false},
-		{"in-place-edit", "git_diff", "git diff", false},
-		{"in-place-edit", "grep_alternation_in_single_quotes", "grep -rnE '(sed -i|perl -pi)' .", false},
-
-		{"redirect-write", "heredoc_appended_to_a_doc", "cat >> docs/x.md <<EOF\n## New\nEOF", true},
-		{"redirect-write", "redirect_after_the_heredoc_operator", "cat <<EOF > docs/x.md\nbody\nEOF", true},
-		{"redirect-write", "echo_to_a_file", "echo x > file", true},
-		{"redirect-write", "append_to_an_absolute_path", "printf x >> /home/u/repo/file", true},
-		{"redirect-write", "both_streams", "make &> out.log", true},
-		{"redirect-write", "clobber", "echo x >| f", true},
-		{"redirect-write", "dot_slash_path", "echo x > ./f", true},
-		{"redirect-write", "dotfile", "echo x > .gitignore", true},
-		{"redirect-write", "parent_directory", "echo x > ../f", true},
-		{"redirect-write", "scratch_lookalike", "echo x > .scratchpad/f", true},
-		{"redirect-write", "tmp_lookalike", "echo x > /tmpfile", true},
-		{"redirect-write", "double_quoted_target", `echo x > "docs/a b.md"`, true},
-		{"redirect-write", "single_quoted_target", "echo x > 'docs/f'", true},
-		{"redirect-write", "dev_lookalike", "echo x > /devx", true},
-		{"redirect-write", "after_and_separator", "cd x && echo y > f", true},
-		{"redirect-write", "after_a_quoted_greater_than", `echo "a>b" > f`, true},
-		{"redirect-write", "scratch_relative", "echo x > .scratch/a", false},
-		{"redirect-write", "scratch_dot_slash", "echo x >> ./.scratch/a", false},
-		{"redirect-write", "dev_null_and_duplication", "go build ./cmd/x > /dev/null 2>&1", false},
-		{"redirect-write", "tmp", "ls > /tmp/x", false},
-		{"redirect-write", "duplication_to_stderr", "echo x >&2", false},
-		{"redirect-write", "greater_than_in_double_quotes", `grep "a > b" f`, false},
-		{"redirect-write", "greater_than_in_single_quotes", "git log --format='%h -> %s'", false},
-		{"redirect-write", "greater_than_in_a_heredoc_body", "cat <<EOF | lyx x\na > b\nEOF", false},
-		{"redirect-write", "heredoc_into_scratch", "cat > .scratch/a.md <<EOF\n# x > y\nEOF", false},
-		{"redirect-write", "variable_target", `echo x > "$f"`, false},
-		{"redirect-write", "input_redirect", "wc -l < file", false},
-		{"redirect-write", "process_substitution", "diff <(ls a) <(ls b)", false},
-
 		{"computed-rm", "command_substitution", `rm -rf "$(cat x)"`, true},
 		{"computed-rm", "variable_path", "rm $DIR/f", true},
 		{"computed-rm", "positional_parameter", "rm $1", true},
@@ -222,8 +171,6 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 	}{
 		{"raw-go", "go test ./... and LYX_GATE_SLOT"},
 		{"python", "x; python3 x.py"},
-		{"in-place-edit", "x; sed -i s/a/b/ f"},
-		{"redirect-write", "x; echo y > f"},
 		{"computed-rm", "x; rm $d"},
 		{"machine-sleep", "x; systemctl hibernate"},
 	}
@@ -253,15 +200,26 @@ func TestRows_PatternsDenyAndAllow(t *testing.T) {
 			}
 		})
 	}
-	// The command that reproduces a failing tmux-tier test; no row may take it away.
-	const tmuxTierReproduce = "lyx gate test --wait --tier 2 github.com/Knatte18/loomyard/internal/x -- -run '^TestX$'"
+	// Commands no row may take away: the one that reproduces a failing tmux-tier test, and scripted edits of a project file.
+	allowedEverywhere := []struct {
+		name    string
+		command string
+	}{
+		{"tmux_tier_reproduce_command", "lyx gate test --wait --tier 2 github.com/Knatte18/loomyard/internal/x -- -run '^TestX$'"},
+		{"sed_in_place_edit", "sed -i 's/a/b/' internal/x/f.go"},
+		{"perl_in_place_edit", "perl -pi -e s/a/b/ f"},
+		{"redirect_into_a_project_file", "echo x > docs/a.md"},
+		{"heredoc_appended_to_a_project_file", "cat >> docs/x.md <<EOF\n## New\nEOF"},
+	}
 	for name, row := range rows {
-		t.Run(name+"_tmux_tier_reproduce_command", func(t *testing.T) {
-			t.Parallel()
+		for _, tt := range allowedEverywhere {
+			t.Run(name+"_"+tt.name, func(t *testing.T) {
+				t.Parallel()
 
-			if payloadDenied(t, row, tmuxTierReproduce, "") {
-				t.Errorf("row %q denies %q; want allowed", name, tmuxTierReproduce)
-			}
-		})
+				if payloadDenied(t, row, tt.command, "") {
+					t.Errorf("row %q denies %q; want allowed", name, tt.command)
+				}
+			})
+		}
 	}
 }

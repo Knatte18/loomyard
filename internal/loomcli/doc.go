@@ -100,7 +100,7 @@
 //
 // # Format verb
 //
-// `lyx loom fmt <file>...` rewrites each named `.go` file in place to its `go/format` form, in-process with no `gofmt` binary, so an agent whose edit directive forbids every rewriting tool can fix the formatting `cmd/lyx/gofmt_test.go` fails.
+// `lyx loom fmt <file>...` rewrites each named `.go` file in place to its `go/format` form, in-process with no `gofmt` binary, so an agent fixes the formatting `cmd/lyx/gofmt_test.go` fails the way its edit directive names.
 // It reads only the worktree root and the caller's cwd, so it joins the lightweight wiring, and its arguments are files, never a run-id.
 // `planGoFormat` checks and formats every file before any write: a path that does not exist, lies outside the worktree (a symlink resolving outside it included), does not end in `.go`, cannot be read or does not parse refuses the whole call and writes nothing.
 // The success envelope's `changed` lists the files rewritten as named; a file already formatted is left untouched and unreported.

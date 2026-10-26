@@ -219,18 +219,7 @@
 // Settings render at spawn, so a running session keeps the list it started with.
 // It is a guardrail, not a barrier: its hook sees static text only, so a run behind a script or `bash -c`, a flag between the prefix's words such as `go -C dir test`, and an assignment prefix such as `GOFLAGS=x go test` pass.
 //
-// The in-place edit row denies a Bash `sed` or `perl` whose words include an in-place flag, and every run installs it, the orch included, with no config key.
-// For `sed` that is `-i`, `-i<suffix>`, a short-flag cluster holding `i`, or any prefix of `--in-place` from `--i` up;
-// for `perl`, a short-flag cluster holding `i`.
-// Reading with `sed -n` passes, and the steer points at the edit directive's rule.
-// It is a guardrail, not a barrier: its hook sees static text only, so `sed` writing by redirection, a `w` command inside a script, `awk`, `find -exec sed -i`, anything behind `bash -c`, `eval` or a variable, and anything after a prefix the pattern does not list pass,
-// and an in-place flag spelling inside a quoted argument of the `sed` or `perl` command itself, or a `perl` read whose cluster holds an `i`, is falsely denied; a spelling in a `grep` alternation, a heredoc body or another payload field is not.
-//
-// The redirect-write row denies a Bash `>`, `>>`, `>|` or `&>` redirect whose target, optionally quoted, names a project file, and every run installs it, the orch included, with no config key.
-// It allows a target under `.scratch/` by its relative path, under `/tmp/` or `/dev/`, one starting with a variable, and a file-descriptor duplication such as `2>&1`.
-// The steer points at the edit directive's rule and names `.scratch/` as the place to redirect into.
-// It is a guardrail, not a barrier: its hook sees static text only, so `tee`, `cp`, `dd`, a write behind `bash -c` or a script, a redirect after a heredoc operator's line, a target behind a variable and an absolute path into `.scratch/` pass,
-// and an untracked file outside the scratch places, or a `>` comparison inside `[[ ]]` or `$(( ))`, is falsely denied.
+// No row denies a scripted edit: `sed -i`, `perl -i`, `awk` and a shell redirect or heredoc into a project file pass in every run.
 //
 // The computed-rm row denies a Bash `rm` in command position when the same payload also holds a command substitution (`$(` or a backtick) or a shell variable expansion (`$` followed by a letter, a digit, `_`, `{`, `@` or `*`), and every run installs it, the orch included.
 // It is a deny and not a prompt because Claude Code raises a statically-unresolvable-target dialog for an `rm` on a computed path, which shows even in bypass mode and stalls an unwatched run.

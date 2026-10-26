@@ -386,7 +386,7 @@ var ParentDirectiveOperatorBan []byte
 //go:embed parent/parent-directive-none.md
 var ParentDirectiveNone []byte
 
-// EditDirective is the shared edit directive's shipped default: the no-script edit rule every spawned role's opening stencil carries.
+// EditDirective is the shared edit directive's shipped default: the edit rule every spawned role's opening stencil carries.
 //
 //go:embed edit/edit-directive.md
 var EditDirective []byte
@@ -563,12 +563,10 @@ var askOperatorPhrases = []string{
 	"confirm with the operator",
 }
 
-// editRulePhrases is the closed list of phrases distinctive to the no-script edit rule's statement, matched case-insensitively.
+// editRulePhrases is the closed list of phrases distinctive to the edit rule's statement, matched case-insensitively.
 var editRulePhrases = []string{
-	// Split so the no-denied-recovery scan of this directory does not read the phrase as an offered denied command.
-	"`sed " + "-i`",
+	"`sed -i`",
 	"heredoc",
-	"replace_all",
 	"edit or write",
 }
 

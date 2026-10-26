@@ -9,7 +9,7 @@
 // denying AskUserQuestion in autonomous runs (where there is no operator present to answer it),
 // and recording — never denying — a live AskUserQuestion call in interactive runs so the run loop holds it like any turn end without output.
 // The Bash tool's default stdin is set by the env file Prepare writes (see command.go), not by a hook.
-// The Bash denies render the rows of internal/shellguard's table, which installs the machine sleep, raw go, in-place edit and computed-path rm denies for every run, the refuse-raw deny when the run's config lists a prefix, and the python deny unless the run's config switches it off.
+// The Bash denies render the rows of internal/shellguard's table, which installs the machine sleep, raw go and computed-path rm denies for every run, the refuse-raw deny when the run's config lists a prefix, and the python deny unless the run's config switches it off.
 // buildDenyNotice, built from the same standingDeniesFor list so the two cannot drift, is the one-line system-prompt notice announcing each installed deny to the session.
 // Every document also sets `promptSuggestionEnabled` to false for shuttle-launched sessions: a plain capture carries no styling,
 // so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.

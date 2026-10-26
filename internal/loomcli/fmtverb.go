@@ -1,5 +1,5 @@
 // fmtverb.go implements the `fmt` loom verb, which rewrites named Go files in place to their go/format form.
-// It gives an agent whose edit directive forbids every rewriting tool a sanctioned way to fix a file's formatting.
+// It gives an agent a way to fix a file's formatting that needs no gofmt binary.
 
 package loomcli
 

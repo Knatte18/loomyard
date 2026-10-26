@@ -1,12 +1,12 @@
 // doc.go carries the package godoc for editdirective: what the directive says, who renders it and why the package derives no path.
 
-// Package editdirective renders the edit directive every spawned role's opening stencil carries, so a role changes files with the Edit and Write tools rather than a script.
+// Package editdirective renders the edit directive every spawned role's opening stencil carries, so every role is told the same way to change files.
 //
 // # What it says
 //
-// The directive states one rule: change files only with Edit or Write, with one Edit per site or `replace_all` for a bulk change, and never with `sed -i`, `perl -i`, `awk` or an inline interpreter heredoc.
-// Reading with `sed -n` is allowed, and scratch files go under `.scratch/`.
-// It constrains the tool a role edits with, never what the role may write.
+// The directive states one rule: change files with Edit or Write, or by script with `sed -i`, `perl -i`, `awk` or a shell heredoc or redirect wherever a script is simpler.
+// A Go file's formatting goes through `lyx loom fmt`, and scratch files go under `.scratch/`.
+// It names the tools a role edits with, never what the role may write.
 // It has no inactive case: the text renders in a repo without a `PATTERN.md` as in one with it.
 //
 // # Who renders it

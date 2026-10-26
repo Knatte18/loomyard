@@ -56,14 +56,9 @@ const shellUnitPattern = `([^"\\'<]|\\[^"]|'[^']*'|` + doubleQuotedOpenPattern +
 // shellLineUnitPattern matches what shellUnitPattern matches except a JSON-escaped newline, so a run of it stays on one line.
 const shellLineUnitPattern = `([^"\\'<]|\\[^"n]|'[^']*'|` + doubleQuotedOpenPattern + `\\"|<[^<"\\'(])`
 
-// unquotedPrefixPattern matches the command from its first character up to a point outside quotes and outside heredoc bodies:
-// a run of shell units, optionally followed by one heredoc operator and the rest of that operator's line, after which the body starts.
-// What a pattern built on it matches next is therefore command text the shell reads, never text inside quotes, a heredoc body or another payload field.
-const unquotedPrefixPattern = commandFieldPattern + shellUnitPattern + `*(<<-?` + shellLineUnitPattern + `*)?`
-
 // commandPositionPattern is the grep -E prefix that puts the pattern after it in command position of the raw PreToolUse payload JSON, with an optional path prefix.
 // Command position is the start of the command, or right after a ; & | ( <( >( or backtick, which also covers $( and ( subshells, or a JSON-escaped newline, then any of env, exec, xargs, sudo, time.
-// The separator is reached through a run of shell units as unquotedPrefixPattern reads them, and one after a heredoc operator counts only on that operator's line.
+// The separator is reached through a run of shell units, and one after a heredoc operator counts only on that operator's line.
 // It sees static text only: it misreads a JSON-escaped double quote inside a double-quoted string and a quote inside a comment, and it sees nothing after a heredoc operator's line.
 // A double-quoted string is one unit, so a command substitution inside it, as in out="$(python3 x.py)", is never in command position and passes.
 // A < before a quote or a backslash, as in <"f" or <<<"f", ends the run of units, so a command after it passes.
@@ -73,64 +68,6 @@ const commandPositionPattern = commandFieldPattern + `(` + shellUnitPattern + `*
 // pythonCommandPattern is the grep -E pattern the python deny matches against the raw PreToolUse payload JSON.
 // It matches python, python3 or python3.<minor>, optionally path-prefixed, as a whole word in command position.
 const pythonCommandPattern = commandPositionPattern + `python(3(\.[0-9]+)?)?([^A-Za-z0-9_./-]|$)`
-
-// steerInPlaceEditDeny refuses a Bash sed or perl in-place edit; it must contain no single/double quote or backslash (checked at init).
-// It points at the edit directive's rule and does not restate it.
-const steerInPlaceEditDeny = "scripted in-place edits are refused here under the edit directive in your prompt; reading with sed -n is fine"
-
-// noticeInPlaceEditDeny announces the in-place edit deny in the same wording as its steer.
-const noticeInPlaceEditDeny = steerInPlaceEditDeny + "."
-
-// inPlaceEditCommandPattern is the grep -E pattern the in-place edit deny matches against the raw PreToolUse payload JSON.
-// It matches sed or perl in command position, optionally path-prefixed, followed by that command's words up to the next ; & | ) backtick or JSON-escaped newline, then an in-place flag word:
-// for sed, -i or -i<suffix>, a short-flag cluster holding i such as -ni or -Ei, or a -- word that is a prefix of --in-place at least as long as --i, optionally followed by =<suffix>;
-// for perl, a short-flag cluster holding i such as -i, -i.bak or -pi.
-// A short-flag word opens after whitespace with a single dash and letters, so --quiet and --expression= never match as a cluster.
-// GNU sed accepts any unambiguous abbreviation of a long option and no other sed long option starts with --i.
-// It sees static text only, so it is a guardrail and not a barrier:
-// it lets through a w command inside a sed script, awk, find -exec sed -i, anything behind bash -c, eval or a variable, and anything after a prefix commandPositionPattern does not list.
-// It falsely denies an in-place flag spelling inside a quoted argument of the sed or perl command itself, and a perl read whose cluster holds an i, such as perl -Mstrict -ne.
-const inPlaceEditCommandPattern = commandPositionPattern + `(` +
-	`sed[[:space:]]` + inPlaceCommandWordsPattern + `(-[A-Za-z]*i|--i(n(-(p(l(a(c(e)?)?)?)?)?)?)?(=[^[:space:]"\\;&|)` + "`" + `]*)?([[:space:]"\\;&|)` + "`" + `]|$))` +
-	`|perl[[:space:]]` + inPlaceCommandWordsPattern + `-[A-Za-z]*i` +
-	`)`
-
-// inPlaceCommandWordsPattern matches the words of a command between its name and an in-place flag: optionally anything up to the next separator or JSON-escaped newline, ending on whitespace.
-const inPlaceCommandWordsPattern = `(([^;&|)\\` + "`" + `]|\\[^n])*[[:space:]])?`
-
-// steerRedirectWriteDeny refuses a Bash redirect write to a project file; it must contain no single/double quote or backslash (checked at init).
-// It points at the edit directive's rule and does not restate it.
-const steerRedirectWriteDeny = "shell redirect writes to project files are refused here under the edit directive in your prompt; write a project file with Edit or Write, and redirect only into .scratch/ by its relative path"
-
-// noticeRedirectWriteDeny announces the redirect write deny in the same wording as its steer.
-const noticeRedirectWriteDeny = steerRedirectWriteDeny + "."
-
-// redirectTargetEndChars are the bracket-expression characters that end a redirect target word or open a quote or a substitution in it.
-const redirectTargetEndChars = `[:space:]"\\'&;|()<>` + "`"
-
-// notPrefixPattern returns the grep -E pattern matching the start of a redirect target word that departs from prefix at some character before prefix ends.
-// A word that ends inside prefix is not matched.
-// prefix must be non-empty and hold no grep -E metacharacter.
-func notPrefixPattern(prefix string) string {
-	mismatch := `[^` + prefix[:1] + redirectTargetEndChars + `]`
-	if len(prefix) == 1 {
-		return mismatch
-	}
-	return `(` + mismatch + `|` + prefix[:1] + notPrefixPattern(prefix[1:]) + `)`
-}
-
-// projectTargetPattern matches the start of a redirect target word naming a project file: any path but one under .scratch/ by its relative path, /dev/ or /tmp/, and one starting with a variable.
-var projectTargetPattern = `([^$./` + redirectTargetEndChars + `]` +
-	`|/([^dt` + redirectTargetEndChars + `]|d` + notPrefixPattern("ev/") + `|t` + notPrefixPattern("mp/") + `)` +
-	`|\.([^s/` + redirectTargetEndChars + `]|s` + notPrefixPattern("cratch/") + `|/([^.` + redirectTargetEndChars + `]|\.` + notPrefixPattern("scratch/") + `)))`
-
-// redirectWriteCommandPattern is the grep -E pattern the redirect write deny matches against the raw PreToolUse payload JSON.
-// It matches a >, >>, >| or &> redirect reached through unquotedPrefixPattern, so one on a heredoc operator line counts, whose target, optionally quoted, matches projectTargetPattern.
-// A file-descriptor duplication such as 2>&1 has no target word and passes.
-// It sees static text only, so it is a guardrail and not a barrier:
-// it lets through tee, cp, dd, a write behind bash -c or a script, a redirect after a heredoc operator line, a redirect after a < before a quote, a redirect inside a command substitution in a double-quoted string, a target behind a variable, an absolute path into .scratch/, and a quote unquotedPrefixPattern misreads.
-// It falsely denies an untracked file outside the scratch places and a > comparison inside [[ ]] or $(( )).
-var redirectWriteCommandPattern = unquotedPrefixPattern + `>\|?[[:space:]]*(\\"|')?` + projectTargetPattern
 
 // steerComputedRmDeny refuses a Bash rm on a computed path; it must contain no single/double quote or backslash (checked at init).
 // It names the literal-path way forward and no scratch place.
@@ -265,25 +202,6 @@ func rowsBeforeRefuseRaw(rawGoSteer string) []Row {
 // rowsAfterRawGo returns the rows that follow the raw go and refuse-raw rows.
 func rowsAfterRawGo() []Row {
 	return []Row{
-		{
-			// Installed for every run, the orch included, with no config key.
-			// A guardrail, not a barrier: inPlaceEditCommandPattern states what it lets through and what it falsely denies.
-			Name:     "in-place-edit",
-			Patterns: []string{inPlaceEditCommandPattern},
-			Steer:    steerInPlaceEditDeny,
-			Notice:   noticeInPlaceEditDeny,
-			Switch:   SwitchNone,
-			Forms:    [][]string{{"sed", "-i"}, {"perl", "-i"}},
-		},
-		{
-			// Installed for every run, the orch included, with no config key.
-			// A guardrail, not a barrier: redirectWriteCommandPattern states what it lets through and what it falsely denies.
-			Name:     "redirect-write",
-			Patterns: []string{redirectWriteCommandPattern},
-			Steer:    steerRedirectWriteDeny,
-			Notice:   noticeRedirectWriteDeny,
-			Switch:   SwitchNone,
-		},
 		{
 			// Refuses before Claude Code raises its statically-unresolvable-target dialog, which shows even in bypass mode and stalls an unwatched run.
 			// Installed for every run, the orch included, with no config key.

@@ -232,9 +232,9 @@ func TestShellGuardDenies_RenderedCommandsGrepThePayload(t *testing.T) {
 		command string
 		denied  bool
 	}{
-		{"redirect-write", "echo x > docs/a.md", true},
-		{"redirect-write", "echo x > .scratch/a", false},
-		{"redirect-write", "grep 'a > b' f", false},
+		{"machine-sleep", "systemctl hibernate", true},
+		{"machine-sleep", "systemctl status", false},
+		{"machine-sleep", "grep 'x; systemctl hibernate' f", false},
 		{"computed-rm", "rm $DIR/f", true},
 		{"computed-rm", "rm .scratch/a", false},
 	}
