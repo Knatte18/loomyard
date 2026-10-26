@@ -19,9 +19,11 @@ import (
 )
 
 // ownerVerdict is who owns a run: Owner is the owning machine and Elsewhere reports whether that machine is another than this one.
+// AdoptSubject is the beam or `root` that `lyx adopt` takes to move the run, and empty when the run is owned here.
 type ownerVerdict struct {
-	Owner     string
-	Elsewhere bool
+	Owner        string
+	AdoptSubject string
+	Elsewhere    bool
 }
 
 // primeOfHub resolves the prime worktree of the hub l sits in.
@@ -40,7 +42,7 @@ func primeOfHub(l *lyxcwd.Location) (*lyxcwd.Location, error) {
 // runOwnerVerdict judges whether another machine owns the run of slug.
 // It runs a judge-only run-scope origin reconcile from the hub's prime, with machine as this machine's name, and reads the run's owned_elsewhere entry.
 // With origin unreachable it reads the local board's effective owner instead.
-// It writes no owner, so a run-held task with no owner recorded reads as owned here.
+// It writes no owner.
 // A reconcile or read error is returned.
 func runOwnerVerdict(l *lyxcwd.Location, slug string, machine func() (string, error)) (ownerVerdict, error) {
 	prime, err := primeOfHub(l)
@@ -62,7 +64,7 @@ func runOwnerVerdict(l *lyxcwd.Location, slug string, machine func() (string, er
 	}
 	for _, entry := range reportOfRun(report, slug).Entries {
 		if entry.State == fabricengine.EntryOwnedElsewhere {
-			return ownerVerdict{Owner: entry.Owner, Elsewhere: true}, nil
+			return ownerVerdict{Owner: entry.Owner, AdoptSubject: entry.AdoptSubject, Elsewhere: true}, nil
 		}
 	}
 	return ownerVerdict{}, nil
@@ -82,7 +84,11 @@ func localOwnerVerdict(l *lyxcwd.Location, slug string, machine func() (string, 
 	if err != nil {
 		return ownerVerdict{}, err
 	}
-	return ownerVerdict{Owner: owner, Elsewhere: boardengine.OwnedElsewhere(owner, here)}, nil
+	subject, err := owners.AdoptSubject(slug, parentOf)
+	if err != nil {
+		return ownerVerdict{}, err
+	}
+	return ownerVerdict{Owner: owner, AdoptSubject: subject, Elsewhere: boardengine.OwnedElsewhere(owner, here)}, nil
 }
 
 // refuseOwnedElsewhere writes the refusal envelope and returns true when the run is owned by another machine or its owner cannot be judged, and returns false when the run may go on.
@@ -105,7 +111,11 @@ func (c *loomCLI) refuseOwnedElsewhere(ctx context.Context, out io.Writer, retry
 	if !verdict.Elsewhere {
 		return false
 	}
-	message := fmt.Sprintf("loom: this run is owned by machine %q, so this machine does not resume it; way forward: run `lyx adopt %s` from this machine's prime", verdict.Owner, slug)
+	subject := verdict.AdoptSubject
+	if subject == "" {
+		subject = slug
+	}
+	message := fmt.Sprintf("loom: this run is owned by machine %q, so this machine does not resume it; way forward: run `lyx adopt %s` from this machine's prime", verdict.Owner, subject)
 	clihelp.SetExit(ctx, output.ErrFields(out, message, map[string]any{"kind": shedrun.StartOwnedElsewhereKind, "owner": verdict.Owner}))
 	return true
 }

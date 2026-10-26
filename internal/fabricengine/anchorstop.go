@@ -116,7 +116,7 @@ func emptyMarkerStop(weftPath string) *AnchorStopError {
 // refuseDropLocalAnchorChange refuses to move the weft worktree at weftPath of the pair slug onto origin's tip tracking while the anchors of the two differ.
 // A local weft ahead of origin with a re-anchor not yet pushed differs as well, since the comparison ignores ancestry.
 // An empty own marker is refused first.
-// Both refusals wrap ErrAnchorChange, and the difference names the anchor change and the adopt to run again.
+// Both refusals wrap ErrAnchorChange, and the difference names the anchor change and ends with re-running the same adopt under --drop-local, since the pair may be a moved run that no adopt names.
 func refuseDropLocalAnchorChange(l *lyxcwd.Location, slug, weftPath, tracking string) error {
 	if stop := emptyMarkerStop(weftPath); stop != nil {
 		return fmt.Errorf("%w: %s", stop, stop.WayForward)
@@ -133,8 +133,8 @@ func refuseDropLocalAnchorChange(l *lyxcwd.Location, slug, weftPath, tracking st
 	if err != nil || !stop {
 		return err
 	}
-	return fmt.Errorf("%w: the weft of %s and origin's tip carry different anchors, origin's being %q, so moving it to origin's tip would cross an anchor change; run `lyx fabric anchor %s --set %s`, then run `lyx adopt %s --drop-local` again",
-		ErrAnchorChange, slug, want, slug, want, slug)
+	return fmt.Errorf("%w: the weft of %s and origin's tip carry different anchors, origin's being %q, so moving it to origin's tip would cross an anchor change; run `lyx fabric anchor %s --set %s`, then re-run the same `lyx adopt` with `--drop-local`",
+		ErrAnchorChange, slug, want, slug, want)
 }
 
 // upstreamAnchorStop compares the weft worktree at weftPath, as checked out, with the upstream tip upstream.

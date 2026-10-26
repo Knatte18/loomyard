@@ -75,6 +75,9 @@ type passFake struct {
 	pauseErr                error
 	// owner is what the local Bolt reads as the run's owner.
 	owner string
+	// subject is what the local Bolt reads as the run's adopt subject, and subjectErr fails that read.
+	subject    string
+	subjectErr error
 
 	// tasks is the local board, maxRuns the beam.yaml cap, statuses the slugs a first pass left a status file for and covers the slugs a pause covers.
 	tasks    []TaskView
@@ -152,6 +155,7 @@ func newPassHarness(t *testing.T, runs ...RunView) *passHarness {
 			},
 			ReleaseParentLock: func(context.Context, string) error { fake.releases++; return nil },
 			SlugOwner:         func(string) (string, error) { return fake.owner, nil },
+			AdoptSubject:      func(string) (string, error) { return fake.subject, fake.subjectErr },
 			LiftOwnerPause: func(context.Context, string) error {
 				fake.lifts++
 				fake.runs[0].Covered = false

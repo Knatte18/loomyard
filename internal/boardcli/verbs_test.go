@@ -360,15 +360,16 @@ func stepGetAndRemoveByID(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepOwners seeds a board.json that records a prime owner and one task's owner, straight into the file since the owner setter is not the subject, and reads the owners back through get and list.
-// An unowned task reads as the prime's owner, an owned task as its own, and a note carries none;
+// stepOwners seeds a board.json that records a prime owner and a beam project's owner, straight into the file since the owner setter is not the subject, and reads the owners back through get and list.
+// A task outside every beam reads as the prime's owner, a member of the beam as the beam's, and a note carries none;
 // list prints the prime owner as prime_owner and opens its --text listing with it.
 func stepOwners(t *testing.T, f *cliFixture) {
 	seedBoardFile(t, f.cwd, `{"version":1,"prime_owner":"neve","entries":[`+
 		`{"id":0,"slug":"plain","title":"P","kind":"task","labels":["bug"]},`+
-		`{"id":1,"slug":"owned","title":"O","kind":"task","labels":["bug"],"owner_machine":"box"},`+
-		`{"id":2,"slug":"idea","title":"I","kind":"note","labels":["bug"]}]}`)
-	want := map[string]any{"plain": "neve", "owned": "box", "idea": nil}
+		`{"id":1,"slug":"owned","title":"O","kind":"task","labels":["bug"],"project":"beamed"},`+
+		`{"id":2,"slug":"idea","title":"I","kind":"note","labels":["bug"]},`+
+		`{"id":3,"slug":"beamed","title":"B","kind":"project","labels":["bug"],"beam":true,"owner_machine":"box"}]}`)
+	want := map[string]any{"plain": "neve", "owned": "box", "idea": nil, "beamed": "box"}
 
 	for slug, owner := range want {
 		task := runJSON(t, 0, "get", `{"slug":"`+slug+`"}`)["task"].(map[string]any)
@@ -659,7 +660,7 @@ func stepProfiles(t *testing.T, f *cliFixture) {
 	if want := []string{"docs", "light", "solid", "speed", "wide"}; !slices.Equal(names, want) {
 		t.Errorf("profile names = %v, want %v", names, want)
 	}
-	if want := map[string]any{"loom": "solid", "darn": "light"}; !reflect.DeepEqual(result["defaults"], want) {
+	if want := map[string]any{"loom": "solid", "darn": "light", "pawl": "light"}; !reflect.DeepEqual(result["defaults"], want) {
 		t.Errorf("defaults = %v, want %v", result["defaults"], want)
 	}
 

@@ -10,9 +10,15 @@ import (
 	"fmt"
 )
 
+// RootSubject is what `lyx adopt` takes to move the ownership of the root project, the one the board's prime owner records.
+const RootSubject = "root"
+
+// ProjectRecipe is the recipe of a beam project's run, the only recipe a project carries.
+const ProjectRecipe = "pawl"
+
 // OwnerEntry is what the owner rules read of one board entry.
 type OwnerEntry struct {
-	// Owner is the entry's recorded owner machine, empty when none is recorded.
+	// Owner is the recorded owner machine of a beam project, empty when none is recorded and for every other entry.
 	Owner string
 	// IsTask reports whether the entry is a task and not a note or a project.
 	IsTask bool
@@ -22,8 +28,13 @@ type OwnerEntry struct {
 	Beam bool
 	// Done reports whether the entry is marked done.
 	Done bool
-	// RunHeld reports whether a run holds the entry.
+	// RunHeld reports whether a run status stands on the entry; it does not change whose owner the entry reads.
 	RunHeld bool
+}
+
+// isBeamProject reports whether the entry is a project that is a beam.
+func (e OwnerEntry) isBeamProject() bool {
+	return e.IsProject && e.Beam
 }
 
 // Owners is the owner records of one board.json: the hub's prime owner and each entry's owner facts by slug.
@@ -55,17 +66,21 @@ func ParseOwners(boardJSON []byte) (Owners, error) {
 }
 
 // ownersOf builds the Owners of a board holding tasks and recording primeOwner.
+// Only a beam project's recorded owner is read, so a stray owner recorded on any other entry is never judged.
 func ownersOf(primeOwner string, tasks []Task) Owners {
 	owners := Owners{Prime: primeOwner, Entries: make(map[string]OwnerEntry, len(tasks))}
 	for _, task := range tasks {
-		owners.Entries[task.Slug] = OwnerEntry{
-			Owner:     task.OwnerMachine,
+		entry := OwnerEntry{
 			IsTask:    task.Kind == KindTask,
 			IsProject: task.Kind == KindProject,
 			Beam:      task.Beam,
 			Done:      isDone(task),
 			RunHeld:   IsRunStatus(task.Status),
 		}
+		if entry.isBeamProject() {
+			entry.Owner = task.OwnerMachine
+		}
+		owners.Entries[task.Slug] = entry
 	}
 	return owners
 }
@@ -100,26 +115,24 @@ func checkOwnerPayload(s *Store, fields map[string]any) error {
 		delete(fields, "owner_machine")
 		return nil
 	}
-	return fmt.Errorf("entry %q is owned by %q, and a board write never changes an owner: run `lyx adopt <slug>` from this machine's prime to take it over", slug, effective)
+	subject, err := ownersOf(s.primeOwner, s.tasks).AdoptSubject(slug, parentOfOrPrime(s.parentOf))
+	if err != nil {
+		return fmt.Errorf("entry %q: resolve what adopt takes: %w", slug, err)
+	}
+	return fmt.Errorf("entry %q is owned by %q, and a board write never changes an owner: run `lyx adopt %s` from this machine's prime to take it over", slug, effective, subject)
 }
 
 // Effective returns the owner machine the entry slug reads as, where "" means owned by no other machine.
-// A board with no prime owner, a slug the board does not hold and a run-held entry with no recorded owner read as "".
-// Otherwise the entry's recorded owner stands, and an entry with none reads as its parent's owner.
-// parentOf names the slug of the entry's parent pair, or "" for the prime, whose owner is the prime owner; an error from it is returned.
+// A slug the board does not hold reads as "".
+// A beam project reads its recorded owner, else its parent's; every other entry reads its parent's owner, and a task or grouping project records none.
+// parentOf names the slug of the entry's parent pair, or "" for the root, whose owner is the prime owner; an error from it is returned.
 func (o Owners) Effective(slug string, parentOf func(slug string) (string, error)) (string, error) {
-	if o.Prime == "" {
-		return "", nil
-	}
 	entry, held := o.Entries[slug]
 	if !held {
 		return "", nil
 	}
-	if entry.Owner != "" {
+	if entry.isBeamProject() && entry.Owner != "" {
 		return entry.Owner, nil
-	}
-	if entry.RunHeld {
-		return "", nil
 	}
 	parent, err := parentOf(slug)
 	if err != nil {
@@ -129,6 +142,24 @@ func (o Owners) Effective(slug string, parentOf func(slug string) (string, error
 		return o.Prime, nil
 	}
 	return o.Effective(parent, parentOf)
+}
+
+// AdoptSubject returns what `lyx adopt` takes to move the ownership of the entry slug: the slug itself for a beam project, else the nearest beam project above it, else RootSubject.
+// A slug the board does not hold is its own subject.
+// parentOf is read as for Effective, and an error from it is returned.
+func (o Owners) AdoptSubject(slug string, parentOf func(slug string) (string, error)) (string, error) {
+	entry, held := o.Entries[slug]
+	if !held || entry.isBeamProject() {
+		return slug, nil
+	}
+	parent, err := parentOf(slug)
+	if err != nil {
+		return "", err
+	}
+	if parent == "" {
+		return RootSubject, nil
+	}
+	return o.AdoptSubject(parent, parentOf)
 }
 
 // OwnedElsewhere reports whether owner names a machine other than here; an empty owner is owned by no other machine.

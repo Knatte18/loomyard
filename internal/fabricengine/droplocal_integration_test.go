@@ -109,14 +109,14 @@ func TestDropLocal(t *testing.T) {
 					originCommitFile(t, pair.RecordsBare, pair.recordsName, lyxcwd.AnchorFileName, "sub\n")
 					gitkit.Git(t, pair.records, "fetch", "origin")
 					gitkit.CommitFile(t, pair.records, "notes/local.md", "records", "local records")
-					return []string{"lyx fabric anchor task --set sub", "lyx adopt task --drop-local"}
+					return []string{"lyx fabric anchor task --set sub", "re-run the same `lyx adopt` with `--drop-local`"}
 				},
 			},
 			{
 				"LocalWeftAheadWithAReAnchorNotYetPushed",
 				func(t *testing.T, pair *movesPair) []string {
 					gitkit.CommitFile(t, pair.records, lyxcwd.AnchorFileName, "sub\n", "re-anchor")
-					return []string{"lyx fabric anchor task --set .", "lyx adopt task --drop-local"}
+					return []string{"lyx fabric anchor task --set .", "re-run the same `lyx adopt` with `--drop-local`"}
 				},
 			},
 			{

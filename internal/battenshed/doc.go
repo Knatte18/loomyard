@@ -21,7 +21,7 @@
 // The api-error notice goes when the newest turn end of any live run is an API error and that run has not been active for two minutes since; it names the producer and the error text cut to one line, and takes precedence over quiet.
 // With the ReviveAPIError seam wired, the first sight of an api-error episode revives the stalled sessions and notices nothing:
 // the notice goes when the same episode still stands at a later probe check, or at the third revived episode in a row with no write of the child's status file between them.
-// The quiet notice goes when every live run has been idle for the quiet window and no verify marker, shuttle wait marker or parent lock wait record is live, and says how long the agents have been idle;
+// The quiet notice goes when every live run has been idle for the quiet window and no verify marker, shuttle wait marker, parent lock wait record or child status running at the pawl recipe's Beam-Await row is live, and says how long the agents have been idle;
 // with no live run found, it falls back to "no agent activity readable" counted from the later of the child's newest history entry and since.
 // Both episodes are keyed by the newest agent activity, so they end when an agent is active again, with `since` on the line as content only.
 // Both idle clocks measure awake time: the machine sleeps the scheduling dobby recorded, read through the injected Sleeps seam, are intervals, and the time since an activity is net of the sleeps after it.
@@ -62,9 +62,13 @@
 // `lyx adopt` and `lyx beam land` start a run's first pass detached, and a second batten for the slug is refused by the run's own driver lock inside the pass, in batten's own log.
 // "lyx batten run" steps the lifecycle through the Go driver, so an unexpected stop meets the driver's rule table and a cold tackler before the orch, and the driver lock refuses a second run for the slug.
 //
+// A beam project's run starts at the Worktree-Create row too: the row claims the entry, skips a complete pair, and otherwise makes the pair from the beam above the project, unmarked and at the anchor the run's seed records, since the pawl run's own Beam-Up marks it.
+// A member's Worktree-Create reads its beam's hold again once its pair is made, and when it finds the pair already complete: a beam whose run holds its entry removes the member's pair and refuses naming the member's cancel and the board move off the beam, or its run once the beam is back at Beam-Await.
+// The refused member keeps its claim, so it stays an open member that stops the beam's landing.
+//
 // A resume, "lyx batten run" over an existing status file, first runs the origin reconcile of the slug's run scope.
 // An entry origin ended refuses, naming the landing or the removal and "lyx cleanup --apply" from the prime; a stopped entry refuses, naming the branch, its state and the way forward for it, then the re-run;
-// an entry another machine owns refuses, naming the owner and "lyx adopt <slug>"; an active entry resumes, and so does an unreachable origin, with a Warn.
+// an entry another machine owns refuses, naming the owner and "lyx adopt <subject>", the beam or `root` that takes it over; an active entry resumes, and so does an unreachable origin, with a Warn.
 // With origin answering, the resume first records this machine as the hub's prime owner when none is recorded, and as the owner of a run-held entry that has none; a failed write refuses, naming the re-run once origin answers or the push's own way forward.
 // With origin unreachable the resume reads the local board instead, refuses a task it shows owned elsewhere, and writes no owner.
 // A reconcile error refuses, with fixing its cause and then the re-run as the way forward.
@@ -156,7 +160,7 @@
 // A machine wake does not make it due here: it reaches the verdict through the full pass the scheduling dobby owes.
 // It runs after the pass's status read and before any end that read gave, so a due check and a state change seen together still run it; a failed stat or a vanished status file runs none and leaves it due for the next Call.
 // An unreachable verdict and a check error keep it due and hold nothing.
-// A verdict of another machine records that owner, releases the parent lock record naming the child's run, pauses the slug under the owner caller through deps.PauseOwned, and sends one notice per episode naming the owner and "lyx adopt <slug>".
+// A verdict of another machine records that owner, releases the parent lock record naming the child's run, pauses the slug under the owner caller through deps.PauseOwned, and sends one notice per episode naming the owner and "lyx adopt <subject>", the `OwnerVerdict.AdoptSubject`, the slug when a spawn refusal brought none.
 // A failed pause warns once per episode and is retried at the next probe while the owner stands.
 // A Finalize already past its parent-side merge keeps its record and finishes its landing: a Finalize running, or failed on a transient cause with no re-step recorded for that stop, while deps.ParentHoldsTaskWork reads true.
 // A failed read of either seam keeps the record until the next check, and any other state at Finalize, blocked included, releases it.

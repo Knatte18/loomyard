@@ -1,6 +1,6 @@
-// ownerset.go — the owner setter, the only writer of an entry's owner machine and of the hub's prime owner, and the local owner read.
+// ownerset.go — the owner setter, the only writer of a beam project's owner machine and of the hub's prime owner, and the local owner read.
 //
-// SetOwners records a machine as the owner of named entries in one pull-first Bolt commit and pushes it;
+// SetOwners records a machine as the owner of named beam projects in one pull-first Bolt commit and pushes it;
 // ReadOwners reads the owners a board directory's local board.json records.
 
 package boardengine
@@ -29,22 +29,22 @@ const ownerPushRetryWait = time.Second
 // ErrOwnerOriginUnreachable matches, through errors.Is, an owner write that needs origin and found it unreachable.
 var ErrOwnerOriginUnreachable = errors.New("board: origin is unreachable, so the owner write was not pushed")
 
-// OwnerRequest asks SetOwners to record Machine as the owner of entries.
+// OwnerRequest asks SetOwners to record Machine as the owner of the root project and of beam projects, or to claim one entry for it.
 type OwnerRequest struct {
 	// Machine is the owner to record, this machine's name; empty is refused.
 	Machine string
-	// Slugs names the entries to own; an absent, done or note entry is left alone.
+	// Slugs names the entries to write; an absent, done or note entry is left alone.
+	// Only a beam project records an owner, so a task or grouping project named without Claim or Beam is not written.
 	Slugs []string
-	// Prime records Machine as the hub's prime owner as well.
+	// Prime records Machine as the hub's prime owner, the root project's, as well.
 	Prime bool
 	// Takeover writes over an owner that reads as another machine; without it such an entry is left alone and reported in OwnerWrite.Lost.
 	Takeover bool
-	// Claim is a run status written on the request's one slug in the same commit; it needs exactly one slug.
+	// Claim is a run status written on the request's one slug in the same commit, on a task or a beam project alone, and it records no owner; it needs exactly one slug.
+	// A claim on an entry whose effective owner is another machine writes nothing and is reported in OwnerWrite.Lost.
 	Claim string
-	// Beam sets the beam flag on each named project the write records, in the same commit as the owner; only the beam verbs ask for it.
+	// Beam sets the beam flag and the project recipe on each named project the write records, in the same commit as the owner; only the beam verbs ask for it.
 	Beam bool
-	// ToProject turns each named task the write records into a project in the same commit, clearing its depends_on, recipe, profile, run_settings and priority and giving it a project handle; it needs Beam.
-	ToProject bool
 	// ParentOf names the slug of an entry's parent pair, "" for the prime, so the effective owner is judged as a read judges it; nil reads every parent as the prime.
 	ParentOf func(slug string) (string, error)
 	// Sleep waits out the retry delay after a held lock deferred the push; nil sleeps.
@@ -61,7 +61,8 @@ type OwnerWrite struct {
 	Lost map[string]string
 }
 
-// SetOwners records req.Machine as the owner of req.Slugs, and of the prime when req.Prime is set, in one commit of the board at boardDir, then pushes it.
+// SetOwners records req.Machine as the owner of the beam projects among req.Slugs, and of the prime when req.Prime is set, in one commit of the board at boardDir, then pushes it.
+// With req.Claim it writes the run status of the one slug instead, and records no owner.
 // The commit is made after the board is brought up to date with its upstream, so a stale copy is never written over.
 // Without req.Takeover an entry whose effective owner is another machine is neither written nor claimed and is reported in Lost.
 // A competing write origin already holds wins the replay of this one, and the re-read after the push reports what stands.
@@ -73,10 +74,6 @@ func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 	}
 	if req.Claim != "" && len(req.Slugs) != 1 {
 		return OwnerWrite{}, fmt.Errorf("board: a claim status goes with exactly one slug, and the owner write names %d", len(req.Slugs))
-	}
-
-	if req.ToProject && !req.Beam {
-		return OwnerWrite{}, errors.New("board: an owner write that turns a task into a project asks for the beam flag too, and only `lyx beam promote` asks for either: use `lyx beam promote <slug>` to make a task a beam")
 	}
 
 	cfg := ApplySkipEnv(Config{Path: boardDir})
@@ -134,8 +131,17 @@ func SetOwners(boardDir string, req OwnerRequest) (OwnerWrite, error) {
 	var recorded []string
 	for _, slug := range written {
 		standing := owners.Entries[slug].Owner
-		if slug == OwnerWritePrime {
+		switch {
+		case slug == OwnerWritePrime:
 			standing = owners.Prime
+		case req.Claim != "":
+			// A claim records no owner, so it stands while the entry's effective owner is nobody else's.
+			if standing, err = owners.Effective(slug, parentOfOrPrime(req.ParentOf)); err != nil {
+				return OwnerWrite{}, fmt.Errorf("entry %q: resolve its owner: %w", slug, err)
+			}
+			if standing == "" {
+				standing = req.Machine
+			}
 		}
 		if standing == req.Machine {
 			recorded = append(recorded, slug)
@@ -180,27 +186,30 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 			lost[slug] = effective
 			continue
 		}
-		store.tasks[index].OwnerMachine = req.Machine
-		if req.ToProject && store.tasks[index].Kind == KindTask {
-			turnIntoProject(&store.tasks[index])
+		entry := &store.tasks[index]
+		if req.Beam && entry.Kind == KindProject {
+			entry.Beam = true
+			entry.Recipe = ProjectRecipe
 		}
-		if req.Beam && store.tasks[index].Kind == KindProject {
-			store.tasks[index].Beam = true
-		}
-		// Only a task, or a project that is a beam, is claimable; any other project keeps its status.
-		if req.Claim != "" && (store.tasks[index].Kind == KindTask || store.tasks[index].Beam) {
+		isBeam := entry.Kind == KindProject && entry.Beam
+		switch {
+		// A claim writes the run status alone; only a task, or a project that is a beam, is claimable, and any other project keeps its status.
+		case req.Claim != "":
+			if entry.Kind != KindTask && !isBeam {
+				continue
+			}
 			claim := req.Claim
-			store.tasks[index].Status = &claim
+			entry.Status = &claim
+		case isBeam:
+			entry.OwnerMachine = req.Machine
+		default:
+			continue
 		}
 		written = append(written, slug)
 	}
 	if len(written) == 0 {
 		return nil, nil, nil
 	}
-	if req.ToProject {
-		assignHandles(store.tasks, store.vocab)
-	}
-
 	if err := store.Save(); err != nil {
 		return nil, nil, fmt.Errorf("save store: %w", err)
 	}
@@ -209,19 +218,6 @@ func writeOwners(boardDir string, req OwnerRequest, lost map[string]string) (wri
 		return nil, nil, err
 	}
 	return written, append([]string{boardFile}, rendered...), nil
-}
-
-// turnIntoProject makes the task t a project, clearing the fields only a task carries, a draft status included.
-func turnIntoProject(t *Task) {
-	t.Kind = KindProject
-	t.DependsOn = []string{}
-	t.Recipe = ""
-	t.Profile = ""
-	t.RunSettings = nil
-	t.Priority = ""
-	if t.Status != nil && *t.Status == StatusDraft {
-		t.Status = nil
-	}
 }
 
 // renderOwnerWrite renders the board's output files when its config loads, and returns the paths the render wrote or removed.

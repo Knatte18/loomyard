@@ -46,6 +46,22 @@ func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
 		{
 			name:         "OwnedElsewhereRefusesBeforeTheBootstrapLock",
 			statusExists: true,
+			verdict:      ownerVerdict{Owner: "there", AdoptSubject: "beam", Elsewhere: true},
+			wantCalls:    1,
+			wantKind:     shedrun.StartOwnedElsewhereKind,
+			wantMessage:  []string{`"there"`, "lyx adopt beam"},
+		},
+		{
+			name:         "AdoptSubjectRootNamesRoot",
+			statusExists: true,
+			verdict:      ownerVerdict{Owner: "there", AdoptSubject: "root", Elsewhere: true},
+			wantCalls:    1,
+			wantKind:     shedrun.StartOwnedElsewhereKind,
+			wantMessage:  []string{`"there"`, "lyx adopt root"},
+		},
+		{
+			name:         "NoAdoptSubjectNamesTheSlug",
+			statusExists: true,
 			verdict:      ownerVerdict{Owner: "there", Elsewhere: true},
 			wantCalls:    1,
 			wantKind:     shedrun.StartOwnedElsewhereKind,

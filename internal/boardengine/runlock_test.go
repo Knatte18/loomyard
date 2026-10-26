@@ -32,6 +32,13 @@ func TestRunLock(t *testing.T) {
 	}
 	other := map[string]any{"slug": "other", "title": "Other", "kind": "task", "labels": []string{"bug"}}
 	done := map[string]any{"slug": "fin", "title": "Fin", "kind": "task", "labels": []string{"bug"}, "status": "done"}
+	grouping := map[string]any{"slug": "grp", "title": "Group", "kind": "project", "labels": []string{"bug"}}
+	const awaiting = "running · Beam-Await"
+	// A board write cannot make a beam, so a beam row splices the beam key in after seeding the project; heldBeam is the project's fields.
+	const beamKey = `"beam":true`
+	heldBeam := func(status string) map[string]any {
+		return map[string]any{"kind": "project", "recipe": boardengine.ProjectRecipe, "status": status}
+	}
 
 	rows := []struct {
 		name    string
@@ -45,6 +52,8 @@ func TestRunLock(t *testing.T) {
 		primeOwner string
 		// unchanged requires an accepted row to leave board.json byte-identical.
 		unchanged bool
+		// beamRefusal requires a refused row to be the *BeamRunLockedError of a beam project whose run holds nothing.
+		beamRefusal bool
 	}{
 		{name: "upsert body", refused: true, act: upsertLocked(map[string]any{"body": "new"})},
 		{name: "upsert brief", refused: true, act: upsertLocked(map[string]any{"brief": "new"})},
@@ -100,7 +109,7 @@ func TestRunLock(t *testing.T) {
 		{name: "status-only upsert", act: upsertLocked(map[string]any{"status": "done"})},
 		{name: "run settings change", act: upsertLocked(map[string]any{"run_settings": map[string]any{"loom": map[string]any{"review_max_bounces": 2}}})},
 		{name: "profile change", act: upsertLocked(map[string]any{"profile": "light"})},
-		{name: "upsert naming the held entry's own effective owner", unknown: `"owner_machine":"box"`, primeOwner: "neve", unchanged: true, act: upsertLocked(map[string]any{"owner_machine": "box"})},
+		{name: "upsert naming the held entry's own effective owner", primeOwner: "box", unchanged: true, act: upsertLocked(map[string]any{"owner_machine": "box"})},
 		{name: "normal priority on an entry without one", act: upsertLocked(map[string]any{"priority": "normal"})},
 		{name: "batch whose only item on it is status-only", extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
 			_, err := b.UpsertTasksBatch([]map[string]any{{"slug": "other", "body": "batched"}, {"slug": "locked", "status": "done"}})
@@ -122,6 +131,28 @@ func TestRunLock(t *testing.T) {
 			return err
 		}},
 		{name: "body change on an entry whose status is not a run status", locked: map[string]any{"status": "active"}, act: upsertLocked(map[string]any{"body": "new"})},
+
+		{name: "beam at Parent-Align refuses a title edit as a held entry does", refused: true, unknown: beamKey, locked: heldBeam("running · Parent-Align"), act: upsertLocked(map[string]any{"title": "new"})},
+		{name: "beam at Beam-Await takes a title edit", unknown: beamKey, locked: heldBeam(awaiting), act: upsertLocked(map[string]any{"title": "new"})},
+		{name: "beam at Beam-Await takes a brief edit", unknown: beamKey, locked: heldBeam(awaiting), act: upsertLocked(map[string]any{"brief": "new"})},
+		{name: "beam at Beam-Await takes a body edit", unknown: beamKey, locked: heldBeam(awaiting), act: upsertLocked(map[string]any{"body": "new"})},
+		{name: "beam at Beam-Await takes a labels edit", unknown: beamKey, locked: heldBeam(awaiting), act: upsertLocked(map[string]any{"labels": []string{"enhancement"}})},
+		{name: "beam blocked at Beam-Await takes an edit", unknown: beamKey, locked: heldBeam("blocked · Beam-Await"), act: upsertLocked(map[string]any{"title": "new"})},
+		{name: "beam at Beam-Await takes a member and its order", unknown: beamKey, locked: heldBeam(awaiting), act: func(b *boardengine.Board) error {
+			member := map[string]any{"slug": "m1", "title": "Member", "kind": "task", "labels": []string{"bug"}, "project": "locked"}
+			if _, err := b.UpsertTask(member); err != nil {
+				return err
+			}
+			_, err := b.UpsertTask(map[string]any{"slug": "locked", "order": []string{"m1"}})
+			return err
+		}},
+		{name: "beam at Beam-Await refuses a project change", refused: true, beamRefusal: true, unknown: beamKey, locked: heldBeam(awaiting), extra: []map[string]any{grouping}, act: upsertLocked(map[string]any{"project": "grp"})},
+		{name: "beam at Beam-Await refuses a recipe change", refused: true, beamRefusal: true, unknown: beamKey, locked: heldBeam(awaiting), act: upsertLocked(map[string]any{"recipe": ""})},
+		{name: "beam at Beam-Await refuses a removal", refused: true, beamRefusal: true, unknown: beamKey, locked: heldBeam(awaiting), act: func(b *boardengine.Board) error { return b.RemoveTask("locked") }},
+		{name: "beam at Beam-Await refuses a merge", refused: true, beamRefusal: true, unknown: beamKey, locked: heldBeam(awaiting), extra: []map[string]any{other}, act: func(b *boardengine.Board) error {
+			_, _, err := b.MergeTasks([]string{"locked"}, map[string]any{"slug": "other", "body": "merged"}, nil)
+			return err
+		}},
 	}
 
 	for _, tc := range rows {
@@ -185,6 +216,21 @@ func TestRunLock(t *testing.T) {
 				t.Fatalf("err = %v, want ErrRunLocked", err)
 			}
 			status, _ := fields["status"].(string)
+			if tc.beamRefusal {
+				var beamErr *boardengine.BeamRunLockedError
+				if !errors.As(err, &beamErr) {
+					t.Fatalf("err = %v, want a *BeamRunLockedError", err)
+				}
+				for _, want := range []string{`"locked"`, status, "lyx batten cancel locked"} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("message %q lacks %q", err.Error(), want)
+					}
+				}
+				if string(after) != string(before) {
+					t.Error("board.json changed on a refused write")
+				}
+				return
+			}
 			for _, want := range []string{`"locked"`, status, "lyx batten status locked", "prime worktree", `"kind":"note"`, "lyx batten cancel locked"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("message %q lacks %q", err.Error(), want)
@@ -273,6 +319,65 @@ func TestRunLock(t *testing.T) {
 			t.Errorf("RunStatusProducer = %q, %v; want %q, true", producer, ok, "Seed-Child")
 		}
 	})
+}
+
+// TestRunLock_BeamKindAndBeamChange pins the refusal of a kind or beam change on a beam project whose run holds nothing, which no board write reaches since the write's own check refuses it first.
+func TestRunLock_BeamKindAndBeamChange(t *testing.T) {
+	t.Parallel()
+
+	status := "running · Beam-Await"
+	before := boardengine.Task{Slug: "locked", Kind: boardengine.KindProject, Beam: true, Recipe: boardengine.ProjectRecipe, Status: &status}
+	tests := []struct {
+		name  string
+		after boardengine.Task
+	}{
+		{"KindChange", boardengine.Task{Slug: "locked", Kind: boardengine.KindNote, Status: &status}},
+		{"BeamChange", boardengine.Task{Slug: "locked", Kind: boardengine.KindProject, Recipe: boardengine.ProjectRecipe, Status: &status}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := boardengine.CheckRunLocks([]boardengine.Task{before}, []boardengine.Task{tt.after})
+			var beamErr *boardengine.BeamRunLockedError
+			if !errors.As(err, &beamErr) || !errors.Is(err, boardengine.ErrRunLocked) || !strings.Contains(err.Error(), "lyx batten cancel locked") {
+				t.Errorf("CheckRunLocks error = %v; want a *BeamRunLockedError matching ErrRunLocked and naming lyx batten cancel locked", err)
+			}
+		})
+	}
+}
+
+// TestRunHolds pins which entries a run status holds: all of them, bar a beam project at a hold-free producer.
+func TestRunHolds(t *testing.T) {
+	t.Parallel()
+
+	task := func(kind string, beam bool, status *string) boardengine.Task {
+		return boardengine.Task{Slug: "e", Kind: kind, Beam: beam, Status: status}
+	}
+	tests := []struct {
+		name string
+		in   boardengine.Task
+		want bool
+	}{
+		{"TaskRunning", task(boardengine.KindTask, false, strPtr("running · Webster")), true},
+		{"TaskAtAHoldFreeProducerName", task(boardengine.KindTask, false, strPtr("running · Beam-Await")), true},
+		{"GroupingProjectRunning", task(boardengine.KindProject, false, strPtr("running · Beam-Await")), true},
+		{"BeamAtWorktreeCreate", task(boardengine.KindProject, true, strPtr("running · Worktree-Create")), false},
+		{"BeamAtBeamUp", task(boardengine.KindProject, true, strPtr("running · Beam-Up")), false},
+		{"BeamAtBeamAwaitRunning", task(boardengine.KindProject, true, strPtr("running · Beam-Await")), false},
+		{"BeamAtBeamAwaitBlocked", task(boardengine.KindProject, true, strPtr("blocked · Beam-Await")), false},
+		{"BeamAtParentAlign", task(boardengine.KindProject, true, strPtr("running · Parent-Align")), true},
+		{"BeamAtFinalize", task(boardengine.KindProject, true, strPtr("running · Finalize")), true},
+		{"BeamWithNoStatus", task(boardengine.KindProject, true, nil), false},
+		{"BeamWithADoneStatus", task(boardengine.KindProject, true, strPtr("done")), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := boardengine.RunHolds(tt.in); got != tt.want {
+				t.Errorf("RunHolds(%+v) = %v; want %v", tt.in, got, tt.want)
+			}
+		})
+	}
 }
 
 // addEntryKeys splices the raw JSON members into the entry slug of the board.json under boardPath, leaving every value byte-for-byte as decoded raw.

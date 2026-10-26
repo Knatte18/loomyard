@@ -27,14 +27,18 @@
 // DarnRetiredRows maps the writer row's former name, `Darn`, onto `Darn-Write`, so the caller can carry a darn run parked under the old name across with shedengine.RenameProducers.
 // LoomRetiredRows maps the landing row's former name, `Merge-In`, onto `Parent-Align` for a loom run the same way.
 //
-// NewBeam is the third builder: it builds the embedded beam recipe, a beam's landing run, and BeamRouting projects that recipe's routing.
-// The recipe reads `Beam-Describe → Finalize`, with no review segment and no reroute edge, so neither takes a budget;
+// NewPawl is the third builder: it builds the embedded pawl recipe, a beam's life, and PawlRouting projects that recipe's routing.
+// The recipe reads `Beam-Up → Beam-Await → Parent-Align → Code-Review → Beam-Describe → Finalize → Beam-Down`, with no reroute edge:
 // a merge Finalize cannot land halts the run for the orch.
+// Its Code-Review perch is darn's, with the same names, segment, rubric and `loom.yaml` keys, the project entry's board snapshot as its only answer key and no carry-over.
+// NewPawl takes the perch's budget from shedrecipe.Env.Segments["Code-Review"], and PawlRouting from a map keyed by segment, as NewDarn and DarnRouting do, and both refuse a missing Code-Review entry and a value below 0.
+// A budget of 0 stamps `zero_rounds` on Code-Bouncer, which settles approved at once, and Beam-Describe carries no entry gate, so it writes from the entry and the commits whatever the budget.
+// A run at Parent-Align or any row after it holds its beam; before it the beam is free to start members.
 //
-// Rows and RowNames serve the loom, darn, batten and beam recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
+// Rows and RowNames serve the loom, darn, batten and pawl recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
 // a review segment is one entry and every other row its own, so a recipe added to Rows is numbered with no change to its readers.
 //
-// AmendmentTarget answers the optional `amendment_target` key of the loom, darn, batten or beam recipe: the row a plan amendment routes to, empty when the recipe sets none.
+// AmendmentTarget answers the optional `amendment_target` key of the loom, darn, batten or pawl recipe: the row a plan amendment routes to, empty when the recipe sets none.
 //
 // Every review segment of the loom and darn recipes sets one `role_prefix` on its Bouncer, BurlerReview and BurlerFix rows, and no two segments share a value.
 // A test pins that beside the carry-over check, which pins that each Bouncer row's `carry_over` names the row's own segment.

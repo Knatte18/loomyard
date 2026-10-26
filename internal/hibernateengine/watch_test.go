@@ -567,7 +567,7 @@ func TestWatch(t *testing.T) {
 			if err != nil || got.Phase != PhaseDone || w.reconcileCalls != 0 || len(w.exempted) != 0 || len(live) != 1 || live[0].Caller != "EXTERNAL" {
 				t.Errorf("got %+v, %v, reconciles %d, exempted %+v, live %+v; want done with nothing reconciled and the entry live", got, err, w.reconcileCalls, w.exempted, live)
 			}
-			requireNotice(t, w, "EXTERNAL", "`lyx tender resume`", "`lyx orch start` or `lyx cleanup --apply`")
+			requireNotice(t, w, "EXTERNAL", "`lyx tender resume`", "`lyx beam start` or `lyx cleanup --apply`")
 		}},
 		{"a parked push holding a paused pair's push lock gives that pair a pause entry naming the resume and lifts the hub entry", func(t *testing.T) {
 			w := newFakeWorld(t)
@@ -707,7 +707,7 @@ func TestWatch(t *testing.T) {
 		}},
 		{"a run owned elsewhere gets a pair pause entry with the owner label, lifts the daemon's entry and names the owner and the adopt", func(t *testing.T) {
 			w := newFakeWorld(t)
-			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "origin's board records another machine as the owner", Owner: "laptop"}}}
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "origin's board records another machine as the owner", Owner: "laptop", AdoptSubject: "beam"}}}
 
 			got, err := watchNow(t, w)
 
@@ -718,7 +718,7 @@ func TestWatch(t *testing.T) {
 			if ended := w.endedOwnedList(); !reflect.DeepEqual(ended, []string{"p1"}) {
 				t.Errorf("EndOwned calls = %q; want p1 once", ended)
 			}
-			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lyx adopt p1` from this machine's prime takes it over here")
+			requireNotice(t, w, "its pause was lifted.", "p1 is owned by machine laptop: `lyx adopt beam` from this machine's prime takes it over here")
 		}},
 		{"an EndOwned error leaves the notice as it was", func(t *testing.T) {
 			w := newFakeWorld(t)
@@ -748,7 +748,7 @@ func TestWatch(t *testing.T) {
 			if ended := w.endedOwnedList(); len(ended) != 0 {
 				t.Errorf("EndOwned calls = %q; want none after a failed owner pause", ended)
 			}
-			requireNotice(t, w, "p1 could not be paused (tender down); the next wake or `lyx orch start` pauses it again")
+			requireNotice(t, w, "p1 could not be paused (tender down); the next wake or `lyx beam start` pauses it again")
 			if strings.Contains(w.noticeList()[0], "lyx tender pause") {
 				t.Errorf("notice = %q; want no tender pause for an owner pause", w.noticeList()[0])
 			}

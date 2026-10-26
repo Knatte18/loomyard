@@ -1,6 +1,6 @@
 //go:build tier1
 
-// adopt_integration_test.go drives the takeover over two hubforge clones of one remote: the second clone adopts a task only the first holds, and the first adopts it back over local commits and a live pair.
+// adopt_integration_test.go drives the takeover over two hubforge clones of one remote: the second clone adopts root and so moves the run of a task only the first holds, and the first adopts it back over local commits and a live pair.
 
 package adoptcli_test
 
@@ -64,36 +64,16 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	if _, err := board.UpsertTask(map[string]any{"slug": taskSlug, "title": taskSlug, "kind": "task", "labels": []string{"bug"}}); err != nil {
 		t.Fatalf("seed the board entry: %v", err)
 	}
-	// A new task is a draft, which a fresh run refuses.
-	if err := board.SetStatus(taskSlug, nil); err != nil {
-		t.Fatalf("release the board entry: %v", err)
+	runStatus := "running · Worktree-Create"
+	if err := board.SetStatus(taskSlug, &runStatus); err != nil {
+		t.Fatalf("hold the board entry under a run: %v", err)
 	}
-	if _, err := boardengine.SetOwners(first.BoardDir(), boardengine.OwnerRequest{Machine: firstMachine, Slugs: []string{taskSlug}, Prime: true, Takeover: true}); err != nil {
-		t.Fatalf("record the first machine as owner: %v", err)
-	}
-
-	second := hubforge.CloneSecond(t, first)
-	holdOwnerPause(t, second.Location)
-
-	// The task's parent is the prime the first machine owns, so the takeover names the prime too.
-	got, err := adoptcli.AdoptAs(second.Location, secondMachine, []string{taskSlug}, true, false, false)
-	if err != nil {
-		t.Fatalf("the second clone's adopt: %v", err)
-	}
-	adopted := got.Slugs[0]
-	if !adopted.PairAdded || !adopted.OwnerRecorded || !adopted.PauseLifted || adopted.Run != "none" || adopted.Error != "" {
-		t.Errorf("second clone's outcome = %+v, want the pair added, the owner recorded, the pause lifted and no run", adopted)
-	}
-	if _, err := os.Stat(second.PairCodeWorktree(taskSlug)); err != nil {
-		t.Errorf("the second clone has no pair worktree for %s: %v", taskSlug, err)
-	}
-	owners, err := boardengine.ReadOwners(second.BoardDir())
-	if err != nil || owners.Entries[taskSlug].Owner != secondMachine {
-		t.Errorf("second clone's owners = %+v, %v; want %s owned by %s", owners, err, taskSlug, secondMachine)
+	if _, err := boardengine.SetOwners(first.BoardDir(), boardengine.OwnerRequest{Machine: firstMachine, Prime: true, Takeover: true}); err != nil {
+		t.Fatalf("record the first machine as the prime's owner: %v", err)
 	}
 
-	// The reconcile judges only pairs with a batten run record, so the first clone records one, finished so that no run is left to resume.
-	status, err := json.Marshal(shedengine.Status{CurrentProducer: "Worktree-Teardown", State: shedengine.StateDone, History: []shedengine.HistoryEntry{}})
+	// The reconcile judges only pairs with a batten run record, and an adopt moves only a run whose record is not done, so the first clone records a running one before the second clone exists.
+	status, err := json.Marshal(shedengine.Status{CurrentProducer: "Worktree-Create", State: shedengine.StateRunning, History: []shedengine.HistoryEntry{}})
 	if err != nil {
 		t.Fatalf("marshal the run status: %v", err)
 	}
@@ -111,6 +91,27 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	}
 	if _, err := fabricengine.PushAnchored(first.Location, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait); err != nil {
 		t.Fatalf("push the run record: %v", err)
+	}
+
+	second := hubforge.CloneSecond(t, first)
+	holdOwnerPause(t, second.Location)
+
+	// The task is moved with root, which the first machine owns, so the second clone adopts root and records no owner of the task's own.
+	got, err := adoptcli.AdoptAs(second.Location, secondMachine, []string{boardengine.RootSubject}, false, false)
+	if err != nil {
+		t.Fatalf("the second clone's adopt: %v", err)
+	}
+	adopted := slugOutcomeOf(t, got, taskSlug)
+	// A test binary spawns no first pass, so the resume is attempted and refused after the pair is added and the pause lifted.
+	if !adopted.PairAdded || adopted.OwnerRecorded || !adopted.PauseLifted || !strings.HasPrefix(adopted.Error, "resume the run:") || !got.PrimeRecorded {
+		t.Errorf("second clone's outcome = %+v, prime recorded = %v, want the pair added, the pause lifted, the resume attempted, no owner of the task's own and the prime recorded", adopted, got.PrimeRecorded)
+	}
+	if _, err := os.Stat(second.PairCodeWorktree(taskSlug)); err != nil {
+		t.Errorf("the second clone has no pair worktree for %s: %v", taskSlug, err)
+	}
+	owners, err := boardengine.ReadOwners(second.BoardDir())
+	if err != nil || owners.Prime != secondMachine || owners.Entries[taskSlug].Owner != "" {
+		t.Errorf("second clone's owners = %+v, %v; want the prime owned by %s and no owner on %s", owners, err, secondMachine, taskSlug)
 	}
 
 	// The first clone holds local code commits origin lacks, and its run lock is held under a slug-scope owner pause.
@@ -135,34 +136,46 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = held.Release() })
 
-	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{taskSlug}, false, false, false)
+	// The second machine took root over with the task, so taking them back names root.
+	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{boardengine.RootSubject}, false, false)
 	if err != nil {
 		t.Fatalf("the first clone's adopt back: %v", err)
 	}
-	if stopped := got.Slugs[0]; !stopped.Stopped || !stopped.Live || !strings.Contains(stopped.WayForward, "--keep-local") || stopped.OwnerRecorded {
-		t.Errorf("adopt back = %+v, want a stop on the live pair naming both ways forward", stopped)
+	if stopped := slugOutcomeOf(t, got, taskSlug); !stopped.Stopped || !stopped.Live || !strings.Contains(stopped.WayForward, "`lyx adopt root --keep-local`") || got.PrimeRecorded {
+		t.Errorf("adopt back = %+v, prime recorded = %v, want a stop on the live pair naming both ways forward under root and the prime left", stopped, got.PrimeRecorded)
 	}
 
-	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{taskSlug}, false, false, true)
+	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{boardengine.RootSubject}, false, true)
 	if err != nil {
 		t.Fatalf("the first clone's --drop-local: %v", err)
 	}
-	if refused := got.Slugs[0]; !strings.Contains(refused.Error, "--keep-local") || refused.OwnerRecorded {
-		t.Errorf("--drop-local over a live pair = %+v, want a refusal naming --keep-local", refused)
+	if refused := slugOutcomeOf(t, got, taskSlug); !strings.Contains(refused.Error, "--keep-local") || got.PrimeRecorded {
+		t.Errorf("--drop-local over a live pair = %+v, prime recorded = %v, want a refusal naming --keep-local and the prime left", refused, got.PrimeRecorded)
 	}
 
-	// The second machine took the prime over with the task, so taking the task back names the prime too.
-	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{taskSlug}, true, true, false)
+	got, err = adoptcli.AdoptAs(first.Location, firstMachine, []string{boardengine.RootSubject}, true, false)
 	if err != nil {
 		t.Fatalf("the first clone's --keep-local: %v", err)
 	}
-	if kept := got.Slugs[0]; !kept.OwnerRecorded || kept.Stopped {
-		t.Errorf("--keep-local = %+v, want the owner recorded", kept)
+	if kept := slugOutcomeOf(t, got, taskSlug); kept.Stopped || !got.PrimeRecorded {
+		t.Errorf("--keep-local = %+v, prime recorded = %v, want no stop and the prime recorded", kept, got.PrimeRecorded)
 	}
 	owners, err = boardengine.ReadOwners(first.BoardDir())
-	if err != nil || owners.Entries[taskSlug].Owner != firstMachine {
-		t.Errorf("first clone's owners = %+v, %v; want %s owned by %s again", owners, err, taskSlug, firstMachine)
+	if err != nil || owners.Prime != firstMachine {
+		t.Errorf("first clone's owners = %+v, %v; want the prime owned by %s again", owners, err, firstMachine)
 	}
+}
+
+// slugOutcomeOf returns the outcome of slug in the verb's result, failing the test when the result lacks it.
+func slugOutcomeOf(t *testing.T, got adoptcli.Outcome, slug string) adoptcli.SlugOutcome {
+	t.Helper()
+	for _, entry := range got.Slugs {
+		if entry.Slug == slug {
+			return entry
+		}
+	}
+	t.Fatalf("outcome has no entry for %q: %+v", slug, got.Slugs)
+	return adoptcli.SlugOutcome{}
 }
 
 func TestCommand_RunsFromABeam(t *testing.T) {

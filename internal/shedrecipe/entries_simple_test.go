@@ -56,8 +56,8 @@ func validLandingDeps(t *testing.T) landingshed.Deps {
 }
 
 // zeroEnvField returns a copy of env with the named field set to its Go zero value.
-// field is either a top-level Env field name, or a dotted WebsterDeps.<Field> name for one of the
-// four seams websterEntry validates.
+// field is either a top-level Env field name, a dotted WebsterDeps.<Field> name for one of the
+// four seams websterEntry validates, or a dotted Pawl.<Field> name for a seam a pawl entry validates.
 func zeroEnvField(env Env, field string) Env {
 	switch field {
 	case "Cwd":
@@ -92,6 +92,46 @@ func zeroEnvField(env Env, field string) Env {
 		env.WebsterDeps.Engines = nil
 	case "WebsterDeps.RefMatcher":
 		env.WebsterDeps.RefMatcher = nil
+	case "Pawl.Slug":
+		env.Pawl.Slug = ""
+	case "Pawl.RunID":
+		env.Pawl.RunID = ""
+	case "Pawl.Paths.LandRequest":
+		env.Pawl.Paths.LandRequest = ""
+	case "Pawl.Paths.DobbyStopMarker":
+		env.Pawl.Paths.DobbyStopMarker = ""
+	case "Pawl.Paths.AwaitMarker":
+		env.Pawl.Paths.AwaitMarker = ""
+	case "Pawl.SetStatus":
+		env.Pawl.SetStatus = nil
+	case "Pawl.EntryProducer":
+		env.Pawl.EntryProducer = nil
+	case "Pawl.OwnedElsewhere":
+		env.Pawl.OwnedElsewhere = nil
+	case "Pawl.MarkBeam":
+		env.Pawl.MarkBeam = nil
+	case "Pawl.SpawnPush":
+		env.Pawl.SpawnPush = nil
+	case "Pawl.RegenerateWorkspace":
+		env.Pawl.RegenerateWorkspace = nil
+	case "Pawl.StopDobby":
+		env.Pawl.StopDobby = nil
+	case "Pawl.StartDobby":
+		env.Pawl.StartDobby = nil
+	case "Pawl.DobbyLive":
+		env.Pawl.DobbyLive = nil
+	case "Pawl.Recheck":
+		env.Pawl.Recheck = nil
+	case "Pawl.WriteSnapshot":
+		env.Pawl.WriteSnapshot = nil
+	case "Pawl.Notify":
+		env.Pawl.Notify = nil
+	case "Pawl.Down":
+		env.Pawl.Down = nil
+	case "Pawl.Now":
+		env.Pawl.Now = nil
+	case "Pawl.Sleep":
+		env.Pawl.Sleep = nil
 	default:
 		panic(fmt.Sprintf("zeroEnvField: unknown field %q", field))
 	}
@@ -174,6 +214,31 @@ func simpleEntryCases() []simpleEntryCase {
 			buildEnv:        newTestEnv,
 			validatedFields: []string{"ConfigDirs.Anchor", "WebsterRun", "CommitWebster", "WebsterDeps.Starter", "WebsterDeps.Stopper", "WebsterDeps.Engines", "WebsterDeps.RefMatcher"},
 			unreadField:     "Cwd",
+		},
+		{
+			registryKey:     "BeamUp",
+			entry:           beamUpEntry,
+			buildEnv:        newTestEnv,
+			validatedFields: []string{"Pawl.Paths.LandRequest", "Pawl.Paths.DobbyStopMarker", "Pawl.Paths.AwaitMarker", "Pawl.MarkBeam", "Pawl.SpawnPush", "Pawl.RegenerateWorkspace"},
+			unreadField:     "Pawl.Notify",
+		},
+		{
+			registryKey: "BeamAwait",
+			entry:       beamAwaitEntry,
+			buildEnv:    newTestEnv,
+			validatedFields: []string{
+				"Pawl.Paths.LandRequest", "Pawl.Paths.DobbyStopMarker", "Pawl.Paths.AwaitMarker", "Pawl.Slug", "Pawl.RunID",
+				"Pawl.SetStatus", "Pawl.EntryProducer", "Pawl.OwnedElsewhere", "Pawl.StopDobby", "Pawl.StartDobby", "Pawl.DobbyLive",
+				"Pawl.Recheck", "Pawl.WriteSnapshot", "Pawl.Notify", "Pawl.Now", "Pawl.Sleep",
+			},
+			unreadField: "Pawl.Down",
+		},
+		{
+			registryKey:     "BeamDown",
+			entry:           beamDownEntry,
+			buildEnv:        newTestEnv,
+			validatedFields: []string{"Pawl.Down"},
+			unreadField:     "Pawl.Notify",
 		},
 	}
 }

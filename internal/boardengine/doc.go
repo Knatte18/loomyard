@@ -10,7 +10,7 @@
 // Promote turns a note into a task once the operator decides to build it, and refuses a project, which is made a beam with `lyx beam create`.
 //
 // A project groups entries.
-// It carries a type label as a task does, and carries no depends_on, recipe, profile, run_settings or priority: a write giving it one is refused naming the entry and the field to drop.
+// It carries a type label as a task does, and carries no depends_on, profile, run_settings or priority, and no recipe but `pawl`: a write giving it one is refused naming the entry and the field to drop.
 // Its project, order and beam keys are the membership and the beam flag: a project carries order and beam, no task or note does, and an older binary keeps all three as unknown keys.
 // No task depends on a project: a write that sets or changes an entry's depends_on to name one is refused, naming the project's task members as what to depend on, or `lyx board set-deps` to drop the dependency.
 // A dependency on a project that a write leaves unchanged is never judged, so a done task naming a promoted project takes a later write.
@@ -31,11 +31,10 @@
 // The beam flag marks a project as a beam, and only the beam verbs write it.
 // An upsert, batch or merge payload may carry beam only as the entry's stored value, false for a new entry, which is dropped as a no-op.
 // Any other value is refused.
-// True names `lyx beam create <slug>` for a project and `lyx beam promote <slug>` for a task.
+// True names `lyx beam create <slug>`, for a project, and for a task a project entry made under a slug of its own.
 // False on a beam says the flag stays set for the beam's life, which ends when `lyx beam land <slug>` lands it and marks the project done.
 // The replay is not routed through that rule, as the owner rule is not, so a hand edit of board.json can still set the flag.
 // SetOwners writes the flag through OwnerRequest.Beam, in the one commit that records the owner.
-// OwnerRequest.ToProject, which needs Beam, also turns each named task into a project in that commit, clearing its depends_on, recipe, profile, run_settings and priority and giving it the lowest free P handle.
 // OwnerEntry carries IsProject and Beam for `lyx adopt`'s beam admission.
 //
 // # Labels
@@ -90,11 +89,14 @@
 //
 // # Owners
 //
-// A task or a project may carry an owner_machine: the name of the machine that may start, resume and land its run; a note never carries one, and board.json omits the key while none is recorded.
-// The hub's prime has its own record, the top-level prime_owner key of board.json, which the board replay merges with the same origin-wins rule as an entry's owner.
+// Ownership sits on projects: the root project's owner is the board's prime_owner, and a beam project's owner is its owner_machine, the name of the machine that may start, resume and land the runs under it.
+// A task, a grouping project and a note record no owner, board.json omits the key while none is recorded, and a load drops the key an older machine recorded on any entry but a beam project.
+// The prime_owner key is a top-level record of board.json, which the board replay merges with the same origin-wins rule as a beam's owner.
 // The README states it under its render time, and Board.PrimeOwner reads it for the list view.
-// The effective owner of an entry is what Owners.Effective resolves: the recorded owner, else for a run-held entry none, else its parent's owner, the parent pair resolved through Config.ParentOf and the prime's owner when it has none;
-// a board with no prime owner, and a slug the board does not hold, read as owned by no other machine.
+// The effective owner of an entry is what Owners.Effective resolves: a beam project's recorded owner, else its parent's owner, and for every other entry its parent's owner, the parent pair resolved through Config.ParentOf and the prime's owner for the root;
+// a run status on an entry changes nothing about whose owner it reads, a board with no prime owner reads the root as owned by no other machine, and a slug the board does not hold reads the same.
+// Owners.AdoptSubject names what `lyx adopt` takes for an entry: the beam project itself, else its nearest beam, else RootSubject.
+// A project's recipe is ProjectRecipe, `pawl`, or none, which a beam project reads as `pawl`; no task carries it, and a write giving a project another recipe, or a task `pawl`, is refused naming the fix.
 // Board copies Config.ParentOf onto every store it builds, so reads and writes resolve parents alike, and nil reads every parent as the prime.
 // ParentBeam is the board half of the one parent resolver: it walks an entry's project links upward and returns the nearest open project that is a beam, "" meaning the prime.
 // The list view carries it as parent_beam, from Config.ParentOf when that seam is set and from ParentBeam over the board's own entries otherwise, empty when the seam fails;
@@ -102,13 +104,14 @@
 // An owner change is never a scope change, so the run lock lets a run-held entry take it.
 //
 // SetOwners is the only writer of an owner or the prime owner.
-// It pulls the board level with its upstream, writes one commit "board: owner <machine> for <slugs>" that sets each named task's or project's owner, the prime owner when asked and an optional claim status on its slug, and pushes it.
-// A claim status lands only on a task or on a project whose beam flag is set; any other project records the owner and keeps its status.
+// It pulls the board level with its upstream, writes one commit "board: owner <machine> for <slugs>" that sets each named beam project's owner, the prime owner when asked and an optional claim status on its slug, and pushes it.
+// A named task or grouping project gets no owner, and a Beam request sets the beam flag and `recipe: pawl` on a named project in the same commit.
+// A claim writes the run status alone, never an owner, and lands only on a task or on a project whose beam flag is set; any other entry keeps its status, and a claim on an entry whose effective owner is another machine is reported in OwnerWrite.Lost.
 // Without Takeover it leaves an entry whose effective owner is another machine untouched and reports it in OwnerWrite.Lost; `lyx adopt` alone passes Takeover.
 // A competing write origin already holds wins the replay of a rejected push, and the owners re-read from the local board.json after the push decide Recorded and Lost.
 // An origin that does not answer is ErrOwnerOriginUnreachable, and a push a held lock keeps deferring is refused naming `lyx board sync`.
 // ReadOwners reads the owners the local board.json records.
-// The list and get views carry each task's effective owner as owner_machine, the recorded one first, and Board.EffectiveOwner resolves one slug's;
+// The list and get views carry each task's and project's effective owner as owner_machine, never an owner recorded on a task, and Board.EffectiveOwner resolves one slug's;
 // a list whose parent resolver fails leaves the cell empty and still succeeds.
 //
 // An upsert payload may carry owner_machine only as the entry's effective owner, which is dropped as a no-op; any other value is refused naming `lyx adopt`.
@@ -161,13 +164,13 @@
 //
 // Every write renders README.md, opening with the UTC date and time it was rendered, so its ages read as of that moment, then a Projects section when a project is open, a Tasks section, a Notes section grouped by type label in the order of the types list with the remainder under Other, and a Done section.
 // An open project is in none of the Tasks layers: ComputeLayers puts it in its own Project layer, a run-held one in Running and a done one in the done layer, and RenderOrder places open projects by handle between open tasks and open notes, and a done project between done tasks and done notes.
-// Projects lists each open project as an H3 of its handle and title, its brief, `beam` or `grouping`, and for a beam its effective owner, the recorded owner_machine else the prime owner.
+// Projects lists each open project as an H3 of its handle and title, its brief, `beam` or `grouping`, and for a beam its effective owner, its recorded owner_machine else its parent's, resolved through ParentBeam over the rendered entries with the prime owner as the root's; the Running table's Owner column shows a task's effective owner the same way.
 // A table of its members follows: the entries whose project names it, in the order of its order key, then the members that key leaves out by handle.
 // A member table row gives the handle, the bold title, the kind and where the member stands: its Running place, Ready, its layer, Note or Done.
 // A member keeps its row in the Tasks, Notes and Done sections, and no project is a row of Tasks or Notes; a done project is a row of Done.
 // Every section heading ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)`, never the highest handle number, since handles have gaps.
 // Tasks splits into Running, Ready, the dependency layers A, B and on, and Independent for an isolated task.
-// A task a run holds, by IsRunStatus as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
+// A task a run holds, by RunHolds as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
 // A draft task keeps its Ready or layer section and its After column, and its title cell opens with a `draft` code span before the bold title.
 // Ready holds the open tasks with no open dependency, and is always written, as `_None._` when empty.
 // A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
@@ -201,6 +204,16 @@
 // Prune passes, since a held entry's dependency on a done entry that the same write removes is not a change; every other depends_on change is refused.
 // The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
 // Its message names the entry, its status and both ways forward: a finding goes to a note of its own, and an abandoned run is ended with `lyx batten cancel <slug>` from the prime, which clears the status.
+//
+// # The landing hold
+//
+// Whether an entry is held and whether its run is in flight are two questions with two readers.
+// `RunHolds` answers the first: it is true for every entry `IsRunStatus` accepts, except a beam project whose producer half is `Worktree-Create`, `Beam-Up` or `Beam-Await`, the rows a pawl run stands at before it reaches Parent-Align, a halt at any of them included.
+// `boardengine` imports no recipe package, so the pawl recipe's own test pins that list against the claim row's and the recipe's row names.
+// The readers that ask whether an entry is held switch on it: membership of a task in a beam, the Project layer, a member forking from its beam, a verb running inside the beam and the `lyx loom peers` list.
+// The readers that ask whether a run is in flight keep `IsRunStatus` and see the pawl run at every row: adopt's started-entry test, tender's owner-pause selection, batten's owner check and the parent dobby's driven runs.
+// A beam project whose run status stands but holds nothing keeps its scope fields editable, and refuses only its removal (a prune, a remove or a merge that leaves it absent) and a change of `project`, `kind`, `recipe` or `beam`, with a *BeamRunLockedError that matches ErrRunLocked and names `lyx batten cancel <slug>`.
+// From Parent-Align on the full run lock applies as before.
 //
 // # Draft
 //

@@ -51,6 +51,8 @@ var shedrecipeAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/verifytree",
 	// internal/driftengine is imported for the Drift producers and the told Deps type of Env.Drift; it resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/driftengine",
+	// internal/pawlengine is imported for the pawl producers and the told Deps type of Env.Pawl; it resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/pawlengine",
 }
 
 // shedrecipeDeniedLyxcwdImport is the exact import path the Shed Recipe Registry Invariant excludes

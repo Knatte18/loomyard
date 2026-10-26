@@ -40,32 +40,14 @@ func TestChooseStartPrompt(t *testing.T) {
 
 	cases := []struct {
 		name       string
-		flag       string
 		state      State
 		existing   []string
-		wantErr    bool
 		wantSource string
 		wantIn     []string
 		wantNotIn  []string
 		// wantFresh asserts the prompt is exactly the start stencil's.
 		wantFresh bool
 	}{
-		{
-			name:       "flag wins over the last handoff",
-			flag:       "/h/flag.md",
-			state:      State{LastHandoff: "/h/last.md"},
-			existing:   []string{"/h/flag.md", "/h/last.md"},
-			wantSource: SourceFlag,
-			wantIn:     []string{"/h/flag.md", testRolePath},
-			wantNotIn:  []string{"/h/last.md"},
-		},
-		{
-			name:     "missing flag file errors",
-			flag:     "/h/gone.md",
-			state:    State{LastHandoff: "/h/last.md"},
-			existing: []string{"/h/last.md"},
-			wantErr:  true,
-		},
 		{
 			name:       "last handoff when present",
 			state:      State{LastHandoff: "/h/last.md"},
@@ -90,13 +72,7 @@ func TestChooseStartPrompt(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			dir := seedStencils(t)
-			got, src, err := ChooseStartPrompt(dir, testRolePath, c.flag, c.state, existsOnly(c.existing...))
-			if c.wantErr {
-				if err == nil {
-					t.Fatal("want an error")
-				}
-				return
-			}
+			got, src, err := ChooseStartPrompt(dir, testRolePath, c.state, existsOnly(c.existing...))
 			if err != nil {
 				t.Fatal(err)
 			}

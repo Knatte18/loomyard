@@ -145,6 +145,17 @@ func TestParseSeed(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("former beam recipe reads as pawl", func(t *testing.T) {
+		t.Parallel()
+		seed, err := ParseSeed([]byte(`{"recipe":"beam"}`))
+		if err != nil {
+			t.Fatalf("ParseSeed(beam seed) error = %v; want nil", err)
+		}
+		if seed.Recipe != RecipePawl {
+			t.Errorf("ParseSeed(beam seed).Recipe = %q; want %q", seed.Recipe, RecipePawl)
+		}
+	})
 }
 
 func TestValidateRecipe(t *testing.T) {
@@ -156,7 +167,8 @@ func TestValidateRecipe(t *testing.T) {
 		{"loom", RecipeLoom, false},
 		{"batten", RecipeBatten, false},
 		{"darn", RecipeDarn, false},
-		{"beam", RecipeBeam, false},
+		{"pawl", RecipePawl, false},
+		{"former beam name", "beam", true},
 		{"unknown", "someday", true},
 	}
 	for _, tt := range tests {
@@ -172,7 +184,7 @@ func TestValidateRecipe(t *testing.T) {
 //testtiming:keep pins the sorted order of the recipe vocabulary, which its covering test does not
 func TestRecipeNames(t *testing.T) {
 	got := RecipeNames()
-	want := []string{RecipeBatten, RecipeBeam, RecipeDarn, RecipeLoom}
+	want := []string{RecipeBatten, RecipeDarn, RecipeLoom, RecipePawl}
 	if len(got) != len(want) {
 		t.Fatalf("RecipeNames() = %v; want %v", got, want)
 	}

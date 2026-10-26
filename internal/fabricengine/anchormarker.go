@@ -166,44 +166,6 @@ func recordAdoptedWeftAnchor(rec *Mutations, hubPath, slug, weftPath string, nam
 	return lyxcwd.NamedWorktree(hubPath, slug)
 }
 
-// ParentRecordsAnchor answers the anchor of slug's pair and the anchor of the tree ResetRecordsToParent would reset its records to.
-// The second is the anchor of the parent records branch's tip, read from the local branch or else origin's remote-tracking ref, with the pair's own anchor as the answer for a tip that records none.
-// It reads no worktree of the parent, which need not be on this machine.
-// A pair with no origin record, a root pair, and a parent branch found nowhere are refused with the way forward ResetRecordsToParent names.
-func ParentRecordsAnchor(l *lyxcwd.Location, slug string) (own, parent string, err error) {
-	pair, err := lyxcwd.NamedWorktree(l.HubPath, slug)
-	if err != nil {
-		return "", "", err
-	}
-	origin, found, err := ReadOriginFor(l, slug)
-	if err != nil {
-		return "", "", err
-	}
-	if !found {
-		return "", "", missingOriginRecordError(pair, slug, RecordsWorktreePath(pair, slug))
-	}
-	if origin.ParentBranch == "" {
-		return "", "", rootPairNoParentError(slug)
-	}
-	weftRepoRoot, err := RecordsRepoRoot(l)
-	if err != nil {
-		return "", "", fmt.Errorf("resolve weft repo root: %w", err)
-	}
-	parentTip, err := recordsBranchTip(gitrepo.New(weftRepoRoot), RecordsBranchName(origin.ParentBranch))
-	if err != nil {
-		return "", "", err
-	}
-	names, err := RepoWiredNames(pair)
-	if err != nil {
-		return "", "", fmt.Errorf("load the wired names to read the parent's anchor: %w", err)
-	}
-	parent, err = treeAnchor(weftRepoRoot, parentTip, names, pair.AnchorRel)
-	if err != nil {
-		return "", "", err
-	}
-	return pair.AnchorRel, parent, nil
-}
-
 // retireBoltAnchorMarker removes the hub-wide marker from the board, and a leftover pre-rename marker beside it, once every worktree's own marker stands in for it.
 // The removal is one board commit pushed through Bolt, written only after Bolt is brought up to date, so it never writes over a stale board.
 // It reports "" for a hub with no board marker, "removed" once the marker is gone, and "kept: <reason>" while it stays:

@@ -161,6 +161,10 @@ type Watcher struct {
 	pauseReadError string
 	// netOpsFailures is the failure episode of the pause's network operation marker reads, which repeat on every tick of a pause's grace.
 	netOpsFailures logger.Episode
+	// owner is the told owner reading, nil when the watcher was never told one.
+	owner *OwnerWatch
+	// ownerReadFailures is the failure episode of the owner reads, which repeat on every tick while the board is unreadable.
+	ownerReadFailures logger.Episode
 }
 
 // phaseEvents records what the current non-idle phase has observed, which the cursor has moved past and a later tick must still know.
@@ -249,6 +253,10 @@ func (w *Watcher) tick() (done bool, err error) {
 	if !alive {
 		st.WatcherExit = "strand gone"
 		return true, w.save(st)
+	}
+
+	if done, err := w.ownerTick(st); done || err != nil {
+		return done, err
 	}
 
 	if !w.started || w.strand != st.Strand {

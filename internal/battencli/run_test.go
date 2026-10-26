@@ -22,7 +22,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -185,14 +184,14 @@ func writeStatus(t *testing.T, c *battenCLI, st shedengine.Status) {
 // TestRunCmd_ResumeDispositions covers StateRunning, StateBlocked, StateFailed and StatePaused, each resuming silently from the persisted current producer, and an absent status file, which is a fresh start and not a refusal: every fake succeeds trivially, so the whole run completes and the verb reports success, with a history_length key matching the persisted history.
 // A run whose status carries a pause_after naming the first row stops paused, and the driver hands it back with no tackler; a run whose row fails again ends in an error envelope carrying the status error.
 // A resume runs the origin reconcile once: an active or unreachable verdict resumes, an ended verdict refuses naming the landing and "lyx cleanup --apply", a stopped verdict refuses with the branch's way forward verbatim followed by the re-run, and a reconcile error refuses with the error and the re-run; an absent status file never runs it.
-// Over fake owner seams, an owned_elsewhere verdict refuses naming the owner and "lyx adopt", a run-held entry with no owner is recorded as this machine's before the resume and each failure of that write refuses, an unreachable origin reads the local board instead and writes nothing, a hub with no prime owner has this machine claim it, and a status still at Worktree-Create with no pair runs the start check and no reconcile.
+// Over fake owner seams, an owned_elsewhere verdict refuses naming the owner and "lyx adopt", a run-held entry with no owner resumes and the resume writes no owner, an unreachable origin reads the local board instead and writes nothing, a hub with no prime owner has this machine claim it, and a status still at Worktree-Create with no pair runs the start check and no reconcile.
 func TestRunCmd_ResumeDispositions(t *testing.T) {
 	t.Parallel()
 
 	const slug = "some-slug"
 	teardown := battenrecipe.NameWorktreeTeardown
 	activeReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryActive}}}
-	elsewhereReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there"}}}
+	elsewhereReport := fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}
 	unreachableReport := fabricengine.OriginReport{Unreachable: true}
 	owning := func(fake fakeOwners) func() *fakeOwners { return func() *fakeOwners { return &fake } }
 	const stopWayForward = "`lyx fabric pull` in /hub/example"
@@ -274,42 +273,19 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", false)}),
 			report:     elsewhereReport,
 			wantExit:   dobbyengine.PassExitOwnedElsewhere,
-			wantErrors: []string{"there", "lyx adopt " + slug},
+			wantErrors: []string{"there", "`lyx adopt some-beam`"},
 		},
 		{
-			name: "unowned_run_held_entry_is_recorded_before_the_resume", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
-			owner:    owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true)}),
-			report:   activeReport,
-			wantSets: []string{"slug:" + slug},
-		},
-		{
-			name: "owner_write_with_origin_unreachable_refuses_naming_the_rerun", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
-			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true), setErr: fmt.Errorf("%w: fetch failed", boardengine.ErrOwnerOriginUnreachable)}),
-			report:     activeReport,
-			wantSets:   []string{"slug:" + slug},
-			wantErrors: []string{"needs origin", "lyx batten run " + slug, "once origin answers"},
-		},
-		{
-			name: "refused_owner_push_refuses_naming_its_way_forward", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
-			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true), setErr: errors.New("push refused; way forward: run lyx board sync")}),
-			report:     activeReport,
-			wantSets:   []string{"slug:" + slug},
-			wantErrors: []string{"push refused; way forward: run lyx board sync", "lyx batten run " + slug},
-		},
-		{
-			name: "lost_owner_write_refuses_naming_the_other_owner", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
-			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true), lost: map[string]string{slug: "there"}}),
-			report:     activeReport,
-			wantSets:   []string{"slug:" + slug},
-			wantExit:   dobbyengine.PassExitOwnedElsewhere,
-			wantErrors: []string{"there", "lyx adopt " + slug},
+			name: "run_held_entry_with_no_owner_resumes_writing_no_owner", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
+			owner:  owning(fakeOwners{machine: "here", owners: ownedBy("here", "", true)}),
+			report: activeReport,
 		},
 		{
 			name: "unreachable_origin_with_the_local_board_owned_elsewhere_refuses", state: shedengine.StateRunning, producer: teardown, wantReconcile: 1,
 			owner:      owning(fakeOwners{machine: "here", owners: ownedBy("here", "there", true)}),
 			report:     unreachableReport,
 			wantExit:   dobbyengine.PassExitOwnedElsewhere,
-			wantErrors: []string{"the local board shows", "there", "once origin answers", "lyx batten run " + slug},
+			wantErrors: []string{"the local board shows", "there", "once origin answers", "lyx batten run " + slug, "`lyx adopt some-beam`"},
 		},
 		{
 			name: "unreachable_origin_with_an_unowned_run_held_entry_resumes_without_a_write", state: shedengine.StateRunning, producer: teardown, wantOutcome: "done", wantReconcile: 1,
@@ -333,7 +309,7 @@ func TestRunCmd_ResumeDispositions(t *testing.T) {
 			report:     elsewhereReport,
 			wantSets:   []string{"prime"},
 			wantExit:   dobbyengine.PassExitOwnedElsewhere,
-			wantErrors: []string{"there", "lyx adopt " + slug},
+			wantErrors: []string{"there", "`lyx adopt some-beam`"},
 		},
 		{
 			name: "worktree_create_without_a_pair_runs_the_start_check_and_no_reconcile", state: shedengine.StateRunning, wantOutcome: "done",

@@ -118,6 +118,17 @@ func hubAnchorDeps(acting *lyxcwd.Location) (anchorDeps, error) {
 			}
 			return foreignOwner(primeLocation, boardDir, slug)
 		},
+		AdoptSubject: func(slug string) (string, error) {
+			primeLocation, err := prime()
+			if err != nil {
+				return "", err
+			}
+			owners, err := boardengine.ReadOwners(boardDir)
+			if err != nil {
+				return "", err
+			}
+			return owners.AdoptSubject(slug, func(entry string) (string, error) { return hubgeom.ParentOf(primeLocation, entry) })
+		},
 		UpstreamAnchor: func(location *lyxcwd.Location) (string, bool, error) {
 			names, err := fabricengine.RepoWiredNames(location)
 			if err != nil {
@@ -164,17 +175,6 @@ func hubAnchorDeps(acting *lyxcwd.Location) (anchorDeps, error) {
 				}
 			}
 			return 0, false, nil
-		},
-		DobbyLive: func(worktree string) (bool, error) {
-			primeLocation, err := prime()
-			if err != nil {
-				return false, err
-			}
-			geometry, err := hubgeom.DobbyGeometry(primeLocation, worktree)
-			if err != nil {
-				return false, err
-			}
-			return dobbyengine.Live(geometry)
 		},
 		HubReedHeld: func() ([]string, error) {
 			worktrees, err := hubWorktrees(acting)
@@ -253,23 +253,12 @@ func hubAnchorDeps(acting *lyxcwd.Location) (anchorDeps, error) {
 			}
 			return ended, nil
 		},
-		StartDobby: func(slug string) error {
+		EnsureDobbies: func(worktrees []string) error {
 			primeLocation, err := prime()
 			if err != nil {
 				return err
 			}
-			geometry, err := hubgeom.DobbyGeometry(primeLocation, slug)
-			if err != nil {
-				return err
-			}
-			return dobbyengine.SpawnDetached(geometry)
-		},
-		EnsureDobbies: func() error {
-			primeLocation, err := prime()
-			if err != nil {
-				return err
-			}
-			_, err = dobbyengine.EnsureLive(hubgeom.DobbyStart(primeLocation))
+			_, err = dobbyengine.EnsureLive(hubgeom.DobbyStart(primeLocation), worktrees)
 			return err
 		},
 		Begin: func(location *lyxcwd.Location, target string) (anchorChange, error) {

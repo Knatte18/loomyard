@@ -260,8 +260,8 @@ const (
 	PriorityLow    = "low"
 )
 
-// normalizeTask stores a normal priority and an empty run settings object as the empty value, clears the owner of a note and stores the dates in whole UTC seconds, then checks that the Kind is one of the three kinds, the Priority one of the accepted values and a task without one.
-// A project carries none of depends_on, recipe, profile, run_settings or priority, and only a project carries order or beam.
+// normalizeTask stores a normal priority and an empty run settings object as the empty value, clears the owner of every entry but a beam project and stores the dates in whole UTC seconds, then checks that the Kind is one of the three kinds, the Priority one of the accepted values and a task without one.
+// A project carries none of depends_on, profile, run_settings or priority, and a recipe only when it is the project recipe; only a project carries order or beam, and only a project carries the project recipe.
 func normalizeTask(t *Task) error {
 	if t.Kind != KindTask && t.Kind != KindNote && t.Kind != KindProject {
 		return fmt.Errorf("kind %q is not one of %s, %s, %s", t.Kind, KindTask, KindNote, KindProject)
@@ -272,7 +272,7 @@ func normalizeTask(t *Task) error {
 	if len(t.RunSettings) == 0 {
 		t.RunSettings = nil
 	}
-	if t.Kind == KindNote {
+	if t.Kind != KindProject || !t.Beam {
 		t.OwnerMachine = ""
 	}
 	t.Created = entryTime(t.Created)
@@ -294,17 +294,23 @@ func normalizeTask(t *Task) error {
 	if t.Beam {
 		return fmt.Errorf("%s %q has beam, and only a project can be a beam: drop the beam field", t.Kind, t.Slug)
 	}
+	if t.Kind == KindTask && t.Recipe == ProjectRecipe {
+		return fmt.Errorf("task %q has recipe %q, and a task's recipe is loom or darn: %q belongs to a beam project, so set the recipe to loom or darn", t.Slug, t.Recipe, ProjectRecipe)
+	}
 	return nil
 }
 
 // checkProjectFields refuses a project carrying a field only a task carries, naming the entry and the field to drop.
+// A project's recipe is accepted only when it is the project recipe; any other is refused naming that fix.
 func checkProjectFields(t Task) error {
+	if t.Recipe != "" && t.Recipe != ProjectRecipe {
+		return fmt.Errorf("project %q has recipe %q, and a project's recipe is %s: set the recipe to %q, or drop the recipe field", t.Slug, t.Recipe, ProjectRecipe, ProjectRecipe)
+	}
 	carried := []struct {
 		field   string
 		present bool
 	}{
 		{"depends_on", len(t.DependsOn) > 0},
-		{"recipe", t.Recipe != ""},
 		{"profile", t.Profile != ""},
 		{"run_settings", len(t.RunSettings) > 0},
 		{"priority", t.Priority != ""},

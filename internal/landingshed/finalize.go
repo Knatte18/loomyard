@@ -270,6 +270,11 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		return outcome, out, err
 	}
 
+	// Step 1b3b: under the same lock, halt a beam's landing while a member or a forked pair remains under it.
+	if outcome, out, err, stop := fz.landCheck(ctx); stop {
+		return outcome, out, err
+	}
+
 	// Step 1b4: open the parent pair, which this producer never creates, and sync it before any merge.
 	parentHandle, err := fz.parentOpener()
 	if err != nil {

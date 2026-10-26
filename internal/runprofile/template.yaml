@@ -1,5 +1,5 @@
 # profiles.yaml — the hub's named run profiles, and the profile each recipe takes by default.
-# Each top-level key but defaults is a profile name, and its value holds one block per recipe, loom or darn;
+# Each top-level key but defaults is a profile name, and its value holds one block per recipe, loom, darn or pawl;
 # a block has the shape of a board task's run_settings: module name to that module's config keys.
 # A task names a profile in its board entry's profile field, or takes its recipe's entry under defaults when it names none;
 # batten's Seed-Child writes the block of the recipe the task runs into the pair's local config, with the task's own run_settings layered on top.
@@ -12,25 +12,34 @@
 defaults:
   loom: solid
   darn: light
+  pawl: light
 speed:
   loom:
     loom: {discussion_max_bounces: 0, discussion_hard_max_bounces: 1, plan_max_bounces: 0, plan_hard_max_bounces: 1, code_max_bounces: 1, code_hard_max_bounces: 2}
   darn:
+    loom: {code_max_bounces: 0, code_hard_max_bounces: 1}
+  pawl:
     loom: {code_max_bounces: 0, code_hard_max_bounces: 1}
 light:
   loom:
     loom: {discussion_max_bounces: 1, discussion_hard_max_bounces: 2, plan_max_bounces: 1, plan_hard_max_bounces: 2, code_max_bounces: 1, code_hard_max_bounces: 2}
   darn:
     loom: {code_max_bounces: 1, code_hard_max_bounces: 2}
+  pawl:
+    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}
 solid:
   loom:
     loom: {discussion_max_bounces: 2, discussion_hard_max_bounces: 3, plan_max_bounces: 2, plan_hard_max_bounces: 3, code_max_bounces: 1, code_hard_max_bounces: 2}
   darn:
     loom: {code_max_bounces: 2, code_hard_max_bounces: 3}
+  pawl:
+    loom: {code_max_bounces: 2, code_hard_max_bounces: 3}
 wide:
   loom:
     loom: {discussion_max_bounces: 3, discussion_hard_max_bounces: 4, plan_max_bounces: 2, plan_hard_max_bounces: 3, code_max_bounces: 1, code_hard_max_bounces: 2}
   darn:
+    loom: {code_max_bounces: 3, code_hard_max_bounces: 4}
+  pawl:
     loom: {code_max_bounces: 3, code_hard_max_bounces: 4}
 docs:
   darn:

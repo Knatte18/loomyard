@@ -199,11 +199,6 @@ func MarkBeam(rec *Mutations, l *lyxcwd.Location, slug string) (bool, error) {
 	return true, nil
 }
 
-// rootPairNoParentError refuses a verb that needs the parent of slug's pair, a root pair that has none, and names the way forward.
-func rootPairNoParentError(slug string) error {
-	return fmt.Errorf("pair %q is a root pair with no parent to reset its records to; way forward: a root pair cannot become a beam, so create a project entry through `lyx board upsert` under a slug of its own and run `lyx beam create` on it", slug)
-}
-
 // missingOriginRecordError refuses a beam mark on slug's pair that has no origin record, naming the way forward for each of the two causes.
 func missingOriginRecordError(l *lyxcwd.Location, slug, weftPath string) error {
 	if _, err := os.Stat(weftPath); err != nil {

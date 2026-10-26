@@ -114,6 +114,19 @@ func TestBuildView(t *testing.T) {
 			want: View{Alive: true, MaxRuns: 2, Runs: []ViewRun{{Slug: "r", State: runStateRunning, Producer: producerRunShed}}, Waiting: []WaitingTask{{Slug: "a", AtMaxRuns: true}}},
 		},
 		{
+			name: "APawlRunWithoutItsHoldTakesNoSlotAndWithItTakesOne",
+			mutate: func(in *ViewInput) {
+				waiting, holding := runningRun("waiting"), runningRun("holding")
+				waiting.NoSlot = true
+				in.Runs = []RunView{waiting, holding}
+				in.Tasks = []TaskView{readyTask("first"), readyTask("second")}
+			},
+			want: View{Alive: true, MaxRuns: 2, Runs: []ViewRun{
+				{Slug: "holding", State: runStateRunning, Producer: producerRunShed},
+				{Slug: "waiting", State: runStateRunning, Producer: producerRunShed},
+			}, Waiting: []WaitingTask{{Slug: "first"}, {Slug: "second", AtMaxRuns: true}}},
+		},
+		{
 			name: "OnlyTasksReleasedToThisWorktreeWait",
 			mutate: func(in *ViewInput) {
 				other, drafted, project := readyTask("other"), readyTask("drafted"), readyTask("project")

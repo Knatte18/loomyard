@@ -9,8 +9,11 @@
 //   - State is dobby's tolerant JSON record under the worktree's `.lyx/beam/` directory, read with ReadState and rewritten under its lock with UpdateState.
 //     A record that does not decode reads as absent with one Warn, so a hand-damaged file never wedges the beam.
 //   - The PassExit codes are what a `lyx batten run` pass exits with for a refusal dobby reads by code.
-//   - EnsureLive starts the dobby of the prime and of every local beam pair this machine owns, each only when Live reads its lock free, through SpawnDetached.
-//     It records this machine as the prime owner first when none is recorded, and reports per worktree; it is idempotent.
+//   - EnsureLive starts the dobby of each worktree it is named, the prime's name or beam slugs, each only when Live reads its lock free, through SpawnDetached.
+//     It records this machine as the prime owner first when the prime is named and none is recorded, and reports per worktree; it is idempotent.
+//     A named prime or beam another machine owns is refused naming `lyx adopt root` or `lyx adopt <slug>` with its owner.
+//     A named beam whose landing hold stands is refused naming `lyx batten status <slug>` and spawns nothing, through StartDeps.LandingHeld, and a nil one reads as no hold standing.
+//     OwnedWorktrees lists the prime and every local beam this machine may start, the set a caller that narrows nothing names.
 //     A worktree with an anchor change standing on its own records worktree or the prime's is refused with the change's way forward and starts nothing, through StartDeps.MoveInProgress, and a nil one reads as no change standing.
 //   - Config is beam.yaml, loaded strictly because dobby only ever runs inside a hub.
 //   - Run is the daemon loop, with every seam it reads in Deps.
@@ -47,7 +50,7 @@
 //   - A refused continue pass owes a full pass; a covered pass counts as no failure; any other non-zero exit counts a failure by its error text, retried on the next probe tick.
 //     The third failure in a row with one text posts one notice to the nearest live orch, and an exit 0 clears the count and the noticed texts.
 //   - A pass that exits as owned by another machine keeps the run's full pass owed and marks it owned elsewhere in the state record.
-//     Dobby pauses the run under the owner caller, releases the parent lock record naming its child, and posts one notice naming `lyx adopt` per owner episode, with no failing-pass notice.
+//     Dobby pauses the run under the owner caller, releases the parent lock record naming its child, and posts one notice naming `lyx adopt <subject>` per owner episode, the subject read through `Deps.AdoptSubject` and the slug when that seam is nil or fails, with no failing-pass notice.
 //     A failed pause warns once per episode and is recorded; it is never retried blind, since while the mark stands and no pause covers the run, each probe tick gives it a full pass, which is refused again or exits 0 and clears the mark.
 //     While the mark stands and a pause covers the run, it gets no pass, a start's and a wake's included, but the full pass at the lift of the covering pause.
 //     Once the owner pause stands, each probe tick reads the run's effective owner from the local Bolt with no pull, and when it no longer reads another machine, dobby lifts its own owner pause and runs a full pass.
@@ -55,7 +58,7 @@
 //     A marked run is in flight for the backoff only while no pause covers it.
 //   - A task waits on the board as `draft` until released, and dobby starts it from an empty status.
 //     It starts a task when the entry is a task whose dependencies are all done, its parent is this dobby's worktree, no other machine owns it, and no pause entry covers the hub or the slug.
-//     Each tick reads the local board, which a write of `board.json` and the probe tick both cause, and starts each ready task while fewer than `max_runs` runs it drives are in flight: halted runs count, done runs and runs recorded owned elsewhere do not, and `max_runs: 0` starts nothing.
+//     Each tick reads the local board, which a write of `board.json` and the probe tick both cause, and starts each ready task while fewer than `max_runs` runs it drives are in flight: halted runs count, done runs, runs recorded owned elsewhere and pawl runs with no landing hold do not, and `max_runs: 0` starts nothing.
 //   - Starting is the run's first pass, a full pass, which claims the task as batten does; a slug with a pass in flight is never started twice.
 //     A first pass refused for a covering pause is no refused start: no notice, no marker and no backoff, and the start waits for the lift.
 //     Any other first pass that exits non-zero and leaves no status file, a refusal as owned elsewhere included, is a refused start: one notice per refusal text, and a retry from one probe interval, doubling up to an hour, or at once when the entry changes.
@@ -64,6 +67,19 @@
 //     Across machines only the owner machine's dobby of the parent runs, and a release written on another machine reaches this dobby when this machine's board is next pulled.
 //   - Bound: per run at most one pass per probe interval plus one per write of the child's status file, and at most one in flight.
 //     A run counts as in flight for the loop's backoff while the planner could give it a pass on the next probe tick.
+//
+// The slot rule:
+//
+//   - A run whose RunView carries NoSlot takes no slot under `max_runs`, a pawl run whose landing hold does not stand, which only waits on its members at Worktree-Create, Beam-Up and Beam-Await; it takes one from Parent-Align on.
+//     The parent's dobby still schedules the run's passes, owed full passes and probes as for every run it drives, and the view's `max_runs` reasons follow, since BuildView counts through the same rule.
+//
+// The "can land" notice:
+//
+//   - After the scheduling steps, each tick of a beam's dobby reads Deps.CanLand, whose LandReading says whether nothing works under the beam any more and which other machine, if any, owns the beam's parent.
+//     The prime's dobby and a nil CanLand post none; the tick runs on every board change the dobby watches and on every pass exit, so a member's teardown, a cancel with `--remove`, a member moved off the project and one marked done by hand each trigger it.
+//   - A passing reading with no sent episode in State.LandNotice posts one notice to the beam's own orch naming `lyx beam land <slug>`, or, when another machine owns the parent, that it does and `lyx adopt <subject>` instead, and records the episode as sent.
+//     A reading that does not pass clears the episode, so a member opened again re-arms the notice; a restarted dobby reads the record and sends no second notice.
+//   - A failed read or post is logged once per episode and changes nothing: a failed post leaves the episode unsent for the next tick.
 //
 // The board tidy:
 //

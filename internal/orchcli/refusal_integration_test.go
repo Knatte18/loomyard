@@ -1,6 +1,6 @@
 //go:build tier1
 
-// refusal_integration_test.go proves the orch refusals end to end over one hub: the prime-or-beam rule (`status`, `start`, `resume-context` and `rules` from a task worktree that is no beam or the prime's records sibling) and the config refusal (a non-bypass permission_mode makes `status` and the watcher start fail with the fix named), each landing before any .lyx/orch is created.
+// refusal_integration_test.go proves the orch refusals end to end over one hub: the prime-or-beam rule (`status`, `resume-context`, `rules` and `BeamUp` from a task worktree that is no beam or the prime's records sibling) and the config refusal (a non-bypass permission_mode makes `status` and the watcher start fail with the fix named), each landing before any .lyx/orch is created.
 
 package orchcli
 
@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 )
 
@@ -33,11 +34,24 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 			"records prime": h.PrimeRecords(),
 		}
 		for name, cwd := range cases {
-			for _, verb := range []string{"status", "start", resumeContextVerb, "rules"} {
+			for _, verb := range []string{"status", resumeContextVerb, "rules"} {
 				t.Run(name+"/"+verb, func(t *testing.T) {
 					refusalCase(t, cwd, verb)
 				})
 			}
+			t.Run(name+"/BeamUp", func(t *testing.T) {
+				location, err := lyxcwd.Resolve(cwd)
+				if err != nil {
+					t.Fatalf("resolve %s: %v", cwd, err)
+				}
+				_, err = BeamUp(location, BeamUpOptions{Prepare: true})
+				if err == nil || !strings.Contains(err.Error(), "lyx orch runs from the hub's prime worktree or a beam") {
+					t.Errorf("BeamUp from %s = %v; want the prime-or-beam refusal", cwd, err)
+				}
+				if _, err := os.Stat(filepath.Join(cwd, lyxdirs.DotLyxDirName, orchDirName)); err == nil {
+					t.Errorf(".lyx/orch was created under %s; the refusal must land first", cwd)
+				}
+			})
 		}
 		if _, err := os.Stat(filepath.Join(anchor, lyxdirs.DotLyxDirName, orchDirName)); err == nil {
 			t.Error(".lyx/orch was created under the prime; the refusal must land first")
@@ -72,45 +86,18 @@ func TestOrchIntegration_Refusals(t *testing.T) {
 		}
 	})
 
-	// A failed reconcile warns and start goes on: it then meets the permission_mode the "permission mode" step left in the prime's orch.yaml, so this step relies on that step.
-	t.Run("hub config reconcile", func(t *testing.T) {
-		pairLoomYAML := configengine.ConfigFile(h.PairCodeWorktree("orch-task"), "loom")
-		defer func() {
-			if err := os.Remove(pairLoomYAML); err != nil {
-				t.Errorf("remove pair loom.yaml: %v", err)
-			}
-		}()
-		if err := os.MkdirAll(filepath.Dir(pairLoomYAML), 0o755); err != nil {
-			t.Fatalf("mkdir the pair's config dir: %v", err)
-		}
-		if err := os.WriteFile(pairLoomYAML, []byte("a: [unclosed\n"), 0o644); err != nil {
-			t.Fatalf("write unparseable loom.yaml: %v", err)
-		}
+	// No orch verb reconciles the hub's config: `lyx beam start` does, before it calls BeamUp.
+	t.Run("no verb reconciles the hub config", func(t *testing.T) {
 		stampPath := hubreconcile.Geometry{BoardDir: h.BoardDir()}.StampPath()
 		if err := os.Remove(stampPath); err != nil && !os.IsNotExist(err) {
 			t.Fatalf("remove stamp: %v", err)
 		}
 
-		var statusOut bytes.Buffer
-		RunCLIIn(anchor, &statusOut, []string{"status"})
-		if _, err := os.Stat(stampPath); err == nil {
-			t.Fatalf("status wrote the build stamp; only start reconciles")
-		}
-
 		var out bytes.Buffer
-		code := RunCLIIn(anchor, &out, []string{"start"})
+		RunCLIIn(anchor, &out, []string{"status"})
 
-		if code != 1 {
-			t.Fatalf("exit code = %d; want 1; output: %s", code, out.String())
-		}
-		if want := "set permission_mode: bypass or remove the key"; !strings.Contains(out.String(), want) {
-			t.Errorf("envelope %q does not name %q; the failed reconcile should not have stopped the verb", out.String(), want)
-		}
-		if _, err := os.Stat(filepath.Join(anchor, lyxdirs.DotLyxDirName, orchDirName)); err == nil {
-			t.Error(".lyx/orch was created under the prime; the refusal must land first")
-		}
 		if _, err := os.Stat(stampPath); err == nil {
-			t.Error("a build stamp exists after a failed reconcile")
+			t.Errorf("status wrote the build stamp; no orch verb reconciles")
 		}
 	})
 }

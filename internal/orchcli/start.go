@@ -1,11 +1,10 @@
-// start.go implements the `start` orch verb: the idempotent bootstrap that ensures the runs strand, leaves one live orchestrator strand and one watcher bound to it, then reports on the envelope.
+// start.go implements the orch's bring-up, `BeamUp`: the idempotent bootstrap that starts the worktree's dobby, ensures the runs strand, leaves one live orchestrator strand and one watcher bound to it, then reports.
 // It never attaches or switches a tmux client;
 // `lyx reed attach` is the only way into the session.
 
 package orchcli
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -21,14 +19,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
-	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
-	"github.com/spf13/cobra"
 )
 
 // orchStrandName is the role the orchestrator strand is added and addressed by in the prime's reed session.
@@ -37,15 +33,68 @@ const orchStrandName = agentname.RoleOrch
 // orchSkills are the skills shuttle loads into the orch session before its prompt pointer on every launch path.
 var orchSkills = []string{"scribe:prose", "scribe:conversation", "ly:board"}
 
-// Envelope "action" values.
+// Report "action" values.
 const (
 	actionAlreadyRunning = "already-running"
 	actionSpawnedWatcher = "spawned-watcher"
 	actionRelaunched     = "relaunched"
 )
 
-// stoppingWatcherHint is the envelope hint when the watcher is still stopping after start's wait.
-const stoppingWatcherHint = `the watcher is stopping; run "lyx orch start" again once it has exited`
+// stoppingWatcherHint is the report hint when the watcher is still stopping after the start's wait.
+const stoppingWatcherHint = `the watcher is stopping; run "lyx beam start" again once it has exited`
+
+// BeamUpOptions tunes one BeamUp.
+type BeamUpOptions struct {
+	// Prepare runs the hub-scope origin reconcile, the failed-push read, the prime claim and the owner pauses before the beam steps.
+	// A caller that already judged origin leaves it false.
+	Prepare bool
+	// Index renders the operator command index the orch's role file carries; nil runs `<os.Executable()> help index`.
+	Index func() (string, error)
+	// Here names this machine for the owner refusal; empty reads machinename.Name.
+	Here string
+}
+
+// BeamUpReport is what one BeamUp did, and what it had done when it refused or failed.
+type BeamUpReport struct {
+	// Worktree is the name of the worktree brought up.
+	Worktree string `json:"worktree"`
+	// Dobby is the outcome of the worktree's dobby start, empty when none was attempted, and DobbyDetail says why it was refused or failed.
+	Dobby       string `json:"dobby,omitempty"`
+	DobbyDetail string `json:"dobby_detail,omitempty"`
+	// Action is what the bring-up of `lyx beam start` did to the strand: relaunched, spawned-watcher or already-running.
+	Action string `json:"action,omitempty"`
+	// Strand is the orchestrator strand's guid.
+	Strand string `json:"strand,omitempty"`
+	// PromptSource names where a launch took its prompt from; empty when no launch ran.
+	PromptSource string `json:"prompt_source,omitempty"`
+	// SessionID is the session a resume continued, empty for any other launch.
+	SessionID string `json:"session_id,omitempty"`
+	// AbandonedSession is the recorded session whose resume failed to start and which a fresh launch replaced.
+	AbandonedSession string `json:"abandoned_session,omitempty"`
+	// Hint names the way forward when the watcher was still stopping.
+	Hint            string `json:"hint,omitempty"`
+	WatcherStopping bool   `json:"watcher_stopping,omitempty"`
+	// Reconcile, FailedPushes and OwnerPauses are what Prepare gathered.
+	Reconcile    fabricengine.OriginReport `json:"reconcile"`
+	FailedPushes []map[string]any          `json:"failed_pushes"`
+	OwnerPauses  []map[string]string       `json:"owner_pauses"`
+	// Mutations is what the reconcile changed, and Partial whether a failure left that change standing.
+	Mutations []fabricengine.Mutation `json:"mutations"`
+	Partial   bool                    `json:"partial"`
+	// Warnings are the notes that did not stop the start.
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+// BeamUp brings up the worktree at location: its dobby, its runs strand and its orch with the watcher bound to it.
+// A refusal or failure returns its error with the report gathered so far.
+// It refuses a worktree that is neither the prime nor a beam.
+func BeamUp(location *lyxcwd.Location, opts BeamUpOptions) (BeamUpReport, error) {
+	c := &orchCLI{}
+	if err := wireCLI(c, location); err != nil {
+		return BeamUpReport{}, err
+	}
+	return c.beamUp(opts)
+}
 
 // startedSession is what a started orchestrator run reports back.
 type startedSession struct {
@@ -55,16 +104,6 @@ type startedSession struct {
 	SessionID string
 	// Warning is the resume check's warning, empty when there is none.
 	Warning string
-}
-
-// previousSessionHint is the envelope hint naming a recorded orch session that a fresh launch replaced and that `--adopt` can still resume.
-func previousSessionHint(id string) string {
-	return fmt.Sprintf(`the previous orch session %s is still resumable: run "lyx orch stop" then "lyx orch start --adopt %s"`, id, id)
-}
-
-// withContinueWaysForward appends the ways forward from a refused or failed `--continue` to err.
-func withContinueWaysForward(err error) error {
-	return fmt.Errorf("%w; run `lyx orch start` for a fresh launch, or `lyx orch start --adopt <id>` with the id `/status` shows in the session", err)
 }
 
 // sessionStarter starts the orchestrator's shuttle run and returns its strand guid, session id and the resume check's warning.
@@ -128,11 +167,11 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// withdrawWayForward is the way forward `start` appends to a first withdraw that failed.
+// withdrawWayForward is the way forward a start appends to a first withdraw that failed.
 // Creel's refusals for these causes carry no code, so one fixed text names them all.
 const withdrawWayForward = "way forward: repair what the error names, such as a worktree whose reed state it names as unreadable or a daemon that would not start, whose log lines it quotes; " +
-	"when creel refused the ORCHWATCH program claim from a non-orch strand's pane, run `lyx orch start` from the orch's pane or from a terminal outside every strand pane; " +
-	"when the error names a strand whose pane process is unknown, restart or remove that strand; then run `lyx orch start` again"
+	"when creel refused the ORCHWATCH program claim from a non-orch strand's pane, run `lyx beam start` from the orch's pane or from a terminal outside every strand pane; " +
+	"when the error names a strand whose pane process is unknown, restart or remove that strand; then run `lyx beam start` again"
 
 // orchStrandFullName returns the full name creel addresses the orch strand by: the listed strand's name, else the fixed `<shortname>:orch`.
 func orchStrandFullName(listed reedengine.StrandStatus, hasStrand bool, shortname string) string {
@@ -150,13 +189,13 @@ func (c *orchCLI) orchReceiver(listed reedengine.StrandStatus, hasStrand bool) (
 	}
 	shortname, found := fabricengine.ReadShortname(fabricengine.BoardDir(c.location.HubPath))
 	if !found {
-		return "", fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lyx fabric shortname <shortname>`, then run `lyx orch start` again", c.location.WorktreePath())
+		return "", fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lyx fabric shortname <shortname>`, then run `lyx beam start` again", c.location.WorktreePath())
 	}
 	return orchStrandFullName(listed, false, shortname), nil
 }
 
 // withdrawFirst runs the round before a fresh launch: it withdraws the old cycle's queued steps on the orch strand's name and, when listed, releases the hold.
-// A failed withdraw is the error, which makes `start` launch nothing.
+// A failed withdraw is the error, which makes the start launch nothing.
 // A failed release is answered as text for State.FreshLaunchFailure and is no error.
 // A withdrawn resume line clears the noticed mark of the orch session the state still records.
 func (c *orchCLI) withdrawFirst(creel orchengine.Creel, name string, listed bool) (string, error) {
@@ -233,23 +272,7 @@ func (c *orchCLI) saveFreshLaunch(next orchengine.State, firstFailure string, cr
 	return orchengine.SaveState(c.paths, next)
 }
 
-// startFields builds the success envelope.
-func startFields(action, strand, promptSource, hint, warning string) map[string]any {
-	fields := map[string]any{
-		"action":        action,
-		"strand":        strand,
-		"prompt_source": promptSource,
-	}
-	if hint != "" {
-		fields["hint"] = hint
-	}
-	if warning != "" {
-		fields["warning"] = warning
-	}
-	return fields
-}
-
-// reconcileHub runs the hub-scope origin reconcile from the prime of the hub that location belongs to, whichever orch starts it, with the teardown, live-pair and parent-lock seams pairteardown builds and zero options.
+// reconcileHub runs the hub-scope origin reconcile from the prime of the hub that location belongs to, whichever bring-up of `lyx beam start` runs it, with the teardown, live-pair and parent-lock seams pairteardown builds and zero options.
 func reconcileHub(location *lyxcwd.Location) (fabricengine.OriginReport, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
@@ -262,26 +285,18 @@ func reconcileHub(location *lyxcwd.Location) (fabricengine.OriginReport, error) 
 	return fabricengine.ReconcileOrigin(prime, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(prime)), fabricengine.ReconcileOptions{})
 }
 
-// ensureDobbies starts the dobby of the hub's prime and of every local beam this machine owns that is not live already, from the prime or from a beam.
-func ensureDobbies(location *lyxcwd.Location) error {
+// ensureDobbies starts the dobby of the worktree at location, the prime's or a beam's, when it is not live already, and returns that worktree's outcome.
+// A dobby another machine owns, a standing anchor change and a held landing are refused by the engine and reported in the outcome.
+func ensureDobbies(location *lyxcwd.Location) (dobbyengine.StartEntry, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
-		return err
+		return dobbyengine.StartEntry{}, err
 	}
-	_, err = dobbyengine.EnsureLive(hubgeom.DobbyStart(prime))
-	return err
-}
-
-// startDobbiesNotes starts the dobbies and returns the warning line a failure gives, which names the failed worktrees and `lyx beam start` as the way forward.
-// It returns nothing when no start is wired or the start succeeded.
-func (c *orchCLI) startDobbiesNotes() []string {
-	if c.startDobbies == nil {
-		return nil
+	report, err := dobbyengine.EnsureLive(hubgeom.DobbyStart(prime), []string{location.WorktreeName})
+	if len(report.Entries) == 0 {
+		return dobbyengine.StartEntry{}, err
 	}
-	if err := c.startDobbies(); err != nil {
-		return []string{fmt.Sprintf("the dobbies were not all started (%v); way forward: fix the cause each worktree names, then run `lyx beam start`", err)}
-	}
-	return nil
+	return report.Entries[len(report.Entries)-1], err
 }
 
 // claimPrimeNotes claims the hub's prime for this machine and returns the warning lines that report a claim, a claim another machine won or a failure.
@@ -312,11 +327,11 @@ func (c *orchCLI) pauseOwnedRuns(report fabricengine.OriginReport) ([]map[string
 			continue
 		}
 		if c.pauseOwned == nil {
-			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and was not paused; re-run `lyx orch start`, which pauses it again", entry.Slug, entry.Owner))
+			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and was not paused; re-run `lyx beam start`, which pauses it again", entry.Slug, entry.Owner))
 			continue
 		}
 		if err := c.pauseOwned(c.location, entry.Slug); err != nil {
-			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and could not be paused (%v); re-run `lyx orch start`, which pauses it again", entry.Slug, entry.Owner, err))
+			warnings = append(warnings, fmt.Sprintf("%s is owned by machine %s and could not be paused (%v); re-run `lyx beam start`, which pauses it again", entry.Slug, entry.Owner, err))
 			continue
 		}
 		paused = append(paused, map[string]string{"slug": entry.Slug, "owner": entry.Owner})
@@ -341,289 +356,250 @@ func reconcileNote(report fabricengine.OriginReport, failedPushes []map[string]a
 	return strings.Join(parts, "\n")
 }
 
-// startCmd builds the `start` subcommand.
-func (c *orchCLI) startCmd() *cobra.Command {
-	var noAttach bool
-	var handoffFlag, adoptFlag string
-	var continueFlag bool
-
-	cmd := &cobra.Command{
-		Use:         "start",
-		Short:       "launch the orchestrator session and its watcher",
-		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `start first starts every dobby this machine owns that is not live; a failure there
-only warns, naming "lyx beam start". It then reconciles the hub's branches against origin, once it holds the
-start lock and before it touches any strand, and never refuses on the result: a
-stop, an unreachable origin or a reconcile error is reported for the orch to act
-on. The envelope gains "reconcile" (the report), "failed_pushes" (the outstanding
-failed pushes), "mutations" and "partial", and a fresh launch's prompt gains a line
-summarising the report and the failed pushes. start then ensures the runs strand,
-the window "beam: <slug>" ("beam: prime" in the prime); a failure there only
-warns. start is
-idempotent. With a live orchestrator strand and a live watcher it changes
-nothing and reports them. With a live strand and no watcher it spawns the watcher.
-With a dead or absent strand it removes the corpse, launches a fresh session and
-spawns a watcher for it. The fresh session resumes from --handoff when given, else
-from the last completed handoff, else starts from the start stencil.
-With --adopt <session-id> the fresh launch instead resumes that existing Claude
-session, recorded under the prime's own directory, as the orchestrator strand;
---adopt and --handoff are exclusive, and --adopt is refused while the strand is live.
-With --continue the fresh launch resumes the session orch recorded for its strand at
-launch and after each /clear, the reboot recovery after "lyx orch stop" or a dead
-strand; it is refused alongside --adopt or --handoff, while the strand is live, or
-with no session recorded.
-A watcher that has received SIGINT or SIGTERM and not yet exited is waited for, up to
-three watcher poll intervals, so a kill followed by start spawns a fresh watcher; past
-that bound start reports the watcher live with "watcher_stopping": true.
-start never attaches or switches a tmux client; run "lyx reed attach" to watch the
-session.`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := cmd.Context()
-			if clihelp.ShouldAbort(ctx) {
-				return nil
-			}
-			out := cmd.OutOrStdout()
-			var report fabricengine.OriginReport
-			reconciled := false
-			// Once the reconcile has run, a failure still reports what it changed.
-			fail := func(err error) error {
-				if reconciled {
-					clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{
-						"mutations": report.Mutations.Entries(),
-						"partial":   report.Mutations.Len() > 0,
-					}))
-					return nil
-				}
-				clihelp.SetExit(ctx, output.Err(out, err.Error()))
-				return nil
-			}
-
-			if adoptFlag != "" && handoffFlag != "" {
-				return fail(fmt.Errorf("orch: --adopt and --handoff are exclusive; drop one"))
-			}
-			if continueFlag && adoptFlag != "" {
-				return fail(fmt.Errorf("orch: --continue and --adopt are exclusive; drop --adopt"))
-			}
-			if continueFlag && handoffFlag != "" {
-				return fail(fmt.Errorf("orch: --continue and --handoff are exclusive; drop --handoff"))
-			}
-
-			if handoffFlag != "" {
-				abs, err := filepath.Abs(handoffFlag)
-				if err != nil {
-					return fail(fmt.Errorf("orch: resolve --handoff: %w", err))
-				}
-				handoffFlag = abs
-			}
-
-			dobbyWarnings := c.startDobbiesNotes()
-
-			if c.beamStart != nil {
-				if err := c.beamStart(); err != nil {
-					return fail(err)
-				}
-			}
-
-			if err := os.MkdirAll(c.paths.Dir, 0o755); err != nil {
-				return fail(fmt.Errorf("orch: create %s: %w", c.paths.Dir, err))
-			}
-			startLock, err := lock.AcquireWriteLock(c.paths.StartLockPath)
-			if err != nil {
-				return fail(err)
-			}
-			lockHeld := true
-			releaseLock := func() {
-				if lockHeld {
-					lockHeld = false
-					_ = startLock.Release()
-				}
-			}
-			defer releaseLock()
-
-			// The reconcile never refuses the start: the orch is the session that resolves what it reports.
-			report, reconcileErr := c.reconcile()
-			reconciled = true
-			reconcileWarnings := dobbyWarnings
-			if reconcileErr != nil {
-				reconcileWarnings = append(reconcileWarnings, fmt.Sprintf("origin reconcile failed: %v", reconcileErr))
-			}
-			if report.Unreachable {
-				reconcileWarnings = append(reconcileWarnings, "origin was unreachable, so the hub's branches were neither judged against it nor moved")
-			}
-			failedPushes, failedPushesErr := fabricengine.FailedPushFields(c.location.HubPath)
-			if failedPushesErr != nil {
-				failedPushes = []map[string]any{}
-				reconcileWarnings = append(reconcileWarnings, fmt.Sprintf("failed-push records could not be read: %v", failedPushesErr))
-			}
-
-			reconcileWarnings = append(reconcileWarnings, c.claimPrimeNotes()...)
-			ownerPauses, pauseWarnings := c.pauseOwnedRuns(report)
-			reconcileWarnings = append(reconcileWarnings, pauseWarnings...)
-
-			if err := c.reedUp(); err != nil {
-				return fail(err)
-			}
-			c.ensureRunsStrand()
-			strands, err := c.strands.Strands()
-			if err != nil {
-				return fail(err)
-			}
-			named := orchStrands(strands)
-			if len(named) > 1 {
-				guids := make([]string, len(named))
-				for i, s := range named {
-					guids[i] = s.GUID
-				}
-				return fail(fmt.Errorf("orch: %d strands are named %q (%s); remove the extras with `lyx reed remove` and re-run", len(named), orchStrandName, strings.Join(guids, ", ")))
-			}
-			var strand reedengine.StrandStatus
-			hasStrand := len(named) == 1
-			if hasStrand {
-				strand = named[0]
-			}
-			strandLive := hasStrand && strand.Live
-
-			pollInterval := c.cfg.PollInterval()
-			watcherLive, err := orchengine.WaitWatcherGone(c.paths, 3*pollInterval, pollInterval, c.sleep)
-			if err != nil {
-				return fail(err)
-			}
-			st, err := orchengine.LoadState(c.paths)
-			if err != nil {
-				return fail(err)
-			}
-
-			action := orchengine.DecideStart(strandLive, watcherLive)
-			if handoffFlag != "" && action != orchengine.StartRelaunch {
-				return fail(fmt.Errorf("orch: --handoff applies to a fresh launch only, but the orchestrator strand %s is live -- run `lyx orch stop` first", strand.GUID))
-			}
-
-			if adoptFlag != "" && action != orchengine.StartRelaunch {
-				return fail(fmt.Errorf("orch: --adopt applies to a fresh launch only, but the orchestrator strand %s is live -- run `lyx orch stop` first", strand.GUID))
-			}
-
-			if continueFlag {
-				if action != orchengine.StartRelaunch {
-					return fail(fmt.Errorf("orch: --continue applies to a fresh launch only, but the orchestrator strand %s is live -- run `lyx orch stop` first", strand.GUID))
-				}
-				if st.SessionID == "" {
-					return fail(withContinueWaysForward(errors.New("orch: --continue found no recorded orch session id")))
-				}
-			}
-			resumeSessionID := adoptFlag
-			if continueFlag {
-				resumeSessionID = st.SessionID
-			}
-
-			envAction, promptSource, guid, warning, hint := "", "", strand.GUID, "", ""
-			switch action {
-			case orchengine.StartRelaunch:
-				receiver, err := c.orchReceiver(strand, hasStrand)
-				if err != nil {
-					return fail(err)
-				}
-				creel, err := c.newCreel()
-				if err != nil {
-					return fail(fmt.Errorf("orch: reach creel: %w; %s", err, withdrawWayForward))
-				}
-				firstFailure, err := c.withdrawFirst(creel, receiver, hasStrand)
-				if err != nil {
-					return fail(err)
-				}
-				if hasStrand {
-					if err := c.strands.RemoveStrand(strand.GUID); err != nil {
-						return fail(err)
-					}
-				}
-				// start runs as a fresh process of the binary the pane names, so its own tree is the index source.
-				if err := orchengine.RenderRoleFile(c.stencilsDir, c.paths.RolePath, clihelp.RenderIndex(cmd.Root(), clihelp.AudienceOperator), c.paths.HubRulesPath, c.paths.OwnRulesPath); err != nil {
-					return fail(err)
-				}
-				var prompt, source string
-				if resumeSessionID != "" {
-					prompt, err = orchengine.RenderAdoptPrompt(c.stencilsDir, c.paths.RolePath)
-					source = orchengine.SourceAdopt
-				} else {
-					prompt, source, err = orchengine.ChooseStartPrompt(c.stencilsDir, c.paths.RolePath, handoffFlag, st, fileExists)
-				}
-				if err != nil {
-					return fail(err)
-				}
-				if note := reconcileNote(report, failedPushes); note != "" {
-					prompt += "\n\n" + note
-				}
-				spec := c.orchSpec(prompt, time.Now())
-				spec.ResumeSessionID = resumeSessionID
-				started, err := c.starter.StartSession(spec)
-				if err != nil {
-					if continueFlag {
-						err = withContinueWaysForward(err)
-					}
-					return fail(err)
-				}
-				guid, warning = started.GUID, started.Warning
-				next := orchengine.ResetForFreshLaunch(st, guid, time.Now())
-				next.SessionID = started.SessionID
-				if err := c.saveFreshLaunch(next, firstFailure, creel, receiver); err != nil {
-					return fail(err)
-				}
-				if resumeSessionID != "" {
-					logger.Info("orch: launched orchestrator session", "strandGUID", guid, "sessionID", started.SessionID, "adoptedSessionID", resumeSessionID, "promptSource", source)
-				} else {
-					logger.Info("orch: launched orchestrator session", "strandGUID", guid, "sessionID", started.SessionID, "promptSource", source)
-				}
-				if st.SessionID != "" && st.SessionID != started.SessionID {
-					hint = previousSessionHint(st.SessionID)
-				}
-				if err := c.spawnWatcher(); err != nil {
-					return fail(err)
-				}
-				envAction, promptSource = actionRelaunched, source
-			case orchengine.StartSpawnWatcher:
-				if err := c.adoptListedStrand(st, strand); err != nil {
-					return fail(err)
-				}
-				logger.Info("orch: restarted a dead watcher", "strandGUID", strand.GUID, "previousExit", st.WatcherExit)
-				if err := c.spawnWatcher(); err != nil {
-					return fail(err)
-				}
-				envAction = actionSpawnedWatcher
-			default:
-				if err := c.adoptListedStrand(st, strand); err != nil {
-					return fail(err)
-				}
-				envAction = actionAlreadyRunning
-			}
-
-			releaseLock()
-
-			fields := startFields(envAction, guid, promptSource, hint, joinFailures(append([]string{warning}, reconcileWarnings...)...))
-			fields["reconcile"] = report
-			fields["failed_pushes"] = failedPushes
-			fields["owner_pauses"] = ownerPauses
-			fields["mutations"] = report.Mutations.Entries()
-			fields["partial"] = false
-			if continueFlag {
-				fields["session_id"] = resumeSessionID
-			}
-			if watcherLive && st.WatcherStopping {
-				fields["watcher_stopping"] = true
-				fields["hint"] = stoppingWatcherHint
-				if hint != "" {
-					fields["hint"] = stoppingWatcherHint + "; " + hint
-				}
-			}
-			clihelp.SetExit(ctx, output.Ok(out, fields))
-			return nil
-		},
+// prepare runs the steps Prepare asks for and records them on report: the origin reconcile, the failed-push read, the prime claim and the owner pauses.
+// The reconcile never refuses the start: the orch is the session that resolves what it reports.
+// It returns the note a fresh launch's prompt gains.
+func (c *orchCLI) prepare(report *BeamUpReport) string {
+	reconciled, reconcileErr := c.reconcile()
+	report.Reconcile = reconciled
+	report.Mutations = reconciled.Mutations.Entries()
+	if report.Mutations == nil {
+		report.Mutations = []fabricengine.Mutation{}
 	}
-	cmd.Flags().BoolVar(&noAttach, "no-attach", false, "accepted and ignored; kept for existing callers")
-	_ = cmd.Flags().MarkHidden("no-attach")
-	cmd.Flags().StringVar(&handoffFlag, "handoff", "", "resume a fresh launch from this handoff file instead of the last completed one; refused while the strand is live")
-	cmd.Flags().StringVar(&adoptFlag, "adopt", "", "resume this existing Claude session (the id `/status` shows in it) as the orchestrator strand; exclusive with --handoff, and refused while the strand is live")
-	cmd.Flags().BoolVar(&continueFlag, "continue", false, "resume the orch session recorded at the last launch or cycle as the orchestrator strand; exclusive with --adopt and --handoff, refused while the strand is live, and with no session recorded")
-	return cmd
+	if reconcileErr != nil {
+		report.Warnings = append(report.Warnings, fmt.Sprintf("origin reconcile failed: %v", reconcileErr))
+	}
+	if reconciled.Unreachable {
+		report.Warnings = append(report.Warnings, "origin was unreachable, so the hub's branches were neither judged against it nor moved")
+	}
+	failedPushes, failedPushesErr := fabricengine.FailedPushFields(c.location.HubPath)
+	if failedPushesErr != nil {
+		failedPushes = []map[string]any{}
+		report.Warnings = append(report.Warnings, fmt.Sprintf("failed-push records could not be read: %v", failedPushesErr))
+	}
+	report.FailedPushes = failedPushes
+
+	report.Warnings = append(report.Warnings, c.claimPrimeNotes()...)
+	paused, pauseWarnings := c.pauseOwnedRuns(reconciled)
+	report.OwnerPauses = paused
+	report.Warnings = append(report.Warnings, pauseWarnings...)
+	return reconcileNote(reconciled, failedPushes)
+}
+
+// beamUp is BeamUp over a wired receiver.
+// It holds start.lock throughout, so a stop or a status restart never races it.
+// A failure after the reconcile reports whatever the reconcile changed as partial.
+func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
+	report = BeamUpReport{
+		Worktree:     c.location.WorktreeName,
+		FailedPushes: []map[string]any{},
+		OwnerPauses:  []map[string]string{},
+		Mutations:    []fabricengine.Mutation{},
+	}
+	defer func() { report.Partial = err != nil && len(report.Mutations) > 0 }()
+	if err := os.MkdirAll(c.paths.Dir, 0o755); err != nil {
+		return report, fmt.Errorf("orch: create %s: %w", c.paths.Dir, err)
+	}
+	startLock, err := lock.AcquireWriteLock(c.paths.StartLockPath)
+	if err != nil {
+		return report, err
+	}
+	defer func() { _ = startLock.Release() }()
+
+	note := ""
+	if opts.Prepare {
+		note = c.prepare(&report)
+	}
+
+	if c.readBeamFacts != nil {
+		facts, err := c.readBeamFacts()
+		if err != nil {
+			return report, err
+		}
+		here := facts.here
+		if opts.Here != "" {
+			here = opts.Here
+		}
+		if err := beamUpRefusal(facts.slug, here, facts.owner, facts.moveWayForward, facts.held, facts.status); err != nil {
+			return report, err
+		}
+	}
+
+	c.startDobbyStep(&report)
+
+	if err := c.reedUp(); err != nil {
+		return report, err
+	}
+	c.ensureRunsStrand()
+
+	index := opts.Index
+	if index == nil {
+		index = func() (string, error) {
+			executable, err := os.Executable()
+			if err != nil {
+				return "", fmt.Errorf("orch: locate the lyx binary to render the command index: %w", err)
+			}
+			return c.indexRunner(executable)
+		}
+	}
+	orchReport, err := c.startOrch(index, note)
+	report.Action, report.Strand, report.PromptSource = orchReport.Action, orchReport.Strand, orchReport.PromptSource
+	report.SessionID, report.AbandonedSession = orchReport.SessionID, orchReport.AbandonedSession
+	report.Hint, report.WatcherStopping = orchReport.Hint, orchReport.WatcherStopping
+	report.Warnings = append(report.Warnings, orchReport.Warnings...)
+	return report, err
+}
+
+// startDobbyStep starts this worktree's dobby and records its outcome on report.
+// A dobby that did not start only warns, naming `lyx beam start` as the way to start it again.
+func (c *orchCLI) startDobbyStep(report *BeamUpReport) {
+	if c.startDobby == nil {
+		return
+	}
+	entry, err := c.startDobby()
+	report.Dobby, report.DobbyDetail = entry.Outcome, entry.Detail
+	cause := entry.Detail
+	switch {
+	case err != nil:
+		cause = err.Error()
+	case entry.Outcome != dobbyengine.OutcomeRefused && entry.Outcome != dobbyengine.OutcomeFailed:
+		return
+	}
+	report.Warnings = append(report.Warnings, fmt.Sprintf("the dobby was not started (%s); way forward: fix the cause it names, then run `lyx beam start`", cause))
+}
+
+// startOrch leaves one live orchestrator strand and one watcher bound to it, and reports the orch's part of the bring-up.
+// A live strand with a live watcher is left alone, a live strand with a dead watcher gets a watcher, and a missing or dead strand is relaunched under a withdraw round on each side.
+// note joins the prompt of a fresh launch.
+func (c *orchCLI) startOrch(index func() (string, error), note string) (BeamUpReport, error) {
+	var report BeamUpReport
+	strands, err := c.strands.Strands()
+	if err != nil {
+		return report, err
+	}
+	named := orchStrands(strands)
+	if len(named) > 1 {
+		guids := make([]string, len(named))
+		for i, s := range named {
+			guids[i] = s.GUID
+		}
+		return report, fmt.Errorf("orch: %d strands are named %q (%s); remove the extras with `lyx reed remove` and re-run", len(named), orchStrandName, strings.Join(guids, ", "))
+	}
+	var strand reedengine.StrandStatus
+	hasStrand := len(named) == 1
+	if hasStrand {
+		strand = named[0]
+	}
+	strandLive := hasStrand && strand.Live
+
+	pollInterval := c.cfg.PollInterval()
+	watcherLive, err := orchengine.WaitWatcherGone(c.paths, 3*pollInterval, pollInterval, c.sleep)
+	if err != nil {
+		return report, err
+	}
+	st, err := orchengine.LoadState(c.paths)
+	if err != nil {
+		return report, err
+	}
+
+	report.Strand = strand.GUID
+	switch orchengine.DecideStart(strandLive, watcherLive) {
+	case orchengine.StartRelaunch:
+		receiver, err := c.orchReceiver(strand, hasStrand)
+		if err != nil {
+			return report, err
+		}
+		creel, err := c.newCreel()
+		if err != nil {
+			return report, fmt.Errorf("orch: reach creel: %w; %s", err, withdrawWayForward)
+		}
+		firstFailure, err := c.withdrawFirst(creel, receiver, hasStrand)
+		if err != nil {
+			return report, err
+		}
+		if hasStrand {
+			if err := c.strands.RemoveStrand(strand.GUID); err != nil {
+				return report, err
+			}
+		}
+		operatorIndex, err := index()
+		if err != nil {
+			return report, err
+		}
+		if err := orchengine.RenderRoleFile(c.stencilsDir, c.paths.RolePath, operatorIndex, c.paths.HubRulesPath, c.paths.OwnRulesPath); err != nil {
+			return report, err
+		}
+		started, source, abandoned, err := c.launchOrch(st, note)
+		report.AbandonedSession = abandoned
+		if err != nil {
+			return report, err
+		}
+		report.Strand = started.GUID
+		if started.Warning != "" {
+			report.Warnings = append(report.Warnings, started.Warning)
+		}
+		next := orchengine.ResetForFreshLaunch(st, started.GUID, time.Now())
+		next.SessionID = started.SessionID
+		if err := c.saveFreshLaunch(next, firstFailure, creel, receiver); err != nil {
+			return report, err
+		}
+		logger.Info("orch: launched orchestrator session", "strandGUID", started.GUID, "sessionID", started.SessionID, "promptSource", source, "abandonedSessionID", abandoned)
+		if err := c.spawnWatcher(); err != nil {
+			return report, err
+		}
+		report.Action, report.PromptSource = actionRelaunched, source
+		if source == orchengine.SourceResume {
+			report.SessionID = started.SessionID
+		}
+	case orchengine.StartSpawnWatcher:
+		if err := c.adoptListedStrand(st, strand); err != nil {
+			return report, err
+		}
+		logger.Info("orch: restarted a dead watcher", "strandGUID", strand.GUID, "previousExit", st.WatcherExit)
+		if err := c.spawnWatcher(); err != nil {
+			return report, err
+		}
+		report.Action = actionSpawnedWatcher
+	default:
+		if err := c.adoptListedStrand(st, strand); err != nil {
+			return report, err
+		}
+		report.Action = actionAlreadyRunning
+	}
+	if watcherLive && st.WatcherStopping {
+		report.WatcherStopping = true
+		report.Hint = stoppingWatcherHint
+	}
+	return report, nil
+}
+
+// launchOrch starts the orch session: the session st records, resumed with the reload pointer, else a fresh launch.
+// A resume that fails to start, its transcript gone or its process not coming up live, falls back to a fresh launch and names the session it gave up as abandoned.
+// A fresh launch takes the last completed handoff, else the start stencil, and note joins its prompt.
+func (c *orchCLI) launchOrch(st orchengine.State, note string) (started startedSession, source, abandoned string, err error) {
+	if st.SessionID != "" {
+		reload, err := orchengine.RenderReloadPrompt(c.stencilsDir, c.paths.RolePath)
+		if err != nil {
+			return startedSession{}, "", "", err
+		}
+		spec := c.orchSpec(reload, time.Now())
+		spec.ResumeSessionID = st.SessionID
+		started, err := c.starter.StartSession(spec)
+		if err == nil {
+			return started, orchengine.SourceResume, "", nil
+		}
+		logger.Warn("orch: the recorded session could not be resumed; launching fresh", "sessionID", st.SessionID, "cause", err)
+		abandoned = st.SessionID
+	}
+	prompt, source, err := orchengine.ChooseStartPrompt(c.stencilsDir, c.paths.RolePath, st, fileExists)
+	if err != nil {
+		return startedSession{}, "", abandoned, err
+	}
+	if note != "" {
+		prompt += "\n\n" + note
+	}
+	started, err = c.starter.StartSession(c.orchSpec(prompt, time.Now()))
+	return started, source, abandoned, err
 }
 
 // adoptListedStrand binds the persisted state to the live listed orch strand, reaching creel only when the state names another run.

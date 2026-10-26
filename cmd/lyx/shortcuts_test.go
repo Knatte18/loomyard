@@ -95,8 +95,8 @@ func TestShortcuts_FileAndRootListing(t *testing.T) {
 		{"a bare group", []shortcutcli.Shortcut{{Name: "go-to", Argvs: [][]string{{"reed"}}}}, "not an invocable command"},
 		{"an unknown command", []shortcutcli.Shortcut{{Name: "go-to", Argvs: [][]string{{"nosuch", "verb"}}}}, "does not resolve"},
 		{"a flag alone", []shortcutcli.Shortcut{{Name: "go-to", Argvs: [][]string{{"--verbose"}}}}, "resolves to the root"},
-		{"another shortcut", []shortcutcli.Shortcut{{Name: "go-to", Argvs: [][]string{{"prime"}}}}, "resolves to the shortcut"},
-		{"an argv after reed attach", []shortcutcli.Shortcut{{Name: "go-to", Argvs: [][]string{{"reed", "attach"}, {"orch", "start"}}}}, "after reed attach, which never returns"},
+		{"another shortcut", []shortcutcli.Shortcut{{Name: "go-to", Argvs: [][]string{{"s"}}}}, "resolves to the shortcut"},
+		{"an argv after reed attach", []shortcutcli.Shortcut{{Name: "go-to", Argvs: [][]string{{"reed", "attach"}, {"beam", "start"}}}}, "after reed attach, which never returns"},
 	}
 	for _, tt := range synthetic {
 		t.Run(tt.name, func(t *testing.T) {
@@ -111,9 +111,9 @@ func TestShortcuts_FileAndRootListing(t *testing.T) {
 	if code := run([]string{"--help"}, &help); code != 0 {
 		t.Fatalf("run(--help) = %d, output:\n%s", code, help.String())
 	}
-	heading, attach, prime, additional := strings.Index(help.String(), "Shortcuts:"), strings.Index(help.String(), "\n  a "), strings.Index(help.String(), "\n  prime "), strings.Index(help.String(), "Additional Commands:")
-	if heading < 0 || attach < heading || prime < attach || additional < prime {
-		t.Errorf("lyx --help lacks the Shortcuts: heading with a and prime before Additional Commands:\n%s", help.String())
+	heading, attach, start, additional := strings.Index(help.String(), "Shortcuts:"), strings.Index(help.String(), "\n  a "), strings.Index(help.String(), "\n  s "), strings.Index(help.String(), "Additional Commands:")
+	if heading < 0 || attach < heading || start < attach || additional < start {
+		t.Errorf("lyx --help lacks the Shortcuts: heading with a and s before Additional Commands:\n%s", help.String())
 	}
 
 	var index strings.Builder
@@ -121,7 +121,7 @@ func TestShortcuts_FileAndRootListing(t *testing.T) {
 		t.Fatalf("run(help index) = %d, output:\n%s", code, index.String())
 	}
 	for _, line := range []string{
-		"- `prime [<args>...]`: shortcut: lyx orch start, then lyx reed attach",
+		"- `s [<args>...]`: shortcut: lyx beam start, then lyx reed attach",
 		"- `a [<args>...]`: shortcut: lyx reed attach",
 		"- `p [<args>...]`: shortcut: lyx tender pause",
 		"- `r [<args>...]`: shortcut: lyx tender resume",

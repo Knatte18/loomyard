@@ -72,15 +72,18 @@ const (
 	RecipeBatten = "batten"
 	// RecipeDarn names the darn recipe.
 	RecipeDarn = "darn"
-	// RecipeBeam names the beam recipe.
-	RecipeBeam = "beam"
+	// RecipePawl names the pawl recipe, a beam's life.
+	RecipePawl = "pawl"
 )
+
+// legacyRecipeBeam is the name the pawl recipe had before its rename; a seed that records it reads as RecipePawl.
+const legacyRecipeBeam = "beam"
 
 // RecipeNames returns the closed recipe-name vocabulary as a freshly allocated, sorted slice.
 // Callers must not rely on a fixed order beyond "sorted" and must not mutate the vocabulary through
 // the returned slice affecting any other caller, since each call allocates its own.
 func RecipeNames() []string {
-	return []string{RecipeBatten, RecipeBeam, RecipeDarn, RecipeLoom}
+	return []string{RecipeBatten, RecipeDarn, RecipeLoom, RecipePawl}
 }
 
 // ValidateRecipe reports whether name is a legal Seed.Recipe value.
@@ -143,10 +146,14 @@ func ParseSeed(data []byte) (Seed, error) {
 }
 
 // decodeSeed decodes data as a Seed, accepting a JSON key Seed does not declare.
+// A recipe recorded as the former name `beam` reads as RecipePawl, so a run seeded before the rename resumes at its row.
 func decodeSeed(data []byte) (Seed, error) {
 	var seed Seed
 	if err := json.Unmarshal(data, &seed); err != nil {
 		return Seed{}, err
+	}
+	if seed.Recipe == legacyRecipeBeam {
+		seed.Recipe = RecipePawl
 	}
 	return seed, nil
 }

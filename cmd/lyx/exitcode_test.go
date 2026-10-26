@@ -54,7 +54,7 @@ func TestExitCode_HelpPaths(t *testing.T) {
 		{"bare lyx help names the modules", []string{"help"}, "board"},
 		{"lyx help board names a board verb", []string{"help", "board"}, "upsert"},
 		{"lyx config --help lists the reconcile verb", []string{"config", "--help"}, "reconcile"},
-		{"lyx orch start --help lists the --adopt flag", []string{"orch", "start", "--help"}, "--adopt"},
+		{"lyx beam start --help names the beam's start", []string{"beam", "start", "--help"}, "start"},
 	}
 
 	for _, tt := range tests {

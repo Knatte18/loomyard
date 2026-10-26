@@ -1,6 +1,6 @@
 //go:build tier0
 
-// start_test.go drives the start verb's RunE over a fake strandOps, session starter and watcher spawn, asserting the recorded calls and the saved state without a spawn.
+// start_test.go drives the bring-up's beamUp over a fake strandOps, session starter and watcher spawn, asserting the recorded calls and the saved state without a spawn.
 
 package orchcli
 
@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -17,7 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -33,7 +34,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
-	"github.com/spf13/cobra"
 )
 
 // fakeStarter records the specs it is asked to start and answers a fixed guid and warning, and the resumed session id or else sessionID.
@@ -43,6 +43,8 @@ type fakeStarter struct {
 	sessionID string
 	warning   string
 	err       error
+	// resumeErr, when set, is returned only for a spec whose ResumeSessionID is set, so a resume fails and the fresh launch after it succeeds.
+	resumeErr error
 	// calls, when set, receives "start" as each session starts.
 	calls *[]string
 }
@@ -52,6 +54,9 @@ func (f *fakeStarter) StartSession(spec shuttleengine.Spec) (startedSession, err
 		*f.calls = append(*f.calls, "start")
 	}
 	f.specs = append(f.specs, spec)
+	if spec.ResumeSessionID != "" && f.resumeErr != nil {
+		return startedSession{}, f.resumeErr
+	}
 	sessionID := f.sessionID
 	if spec.ResumeSessionID != "" {
 		sessionID = spec.ResumeSessionID
@@ -113,13 +118,13 @@ func popError(errs *[]error) error {
 
 // startHarness bundles a receiver with its fakes.
 type startHarness struct {
-	// root is the command tree the last run executed.
-	root    *cobra.Command
-	cli     *orchCLI
-	strands *fakeStrands
-	starter *fakeStarter
-	creel   *scriptedCreel
-	spawns  int
+	cli *orchCLI
+	// prepareOff brings the beam up without Prepare.
+	prepareOff bool
+	strands    *fakeStrands
+	starter    *fakeStarter
+	creel      *scriptedCreel
+	spawns     int
 	// sleeps counts the waits start asked for;
 	// onSleep, when set, runs on each.
 	sleeps  int
@@ -197,11 +202,22 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	return h
 }
 
-// run executes start with args and decodes the envelope.
-func (h *startHarness) run(t *testing.T, args ...string) (int, map[string]any) {
+// startTestIndex is the operator index the harness hands the bring-up.
+const startTestIndex = "- start-test-command: from the harness\n"
+
+// run brings the beam up with Prepare, unless the test set prepareOff, and decodes the report as the envelope a verb would print.
+func (h *startHarness) run(t *testing.T) (int, map[string]any) {
 	t.Helper()
-	var out bytes.Buffer
-	// start renders the operator index of its root, so the verb runs under a root that has it as a child.
+	return h.runWith(t, BeamUpOptions{Prepare: !h.prepareOff})
+}
+
+// runWith brings the beam up with opts, filling the harness's index when opts names none, and decodes the report into a map under the report's keys.
+// A refusal or failure answers exit 1 with ok false and the error text under "error", and a success exit 0 with ok true.
+func (h *startHarness) runWith(t *testing.T, opts BeamUpOptions) (int, map[string]any) {
+	t.Helper()
+	if opts.Index == nil {
+		opts.Index = func() (string, error) { return startTestIndex, nil }
+	}
 	if len(h.claims) > 0 {
 		h.cli.claimPrime = func() (string, string, error) {
 			answer := h.claims[min(h.claimCalls, len(h.claims)-1)]
@@ -219,14 +235,31 @@ func (h *startHarness) run(t *testing.T, args ...string) (int, map[string]any) {
 			return nil
 		}
 	}
-	h.root = &cobra.Command{Use: "lyx"}
-	h.root.AddCommand(h.cli.startCmd())
-	code := clihelp.Execute(h.root, &out, append([]string{"start"}, args...))
-	var env map[string]any
-	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
-		t.Fatalf("output %q is not one JSON object: %v", out.String(), err)
+	report, err := h.cli.beamUp(opts)
+	data, marshalErr := json.Marshal(report)
+	if marshalErr != nil {
+		t.Fatal(marshalErr)
 	}
-	return code, env
+	var env map[string]any
+	if err := json.Unmarshal(data, &env); err != nil {
+		t.Fatalf("report %q is not one JSON object: %v", data, err)
+	}
+	if err != nil {
+		env["ok"], env["error"] = false, err.Error()
+		return 1, env
+	}
+	env["ok"] = true
+	return 0, env
+}
+
+// warningText joins the warnings of a decoded report into one text.
+func warningText(env map[string]any) string {
+	list, _ := env["warnings"].([]any)
+	texts := make([]string, len(list))
+	for i, warning := range list {
+		texts[i] = fmt.Sprint(warning)
+	}
+	return strings.Join(texts, "; ")
 }
 
 func (h *startHarness) state(t *testing.T) orchengine.State {
@@ -387,13 +420,12 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if !strings.Contains(spec.Prompt, h.cli.paths.RolePath) {
 		t.Errorf("prompt = %q; want the start pointer at the role file", spec.Prompt)
 	}
-	wantIndex := clihelp.RenderIndex(h.root, clihelp.AudienceOperator)
 	role, err := os.ReadFile(h.cli.paths.RolePath)
 	if err != nil {
 		t.Fatalf("role file not rendered before launch: %v", err)
 	}
-	if wantIndex == "" || !strings.Contains(string(role), "## Commands") || !strings.Contains(string(role), wantIndex) {
-		t.Errorf("role file = %q; want a Commands section carrying the root's operator index %q", role, wantIndex)
+	if !strings.Contains(string(role), "## Commands") || !strings.Contains(string(role), startTestIndex) {
+		t.Errorf("role file = %q; want a Commands section carrying the operator index %q", role, startTestIndex)
 	}
 	if st := h.state(t); st.Strand != "new-guid" || st.Phase != orchengine.PhaseIdle {
 		t.Errorf("state = %+v; want strand new-guid in idle", st)
@@ -439,7 +471,7 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	rounds := []struct {
 		name         string
 		strands      []reedengine.StrandStatus
-		args         []string
+		recorded     string
 		withdrawErrs []error
 		releaseErrs  []error
 		wantCalls    []string
@@ -452,8 +484,8 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 			wantCalls: []string{"add", withdrawOrch, releaseOrch, "remove", "start", withdrawOrch, releaseOrch},
 		},
 		{
-			name:      "a continue after stop with no strand listed sends no first release, starts and records no failure",
-			args:      []string{"--continue"},
+			name:      "a resume after stop with no strand listed sends no first release, starts and records no failure",
+			recorded:  recordedTestSessionID,
 			wantCalls: []string{"add", withdrawOrch, "start", withdrawOrch, releaseOrch},
 		},
 		{
@@ -483,12 +515,11 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 
 			h := newStartHarness(t, tt.strands...)
 			h.creel.withdrawErrs, h.creel.releaseErrs = tt.withdrawErrs, tt.releaseErrs
-			args := tt.args
-			if slices.Contains(args, "--continue") {
-				saveSeedState(t, h, orchengine.State{Phase: orchengine.PhaseIdle, Strand: "g1", SessionID: adoptTestSessionID})
+			if tt.recorded != "" {
+				saveSeedState(t, h, orchengine.State{Phase: orchengine.PhaseIdle, Strand: "g1", SessionID: tt.recorded})
 			}
 
-			if code, env := h.run(t, args...); code != 0 || env["ok"] != true {
+			if code, env := h.run(t); code != 0 || env["ok"] != true {
 				t.Fatalf("start = exit %d, %v; want a success", code, env)
 			}
 			if !slices.Equal(h.calls, tt.wantCalls) {
@@ -680,12 +711,10 @@ func TestStart_LiveStrand(t *testing.T) {
 func TestStart_NeverAttaches(t *testing.T) {
 	t.Setenv("TMUX", "/tmp/tmux-1000/default,1234,0")
 
-	for _, args := range [][]string{nil, {"--no-attach"}} {
-		h := newStartHarness(t)
-		code, env := h.run(t, args...)
-		if code != 0 || env["ok"] != true || env["action"] != actionRelaunched || env["strand"] != "new-guid" {
-			t.Errorf("start %v with TMUX set: exit = %d; env = %v; want exit 0 and the success envelope", args, code, env)
-		}
+	h := newStartHarness(t)
+	code, env := h.run(t)
+	if code != 0 || env["ok"] != true || env["action"] != actionRelaunched || env["strand"] != "new-guid" {
+		t.Errorf("start with TMUX set: exit = %d; env = %v; want exit 0 and the success report", code, env)
 	}
 }
 
@@ -697,16 +726,15 @@ func TestStart_DeadStrandRemovedBeforeStart(t *testing.T) {
 		strand reedengine.StrandStatus
 		// recordedSession is the session id saved in the state; empty saves none.
 		recordedSession string
-		args            []string
 		// wantResume is the session id the launch resumes.
 		wantResume string
 	}{
 		{name: "ADeadStrand", strand: reedengine.StrandStatus{GUID: "corpse", Name: "orch", Live: false}},
 		{
 			// A shell-only orch past the grace reads present, in its own window, and not live.
-			name:            "AShellOnlyStrandIsRelaunchedByContinueFromTheRecordedSession",
+			name:            "AShellOnlyStrandIsRelaunchedFromTheRecordedSession",
 			strand:          reedengine.StrandStatus{GUID: "corpse", Name: "orch", Live: false, Present: true, OwnWindow: true},
-			recordedSession: "sess-9", args: []string{"--continue"}, wantResume: "sess-9",
+			recordedSession: "sess-9", wantResume: "sess-9",
 		},
 	}
 	for _, tt := range tests {
@@ -727,7 +755,7 @@ func TestStart_DeadStrandRemovedBeforeStart(t *testing.T) {
 				return startedSession{GUID: "new-guid", SessionID: "minted-id"}, nil
 			})
 
-			if code, env := h.run(t, tt.args...); code != 0 {
+			if code, env := h.run(t); code != 0 {
 				t.Fatalf("exit = %d; env = %v", code, env)
 			}
 			if !removedBeforeStart {
@@ -744,47 +772,6 @@ func TestStart_DeadStrandRemovedBeforeStart(t *testing.T) {
 type starterFunc func(shuttleengine.Spec) (startedSession, error)
 
 func (f starterFunc) StartSession(spec shuttleengine.Spec) (startedSession, error) { return f(spec) }
-
-func TestStart_ResumesFromHandoffFile(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		name       string
-		strands    []reedengine.StrandStatus
-		fromState  bool
-		wantSource string
-	}{
-		{"dead strand with a last handoff", []reedengine.StrandStatus{{GUID: "corpse", Name: "orch", Live: false}}, true, orchengine.SourceLastHandoff},
-		{"handoff flag", nil, false, orchengine.SourceFlag},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			t.Parallel()
-
-			h := newStartHarness(t, c.strands...)
-			handoff := filepath.Join(t.TempDir(), "handoff.md")
-			if err := os.WriteFile(handoff, []byte("h"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			var args []string
-			if c.fromState {
-				if err := orchengine.SaveState(h.cli.paths, orchengine.State{Phase: orchengine.PhaseIdle, Strand: "corpse", LastHandoff: handoff}); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				args = []string{"--handoff", handoff}
-			}
-
-			code, env := h.run(t, args...)
-			if code != 0 || env["prompt_source"] != c.wantSource {
-				t.Fatalf("exit = %d; env = %v", code, env)
-			}
-			if !strings.Contains(h.starter.specs[0].Prompt, handoff) {
-				t.Errorf("prompt = %q; want it naming %s", h.starter.specs[0].Prompt, handoff)
-			}
-		})
-	}
-}
 
 func TestStart_FreshLaunchResetsAbandonedPhase(t *testing.T) {
 	t.Parallel()
@@ -807,7 +794,7 @@ func TestStart_FreshLaunchResetsAbandonedPhase(t *testing.T) {
 	}
 }
 
-const adoptTestSessionID = "11111111-2222-3333-4444-555555555555"
+const recordedTestSessionID = "11111111-2222-3333-4444-555555555555"
 
 func TestPrimePaths_JoinsRuleFilesAndPrimeRoot(t *testing.T) {
 	t.Parallel()
@@ -830,17 +817,16 @@ func TestStart_Refusals(t *testing.T) {
 	cases := []struct {
 		name    string
 		strands []reedengine.StrandStatus
-		// args builds the verb's arguments from a handoff file path that exists.
-		args   func(handoff string) []string
-		wantIn []string
+		wantIn  []string
 		// seed, when set, writes the state file before start runs.
 		seed func(t *testing.T, h *startHarness)
 		// rulesPath, when set, picks the rules path that seed makes unreadable and the refusal must name.
 		rulesPath func(p orchengine.Paths) string
+		// wantNothingStarted asserts the refusal came before the dobby, the runs strand and the orch.
+		wantNothingStarted bool
 	}{
 		{
 			name: "unreadable hub rules",
-			args: func(string) []string { return nil },
 			seed: func(t *testing.T, h *startHarness) {
 				if err := os.MkdirAll(h.cli.paths.HubRulesPath, 0o755); err != nil {
 					t.Fatal(err)
@@ -850,7 +836,6 @@ func TestStart_Refusals(t *testing.T) {
 		},
 		{
 			name: "unreadable own rules",
-			args: func(string) []string { return nil },
 			seed: func(t *testing.T, h *startHarness) {
 				if err := os.MkdirAll(h.cli.paths.OwnRulesPath, 0o755); err != nil {
 					t.Fatal(err)
@@ -859,89 +844,29 @@ func TestStart_Refusals(t *testing.T) {
 			rulesPath: func(p orchengine.Paths) string { return p.OwnRulesPath },
 		},
 		{
-			name:    "handoff with a live strand",
-			strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true}},
-			args:    func(handoff string) []string { return []string{"--handoff", handoff} },
-			wantIn:  []string{"fresh launch only"},
-		},
-		{
 			name: "two orch strands",
 			strands: []reedengine.StrandStatus{
 				{GUID: "g1", Name: "orch", Live: true},
 				{GUID: "g2", Name: "orch", Live: false},
 			},
-			args:   func(string) []string { return nil },
 			wantIn: []string{"g1", "g2"},
 		},
 		{
-			name:   "adopt with a handoff",
-			args:   func(handoff string) []string { return []string{"--adopt", adoptTestSessionID, "--handoff", handoff} },
-			wantIn: []string{"exclusive"},
-		},
-		{
-			name:    "adopt with a live strand",
-			strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true}},
-			args:    func(string) []string { return []string{"--adopt", adoptTestSessionID} },
-			wantIn:  []string{"lyx orch stop"},
-		},
-		{
-			name:   "continue with adopt",
-			args:   func(string) []string { return []string{"--continue", "--adopt", adoptTestSessionID} },
-			wantIn: []string{"drop --adopt"},
-		},
-		{
-			name:   "continue with a handoff",
-			args:   func(handoff string) []string { return []string{"--continue", "--handoff", handoff} },
-			wantIn: []string{"drop --handoff"},
-		},
-		{
-			name:    "continue with a live strand",
-			strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true}},
-			args:    func(string) []string { return []string{"--continue"} },
-			wantIn:  []string{"lyx orch stop"},
-			seed: func(t *testing.T, h *startHarness) {
-				saveSeedState(t, h, orchengine.State{Phase: orchengine.PhaseIdle, Strand: "g1", SessionID: "rec-id"})
-			},
-		},
-		{
-			name:    "continue with no recorded id",
-			strands: []reedengine.StrandStatus{{GUID: "corpse", Name: "orch", Live: false}},
-			args:    func(string) []string { return []string{"--continue"} },
-			wantIn:  []string{"lyx orch start", "--adopt <id>"},
-			seed: func(t *testing.T, h *startHarness) {
-				// A state file an older binary wrote carries no session_id key.
-				if err := os.MkdirAll(h.cli.paths.Dir, 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(h.cli.paths.StatePath, []byte(`{"strand":"corpse","phase":"idle"}`), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			},
-		},
-		{
-			name:   "continue with no state file",
-			args:   func(string) []string { return []string{"--continue"} },
-			wantIn: []string{"lyx orch start", "--adopt <id>"},
-		},
-		{
 			name: "a first withdraw refused reports creel's error with the way forward",
-			args: func(string) []string { return nil },
 			seed: func(t *testing.T, h *startHarness) {
 				h.creel.withdrawErrs = []error{errors.New("creel: the worktree's reed state is unreadable")}
 			},
-			wantIn: []string{"creel: the worktree's reed state is unreadable", "way forward", "lyx orch start"},
+			wantIn: []string{"creel: the worktree's reed state is unreadable", "way forward", "lyx beam start"},
 		},
 		{
 			name: "a first withdraw that cannot reach creel reports its error with the way forward",
-			args: func(string) []string { return nil },
 			seed: func(t *testing.T, h *startHarness) {
 				h.creel.withdrawErrs = []error{errors.New("creel: the daemon did not start; log: listen failed")}
 			},
-			wantIn: []string{"creel: the daemon did not start; log: listen failed", "way forward", "lyx orch start"},
+			wantIn: []string{"creel: the daemon did not start; log: listen failed", "way forward", "lyx beam start"},
 		},
 		{
 			name: "a first withdraw refused for a program claim from a non-orch pane names the orch's pane and a terminal outside every strand pane",
-			args: func(string) []string { return nil },
 			seed: func(t *testing.T, h *startHarness) {
 				h.creel.withdrawErrs = []error{errors.New("creel: a program claim comes from a pane that is not the orch's")}
 			},
@@ -949,24 +874,46 @@ func TestStart_Refusals(t *testing.T) {
 		},
 		{
 			name: "a beam another machine owns names the owner and the takeover",
-			args: func(string) []string { return nil },
 			seed: func(t *testing.T, h *startHarness) {
-				h.cli.beamStart = func() error { return refuseBeamStart("b", "desktop", "laptop", nil) }
+				h.cli.readBeamFacts = func() (beamFacts, error) {
+					return beamFacts{slug: "b", here: "desktop", owner: "laptop"}, nil
+				}
 			},
-			wantIn: []string{`"laptop"`, "lyx adopt b"},
+			wantIn:             []string{`"laptop"`, "lyx adopt b"},
+			wantNothingStarted: true,
+		},
+		{
+			name: "the prime another machine owns names the root takeover",
+			seed: func(t *testing.T, h *startHarness) {
+				h.cli.readBeamFacts = func() (beamFacts, error) {
+					return beamFacts{here: "desktop", owner: "laptop"}, nil
+				}
+			},
+			wantIn:             []string{`"laptop"`, "lyx adopt root"},
+			wantNothingStarted: true,
+		},
+		{
+			name: "a standing anchor change names its way forward",
+			seed: func(t *testing.T, h *startHarness) {
+				h.cli.readBeamFacts = func() (beamFacts, error) {
+					return beamFacts{slug: "b", here: "desktop", moveWayForward: "run `lyx fabric anchor b --set sub` to finish it"}, nil
+				}
+			},
+			wantIn:             []string{"anchor change", "run `lyx fabric anchor b --set sub` to finish it"},
+			wantNothingStarted: true,
 		},
 		{
 			name: "a beam held by its landing names the landing",
-			args: func(string) []string { return nil },
 			seed: func(t *testing.T, h *startHarness) {
-				landing := boardengine.RunStatus("running", "Land")
-				h.cli.beamStart = func() error { return refuseBeamStart("b", "desktop", "", &landing) }
+				h.cli.readBeamFacts = func() (beamFacts, error) {
+					return beamFacts{slug: "b", here: "desktop", held: true, status: boardengine.RunStatus("running", "Land")}, nil
+				}
 			},
-			wantIn: []string{"landing", "lyx batten status b"},
+			wantIn:             []string{"landing", "lyx batten status b"},
+			wantNothingStarted: true,
 		},
 		{
 			name: "a hub with no shortname record fails before any round",
-			args: func(string) []string { return nil },
 			seed: func(t *testing.T, h *startHarness) {
 				if err := os.Remove(filepath.Join(fabricengine.BoardDir(h.cli.location.HubPath), fabricengine.ShortnameFileName)); err != nil {
 					t.Fatal(err)
@@ -980,17 +927,16 @@ func TestStart_Refusals(t *testing.T) {
 			t.Parallel()
 
 			h := newStartHarness(t, c.strands...)
-			handoff := filepath.Join(t.TempDir(), "handoff.md")
-			if err := os.WriteFile(handoff, []byte("h"), 0o644); err != nil {
-				t.Fatal(err)
+			h.cli.startDobby = func() (dobbyengine.StartEntry, error) {
+				h.calls = append(h.calls, "dobby")
+				return dobbyengine.StartEntry{}, nil
 			}
-
 			if c.seed != nil {
 				c.seed(t, h)
 			}
 			before := readStateFile(t, h)
 
-			code, env := h.run(t, c.args(handoff)...)
+			code, env := h.run(t)
 			msg, _ := env["error"].(string)
 			if code == 0 {
 				t.Fatalf("exit = 0; env = %v; want a refusal", env)
@@ -1008,6 +954,9 @@ func TestStart_Refusals(t *testing.T) {
 			}
 			if len(h.strands.removed) != 0 {
 				t.Errorf("removed strands = %v; want none", h.strands.removed)
+			}
+			if c.wantNothingStarted && len(h.calls) != 0 {
+				t.Errorf("calls = %v; want no dobby, window or orch started before the refusal", h.calls)
 			}
 			if after := readStateFile(t, h); !bytes.Equal(before, after) {
 				t.Errorf("state file = %q; want it unchanged from %q", after, before)
@@ -1137,7 +1086,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			prepare: func(t *testing.T, h *startHarness) { h.report.Unreachable = true },
 			wantOK:  true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				if warning, _ := env["warning"].(string); !strings.Contains(warning, "unreachable") || len(h.starter.specs) != 1 {
+				if warning := warningText(env); !strings.Contains(warning, "unreachable") || len(h.starter.specs) != 1 {
 					t.Errorf("warning = %q, starts = %d; want the unreachable warning and one launch", warning, len(h.starter.specs))
 				}
 			},
@@ -1149,7 +1098,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				if warning, _ := env["warning"].(string); !strings.Contains(warning, "ls-remote failed for the records repository") || len(h.starter.specs) != 1 {
+				if warning := warningText(env); !strings.Contains(warning, "ls-remote failed for the records repository") || len(h.starter.specs) != 1 {
 					t.Errorf("warning = %q, starts = %d; want the reconcile error and one launch", warning, len(h.starter.specs))
 				}
 			},
@@ -1161,7 +1110,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				if warning, _ := env["warning"].(string); h.claimCalls != 1 || !strings.Contains(warning, "claimed for machine desktop") || len(h.starter.specs) != 1 {
+				if warning := warningText(env); h.claimCalls != 1 || !strings.Contains(warning, "claimed for machine desktop") || len(h.starter.specs) != 1 {
 					t.Errorf("claims = %d, warning = %q, starts = %d; want one claim reported and one launch", h.claimCalls, warning, len(h.starter.specs))
 				}
 			},
@@ -1173,7 +1122,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				if warning, _ := env["warning"].(string); !strings.Contains(warning, "machine laptop") || len(h.starter.specs) != 1 {
+				if warning := warningText(env); !strings.Contains(warning, "machine laptop") || len(h.starter.specs) != 1 {
 					t.Errorf("warning = %q, starts = %d; want the other machine named and one launch", warning, len(h.starter.specs))
 				}
 			},
@@ -1185,7 +1134,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				if warning, _ := env["warning"].(string); !strings.Contains(warning, "origin is unreachable") || len(h.starter.specs) != 1 {
+				if warning := warningText(env); !strings.Contains(warning, "origin is unreachable") || len(h.starter.specs) != 1 {
 					t.Errorf("warning = %q, starts = %d; want the failure and one launch", warning, len(h.starter.specs))
 				}
 			},
@@ -1206,15 +1155,15 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			},
 		},
 		{
-			name: "a failing owner pause warns naming the re-run of orch start and the launch goes on",
+			name: "a failing owner pause warns naming the re-run of beam start and the launch goes on",
 			prepare: func(t *testing.T, h *startHarness) {
 				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
 				h.pauseOwned, h.pauseOwnedErr = true, errors.New("tender down")
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				warning, _ := env["warning"].(string)
-				if !strings.Contains(warning, "tender down") || !strings.Contains(warning, "re-run `lyx orch start`, which pauses it again") || len(envList(t, env, "owner_pauses")) != 0 || len(h.starter.specs) != 1 {
+				warning := warningText(env)
+				if !strings.Contains(warning, "tender down") || !strings.Contains(warning, "re-run `lyx beam start`, which pauses it again") || len(envList(t, env, "owner_pauses")) != 0 || len(h.starter.specs) != 1 {
 					t.Errorf("warning = %q, starts = %d; want the failure and the re-run named, nothing paused and one launch", warning, len(h.starter.specs))
 				}
 			},
@@ -1226,7 +1175,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			},
 			wantOK: true,
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
-				if warning, _ := env["warning"].(string); !strings.Contains(warning, "p1 is owned by machine laptop") || len(h.starter.specs) != 1 {
+				if warning := warningText(env); !strings.Contains(warning, "p1 is owned by machine laptop") || len(h.starter.specs) != 1 {
 					t.Errorf("warning = %q, starts = %d; want p1 and its owner named and one launch", warning, len(h.starter.specs))
 				}
 			},
@@ -1239,6 +1188,25 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 			check: func(t *testing.T, h *startHarness, env map[string]any) {
 				if h.reconciles != 1 || env["action"] != actionSpawnedWatcher || len(envList(t, env, "mutations")) != 1 {
 					t.Errorf("reconciles = %d, env = %v; want one reconcile and its mutation reported", h.reconciles, env)
+				}
+			},
+		},
+		{
+			name: "without Prepare nothing is reconciled, claimed or paused and the launch goes on",
+			prepare: func(t *testing.T, h *startHarness) {
+				addRemovedPair(h)
+				h.report.Entries = []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop"}}
+				h.claims = []claimAnswer{{claimed: "desktop"}}
+				h.pauseOwned = true
+				h.prepareOff = true
+			},
+			wantOK: true,
+			check: func(t *testing.T, h *startHarness, env map[string]any) {
+				if h.reconciles != 0 || h.claimCalls != 0 || len(h.ownerPaused) != 0 || len(h.starter.specs) != 1 {
+					t.Errorf("reconciles = %d, claims = %d, paused = %v, starts = %d; want none reconciled, claimed or paused and one launch", h.reconciles, h.claimCalls, h.ownerPaused, len(h.starter.specs))
+				}
+				if got := envList(t, env, "mutations"); len(got) != 0 || len(envList(t, env, "owner_pauses")) != 0 || warningText(env) != "" {
+					t.Errorf("env = %v; want no mutation, owner pause or warning", env)
 				}
 			},
 		},
@@ -1263,21 +1231,15 @@ func TestStart_StarterErrorFailsAndSavesNoState(t *testing.T) {
 
 	cases := []struct {
 		name string
-		args []string
 		err  string
 		// seed, when set, is the state saved before start runs.
 		seed *orchengine.State
-		// wantIn are further texts the error carries.
-		wantIn []string
 	}{
 		{name: "fresh launch", err: "provider never came up"},
-		{name: "adopt", args: []string{"--adopt", adoptTestSessionID}, err: "no transcript for that session"},
 		{
-			name:   "continue",
-			args:   []string{"--continue"},
-			err:    "no transcript for that session",
-			seed:   &orchengine.State{Phase: orchengine.PhaseIdle, SessionID: "rec-id"},
-			wantIn: []string{"lyx orch start --adopt <id>"},
+			name: "a resume and the fresh launch after it both failing",
+			err:  "no transcript for that session",
+			seed: &orchengine.State{Phase: orchengine.PhaseIdle, SessionID: "rec-id"},
 		},
 	}
 	for _, c := range cases {
@@ -1291,15 +1253,10 @@ func TestStart_StarterErrorFailsAndSavesNoState(t *testing.T) {
 			}
 			before := h.state(t)
 
-			code, env := h.run(t, c.args...)
+			code, env := h.run(t)
 			msg, _ := env["error"].(string)
 			if code == 0 || !strings.Contains(msg, c.err) {
 				t.Fatalf("exit = %d; env = %v", code, env)
-			}
-			for _, want := range c.wantIn {
-				if !strings.Contains(msg, want) {
-					t.Errorf("error %q missing %q", msg, want)
-				}
 			}
 			if h.spawns != 0 {
 				t.Errorf("spawns = %d; want none after a failed launch", h.spawns)
@@ -1311,21 +1268,20 @@ func TestStart_StarterErrorFailsAndSavesNoState(t *testing.T) {
 	}
 }
 
-func TestStart_AdoptLaunchesResumeSpec(t *testing.T) {
+func TestStart_ResumesTheRecordedSession(t *testing.T) {
 	t.Parallel()
 
-	adoptArgs := []string{"--adopt", adoptTestSessionID}
-	oldIDHint := previousSessionHint("old-id")
 	corpse := []reedengine.StrandStatus{{GUID: "corpse", Name: "orch", Live: false}}
 	cases := []struct {
 		name    string
 		strands []reedengine.StrandStatus
 		warning string
-		args    []string
-		// handoff appends --handoff with a handoff file that exists.
-		handoff bool
 		// recorded is the session id the seeded state holds.
 		recorded string
+		// note, when set, is a last completed handoff file that exists, in place of a missing one.
+		note bool
+		// resumeErr is the error a resume start fails with.
+		resumeErr error
 		// seedStrand is the strand the seeded state names.
 		seedStrand string
 		// noSessionID makes the starter name no session id for a launch that resumes none.
@@ -1335,40 +1291,45 @@ func TestStart_AdoptLaunchesResumeSpec(t *testing.T) {
 		// stopFirst runs the stop verb, then reports no strand as reed does after the removal.
 		stopFirst bool
 
+		wantStarts    int
 		wantResumeID  string
 		wantSource    string
 		wantSaved     string
 		wantHint      string
+		wantAbandoned string
 		wantSessionID string
 	}{
-		{name: "dead strand", strands: corpse, args: adoptArgs, wantResumeID: adoptTestSessionID, wantSource: orchengine.SourceAdopt, wantSaved: adoptTestSessionID},
-		{name: "no strand", args: adoptArgs, wantResumeID: adoptTestSessionID, wantSource: orchengine.SourceAdopt, wantSaved: adoptTestSessionID},
-		{name: "starter warning reaches the envelope", warning: "registry unreadable", args: adoptArgs, wantResumeID: adoptTestSessionID, wantSource: orchengine.SourceAdopt, wantSaved: adoptTestSessionID},
-		{name: "plain launch with none recorded", wantSource: orchengine.SourceFresh, wantSaved: "minted-id"},
-		{name: "plain launch replaces a recorded id", recorded: "old-id", wantSource: orchengine.SourceFresh, wantSaved: "minted-id", wantHint: oldIDHint},
-		{name: "handoff launch replaces a recorded id", handoff: true, recorded: "old-id", wantSource: orchengine.SourceFlag, wantSaved: "minted-id", wantHint: oldIDHint},
-		{name: "a launch naming no id records none and keeps the previous in the hint", recorded: "old-id", noSessionID: true, wantSource: orchengine.SourceFresh, wantSaved: "", wantHint: oldIDHint},
-		{name: "adopt naming another id", args: adoptArgs, recorded: "old-id", wantResumeID: adoptTestSessionID, wantSource: orchengine.SourceAdopt, wantSaved: adoptTestSessionID, wantHint: oldIDHint},
-		{name: "adopt naming the recorded id", args: adoptArgs, recorded: adoptTestSessionID, wantResumeID: adoptTestSessionID, wantSource: orchengine.SourceAdopt, wantSaved: adoptTestSessionID},
 		{
-			name:          "continue after stop resumes the recorded id",
-			strands:       []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true}},
-			args:          []string{"--continue"},
-			recorded:      adoptTestSessionID,
-			seedStrand:    "g1",
-			stopFirst:     true,
-			wantResumeID:  adoptTestSessionID,
-			wantSource:    orchengine.SourceAdopt,
-			wantSaved:     adoptTestSessionID,
-			wantSessionID: adoptTestSessionID,
+			name: "a recorded id is resumed with the reload pointer", strands: corpse, recorded: recordedTestSessionID,
+			wantStarts: 1, wantResumeID: recordedTestSessionID, wantSource: orchengine.SourceResume, wantSaved: recordedTestSessionID, wantSessionID: recordedTestSessionID,
 		},
 		{
-			name:       "a stopping watcher and a replaced id carry both hints",
-			recorded:   "old-id",
-			stopping:   true,
-			wantSource: orchengine.SourceFresh,
-			wantSaved:  "minted-id",
-			wantHint:   stoppingWatcherHint + "; " + oldIDHint,
+			name: "no strand listed resumes the recorded id too", recorded: recordedTestSessionID,
+			wantStarts: 1, wantResumeID: recordedTestSessionID, wantSource: orchengine.SourceResume, wantSaved: recordedTestSessionID, wantSessionID: recordedTestSessionID,
+		},
+		{
+			name: "a starter warning reaches the report", warning: "registry unreadable", recorded: recordedTestSessionID,
+			wantStarts: 1, wantResumeID: recordedTestSessionID, wantSource: orchengine.SourceResume, wantSaved: recordedTestSessionID, wantSessionID: recordedTestSessionID,
+		},
+		{
+			name:    "a stop leaves the id and the next start resumes it",
+			strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true}}, recorded: recordedTestSessionID, seedStrand: "g1", stopFirst: true,
+			wantStarts: 1, wantResumeID: recordedTestSessionID, wantSource: orchengine.SourceResume, wantSaved: recordedTestSessionID, wantSessionID: recordedTestSessionID,
+		},
+		{
+			name: "a resume that fails to start falls back to a fresh launch from the last note and names the id it gave up", recorded: "old-id", note: true, resumeErr: errors.New("no transcript for that session"),
+			wantStarts: 2, wantResumeID: "old-id", wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id", wantAbandoned: "old-id",
+		},
+		{
+			name: "a resume that fails with no note falls back to the start stencil", recorded: "old-id", resumeErr: errors.New("pane never came up"),
+			wantStarts: 2, wantResumeID: "old-id", wantSource: orchengine.SourceFresh, wantSaved: "minted-id", wantAbandoned: "old-id",
+		},
+		{name: "no id recorded and a last note launches from the note", note: true, wantStarts: 1, wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id"},
+		{name: "no id recorded and no note launches the start stencil", wantStarts: 1, wantSource: orchengine.SourceFresh, wantSaved: "minted-id"},
+		{name: "a launch naming no id records none", noSessionID: true, wantStarts: 1, wantSource: orchengine.SourceFresh, wantSaved: ""},
+		{
+			name: "a stopping watcher carries its hint with the resume", recorded: recordedTestSessionID, stopping: true,
+			wantStarts: 1, wantResumeID: recordedTestSessionID, wantSource: orchengine.SourceResume, wantSaved: recordedTestSessionID, wantSessionID: recordedTestSessionID, wantHint: stoppingWatcherHint,
 		},
 	}
 	for _, c := range cases {
@@ -1377,19 +1338,17 @@ func TestStart_AdoptLaunchesResumeSpec(t *testing.T) {
 
 			h := newStartHarness(t, c.strands...)
 			h.starter.warning = c.warning
+			h.starter.resumeErr = c.resumeErr
 			if c.noSessionID {
 				h.starter.sessionID = ""
 			}
 			h.cli.cfg.PermissionMode = "bypass"
 			seed := orchengine.State{Phase: orchengine.PhaseIdle, Strand: c.seedStrand, LastHandoff: "/keep/me.md", SessionID: c.recorded, WatcherStopping: c.stopping}
-			args := slices.Clone(c.args)
-			if c.handoff {
-				handoff := filepath.Join(t.TempDir(), "handoff.md")
-				if err := os.WriteFile(handoff, []byte("h"), 0o644); err != nil {
+			if c.note {
+				seed.LastHandoff = filepath.Join(t.TempDir(), "handoff.md")
+				if err := os.WriteFile(seed.LastHandoff, []byte("h"), 0o644); err != nil {
 					t.Fatal(err)
 				}
-				seed.LastHandoff = handoff
-				args = append(args, "--handoff", handoff)
 			}
 			saveSeedState(t, h, seed)
 			if c.stopping {
@@ -1406,51 +1365,55 @@ func TestStart_AdoptLaunchesResumeSpec(t *testing.T) {
 				h.strands.strands = nil
 			}
 
-			code, env := h.run(t, args...)
+			code, env := h.run(t)
 			if code != 0 || env["prompt_source"] != c.wantSource || env["action"] != actionRelaunched {
 				t.Fatalf("exit = %d; env = %v", code, env)
 			}
-			if got, _ := env["hint"].(string); got != c.wantHint {
-				t.Errorf("hint = %q; want %q", got, c.wantHint)
-			}
-			if got, _ := env["session_id"].(string); got != c.wantSessionID {
-				t.Errorf("session_id = %q; want %q", got, c.wantSessionID)
-			}
-			if c.wantHint == "" {
-				if _, has := env["hint"]; has {
-					t.Errorf("envelope = %v; want no hint", env)
+			for key, want := range map[string]string{"hint": c.wantHint, "session_id": c.wantSessionID, "abandoned_session": c.wantAbandoned} {
+				got, has := env[key].(string)
+				if got != want || has != (want != "") {
+					t.Errorf("report %s = %q (present %v); want %q", key, got, has, want)
 				}
 			}
-			if c.wantSessionID == "" {
-				if _, has := env["session_id"]; has {
-					t.Errorf("envelope = %v; want no session_id", env)
-				}
+			if warning := warningText(env); warning != c.warning {
+				t.Errorf("warnings = %q; want %q", warning, c.warning)
 			}
-			if c.warning == "" {
-				if _, has := env["warning"]; has {
-					t.Errorf("envelope = %v; want no warning", env)
-				}
-			} else if env["warning"] != c.warning {
-				t.Errorf("warning = %v; want %q on the envelope", env["warning"], c.warning)
+			if len(h.starter.specs) != c.wantStarts || h.spawns != 1 {
+				t.Fatalf("starts = %d, spawns = %d; want %d and 1", len(h.starter.specs), h.spawns, c.wantStarts)
 			}
-			if len(h.starter.specs) != 1 || h.spawns != 1 {
-				t.Fatalf("starts = %d, spawns = %d; want 1 and 1", len(h.starter.specs), h.spawns)
+			first := h.starter.specs[0]
+			if first.ResumeSessionID != c.wantResumeID || first.PermissionMode != "bypass" || !first.AllowAgentTool || !first.ForkSubagents {
+				t.Errorf("first spec = %+v; want resume id %q, bypass, AllowAgentTool and ForkSubagents", first, c.wantResumeID)
 			}
-			spec := h.starter.specs[0]
-			if spec.ResumeSessionID != c.wantResumeID || spec.PermissionMode != "bypass" || !spec.AllowAgentTool || !spec.ForkSubagents {
-				t.Errorf("spec = %+v; want resume id %q, bypass, AllowAgentTool and ForkSubagents", spec, c.wantResumeID)
-			}
-			if c.wantSource == orchengine.SourceAdopt {
-				wantPrompt, err := orchengine.RenderAdoptPrompt(h.cli.stencilsDir, h.cli.paths.RolePath)
+			launched := h.starter.specs[len(h.starter.specs)-1]
+			switch c.wantSource {
+			case orchengine.SourceResume:
+				wantPrompt, err := orchengine.RenderReloadPrompt(h.cli.stencilsDir, h.cli.paths.RolePath)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if spec.Prompt != wantPrompt {
-					t.Errorf("prompt = %q; want the adopt prompt %q", spec.Prompt, wantPrompt)
+				if launched.Prompt != wantPrompt {
+					t.Errorf("prompt = %q; want the reload pointer %q", launched.Prompt, wantPrompt)
+				}
+			case orchengine.SourceLastHandoff:
+				if !strings.Contains(launched.Prompt, seed.LastHandoff) || launched.ResumeSessionID != "" {
+					t.Errorf("fresh spec = %+v; want the note %s named and no resume id", launched, seed.LastHandoff)
+				}
+			case orchengine.SourceFresh:
+				wantPrompt, err := orchengine.RenderStartPrompt(h.cli.stencilsDir, h.cli.paths.RolePath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if launched.Prompt != wantPrompt || launched.ResumeSessionID != "" {
+					t.Errorf("fresh spec = %+v; want the start stencil %q and no resume id", launched, wantPrompt)
 				}
 			}
-			if st := h.state(t); st.Strand != "new-guid" || st.SessionID != c.wantSaved || (!c.handoff && st.LastHandoff != "/keep/me.md") {
-				t.Errorf("state = %+v; want LastHandoff kept, strand new-guid and session id %q", st, c.wantSaved)
+			wantNote := "/keep/me.md"
+			if c.note {
+				wantNote = seed.LastHandoff
+			}
+			if st := h.state(t); st.Strand != "new-guid" || st.SessionID != c.wantSaved || st.LastHandoff != wantNote {
+				t.Errorf("state = %+v; want LastHandoff %q kept, strand new-guid and session id %q", st, wantNote, c.wantSaved)
 			}
 		})
 	}

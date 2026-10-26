@@ -115,11 +115,11 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 					State:           shedengine.StateRunning,
 				})
 				c.reconcile = func(string) (fabricengine.OriginReport, error) {
-					return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: c.slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there"}}}, nil
+					return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: c.slug, State: fabricengine.EntryOwnedElsewhere, Owner: "there", AdoptSubject: "some-beam"}}}, nil
 				}
 			},
 			wantKind:   shedverbs.KindBootstrap,
-			wantSubstr: []string{`"there"`, "lyx adopt " + "some-slug"},
+			wantSubstr: []string{`"there"`, "`lyx adopt some-beam`"},
 		},
 	}
 	for _, tt := range tests {

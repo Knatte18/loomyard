@@ -42,6 +42,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -462,14 +463,14 @@ func childRefusalOwner(childOutput string) string {
 }
 
 // ownerVerdictOf maps a run-scope origin report onto the owner verdict InnerRun reads.
-// An unreachable report is Unreachable, the slug's owned-elsewhere entry is Elsewhere with its owner, and anything else, a report without the slug included, is owned here.
+// An unreachable report is Unreachable, the slug's owned-elsewhere entry is Elsewhere with its owner and adopt subject, and anything else, a report without the slug included, is owned here.
 func ownerVerdictOf(report fabricengine.OriginReport, slug string) battenshed.OwnerVerdict {
 	if report.Unreachable {
 		return battenshed.OwnerVerdict{Unreachable: true}
 	}
 	for _, entry := range report.Entries {
 		if entry.Slug == slug && entry.State == fabricengine.EntryOwnedElsewhere {
-			return battenshed.OwnerVerdict{Owner: entry.Owner, Elsewhere: true}
+			return battenshed.OwnerVerdict{Owner: entry.Owner, AdoptSubject: entry.AdoptSubject, Elsewhere: true}
 		}
 	}
 	return battenshed.OwnerVerdict{}
@@ -493,10 +494,10 @@ func childRefusalKind(childOutput string) string {
 	return ""
 }
 
-// boardRecipe returns the recipe Seed-Child seeds for task: beam for a project entry, the entry's own recipe field otherwise.
+// boardRecipe returns the recipe Seed-Child seeds for task: pawl for a project entry, the entry's own recipe field otherwise.
 func boardRecipe(task boardengine.Task) string {
 	if task.Kind == boardengine.KindProject {
-		return shedrun.RecipeBeam
+		return shedrun.RecipePawl
 	}
 	return task.Recipe
 }
@@ -504,13 +505,13 @@ func boardRecipe(task boardengine.Task) string {
 // childRecipeSupported reports whether recipe is one a task worktree's bootstrap verb can run as the child's own run:
 // the three recipes `lyx loom start` serves.
 func childRecipeSupported(recipe string) bool {
-	return recipe == shedrun.RecipeLoom || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipeBeam
+	return recipe == shedrun.RecipeLoom || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl
 }
 
 // unsupportedChildRecipeRefusal is the refusal for a recipe childRecipeSupported rejects.
 // It wraps battenshed.ErrUnsupportedChildRecipe and names the three admitted recipes.
 func unsupportedChildRecipeRefusal(recipe string) error {
-	return fmt.Errorf("%w: only %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipeBeam, shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipeBeam, recipe)
+	return fmt.Errorf("%w: only %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipePawl, recipe)
 }
 
 // childSeedParams returns the seed params recipe's own bootstrap verb will itself write, read from
@@ -586,7 +587,7 @@ func readStopReport(taskLocation *lyxcwd.Location) (path string, at time.Time, f
 }
 
 // readAgentActivity reads the live agent runs of the task worktree through the shuttle config and its registered engines, mapped onto battenshed's neutral type,
-// and reports whether a Go-side wait is live: a running verify, a parent lock wait, or a shuttle wait that is not a held turn end.
+// and reports whether a Go-side wait is live: a running verify, a parent lock wait, a child running at Beam-Await, or a shuttle wait that is not a held turn end.
 // A held run is idle at its turn end, so it does not suppress the quiet notice, and neither does a verify held by a pause.
 // A lock wait record whose writer is dead is ignored.
 // The waits are read from their marker and record files, never from the pane options that display them.
@@ -629,6 +630,9 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 	if lockWaiting {
 		return runs, true, nil
 	}
+	if childAtBeamAwait(taskLocation) {
+		return runs, true, nil
+	}
 	markers, err := shuttleengine.ReadWaitMarkers(cfg, anchor)
 	if err != nil {
 		return nil, false, err
@@ -639,6 +643,26 @@ func readAgentActivity(taskLocation *lyxcwd.Location) (runs []battenshed.AgentAc
 		}
 	}
 	return runs, false, nil
+}
+
+// childAtBeamAwait reports whether the child's own status file reads running at the pawl recipe's Beam-Await row, which waits on its beam's members with no agent running.
+// An unreadable child status reads as no such wait, as an absent one does.
+func childAtBeamAwait(taskLocation *lyxcwd.Location) bool {
+	statusPath := shedrun.StatusFile(taskLocation, shedrun.SelfRunID)
+	if _, err := os.Stat(statusPath); err != nil {
+		return false
+	}
+	statusLockPath := shedrun.StatusLock(taskLocation, shedrun.SelfRunID)
+	if err := os.MkdirAll(filepath.Dir(statusLockPath), 0o755); err != nil {
+		logger.Debug("battencli: the child's status lock directory could not be made; it reads as no Beam-Await wait", "path", statusLockPath, "cause", err)
+		return false
+	}
+	status, found, err := state.ReadJSONNoMkdir[shedengine.Status](statusPath, statusLockPath)
+	if err != nil {
+		logger.Debug("battencli: the child's status is unreadable; it reads as no Beam-Await wait", "path", statusPath, "cause", err)
+		return false
+	}
+	return found && status.State == shedengine.StateRunning && status.CurrentProducer == pawlengine.NameBeamAwait
 }
 
 // readSessionStatesByStrand reads the session state of every running shuttle run under anchor, keyed by strand name.
@@ -863,17 +887,6 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 				return err
 			}
 
-			// A beam's landing forks no pair, and work started under the beam after the start guard read it would be lost with the pair, so the refusal runs again after the claim.
-			project, err := c.entryIsProject()
-			if err != nil {
-				return err
-			}
-			if project && c.beam.Refusal != nil {
-				if err := c.beam.Refusal(); err != nil {
-					return err
-				}
-			}
-
 			// The already-complete probe before Add, so the row is idempotent against its own
 			// post-condition -- see taskWorktreeComplete for the crash window this closes.
 			present, complete, incompleteReason, err := taskWorktreeComplete(location, slug)
@@ -882,14 +895,11 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			}
 			if complete {
 				logger.Info("battencli: create worktree skipped, the task worktree is already present", "slug", slug)
-				return reconcileTaskPair(location, slug)
-			}
-			if project && !present {
-				// A beam is made by `lyx beam create`, never by a landing, so no path forks an empty pair for it.
-				return &battenshed.PreconditionError{
-					Unmet:      fmt.Sprintf("the beam %s has no pair on this machine", slug),
-					WayForward: fmt.Sprintf("run %q to finish the create, or %q when the beam's branch is on origin, then %q", "lyx beam create "+slug, "lyx adopt "+slug, "lyx batten run "+slug),
+				// A member that crashed between Add and its hold read is judged here when it is resumed.
+				if err := c.refuseHeldMember(ctx, location, slug); err != nil {
+					return err
 				}
+				return reconcileTaskPair(location, slug)
 			}
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
 			if err != nil {
@@ -911,10 +921,25 @@ func (c *battenCLI) wire(location *lyxcwd.Location, slug string) error {
 			if err != nil {
 				return err
 			}
-			_, err = top.Add(location, slug, fabricengine.AddOptions{Parent: parent})
+			// A beam project's pair takes the anchor its first pass recorded in the seed, and is unmarked: the pawl run's Beam-Up marks it.
+			var anchor string
+			project, err := c.entryIsProject()
+			if err != nil {
+				return err
+			}
+			if project {
+				if anchor, err = anchorFromSeed(location, slug); err != nil {
+					return err
+				}
+			}
+			_, err = top.Add(location, slug, fabricengine.AddOptions{Parent: parent, Anchor: anchor})
 			logger.Info("battencli: create worktree", "slug", slug)
 			if err != nil {
 				return createRefusal(err, slug, cfg.BranchPrefix+slug)
+			}
+			// The beam's accept may have written its hold while the pair was being made, so the member's beam is read again before anything more is done to the pair.
+			if err := c.refuseHeldMember(ctx, location, slug); err != nil {
+				return err
 			}
 			if err := reconcileTaskPair(location, slug); err != nil {
 				return err

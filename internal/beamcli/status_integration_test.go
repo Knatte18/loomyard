@@ -17,6 +17,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/beamcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
@@ -46,6 +50,20 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 		t.Fatalf("WriteFile(%s) = %v; want nil", statusFile, err)
 	}
 
+	beamLocation, err := lyxcwd.ResolveWorktree(h.PairCodeWorktree("b"))
+	if err != nil {
+		t.Fatalf("ResolveWorktree(b) = %v; want nil", err)
+	}
+	beamOrch := orchcli.PrimePaths(beamLocation)
+	if err := orchengine.SaveState(beamOrch, orchengine.State{Phase: orchengine.PhaseIdle, SessionID: "session-b"}); err != nil {
+		t.Fatalf("SaveState(b) = %v; want nil", err)
+	}
+	watch, acquired, err := lock.TryAcquireWriteLock(beamOrch.WatchLockPath)
+	if err != nil || !acquired {
+		t.Fatalf("TryAcquireWriteLock(%s) = %v, %v; want it held", beamOrch.WatchLockPath, acquired, err)
+	}
+	t.Cleanup(func() { _ = watch.Release() })
+
 	var out bytes.Buffer
 	beamcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"status"})
 
@@ -60,6 +78,11 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 				Alive bool `json:"alive"`
 			} `json:"view"`
 			Lines []string `json:"lines"`
+			Orch  struct {
+				Live        bool   `json:"live"`
+				WatcherLive bool   `json:"watcher_live"`
+				SessionID   string `json:"session_id"`
+			} `json:"orch"`
 		} `json:"dobbies"`
 	}
 	encoded, err := json.Marshal(env.Raw["result"])
@@ -76,6 +99,10 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 		Header   string
 		// Runs is the run lines after the header, with their column gaps collapsed.
 		Runs []string
+		// OrchLive, WatcherLive and Session are the entry's orch view.
+		OrchLive    bool
+		WatcherLive bool
+		Session     string
 	}
 	var got []entry
 	for _, dobby := range result.Dobbies {
@@ -87,11 +114,11 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 				runs = append(runs, strings.Join(strings.Fields(line), " "))
 			}
 		}
-		got = append(got, entry{dobby.Worktree, dobby.View.Alive, header, runs})
+		got = append(got, entry{dobby.Worktree, dobby.View.Alive, header, runs, dobby.Orch.Live, dobby.Orch.WatcherLive, dobby.Orch.SessionID})
 	}
 	want := []entry{
-		{"prime", false, "dobby prime: not running; way forward: lyx beam start", []string{"run-x running Plan 0m no pass yet"}},
-		{"b", false, "dobby b: not running; way forward: lyx beam start", []string{"no runs driven"}},
+		{"prime", false, "dobby prime: not running; way forward: lyx beam start", []string{"run-x running Plan 0m no pass yet"}, false, false, ""},
+		{"b", false, "dobby b: not running; way forward: lyx beam start", []string{"no runs driven"}, false, true, "session-b"},
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("lyx beam status dobbies mismatch (-want +got):\n%s", diff)

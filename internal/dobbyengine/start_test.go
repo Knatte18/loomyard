@@ -24,6 +24,11 @@ type fakeStart struct {
 	failSpawn  map[string]bool
 	moving     map[string]bool
 	moveErr    map[string]error
+	// held are the worktrees whose landing hold stands, and heldErr fails the hold read of one.
+	held    map[string]bool
+	heldErr map[string]error
+	// noHoldSeam leaves LandingHeld nil.
+	noHoldSeam bool
 
 	claims  []string
 	spawned []string
@@ -32,6 +37,28 @@ type fakeStart struct {
 
 func (f *fakeStart) deps() StartDeps {
 	f.live = map[string]bool{}
+	deps := f.baseDeps()
+	if !f.noHoldSeam {
+		deps.LandingHeld = func(worktree string) (bool, error) {
+			if err := f.heldErr[worktree]; err != nil {
+				return false, err
+			}
+			return f.held[worktree], nil
+		}
+	}
+	return deps
+}
+
+// allWorktrees names the prime and every beam the fake holds, the set a caller that names everything passes.
+func (f *fakeStart) allWorktrees() []string {
+	worktrees := []string{"hub-prime"}
+	for _, beam := range f.beams {
+		worktrees = append(worktrees, beam.Slug)
+	}
+	return worktrees
+}
+
+func (f *fakeStart) baseDeps() StartDeps {
 	return StartDeps{
 		Machine:    func() (string, error) { return "here", nil },
 		PrimeOwner: func() (string, error) { return f.primeOwner, nil },
@@ -70,8 +97,10 @@ func TestEnsureLive(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name        string
-		fake        fakeStart
+		name string
+		fake fakeStart
+		// named are the worktrees passed to EnsureLive; nil names the prime and every beam.
+		named       []string
 		calls       int
 		wantEntries []StartEntry
 		wantClaims  []string
@@ -110,7 +139,7 @@ func TestEnsureLive(t *testing.T) {
 			fake:        fakeStart{primeOwner: "there", beams: []BeamPair{{Slug: "b1", Owner: "here"}}},
 			wantEntries: []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeRefused}, {Worktree: "b1", Outcome: OutcomeStarted}},
 			wantSpawned: []string{"b1"},
-			wantDetails: []string{"owned by there; lyx adopt --prime takes it over here"},
+			wantDetails: []string{"owned by there; lyx adopt root takes it over here"},
 		},
 		{
 			name:        "ALostPrimeClaimReadsTheOtherMachinesClaim",
@@ -120,10 +149,45 @@ func TestEnsureLive(t *testing.T) {
 			wantDetails: []string{"owned by there"},
 		},
 		{
-			name:        "ABeamOwnedElsewhereIsSkipped",
-			fake:        fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1", Owner: "there"}, {Slug: "b2", Owner: "here"}}},
-			wantEntries: []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeStarted}, {Worktree: "b2", Outcome: OutcomeStarted}},
+			name:           "ANamedBeamOwnedElsewhereIsRefusedNamingAdoptAndItsOwner",
+			fake:           fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1", Owner: "there"}, {Slug: "b2", Owner: "here"}}},
+			wantEntries:    []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeStarted}, {Worktree: "b1", Outcome: OutcomeRefused}, {Worktree: "b2", Outcome: OutcomeStarted}},
+			wantSpawned:    []string{"hub-prime", "b2"},
+			wantBeamDetail: "owned by there; lyx adopt b1",
+		},
+		{
+			name:        "ABeamNotNamedIsNotStarted",
+			fake:        fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1"}, {Slug: "b2"}}},
+			named:       []string{"b2"},
+			wantEntries: []StartEntry{{Worktree: "b2", Outcome: OutcomeStarted}},
+			wantSpawned: []string{"b2"},
+		},
+		{
+			name:        "AnUnnamedPrimeIsNeitherClaimedNorStarted",
+			fake:        fakeStart{beams: []BeamPair{{Slug: "b1"}}},
+			named:       []string{"b1"},
+			wantEntries: []StartEntry{{Worktree: "b1", Outcome: OutcomeStarted}},
+			wantSpawned: []string{"b1"},
+		},
+		{
+			name:           "ABeamWhoseLandingHoldStandsIsRefusedNamingBattenStatusAndSpawnsNothing",
+			fake:           fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1"}, {Slug: "b2"}}, held: map[string]bool{"b1": true}},
+			wantEntries:    []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeStarted}, {Worktree: "b1", Outcome: OutcomeRefused}, {Worktree: "b2", Outcome: OutcomeStarted}},
+			wantSpawned:    []string{"hub-prime", "b2"},
+			wantBeamDetail: "lyx batten status b1",
+		},
+		{
+			name:        "AFailedLandingHoldReadIsThatWorktreesFailureAndTheOthersStart",
+			fake:        fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1"}, {Slug: "b2"}}, heldErr: map[string]error{"b1": errors.New("board unreadable")}},
+			wantEntries: []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeStarted}, {Worktree: "b1", Outcome: OutcomeFailed}, {Worktree: "b2", Outcome: OutcomeStarted}},
 			wantSpawned: []string{"hub-prime", "b2"},
+			wantErr:     "b1: read whether the landing hold stands: board unreadable",
+		},
+		{
+			name:        "ANilLandingHeldReadsAsNoHold",
+			fake:        fakeStart{primeOwner: "here", beams: []BeamPair{{Slug: "b1"}}, held: map[string]bool{"b1": true}, noHoldSeam: true},
+			wantEntries: []StartEntry{{Worktree: PrimeLabel, Outcome: OutcomeStarted}, {Worktree: "b1", Outcome: OutcomeStarted}},
+			wantSpawned: []string{"hub-prime", "b1"},
 		},
 		{
 			name:        "OneFailedSpawnStillStartsTheRestAndNamesItInTheError",
@@ -161,10 +225,14 @@ func TestEnsureLive(t *testing.T) {
 			fake := tt.fake
 			deps := fake.deps()
 			calls := max(tt.calls, 1)
+			named := tt.named
+			if named == nil {
+				named = fake.allWorktrees()
+			}
 			var report StartReport
 			var err error
 			for range calls {
-				report, err = EnsureLive(deps)
+				report, err = EnsureLive(deps, named)
 			}
 
 			if tt.wantErr == "" && err != nil {
@@ -195,6 +263,42 @@ func TestEnsureLive(t *testing.T) {
 			}
 			if !slices.Equal(fake.spawned, tt.wantSpawned) {
 				t.Errorf("EnsureLive() spawned = %v; want %v", fake.spawned, tt.wantSpawned)
+			}
+		})
+	}
+}
+
+// TestOwnedWorktrees asserts the list holds the prime when this machine owns it or none is recorded, then every beam not owned elsewhere.
+func TestOwnedWorktrees(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		fake fakeStart
+		want []string
+	}{
+		{
+			name: "NoPrimeOwnerListsThePrimeAndEveryUnownedOrOwnedBeam",
+			fake: fakeStart{beams: []BeamPair{{Slug: "b1"}, {Slug: "b2", Owner: "here"}}},
+			want: []string{"hub-prime", "b1", "b2"},
+		},
+		{
+			name: "APrimeAndABeamOwnedElsewhereAreLeftOut",
+			fake: fakeStart{primeOwner: "there", beams: []BeamPair{{Slug: "b1", Owner: "there"}, {Slug: "b2", Owner: "here"}}},
+			want: []string{"b2"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fake := tt.fake
+			got, err := OwnedWorktrees(fake.deps())
+			if err != nil {
+				t.Fatalf("OwnedWorktrees() error = %v; want nil", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("OwnedWorktrees() = %v; want %v", got, tt.want)
 			}
 		})
 	}

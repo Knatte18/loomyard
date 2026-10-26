@@ -1,6 +1,6 @@
 //go:build tier0
 
-// wiring_beam_test.go covers the wiring a beam run adds to wire: the BeamDescribe seams, the two-row routing, and the landing deps a beam run's Finalize is built with.
+// wiring_beam_test.go covers the wiring a pawl run adds to wire: the BeamDescribe and Pawl seams, the nine-row routing, and the landing deps a pawl run's Finalize is built with.
 // wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -24,18 +24,27 @@ import (
 func TestWire_BeamRecipe(t *testing.T) {
 	t.Parallel()
 
-	t.Run("a beam seed fills the BeamDescribe seams and routes two rows with no reroute edge", func(t *testing.T) {
+	t.Run("a pawl seed fills the BeamDescribe and Pawl seams and routes its nine rows with no reroute edge", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
-		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeBeam}
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipePawl}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
 
 		for _, nilSeam := range envkit.NilSeams(c.env) {
-			if strings.HasPrefix(nilSeam, "BeamDescribe") {
-				t.Errorf("c.env.%s is nil after wire() of a beam seed", nilSeam)
+			if strings.HasPrefix(nilSeam, "BeamDescribe") || strings.HasPrefix(nilSeam, "Pawl") {
+				t.Errorf("c.env.%s is nil after wire() of a pawl seed", nilSeam)
 			}
+		}
+		if got, want := c.env.Pawl.Slug, "pair"; got != want {
+			t.Errorf("c.env.Pawl.Slug = %q; want %q", got, want)
+		}
+		if want := hubgeom.PawlPaths(loc); c.env.Pawl.Paths != want {
+			t.Errorf("c.env.Pawl.Paths = %+v; want %+v", c.env.Pawl.Paths, want)
+		}
+		if len(c.env.Pawl.Steps) != 1 {
+			t.Errorf("c.env.Pawl.Steps = %d steps; want the one beam-up step", len(c.env.Pawl.Steps))
 		}
 		if got, want := c.env.BeamDescribe.Slug, "pair"; got != want {
 			t.Errorf("c.env.BeamDescribe.Slug = %q; want %q", got, want)
@@ -58,7 +67,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 				t.Errorf("row %q OnReroute = %q; want none", producer.Name, producer.OnReroute)
 			}
 		}
-		if want := []string{"Beam-Describe", "Finalize"}; strings.Join(rows, ",") != strings.Join(want, ",") {
+		if want := []string{"Beam-Up", "Beam-Await", "Parent-Align", "Code-Bouncer", "Code-Burler-Review", "Code-Burler-Fix", "Beam-Describe", "Finalize", "Beam-Down"}; strings.Join(rows, ",") != strings.Join(want, ",") {
 			t.Errorf("recipeRouting() rows = %v; want %v", rows, want)
 		}
 	})
@@ -73,11 +82,14 @@ func TestWire_BeamRecipe(t *testing.T) {
 		if c.env.BeamDescribe.Entry != nil || c.env.BeamDescribe.Slug != "" {
 			t.Errorf("a loom seed filled c.env.BeamDescribe = %+v; want the zero value", c.env.BeamDescribe)
 		}
+		if c.env.Pawl.Down != nil || c.env.Pawl.Slug != "" {
+			t.Errorf("a loom seed filled c.env.Pawl = %+v; want the zero value", c.env.Pawl)
+		}
 	})
 
-	t.Run("the landing deps of a beam run let a large merge land and halt a spent fixer", func(t *testing.T) {
+	t.Run("the landing deps of a pawl run let a large merge land and halt a spent fixer", func(t *testing.T) {
 		t.Parallel()
-		loc := &lyxcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+		loc := hubLocation(t, "pair", ".")
 		runner := &shuttleengine.Runner{}
 		runner.SetPause(pauserecord.Geometry{RecordPath: filepath.Join(t.TempDir(), "pause.json"), Slug: loc.WorktreeName})
 		lock := parentLockDeps(loc, shedrun.SelfRunID, "", "")
@@ -87,10 +99,11 @@ func TestWire_BeamRecipe(t *testing.T) {
 			wantLargeMerge       bool
 			wantConflictReroutes bool
 			wantRerouteSeam      bool
+			wantLandBlockers     bool
 		}{
-			{shedrun.RecipeLoom, false, true, true},
-			{shedrun.RecipeDarn, false, false, true},
-			{shedrun.RecipeBeam, true, false, false},
+			{shedrun.RecipeLoom, false, true, true, false},
+			{shedrun.RecipeDarn, false, false, true, false},
+			{shedrun.RecipePawl, true, false, false, true},
 		}
 		for _, tt := range tests {
 			deps := landingDeps(
@@ -119,18 +132,22 @@ func TestWire_BeamRecipe(t *testing.T) {
 			if (deps.RerouteReviewed != nil) != tt.wantRerouteSeam {
 				t.Errorf("%s: RerouteReviewed set = %v; want %v", tt.recipe, deps.RerouteReviewed != nil, tt.wantRerouteSeam)
 			}
-			if tt.recipe == shedrun.RecipeBeam {
+			if (deps.LandBlockers != nil) != tt.wantLandBlockers {
+				t.Errorf("%s: LandBlockers set = %v; want %v", tt.recipe, deps.LandBlockers != nil, tt.wantLandBlockers)
+			}
+			if tt.recipe == shedrun.RecipePawl {
 				if deps.TraceFailure != nil {
-					t.Error("beam: TraceFailure is set; want nil")
+					t.Error("pawl: TraceFailure is set; want nil")
 				}
 				if deps.PlanDir != "" {
-					t.Errorf("beam: PlanDir = %q; want none", deps.PlanDir)
+					t.Errorf("pawl: PlanDir = %q; want none", deps.PlanDir)
 				}
+				// A pawl run has Parent-Align, so its seam reads the perch's budget from loom.yaml, which the fixture seeds above 0.
 				if off, err := deps.CodeReviewOff(); err != nil || off {
-					t.Errorf("beam: CodeReviewOff() = %v, %v; want false, nil", off, err)
+					t.Errorf("pawl: CodeReviewOff() = %v, %v; want false, nil", off, err)
 				}
 				if !deps.IsTestFile("pkg/widget_test.go") {
-					t.Error("beam: IsTestFile(pkg/widget_test.go) = false; want a test file of any language")
+					t.Error("pawl: IsTestFile(pkg/widget_test.go) = false; want a test file of any language")
 				}
 			}
 		}

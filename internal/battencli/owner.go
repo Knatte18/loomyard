@@ -86,6 +86,8 @@ type OwnedElsewhereError struct {
 	Slug string
 	// Owner is the machine that owns it.
 	Owner string
+	// Subject is the beam or `root` that `lyx adopt` takes to move it.
+	Subject string
 	// text replaces the standard refusal text when set.
 	text string
 }
@@ -97,13 +99,21 @@ func (e *OwnedElsewhereError) Error() string {
 	}
 	return fmt.Sprintf(
 		"battencli: %q is owned by machine %q, so this machine does not start, resume or land it; way forward: run `lyx adopt %s` from this machine's prime, which takes it over and resumes its run, or records the owner when no run exists here, after which `lyx batten run %s` starts it",
-		e.Slug, e.Owner, e.Slug, e.Slug,
+		e.Slug, e.Owner, e.Subject, e.Slug,
 	)
 }
 
-// ownedElsewhereRefusal is the one refusal for a task another machine owns.
-func ownedElsewhereRefusal(slug, owner string) error {
-	return &OwnedElsewhereError{Slug: slug, Owner: owner}
+// ownedElsewhereFor is the one refusal for a run another machine owns, naming the subject `lyx adopt` takes to move it, the slug when subject is empty.
+func ownedElsewhereFor(slug, owner, subject string) error {
+	return &OwnedElsewhereError{Slug: slug, Owner: owner, Subject: subjectOrSlug(subject, slug)}
+}
+
+// subjectOrSlug returns the adopt subject, the slug when the owner reader left it empty.
+func subjectOrSlug(subject, slug string) string {
+	if subject == "" {
+		return slug
+	}
+	return subject
 }
 
 // thisMachine returns this machine's name, refusing when it cannot be read or is empty.
@@ -148,7 +158,11 @@ func (c *battenCLI) refuseStartOwnedElsewhere() error {
 		return fmt.Errorf("battencli: cannot resolve the owner of %q: %w", c.slug, err)
 	}
 	if boardengine.OwnedElsewhere(owner, machine) {
-		return ownedElsewhereRefusal(c.slug, owner)
+		subject, err := owners.AdoptSubject(c.slug, c.owner.ParentOf)
+		if err != nil {
+			return fmt.Errorf("battencli: cannot resolve what adopt takes for %q: %w", c.slug, err)
+		}
+		return ownedElsewhereFor(c.slug, owner, subject)
 	}
 	return nil
 }
@@ -198,7 +212,15 @@ func (c *battenCLI) claimBoardEntry(slug string) error {
 		return fmt.Errorf("battencli: claim the board entry of %q: %w", slug, err)
 	}
 	if owner, lost := write.Lost[slug]; lost {
-		return ownedElsewhereRefusal(slug, owner)
+		owners, err := c.owner.Read()
+		if err != nil {
+			return fmt.Errorf("battencli: cannot read the owner of %q from the board: %w", slug, err)
+		}
+		subject, err := owners.AdoptSubject(slug, c.owner.ParentOf)
+		if err != nil {
+			return fmt.Errorf("battencli: cannot resolve what adopt takes for %q: %w", slug, err)
+		}
+		return ownedElsewhereFor(slug, owner, subject)
 	}
 	return nil
 }
@@ -238,39 +260,6 @@ func (c *battenCLI) preflightRunOwner() error {
 	return c.ownerPreflight(found, status)
 }
 
-// resumeOwnerClaim records this machine as the owner of a run-held entry that has none, before the run resumes.
-// An entry already owned, done, absent or not run-held is left alone.
-// An unreachable origin, a refused push and a lost write each refuse the resume.
-func (c *battenCLI) resumeOwnerClaim() error {
-	if c.owner.Machine == nil {
-		return nil
-	}
-	owners, err := c.owner.Read()
-	if err != nil {
-		logger.Warn("battencli: local board unreadable, resuming without recording the owner", "slug", c.slug, "cause", err)
-		return nil
-	}
-	entry, held := owners.Entries[c.slug]
-	if !held || !entry.IsTask || entry.Done || !entry.RunHeld || entry.Owner != "" {
-		return nil
-	}
-	machine, err := c.thisMachine()
-	if err != nil {
-		return err
-	}
-	write, err := c.owner.Set(boardengine.OwnerRequest{Machine: machine, Slugs: []string{c.slug}})
-	if err != nil {
-		if errors.Is(err, boardengine.ErrOwnerOriginUnreachable) {
-			return fmt.Errorf("battencli: a resume records this machine as the task's owner, which needs origin (%w); re-run `lyx batten run %s` once origin answers", err, c.slug)
-		}
-		return fmt.Errorf("battencli: cannot record this machine as the owner of %q: %w; re-run `lyx batten run %s`", c.slug, err, c.slug)
-	}
-	if owner, lost := write.Lost[c.slug]; lost {
-		return ownedElsewhereRefusal(c.slug, owner)
-	}
-	return nil
-}
-
 // refuseResumeUnreachable judges a resume whose reconcile could not reach origin against the local Bolt.
 // A task the local board shows owned elsewhere refuses; a task owned here, run-held with no owner or unjudgeable resumes with the Warn the caller logged, and no owner write.
 func (c *battenCLI) refuseResumeUnreachable() error {
@@ -292,10 +281,16 @@ func (c *battenCLI) refuseResumeUnreachable() error {
 		return nil
 	}
 	if boardengine.OwnedElsewhere(owner, machine) {
+		subject, err := owners.AdoptSubject(c.slug, c.owner.ParentOf)
+		if err != nil {
+			logger.Warn("battencli: local adopt subject unresolvable, naming the slug", "slug", c.slug, "cause", err)
+			subject = c.slug
+		}
 		return &OwnedElsewhereError{
-			Slug:  c.slug,
-			Owner: owner,
-			text:  fmt.Sprintf("battencli: the local board shows %q owned by %q; re-run `lyx batten run %s` once origin answers", c.slug, owner, c.slug),
+			Slug:    c.slug,
+			Owner:   owner,
+			Subject: subject,
+			text:    fmt.Sprintf("battencli: the local board shows %q owned by %q; re-run `lyx batten run %s` once origin answers, or run `lyx adopt %s` from this machine's prime to take it over", c.slug, owner, c.slug, subject),
 		}
 	}
 	return nil

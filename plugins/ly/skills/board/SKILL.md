@@ -20,7 +20,7 @@ Every entry carries a `kind`:
 - `note`: an idea or observation that is not yet a task, one note per entry.
 - `project`: a group of entries, with the handle letter `P`.
   A task or note joins one through its `project` field, naming the project's slug, and a project lists the order of its members in `order`.
-  A project's `beam` field marks it a beam, a long-lived pair that spawns its members from its own worktree; it is set only by `lyx beam create` and `lyx beam promote`, never by a board write.
+  A project's `beam` field marks it a beam, a long-lived pair that spawns its members from its own worktree; it is set only by `lyx beam create`, never by a board write.
   `lyx board list` and `lyx board get` carry an entry's `parent_beam`: the slug of the nearest beam above it, empty when the prime is its parent.
 
 A new entry without `kind` lands as a note, so claimable work must pass `kind: "task"`.
@@ -132,7 +132,7 @@ An entry whose status reads `<state> · <producer>`, such as `running · Webster
 A claimed entry takes no scope edits: a write that changes anything but its status, or removes it, is refused.
 Record a new finding as a note of its own with `lyx board upsert` and `"kind":"note"`.
 The refusal names the way to unlock an abandoned run's entry.
-A claimed entry's owner machine changes only through `lyx adopt`; an upsert naming another owner is refused.
+Owners sit on root and beam projects: a task's owner is its beam's or root's, and it moves only through `lyx adopt <beam>` or `lyx adopt root`; an upsert naming another owner is refused.
 
 ## Tasks from a run session
 

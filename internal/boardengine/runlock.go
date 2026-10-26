@@ -37,6 +37,23 @@ func RunStatusProducer(status *string) (string, bool) {
 	return producer, true
 }
 
+// holdFreeProducers are the producer rows at which a beam project's run holds nothing of its entry: batten's claim row and the pawl run's first two rows.
+// A halt at any of them holds nothing either, since the hold is judged from the producer half of the status alone.
+var holdFreeProducers = []string{"Worktree-Create", "Beam-Up", "Beam-Await"}
+
+// RunHolds reports whether the run behind task's status holds the entry: whether the entry's members may not join, fork from or run inside it, and its scope fields take no edit.
+// It is true for every entry whose status IsRunStatus accepts, except a beam project whose producer half is one of the hold-free rows.
+// The pawl run stands at those rows from Worktree-Create through Beam-Await, and holds its beam from Parent-Align on.
+// The readers that ask whether a run is in flight, rather than whether it holds its entry, use IsRunStatus.
+// `battenrecipe`'s claim row and the pawl recipe's rows are pinned against the hold-free names by the recipe's own test, since this package imports no recipe package.
+func RunHolds(task Task) bool {
+	producer, ok := RunStatusProducer(task.Status)
+	if !ok {
+		return false
+	}
+	return !(task.Kind == KindProject && task.Beam && slices.Contains(holdFreeProducers, producer))
+}
+
 // ErrRunLocked matches, through errors.Is, a write refused because it would change the scope of an entry a run holds.
 var ErrRunLocked = errors.New("board entry is held by a run")
 
@@ -61,8 +78,27 @@ func (e *RunLockedError) Is(target error) bool {
 	return target == ErrRunLocked
 }
 
-// checkRunLocks judges each run-held entry of loaded by its net change to after.
-// It refuses when the entry is absent from after, or when any field but Status differs; Unknown is never compared, since this binary cannot change a kept key.
+// BeamRunLockedError is the refusal of a write that removes a beam project whose run holds nothing of it, or changes its project, kind, recipe or beam.
+type BeamRunLockedError struct {
+	Slug   string
+	Status string
+}
+
+// Error names the entry, its status and the batten cancel that ends the run first.
+func (e *BeamRunLockedError) Error() string {
+	return fmt.Sprintf("beam project %q has a run (status %q) and cannot be removed, or have its project, kind, recipe or beam changed, while it stands: "+
+		"end the run first with `lyx batten cancel %s` from the hub's prime worktree",
+		e.Slug, e.Status, e.Slug)
+}
+
+// Is matches ErrRunLocked.
+func (e *BeamRunLockedError) Is(target error) bool {
+	return target == ErrRunLocked
+}
+
+// checkRunLocks judges each run-status entry of loaded by its net change to after.
+// An entry RunHolds accepts is refused when it is absent from after, or when any field but Status differs; Unknown is never compared, since this binary cannot change a kept key.
+// A beam project whose run holds nothing is refused only when it is absent from after, or its project, kind, recipe or beam differs, with a BeamRunLockedError.
 // A dependency on a done entry that the same write removes does not count as a change, so prune passes.
 // It returns the first refusal in loaded order.
 func checkRunLocks(loaded, after []Task) error {
@@ -77,8 +113,14 @@ func checkRunLocks(loaded, after []Task) error {
 			continue
 		}
 		now, kept := afterBySlug[before.Slug]
-		if !kept || scopeChanged(before, now, removedDone) {
-			return &RunLockedError{Slug: before.Slug, Status: *before.Status}
+		if RunHolds(before) {
+			if !kept || scopeChanged(before, now, removedDone) {
+				return &RunLockedError{Slug: before.Slug, Status: *before.Status}
+			}
+			continue
+		}
+		if !kept || before.Project != now.Project || before.Kind != now.Kind || before.Recipe != now.Recipe || before.Beam != now.Beam {
+			return &BeamRunLockedError{Slug: before.Slug, Status: *before.Status}
 		}
 	}
 	return nil

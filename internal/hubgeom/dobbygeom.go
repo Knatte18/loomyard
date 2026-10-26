@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
 	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -60,9 +61,20 @@ func DobbyGeometry(prime *lyxcwd.Location, worktree string) (dobbyengine.Geometr
 	}, nil
 }
 
+// PawlPaths tells the pawl producers the land request, dobby-stop marker and await marker paths of the beam whose pair is at beam.
+// All three lie directly under the beam worktree's `.lyx/beam/` directory at the worktree's own anchor, where DobbyGeometry puts the dobby's files, so the dobby, `lyx beam land` and Beam-Await read one directory.
+func PawlPaths(beam *lyxcwd.Location) pawlengine.Paths {
+	beamDir := filepath.Join(beam.AnchorPath(), lyxdirs.DotLyxDirName, lyxdirs.BeamDirName)
+	return pawlengine.Paths{
+		LandRequest:     filepath.Join(beamDir, pawlengine.LandRequestFileName),
+		DobbyStopMarker: filepath.Join(beamDir, pawlengine.DobbyStopMarkerName),
+		AwaitMarker:     filepath.Join(beamDir, pawlengine.AwaitMarkerName),
+	}
+}
+
 // DobbyStart fills dobbyengine.StartDeps over the hub of prime.
 // The owners come from the board, the prime owner claim is the one a batten resume makes, and the local beams are the pairs whose origin record carries the beam mark, each with the owner it effectively reads as through ParentOf.
-// An anchor change standing on a worktree's own records worktree or on the prime's reads through fabricengine.MoveInProgress.
+// An anchor change standing on a worktree's own records worktree or on the prime's reads through fabricengine.MoveInProgress, and a landing hold reads from the local board's entry of the worktree.
 func DobbyStart(prime *lyxcwd.Location) dobbyengine.StartDeps {
 	boardDir := fabricengine.BoardDir(prime.HubPath)
 	return dobbyengine.StartDeps{
@@ -90,9 +102,28 @@ func DobbyStart(prime *lyxcwd.Location) dobbyengine.StartDeps {
 			}
 			return "", false, nil
 		},
-		Live:  dobbyengine.Live,
-		Spawn: dobbyengine.SpawnDetached,
+		LandingHeld: func(worktree string) (bool, error) { return LandingHeld(prime, worktree) },
+		Live:        dobbyengine.Live,
+		Spawn:       dobbyengine.SpawnDetached,
 	}
+}
+
+// LandingHeld reports whether the board entry of the worktree named worktree is held by its run's landing hold, read from the local board.
+// The prime is never held, and a worktree with no board entry reads as not held.
+func LandingHeld(prime *lyxcwd.Location, worktree string) (bool, error) {
+	if worktree == prime.WorktreeName {
+		return false, nil
+	}
+	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
+	if err != nil {
+		return false, fmt.Errorf("hubgeom: read the board: %w", err)
+	}
+	for _, task := range tasks {
+		if task.Slug == worktree {
+			return boardengine.RunHolds(task), nil
+		}
+	}
+	return false, nil
 }
 
 // moveGateSlugs returns the worktrees whose anchor change stops the dobby of worktree: worktree itself, then the prime, once when they are the same.

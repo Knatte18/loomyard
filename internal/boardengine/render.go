@@ -220,6 +220,21 @@ type readmeTable struct {
 	priority bool
 }
 
+// readmeOwners returns the effective owner of each rendered entry by slug.
+// A parent resolves through ParentBeam over the rendered entries, and primeOwner is the root's.
+func readmeOwners(ordered []TaskWithLayer, primeOwner string) func(slug string) string {
+	tasks := make([]Task, len(ordered))
+	for i, twl := range ordered {
+		tasks[i] = twl.Task
+	}
+	owners := ownersOf(primeOwner, tasks)
+	parentOf := func(slug string) (string, error) { return ParentBeam(tasks, slug), nil }
+	return func(slug string) string {
+		owner, _ := owners.Effective(slug, parentOf)
+		return owner
+	}
+}
+
 // renderReadme builds the README: a title, the render time and prime owner, an intro, Projects when one is open, Tasks split into Running, Ready, dependency layers and Independent, Notes split by type label, then Done when any entry is done.
 func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, types []string, now time.Time) string {
 	lines := []string{
@@ -287,8 +302,9 @@ func renderReadme(ordered []TaskWithLayer, primeOwner, designPrefix string, type
 	}
 	if running := byLayer(runningLayer); len(running) > 0 {
 		lines = append(lines, countedHeading("###", runningSection.name, len(running)), "", runningSection.meaning, "")
+		ownerOf := readmeOwners(ordered, primeOwner)
 		writeTable(running, readmeTable{columns: []string{columnTask, columnRecipe, columnAt, columnOwner}, cells: func(t Task) []string {
-			return []string{entryCell(t), recipeCell(t), atCell(*t.Status), cellText(t.OwnerMachine)}
+			return []string{entryCell(t), recipeCell(t), atCell(*t.Status), cellText(ownerOf(t.Slug))}
 		}})
 	}
 	ready := byLayer(readyLayer)
@@ -364,6 +380,7 @@ func renderProjects(ordered []TaskWithLayer, finished map[string]bool, primeOwne
 		return nil
 	}
 
+	ownerOf := readmeOwners(ordered, primeOwner)
 	lines := []string{countedHeading("##", projectsSection.name, len(projects)), "", projectsSection.meaning, ""}
 	for _, project := range projects {
 		lines = append(lines, "### "+cellText(project.Handle)+" "+cellText(project.Title), "")
@@ -373,11 +390,7 @@ func renderProjects(ordered []TaskWithLayer, finished map[string]bool, primeOwne
 		if !project.Beam {
 			lines = append(lines, projectGroupingText, "")
 		} else {
-			owner := project.OwnerMachine
-			if owner == "" {
-				owner = primeOwner
-			}
-			lines = append(lines, projectBeamText, "", "Owner: "+primeOwnerText(owner)+".", "")
+			lines = append(lines, projectBeamText, "", "Owner: "+primeOwnerText(ownerOf(project.Slug))+".", "")
 		}
 
 		members := projectMembers(ordered, project.Task)

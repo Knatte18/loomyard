@@ -132,7 +132,7 @@ func (p *innerRunProducer) binaryRestep(ctx context.Context, w *childWait) *wait
 			return hardEnd(cerr)
 		}
 		if owner, owned := spawnOwnedElsewhere(spawnErr); owned {
-			p.ownedElsewhere(ctx, w, owner)
+			p.ownedElsewhere(ctx, w, owner, "")
 			return nil
 		}
 		p.restep.attempts++

@@ -62,7 +62,15 @@ func (d *daemon) noticeOwnedElsewhere(ctx context.Context, slug string) bool {
 	if err != nil || owner == "" {
 		owner = "another machine"
 	}
-	line := fmt.Sprintf("%s: owned by %s, so it is paused here; way forward: run lyx adopt %s on this machine to take it over, or on the owner's machine to continue it there", slug, owner, slug)
+	subject := slug
+	if d.deps.AdoptSubject != nil {
+		if found, err := d.deps.AdoptSubject(slug); err != nil {
+			logger.Warn("dobbyengine: the adopt subject could not be read; the notice names the slug", "slug", slug, "error", err)
+		} else if found != "" {
+			subject = found
+		}
+	}
+	line := fmt.Sprintf("%s: owned by %s, so it is paused here; way forward: run lyx adopt %s on this machine to take it over, or on the owner's machine to continue it there", slug, owner, subject)
 	if err := d.deps.Notice(ctx, line); err != nil {
 		logger.Warn("dobbyengine: the owned-elsewhere notice did not go out", "slug", slug, "error", err)
 		return false

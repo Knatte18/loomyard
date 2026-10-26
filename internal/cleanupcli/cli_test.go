@@ -89,7 +89,7 @@ func TestPrimeSegments(t *testing.T) {
 		}
 	}
 
-	// A cycle in flight keeps every handoff, as `lyx orch cleanup` does.
+	// A cycle in flight keeps every handoff.
 	paths := orchcli.PrimePaths(location)
 	if err := orchengine.SaveState(paths, orchengine.State{Phase: orchengine.PhaseClearing, LastHandoff: "new.md"}); err != nil {
 		t.Fatalf("SaveState: %v", err)

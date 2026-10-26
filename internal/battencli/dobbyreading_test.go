@@ -1,6 +1,6 @@
 //go:build tier0
 
-// dobbyreading_test.go pins what the pass wiring reads from the parent worktree's dobby: its pid, its recorded sleeps and the shared awake clock.
+// dobbyreading_test.go pins what the pass wiring reads from the parent worktree's dobby: its pid, its recorded sleeps and the shared awake clock, and which runs take no slot.
 
 package battencli
 
@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -114,5 +115,34 @@ func TestDobbyTasks_ReadsDependenciesAndParentOfAReleasedTask(t *testing.T) {
 	}
 	if draft := bySlug["open-dep"]; draft.Parent != "" {
 		t.Errorf("DobbyTasks() draft Parent = %q; want none read for a task with a status", draft.Parent)
+	}
+}
+
+func TestRunTakesNoSlot(t *testing.T) {
+	t.Parallel()
+
+	status := func(producer string) *string {
+		value := boardengine.RunStatus("running", producer)
+		return &value
+	}
+	tests := []struct {
+		name string
+		task boardengine.Task
+		want bool
+	}{
+		{"BeamProjectAtBeamAwait", boardengine.Task{Kind: boardengine.KindProject, Beam: true, Status: status("Beam-Await")}, true},
+		{"BeamProjectAtWorktreeCreate", boardengine.Task{Kind: boardengine.KindProject, Beam: true, Status: status("Worktree-Create")}, true},
+		{"BeamProjectAtParentAlign", boardengine.Task{Kind: boardengine.KindProject, Beam: true, Status: status("Parent-Align")}, false},
+		{"BeamProjectWithNoRunStatus", boardengine.Task{Kind: boardengine.KindProject, Beam: true}, false},
+		{"TaskAtBeamAwait", boardengine.Task{Kind: boardengine.KindTask, Status: status("Beam-Await")}, false},
+		{"TaskWithNoRunStatus", boardengine.Task{Kind: boardengine.KindTask}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := runTakesNoSlot(tt.task); got != tt.want {
+				t.Errorf("runTakesNoSlot(%+v) = %v; want %v", tt.task, got, tt.want)
+			}
+		})
 	}
 }

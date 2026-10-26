@@ -1,18 +1,25 @@
-// deps.go fills the verbs' deps over a real hub: the board reads and the owner write, the pair add, mark and records reset, the pair's push, the run's end and clear, the workspace regeneration and the dobby start.
+// deps.go fills the verbs' deps over a real hub: the board reads and the owner write, the batten run's status and first pass, and the landing's refusal and land request.
 
 package beamcli
 
 import (
-	"context"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // hubCreateDeps fills createDeps over the hub the prime belongs to.
@@ -25,6 +32,7 @@ func hubCreateDeps(prime *lyxcwd.Location) (createDeps, error) {
 	boardDir := fabricengine.BoardDir(prime.HubPath)
 
 	return createDeps{
+		PrimeName:  prime.WorktreeName,
 		Machine:    machinename.Name,
 		ReadOwners: func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
 		ParentOf: func(slug string) (string, error) {
@@ -44,118 +52,81 @@ func hubCreateDeps(prime *lyxcwd.Location) (createDeps, error) {
 		SetOwners: func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
 			return boardengine.SetOwners(boardDir, req)
 		},
-		AddPair: func(slug string, opts fabricengine.AddOptions) (fabricengine.AddResult, error) {
-			return topology.Add(prime, slug, opts)
-		},
-		EnsureAnchor: func(rec *fabricengine.Mutations, slug, anchor string) error {
-			pair, err := lyxcwd.NamedWorktree(prime.HubPath, slug)
-			if err != nil {
-				return err
+		RunStatus: func(slug string) (shedengine.State, bool, error) {
+			status, found, err := state.ReadJSONNoMkdir[shedengine.Status](battencli.StatusFile(prime, slug), shedrun.StatusLock(prime, slug))
+			if errors.Is(err, fs.ErrNotExist) {
+				return "", false, nil
 			}
-			return topology.EnsureAnchor(rec, pair, anchor)
+			return status.State, found, err
 		},
-		MarkBeam: func(rec *fabricengine.Mutations, slug string) (bool, error) {
-			return fabricengine.MarkBeam(rec, prime, slug)
-		},
-		SpawnPush: func(slug string) error {
-			return spawnPairPush(prime, slug)
-		},
-		RegenerateWorkspace: func(rec *fabricengine.Mutations) (string, error) {
-			return fabricengine.RegenerateHubWorkspace(rec, prime)
+		StartRun: func(slug, anchor string) (map[string]any, error) {
+			return battencli.StartFirstPass(prime, slug, battencli.FirstPassOptions{Anchor: anchor})
 		},
 		WorktreePath: func(slug string) string { return fabricengine.WorktreePath(prime, slug) },
-		StartDobby:   func(slug string) (bool, error) { return startBeamDobby(prime, slug) },
-		HubPath:      prime.HubPath,
-	}, nil
-}
-
-// startBeamDobby starts the dobby of the beam slug unless it is live already, and reports whether it started one.
-func startBeamDobby(prime *lyxcwd.Location, slug string) (bool, error) {
-	geom, err := hubgeom.DobbyGeometry(prime, slug)
-	if err != nil {
-		return false, err
-	}
-	live, err := dobbyengine.Live(geom)
-	if err != nil || live {
-		return false, err
-	}
-	if err := dobbyengine.SpawnDetached(geom); err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-// hubPromoteDeps fills promoteDeps over the hub the prime belongs to.
-func hubPromoteDeps(prime *lyxcwd.Location) (promoteDeps, error) {
-	create, err := hubCreateDeps(prime)
-	if err != nil {
-		return promoteDeps{}, err
-	}
-	return promoteDeps{
-		createDeps: create,
-		ReadTasks: func() ([]boardengine.Task, error) {
-			return boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
-		},
-		OriginRecord: func(slug string) (fabricengine.Origin, bool, error) {
-			return fabricengine.ReadOriginFor(prime, slug)
-		},
-		EndRun: func(ctx context.Context, slug string) error {
-			return battencli.EndRunForPromote(ctx, prime, slug)
-		},
-		ClearRun: func(ctx context.Context, slug string) error {
-			return battencli.ClearRunForPromote(ctx, prime, slug)
-		},
-		ResetRecords: func(rec *fabricengine.Mutations, slug string) (fabricengine.ResetRecordsResult, error) {
-			return fabricengine.ResetRecordsToParent(rec, prime, slug)
-		},
-		Anchors: func(slug string) (string, string, error) {
-			return fabricengine.ParentRecordsAnchor(prime, slug)
-		},
 	}, nil
 }
 
 // hubLandDeps fills landDeps over the hub the prime belongs to.
-func hubLandDeps(prime *lyxcwd.Location) (landDeps, error) {
-	primeName, err := fabricengine.PrimeName(prime)
-	if err != nil {
-		return landDeps{}, err
+func hubLandDeps(prime *lyxcwd.Location) landDeps {
+	beamOf := func(slug string) (*lyxcwd.Location, error) {
+		return lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
 	}
 	return landDeps{
+		Machine: machinename.Name,
 		ReadOwners: func() (boardengine.Owners, error) {
 			return boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
+		},
+		ParentOf: func(slug string) (string, error) {
+			return hubgeom.ParentOf(prime, slug)
 		},
 		PairPresent: func(slug string) bool { return pairWorktreePresent(prime, slug) },
 		OriginRecord: func(slug string) (fabricengine.Origin, bool, error) {
 			return fabricengine.ReadOriginFor(prime, slug)
 		},
-		ParentWorktree: func(slug string) (string, error) {
-			origin, found, err := fabricengine.ReadOriginFor(prime, slug)
+		ChildStatus: func(slug string) (shedengine.Status, bool, error) {
+			beam, err := beamOf(slug)
+			if err != nil {
+				return shedengine.Status{}, false, err
+			}
+			statusPath := shedrun.StatusFile(beam, shedrun.SelfRunID)
+			if _, err := os.Stat(statusPath); errors.Is(err, fs.ErrNotExist) {
+				return shedengine.Status{}, false, nil
+			}
+			lockPath := shedrun.StatusLock(beam, shedrun.SelfRunID)
+			if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+				return shedengine.Status{}, false, err
+			}
+			return state.ReadJSONNoMkdir[shedengine.Status](statusPath, lockPath)
+		},
+		RunID: func(slug string) (string, error) {
+			beam, err := beamOf(slug)
 			if err != nil {
 				return "", err
 			}
-			if found && origin.ParentWorktree != "" {
-				return origin.ParentWorktree, nil
+			seed, found, err := shedrun.ReadSeed(beam, shedrun.SelfRunID)
+			switch {
+			case err != nil:
+				return "", err
+			case !found || seed.StartedAt == "":
+				return "", fmt.Errorf("the pawl run of %s has no seed start time", slug)
 			}
-			return primeName, nil
+			return seed.StartedAt, nil
 		},
 		Refusal: func(slug string) error { return battencli.BeamLandRefusal(prime, slug) },
-		StartLanding: func(slug string) (map[string]any, error) {
-			return battencli.StartFirstPass(prime, slug)
+		WriteRequest: func(slug string, req pawlengine.LandRequest) (string, error) {
+			beam, err := beamOf(slug)
+			if err != nil {
+				return "", err
+			}
+			paths := hubgeom.PawlPaths(beam)
+			return paths.LandRequest, pawlengine.WriteLandRequest(paths, req)
 		},
-	}, nil
+		Now: time.Now,
+	}
 }
 
 // pairWorktreePresent reports whether this machine holds the worktree of slug's pair.
 func pairWorktreePresent(prime *lyxcwd.Location, slug string) bool {
 	info, err := os.Stat(fabricengine.WorktreePath(prime, slug))
 	return err == nil && info.IsDir()
-}
-
-// spawnPairPush launches the detached push of slug's pair, resolved from the prime's hub.
-func spawnPairPush(prime *lyxcwd.Location, slug string) error {
-	pair, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, slug))
-	if err != nil {
-		return err
-	}
-	return fabricengine.SpawnPairPush(pair)
 }

@@ -54,7 +54,7 @@ func beamDescribeDeps(location *lyxcwd.Location, slug, parentBranch string) land
 // beamCommitSubjects lists the subjects of the commits the beam at location adds over its merge base with parentBranch, oldest first, merge commits left out.
 func beamCommitSubjects(location *lyxcwd.Location, parentBranch string) ([]string, error) {
 	if parentBranch == "" {
-		return nil, errors.New("the beam's pair records no parent branch to measure its commits from; way forward: make the beam through \"lyx beam create\" or \"lyx beam promote\", which record its parent branch")
+		return nil, errors.New("the beam's pair records no parent branch to measure its commits from; way forward: make the beam through \"lyx beam create\", which records its parent branch")
 	}
 	repo := gitrepo.New(location.WorktreePath())
 	head, err := repo.CurrentSHA()

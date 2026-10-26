@@ -75,6 +75,7 @@ func legacyTypeLabels(typ *string) []string {
 // migrateEntries converts every entry to the kind-and-labels shape.
 // An entry with kind keeps its fields, an entry with tier migrates, and an entry with neither loads as a note with no labels.
 // Every task loses its priority, since only a note carries one.
+// Every entry but a beam project loses its recorded owner.
 // A migrated task's dependency on an entry that migrated to a note is dropped, since a task may depend only on a task.
 // vocab may be nil, as in store-level tests.
 func migrateEntries(entries []storedEntry, vocab *Vocabulary) []Task {
@@ -97,6 +98,10 @@ func migrateEntries(entries []storedEntry, vocab *Vocabulary) []Task {
 		}
 	}
 	for i := range out {
+		// Only a beam project records an owner, so the key a task or grouping project carried from an older machine is dropped here and leaves board.json at the next write.
+		if out[i].Kind != KindProject || !out[i].Beam {
+			out[i].OwnerMachine = ""
+		}
 		if out[i].Kind != KindTask {
 			continue
 		}

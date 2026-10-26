@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -217,6 +218,9 @@ type Env struct {
 	// BeamDescribe is a whole-struct passthrough to landingshed.NewBeamDescribe, following Env.Landing's precedent, read by the BeamDescribe entry only.
 	// Every field of it is required.
 	BeamDescribe landingshed.BeamDescribeDeps
+	// Pawl is a whole-struct passthrough to the pawl producers' constructors, read by the BeamUp, BeamAwait and BeamDown entries only.
+	// Each entry requires the fields its producer uses, and Watch alone may be nil.
+	Pawl pawlengine.Deps
 	// PlanTable is the injected shedadapters.TableSource the PlanWrite entry evaluates once per Call.
 	// It arrives as a closure rather than as recipe Config because building the table needs a *lyxcwd.Location, which the Shed Recipe Registry Invariant bars this package from importing directly; internal/loomcli's wire() is what supplies it.
 	// It is named per-producer, like DiscussionTable, because Env already carries per-producer named fields.

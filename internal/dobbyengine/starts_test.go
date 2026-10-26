@@ -199,6 +199,32 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 		}
 	})
 
+	t.Run("a pawl run takes no slot until its landing hold stands", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name      string
+			noSlot    bool
+			wantStart int
+		}{
+			{"WithoutItsHoldItLeavesTheSlotFree", true, 1},
+			{"WithItsHoldItFillsTheSlot", false, 0},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				pawl := runningRun("pawl")
+				pawl.NoSlot = tt.noSlot
+				h := newPassHarness(t, pawl)
+				h.fake.maxRuns = 1
+				h.fake.tasks = []TaskView{readyTask("a")}
+				h.tick(false)
+				if got := len(h.fake.spawnsOf("a")); got != tt.wantStart {
+					t.Errorf("passes of the ready task = %d; want %d", got, tt.wantStart)
+				}
+			})
+		}
+	})
+
 	t.Run("done runs take no slot, get no pass and leave the state record", func(t *testing.T) {
 		t.Parallel()
 		done := func(slug string) RunView {

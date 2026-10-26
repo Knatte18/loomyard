@@ -122,6 +122,7 @@ func readDobbyRunStatus(path string) (shedengine.Status, bool, error) {
 }
 
 // DobbyRuns builds the RunView of every batten run whose parent worktree is geom's, with the pause coverage read from the record at pauseRecord.
+// A run's slot reading comes from its board entry on the local board at geom.BoardDir, which runTakesNoSlot judges.
 func DobbyRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents, pauseRecord string) ([]dobbyengine.RunView, error) {
 	runs, err := dobbyParentRuns(prime, geom, parents)
 	if err != nil {
@@ -130,6 +131,14 @@ func DobbyRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 	record, err := pauserecord.Read(pauseRecord)
 	if err != nil {
 		return nil, err
+	}
+	entries, err := boardengine.ReadTasks(geom.BoardDir)
+	if err != nil {
+		return nil, fmt.Errorf("read the board: %w", err)
+	}
+	entryOf := make(map[string]boardengine.Task, len(entries))
+	for _, entry := range entries {
+		entryOf[entry.Slug] = entry
 	}
 	now := time.Now()
 	views := make([]dobbyengine.RunView, 0, len(runs))
@@ -140,6 +149,7 @@ func DobbyRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 			State:    string(run.status.State),
 			Producer: run.status.CurrentProducer,
 			Covered:  record.CoverageOf(slug, now).Covered,
+			NoSlot:   runTakesNoSlot(entryOf[slug]),
 		}
 		pair, err := lyxcwd.NamedWorktree(prime.HubPath, slug)
 		if err != nil {
@@ -163,6 +173,12 @@ func DobbyRuns(prime *lyxcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 		views = append(views, view)
 	}
 	return views, nil
+}
+
+// runTakesNoSlot reports whether the run behind task takes no slot under its dobby's max_runs: a beam project whose status is a run status and whose run does not hold the beam.
+// A pawl run stands at Worktree-Create, Beam-Up and Beam-Await with no hold, waiting on its members, and takes a slot from Parent-Align on.
+func runTakesNoSlot(task boardengine.Task) bool {
+	return task.Kind == boardengine.KindProject && task.Beam && boardengine.IsRunStatus(task.Status) && !boardengine.RunHolds(task)
 }
 
 // modTimeOf returns the modification time of path, the zero time when it does not exist.

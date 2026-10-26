@@ -1,13 +1,15 @@
 # PATTERN-owner-machine
 
-Starting, resuming or landing a run, bar the rest of a Finalize already past its parent-side merge, or acting on an entry after a wake: only on a machine that does not read the entry as owned by another, where a run-held entry with no owner recorded, and every entry of a hub with no prime owner recorded, reads as owned by no other machine, and any other entry with no owner recorded reads as owned by its parent's owner; its owner written only by `boardengine`'s owner setter; the owner verdict that gates a resume, a wake or a landing judged against origin inside `ReconcileOrigin`, a start's read from the Bolt it just pulled, the re-read after an owner write's push from the Bolt it just pushed, the landing's parent-owner read from the Bolt its reconcile left, and a resume with origin unreachable reading the local Bolt; this machine's name only from `internal/machinename`.
+Starting, resuming or landing a run, bar the rest of a Finalize already past its parent-side merge, or acting on an entry after a wake: only on a machine that does not read the entry as owned by another, where owners sit only on the root project and on beam projects, a beam project with no owner recorded reads as owned by its parent's owner, every other entry reads as owned by its parent's owner, and the root of a hub with no prime owner recorded reads as owned by no other machine; its owner written only by `boardengine`'s owner setter; the owner verdict that gates a resume, a wake or a landing judged against origin inside `ReconcileOrigin`, a start's read from the Bolt it just pulled, the re-read after an owner write's push from the Bolt it just pushed, the landing's parent-owner read from the Bolt its reconcile left, and a resume with origin unreachable reading the local Bolt; this machine's name only from `internal/machinename`.
 
 - A start, a resume, a claim and a landing proceed only when the entry does not read as owned by another machine.
 - The rest of a Finalize already past its parent-side merge finishes on either machine, so a landing in flight is never stranded.
-- An entry's owner is recorded per task as `owner_machine` and for the prime as `prime_owner`; both are written only by `boardengine`'s owner setter, which takes an entry another machine owns only when `lyx adopt` asks for it.
-- An entry with no owner recorded reads by its state: a run-held entry, and every entry of a hub with no prime owner recorded, as owned by no other machine, and any other as owned by its parent's owner.
+- An owner is recorded for a beam project as `owner_machine` and for the root as `prime_owner`; both are written only by `boardengine`'s owner setter, which takes a project another machine owns only when `lyx adopt` asks for it.
+  A task and a grouping project record none, and a load drops the key an older machine recorded on one.
+- Every other entry reads the owner of its parent, and a beam project with no owner recorded does too; the root of a hub with no prime owner recorded reads as owned by no other machine.
+  A run status on an entry does not change whose owner it reads.
   The parent comes through `hubgeom.ParentOf` alone, the one resolver every owner reader is handed, which reads the entry's origin record and, with none, the local board's beam chain.
-- Adopting a beam moves the beam only: a member with no owner recorded reads its beam's owner through that one resolver.
+- Adopting a beam moves the beam only: a member reads its beam's owner through that one resolver.
 - The verdict that gates a resume, a wake or a landing is judged against origin inside `ReconcileOrigin`.
   A start reads it from the Bolt it just pulled, the re-read after an owner write's push reads the Bolt it just pushed, and the landing's parent-owner read uses the Bolt its reconcile left.
   A resume with origin unreachable reads the local Bolt.

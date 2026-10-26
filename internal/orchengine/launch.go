@@ -1,11 +1,9 @@
-// launch.go holds the two judgments `lyx orch start` makes: which branch to take, and which prompt to launch the session with.
-// Both are pure so the verb is assembly over them.
+// launch.go holds the two judgments `orchcli.BeamUp` makes: which branch to take, and which prompt to launch a fresh session with.
+// Both are pure so the start is assembly over them.
 
 package orchengine
 
-import "fmt"
-
-// StartAction is the branch `start` takes.
+// StartAction is the branch the bring-up of `lyx beam start` takes.
 type StartAction int
 
 const (
@@ -14,16 +12,16 @@ const (
 	StartAlreadyRunning StartAction = iota
 	// StartSpawnWatcher: strand is live but no watcher holds it; spawn one.
 	StartSpawnWatcher
-	// StartRelaunch: strand is dead or absent; launch a fresh session and a watcher for it.
+	// StartRelaunch: strand is dead or absent; launch a session and a watcher for it.
 	StartRelaunch
 )
 
-// Start-prompt sources, reported on start's envelope and log line.
+// Start-prompt sources, reported on a start's report and log line.
 const (
-	SourceFlag        = "flag"
 	SourceLastHandoff = "last-handoff"
 	SourceFresh       = "fresh"
-	SourceAdopt       = "adopt"
+	// SourceResume names a launch that resumed the session State.SessionID records.
+	SourceResume = "resume"
 )
 
 // DecideStart maps the strand and watcher liveness pair onto a StartAction.
@@ -39,18 +37,10 @@ func DecideStart(strandLive, watcherLive bool) StartAction {
 	}
 }
 
-// ChooseStartPrompt picks the launch prompt: the resume stencil pointed at handoffFlag, else at s.LastHandoff when it exists, else the start stencil.
-// A handoffFlag naming a missing file is an error, since a silent fallback would resume from the wrong context.
+// ChooseStartPrompt picks the fresh-launch prompt: the resume stencil pointed at s.LastHandoff when it exists, else the start stencil.
 // Only LastHandoff is consulted, never PendingHandoff, so a partial handoff an aborted cycle left is never chosen.
 // Every prompt is a one-line pointer at rolePath, the role file the caller has rendered.
-func ChooseStartPrompt(stencilsDir, rolePath, handoffFlag string, s State, exists func(string) bool) (prompt, source string, err error) {
-	if handoffFlag != "" {
-		if !exists(handoffFlag) {
-			return "", "", fmt.Errorf("orch: --handoff file %q does not exist", handoffFlag)
-		}
-		prompt, err = RenderResumePrompt(stencilsDir, rolePath, handoffFlag)
-		return prompt, SourceFlag, err
-	}
+func ChooseStartPrompt(stencilsDir, rolePath string, s State, exists func(string) bool) (prompt, source string, err error) {
 	if s.LastHandoff != "" && exists(s.LastHandoff) {
 		prompt, err = RenderResumePrompt(stencilsDir, rolePath, s.LastHandoff)
 		return prompt, SourceLastHandoff, err

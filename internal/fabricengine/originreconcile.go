@@ -114,9 +114,9 @@ type OriginSeams struct {
 	OwnerOf             OwnerReader
 }
 
-// OwnerReader answers the owner question over one `board.json` of the hub at hubPath: the effective owner of slug, and whether that owner is another machine.
+// OwnerReader answers the owner question over one `board.json` of the hub at hubPath: the effective owner of slug, the subject `lyx adopt` takes to move it, and whether that owner is another machine.
 // An error, including this machine having no name, is returned to the reconcile asking it, so no owner is ever compared with an empty name.
-type OwnerReader func(hubPath string, boardJSON []byte, slug string) (owner string, elsewhere bool, err error)
+type OwnerReader func(hubPath string, boardJSON []byte, slug string) (owner, subject string, elsewhere bool, err error)
 
 // BranchState is the verdict on one local branch against origin's head for it.
 type BranchState string
@@ -206,19 +206,28 @@ const (
 // An ended entry also carries How origin ended it, "done" or "removed", and Local when this machine holds a part of its pair.
 // Removed is set once the teardown removed that pair, with the Tags it kept work under and the reasons it Kept anything.
 // Error is the message of a teardown that failed for any reason but being busy, leaving the pair for a later `lyx cleanup --apply`.
-// Owner names the machine that owns an owned_elsewhere entry.
+// Owner names the machine that owns an owned_elsewhere entry, and AdoptSubject the beam or `root` that `lyx adopt` takes to move it; an empty AdoptSubject reads as the slug.
 type EntryOutcome struct {
-	Slug       string
-	State      EntryState
-	Owner      string
-	Busy       bool
-	WayForward string
-	How        string
-	Local      bool
-	Removed    bool
-	Tags       []string
-	Kept       []string
-	Error      string
+	Slug         string
+	State        EntryState
+	Owner        string
+	AdoptSubject string
+	Busy         bool
+	WayForward   string
+	How          string
+	Local        bool
+	Removed      bool
+	Tags         []string
+	Kept         []string
+	Error        string
+}
+
+// adoptSubject returns what `lyx adopt` takes to move the entry: its AdoptSubject, the slug when the owner reader left it empty.
+func (e EntryOutcome) adoptSubject() string {
+	if e.AdoptSubject == "" {
+		return e.Slug
+	}
+	return e.AdoptSubject
 }
 
 // OriginReport is what one reconcile did: the verdict on every judged branch and entry, and whether origin could be reached at all.
@@ -263,7 +272,7 @@ func (r OriginReport) Summary() string {
 
 	for _, entry := range r.Entries {
 		if entry.State == EntryOwnedElsewhere {
-			lines = append(lines, fmt.Sprintf("owned elsewhere: %s by %s; `lyx adopt %s` takes it over", entry.Slug, entry.Owner, entry.Slug))
+			lines = append(lines, fmt.Sprintf("owned elsewhere: %s by %s; `lyx adopt %s` takes it over", entry.Slug, entry.Owner, entry.adoptSubject()))
 		}
 	}
 
@@ -348,7 +357,7 @@ func (b BranchOutcome) anchorStopWayForward() string {
 	if b.Slug != "" {
 		return fmt.Sprintf("run `lyx fabric anchor %s --set %s` in %s", b.Slug, b.Anchor, b.CodeWorktree)
 	}
-	return fmt.Sprintf("end every reed session of the hub, the orch's included, with `lyx reed down` in each, and wait until no batten run of the hub is live; then run `lyx fabric anchor --set %s` in %s; then run `lyx orch start` again", b.Anchor, b.CodeWorktree)
+	return fmt.Sprintf("end every reed session of the hub, the orch's included, with `lyx reed down` in each, and wait until no batten run of the hub is live; then run `lyx fabric anchor --set %s` in %s; then run `lyx beam start` again", b.Anchor, b.CodeWorktree)
 }
 
 // dirtyWayForward names where each uncommitted path of a dirty branch is committed or restored.
@@ -730,7 +739,7 @@ func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams
 	if err != nil {
 		return res, err
 	}
-	owners, err := readOriginOwners(l, seams, targets, res.Branches, recorded)
+	owners, subjects, err := readOriginOwners(l, seams, targets, res.Branches, recorded)
 	if err != nil {
 		return res, err
 	}
@@ -755,7 +764,7 @@ func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams
 		}
 	}
 
-	res.Entries = mergeEndedEntries(classifyEntries(scope, recorded, res.Branches, owners), endedEntries)
+	res.Entries = mergeEndedEntries(classifyEntries(scope, recorded, res.Branches, owners, subjects), endedEntries)
 	return res, nil
 }
 
@@ -763,8 +772,8 @@ func ReconcileOrigin(l *lyxcwd.Location, scope ReconcileScope, seams OriginSeams
 // A stop on Bolt or on the prime's records branch stops every entry, a busy one excepted.
 // A busy records branch of the run scope's own pair stops nothing, since the run's own driver holds it.
 // A stopped entry carries the way forward of the branch that stopped it.
-// owners maps the slug of each entry another machine owns to that owner; such an entry reads owned_elsewhere and carries the way forward that takes it over.
-func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchOutcome, owners map[string]string) []EntryOutcome {
+// owners maps the slug of each entry another machine owns to that owner, and subjects maps it to what `lyx adopt` takes to move it; such an entry reads owned_elsewhere and carries the way forward that takes it over, naming its subject, or its slug when the owner reader left none.
+func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchOutcome, owners, subjects map[string]string) []EntryOutcome {
 	d3Stop := false
 	d3WayForward := ""
 	for _, branch := range branches {
@@ -794,7 +803,8 @@ func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchO
 		switch {
 		case state == EntryOwnedElsewhere:
 			entry.Owner = owner
-			wayForward = fmt.Sprintf("`lyx adopt %s` from this machine's prime takes it over", slug)
+			entry.AdoptSubject = subjects[slug]
+			wayForward = fmt.Sprintf("`lyx adopt %s` from this machine's prime takes it over", entry.adoptSubject())
 		case state != EntryStopped:
 			wayForward = ""
 		case wayForward == "":
@@ -807,28 +817,30 @@ func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchO
 }
 
 // readOriginOwners asks seams.OwnerOf, once per slug of slugs, whether another machine owns the entry, over the `board.json` at origin's fetched Bolt tip.
-// It returns the owner of each slug read as owned elsewhere, and nothing for a hub with no Bolt target, no origin head or no OwnerOf seam.
+// It returns the owner and the adopt subject of each slug read as owned elsewhere, and nothing for a hub with no Bolt target, no origin head or no OwnerOf seam.
 // The tip's objects are present even for a judge-only scope, which fetches them by SHA, so a dry run reads owners too and moves nothing.
 // A seam error is returned, so no verdict is ever compared with an empty machine name.
-func readOriginOwners(l *lyxcwd.Location, seams OriginSeams, targets []originTarget, outcomes []BranchOutcome, slugs []string) (map[string]string, error) {
+func readOriginOwners(l *lyxcwd.Location, seams OriginSeams, targets []originTarget, outcomes []BranchOutcome, slugs []string) (owners, subjects map[string]string, err error) {
 	boltIndex := slices.IndexFunc(targets, func(target originTarget) bool { return target.side == failedPushSideBolt })
 	if seams.OwnerOf == nil || len(slugs) == 0 || boltIndex < 0 || outcomes[boltIndex].OriginHead == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	board, err := blobAt(gitrepo.New(targets[boltIndex].worktree), outcomes[boltIndex].OriginHead, boardFileName)
 	if err != nil {
-		return nil, fmt.Errorf("fabricengine: read %s at origin's Bolt tip: %w", boardFileName, err)
+		return nil, nil, fmt.Errorf("fabricengine: read %s at origin's Bolt tip: %w", boardFileName, err)
 	}
 
-	owners := map[string]string{}
+	owners = map[string]string{}
+	subjects = map[string]string{}
 	for _, slug := range slugs {
-		owner, elsewhere, err := seams.OwnerOf(l.HubPath, board, slug)
+		owner, subject, elsewhere, err := seams.OwnerOf(l.HubPath, board, slug)
 		if err != nil {
-			return nil, fmt.Errorf("fabricengine: read the owner of %s: %w", slug, err)
+			return nil, nil, fmt.Errorf("fabricengine: read the owner of %s: %w", slug, err)
 		}
 		if elsewhere {
 			owners[slug] = owner
+			subjects[slug] = subject
 		}
 	}
-	return owners, nil
+	return owners, subjects, nil
 }

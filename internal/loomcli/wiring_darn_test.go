@@ -328,7 +328,7 @@ func TestRecipeRouting(t *testing.T) {
 		{shedrun.RecipeLoom, loomshed.NameParentAlign, loomshed.NameDarnWrite},
 		{"", loomshed.NameParentAlign, loomshed.NameDarnWrite},
 		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NameParentAlign},
-		{shedrun.RecipeBeam, "Beam-Describe", loomshed.NameParentAlign},
+		{shedrun.RecipePawl, "Beam-Describe", loomshed.NameDarnWrite},
 	}
 	for _, tt := range tests {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {
@@ -342,6 +342,9 @@ func TestRecipeRouting(t *testing.T) {
 			rows := map[string]bool{}
 			for _, p := range routing.Producers {
 				rows[p.Name] = true
+				if tt.recipe == shedrun.RecipePawl && p.Name == loomshed.NameCodeBouncer && p.MaxBounces != 3 {
+					t.Errorf("a pawl run's Code-Bouncer MaxBounces = %d; want the Code-Review budget 3", p.MaxBounces)
+				}
 			}
 			if !rows[tt.wantRow] || rows[tt.absent] {
 				t.Errorf("recipeRouting() rows = %v; want %q and not %q", rows, tt.wantRow, tt.absent)
@@ -374,6 +377,26 @@ func TestWriteBoardEntrySnapshot(t *testing.T) {
 			t.Fatalf("read the snapshot: %v", err)
 		}
 		if want := darnengine.BoardEntrySnapshot("one-perch", "One perch", "Merge the perches.", "## Idea\n\nOne perch."); string(got) != string(want) {
+			t.Errorf("snapshot = %q; want %q", got, want)
+		}
+	})
+
+	t.Run("a pawl run's beam project entry is written", func(t *testing.T) {
+		location := &lyxcwd.Location{HubPath: boardkit.HubWithBoardConfig(t), WorktreeName: "a-beam", AnchorRel: "."}
+		// A board write cannot make a beam, so the entry is written to the board file directly.
+		board := `{"version":1,"entries":[{"id":0,"slug":"a-beam","title":"A beam","kind":"project","labels":["bug"],"beam":true,"brief":"Land the members.","body":"## Idea\n\nOne beam."}]}`
+		if err := os.WriteFile(filepath.Join(fabricengine.BoardDir(location.HubPath), "board.json"), []byte(board), 0o644); err != nil {
+			t.Fatalf("write board.json: %v", err)
+		}
+
+		if err := writeBoardEntrySnapshot(location); err != nil {
+			t.Fatalf("writeBoardEntrySnapshot() = %v; want nil", err)
+		}
+		got, err := os.ReadFile(loomengine.DiscussionBoardEntry(location))
+		if err != nil {
+			t.Fatalf("read the snapshot: %v", err)
+		}
+		if want := darnengine.BoardEntrySnapshot("a-beam", "A beam", "Land the members.", "## Idea\n\nOne beam."); string(got) != string(want) {
 			t.Errorf("snapshot = %q; want %q", got, want)
 		}
 	})

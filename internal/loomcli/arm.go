@@ -195,7 +195,7 @@ func (c *loomCLI) armAt(location *lyxcwd.Location, verb string, args []string) (
 		if err := c.renameRetiredRows(loomrecipe.DarnRetiredRows()); err != nil {
 			return shedverbs.Spec{}, err
 		}
-	} else if c.recipe != shedrun.RecipeBeam {
+	} else if c.recipe != shedrun.RecipePawl {
 		if err := c.renameRetiredRows(loomrecipe.LoomRetiredRows()); err != nil {
 			return shedverbs.Spec{}, err
 		}
@@ -223,16 +223,16 @@ func (c *loomCLI) loadRouting() error {
 	return nil
 }
 
-// recipeRouting returns the routing of the run's recipe: the beam recipe's for a beam run, which has no review segment and so no budget, and otherwise the darn recipe's for a darn run and loom's for the rest, with loom.yaml's review bounce budgets applied.
+// recipeRouting returns the routing of the run's recipe: the pawl recipe's for a pawl run, the darn recipe's for a darn run and loom's for the rest, with loom.yaml's review bounce budgets applied.
 func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
-	if c.recipe == shedrun.RecipeBeam {
-		return loomrecipe.BeamRouting()
-	}
 	budgets, err := c.reviewBudget()
 	if err != nil {
 		return shedengine.Routing{}, err
 	}
-	if c.recipe == shedrun.RecipeDarn {
+	switch c.recipe {
+	case shedrun.RecipePawl:
+		return loomrecipe.PawlRouting(budgets)
+	case shedrun.RecipeDarn:
 		return loomrecipe.DarnRouting(budgets)
 	}
 
@@ -242,8 +242,8 @@ func (c *loomCLI) recipeRouting() (shedengine.Routing, error) {
 // newShed builds the shed of the run's recipe over c.env and c.shedPaths.
 func (c *loomCLI) newShed() (*shedengine.Shed, error) {
 	switch c.recipe {
-	case shedrun.RecipeBeam:
-		return loomrecipe.NewBeam(c.env, c.shedPaths)
+	case shedrun.RecipePawl:
+		return loomrecipe.NewPawl(c.env, c.shedPaths)
 	case shedrun.RecipeDarn:
 		return loomrecipe.NewDarn(c.env, c.shedPaths)
 	}

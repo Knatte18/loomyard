@@ -13,15 +13,18 @@ func TestOwnersEffective(t *testing.T) {
 	t.Parallel()
 
 	errParent := errors.New("parent unreadable")
-	parents := map[string]string{"child": "", "grand": "pair", "pair": ""}
+	parents := map[string]string{"child": "", "pair": "", "running": "", "member": "beam", "group": "beam", "grand": "group", "beam": ""}
 	parentOf := func(slug string) (string, error) { return parents[slug], nil }
 	failingParentOf := func(string) (string, error) { return "", errParent }
 
 	entries := `"entries":[` +
 		`{"id":0,"slug":"child","title":"c","kind":"task","labels":["bug"],"status":"idle"},` +
-		`{"id":1,"slug":"pair","title":"p","kind":"task","labels":["bug"],"owner_machine":"box"},` +
-		`{"id":2,"slug":"grand","title":"g","kind":"task","labels":["bug"]},` +
-		`{"id":3,"slug":"running","title":"r","kind":"task","labels":["bug"],"status":"` + RunStatus("running", "Implementer") + `"}]`
+		`{"id":1,"slug":"pair","title":"p","kind":"task","labels":["bug"],"owner_machine":"stray"},` +
+		`{"id":2,"slug":"beam","title":"b","kind":"project","labels":["bug"],"beam":true,"owner_machine":"box"},` +
+		`{"id":3,"slug":"member","title":"m","kind":"task","labels":["bug"],"project":"beam"},` +
+		`{"id":4,"slug":"group","title":"g","kind":"project","labels":["bug"],"project":"beam"},` +
+		`{"id":5,"slug":"grand","title":"gr","kind":"task","labels":["bug"],"project":"group"},` +
+		`{"id":6,"slug":"running","title":"r","kind":"task","labels":["bug"],"status":"` + RunStatus("running", "Implementer") + `"}]`
 	board := func(prime string) []byte {
 		if prime == "" {
 			return []byte(`{"version":1,` + entries + `}`)
@@ -40,11 +43,14 @@ func TestOwnersEffective(t *testing.T) {
 	}{
 		{name: "EmptyBytesHoldNoEntry", board: nil, slug: "child", parentOf: parentOf, want: ""},
 		{name: "UndecodableBytesReturnTheError", board: []byte(`{`), slug: "child", parentOf: parentOf, parseErr: true},
-		{name: "NoPrimeOwnerReadsAsNoOwner", board: board(""), slug: "pair", parentOf: parentOf, want: ""},
-		{name: "RecordedOwnerStands", board: board("neve"), slug: "pair", parentOf: parentOf, want: "box"},
-		{name: "RunHeldWithoutOwnerReadsAsNoOwner", board: board("neve"), slug: "running", parentOf: parentOf, want: ""},
-		{name: "UnownedTaskFollowsThePrime", board: board("neve"), slug: "child", parentOf: parentOf, want: "neve"},
-		{name: "UnownedTaskFollowsAPairParentsOwner", board: board("neve"), slug: "grand", parentOf: parentOf, want: "box"},
+		{name: "RootTaskWithNoPrimeOwnerReadsAsNoOwner", board: board(""), slug: "child", parentOf: parentOf, want: ""},
+		{name: "BeamOwnerHoldsOnABoardWithNoPrimeOwner", board: board(""), slug: "member", parentOf: parentOf, want: "box"},
+		{name: "BeamReadsItsRecordedOwner", board: board("neve"), slug: "beam", parentOf: parentOf, want: "box"},
+		{name: "RecordedTaskOwnerIsIgnored", board: board("neve"), slug: "pair", parentOf: parentOf, want: "neve"},
+		{name: "RunHeldTaskWithNoOwnerReadsItsParentsOwner", board: board("neve"), slug: "running", parentOf: parentOf, want: "neve"},
+		{name: "TaskWithNoBeamReadsThePrime", board: board("neve"), slug: "child", parentOf: parentOf, want: "neve"},
+		{name: "TaskReadsItsBeamsOwner", board: board("neve"), slug: "member", parentOf: parentOf, want: "box"},
+		{name: "GroupingProjectReadsItsParentsOwner", board: board("neve"), slug: "group", parentOf: parentOf, want: "box"},
 		{name: "AbsentSlugReadsAsNoOwner", board: board("neve"), slug: "ghost", parentOf: parentOf, want: ""},
 		{name: "ParentErrorIsReturned", board: board("neve"), slug: "child", parentOf: failingParentOf, wantErr: errParent},
 	}
@@ -70,6 +76,33 @@ func TestOwnersEffective(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("AdoptSubject", func(t *testing.T) {
+		t.Parallel()
+		owners, err := ParseOwners(board("neve"))
+		if err != nil {
+			t.Fatalf("ParseOwners() error = %v; want nil", err)
+		}
+		subjects := []struct {
+			name     string
+			slug     string
+			parentOf func(string) (string, error)
+			want     string
+			wantErr  error
+		}{
+			{"BeamIsItsOwnSubject", "beam", parentOf, "beam", nil},
+			{"MemberThroughAGroupingProjectTakesItsBeam", "grand", parentOf, "beam", nil},
+			{"RootTaskTakesRoot", "child", parentOf, RootSubject, nil},
+			{"AbsentSlugIsItsOwnSubject", "ghost", parentOf, "ghost", nil},
+			{"ParentErrorIsReturned", "child", failingParentOf, "", errParent},
+		}
+		for _, tt := range subjects {
+			got, err := owners.AdoptSubject(tt.slug, tt.parentOf)
+			if !errors.Is(err, tt.wantErr) || got != tt.want {
+				t.Errorf("%s: AdoptSubject(%q) = (%q, %v); want (%q, %v)", tt.name, tt.slug, got, err, tt.want, tt.wantErr)
+			}
+		}
+	})
 
 	t.Run("ReadsProjectAndBeam", func(t *testing.T) {
 		t.Parallel()

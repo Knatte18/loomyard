@@ -3,7 +3,8 @@
 // smoke_cycle_test.go drives one full handoff cycle against a real Claude Code session in a real reed strand: start, one turn that launches a background task, a manual cycle, and the assertions that the handoff was written, the session was cleared and the resume prompt was typed.
 // It also records, without failing, the two questions only a live session answers: whether a background task's completion notification survives `/clear`, and whether the session's `SendMessage` address does.
 //
-// Like the loomcli smoke tests it drives the real built cmd/lyx binary as a subprocess, never RunCLI in-process, because `lyx orch start` spawns a detached `lyx orch watch` from os.Executable(), which must never be this test binary (Live-Substrate Spawn Observability Invariant).
+// Like the loomcli smoke tests it drives the real built cmd/lyx binary as a subprocess, never RunCLI in-process, because `lyx beam start` spawns a detached `lyx orch watch` from os.Executable(), which must never be this test binary (Live-Substrate Spawn Observability Invariant).
+// The one in-process call is BeamUp, whose watcher spawn is a no-op under `go test`, so the test starts the built binary's watcher itself.
 // The threshold is set far above anything the session can reach so the manual `lyx orch refresh` is the only trigger;
 // the threshold-triggered path is covered by the watcher's unit cases.
 //
@@ -25,7 +26,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
@@ -43,6 +46,29 @@ func smokeRun(t *testing.T, exe, dir string, timeout time.Duration, args ...stri
 		t.Fatalf("lyx %v: %v", args, err)
 	}
 	return out, code
+}
+
+// smokeBeamUp brings the orch of the hub's prime up through BeamUp, failing unless it succeeds.
+// BeamUp spawns no watcher under `go test`, since re-executing the test binary would run the suite, so the built binary's `orch watch` is started detached here, as the production spawn does.
+func smokeBeamUp(t *testing.T, exe string, location *lyxcwd.Location) {
+	t.Helper()
+	opts := BeamUpOptions{Index: func() (string, error) { return runHelpIndex(exe) }}
+	if _, err := BeamUp(location, opts); err != nil {
+		t.Fatalf("BeamUp: %v", err)
+	}
+	logFile, err := os.OpenFile(orchPaths(location).WatchLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatalf("open the watch log: %v", err)
+	}
+	cmd := exec.Command(exe, "orch", "watch")
+	cmd.Dir = location.AnchorPath()
+	cmd.Stdout, cmd.Stderr = logFile, logFile
+	proc.Detach(cmd)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start the watcher: %v", err)
+	}
+	_ = logFile.Close()
+	go func() { _ = cmd.Wait() }()
 }
 
 // smokeStatus runs `lyx orch status` and decodes its envelope.
@@ -203,9 +229,7 @@ func TestSmokeOrch_OneFullCycle(t *testing.T) {
 	})
 
 	// (2) start and wait for the strand to report ready.
-	if out, code := smokeRun(t, exe, prime, 120*time.Second, "orch", "start", "--no-attach"); code != 0 {
-		t.Fatalf("orch start exited %d: %s", code, out)
-	}
+	smokeBeamUp(t, exe, h.Location)
 	var guid string
 	waitFor(t, 60, "the orch strand to be live", func() bool {
 		env := smokeStatus(t, exe, prime)

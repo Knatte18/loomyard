@@ -21,8 +21,8 @@ const (
 )
 
 // ComputeLayers assigns each task a bucket based on topological depth.
-// A task a run holds is runningLayer, by IsRunStatus as the run lock decides it.
-// An open project a run does not hold is projectLayer, never Ready or a letter, and counts as no entry's dependency depth.
+// A task a run holds is runningLayer, by RunHolds as the run lock decides it.
+// An open project a run does not hold, a beam whose pawl run has not reached Parent-Align included, is projectLayer, never Ready or a letter, and counts as no entry's dependency depth.
 // An open task with no open dependency is readyLayer, and every other task is the letter of its depth:
 // A waits only on running or ready tasks, B on something in A, and so on.
 // A dependency on a done task adds no depth, while one on a running task counts as one on a ready task, and cycle detection still follows running tasks.
@@ -32,7 +32,7 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 	for _, t := range tasks {
 		if isDone(t) {
 			layerMap[t.Slug] = doneLayer
-		} else if IsRunStatus(t.Status) {
+		} else if RunHolds(t) {
 			layerMap[t.Slug] = runningLayer
 		} else if t.Kind == KindProject {
 			layerMap[t.Slug] = projectLayer

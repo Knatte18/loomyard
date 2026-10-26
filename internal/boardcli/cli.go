@@ -79,7 +79,7 @@ func Command() *cobra.Command {
 The board is one store: every entry is a task, a note or a project (its kind) and carries labels. Only
 a task can be claimed and depend on other tasks; a note is an idea or observation. A project groups
 entries: a task or note joins it through its "project" field, the project lists its members' plan
-order in "order", and its "beam" flag, set only by "lyx beam create" and "lyx beam promote", makes it
+order in "order", and its "beam" flag, set only by "lyx beam create", makes it
 a long-lived pair that runs its members. "get" and "list" carry an entry's "parent_beam", the slug of
 the beam above it, empty when the prime is its parent. A task carries at least
 one type label, a note exactly one, and every label must be configured in board.yaml. Every entry
@@ -700,7 +700,7 @@ Examples:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Fetch a single task by slug, numeric ID or handle. Returns {"task":null} if not found (not an error).
 The result is the envelope {"task": {...}}, which the discussion stencil reads.
-A task's "owner_machine" is the machine that owns it: the recorded one, else the owner it reads as through its parent.
+A task's "owner_machine" is the machine that owns it: the owner it reads as through its beam, or through root.
 --body writes the entry's body alone, verbatim, with no envelope; an empty body writes nothing.
 With --body a target that does not exist is an error, since there is no task:null to print.
 Editing a body as a file: lyx board get ... --body > body.md, edit it, then feed it back with
@@ -765,6 +765,7 @@ Examples:
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `List all tasks in README order with their computed fields (layer, has_proposal),
 beside "prime_owner", the machine that owns the hub's prime ("" when none is recorded).
+A task's "owner_machine" is its effective owner, its beam's or root's; only a beam project records one.
 With --text, print a "prime owner: <machine>" line ("none" when none is recorded),
 then the compact one-line-per-task listing (handle, kind, priority, age, time since last revision, slug, title, labels, [status])
 instead of JSON; errors stay JSON.

@@ -1,0 +1,155 @@
+# pawl-recipe.yaml is the pawl recipe, a beam's life: Beam-Up brings the beam up, Beam-Await holds the run
+# until a land request passes the landing re-check, Parent-Align brings the parent's upstream tip into the
+# beam, the Code-Review perch reviews the beam's diff, Beam-Describe writes the change description from the
+# beam's board entry and the commits it adds, Finalize merges the beam's parent into the beam, runs the
+# landing gate and fast-forwards the parent, and Beam-Down takes the beam's dobby and orch down.
+# It is embedded into the binary by the sibling recipes.go rather than read from disk. The row names below
+# are the durable on-disk identities that resume depends on.
+#
+# The rows are Beam-Up, Beam-Await, Parent-Align, the Code-Review perch (Code-Bouncer,
+# Code-Burler-Review, Code-Burler-Fix), Beam-Describe, Finalize and Beam-Down.
+# Beam-Up, Beam-Await and Beam-Down are Go producers that spawn no agent, and Beam-Await returns Done only
+# for a land request that names this run and passes the re-check.
+#
+# The hold boundary: a beam project's run holds its beam from Parent-Align on, so Beam-Up and Beam-Await
+# leave the beam open to members, and boardengine.RunHolds names those two rows and batten's claim row as
+# the hold-free ones. A test pins that list against this recipe's row names.
+#
+# Code-Bouncer, Code-Burler-Review and Code-Burler-Fix are the Code-Review perch, the same perch the darn
+# and loom recipes run, with the same row names, segment, run_subdir, role_prefix, rubric, fan and
+# auto-accept settings and loom.yaml code_* keys; only its answer key differs: the beam project entry's
+# board snapshot, _lyx/discussion/board-entry.md, and nothing else. Its ring is the shared-segment one:
+# the Bouncer's on_stuck names the review row, the review row's on_stuck names the fix row, the fix row's
+# on_stuck names the Bouncer, and each Burler row's on_done names the same row as its on_stuck, since
+# neither ever returns Done. The segment's rows declare no max_bounces: their budget is loom.yaml's
+# code_max_bounces, applied by internal/loomrecipe, and a budget of 0 turns the perch off: the Bouncer
+# settles approved at once.
+# The perch carries no carry_over: a pawl run has no decision record to file still-open findings into, so
+# they stay in the round's review files.
+# Beam-Describe carries no entry gate: it writes from the entry and the commits whatever the budget.
+#
+# Finalize never reroutes, so it declares no on_reroute: a conflict or a merge too large to land has no
+# earlier row to return to, because Beam-Describe writes from the entry and the commits and reviews
+# nothing. A merge conflict goes to Finalize's merge fixer, a large merge runs the landing gate, and a
+# failure the fixer cannot fix halts the run for the orch.
+#
+# Parent-Align and Beam-Describe carry no on_stuck: Parent-Align fixes its own merge and test failures in
+# its merge fixer, and a description that fails validation halts the run for the orch, which ends the
+# landing and fixes the entry.
+
+version: 1
+entry: Beam-Up
+terminals:
+  - Beam-Down
+
+producers:
+  - name: Beam-Up
+    engine: BeamUp
+    on_done: Beam-Await
+
+  - name: Beam-Await
+    engine: BeamAwait
+    on_done: Parent-Align
+
+  # Parent-Align brings the parent's upstream tip into the beam with no parent lock and runs the merge
+  # fixer on a conflict or a failing merged tree, so the Code-Review perch below reviews code that
+  # already carries the parent. A failure the fixer cannot fix halts the run for the orch.
+  - name: Parent-Align
+    engine: ParentAlign
+    on_done: Code-Bouncer
+
+  - name: Code-Bouncer
+    engine: Bouncer
+    segment: Code-Review
+    on_stuck: Code-Burler-Review
+    on_done: Beam-Describe
+    config:
+      run_subdir: code
+      subject: code
+      role_prefix: code
+      reviewer_fan_setting: loom.code_reviewer_fan
+      auto_accept_setting: loom.code_auto_accept
+      # The subject under review is the committed diff, which artifact_paths cannot name; the key
+      # names the answer key instead: the project entry's board snapshot. The rubric names the diff as
+      # the subject.
+      artifact_paths:
+        - _lyx/discussion/board-entry.md
+      rubric_stencil: loom-rubric-code-review
+      # No commit_seam: Code-Burler-Fix runs fix-scope: source and commits each fix itself.
+
+  - name: Code-Burler-Review
+    engine: BurlerReview
+    segment: Code-Review
+    on_stuck: Code-Burler-Fix
+    # BurlerReviewProducer never returns Done, so this edge is unreachable -- but an empty on_done
+    # is load-bearing and ends the whole run silently, so it names the row it can never reach.
+    on_done: Code-Burler-Fix
+    config:
+      # The same run_subdir value as Code-Bouncer is what makes the three rows write into one
+      # shared run directory.
+      run_subdir: code
+      role_prefix: code
+      reviewer_fan_setting: loom.code_reviewer_fan
+      fixer_fan_setting: loom.code_fixer_fan
+      profile:
+        target:
+          # No paths key: a diff has no file on disk for the profile's path check to stat.
+          instructions: >
+            The subject under review is the committed diff. The rubric supplied in this prompt is
+            the single definition of the review range: read its "Determining the review range"
+            section and derive the range exactly as written there.
+        fasit:
+          paths:
+            - _lyx/discussion/board-entry.md
+          instructions: >
+            The board entry snapshot named above is the beam's scope. The diff's job is to make the
+            change the entry asks for.
+        rubric_stencil: loom-rubric-code-review
+        # fix-scope: source: the target is the repo's own source files, and a fixer that cannot
+        # write and commit source cannot fix a diff.
+        fix-scope: source
+        # tool-use is required: the round runs read-only git to obtain the diff.
+        tool-use: true
+        # The round reviews code, so its seats load the hub's language skills after their own.
+        language-skills: true
+        # No cluster-fan key: the row's reviewer_fan_setting and fixer_fan_setting keys name loom.yaml's
+        # code_reviewer_fan and code_fixer_fan.
+
+  - name: Code-Burler-Fix
+    engine: BurlerFix
+    segment: Code-Review
+    on_stuck: Code-Bouncer
+    # BurlerFixProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, so it names the row it can never reach.
+    on_done: Code-Bouncer
+    config:
+      run_subdir: code
+      role_prefix: code
+      fixer_fan_setting: loom.code_fixer_fan
+      review_row: Code-Burler-Review
+      # The verify gate runs the tree-scoped command, or the hub's `code-burler-fix` key, on the
+      # committed tree after each round, lints the comments from the merge base on every attempt,
+      # and re-prompts the fix session with the findings until it passes. The row runs its own key
+      # and shares no pass with any other; gate_key names another key of the hub's gate.yaml.
+      gates:
+        - name: verify
+          attempts: 3
+      profile:
+        # No target key: a diff names no file, so the fixer finds its files from the review's
+        # findings and the gate's findings alone.
+        fix-scope: source
+        # The round fixes code, so its seat loads the hub's language skills after its own.
+        language-skills: true
+
+  - name: Beam-Describe
+    engine: BeamDescribe
+    on_done: Finalize
+
+  - name: Finalize
+    engine: Finalize
+    on_done: Beam-Down
+
+  # Beam-Down's empty on_done is load-bearing and is what ends the run quietly.
+  - name: Beam-Down
+    engine: BeamDown
+    on_done: ""

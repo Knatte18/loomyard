@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/orchengine"
@@ -158,8 +157,8 @@ func TestRefuseNonPrime(t *testing.T) {
 	err := refuseNonPrime("task", "main", nil, false)
 	if err == nil || !strings.Contains(err.Error(), "runs from the hub's prime worktree or a beam") ||
 		!strings.Contains(err.Error(), `"task"`) || !strings.Contains(err.Error(), `"main"`) ||
-		!strings.Contains(err.Error(), "lyx beam create") || !strings.Contains(err.Error(), "lyx beam promote") {
-		t.Errorf("non-prime refusal = %v; want the prime-or-beam wording naming both worktrees and both beam verbs", err)
+		!strings.Contains(err.Error(), "lyx beam create") || strings.Contains(err.Error(), "lyx beam promote") {
+		t.Errorf("non-prime refusal = %v; want the prime-or-beam wording naming both worktrees and lyx beam create alone", err)
 	}
 	err = refuseNonPrime("main", "", errors.New("boom"), false)
 	if err == nil || !strings.Contains(err.Error(), "boom") {
@@ -167,38 +166,42 @@ func TestRefuseNonPrime(t *testing.T) {
 	}
 }
 
-func TestRefuseBeamStart(t *testing.T) {
+func TestBeamUpRefusal(t *testing.T) {
 	t.Parallel()
 
-	landing := boardengine.RunStatus("running", "Land")
-	done := "done"
+	const move = "a change of the anchor of b from a to c was interrupted; run `lyx fabric anchor b --set c` to finish it"
 	tests := []struct {
-		name   string
-		owner  string
-		status *string
-		want   []string
+		name  string
+		slug  string
+		owner string
+		move  string
+		held  bool
+		want  []string
 	}{
-		{"No owner and no status passes", "", nil, nil},
-		{"This machine's own beam passes", "desktop", &done, nil},
-		{"Another machine's beam names the owner and the takeover", "laptop", nil, []string{`"laptop"`, "lyx adopt b"}},
-		{"A beam its landing holds names the landing", "", &landing, []string{"landing", "lyx batten status b"}},
+		{"No owner, no move and no hold passes", "b", "", "", false, nil},
+		{"This machine's own beam passes", "b", "desktop", "", false, nil},
+		{"The prime of no other machine passes", "", "", "", false, nil},
+		{"Another machine's beam names the owner and the takeover", "b", "laptop", "", false, []string{`"laptop"`, "lyx adopt b", "lyx beam start"}},
+		{"The prime another machine owns names the root takeover", "", "laptop", "", false, []string{`"laptop"`, "lyx adopt root"}},
+		{"A standing anchor change names its way forward", "b", "", move, false, []string{move}},
+		{"A beam its landing holds names the landing", "b", "", "", true, []string{"landing", "lyx batten status b"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := refuseBeamStart("b", "desktop", tt.owner, tt.status)
+			err := beamUpRefusal(tt.slug, "desktop", tt.owner, tt.move, tt.held, "running · Land")
 			if tt.want == nil {
 				if err != nil {
-					t.Errorf("refuseBeamStart(b) = %v; want nil", err)
+					t.Errorf("beamUpRefusal(%q) = %v; want nil", tt.slug, err)
 				}
 				return
 			}
 			if err == nil {
-				t.Fatalf("refuseBeamStart(b) = nil; want a refusal naming %q", tt.want)
+				t.Fatalf("beamUpRefusal(%q) = nil; want a refusal naming %q", tt.slug, tt.want)
 			}
 			for _, want := range tt.want {
 				if !strings.Contains(err.Error(), want) {
-					t.Errorf("refuseBeamStart(b) = %q; missing %q", err, want)
+					t.Errorf("beamUpRefusal(%q) = %q; missing %q", tt.slug, err, want)
 				}
 			}
 		})
@@ -661,7 +664,7 @@ func TestStatus_RestartsADeadWatcher(t *testing.T) {
 		{name: "AStrandThatIsNotLiveSpawnsNothing", strands: []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: false}}, state: &recorded},
 		{name: "NoRecordedStrandSpawnsNothing", strands: liveOrch},
 		{name: "AStrandRemovedBeforeTheLockSpawnsNothing", strands: liveOrch, after: []reedengine.StrandStatus{}, state: &recorded},
-		{name: "AFailingSpawnIsTheErrorEnvelopeNamingStart", strands: liveOrch, state: &recorded, spawnErr: errors.New("no binary"), wantSpawns: 1, wantError: "lyx orch start"},
+		{name: "AFailingSpawnIsTheErrorEnvelopeNamingStart", strands: liveOrch, state: &recorded, spawnErr: errors.New("no binary"), wantSpawns: 1, wantError: "lyx beam start"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -843,65 +846,6 @@ func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
 				role, err := os.ReadFile(c.paths.RolePath)
 				if err != nil || !strings.Contains(string(role), wantIndex) || strings.Contains(string(role), fakeRunnerIndex) {
 					t.Errorf("role file = %q, %v; want it to carry the root's own index %q, not the runner's", role, err, wantIndex)
-				}
-			}
-		})
-	}
-}
-
-func TestCleanup_Envelope(t *testing.T) {
-	t.Parallel()
-
-	for _, apply := range []bool{false, true} {
-		name := "dry run"
-		args := []string{}
-		if apply {
-			name, args = "apply", []string{"--apply"}
-		}
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			c := newTestCLI(t, &fakeStrands{})
-			c.paths.HandoffsDir = filepath.Join(c.paths.Dir, "handoffs")
-			if err := orchengine.SaveState(c.paths, orchengine.State{Phase: orchengine.PhaseIdle, LastHandoff: "keep.md"}); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.MkdirAll(c.paths.HandoffsDir, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			for _, file := range []string{"keep.md", "old.md"} {
-				if err := os.WriteFile(filepath.Join(c.paths.HandoffsDir, file), []byte("note"), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			// The retired notice queue directory and notice log, which nothing writes any more.
-			c.paths.NoticesDir = filepath.Join(c.paths.Dir, "notices")
-			c.paths.RetiredNoticeLogPath = filepath.Join(filepath.Dir(c.paths.Dir), "notices.log")
-			if err := os.MkdirAll(c.paths.NoticesDir, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(c.paths.NoticesDir, "a.notice"), []byte("line"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(c.paths.RetiredNoticeLogPath, []byte("log"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-
-			var out bytes.Buffer
-			code := clihelp.Execute(c.cleanupCmd(), &out, args)
-			var env map[string]any
-			if err := json.Unmarshal(out.Bytes(), &env); err != nil {
-				t.Fatalf("output %q is not one JSON object: %v", out.String(), err)
-			}
-
-			want := map[string]any{"ok": true, "applied": apply, "kept": "keep.md", "removed": []any{"old.md"}, "reason": "", "retired": []any{"notices", "notices.log"}}
-			if code != 0 || !reflect.DeepEqual(env, want) {
-				t.Errorf("exit = %d, envelope = %v; want %v", code, env, want)
-			}
-			for _, path := range []string{filepath.Join(c.paths.HandoffsDir, "old.md"), c.paths.NoticesDir, c.paths.RetiredNoticeLogPath} {
-				_, err := os.Stat(path)
-				if gone := errors.Is(err, os.ErrNotExist); gone != apply {
-					t.Errorf("%s removed = %v, want %v", filepath.Base(path), gone, apply)
 				}
 			}
 		})

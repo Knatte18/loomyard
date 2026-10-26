@@ -188,13 +188,13 @@ func commitDarnDiscussion(location *lyxcwd.Location) error {
 	return commitDiscussion(location)
 }
 
-// writeBoardEntrySnapshot writes the snapshot of location's task's board entry to the discussion directory.
-// The snapshot is the darn Code-Review perch's answer key, kept apart from the writer's decision record; the run's board lock keeps the entry's body and scope fixed for the run.
-// A board that cannot be read, or holds no entry for the task, is refused.
+// writeBoardEntrySnapshot writes the snapshot of the board entry of location's run to the discussion directory: a darn run's task, and a pawl run's beam project.
+// The snapshot is the Code-Review perch's answer key of a darn or pawl run, kept apart from any decision record; the run's board lock keeps the entry's body and scope fixed from the point the snapshot is written.
+// A board that cannot be read, or holds no entry for the run, is refused.
 func writeBoardEntrySnapshot(location *lyxcwd.Location) error {
 	board, err := boardengine.OpenHub(location.HubPath)
 	if err != nil {
-		return fmt.Errorf("loom: open the board to snapshot the task's entry: %w; way forward: fix the board, then hand off again", err)
+		return fmt.Errorf("loom: open the board to snapshot the run's entry: %w; way forward: fix the board, then hand off again", err)
 	}
 	slug := seedSlug(location.WorktreeName)
 	task, found, err := board.GetTask(slug)

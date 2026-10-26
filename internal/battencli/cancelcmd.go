@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
@@ -60,14 +61,18 @@ It refuses, before it ends or removes anything, while a hub pause covers the pri
 work already reached its parent (finish the landing with "lyx batten run" instead), when another
 machine owns the slug, when origin stopped the entry, when another cancel of the slug is under way,
 and when nothing of the slug is left to cancel.
-It skips every wait a teardown makes for a working driver, since it ends the run mid-turn.
+It skips every wait a teardown makes for a working driver.
 With origin unreachable it only ends the run's processes and strands, leaves its marker, and posts a
-notice naming the cancel to run once origin answers; "lyx batten cancel" run again finishes an
-interrupted cancel.
+notice; "lyx batten cancel" run again finishes an interrupted cancel.
+
+The cancel of a beam first runs the hub's origin reconcile and refuses while members remain,
+naming each to land or cancel first; with origin unreachable it refuses naming the re-run.
+A beam with no members ends the pawl run's processes and the beam's dobby, then stops the
+beam's orch and watcher; "lyx beam create <slug>" starts the run again.
 
 Output: {"slug", "state", "row", "ended", "strands_stopped", "tackler_stopped", "pair_removed",
 "snapshot_tag", "archive_tags", "records_removed", "claim_cleared", "lifted", "push_spawned",
-"notice_posted", "end_only", "way_forward"}.
+"notice_posted", "end_only", "way_forward", "warnings"}.
 push_spawned says the push was started, not that origin took it.
 
 Example:
@@ -148,6 +153,7 @@ func cancelEnvelope(report cancelReport) map[string]any {
 		"notice_posted":   report.NoticePosted,
 		"end_only":        report.EndOnly,
 		"way_forward":     report.WayForward,
+		"warnings":        slices.Concat([]string{}, report.Warnings),
 	}
 }
 
@@ -180,17 +186,22 @@ func hubCancelDeps(location *lyxcwd.Location, slug string) (cancelDeps, error) {
 		TaskWorktreePresent: func() (bool, error) { return taskWorktreePresent(location, slug) },
 		Reconcile:           func() (fabricengine.OriginReport, error) { return reconcileRun(location, slug, true) },
 		PullBolt:            func() error { return pullBolt(boardDir) },
-		Owner: func() (string, string, error) {
+		Owner: func() (string, string, string, error) {
 			machine, err := machinename.Name()
 			if err != nil {
-				return "", "", err
+				return "", "", "", err
 			}
 			owners, err := boardengine.ReadOwners(boardDir)
 			if err != nil {
-				return "", "", err
+				return "", "", "", err
 			}
-			owner, err := owners.Effective(slug, func(slug string) (string, error) { return hubgeom.ParentOf(location, slug) })
-			return machine, owner, err
+			parentOf := func(slug string) (string, error) { return hubgeom.ParentOf(location, slug) }
+			owner, err := owners.Effective(slug, parentOf)
+			if err != nil {
+				return "", "", "", err
+			}
+			subject, err := owners.AdoptSubject(slug, parentOf)
+			return machine, owner, subject, err
 		},
 		ReadStatus: func() (shedengine.Status, bool, error) { return readBattenStatus(location, slug) },
 		BoardStatus: func() (*string, bool, error) {
@@ -312,6 +323,32 @@ func hubCancelDeps(location *lyxcwd.Location, slug string) (cancelDeps, error) {
 		},
 		Notify: func(line string) error {
 			_, err := notifyRunParent(location, slug, line)
+			return err
+		},
+		BeamProject: func() (bool, error) {
+			owners, err := boardengine.ReadOwners(boardDir)
+			if err != nil {
+				return false, err
+			}
+			entry := owners.Entries[slug]
+			return entry.IsProject && entry.Beam, nil
+		},
+		ReconcileHub: func() (fabricengine.OriginReport, error) {
+			return fabricengine.ReconcileOrigin(location, fabricengine.ReconcileScope{}, teardown.OriginSeams(pairteardown.HubSeamOptions(location)), fabricengine.ReconcileOptions{})
+		},
+		LandRefusal:  func() error { return BeamLandRefusal(location, slug) },
+		LandingHeld:  func() (bool, error) { return hubgeom.LandingHeld(location, slug) },
+		LandBlockers: func() (BeamLandBlockers, error) { return ReadBeamLandBlockers(location, slug) },
+		StopBeam: func() error {
+			present, err := taskWorktreePresent(location, slug)
+			if err != nil || !present {
+				return err
+			}
+			beamLocation, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, slug))
+			if err != nil {
+				return err
+			}
+			_, err = orchcli.BeamDown(beamLocation)
 			return err
 		},
 	}, nil

@@ -30,7 +30,9 @@ type anchorFake struct {
 	beams   map[string]bool
 	goos    string
 
-	owners       map[string]string
+	owners map[string]string
+	// subjects is what `lyx adopt` takes to move each worktree.
+	subjects     map[string]string
 	upstream     string
 	hasUpstream  bool
 	recordFound  bool
@@ -41,7 +43,6 @@ type anchorFake struct {
 	upstreamOpen bool
 	primeRunOpen bool
 	dobbyPIDs    map[string]int
-	dobbyLive    map[string]bool
 	hubReed      []string
 	hubBatten    []string
 	gates        []string
@@ -68,7 +69,6 @@ type anchorFake struct {
 	// finishRemovesRecord removes the record before Finish fails.
 	finishRemovesRecord bool
 	startErr            error
-	ensureErr           error
 
 	reopens int
 	polls   int
@@ -82,9 +82,9 @@ func newAnchorFake() *anchorFake {
 		beams:     map[string]bool{"beam1": true, "beam2": true},
 		goos:      "linux",
 		owners:    map[string]string{},
+		subjects:  map[string]string{},
 		reed:      map[string]bool{},
 		dobbyPIDs: map[string]int{},
-		dobbyLive: map[string]bool{},
 	}
 }
 
@@ -161,6 +161,7 @@ func (f *anchorFake) deps() anchorDeps {
 			return beams, nil
 		},
 		ForeignOwner: func(slug string) (string, error) { return f.owners[slug], nil },
+		AdoptSubject: func(slug string) (string, error) { return f.subjects[slug], nil },
 		UpstreamAnchor: func(*lyxcwd.Location) (string, bool, error) {
 			return f.upstream, f.hasUpstream, nil
 		},
@@ -177,7 +178,6 @@ func (f *anchorFake) deps() anchorDeps {
 			pid, live := f.dobbyPIDs[worktree]
 			return pid, live, nil
 		},
-		DobbyLive:     func(worktree string) (bool, error) { return f.dobbyLive[worktree], nil },
 		HubReedHeld:   func() ([]string, error) { return f.hubReed, nil },
 		HubBattenLive: func() ([]string, error) { return f.hubBatten, nil },
 		GateHolders:   func() ([]string, error) { return f.gates, nil },
@@ -211,13 +211,9 @@ func (f *anchorFake) deps() anchorDeps {
 			}
 			return worktrees, nil
 		},
-		StartDobby: func(slug string) error {
-			f.log("start-dobby %s", slug)
+		EnsureDobbies: func(worktrees []string) error {
+			f.log("ensure-dobbies %s", strings.Join(worktrees, ","))
 			return f.startErr
-		},
-		EnsureDobbies: func() error {
-			f.log("ensure-dobbies")
-			return f.ensureErr
 		},
 		Begin: func(l *lyxcwd.Location, target string) (anchorChange, error) {
 			f.log("begin %s", target)
@@ -311,9 +307,10 @@ func TestChangeAnchor(t *testing.T) {
 				slug: "pair1",
 				mutate: func(f *anchorFake) {
 					f.owners["pair1"] = "elsewhere"
+					f.subjects["pair1"] = "beam1"
 				},
-				want:   []string{"elsewhere", "lyx adopt pair1", "--keep-local", "lyx fabric anchor pair1 --set sub` on elsewhere"},
-				absent: []string{"the marker at the fetched upstream tip"},
+				want:   []string{"elsewhere", "`lyx adopt beam1` here", "`lyx adopt beam1 --keep-local`", "lyx fabric anchor pair1 --set sub` on elsewhere"},
+				absent: []string{"the marker at the fetched upstream tip", "lyx adopt pair1"},
 			},
 			{
 				name: "AnotherMachineOwnsItAndItsUpstreamTipRecordsAnotherAnchor",
@@ -340,7 +337,8 @@ func TestChangeAnchor(t *testing.T) {
 				mutate: func(f *anchorFake) {
 					f.owners["prime"] = "elsewhere"
 				},
-				want: []string{"lyx adopt --prime", "elsewhere"},
+				want:   []string{"lyx adopt root", "elsewhere"},
+				absent: []string{"--prime"},
 			},
 			{
 				name:   "ReedHoldsAStrand",
@@ -510,7 +508,7 @@ func TestChangeAnchor(t *testing.T) {
 			"apply",
 			"reopen-log " + f.logsDir("beam1", "sub"),
 			"finish",
-			"start-dobby beam1",
+			"ensure-dobbies beam1",
 			"release-parent-lock",
 			"close",
 		}
@@ -531,7 +529,7 @@ func TestChangeAnchor(t *testing.T) {
 		if err != nil {
 			t.Fatalf("changeAnchor() error = %v; want nil", err)
 		}
-		if !f.did("end-dobbies prime,beam1,beam2 spare push,sync") || !f.did("ensure-dobbies") {
+		if !f.did("end-dobbies prime,beam1,beam2 spare push,sync") || !f.did("ensure-dobbies prime,beam1,beam2") {
 			t.Errorf("calls = %v; want every dobby ended with push and sync spared and ensured live after", f.calls)
 		}
 	})
@@ -544,7 +542,7 @@ func TestChangeAnchor(t *testing.T) {
 			t.Fatalf("changeAnchor() error = %v; want nil", err)
 		}
 
-		for _, call := range []string{"end-dobbies", "start-dobby", "ensure-dobbies"} {
+		for _, call := range []string{"end-dobbies", "ensure-dobbies"} {
 			if f.did(call) {
 				t.Errorf("calls = %v; want no %s", f.calls, call)
 			}
@@ -592,14 +590,14 @@ func TestChangeAnchor(t *testing.T) {
 					f.endErr, f.endedBeforeErr = errors.New("survivor"), []string{"beam1"}
 				},
 				cause:   "survivor",
-				started: []string{"start-dobby beam1"},
+				started: []string{"ensure-dobbies beam1"},
 			},
 			{
 				name:   "TheLogSinkFailsToCloseOnItsMove",
 				mutate: func(f *anchorFake) { f.reopenFails, f.reopenErr = 1, errors.New("sink stuck") },
 				cause:  "sink stuck",
 				// The dobby end preceded it, so the dobby is started again.
-				started: []string{"start-dobby beam1"},
+				started: []string{"ensure-dobbies beam1"},
 			},
 			{
 				name: "ApplyFailsBeforeTheCommitAndTheRecordIsGone",
@@ -607,7 +605,7 @@ func TestChangeAnchor(t *testing.T) {
 					f.applyErr = errors.New("commit failed")
 				},
 				cause:   "commit failed",
-				started: []string{"start-dobby beam1"},
+				started: []string{"ensure-dobbies beam1"},
 			},
 		}
 		for _, tt := range tests {
@@ -629,7 +627,7 @@ func TestChangeAnchor(t *testing.T) {
 						t.Errorf("calls = %v; want %q", f.calls, start)
 					}
 				}
-				if len(tt.started) == 0 && f.did("start-dobby") {
+				if len(tt.started) == 0 && f.did("ensure-dobbies") {
 					t.Errorf("calls = %v; want no dobby started, none having ended", f.calls)
 				}
 				if !f.did("close") {
@@ -648,7 +646,7 @@ func TestChangeAnchor(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), "lyx fabric anchor beam1 --set sub") {
 					t.Fatalf("changeAnchor() error = %v; want it to name `lyx fabric anchor beam1 --set sub`", err)
 				}
-				if f.did("start-dobby") {
+				if f.did("ensure-dobbies") {
 					t.Errorf("calls = %v; want no dobby started while the record stands", f.calls)
 				}
 				if f.did("parent-lock") && !f.did("release-parent-lock") {
@@ -671,7 +669,7 @@ func TestChangeAnchor(t *testing.T) {
 				if err == nil || !strings.Contains(err.Error(), "lyx fabric anchor beam1 --set sub") {
 					t.Errorf("changeAnchor() error = %v; want it to name the re-run of the --set", err)
 				}
-				if f.did("start-dobby") || !f.did("release-parent-lock") {
+				if f.did("ensure-dobbies") || !f.did("release-parent-lock") {
 					t.Errorf("calls = %v; want no dobby started and the parent lock released", f.calls)
 				}
 				wantSink := f.logsDir("beam1", ".")
@@ -695,7 +693,7 @@ func TestChangeAnchor(t *testing.T) {
 		if err != nil || !result.Changed {
 			t.Fatalf("changeAnchor() = (%+v, %v); want the re-run to finish", result, err)
 		}
-		finish, start := slices.Index(f.calls, "finish"), slices.Index(f.calls, "start-dobby beam1")
+		finish, start := slices.Index(f.calls, "finish"), slices.Index(f.calls, "ensure-dobbies beam1")
 		if finish < 0 || start < finish {
 			t.Errorf("calls = %v; want Finish and then the dobby start", f.calls)
 		}
@@ -711,7 +709,7 @@ func TestChangeAnchor(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "lyx fabric anchor beam1 --set sub") {
 			t.Errorf("changeAnchor() error = %v; want it to name the re-run of the --set", err)
 		}
-		if !f.recordFound || f.did("start-dobby") || f.did("finish") {
+		if !f.recordFound || f.did("ensure-dobbies") || f.did("finish") {
 			t.Errorf("calls = %v, record %v; want the record left, Finish not run and no dobby started", f.calls, f.recordFound)
 		}
 	})
@@ -723,7 +721,7 @@ func TestChangeAnchor(t *testing.T) {
 
 		_, err := runAnchorFake(t, before, anchorRequest{Set: "sub"})
 
-		if err == nil || !strings.Contains(err.Error(), "lyx fabric anchor beam1 --set sub") || before.did("start-dobby") {
+		if err == nil || !strings.Contains(err.Error(), "lyx fabric anchor beam1 --set sub") || before.did("ensure-dobbies") {
 			t.Errorf("changeAnchor() = %v, calls %v; want an error naming the re-run and no dobby started", err, before.calls)
 		}
 
@@ -732,33 +730,37 @@ func TestChangeAnchor(t *testing.T) {
 
 		result, err := runAnchorFake(t, after, anchorRequest{Set: "sub"})
 
-		if err != nil || !result.Changed || result.PushError != "push not spawned" || !after.did("start-dobby beam1") {
+		if err != nil || !result.Changed || result.PushError != "push not spawned" || !after.did("ensure-dobbies beam1") {
 			t.Errorf("changeAnchor() = (%+v, %v), calls %v; want the push error reported, the dobby started and no error", result, err, after.calls)
 		}
 	})
 
-	t.Run("A beam this machine does not own, and one whose lock reads held, gets no dobby start after Finish", func(t *testing.T) {
+	t.Run("A failed move of the prime restarts only the dobbies it ended, and one that ended none restarts none", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {
-			name   string
-			mutate func(f *anchorFake)
+			name  string
+			ended []string
+			want  string
 		}{
-			{"NotOwnedHere", func(f *anchorFake) { f.owners["beam1"] = "elsewhere"; f.upstream, f.hasUpstream = "sub", true }},
-			{"LockHeld", func(f *anchorFake) { f.dobbyLive["beam1"] = true }},
+			{"SomeEnded", []string{"beam2"}, "ensure-dobbies beam2"},
+			{"NoneEnded", nil, ""},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				f := newAnchorFake()
-				tt.mutate(f)
+				f.endErr, f.endedBeforeErr = errors.New("survivor"), tt.ended
 
-				result, err := runAnchorFake(t, f, anchorRequest{Set: "sub"})
+				_, err := runAnchorFake(t, f, anchorRequest{Slug: "prime", Set: "sub"})
 
-				if err != nil || !result.Changed {
-					t.Fatalf("changeAnchor() = (%+v, %v); want the move to go through", result, err)
+				if err == nil || !strings.Contains(err.Error(), "survivor") {
+					t.Fatalf("changeAnchor() error = %v; want it to carry survivor", err)
 				}
-				if f.did("start-dobby") {
+				if tt.want == "" && f.did("ensure-dobbies") {
 					t.Errorf("calls = %v; want no dobby start", f.calls)
+				}
+				if tt.want != "" && !slices.Contains(f.calls, tt.want) {
+					t.Errorf("calls = %v; want %q", f.calls, tt.want)
 				}
 			})
 		}

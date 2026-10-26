@@ -112,6 +112,12 @@ type Deps struct {
 	// Slug is the run's slug, which Finalize's owner halts and repair note name in the adopt commands they give.
 	// Told by the caller.
 	Slug string
+	// AdoptSubject returns what `lyx adopt` takes to move the run, the beam or `root`, which Finalize's owner halts name for the run.
+	// A returned error, and an empty answer, read as the run's Slug.
+	//
+	// Nil means "the run's slug", following CommitStatus's nil-is-absent convention.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	AdoptSubject func() (string, error)
 	// ParentHoldsTaskWork reports whether the parent branch already holds the task's work, which marks a Finalize past its parent-side merge.
 	// Finalize reads it first: a parent holding the work skips both owner checks and the unreachable halt, and a returned error halts the run.
 	//
@@ -136,6 +142,16 @@ type Deps struct {
 	// Nil means "no repair note", following CommitStatus's nil-is-absent convention.
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	ParentCommitsOriginLacks func() ([]string, error)
+
+	// LandBlockers reads what still works under the beam the run lands: its open member entries and the local pairs forked from it.
+	// Finalize reads it under the parent lock, right after the owner checks, and halts the landing while any remains.
+	// A returned error halts the run.
+	//
+	// Nil means "no beam to check", following CommitStatus's nil-is-absent convention, and is the value of every recipe but pawl.
+	LandBlockers func() ([]LandBlocker, error)
+	// ParentWorktree is the name of the beam's parent worktree, which the land check's ways forward name as where a cancel runs.
+	// Told by the caller, and unset where LandBlockers is nil.
+	ParentWorktree string
 
 	// ConflictReroutes reports whether a conflict in Finalize's merge of the parent branch into the task aborts the merge and reroutes, which leaves the merge and its conflict session to Parent-Align outside the parent lock.
 	// Told by the caller: true for loom.
