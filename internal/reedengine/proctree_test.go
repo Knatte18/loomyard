@@ -15,6 +15,28 @@ import (
 	"time"
 )
 
+func TestClockTicksFromAuxv(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		auxv [][2]uintptr
+		want int64
+	}{
+		{"DeclaredRate", [][2]uintptr{{6, 4096}, {17, 250}, {0, 0}}, 250},
+		{"NoEntry", [][2]uintptr{{6, 4096}, {0, 0}}, 100},
+		{"ZeroRate", [][2]uintptr{{17, 0}}, 100},
+		{"NilVector", nil, 100},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := clockTicksFromAuxv(tt.auxv); got != tt.want {
+				t.Errorf("clockTicksFromAuxv(%v) = %d; want %d", tt.auxv, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestProcessAge(t *testing.T) {
 	t.Parallel()
 	// statWithStart builds a stat line whose field 22 is start, after a comm holding a space and a paren.

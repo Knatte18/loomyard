@@ -81,6 +81,24 @@ func processAge(uptime, stat string, ticksPerSecond int64) (time.Duration, error
 	return time.Duration((uptimeSeconds - startSeconds) * float64(time.Second)), nil
 }
 
+// auxvClockTicksKey is the ELF auxiliary vector key AT_CLKTCK, the kernel's clock tick rate.
+const auxvClockTicksKey = 17
+
+// defaultClockTicksPerSecond is the rate a C library reports when the auxiliary vector holds no AT_CLKTCK entry.
+const defaultClockTicksPerSecond = 100
+
+// clockTicksFromAuxv returns the clock tick rate the auxiliary vector auxv declares, the unit of a /proc/<pid>/stat start time.
+// It reads the rate without cgo, so the package builds no cgo file whose cached output names the checkout it was built in,
+// and it returns defaultClockTicksPerSecond when auxv holds no positive AT_CLKTCK entry, as sysconf(_SC_CLK_TCK) does.
+func clockTicksFromAuxv(auxv [][2]uintptr) int64 {
+	for _, entry := range auxv {
+		if entry[0] == auxvClockTicksKey && entry[1] > 0 {
+			return int64(entry[1])
+		}
+	}
+	return defaultClockTicksPerSecond
+}
+
 // descendantClosure returns roots plus every transitive descendant.
 // Repeatedly absorbs pids whose parent is already accepted (fixed-point walk).
 func descendantClosure(pidToPPID map[int]int, roots []int) []int {
