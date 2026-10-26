@@ -74,6 +74,11 @@ func stuckEntry(producer string, atMinute int, routedTo string) shedengine.Histo
 	return shedengine.HistoryEntry{Producer: producer, Outcome: shedengine.Stuck, At: minuteMark(atMinute), RoutedTo: routedTo}
 }
 
+// skippedEntry is the history entry of producer's row skipped by its entry gate at the given minute.
+func skippedEntry(producer string, atMinute int) shedengine.HistoryEntry {
+	return shedengine.HistoryEntry{Producer: producer, Outcome: shedengine.OutcomeSkipped, At: minuteMark(atMinute), Reason: "review budget is 0"}
+}
+
 // awaitingEntry is an Awaiting history entry of producer at the given minute.
 func awaitingEntry(producer string, atMinute int) shedengine.HistoryEntry {
 	return shedengine.HistoryEntry{Producer: producer, Outcome: shedengine.Awaiting, At: minuteMark(atMinute)}
@@ -311,15 +316,28 @@ func TestRenderChecklist(t *testing.T) {
 			},
 		},
 		{
-			name: "a skipped row is passed through: no visit, no time, and the next visit starts at the skip",
+			name: "a skipped row is boxed skipped with no visit and no time, and the next visit starts at the skip",
 			rows: recipe,
 			poll: checklistStatus(shedengine.StateDone, "",
-				doneEntry("Plan", 5), shedengine.HistoryEntry{Producer: "Review", Outcome: shedengine.OutcomeSkipped, At: minuteMark(5), Reason: "review budget is 0"}, doneEntry("Build", 12)),
+				doneEntry("Plan", 5), skippedEntry("Review", 5), doneEntry("Build", 12)),
 			nowMin: 20,
 			want: []string{
 				"[x] 1. Plan 5m00s", "  10:00 5m00s done",
-				"[ ] 2. Review",
+				"[-] 2. Review",
 				"[x] 3. Build 7m00s", "  10:05 7m00s done",
+				"loom done | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a row skipped and also visited is boxed done",
+			rows: recipe,
+			poll: checklistStatus(shedengine.StateDone, "",
+				doneEntry("Plan", 5), skippedEntry("Review", 5), gotoEntry("Review", 6), doneEntry("Review", 9), doneEntry("Build", 12)),
+			nowMin: 20,
+			want: []string{
+				"[x] 1. Plan 5m00s", "  10:00 5m00s done",
+				"[x] 2. Review 3m00s", "  10:06 3m00s done",
+				"[x] 3. Build 3m00s", "  10:09 3m00s done",
 				"loom done | now working", "waiting on nothing",
 			},
 		},
@@ -368,7 +386,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 6,
 			want: []string{
 				"[ ] 1. Plan",
-				"[-] 2. Review 6m x2", "  10:00 5m00s escalated", "  10:05 1m running",
+				"[=] 2. Review 6m x2", "  10:00 5m00s escalated", "  10:05 1m running",
 				"[ ] 3. Build",
 				"loom awaiting | now working", "waiting on the parent: escalation from Review",
 			},
@@ -380,7 +398,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 35,
 			want: []string{
 				"[x] 1. Plan 5m00s", "  10:00 5m00s done",
-				"[-] 2. Review 30m", "  10:05 30m running",
+				"[=] 2. Review 30m", "  10:05 30m running",
 				"[ ] 3. Build",
 				"loom blocked | now working", "waiting on nothing",
 			},
@@ -392,7 +410,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 1,
 			want: []string{
 				"[ ] 1. Plan",
-				"[-] 2. Review 1m", "  10:00 1m running",
+				"[=] 2. Review 1m", "  10:00 1m running",
 				"[ ] 3. Build",
 				"loom blocked | now working", "wait " + longReason,
 			},
@@ -404,7 +422,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 6,
 			want: []string{
 				"[x] 1. Plan 5m00s", "  10:00 5m00s done",
-				"[-] 2. Review 1m", "  10:05 1m running",
+				"[=] 2. Review 1m", "  10:05 1m running",
 				"[ ] 3. Build",
 				"loom awaiting | now working", "waiting on the parent: escalation from Review",
 			},
@@ -415,7 +433,7 @@ func TestRenderChecklist(t *testing.T) {
 			poll:   awaitingPlanBouncer,
 			nowMin: 2,
 			want: []string{
-				"[-] 1. Plan-Bouncer 2m", "  10:00 2m running",
+				"[=] 1. Plan-Bouncer 2m", "  10:00 2m running",
 				"loom awaiting | now working",
 				"waiting on the parent: escalation from Plan-Bouncer: the plan needs a decision | waiting for the parent",
 			},
@@ -854,7 +872,7 @@ func TestRenderChecklist(t *testing.T) {
 			nowMin: 17,
 			want: []string{
 				"[x] 1. Build 5m00s", "  10:00 5m00s done",
-				"[-] 2. Rev 12m rounds 1",
+				"[=] 2. Rev 12m rounds 1",
 				"  round 1 12m",
 				"    10:05 1m00s Rev-Bouncer bounced",
 				"    10:06 4m00s Rev-Review done",
@@ -878,6 +896,74 @@ func TestRenderChecklist(t *testing.T) {
 				"[x] 4. PR-Review 3m00s", "  10:05 3m00s done",
 				"[>] 5. PR-Rework 2m", "  10:08 2m running",
 				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a review segment whose row was skipped and never visited is one skipped bare line",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "Publish",
+				doneEntry("Build", 5), skippedEntry("Rev-Bouncer", 5)),
+			nowMin: 7,
+			want: []string{
+				"[x] 1. Build 5m00s", "  10:00 5m00s done",
+				"[-] 2. Rev",
+				"[>] 3. Publish 2m", "  10:05 2m running",
+				"[ ] 4. PR-Review", "[ ] 5. PR-Rework",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a skipped row of a visited review segment leaves the heading done",
+			rows: reviewRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "Publish",
+				doneEntry("Build", 5), doneEntry("Rev-Bouncer", 6), skippedEntry("Rev-Fix", 6)),
+			nowMin: 8,
+			want: []string{
+				"[x] 1. Build 5m00s", "  10:00 5m00s done",
+				"[x] 2. Rev 1m00s rounds 0",
+				"  10:05 1m00s Rev-Bouncer done",
+				"[>] 3. Publish 2m", "  10:06 2m running",
+				"[ ] 4. PR-Review", "[ ] 5. PR-Rework",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a running current producer with a skip entry keeps its running box",
+			rows: recipe,
+			poll: checklistStatus(shedengine.StateRunning, "Review",
+				doneEntry("Plan", 5), skippedEntry("Review", 5)),
+			nowMin: 7,
+			want: []string{
+				"[x] 1. Plan 5m00s", "  10:00 5m00s done",
+				"[>] 2. Review 2m", "  10:05 2m running",
+				"[ ] 3. Build",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a failed current producer with a skip entry keeps its failed box",
+			rows: recipe,
+			poll: checklistStatus(shedengine.StateFailed, "Review",
+				doneEntry("Plan", 5), skippedEntry("Review", 5)),
+			nowMin: 7,
+			want: []string{
+				"[x] 1. Plan 5m00s", "  10:00 5m00s done",
+				"[!] 2. Review 2m", "  10:05 2m running",
+				"[ ] 3. Build",
+				"loom failed | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a halted current producer with a skip entry keeps its halted box",
+			rows: recipe,
+			poll: checklistStatus(shedengine.StatePaused, "Review",
+				doneEntry("Plan", 5), skippedEntry("Review", 5)),
+			nowMin: 7,
+			want: []string{
+				"[x] 1. Plan 5m00s", "  10:00 5m00s done",
+				"[=] 2. Review 2m", "  10:05 2m running",
+				"[ ] 3. Build",
+				"loom paused | now working", "waiting on nothing",
 			},
 		},
 		{
