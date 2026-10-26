@@ -160,9 +160,11 @@ func TestGoDriver_Settle(t *testing.T) {
 		// initialStatus is what the status read before the first step returns; without it the run has no status file.
 		initialStatus *shedengine.Status
 		// settleSeed holds the settle records an earlier process left.
-		settleSeed   []SettleRecord
-		runLockHeld  bool
-		escalation   bool
+		settleSeed  []SettleRecord
+		runLockHeld bool
+		escalation  bool
+		// judgesFirst, when set, is the one row the arbiter seam judges before the tackler.
+		judgesFirst  string
 		pauseCovered []bool
 		orchRecorded bool
 
@@ -330,6 +332,20 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantCalls:   []string{"step", "arbiter:"},
 			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
 			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{2: {"which way?", "arbiter attempt 1: verdict hand-on"}},
+		},
+		{
+			name:  "a blocked stop at a row the arbiter judges first goes to the arbiter with no tackler call, and its hand-on asks the parent once",
+			steps: []func(*testing.T) []byte{blocked}, judgesFirst: "Build", orchRecorded: true, arbiterReturns: arbiterOutcome("hand-on", 1),
+			wantCalls:   []string{"step", "arbiter:"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantNotifies: 1, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{2: {"a row the arbiter judges first", "which way?"}},
+		},
+		{
+			name:  "a blocked stop at a row the arbiter does not judge first goes to the tackler",
+			steps: []func(*testing.T) []byte{blocked}, judgesFirst: "Review", tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
+			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerTackler, shedrun.SettlerParent},
+			wantReports: 2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "a status moved to an awaiting stop with a pending escalation calls the arbiter with a readable envelope",
@@ -715,6 +731,9 @@ func TestGoDriver_Settle(t *testing.T) {
 						return tt.attemptSnap, nil
 					},
 				},
+			}
+			if tt.judgesFirst != "" {
+				deps.Arbiter.JudgesFirst = func(producer string) bool { return producer == tt.judgesFirst }
 			}
 			if tt.noArbiter {
 				deps.Arbiter = nil

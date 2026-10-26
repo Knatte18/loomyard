@@ -149,6 +149,8 @@ type driveFacts struct {
 	RepairCount int
 	// ResumeReturned is true when an applied tackler resume exists for this stop key.
 	ResumeReturned bool
+	// ArbiterFirst is true when the stop is blocked at a row the arbiter judges before the tackler.
+	ArbiterFirst bool
 }
 
 // driveAction is what the loop does for a decision.
@@ -229,6 +231,8 @@ func decideDrive(stop Stop, facts driveFacts) driveDecision {
 		return driveDecision{Action: driveActionHandOver, Rule: "the on-disk build changed since the last step: hand over to a fresh driver"}
 	case facts.ResumeReturned:
 		return driveDecision{Action: driveActionArbiter, Rule: "a tackler resume returned to the same stop: the arbiter decides"}
+	case state == string(shedengine.StateBlocked) && facts.ArbiterFirst:
+		return driveDecision{Action: driveActionArbiter, Rule: "a blocked stop at a row the arbiter judges first: the arbiter decides"}
 	case !stop.OK && stop.Transient != "":
 		return driveDecision{Action: driveActionTackler, Rule: "a transient error that outlived its re-step: the tackler decides"}
 	case stop.Kind == shedverbs.KindInterrupted && stop.InterruptPolicy == shedverbs.InterruptPolicyReinvoke && facts.RepairCount < driveRepairCap:

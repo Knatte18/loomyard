@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/shedarbiter"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -64,6 +66,33 @@ func TestLoomPark(t *testing.T) {
 			marker, readErr := os.ReadFile(markerPath)
 			if readErr != nil || string(marker) != reportPath {
 				t.Errorf("park marker = %q, error %v; want the report path %q", marker, readErr, reportPath)
+			}
+		})
+	}
+}
+
+// TestLoomArbiterSeam_JudgesFirst covers the arbiter seam loom hands the driver: its arbiter-first marking is set, the Webster row is marked, and no other producer is.
+func TestLoomArbiterSeam_JudgesFirst(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		producer string
+		want     bool
+	}{
+		{loomshed.NameWebster, true},
+		{loomshed.NameDarnWrite, false},
+		{loomshed.NameFinalize, false},
+		{"", false},
+	}
+	seam := loomArbiterSeam(shedarbiter.Deps{}, "run-1")
+	if seam.JudgesFirst == nil {
+		t.Fatal("loomArbiterSeam().JudgesFirst = nil; want the arbiter-first marking")
+	}
+	for _, tt := range tests {
+		t.Run(tt.producer, func(t *testing.T) {
+			t.Parallel()
+			if got := seam.JudgesFirst(tt.producer); got != tt.want {
+				t.Errorf("JudgesFirst(%q) = %v; want %v", tt.producer, got, tt.want)
 			}
 		})
 	}

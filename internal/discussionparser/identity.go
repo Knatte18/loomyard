@@ -50,8 +50,24 @@ func dropCarryOverBlocks(lines []string, drop []bool) {
 }
 
 // dropAddedDecisionEntries marks every added-decision entry of the `## Decisions` section, and the blank line above it, in drop.
-// An entry runs from its heading to its last non-blank line before the next heading of any level.
 func dropAddedDecisionEntries(lines []string, fenced, drop []bool) {
+	head, spans := addedDecisionSpans(lines, fenced)
+	for _, span := range spans {
+		for j := span.first; j <= span.last; j++ {
+			drop[j] = true
+		}
+		dropBlankAbove(lines, drop, span.first, head)
+	}
+}
+
+// lineSpan is an inclusive range of line indexes.
+type lineSpan struct {
+	first, last int
+}
+
+// addedDecisionSpans returns the line index of the `## Decisions` heading, -1 when the record has none, and the span of every added-decision entry of that section, in order.
+// An entry runs from its heading to its last non-blank line before the next heading of any level.
+func addedDecisionSpans(lines []string, fenced []bool) (head int, spans []lineSpan) {
 	head, end := -1, len(lines)
 	for i, line := range lines {
 		if fenced[i] {
@@ -70,7 +86,7 @@ func dropAddedDecisionEntries(lines []string, fenced, drop []bool) {
 		}
 	}
 	if head < 0 {
-		return
+		return head, nil
 	}
 
 	for i := head + 1; i < end; i++ {
@@ -85,12 +101,10 @@ func dropAddedDecisionEntries(lines []string, fenced, drop []bool) {
 		for last > i && strings.TrimSpace(lines[last]) == "" {
 			last--
 		}
-		for j := i; j <= last; j++ {
-			drop[j] = true
-		}
-		dropBlankAbove(lines, drop, i, head)
+		spans = append(spans, lineSpan{first: i, last: last})
 		i = last
 	}
+	return head, spans
 }
 
 // dropBlankAbove marks the line above first in drop when it is blank and below the section's heading line.

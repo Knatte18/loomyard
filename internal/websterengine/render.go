@@ -435,13 +435,14 @@ func masterPlanDirDisplay(paneCwd, planDir string) string {
 // pattern_directive is injected via pattern.RoleOrchestrator if PATTERN is active (Master never
 // edits code, only forks).
 // patternChanges is the task's declared PATTERN changes as rendered bullet lines, passed to the pattern directive; nil renders none.
+// parentDecisions is every decision the run's parent recorded after the Discussion, each entry's text verbatim, rendered into {{.parent_decisions}} so a fresh Master knows answers its parent already gave; nil renders `none`.
 // parentName is the told parent agent name; an empty one renders parentdirective's no-parent variant.
 // notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
 // friction_directive is injected via friction.RoleOrchestrator when Tier 2 is on — Master never
 // edits code, only forks — with a friction.Directive error swallowed as a Warn rather than
 // propagated, deliberately unlike the pattern.Directive call immediately above, which does
 // propagate.
-func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, verifyFixPromptPath, planDir string, selfFixCap int, worktreeRoot, repoRoot, stencilsDir string, patternChanges []string, notePath, parentName string) ([]byte, error) {
+func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summaryPath, verifyFixPromptPath, planDir string, selfFixCap int, worktreeRoot, repoRoot, stencilsDir string, patternChanges, parentDecisions []string, notePath, parentName string) ([]byte, error) {
 	directive, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleOrchestrator, patternChanges)
 	if err != nil {
 		return nil, fmt.Errorf("webster: master prompt directive: %w", err)
@@ -472,6 +473,7 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 		"verify_fix_prompt_path": verifyFixPromptPath,
 		"plan_dir":               masterPlanDirDisplay(worktreeRoot, planDir),
 		"self_fix_cap":           fmt.Sprintf("%d", selfFixCap),
+		"parent_decisions":       renderParentDecisions(parentDecisions),
 		"pattern_directive":      directive,
 		friction.MarkerName:      frictionDirective,
 
@@ -488,6 +490,14 @@ func RenderMasterPrompt(batches []batcher.Batch, st *State, outcomePath, summary
 		return nil, fmt.Errorf("webster: fill master template: %w", err)
 	}
 	return prompt, nil
+}
+
+// renderParentDecisions renders decisions for {{.parent_decisions}}: the entries in order, a blank line between two, or `none` when there is none.
+func renderParentDecisions(decisions []string) string {
+	if len(decisions) == 0 {
+		return "none"
+	}
+	return strings.Join(decisions, "\n\n")
 }
 
 // RenderBatchIndex renders batches into ordered-list text for {{.batch_index}}, one line per

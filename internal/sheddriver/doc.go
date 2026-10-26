@@ -35,6 +35,7 @@
 //   - any other awaiting stop: hand back;
 //   - a stop the on-disk build could change, after the last step ran another build: hand over to a fresh driver of the on-disk build, once per build;
 //   - a stop an applied tackler resume returned to: the arbiter decides;
+//   - a blocked stop at a row the told `ArbiterSeam.JudgesFirst` marks: the arbiter decides, with no tackler call;
 //   - a transient error that outlived its re-step: the tackler decides;
 //   - an interrupted step under the re-invoke policy, below the repair cap: re-step;
 //   - an interrupted step under the hand-back policy: hand back;
@@ -56,6 +57,7 @@
 // The rest are optional, and an unwired one only removes rows or agents from the table:
 //
 //   - no `Arbiter`: an escalation to it hands back, relaying the parent notice at an awaiting stop;
+//   - no `Arbiter.JudgesFirst`: every blocked stop meets the tackler before the arbiter;
 //   - no `HandOver`: the driver reads no build and never hands over;
 //   - no `Tamper`: a tackler verdict is acted on without comparing the worktree with its snapshot;
 //   - no `StartCheck`: a driver starting at a blocked stop steps it unchecked;
@@ -67,6 +69,7 @@
 // A stop a removed row would have caught meets the later rows unchanged, so it ends in the tackler under its spawn budget, a re-step under the repair cap, or a hand-back.
 // No unwired seam adds a resume path: a tackler escalation with no arbiter hands back, naming the tackler's case brief.
 // Loom's, darn's and batten's drivers all wire the arbiter after the tackler, batten's with `batten.yaml`'s arbiter overrides of `shed.yaml`.
+// The loom CLI's wiring, which loom and darn share, marks one row the arbiter judges first: the Webster row, whose blocked stop is Merriam's stuck outcome.
 //
 // # The hand-back
 //
