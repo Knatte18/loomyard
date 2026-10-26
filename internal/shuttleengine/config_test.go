@@ -368,6 +368,9 @@ func TestLoadConfig_SubmitSettleKeys(t *testing.T) {
 		{name: "submit confirm timeout positive override loads", key: "submit_confirm_timeout_s", def: "30", value: "5", want: 5, got: func(c shuttleengine.Config) int { return c.SubmitConfirmTimeoutS }},
 		{name: "submit confirm timeout zero refused", key: "submit_confirm_timeout_s", def: "30", value: "0", wantErr: true},
 		{name: "submit confirm timeout negative refused", key: "submit_confirm_timeout_s", def: "30", value: "-1", wantErr: true},
+		{name: "start retries template default loads", key: "start_retries", def: "1", value: "1", want: 1, got: func(c shuttleengine.Config) int { return c.StartRetries }},
+		{name: "start retries zero loads", key: "start_retries", def: "1", value: "0", want: 0, got: func(c shuttleengine.Config) int { return c.StartRetries }},
+		{name: "start retries negative refused", key: "start_retries", def: "1", value: "-1", wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

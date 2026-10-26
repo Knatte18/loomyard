@@ -443,16 +443,22 @@ func paneTail(reed ReedOps, guid string) string {
 
 // captureTail returns the last paneTailLines non-blank lines of capture, each right-trimmed and joined by newlines.
 func captureTail(capture string) string {
+	lines := nonBlankLines(capture)
+	if len(lines) > paneTailLines {
+		lines = lines[len(lines)-paneTailLines:]
+	}
+	return strings.Join(lines, "\n")
+}
+
+// nonBlankLines returns the lines of capture that hold more than whitespace, each right-trimmed, in order.
+func nonBlankLines(capture string) []string {
 	var lines []string
 	for _, line := range strings.Split(capture, "\n") {
 		if strings.TrimSpace(line) != "" {
 			lines = append(lines, strings.TrimRight(line, " \t\r"))
 		}
 	}
-	if len(lines) > paneTailLines {
-		lines = lines[len(lines)-paneTailLines:]
-	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 // ErrSubmissionNotLanded marks a verified send whose text was never seen to be submitted: the submit window closed before typing began, the typed text did not appear, its input box did not settle, or the box still held it when the window closed.

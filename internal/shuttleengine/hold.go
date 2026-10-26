@@ -1,5 +1,6 @@
 // hold.go builds the notice an autonomous run's held turn end sends its parent, and sends it once per held turn end through the runner's notifier.
 // It also declares the optional capability that tells a held turn end the provider's usage limit caused, which sends no notice.
+// Its background-wake check sends none for a held turn end left waiting on background work a session wakes from.
 
 package shuttleengine
 
@@ -100,6 +101,11 @@ func (run *Run) holdNoticePending() bool {
 func (run *Run) usageLimited(held *heldTurnEnd) bool {
 	reader, ok := run.engine.(UsageLimitReader)
 	return ok && reader.TurnEndUsageLimited(Event{Raw: held.raw})
+}
+
+// wakesOnBackground reports whether held left background work running on an engine whose sessions wake when their own background work completes.
+func (run *Run) wakesOnBackground(held *heldTurnEnd) bool {
+	return held.background && meetsAll(run.engine, []Requirement{RequirementBackgroundWake})
 }
 
 // apiErrorContinueLine is the one line an agent whose turn ended on an API error across a machine sleep is given to carry on.

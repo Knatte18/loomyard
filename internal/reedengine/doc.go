@@ -290,6 +290,10 @@
 // The bound: such a session is hidden from reed and lives until the server ends.
 // Windows parses the key and does none of it: psmux reads its own config at start, and the filter flag is never passed to its `list-sessions`.
 //
+// Every tmux call goes through TmuxCmd's run, runStdin or output (overlay.go), and a tmux the host could not start for EAGAIN is retried there: four tries in all, waiting 250 ms before the first retry and doubling the wait each time, each retry logged at Warn.
+// A fork or exec failure means tmux never ran, so a retry repeats no side effect; a tmux that ran and exited nonzero, and every other start failure, returns at once.
+// So a transient process-table shortage never reads to a liveness check, a capture or a strand removal as a dead pane or a failed command.
+//
 // Pane enumeration: listPanes (overlay.go) always runs
 //
 //	list-panes -t <strand window> -F "#{pane_id} #{pane_dead} #{pane_top} #{pane_width} #{pane_height} #{pane_pid} #{pane_title}\t#{pane_current_command}\t#{pane_start_command}"

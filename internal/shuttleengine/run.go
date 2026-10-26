@@ -360,6 +360,8 @@ type Run struct {
 	// not-ready teardown (abandonStartup) it is saved to startupCaptureFileName inside the run
 	// directory as the diagnosis artifact a later operator or attach reads.
 	lastStartupCapture string
+	// startupStrandRemoved is true once abandonStartup has removed the strand, which is what lets start launch the run again.
+	startupStrandRemoved bool
 	// sessionLiveness is the per-wait state of sessionGone, reset at the entry of Wait and awaitStartup.
 	sessionLiveness sessionLivenessState
 	// startupHookReason is why the latest startup probe held a ready pane back for want of a session-start line, empty when it held nothing back.
@@ -505,6 +507,8 @@ func (r *Runner) StartGated(spec Spec, gate GateSpec) (*Run, error) {
 // not-ready Result.Outcome and an err for which errors.Is(err, ErrNotStarted) holds on a genuine
 // not-ready teardown — or (run, Result{}, nil) once the provider is confirmed past its startup
 // gates.
+// An attempt whose provider died before it took its first input and whose strand the teardown removed is launched again after startRetryDelay, in a fresh run directory, up to Config.StartRetries extra times;
+// every other failure, and the last attempt's, returns as above, and each failed attempt keeps its own run directory and capture.
 func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 	if r.toldErr != nil {
 		return nil, Result{}, r.toldErr
@@ -536,6 +540,34 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 
 	r.sweepOrphansOpportunistic()
 
+	attempts := 1 + r.cfg.StartRetries
+	for attempt := 1; ; attempt++ {
+		run, result, err := r.launch(spec, gate, engine, engineName, resumeWarning)
+		if err == nil {
+			return run, Result{}, nil
+		}
+		if run == nil || !run.startRetryable(result) || attempt >= attempts {
+			return nil, result, err
+		}
+		logger.Warn("shuttle: start failed before the provider took its first input; launching again", "attempt", attempt, "attempts", attempts, "runDir", run.runDir, "delay", startRetryDelay, "error", err)
+		r.clock.Sleep(startRetryDelay)
+	}
+}
+
+// startRetryDelay is the wait between a start attempt start gave up on and the next launch, so a transient host condition has a moment to clear.
+const startRetryDelay = 5 * time.Second
+
+// startRetryable reports whether a start attempt that ended with result may be launched again:
+// its provider died before it took its first input and the teardown removed its strand, so a fresh launch never leaves two agents for one start.
+func (run *Run) startRetryable(result Result) bool {
+	return result.Outcome == OutcomeDied && run.startupStrandRemoved
+}
+
+// launch is one attempt of start past its checks: it creates a run directory, prepares the engine's launch, registers the strand with reed, persists run.json, and blocks on the new *Run's awaitStartup and, for a deferred prompt, its skill loading and prompt delivery.
+// It returns (run, Result{}, nil) once the provider is past its startup gates.
+// A failure before the strand registered returns (nil, Result{}, err).
+// A failure after it returns the torn-down run beside the result and error abandonStartup gave, so start can judge whether to launch again.
+func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, resumeWarning string) (*Run, Result, error) {
 	root := runDirRoot(r.cfg, r.anchorPath)
 	runID, runDir, err := createRunDir(root)
 	if err != nil {
@@ -663,7 +695,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 
 	result, err := run.awaitStartup()
 	if err != nil {
-		return nil, result, err
+		return run, result, err
 	}
 	var color segmentcolor.Color
 	if !spec.ColorByCaller {
@@ -674,7 +706,7 @@ func (r *Runner) start(spec Spec, gate GateSpec) (*Run, Result, error) {
 		return run, Result{}, nil
 	}
 	if result, err := run.loadSkillsThenPrompt(launch.PromptLine, color); err != nil {
-		return nil, result, err
+		return run, result, err
 	}
 	return run, Result{}, nil
 }

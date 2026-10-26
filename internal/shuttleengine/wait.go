@@ -327,6 +327,9 @@ func (run *Run) Wait() (Result, error) {
 				case run.holdNoticePending() && run.usageLimited(held):
 					// The parent cannot act while the account is limited, and a notice sent now lands in its context as stale clutter after the reset.
 					logger.Info("shuttle: held turn end stopped on the usage limit; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
+				case run.holdNoticePending() && run.wakesOnBackground(held):
+					// The session wakes when its own background work completes, so the parent has nothing to answer.
+					logger.Info("shuttle: held turn end left background work running; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)
 				case run.spec.HoldDeferral == nil:
 					run.notifyHeld(held)
 				case !run.turnStartRead:
@@ -731,7 +734,7 @@ func (run *Run) awaitStartup() (Result, error) {
 // In order: any capture checkLivenessTick recorded is saved to startupCaptureFileName (a write
 // failure is a Warn, and the returned error then says no capture was saved); run.finalize(outcome)
 // persists RunState.Outcome and logs "run finished", skipping the gate and cleanup since outcome is
-// never OutcomeDone here; the strand is removed whatever Spec.KeepPane says — KeepPane governs a
+// never OutcomeDone here; the strand is removed, tried up to startupRemoveAttempts times with a doubling run-clock wait, whatever Spec.KeepPane says — KeepPane governs a
 // COMPLETED run's pane retention, not a startup failure's, and a provider that never came up leaves
 // nothing worth keeping the pane around for; the run directory is left in place either way, so the
 // capture file (and prompt.md/settings.json/events.jsonl) are findable; and a Warn names the run dir,
@@ -743,7 +746,7 @@ func (run *Run) awaitStartup() (Result, error) {
 // one residual an operator must clear by hand.
 //
 // When cause is nil and the run never started, the error also carries the reason the last startup probe held a ready pane back for want of a session-start line, if it recorded one.
-// The error ends with ". The pane's last lines:" and the last startup capture's tail when all three hold:
+// The error ends with the last startup capture's excerpt, its last lines and, for a capture longer than one tail, its first lines before them, when all three hold:
 // cause is nil, the provider never reached StartupReady (run.state.Started is false), and a startup capture was recorded.
 // Every other teardown reports a cause that already carries its own screen or a mechanism failure with none,
 // or a pane that died after it was ready, whose last capture is the ready screen from before the death.
@@ -761,9 +764,11 @@ func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 	result, _ := run.finalize(outcome)
 
 	removeNote := "the strand was removed"
-	if _, rerr := run.runner.reed.RemoveStrand(run.state.StrandGUID, false); rerr != nil {
-		logger.Warn("shuttle: startup: remove strand after not-ready teardown failed", "strandGUID", run.state.StrandGUID, "error", rerr)
-		removeNote = fmt.Sprintf("the strand could NOT be removed (%v); remove it by hand (\"lyx reed status\" / \"lyx reed remove\")", rerr)
+	if rerr := run.removeStartupStrand(); rerr != nil {
+		logger.Warn("shuttle: startup: remove strand after not-ready teardown failed", "strandGUID", run.state.StrandGUID, "attempts", startupRemoveAttempts, "error", rerr)
+		removeNote = fmt.Sprintf("the strand could NOT be removed after %d attempts (%v); remove it by hand (\"lyx reed status\" / \"lyx reed remove\")", startupRemoveAttempts, rerr)
+	} else {
+		run.startupStrandRemoved = true
 	}
 
 	format := "shuttle: start: %w — run dir %s, strand %q, outcome %q; %s; %s"
@@ -780,11 +785,46 @@ func (run *Run) abandonStartup(outcome Outcome, cause error) (Result, error) {
 		args = append(args, run.startupHookReason)
 	}
 	if cause == nil && !run.state.Started && run.lastStartupCapture != "" {
-		format += ". The pane's last lines:\n%s"
-		args = append(args, captureTail(run.lastStartupCapture))
+		format += ". %s"
+		args = append(args, startupCaptureExcerpt(run.lastStartupCapture))
 	}
 
 	return result, fmt.Errorf(format, args...)
+}
+
+const (
+	// startupRemoveAttempts is how many times the startup teardown tries to remove the run's strand in all.
+	startupRemoveAttempts = 3
+	// startupRemoveFirstDelay is the run-clock wait before the teardown's first removal retry; each later wait doubles it.
+	startupRemoveFirstDelay = time.Second
+)
+
+// removeStartupStrand removes the run's strand, and tries again after a doubling wait on the run clock while the removal fails, up to startupRemoveAttempts tries.
+// It returns nil once a removal succeeds, and the last removal's error otherwise.
+func (run *Run) removeStartupStrand() error {
+	delay := startupRemoveFirstDelay
+	for attempt := 1; ; attempt++ {
+		_, err := run.runner.reed.RemoveStrand(run.state.StrandGUID, false)
+		if err == nil || attempt == startupRemoveAttempts {
+			return err
+		}
+		logger.Warn("shuttle: startup: remove strand failed, retrying", "strandGUID", run.state.StrandGUID, "attempt", attempt, "delay", delay, "error", err)
+		run.clock.Sleep(delay)
+		delay *= 2
+	}
+}
+
+// startupCaptureExcerpt returns the pane lines the not-ready error ends with, each block under its own heading.
+// A capture whose non-blank lines fit in paneTailLines is shown whole as the last lines.
+// A longer one shows its first lines, up to paneTailLines of them and none the tail repeats, and then its last paneTailLines lines.
+// So the first error line of a launch that scrolled away is not lost.
+func startupCaptureExcerpt(capture string) string {
+	lines := nonBlankLines(capture)
+	if len(lines) <= paneTailLines {
+		return "The pane's last lines:\n" + strings.Join(lines, "\n")
+	}
+	head := lines[:min(paneTailLines, len(lines)-paneTailLines)]
+	return "The pane's first lines:\n" + strings.Join(head, "\n") + "\nThe pane's last lines:\n" + strings.Join(lines[len(lines)-paneTailLines:], "\n")
 }
 
 // pollEventsTick reads any events.jsonl bytes appended since run.offset and
@@ -848,7 +888,7 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	last := events[len(events)-1]
 	if last.Kind == EventWaiting {
 		run.recordWaiting(last)
-		run.waitingTurnEnd = &heldTurnEnd{message: last.Message, offset: offsetPastEvent(data, startOffset, newOffset, last), raw: last.Raw}
+		run.waitingTurnEnd = &heldTurnEnd{message: last.Message, offset: offsetPastEvent(data, startOffset, newOffset, last), raw: last.Raw, background: len(last.Outstanding) > 0}
 		if len(run.waitingTasks) == 0 && len(run.gate) == 0 && allOutputFilesExist(run.spec.OutputFiles) {
 			return OutcomeDone, nil, nil
 		}
@@ -943,6 +983,8 @@ type heldTurnEnd struct {
 	offset int64
 	// raw is the turn end's events-file line.
 	raw []byte
+	// background is true when the turn end left background work of the session's own running.
+	background bool
 }
 
 // offsetPastEvent returns the events-file offset just past the line ev was parsed from.

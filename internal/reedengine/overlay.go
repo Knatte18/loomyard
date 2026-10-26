@@ -3,6 +3,7 @@
 // Add/Remove/reconcile/apply/up.
 // Every invocation is traced via logger.Debug so that -vv reveals the exact tmux command line for
 // diagnosis, while a normal run (default Warn threshold) stays silent.
+// A tmux the host could not start for EAGAIN is retried a few times with a short doubling wait, so a transient process-table shortage never reads as a tmux failure.
 // This file is domain-free: it knows nothing about Claude, review panes, or any caller vocabulary,
 // only tmux session/pane primitives.
 
@@ -16,6 +17,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -47,6 +49,41 @@ type TmuxCmd struct {
 	// floorLine is the `tmux -V` line a hook-driven command's floor check reads, and is read only when execHook is set.
 	// Empty admits.
 	floorLine string
+	// pause, when non-nil, replaces time.Sleep between the attempts of a tmux exec that failed with EAGAIN, so a test retries without waiting.
+	pause func(time.Duration)
+}
+
+const (
+	// execAgainAttempts is how many times a tmux exec that fails with EAGAIN is tried in all.
+	execAgainAttempts = 4
+	// execAgainFirstDelay is the wait before the first retry of such an exec; each later wait doubles it.
+	execAgainFirstDelay = 250 * time.Millisecond
+)
+
+// isExecAgain reports whether err is a failure to start tmux because the host was temporarily out of a resource, EAGAIN from fork or exec.
+// A tmux that started and exited nonzero never matches, so a retry never repeats a tmux command that ran.
+func isExecAgain(err error) bool {
+	return errors.Is(err, syscall.EAGAIN)
+}
+
+// retryExecAgain calls attempt, and calls it again after a doubling wait while it fails with EAGAIN, up to execAgainAttempts calls in all.
+// It returns the first result that is not an EAGAIN failure, or the last attempt's.
+// Each retry is logged at Warn with the tmux argv.
+func retryExecAgain[T any](p TmuxCmd, args []string, attempt func() (T, error)) (T, error) {
+	delay := execAgainFirstDelay
+	for try := 1; ; try++ {
+		value, err := attempt()
+		if err == nil || try == execAgainAttempts || !isExecAgain(err) {
+			return value, err
+		}
+		logger.Warn("reed: tmux could not be started, retrying", "args", args, "attempt", try, "delay", delay, "err", err)
+		if p.pause != nil {
+			p.pause(delay)
+		} else {
+			time.Sleep(delay)
+		}
+		delay *= 2
+	}
 }
 
 // NewTmuxCmd builds a TmuxCmd bound to the given binary and -L socket.
@@ -73,62 +110,57 @@ func (p TmuxCmd) serverArgs() []string {
 
 // run builds and runs a command with the server flags prepended,
 // folding stderr into the returned error.
+// A tmux that could not be started for EAGAIN is retried as retryExecAgain says.
 func (p TmuxCmd) run(args ...string) error {
-	if err := p.checkFloor(); err != nil {
-		return err
-	}
-	if p.execHook != nil {
-		_, err := p.execHook(false, nil, args...)
-		return err
-	}
-	fullArgs := append(p.serverArgs(), args...)
-	logger.Debug("tmux", "args", fullArgs)
-	cmd := exec.Command(p.tmuxPath, fullArgs...)
-	var stderr bytes.Buffer
-	cmd.Stdout = io.Discard
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	return wrapTmuxError(err, stderr.Bytes())
+	return p.runStdin(nil, args...)
 }
 
-// runStdin is run with stdin written to the command's standard input.
+// runStdin is run with stdin written to the command's standard input; a nil stdin leaves the command's standard input empty.
 // The bytes are never logged.
 func (p TmuxCmd) runStdin(stdin []byte, args ...string) error {
 	if err := p.checkFloor(); err != nil {
 		return err
 	}
-	if p.execHook != nil {
-		_, err := p.execHook(false, stdin, args...)
-		return err
-	}
-	fullArgs := append(p.serverArgs(), args...)
-	logger.Debug("tmux", "args", fullArgs)
-	cmd := exec.Command(p.tmuxPath, fullArgs...)
-	var stderr bytes.Buffer
-	cmd.Stdin = bytes.NewReader(stdin)
-	cmd.Stdout = io.Discard
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	return wrapTmuxError(err, stderr.Bytes())
+	_, err := retryExecAgain(p, args, func() (struct{}, error) {
+		if p.execHook != nil {
+			_, err := p.execHook(false, stdin, args...)
+			return struct{}{}, err
+		}
+		fullArgs := append(p.serverArgs(), args...)
+		logger.Debug("tmux", "args", fullArgs)
+		cmd := exec.Command(p.tmuxPath, fullArgs...)
+		var stderr bytes.Buffer
+		if stdin != nil {
+			cmd.Stdin = bytes.NewReader(stdin)
+		}
+		cmd.Stdout = io.Discard
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		return struct{}{}, wrapTmuxError(err, stderr.Bytes())
+	})
+	return err
 }
 
 // output builds and runs a command with the server flags prepended,
 // capturing stdout and folding stderr into the error.
+// A tmux that could not be started for EAGAIN is retried as retryExecAgain says.
 func (p TmuxCmd) output(args ...string) (string, error) {
 	if err := p.checkFloor(); err != nil {
 		return "", err
 	}
-	if p.execHook != nil {
-		return p.execHook(true, nil, args...)
-	}
-	fullArgs := append(p.serverArgs(), args...)
-	logger.Debug("tmux", "args", fullArgs)
-	cmd := exec.Command(p.tmuxPath, fullArgs...)
-	out, err := cmd.Output()
-	if exitErr, ok := err.(*exec.ExitError); ok {
-		return string(out), wrapTmuxError(err, exitErr.Stderr)
-	}
-	return string(out), err
+	return retryExecAgain(p, args, func() (string, error) {
+		if p.execHook != nil {
+			return p.execHook(true, nil, args...)
+		}
+		fullArgs := append(p.serverArgs(), args...)
+		logger.Debug("tmux", "args", fullArgs)
+		cmd := exec.Command(p.tmuxPath, fullArgs...)
+		out, err := cmd.Output()
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return string(out), wrapTmuxError(err, exitErr.Stderr)
+		}
+		return string(out), err
+	})
 }
 
 // wrapTmuxError attaches tmux's stderr to err so failures surface

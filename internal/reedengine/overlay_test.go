@@ -10,9 +10,13 @@ package reedengine
 
 import (
 	"errors"
+	"fmt"
+	"os"
 	"runtime"
 	"slices"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestListSessions(t *testing.T) {
@@ -258,4 +262,87 @@ func TestReapSession_CallOrdering(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTmuxExecRetriesEAGAIN pins the exec seam's retry: a tmux the host could not start for EAGAIN is tried again after a doubling wait, up to execAgainAttempts tries.
+// Any other failure, a tmux that ran and exited nonzero included, is returned at once.
+func TestTmuxExecRetriesEAGAIN(t *testing.T) {
+	t.Parallel()
+	forkAgain := &os.PathError{Op: "fork/exec", Path: "/usr/bin/tmux", Err: syscall.EAGAIN}
+	exited := errors.New("exit status 1: can't find pane: %9")
+	tests := []struct {
+		name string
+		// failures are the errors the first calls return, in order; every later call succeeds.
+		failures   []error
+		wantCalls  int
+		wantErr    error
+		wantPauses []time.Duration
+	}{
+		{"succeeds at once", nil, 1, nil, nil},
+		{"EAGAIN then success", []error{forkAgain, forkAgain}, 3, nil, []time.Duration{execAgainFirstDelay, 2 * execAgainFirstDelay}},
+		{"EAGAIN on every attempt", []error{forkAgain, forkAgain, forkAgain, forkAgain, forkAgain}, execAgainAttempts, forkAgain, []time.Duration{execAgainFirstDelay, 2 * execAgainFirstDelay, 4 * execAgainFirstDelay}},
+		{"nonzero exit is not retried", []error{exited}, 1, exited, nil},
+	}
+	for _, tt := range tests {
+		for _, capture := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/capture=%v", tt.name, capture), func(t *testing.T) {
+				t.Parallel()
+				cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
+				var pauses []time.Duration
+				cmd.pause = func(d time.Duration) { pauses = append(pauses, d) }
+				fake := installFakeTmuxOn(t, &cmd)
+				calls := 0
+				fake.answerFunc("kill-pane", func([]string) (string, error) {
+					calls++
+					if calls <= len(tt.failures) {
+						return "", tt.failures[calls-1]
+					}
+					return "", nil
+				})
+
+				var err error
+				if capture {
+					_, err = cmd.output("kill-pane", "-t", "%9")
+				} else {
+					err = cmd.run("kill-pane", "-t", "%9")
+				}
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("tmux kill-pane error = %v; want %v", err, tt.wantErr)
+				}
+				if calls != tt.wantCalls {
+					t.Errorf("tmux kill-pane calls = %d; want %d", calls, tt.wantCalls)
+				}
+				if !slices.Equal(pauses, tt.wantPauses) {
+					t.Errorf("pauses = %v; want %v", pauses, tt.wantPauses)
+				}
+			})
+		}
+	}
+
+	// This pins the hook seam only: the real exec path rebuilds its reader per attempt, and a test cannot make a real fork fail with EAGAIN.
+	t.Run("runStdin hands a retry the same stdin", func(t *testing.T) {
+		t.Parallel()
+		wantStdin := []byte("pasted text")
+		var seen [][]byte
+		cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
+		cmd.pause = func(time.Duration) {}
+		cmd.execHook = func(_ bool, stdin []byte, _ ...string) (string, error) {
+			seen = append(seen, stdin)
+			if len(seen) == 1 {
+				return "", forkAgain
+			}
+			return "", nil
+		}
+		if err := cmd.runStdin(wantStdin, "load-buffer", "-"); err != nil {
+			t.Fatalf("runStdin() error = %v; want nil", err)
+		}
+		if len(seen) != 2 {
+			t.Fatalf("exec calls = %d; want 2", len(seen))
+		}
+		for i, got := range seen {
+			if !slices.Equal(got, wantStdin) {
+				t.Errorf("stdin of call %d = %q; want %q", i+1, got, wantStdin)
+			}
+		}
+	})
 }
