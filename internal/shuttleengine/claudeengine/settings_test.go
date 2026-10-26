@@ -295,12 +295,10 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 					t.Errorf("autonomous AskUserQuestion command = %q; want the deny JSON payload", command)
 				}
 			}
-			pythonInstalled, rawGoInstalled, inPlaceInstalled, redirectInstalled, computedRmInstalled, sleepInstalled := false, false, false, false, false, false
+			pythonInstalled, rawGoInstalled, computedRmInstalled, sleepInstalled := false, false, false, false
 			for _, command := range matcherCommands(doc, "Bash") {
 				pythonInstalled = pythonInstalled || strings.Contains(command, shellRow(t, "python").Steer)
 				rawGoInstalled = rawGoInstalled || strings.Contains(command, shellRow(t, "raw-go").Steer)
-				inPlaceInstalled = inPlaceInstalled || strings.Contains(command, shellRow(t, "in-place-edit").Steer)
-				redirectInstalled = redirectInstalled || strings.Contains(command, shellRow(t, "redirect-write").Steer)
 				computedRmInstalled = computedRmInstalled || strings.Contains(command, shellRow(t, "computed-rm").Steer)
 				sleepInstalled = sleepInstalled || strings.Contains(command, shellRow(t, "machine-sleep").Steer)
 			}
@@ -311,21 +309,15 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 			if !rawGoInstalled {
 				t.Errorf("raw go Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
-			// The in-place edit, redirect write, computed-rm and sleep denies have no toggle either.
-			if !inPlaceInstalled {
-				t.Errorf("in-place edit Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
-			}
-			if !redirectInstalled {
-				t.Errorf("redirect write Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
-			}
+			// The computed-rm and sleep denies have no toggle either.
 			if !computedRmInstalled {
 				t.Errorf("computed-rm Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
 			if !sleepInstalled {
 				t.Errorf("sleep Bash PreToolUse entry present = false; want it installed under every input (preToolUse: %v)", preToolUse)
 			}
-			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && len(preToolUse) != 5 {
-				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, in-place edit, redirect write, computed-rm and sleep denies", preToolUse)
+			if !tt.wantAgentEntry && !tt.wantAskUserEntry && !tt.pythonDeny && len(preToolUse) != 3 {
+				t.Errorf("PreToolUse = %v with no denies/marker configured; want only the raw go, computed-rm and sleep denies", preToolUse)
 			}
 		})
 	}
@@ -410,7 +402,7 @@ const (
 // Fork mode on with the deny configured replaces the blanket Agent deny with the conditional grep hook;
 // fork mode off leaves the blanket deny;
 // the deny configured off, or the per-run allowance, emits no Agent entry and drops its notice sentence while the AskUserQuestion deny and its sentence stay.
-// Beside the always-installed raw go, in-place edit, redirect write, computed-rm and sleep denies, the fork-loop-deadlock guard is the only Bash entry any document carries, so no run mode installs a Bash stdin rewrite:
+// Beside the always-installed raw go, computed-rm and sleep denies, the fork-loop-deadlock guard is the only Bash entry any document carries, so no run mode installs a Bash stdin rewrite:
 // a fork-mode run emits a PreToolUse(Bash) hook that greps the payload for a fork-context agent_id AND a `lyx webster` command before denying (with steerWebsterForkDeny), and always exits 0 via the trailing `; true`.
 // The guard is independent of DenyAgentTool and of the allowance, and absent entirely when fork mode is off (no Master, so no fork could reach the loop).
 //
@@ -464,16 +456,12 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 				}
 			}
 
-			// The raw go, in-place edit, redirect write, computed-rm and sleep denies are installed under every input; the rest of the Bash entries are the fork guard.
-			var bashCommands, rawGoCommands, inPlaceCommands, redirectCommands, computedRmCommands, sleepCommands []string
+			// The raw go, computed-rm and sleep denies are installed under every input; the rest of the Bash entries are the fork guard.
+			var bashCommands, rawGoCommands, computedRmCommands, sleepCommands []string
 			for _, command := range matcherCommands(doc, "Bash") {
 				switch {
 				case strings.Contains(command, shellRow(t, "raw-go").Steer):
 					rawGoCommands = append(rawGoCommands, command)
-				case strings.Contains(command, shellRow(t, "in-place-edit").Steer):
-					inPlaceCommands = append(inPlaceCommands, command)
-				case strings.Contains(command, shellRow(t, "redirect-write").Steer):
-					redirectCommands = append(redirectCommands, command)
 				case strings.Contains(command, shellRow(t, "computed-rm").Steer):
 					computedRmCommands = append(computedRmCommands, command)
 				case strings.Contains(command, shellRow(t, "machine-sleep").Steer):
@@ -484,12 +472,6 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 			}
 			if len(rawGoCommands) != 1 {
 				t.Errorf("raw go Bash PreToolUse entries = %q; want exactly one (data: %s)", rawGoCommands, data)
-			}
-			if len(inPlaceCommands) != 1 {
-				t.Errorf("in-place edit Bash PreToolUse entries = %q; want exactly one (data: %s)", inPlaceCommands, data)
-			}
-			if len(redirectCommands) != 1 {
-				t.Errorf("redirect write Bash PreToolUse entries = %q; want exactly one (data: %s)", redirectCommands, data)
 			}
 			if len(computedRmCommands) != 1 {
 				t.Errorf("computed-rm Bash PreToolUse entries = %q; want exactly one (data: %s)", computedRmCommands, data)
@@ -681,8 +663,8 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 		wantRefused bool
 		wantErr     bool
 	}{
-		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 6, true, false},
-		{"AbsentGateConfigRendersNoRefuseRawRow", "", 5, false, false},
+		{"SeededRefuseRawReachesSettingsAndNotice", "slots: 2\nrefuse_raw: [\"go test\"]\n", 4, true, false},
+		{"AbsentGateConfigRendersNoRefuseRawRow", "", 3, false, false},
 		{"UnparsableGateConfigRefusesBeforeArtifacts", "slots: [\n", 0, false, true},
 	}
 	for _, tt := range gateTests {
@@ -786,9 +768,6 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 	}
 	nonFork := buildDenyNotice(false, cfg, claude, false, false)
 	for name, notice := range map[string]string{"autonomous": nonFork, "interactive": buildDenyNotice(true, cfg, claude, false, false), "fork": forkNotice} {
-		if !strings.Contains(notice, shellRow(t, "in-place-edit").Notice) {
-			t.Errorf("%s notice = %q; want it to contain the in-place edit sentence", name, notice)
-		}
 		if !strings.Contains(notice, shellRow(t, "computed-rm").Notice) {
 			t.Errorf("%s notice = %q; want it to contain the computed-rm sentence", name, notice)
 		}

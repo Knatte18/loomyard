@@ -225,11 +225,7 @@ func TestNoDeniedRecovery_ScanSelfCheck(t *testing.T) {
 		{"rm -rf", "way forward: rm -rf .lyx/webster", 1},
 		{"plain rm", "way forward: rm outcome.yaml", 0},
 		{"python3 as a step", "way forward: run python3 fix.py", 1},
-		{"sed -i as a step", "way forward: sed -i s/a/b/ f", 1},
-		{"perl -i as a step", "way forward: perl -i -pe s/a/b/ f", 1},
-		{"directive wording forbids each", "never `sed -i`, never `perl -i`, never `awk`", 0},
-		{"sed -n is a read", "read it with sed -n 3p f", 0},
-		{"suffixed sed -i is outside the scan", "way forward: sed -i.bak s/a/b/ f", 0},
+		{"sed -i is not denied", "way forward: sed -i s/a/b/ f", 0},
 	}
 	for _, form := range deniedRecoveryForms {
 		joined := strings.Join(form, " ")
