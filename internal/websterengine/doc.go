@@ -584,6 +584,21 @@
 // The run-exit audit reads the forks of Master's session only, so a cold fixer's own writes are checked only through the contract-file evidence loadRunWrites collects, as a recovery strand's are.
 // Each fixer session joins the run's write evidence (loadRunWrites) beside the recovery sessions, run entry stops a fixer recorded not terminal and saves its record dead/died, so the next fix-verify spawns a fresh fixer instead of attaching to the stopped strand, and `reset --to start` stops every recorded fixer strand.
 //
+// # The plan fixer
+//
+// A `plan_conflict` refusal of begin-batch goes to a cold plan fixer before Master ends stuck:
+// Merriam runs `lyx webster fix-plan` backgrounded, ends its turn, and on the verb's completion calls begin-batch again for the same batch on verdict `fixed`, and otherwise writes `outcome: stuck` quoting the begin-batch refusal, so a loom run still reroutes to plan review through the conflict record, which nothing but the next begin-batch removes.
+// A `plan_drifted` refusal gets no fixer.
+// FixPlanSpawnOrAttach reads the conflict record (ReadConflictRecord) and spawns the fixer as its own strand, role `plan-fixer`, at RoleMaster's model choice with recovery_timeout_min as its timeout, with RenderPlanFixPrompt's prompt carrying the parent, edit and friction directives.
+// The fixer edits only the target names, paths and glyphs the findings name in the cards they name, runs `lyx webster rebaseline --card NN` for them, runs `lyx webster restore-plan` when rebaseline refuses or a finding would change what a card does, and writes its reply (PlanFixReplyPath), whose first line is `verdict: fixed` or `verdict: plan_writer`.
+// Each spawn appends a PlanFixerState, holding the conflict's batch and findings and the worktree's HEAD and uncommitted paths, to State.PlanFixers, which the verb saves and fabric-commits at once;
+// a call that finds the last record not terminal attaches to it.
+// FixPlanAwait waits as FixVerifyAwait does and reads the verdict from the reply, a reply without a known one reading `plan_writer`.
+// Bound: the verb refuses when an earlier plan fixer of the run was given the same findings, compared as a set, and once the conflict's batch had planFixersPerBatch fixers, so a fixer that cannot clear a conflict leaves it to the plan writer after at most that many extra begin-batch calls.
+// The fixer's session is not in the run's write evidence, since its one legitimate write, to the plan directory, is a correctness violation for every session there;
+// instead a `fixed` verdict from a fixer that moved HEAD or left an uncommitted change on a path that was clean at the spawn is overruled to `plan_writer` with a warning, and its plan edits are bounded by rebaseline's acceptance rules and begin-batch's re-resolution.
+// Run entry stops a plan fixer recorded not terminal and saves its record dead/died, and `reset --to start` stops every recorded plan fixer strand.
+//
 // # The verify gate
 //
 // Run hands Merriam's spawn the hub's `webster` gate as one must-pass gate entry named `verify` (NewVerifyGate), beside any entry the caller's RunDeps.Gate carries;
@@ -629,8 +644,8 @@
 //
 // # Background shells in Master's wait
 //
-// Master's spawn declares two awaited shell prefixes, `masterAwaitedShellPrefixes`: the backgrounded recovery verb of the failure ladder and the backgrounded cold fixer verb of the gate-failure section;
-// recovery_timeout_min already bounds both verbs, so the prefixes keep them out of the background-shell wait marker and are what keeps them holding a gated turn end.
+// Master's spawn declares its awaited shell prefixes, `masterAwaitedShellPrefixes`: the backgrounded recovery verb of the failure ladder, the backgrounded cold fixer verb of the gate-failure section and the backgrounded plan fixer verb of the plan-conflict rung;
+// recovery_timeout_min already bounds each verb, so the prefixes keep them out of the background-shell wait marker and are what keeps them holding a gated turn end.
 // A gated turn end waiting only on non-awaited shells is judged as a plain turn end: done when Master's output files exist, held when one is missing.
 // A gated turn end waiting on an awaited verb or on a fork is never an arrival, and neither expires.
 // The run ends on the next turn end with nothing outstanding, the run deadline, the liveness check or a stop;

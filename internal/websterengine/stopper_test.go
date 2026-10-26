@@ -25,15 +25,16 @@ func TestRemoveRecoveryStrands(t *testing.T) {
 			4: {Kind: "recovery"},
 		},
 		VerifyFixers: []*websterengine.VerifyFixerState{{StrandGUID: "fixer-1", Status: websterengine.DigestStatusDead}, {StrandGUID: "fixer-2"}},
+		PlanFixers:   []*websterengine.PlanFixerState{{StrandGUID: "plan-fixer-1"}},
 	}
 
-	t.Run("stops every recorded recovery strand in batch order, then every cold fixer strand", func(t *testing.T) {
+	t.Run("stops every recorded recovery strand in batch order, then every cold fixer and plan fixer strand", func(t *testing.T) {
 		t.Parallel()
 		stopper := &recordingStopper{}
 		if err := websterengine.RemoveRecoveryStrands(stopper, st); err != nil {
 			t.Fatalf("RemoveRecoveryStrands() error = %v; want nil", err)
 		}
-		if want := []string{"recovery-1", "recovery-3", "fixer-1", "fixer-2"}; !reflect.DeepEqual(stopper.Stopped, want) {
+		if want := []string{"recovery-1", "recovery-3", "fixer-1", "fixer-2", "plan-fixer-1"}; !reflect.DeepEqual(stopper.Stopped, want) {
 			t.Errorf("stopped = %v; want %v", stopper.Stopped, want)
 		}
 	})

@@ -176,6 +176,9 @@ type State struct {
 	// VerifyFixers records every cold verify-gate fixer strand fix-verify spawned, in spawn order; only the last can be running.
 	// A state written before this field existed loads with it nil.
 	VerifyFixers []*VerifyFixerState `json:"verifyFixers,omitempty"`
+	// PlanFixers records every cold plan-fixer strand fix-plan spawned, in spawn order; only the last can be running.
+	// A state written before this field existed loads with it nil.
+	PlanFixers []*PlanFixerState `json:"planFixers,omitempty"`
 }
 
 // VerifyFixerState is one cold verify-gate fixer strand's record.
@@ -196,6 +199,36 @@ type VerifyFixerState struct {
 	Status string `json:"status,omitempty"`
 	// DeadReason is set only when Status is DigestStatusDead.
 	DeadReason string `json:"deadReason,omitempty"`
+}
+
+// PlanFixerState is one cold plan-fixer strand's record.
+type PlanFixerState struct {
+	// StrandGUID identifies the reed strand the fixer runs in.
+	StrandGUID string `json:"strandGuid"`
+	// SessionID and Engine identify the fixer's session and the engine it ran under, so the wait reads its turn ends.
+	SessionID string `json:"sessionId,omitempty"`
+	Engine    string `json:"engine,omitempty"`
+	// SpawnedAt is the spawn time in RFC 3339, from which the recovery timeout runs.
+	SpawnedAt string `json:"spawnedAt"`
+	// ShuttleRunDir is the fixer's shuttle run directory, removed once the fixer reaches done.
+	ShuttleRunDir string `json:"shuttleRunDir,omitempty"`
+	// EventsPath and EventsOffset locate the fixer's turn events after its skill-load turns.
+	EventsPath   string `json:"eventsPath,omitempty"`
+	EventsOffset int64  `json:"eventsOffset,omitempty"`
+	// Batch is the batch whose begin-batch refused with the conflict the fixer was given.
+	Batch int `json:"batch"`
+	// Findings are the conflict record's findings the fixer was given.
+	Findings []string `json:"findings,omitempty"`
+	// HeadAtSpawn is the worktree's HEAD when the fixer spawned, which a fix must leave unmoved.
+	HeadAtSpawn string `json:"headAtSpawn,omitempty"`
+	// DirtyAtSpawn are the worktree-relative paths uncommitted when the fixer spawned; a fix must add none.
+	DirtyAtSpawn []string `json:"dirtyAtSpawn,omitempty"`
+	// Status is empty while the fixer runs, then DigestStatusDone or DigestStatusDead.
+	Status string `json:"status,omitempty"`
+	// DeadReason is set only when Status is DigestStatusDead.
+	DeadReason string `json:"deadReason,omitempty"`
+	// Verdict is set only when Status is DigestStatusDone: PlanFixVerdictFixed or PlanFixVerdictPlanWriter.
+	Verdict string `json:"verdict,omitempty"`
 }
 
 // PendingAuditFinding is one run-exit correctness finding that stays pending until accepted.

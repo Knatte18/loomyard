@@ -1,4 +1,4 @@
-// batchpause.go holds the up-front refusal begin-batch, recover-batch and fix-verify make under a pause, and the lookup of Master's own strand that refusal claims into the pause.
+// batchpause.go holds the up-front refusal begin-batch, recover-batch, fix-verify and fix-plan make under a pause, and the lookup of Master's own strand that refusal claims into the pause.
 
 package webstercli
 

@@ -116,7 +116,7 @@ Everything provider-*specific* — CLI flags, `version` id translation, large-wi
 ## Roles that use this notation
 
 webster.yaml holds two roles, each a model-spec: `master` (the long-lived Master session;
-its in-session forks always inherit Master's current model, so there are no per-fork roles) and `recovery` (the cold recovery strand `recover-batch` spawns, and the cold verify-gate fixer `fix-verify` spawns).
+its in-session forks always inherit Master's current model, so there are no per-fork roles, and the cold plan fixer `fix-plan` spawns runs on it too) and `recovery` (the cold recovery strand `recover-batch` spawns, and the cold verify-gate fixer `fix-verify` spawns).
 Stack-wide roles elsewhere (burler reviewers, Bouncer judges, loom producers) use the same notation in their own config sections;
 loom's config section overrides per role when loom drives the module.
 

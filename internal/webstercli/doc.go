@@ -56,4 +56,11 @@
 // fix-verify runs the cold verify-gate fixer the verify gate escalates a failure to, spawning or attaching as recover-batch does, and boots the standalone reed session the same way.
 // Its envelope carries status, elapsed_s and warnings, with reply on done and dead_reason on dead;
 // a dead fixer exits non-zero with a message whose way forward is the same as for done: Master rewrites its contract files and ends its turn, and the gate judges the fix.
+//
+// # Fix-plan
+//
+// fix-plan runs the cold plan fixer after begin-batch refuses with `plan_conflict`, spawning or attaching as fix-verify does, and boots the standalone reed session the same way.
+// It releases the state-mutation lease while it waits, so the fixer's own `rebaseline` can take it.
+// Its envelope carries status, elapsed_s and warnings, with verdict and reply on done and dead_reason on dead;
+// a dead fixer, and a refusal for findings a fixer already had or for a batch out of fixers, exits non-zero with a message whose way forward is ending the run stuck quoting the begin-batch refusal, so the conflict goes to the plan writer.
 package webstercli

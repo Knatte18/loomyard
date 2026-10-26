@@ -1,4 +1,4 @@
-// conflictrecord.go declares the never-tracked plan-conflict record begin-batch leaves in webster's scratch directory, and its writers and removers.
+// conflictrecord.go declares the never-tracked plan-conflict record begin-batch leaves in webster's scratch directory, and its writers, readers and removers.
 package websterengine
 
 import (
@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/lyxdirs"
@@ -46,6 +47,33 @@ func WriteConflictRecord(scratchDir string, conflict *PlanConflictError) error {
 		return fmt.Errorf("webster: write plan-conflict record: %w", err)
 	}
 	return nil
+}
+
+// ConflictRecord is the conflict record as read back from disk.
+// Batch is 0 when the header names none.
+type ConflictRecord struct {
+	Batch    int
+	Findings []string
+}
+
+// ReadConflictRecord reads the conflict record under scratchDir.
+// An absent record reads as a ConflictRecord with no findings.
+func ReadConflictRecord(scratchDir string) (ConflictRecord, error) {
+	recordPath := ConflictRecordPath(scratchDir)
+	data, err := os.ReadFile(recordPath)
+	if os.IsNotExist(err) {
+		return ConflictRecord{}, nil
+	}
+	if err != nil {
+		return ConflictRecord{}, fmt.Errorf("webster: read %s: %w", recordPath, err)
+	}
+	record := ConflictRecord{Findings: findingLines(string(data))}
+	for _, line := range strings.Split(string(data), "\n") {
+		if number, ok := strings.CutPrefix(line, "# Plan conflict at begin-batch "); ok {
+			record.Batch, _ = strconv.Atoi(number)
+		}
+	}
+	return record, nil
 }
 
 // RemoveConflictRecord removes the conflict record, and is a no-op when it is absent.
@@ -117,13 +145,18 @@ func readFindingLines(filePath string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("webster: read %s: %w", filePath, err)
 	}
+	return findingLines(string(data)), nil
+}
+
+// findingLines returns the text after "- " of every finding line in a conflict record's or routed file's text.
+func findingLines(text string) []string {
 	var findings []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(text, "\n") {
 		if finding, ok := strings.CutPrefix(line, "- "); ok {
 			findings = append(findings, finding)
 		}
 	}
-	return findings, nil
+	return findings
 }
 
 // sameFindingSet reports whether a and b hold the same findings, order ignored.

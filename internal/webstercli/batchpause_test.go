@@ -1,6 +1,6 @@
 //go:build tier1
 
-// batchpause_test.go covers the pause refusal begin-batch, recover-batch and fix-verify make before they read or change any state, and the lookup of Master's strand it claims.
+// batchpause_test.go covers the pause refusal begin-batch, recover-batch, fix-verify and fix-plan make before they read or change any state, and the lookup of Master's strand it claims.
 
 package webstercli
 
@@ -73,6 +73,10 @@ func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 			name: "fix-verify claims Master and refuses", verb: "fix-verify", masterStrand: okStrand, wantExit: 1, wantSessions: claimedMaster, stateKept: true,
 			wantText: []string{"a hub-wide pause holds this pair, so fix-verify spawns no cold fixer; way forward: end your turn now; once the resume line arrives run \"lyx webster fix-verify\" again"},
 		},
+		{
+			name: "fix-plan claims Master and refuses", verb: "fix-plan", masterStrand: okStrand, wantExit: 1, wantSessions: claimedMaster, stateKept: true,
+			wantText: []string{"a hub-wide pause holds this pair, so fix-plan spawns no plan fixer; way forward: end your turn now; once the resume line arrives run \"lyx webster fix-plan\" again"},
+		},
 		{name: "begin-batch refuses without a claim when Master's strand is unknown", verb: "begin-batch", masterStrand: failingStrand, wantExit: 1, wantText: refusedNoLine("begin-batch"), wantWarn: "Master could not be claimed", stateKept: true},
 		{name: "recover-batch refuses without a claim when Master's strand is unknown", verb: "recover-batch", masterStrand: failingStrand, wantExit: 1, wantText: refusedNoLine("recover-batch"), wantWarn: "Master could not be claimed", stateKept: true},
 		{
@@ -141,6 +145,8 @@ func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
 				cmd = fx.CLI.recoverBatchCmd()
 			case "fix-verify":
 				cmd, args = fx.CLI.fixVerifyCmd(), nil
+			case "fix-plan":
+				cmd, args = fx.CLI.fixPlanCmd(), nil
 			}
 			var out strings.Builder
 			exitCode := clihelp.Execute(cmd, &out, args)

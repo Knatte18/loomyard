@@ -968,6 +968,10 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 		{"verify-fix-cold", "webster-prefix-verify-fix-cold", "webster-verify-fix-cold.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
 			return renderVerifyFixCold("/reports/verify-gate.yaml", anchorRoot, anchorRoot, stencilsDir, notePath, "", nil)
 		}},
+		{"plan-fix", "webster-template-plan-fix", "webster-plan-fix.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
+			got, err := websterengine.RenderPlanFixPrompt("/lyx/webster/plan-conflict.md", testReplyPath, anchorRoot, filepath.Join(anchorRoot, "_lyx", "plan"), stencilsDir, filepath.Join(anchorRoot, "specs"), notePath, "")
+			return string(got), err
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
