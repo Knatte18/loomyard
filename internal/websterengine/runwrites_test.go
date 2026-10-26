@@ -60,7 +60,7 @@ func TestLoadRunWrites(t *testing.T) {
 		}
 	})
 
-	t.Run("recovery and cold fixer sessions are audited after the Master sessions, once each", func(t *testing.T) {
+	t.Run("recovery and cold verify fixer sessions are audited after the Master sessions, once each, and plan fixer sessions never", func(t *testing.T) {
 		t.Parallel()
 
 		st := &State{
@@ -70,6 +70,7 @@ func TestLoadRunWrites(t *testing.T) {
 				2: {SessionID: "s2", RecoverySessions: []string{"r2", "s1"}},
 			},
 			VerifyFixers: []*VerifyFixerState{{SessionID: "v1"}, {SessionID: "r1"}},
+			PlanFixers:   []*PlanFixerState{{SessionID: "p1"}},
 		}
 		var audited []string
 		engine := &shuttlefake.Engine{AuditForksFn: func(session, _ string) (shuttleengine.ForkAudit, error) {

@@ -1,7 +1,8 @@
-// render.go implements the producer prompt assets webster composes and renders (webster-prefix-fork.md, webster-prefix-recovery.md, webster-body-implementer.md, webster-template-master.md, webster-prefix-verify-fix-fork.md, webster-prefix-verify-fix-cold.md, webster-body-verify-fix.md),
+// render.go implements the producer prompt assets webster composes and renders (webster-prefix-fork.md, webster-prefix-recovery.md, webster-body-implementer.md, webster-template-master.md, webster-prefix-verify-fix-fork.md, webster-prefix-verify-fix-cold.md, webster-body-verify-fix.md, webster-template-plan-fix.md),
 // and the rendering functions that fill them.
 // RenderForkPrompt is called by begin-batch immediately before each in-session fork, RenderRecoveryPrompt by recover-batch immediately before spawning the separate cold recovery strand, and RenderMasterPrompt by run at Master's own spawn.
 // RenderVerifyFixPrompt is called by run for the verify-gate fixer fork Merriam spawns on a gate failure, and RenderVerifyFixColdPrompt by fix-verify for the cold verify-gate fixer strand.
+// RenderPlanFixPrompt is called by fix-plan for the cold plan fixer strand.
 // The file also holds the two sequenced-execution-order renderers those prompts embed (RenderBatchIndex, RenderProgress).
 // Every asset ships as an embedded default in the top-level stencils package and is read from a
 // told stencils directory at call time via stencilstore.Read, per the runtime-read-not-embed Shared
@@ -404,6 +405,54 @@ func RenderVerifyFixColdPrompt(reportPath, replyPath, worktreeRoot, repoRoot, pl
 	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill cold fixer template: %w", err)
+	}
+	return prompt, nil
+}
+
+// RenderPlanFixPrompt fills webster-template-plan-fix for the cold plan fixer strand, read from stencilsDir.
+// recordPath is the plan-conflict record the fixer reads, and replyPath the reply file it writes as its final action; both must be non-empty.
+// planDir is rendered in the display form masterPlanDirDisplay gives it, relative to worktreeRoot when it sits inside it, and specsDir points the fixer at the plan spec.
+// parentName renders the parent directive, an empty one its no-parent variant.
+// notePath is the caller-composed friction note path (friction.NotePath), or "" when Tier 2 is off;
+// friction_directive is injected via friction.RoleImplementer when Tier 2 is on, with a friction.Directive error swallowed as a Warn rather than propagated.
+func RenderPlanFixPrompt(recordPath, replyPath, worktreeRoot, planDir, stencilsDir, specsDir, notePath, parentName string) ([]byte, error) {
+	const stencilName = "webster-template-plan-fix"
+	if strings.TrimSpace(recordPath) == "" || strings.TrimSpace(replyPath) == "" {
+		return nil, fmt.Errorf("webster: render %s prompt: record path %q or reply path %q is empty", stencilName, recordPath, replyPath)
+	}
+
+	frictionDirective, err := friction.Directive(notePath, stencilsDir, friction.RoleImplementer)
+	if err != nil {
+		logger.Warn("webster: friction directive failed, continuing without one", "role", "implementer", "stencil", stencilName, "error", err)
+		frictionDirective = ""
+	}
+	parentDirective, err := parentdirective.Directive(stencilsDir, parentName, false)
+	if err != nil {
+		return nil, fmt.Errorf("webster: plan fixer prompt parent directive: %w", err)
+	}
+	editDirective, err := editdirective.Directive(stencilsDir)
+	if err != nil {
+		return nil, fmt.Errorf("webster: plan fixer prompt edit directive: %w", err)
+	}
+	values := map[string]string{
+		"record_path":              recordPath,
+		"reply_path":               replyPath,
+		"worktree_root":            worktreeRoot,
+		"plan_dir":                 masterPlanDirDisplay(worktreeRoot, planDir),
+		"specs_dir":                specsDir,
+		friction.MarkerName:        frictionDirective,
+		parentdirective.MarkerName: parentDirective,
+		editdirective.MarkerName:   editDirective,
+	}
+
+	template, err := stencilstore.Read(stencilsDir, stencilName)
+	if err != nil {
+		return nil, fmt.Errorf("webster: read plan fixer template: %w", err)
+	}
+	friction.WarnIfMarkerAbsent(template, stencilName, frictionDirective)
+	prompt, err := stencil.FillOptional(template, values, []string{friction.MarkerName, parentdirective.MarkerName})
+	if err != nil {
+		return nil, fmt.Errorf("webster: fill plan fixer template: %w", err)
 	}
 	return prompt, nil
 }

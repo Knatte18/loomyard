@@ -228,6 +228,11 @@ var WebsterPrefixVerifyFixFork []byte
 //go:embed webster/webster-prefix-verify-fix-cold.md
 var WebsterPrefixVerifyFixCold []byte
 
+// WebsterTemplatePlanFix is webster's shipped-default cold plan fixer prompt, which matches a plan-conflict's cards to the tree.
+//
+//go:embed webster/webster-template-plan-fix.md
+var WebsterTemplatePlanFix []byte
+
 // WebsterPrefixFork is webster's shipped-default in-session fork prompt prefix, joined ahead of
 // WebsterBodyImplementer to compose the fork prompt.
 //
@@ -482,6 +487,7 @@ var entries = []registryEntry{
 	{"webster-body-verify-fix", &WebsterBodyVerifyFix},
 	{"webster-prefix-verify-fix-fork", &WebsterPrefixVerifyFixFork},
 	{"webster-prefix-verify-fix-cold", &WebsterPrefixVerifyFixCold},
+	{"webster-template-plan-fix", &WebsterTemplatePlanFix},
 	{"webster-prefix-fork", &WebsterPrefixFork},
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},
@@ -537,6 +543,7 @@ var roleOpeningStencils = map[string][]string{
 	"webster-master":     {"webster-template-master"},
 	"webster-recovery":   {"webster-prefix-recovery"},
 	"verify-fixer":       {"webster-prefix-verify-fix-cold"},
+	"plan-fixer":         {"webster-template-plan-fix"},
 	"burler-review":      {"burler-template-reviewer"},
 	"burler-fix":         {"burler-template-fixer"},
 	"conflict":           {"landing-template-conflict"},

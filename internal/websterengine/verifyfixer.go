@@ -175,68 +175,22 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 // A failed stop, reply read or removal is a warning.
 // The caller holds no state-mutation lease across it.
 func FixVerifyAwait(deps FixVerifyDeps, rec *VerifyFixerState, wait time.Duration, clk Clock) (*FixVerifyResult, error) {
-	spawnedAt, err := time.Parse(time.RFC3339, rec.SpawnedAt)
-	if err != nil {
-		return nil, fmt.Errorf("webster: parse the cold fixer's recorded spawnedAt %q: %w", rec.SpawnedAt, err)
+	strand := coldFixerStrand{
+		label:         "fix-verify",
+		strandGUID:    rec.StrandGUID,
+		sessionID:     rec.SessionID,
+		engine:        rec.Engine,
+		spawnedAt:     rec.SpawnedAt,
+		shuttleRunDir: rec.ShuttleRunDir,
+		eventsPath:    rec.EventsPath,
+		eventsOffset:  rec.EventsOffset,
+		replyPath:     VerifyFixReplyPath(deps.Geom.ScratchDir),
 	}
-	engine, err := sessionAuditEngine(deps.Engines, rec.SessionID, rec.Engine)
-	if err != nil {
-		return nil, err
-	}
-	replyPath := VerifyFixReplyPath(deps.Geom.ScratchDir)
-	timeout := time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute
-
-	gather := func() (Digest, bool, error) {
-		if _, err := os.Stat(replyPath); err == nil {
-			return Digest{Status: DigestStatusDone}, true, nil
-		} else if !errors.Is(err, os.ErrNotExist) {
-			return Digest{}, false, fmt.Errorf("webster: stat cold fixer reply %s: %w", replyPath, err)
-		}
-		turnEnded, err := TurnEndedAfter(rec.EventsPath, rec.EventsOffset, engine, TurnEndRead{Now: clk.Now()})
-		if err != nil {
-			return Digest{}, false, err
-		}
-		if turnEnded {
-			return Digest{Status: DigestStatusDead, DeadReason: DeadReasonAsking}, true, nil
-		}
-		if clk.Now().Sub(spawnedAt) > timeout {
-			return Digest{Status: DigestStatusDead, DeadReason: DeadReasonTimeout}, true, nil
-		}
-		live, err := StrandLive(deps.Reed, rec.StrandGUID)
-		if err != nil {
-			return Digest{}, false, err
-		}
-		if !live {
-			return Digest{Status: DigestStatusDead, DeadReason: DeadReasonDied}, true, nil
-		}
-		return Digest{Status: DigestStatusRunning}, false, nil
-	}
-
-	digest, err := PollUntilTerminal(gather, wait, clk)
+	waited, err := awaitColdFixer(deps.Engines, deps.Reed, deps.Stopper, strand, time.Duration(deps.Config.RecoveryTimeoutMin)*time.Minute, wait, clk)
 	if err != nil {
 		return nil, err
 	}
-	result := &FixVerifyResult{Status: digest.Status, DeadReason: digest.DeadReason, ElapsedS: int(clk.Now().Sub(spawnedAt).Seconds())}
-	if digest.Status == DigestStatusRunning {
-		return result, nil
-	}
-
-	if err := deps.Stopper.StopStrand(rec.StrandGUID); err != nil {
-		result.Warnings = append(result.Warnings, fmt.Sprintf("fix-verify: stop strand %s: %v", rec.StrandGUID, err))
-	}
-	if digest.Status == DigestStatusDone {
-		reply, err := os.ReadFile(replyPath)
-		if err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("fix-verify: read reply %s: %v", replyPath, err))
-		}
-		result.Reply = string(reply)
-		if rec.ShuttleRunDir != "" {
-			if err := os.RemoveAll(rec.ShuttleRunDir); err != nil {
-				result.Warnings = append(result.Warnings, fmt.Sprintf("fix-verify: remove run dir %s: %v", rec.ShuttleRunDir, err))
-			}
-		}
-	}
-	return result, nil
+	return &FixVerifyResult{Status: waited.Status, DeadReason: waited.DeadReason, Reply: waited.Reply, ElapsedS: waited.ElapsedS, Warnings: waited.Warnings}, nil
 }
 
 // RecordVerifyFixerTerminal sets the terminal status of the record in st whose strand is strandGUID, from result.

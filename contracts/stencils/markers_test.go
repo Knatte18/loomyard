@@ -48,6 +48,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"webster-body-verify-fix", WebsterBodyVerifyFix, []string{"fix_gate", "outcome_path", "plan_dir", "report_path", "summary_path", "worktree_root"}},
 		{"webster-prefix-verify-fix-fork", WebsterPrefixVerifyFixFork, []string{"friction_directive"}},
 		{"webster-prefix-verify-fix-cold", WebsterPrefixVerifyFixCold, []string{"edit_directive", "friction_directive", "parent_directive", "pattern_directive", "reply_path"}},
+		{"webster-template-plan-fix", WebsterTemplatePlanFix, []string{"edit_directive", "friction_directive", "parent_directive", "plan_dir", "record_path", "reply_path", "specs_dir", "worktree_root"}},
 		{"bouncer-template-escalation", BouncerTemplateEscalation, []string{"cause", "cause_detail", "decide_options", "decision_record_path", "judge_stencil_path", "ledger_path", "review_path", "round", "segment", "slug", "verdict_path", "worktree"}},
 		{"bouncer-fragment-decide-capped", BouncerFragmentDecideCapped, []string{"slug"}},
 		{"bouncer-fragment-decision", BouncerFragmentDecision, []string{"blocking_findings", "decide_verbs", "decision_findings", "refusal", "slug"}},

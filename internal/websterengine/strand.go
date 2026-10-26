@@ -131,7 +131,7 @@ type StrandStopper interface {
 	StopStrand(guid string) error
 }
 
-// RemoveRecoveryStrands stops every live recovery strand the state records, in batch-number order, then every cold verify-gate fixer strand in spawn order.
+// RemoveRecoveryStrands stops every live recovery strand the state records, in batch-number order, then every cold verify-gate fixer strand and every plan fixer strand, each in spawn order.
 // Only a batch of Kind "recovery" with a StrandGUID names a batch's one;
 // implementer forks and the Master have no recorded strand.
 // The first failure returns a *RecoveryStrandRemoveError naming the strand guid.
@@ -155,6 +155,11 @@ func RemoveRecoveryStrands(stopper StrandStopper, st *State) error {
 		}
 	}
 	for _, rec := range st.VerifyFixers {
+		if err := stopper.StopStrand(rec.StrandGUID); err != nil {
+			return &RecoveryStrandRemoveError{GUID: rec.StrandGUID, Err: err}
+		}
+	}
+	for _, rec := range st.PlanFixers {
 		if err := stopper.StopStrand(rec.StrandGUID); err != nil {
 			return &RecoveryStrandRemoveError{GUID: rec.StrandGUID, Err: err}
 		}

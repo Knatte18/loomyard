@@ -34,10 +34,10 @@ import (
 // Master spawn at once.
 const runLockName = "run.lock"
 
-// masterAwaitedShellPrefixes are Master's two backgrounded, blocking verbs: the failure ladder's recovery verb and the verify gate's cold fixer verb.
+// masterAwaitedShellPrefixes are Master's backgrounded, blocking verbs: the failure ladder's recovery verb, the verify gate's cold fixer verb and the plan-conflict rung's plan fixer verb.
 // A prefix keeps its verb out of the background-shell wait marker;
 // it is also what keeps the verb holding a gated turn end, which one waiting only on non-awaited shells is judged as a plain turn end.
-var masterAwaitedShellPrefixes = []string{"lyx webster recover-batch", fixVerifyCommand}
+var masterAwaitedShellPrefixes = []string{"lyx webster recover-batch", fixVerifyCommand, fixPlanCommand}
 
 // ErrRunBusy marks Run's fail-fast refusal when another invocation already holds scratchDir's
 // run.lock.
@@ -298,13 +298,13 @@ func clearRenderedPrompts(promptsDir string) error {
 }
 
 // reclaimEntryTimeStrands stops the only substrates a crashed or killed `run` process can ever leave live behind it:
-// Master's own recorded strand, any recorded, non-terminal recovery-batch strand and any non-terminal cold verify-gate fixer strand.
+// Master's own recorded strand, any recorded, non-terminal recovery-batch strand and any non-terminal cold verify-gate fixer or plan fixer strand.
 // Forks die WITH Master (same process) — there is never an orphaned
 // in-flight fork implementer to reclaim, which is what keeps webster's own
 // entry-time reclaim simple, per
 // discussion.md's crash-resume-re-drive-first-unreported decision. A nil st
 // (no run has ever started) is a no-op.
-// A stopped cold fixer's record turns terminal dead/died, so the next fix-verify spawns a fresh fixer instead of attaching to the stopped strand;
+// A stopped cold fixer's or plan fixer's record turns terminal dead/died, so the next fix-verify or fix-plan spawns a fresh fixer instead of attaching to the stopped strand;
 // stateChanged reports whether any record changed, so the caller saves st.
 func reclaimEntryTimeStrands(stopper StrandStopper, st *State) (stateChanged bool, err error) {
 	if st == nil {
@@ -329,6 +329,17 @@ func reclaimEntryTimeStrands(stopper StrandStopper, st *State) (stateChanged boo
 		if rec.Status == "" {
 			if err := stopper.StopStrand(rec.StrandGUID); err != nil {
 				return stateChanged, fmt.Errorf("websterengine: stop leftover cold verify-gate fixer strand %s before respawn: %w", rec.StrandGUID, err)
+			}
+			rec.Status = DigestStatusDead
+			rec.DeadReason = DeadReasonDied
+			stateChanged = true
+		}
+	}
+
+	for _, rec := range st.PlanFixers {
+		if rec.Status == "" {
+			if err := stopper.StopStrand(rec.StrandGUID); err != nil {
+				return stateChanged, fmt.Errorf("websterengine: stop leftover plan fixer strand %s before respawn: %w", rec.StrandGUID, err)
 			}
 			rec.Status = DigestStatusDead
 			rec.DeadReason = DeadReasonDied
@@ -761,9 +772,9 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		ModelChoice:   choice,
 		Skills:        languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
 		ForkSubagents: true,
-		// The Master stencil ends its turn after each backgrounded fork and backgrounded recover-batch and wakes on their completion.
+		// The Master stencil ends its turn after each backgrounded fork and backgrounded recover-batch, fix-verify and fix-plan and wakes on their completion.
 		Requires: []shuttleengine.Requirement{shuttleengine.RequirementBackgroundWake},
-		// Master backgrounds recover-batch and fix-verify and recovery_timeout_min bounds both, so the wait marker leaves them out.
+		// Master backgrounds recover-batch, fix-verify and fix-plan and recovery_timeout_min bounds each, so the wait marker leaves them out.
 		AwaitedShellPrefixes: slices.Clone(masterAwaitedShellPrefixes),
 		Role:                 MerriamStrandRole,
 		Segment:              segmentcolor.Webster,
