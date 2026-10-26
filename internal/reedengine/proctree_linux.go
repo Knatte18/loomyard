@@ -7,17 +7,14 @@
 
 package reedengine
 
-/*
-#include <unistd.h>
-*/
-import "C"
-
 import (
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // paneProcessAge returns the elapsed time of the process pid, read from /proc/uptime and /proc/<pid>/stat.
@@ -35,7 +32,9 @@ func paneProcessAge(pid int) (time.Duration, bool) {
 	if err != nil {
 		return 0, false
 	}
-	age, err := processAge(string(uptime), string(stat), int64(C.sysconf(C._SC_CLK_TCK)))
+	// An unreadable auxiliary vector leaves the default rate, as it does for sysconf.
+	auxv, _ := unix.Auxv()
+	age, err := processAge(string(uptime), string(stat), clockTicksFromAuxv(auxv))
 	if err != nil {
 		return 0, false
 	}

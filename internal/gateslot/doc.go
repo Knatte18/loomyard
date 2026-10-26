@@ -28,6 +28,8 @@
 // `-trimpath` makes builds from two checkouts byte-identical and their cache keys independent of the checkout's directory,
 // so a fresh worktree hits the build and test cache and a host scanner that holds each unseen executable sees known hashes.
 // It also makes `runtime.Caller` report module-relative file paths, so no code a gate run builds locates the repo root from them alone.
+// It does not reach the cgo-generated files the cache keeps, which name their source by the absolute path of the checkout that first built them,
+// so no package of the module imports "C", and `go vet` never opens another worktree's files.
 // Lease.InheritEnv returns the environment of a tier run: only InheritEnv is set, naming the lease's first slot's lock path, and no GOFLAGS is appended, since a tier's command and env set its own parallelism.
 // HolderEnv returns the environment of a non-tier slot holder's child: GOFLAGS gets `-trimpath` and, when the holder passes a tier0 parallel above 0, `-p=<n>`, and a non-nil lease sets InheritEnv.
 // Limits.Tier0Parallel carries `tier0`'s effective parallel, this machine's override included, and is 0 when the hub declares no `tier0`, so a holder reads it from the pool's Limits at its acquire.
