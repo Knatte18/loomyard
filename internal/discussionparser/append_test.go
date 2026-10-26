@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -348,6 +349,56 @@ func TestParseAddedDecisions(t *testing.T) {
 				if got[i] != tt.want[i] {
 					t.Errorf("entry %d = %+v; want %+v", i, got[i], tt.want[i])
 				}
+			}
+		})
+	}
+}
+
+// TestAddedDecisionTexts asserts each added entry comes back whole, heading and body up to the next heading, in record order, that a fenced heading starts no entry, and that a record with no entry, a missing record and an empty path read as none.
+func TestAddedDecisionTexts(t *testing.T) {
+	t.Parallel()
+
+	first := "### Added after Discussion (parent, 2026-03-01): Keep the cache\n\nDecision: keep it.\n\nRationale: it is warm."
+	second := "### Added after Discussion (arbiter, 2026-03-02): Drop the flag\n\nDecision: drop it.\n\n```\n### Added after Discussion (x, 2026-03-03): fenced\n```\n\nRationale: unused."
+
+	tests := []struct {
+		name   string
+		record string
+		// path, when set, replaces the written record's path.
+		path string
+		want []string
+	}{
+		{
+			name:   "entries in order, each up to the next heading",
+			record: "# Record\n\n## Decisions\n\n### Discussion call\n\nDecision: a.\n\n" + first + "\n\n" + second + "\n\n## Constraints\n\n- none\n",
+			want:   []string{first, second},
+		},
+		{name: "a record with no entry", record: "## Decisions\n\n### Discussion call\n\nDecision: a.\n", want: nil},
+		{name: "a missing record", path: "missing.md", want: nil},
+		{name: "an empty path", path: "-", want: nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			path := filepath.Join(dir, "decision-record.md")
+			if err := os.WriteFile(path, []byte(tt.record), 0o644); err != nil {
+				t.Fatalf("write record: %v", err)
+			}
+			switch tt.path {
+			case "":
+			case "-":
+				path = ""
+			default:
+				path = filepath.Join(dir, tt.path)
+			}
+
+			got, err := AddedDecisionTexts(path)
+			if err != nil {
+				t.Fatalf("AddedDecisionTexts() error = %v; want nil", err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("AddedDecisionTexts() = %q; want %q", got, tt.want)
 			}
 		})
 	}

@@ -733,12 +733,16 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, fmt.Errorf("webster: write verify-fix prompt %s: %w", verifyFixPromptPath, err)
 	}
 
+	parentDecisions, err := discussionparser.AddedDecisionTexts(deps.Geom.DecisionRecordPath)
+	if err != nil {
+		return RunResult{}, fmt.Errorf("webster: read the parent decisions from %s: %w; way forward: transient, %s", deps.Geom.DecisionRecordPath, err, deps.reentryStep())
+	}
 	patternChanges, err := discussionparser.DeclaredPatternChanges(deps.Geom.DecisionRecordPath)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("%w %s", err, deps.reentryStep())
 	}
 	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.WorktreeRoot, deps.Geom.RepoRoot, deps.Geom.StencilsDir, patternChanges, masterNotePath, deps.Geom.ParentName)
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.WorktreeRoot, deps.Geom.RepoRoot, deps.Geom.StencilsDir, patternChanges, parentDecisions, masterNotePath, deps.Geom.ParentName)
 	if err != nil {
 		return RunResult{}, err
 	}

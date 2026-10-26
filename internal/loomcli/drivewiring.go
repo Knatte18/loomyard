@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
@@ -123,6 +124,16 @@ func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (
 	return settings, loomTacklerRecipe, nil
 }
 
+// loomArbiterSeam builds the arbiter seam loom hands the shed driver.
+// Merriam reports a batch it cannot carry on only as a stuck outcome, so the arbiter, not the tackler, is the first to judge a blocked stop at the Webster row before it reaches the parent; no other row is marked.
+func loomArbiterSeam(arbiterDeps shedarbiter.Deps, runID string) *sheddriver.ArbiterSeam {
+	seam := shedarbiter.Seam(arbiterDeps, runID, func(producer string) bool {
+		return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop)
+	})
+	seam.JudgesFirst = func(producer string) bool { return producer == loomshed.NameWebster }
+	return seam
+}
+
 // goDriverDepsFor assembles the Go driver's seams for the run the pre-run armed.
 // release is the driver lock's early release, which the hand-over calls before it spawns its successor.
 // Every closure reads on demand, and the on-disk lyx path is resolved once, here.
@@ -147,6 +158,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 	readStatus := circlingStatusReader(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	gotoGuard := c.settledGuard()
 	pauseGeometry := func() (pauserecord.Geometry, error) { return hubgeom.PauseGeometry(location) }
+	arbiterSeam := loomArbiterSeam(arbiterDeps, runID)
 
 	tacklerDeps := sheddriver.TacklerDeps{
 		Closed: func(key sheddriver.StopKey, spawned time.Time) (bool, error) {
@@ -265,9 +277,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 			_, alive := readBattenWatch(shedrun.BattenWatchedMarker(location, c.runID), proc.IsAlive)
 			return alive
 		},
-		Arbiter: shedarbiter.Seam(arbiterDeps, runID, func(producer string) bool {
-			return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop)
-		}),
+		Arbiter: arbiterSeam,
 		HandOver: &sheddriver.HandOverSeam{
 			OnDiskBuild: func() (buildvcs.Identity, error) { return buildvcs.OfFile(executable) },
 			BuildChanged: func(onDisk buildvcs.Identity) bool {

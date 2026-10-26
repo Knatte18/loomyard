@@ -168,6 +168,29 @@ func ParseAddedDecisions(record []byte) ([]AddedDecision, error) {
 	return decisions, nil
 }
 
+// AddedDecisionTexts returns every `### Added after Discussion` entry of the decision record at recordPath, heading and body verbatim, in record order, for a caller to render into an agent's prompt.
+// An entry runs from its heading to its last non-blank line before the next heading of any level, and a heading inside a fenced block starts none.
+// An empty recordPath, a record that does not exist and a record without an entry return nil and no error; a read error is returned.
+func AddedDecisionTexts(recordPath string) ([]string, error) {
+	if recordPath == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(recordPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	_, spans := addedDecisionSpans(lines, fencedLines(lines))
+	var texts []string
+	for _, span := range spans {
+		texts = append(texts, strings.TrimRight(strings.Join(lines[span.first:span.last+1], "\n"), " \t\r"))
+	}
+	return texts, nil
+}
+
 // checkAddedDecisionDropped names a Finding produced when a record lacks an added-decision entry an earlier version of it held.
 const checkAddedDecisionDropped = "added-decision-dropped"
 

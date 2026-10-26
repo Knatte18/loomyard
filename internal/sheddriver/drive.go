@@ -108,6 +108,8 @@ type ArbiterSeam struct {
 	Judge func(envelopePath, reportPath, caseBriefPath string) (ArbiterOutcome, error)
 	// AttemptEnvelope returns the stop envelope the arbiter attempt in attemptDir recorded, for the restart read of an open attempt.
 	AttemptEnvelope func(attemptDir string) (envelopePath string, err error)
+	// JudgesFirst reports whether a blocked stop at producer goes to the arbiter without the tackler judging it first; nil marks no row.
+	JudgesFirst func(producer string) bool
 }
 
 // ArbiterOutcome is what the driver reads off the arbiter's verdict envelope.
@@ -707,6 +709,9 @@ func (d *goDriver) facts(stop Stop) (driveFacts, error) {
 			return driveFacts{}, fmt.Errorf("reading the pending escalation: %w", err)
 		}
 		facts.EscalationPending = pending
+	}
+	if key.State == string(shedengine.StateBlocked) && d.deps.Arbiter != nil && d.deps.Arbiter.JudgesFirst != nil {
+		facts.ArbiterFirst = d.deps.Arbiter.JudgesFirst(key.CurrentProducer)
 	}
 
 	records, err := ReadSettleRecords(d.deps.SettlePath)

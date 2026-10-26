@@ -243,6 +243,8 @@
 // `lyx loom decision add` for the record, the card edit (or a follow-up card with its index line), then `lyx webster rebaseline --card NN`.
 // The verb's notice reaches Master with the decision's text inline, since Master reads no decision record;
 // Master hands it on through the forks it spawns afterwards, whose implementer and verify-fix bodies let a parent decision win over a card, and with no batch left it tells its parent the decision reaches the code only through a gate fixer or a plan amendment.
+// The notice reaches only a Master already running, so Run also renders every `Added after Discussion` entry of the decision record, verbatim, into the master prompt's `parent_decisions` marker (`none` without one):
+// a Master that a re-step starts after its parent answered an earlier stop is told that answer, and never asks it again.
 // No refusal or prompt text names a loom verb.
 //
 // validate, record-batch and recovery refuse a plan that changed before their own rewrites, instead of adopting it:
@@ -459,6 +461,10 @@
 // Merriam tells its parent the need by message and ends its turn; once the parent says the step is taken, it resumes the batch where it stood, through begin-batch's re-begin for a fork batch and through recover-batch for a recovery batch.
 // record-batch on a waiting batch refuses naming that resume verb, and the progress trail lists a waiting batch with its need and the resume verb, so a fresh Master re-drives it.
 // recover-batch exits 0 on a waiting digest.
+//
+// The waiting rung and a decision with no batch left are the only times Merriam messages its parent.
+// Every other dead end of the run is an `outcome: stuck` with no message, so the stop reaches the parent on one channel:
+// the loom driver hands a blocked Webster stop to the arbiter before any tackler, and only a question the arbiter hands on reaches the parent.
 //
 // # digest persistence carries batch context forward
 //

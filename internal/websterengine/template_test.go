@@ -245,6 +245,7 @@ func masterTemplateMarkerValues() map[string]string {
 		"verify_fix_prompt_path": "/lyx/webster/prompts/verify-fix.md",
 		"plan_dir":               "_lyx/plan",
 		"self_fix_cap":           "2",
+		"parent_decisions":       "none",
 		"pattern_directive":      "## Constraints — do this before you fork anything\n\n- Read the overview.",
 		"friction_directive":     "## Friction note — optional, only if something went wrong\n\nWrite it to /lyx/webster/friction/webster-master.md.",
 		"parent_directive":       "## Your parent\n\nNo parent is recorded for this run.",
@@ -357,7 +358,12 @@ func renderRecoveryWithUncommitted(batch batcher.Batch, repoRoot, anchorRoot, st
 
 // renderMaster renders Merriam's prompt for batches with a nil state, the shared placeholder paths and the declared PATTERN changes.
 func renderMaster(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, notePath, parent string, patternChanges []string) (string, error) {
-	got, err := websterengine.RenderMasterPrompt(batches, nil, testOutcomePath, testSummaryPath, testVerifyFixPromptPath, filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, repoRoot, stencilsDir, patternChanges, notePath, parent)
+	return renderMasterWithDecisions(batches, anchorRoot, repoRoot, stencilsDir, notePath, parent, patternChanges, nil)
+}
+
+// renderMasterWithDecisions is renderMaster with the parent's added decisions.
+func renderMasterWithDecisions(batches []batcher.Batch, anchorRoot, repoRoot, stencilsDir, notePath, parent string, patternChanges, parentDecisions []string) (string, error) {
+	got, err := websterengine.RenderMasterPrompt(batches, nil, testOutcomePath, testSummaryPath, testVerifyFixPromptPath, filepath.Join(anchorRoot, "_lyx", "plan"), 2, anchorRoot, repoRoot, stencilsDir, patternChanges, parentDecisions, notePath, parent)
 	return string(got), err
 }
 
@@ -471,7 +477,7 @@ func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
 			template: mustMasterTemplate,
 			values:   masterTemplateMarkerValues,
 			optional: []string{"pattern_directive", "friction_directive", "parent_directive"},
-			required: []string{"batch_index", "progress", "outcome_path", "summary_path", "verify_fix_prompt_path", "plan_dir", "self_fix_cap", "edit_directive"},
+			required: []string{"batch_index", "progress", "outcome_path", "summary_path", "verify_fix_prompt_path", "plan_dir", "self_fix_cap", "parent_decisions", "edit_directive"},
 		},
 		{
 			name:     "fork",
@@ -820,6 +826,30 @@ func TestRenderPrompts(t *testing.T) {
 			root, stencilsDir := testLayout(t)
 			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err, notContains: []string{"worktree_root", root}}
+		}},
+		{"master renders each parent decision in order", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			first := "### Added after Discussion (parent, 2026-10-26): Reset the batch\n\nDecision: reset batch 06 to its start.\n\nRationale: the finding is unrecoverable."
+			second := "### Added after Discussion (arbiter, 2026-10-26): Keep the seam\n\nDecision: keep it.\n\nRationale: two callers."
+			text, err := renderMasterWithDecisions(seamBatches, root, root, stencilsDir, "", "", nil, []string{first, second})
+			return promptCheck{text: text, err: err,
+				inOrder:     []string{first + "\n\n" + second},
+				notContains: []string{"{{.parent_decisions}}"}}
+		}},
+		{"master renders none for no parent decision", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderMaster(seamBatches, root, root, stencilsDir, "", "", nil)
+			if err != nil {
+				return promptCheck{err: err}
+			}
+			withNone, err := renderMasterWithDecisions(seamBatches, root, root, stencilsDir, "", "", nil, []string{"none"})
+			if err != nil {
+				return promptCheck{err: err}
+			}
+			if text != withNone {
+				t.Error("master prompt with no parent decision differs from the one rendered with the decision none")
+			}
+			return promptCheck{text: text, notContains: []string{"{{.parent_decisions}}"}}
 		}},
 		{"master names the fixer prompt", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)

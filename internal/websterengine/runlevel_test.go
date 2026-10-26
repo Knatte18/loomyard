@@ -639,6 +639,15 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 			wayForward: []string{"lyx loom validate-discussion", "lyx webster run"},
 		},
 		{
+			name:  "a decision record that cannot be read",
+			cards: 1,
+			setup: func(t *testing.T, fx *runFixture) func() {
+				fx.Deps.Geom.DecisionRecordPath = fx.Worktree
+				return nil
+			},
+			wayForward: []string{"transient", "lyx webster run"},
+		},
+		{
 			name:  "the provider does not come up",
 			cards: 1,
 			setup: func(t *testing.T, fx *runFixture) func() {
@@ -1683,6 +1692,20 @@ func TestRun_MasterSpawn(t *testing.T) {
 				}
 				if got[0].PassOnCap || got[0].MayHold {
 					t.Errorf("verify entry = %+v; want a plain must-pass entry", got[0])
+				}
+			},
+		},
+		{
+			name:  "the prompt carries each entry the decision record added after Discussion",
+			cards: 1,
+			prepare: func(t *testing.T, fx *runFixture) {
+				fx.Deps.Geom.DecisionRecordPath = filepath.Join(fx.Worktree, "decision-record.md")
+				writeWorktreeFile(t, fx.Worktree, "decision-record.md", "## Decisions\n\n### Added after Discussion (parent, 2026-10-26): Reset the batch\n\nDecision: reset batch 06 to its start.\n")
+			},
+			check: func(t *testing.T, fx *runFixture) {
+				prompt := fx.Starter.startCalls[0].Prompt
+				if want := "### Added after Discussion (parent, 2026-10-26): Reset the batch\n\nDecision: reset batch 06 to its start."; !strings.Contains(prompt, want) {
+					t.Errorf("Spec.Prompt = %q; want it to carry the parent decision %q", prompt, want)
 				}
 			},
 		},

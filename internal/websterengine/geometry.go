@@ -76,8 +76,8 @@ type Geometry struct {
 	// ParentName is the told parent agent name the master and recovery prompts render their parent directive from.
 	// Empty means no parent, which renders the no-parent variant.
 	ParentName string
-	// DecisionRecordPath is the told decision record the master and recovery prompts read the task's declared PATTERN changes from.
-	// Empty means none, which renders no declared changes; standalone mode leaves it empty.
+	// DecisionRecordPath is the told decision record the master and recovery prompts read the task's declared PATTERN changes from, and the master prompt the parent's added decisions.
+	// Empty means none, which renders no declared changes and no parent decision; standalone mode leaves it empty.
 	DecisionRecordPath string
 	// Git is the git surface every worktree read goes through, such as the head-SHA capture and the dirty check.
 	// Nil means the real repository on disk, which is what every constructor leaves.
