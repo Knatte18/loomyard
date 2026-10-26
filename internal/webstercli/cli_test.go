@@ -758,8 +758,8 @@ func TestBringUpDisposition_RecoverAndRun(t *testing.T) {
 var singleFlagEnvelope = regexp.MustCompile(`map\[string\]any\{"([a-z_]+)": true\}`)
 
 // TestMasterStencilCoversEverySingleFlagRefusal is R4-34's direct regression test. record-batch emitted {"card_not_done": true} on an ErrCardNotDone refusal, but the Master stencil's failure ladder carried no rung for it, so Master fell through to generic error handling on a refusal with a specific meaning and a specific disposition.
-// record-batch's own flags today are batch_failed and report_archived, which ride in multi-field envelopes (with batch, and warnings on the first) and so are outside this regexp's shape;
-// the master stencil's ladder names both all the same.
+// record-batch's own flags ride in multi-field envelopes (with batch, and warnings on batch_failed) and so are outside this regexp's shape;
+// the master stencil's ladder names each all the same.
 //
 // The flag set is read out of this package's own source rather than pinned as a list, because a hand-maintained list is forgotten by exactly the change that adds a new flag -- which is how this gap arose.
 // What the regexp deliberately does NOT cover is a flag riding along inside a multi-field envelope (status's own report fields, for instance): those are state a caller reads, not refusals a ladder must answer.

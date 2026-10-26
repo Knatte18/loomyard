@@ -44,6 +44,7 @@ Make exactly the changes the card describes, in exactly the targets its type lab
    No other change outside the targets is made.
    The scope guard records every deviation, sanctioned ones included; you list, compare and report none, and a deviation alone never makes the report `FAILED`.
    The plan's glyph names are the contract: keep every name a card gives a symbol, and rename nothing the plan does not declare.
+   That covers a test named after a symbol a `Rename` card renames: rename the test only when the plan declares its pair, since a later card may name it.
    The one exception is a planned name that collides with an existing symbol or breaks a language or lint rule: pick the nearest name that does not, and list the rename under the report's `renames` with that reason.
    For each symbol pair of a `Rename` card, run the hub's rename tool from the list below, then grep for zero references to the old name and update the doc-comment opening; a file pair is `git mv` plus surgical Edits.
 
@@ -131,7 +132,7 @@ Once your parent has taken the step, the batch resumes from your commits.
 ## Your final action: the minimal batch-report
 
 Your LAST action of this session — after every card above is committed (or you have given up per the bound above, or stopped on a step only your parent can take) — is writing the batch-report YAML file to `{{.report_path}}`.
-Nothing you do after this file exists is read by anyone: write it last, and write it exactly once.
+Nothing you do after this file exists is read by anyone: write it last, and write it exactly once, unless your parent hands the batch back (see "A batch handed back" below).
 The report is deliberately minimal — `record-batch` reads ONLY these fields:
 
 ```yaml
@@ -147,6 +148,13 @@ renames:
 `renames` lists every rename the plan does not declare, and is omitted when you made none.
 Each `old` and `new` is the glyph a card would name the symbol by, such as `internal/gatecli#runGuardStep`.
 Record-batch rewrites every later card that still names an `old` glyph to its `new` one, so list a rename even when you also changed the symbol's body or signature.
+
+### A batch handed back
+
+Your parent may send you a `record-batch` refusal naming symbols your batch removed that a later card still names, with no rename in your report.
+For each named symbol, either restore its name in a new commit, when the plan did not ask for the change, or list the rename under `renames` with its reason, when the new name is needed.
+Then rewrite the report at the same path with `head_sha` read again by `git rev-parse HEAD`, and end your turn.
+Change nothing else.
 
 `status` is `OK` when every card above is committed and every gate it ran, the batch gate included, passed;
 `FAILED` when you stopped after exhausting the self-fix bound on some card or on the batch gate, whether its gate failed or a test the card broke did;

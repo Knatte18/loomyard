@@ -108,6 +108,9 @@ type Delta interface {
 	BindHandles(plan *planparser.Plan, planDir string, cards []planparser.Card) ([]Finding, []BindOutcome, error)
 	// ScopeGuard reports the delta's changes outside the targets the cards declare.
 	ScopeGuard(plan *planparser.Plan, cards []planparser.Card) []Finding
+	// RemovedTargets reports the symbols the delta deleted that a card not in completed targets or uses, read-only.
+	// A symbol own declares as a Delete target or a Rename pair's old side, or that reported lists as an old glyph, is no finding.
+	RemovedTargets(fullPlan *planparser.Plan, completed, own []planparser.Card, reported []Rename) []Finding
 	// DetectDrift reports the plan references the delta invalidates among the cards not in completed.
 	// It repairs a rename quarry proves and each of reported, the renames the batch's implementer reported.
 	DetectDrift(fullPlan *planparser.Plan, completed []planparser.Card, reported []Rename, planDir, worktreeRoot, sha, now string) ([]Finding, error)

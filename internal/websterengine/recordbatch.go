@@ -56,6 +56,30 @@ func (e *ReportArchivedError) Unwrap() []error { return []error{ErrReportArchive
 // webster's own sentinel, per the webster-owns-its-own-domain-types decision.
 var ErrCardNotDone = errors.New("webster: record-batch's done-checks reported a blocking finding")
 
+// ErrLaterTargetRemoved is the sentinel record-batch returns when a fork batch's OK report left a symbol removed that a later card names.
+// It hands the batch back to its fork once, while the fork still holds the batch's context.
+var ErrLaterTargetRemoved = errors.New("webster: the batch removed a symbol a later card names")
+
+// LaterTargetRemovedError is the refusal record-batch returns, once per bracket, for a fork batch that removed a symbol a later card names without reporting a rename.
+// The batch stays non-terminal with its report in place, and the record notes the hand-back, so the next record-batch records the batch.
+type LaterTargetRemovedError struct {
+	// Batch names the batch as NN-<slug>.
+	Batch string
+	// Number is the batch's number.
+	Number int
+	// Reasons holds one line per later card and removed symbol.
+	Reasons []string
+}
+
+// Error names each removed symbol and the later card naming it, and the way forward through the batch's fork.
+func (e *LaterTargetRemovedError) Error() string {
+	return fmt.Sprintf("%s: batch %s: %s; way forward: send this message to the batch's fork, which either restores each name and commits, or lists each rename under its report's renames, and then rewrites its report with its head; then run `lyx webster record-batch %02d` again, which records the batch without handing it back a second time",
+		ErrLaterTargetRemoved, e.Batch, strings.Join(e.Reasons, "; "), e.Number)
+}
+
+// Unwrap returns ErrLaterTargetRemoved, so errors.Is matches it.
+func (e *LaterTargetRemovedError) Unwrap() error { return ErrLaterTargetRemoved }
+
 // cardNotDoneError is the error the post-batch done-checks return: it unwraps to ErrCardNotDone and its message carries the findings' text.
 // deleteNotDone is set when a finding is a Delete target that still resolves, and glyphRejected when quarry rejected a card's target before resolving it.
 type cardNotDoneError struct {
@@ -266,6 +290,7 @@ func archiveUnattributable(deps RecordDeps, number int, slug string, cause error
 // Each audit finding is dispositioned once per run: a policy finding is recorded as a warning (after its batch's card verify commands pass, when the report is OK),
 // and a correctness finding, or a policy finding whose evidence re-run fails, fails the batch and returns a *BatchFailedError naming `lyx webster recover-batch`, alongside a RecordResult carrying the failed digest.
 // A NEEDS_PARENT report records the batch waiting with its need and archives the report, and a call on a waiting batch refuses naming the resume step.
+// An OK report whose batch removed a symbol a later card names, with no rename reported for it, returns *LaterTargetRemovedError once per bracket, leaving the batch open for its fork.
 // The caller persists deps.State via SaveState once RecordBatch returns, whether or not it returned a *BatchFailedError.
 func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// The plan is a hard precondition, refused loudly rather than dereferenced several frames down
@@ -542,6 +567,8 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		HeadSHA:   report.HeadSHA,
 		Label:     polledID,
 		Renames:   report.Renames,
+		// Only an OK report's fork is waiting to be told: a FAILED one goes to a recovery strand instead.
+		HandBackRemovedTargets: report.Status == ReportStatusOK,
 	})
 	warnings = append(warnings, postWarnings...)
 	if err != nil {
@@ -782,19 +809,21 @@ func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA
 // StartSHA is the bracket record's captured start SHA and HeadSHA the reconciled report head;
 // Label names the batch in warnings;
 // Batch is the record being finished, which later-card drift warnings are recorded onto;
-// Renames are the glyph renames the batch's report lists, which drift detection repairs in the cards not yet begun.
+// Renames are the glyph renames the batch's report lists, which drift detection repairs in the cards not yet begun;
+// HandBackRemovedTargets asks the pass to refuse with *LaterTargetRemovedError, before any plan rewrite past the re-sign rebind, when the batch removed a symbol a later card names.
 type postBatchInputs struct {
-	Plan      *planparser.Plan
-	State     *State
-	Batch     *BatchState
-	Geom      Geometry
-	Number    int
-	Cards     []planparser.Card
-	Completed []planparser.Card
-	StartSHA  string
-	HeadSHA   string
-	Label     string
-	Renames   []ReportRename
+	Plan                   *planparser.Plan
+	State                  *State
+	Batch                  *BatchState
+	Geom                   Geometry
+	Number                 int
+	Cards                  []planparser.Card
+	Completed              []planparser.Card
+	StartSHA               string
+	HeadSHA                string
+	Label                  string
+	Renames                []ReportRename
+	HandBackRemovedTargets bool
 }
 
 // The bind reasons postBatchChecks decides itself, beside the two the index reports.
@@ -952,6 +981,24 @@ func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err err
 		return nil, nil, deltaErr
 	}
 
+	// The report's renames are what drift detection repairs further down, so a removal the fork reported is no hand-back.
+	reported := make([]planindex.Rename, len(in.Renames))
+	for i, r := range in.Renames {
+		reported[i] = planindex.Rename{Old: r.Old, New: r.New}
+	}
+
+	// A removed later target is handed back before binding, so the plan carries no bind or drift rewrite of a batch its fork is still to change.
+	if in.HandBackRemovedTargets && deltaErr == nil && !in.Batch.LaterTargetsReturned {
+		if removed := delta.RemovedTargets(in.Plan, in.Completed, in.Cards, reported); len(removed) > 0 {
+			reasons := make([]string, len(removed))
+			for i, f := range removed {
+				reasons[i] = f.Error()
+			}
+			in.Batch.LaterTargetsReturned = true
+			return nil, nil, &LaterTargetRemovedError{Batch: in.Label, Number: in.Number, Reasons: reasons}
+		}
+	}
+
 	// Binding runs after the done-checks above, so a card that already failed create-not-done is
 	// never bound, and applies its whole batch of substitutions in this one RewriteRefs call.
 	bindFindings, bindOutcomes, bindErr := delta.BindHandles(in.Plan, in.Geom.PlanDir, in.Cards)
@@ -1016,10 +1063,6 @@ func postBatchChecks(in postBatchInputs) (deviations, warnings []string, err err
 	// declared Rename outcome — the pending view excludes exactly the cards whose renames the
 	// delta reports.
 	// The report's renames ride along, so a later card naming a glyph the batch renamed is rewritten even where quarry cannot prove the rename.
-	reported := make([]planindex.Rename, len(in.Renames))
-	for i, r := range in.Renames {
-		reported[i] = planindex.Rename{Old: r.Old, New: r.New}
-	}
 	driftFindings, driftErr := delta.DetectDrift(in.Plan, in.Completed, reported, in.Geom.PlanDir, in.Geom.WorktreeRoot, in.HeadSHA, time.Now().UTC().Format(time.RFC3339))
 	// The exact-tier repair's own RewriteRefs lands on disk before this call reports anything, and
 	// its blocking plan-references-deleted-symbol finding is computed from a different part of the

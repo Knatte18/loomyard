@@ -285,6 +285,63 @@ func TestDetectDrift_HandBuiltDelta(t *testing.T) {
 	}
 }
 
+// TestRemovedTargets covers the batch-end check: a deleted symbol a pending card names is one blocking finding per card.
+// No finding comes when the batch's own cards declare its removal or its implementer reported the rename, and a finding names quarry's rename candidates.
+// Card 1 is the recorded batch's own card, out of the pending view.
+func TestRemovedTargets(t *testing.T) {
+	t.Parallel()
+	const pendingNamesGone = "**Edit:**\n- `sub#Gone`\n\n**Intent:** two\n\n**ImpactSummary:** none\n"
+	const pendingUsesGone = "**Uses:**\n- `sub#Gone`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** three\n\n**ImpactSummary:** none\n"
+	const ownEdit = "**Edit:**\n- `sub/a.go`\n\n**Intent:** one\n\n**ImpactSummary:** none\n"
+	gone := quarry.DeltaAnswer{Deleted: []quarry.Symbol{{ID: "sub#Gone"}}}
+
+	tests := []struct {
+		name           string
+		ownCard        string
+		delta          quarry.DeltaAnswer
+		reported       []planindex.Rename
+		wantCards      []string
+		detailContains string
+	}{
+		{"a removed target of later cards", ownEdit, gone, nil, []string{"2-card2", "3-card3"}, `"sub#Gone"`},
+		{
+			"a removed target with rename candidates names them", ownEdit,
+			quarry.DeltaAnswer{
+				Deleted:          []quarry.Symbol{{ID: "sub#Gone"}},
+				RenameCandidates: []quarry.RenameCandidateEntry{{ID: "sub#Gone", Candidates: []quarry.RenameCandidate{{ID: "sub#Moved"}}}},
+			},
+			nil, []string{"2-card2", "3-card3"}, "sub#Moved",
+		},
+		{"a reported rename", ownEdit, gone, []planindex.Rename{{Old: "sub#Gone", New: "sub#Moved"}}, nil, ""},
+		{"a declared delete of the batch's own card", "**Delete:**\n- `sub#Gone`\n\n**Intent:** one\n\n**ImpactSummary:** none\n", gone, nil, nil, ""},
+		{"a declared rename of the batch's own card", "**Rename:**\n- `sub#Gone` -> `plan:sub#Moved`\n\n**Intent:** one\n", gone, nil, nil, ""},
+		{"a removed symbol no later card names", ownEdit, quarry.DeltaAnswer{Deleted: []quarry.Symbol{{ID: "sub#Unnamed"}}}, nil, nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, plan := writePlanFixture(t, map[int]string{1: tt.ownCard, 2: pendingNamesGone, 3: pendingUsesGone})
+			own := plan.Cards[:1]
+
+			findings := RemovedTargets(PendingPlan(plan, own), own, quarry.GitDeltaAnswer{DeltaAnswer: tt.delta}, tt.reported)
+
+			var cards []string
+			for _, f := range findings {
+				cards = append(cards, f.Card)
+				if f.Check != "later-target-removed" || f.Severity != SeverityBlocking {
+					t.Errorf("RemovedTargets() finding = %+v; want a blocking later-target-removed", f)
+				}
+				if !strings.Contains(f.Detail, tt.detailContains) {
+					t.Errorf("RemovedTargets() detail = %q; want it to contain %q", f.Detail, tt.detailContains)
+				}
+			}
+			if strings.Join(cards, ",") != strings.Join(tt.wantCards, ",") {
+				t.Errorf("RemovedTargets() cards = %v; want %v", cards, tt.wantCards)
+			}
+		})
+	}
+}
+
 // TestDetectDrift_RepairIntoAnUnresolvableGlyphIsReported pins R6-11: the post-repair resolve's
 // ANSWERS are read, not just its transport error. Before this, a repair that rewrote a ref into a
 // glyph quarry answers not_found for passed the step described as "revalidated" in silence, and the

@@ -777,54 +777,76 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 	})
 
 	// A recovery's reported rename is repaired exactly as a fork's is, even where the delta only reports the old glyph deleted.
-	t.Run("a recovered reported rename rewrites the pending card", func(t *testing.T) {
-		fx := newRecoverFixture(t)
-		clk := &recoverFakeClock{now: time.Unix(0, 0)}
-		writeWorktreeFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Moved() int { return 1 }\n")
-		fx.Index.delta = quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Deleted: []quarry.Symbol{{ID: "internal/foo#WillMove"}}}}
-
-		planDir := t.TempDir()
-		base := []plankit.Group{{Label: "Prosa", Targets: []string{"//base.txt"}}}
-		plankit.Write(t, planDir, plankit.Plan{
-			Approved: true,
-			Language: "go",
-			Framing:  "A two-card fixture whose second card names a glyph the first card's batch renamed.",
-			Cards: []plankit.Card{
-				{Number: 1, Slug: "json-flag", Summary: "the recovered card", Groups: base, Intent: "The recovered card."},
-				{Number: 2, Slug: "pending", Summary: "the not-yet-built card", Groups: base, Uses: []string{"internal/foo#WillMove"}, Intent: "The pending card."},
-			},
+	// An unreported one records the batch with the later-card warning: a recovery strand has ended, so nothing is handed back.
+	for _, tt := range []struct {
+		name        string
+		renames     string
+		wantPending string
+	}{
+		{"a recovered reported rename rewrites the pending card", "renames:\n  - old: internal/foo#WillMove\n    new: internal/foo#Moved\n    reason: WillMove collides with an existing symbol\n", "internal/foo#Moved"},
+		{"a recovered unreported removal records the batch and warns about the later card", "", "internal/foo#WillMove"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			recoverRemovedLaterTarget(t, tt.renames, tt.wantPending)
 		})
-		plan, err := planparser.ParsePlan(planDir)
-		if err != nil {
-			t.Fatalf("ParsePlan(%q) returned error: %v", planDir, err)
-		}
-		fx.Deps.Geom.PlanDir = planDir
-		fx.Deps.Plan = plan
-		fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards[:1]}, {Cards: plan.Cards[1:]}}
-		if err := websterengine.RestampPlanBaseline(fx.Deps.State, planDir, fx.Deps.Geom.WebsterDir); err != nil {
-			t.Fatalf("RestampPlanBaseline() error = %v", err)
-		}
+	}
+}
 
-		if first, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk); err != nil || !first.Spawned || !first.Running {
-			t.Fatalf("RecoverBatch() first call = %+v, %v; want a running spawned recovery", first, err)
-		}
-		writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+fx.Git.head+"\nrenames:\n  - old: internal/foo#WillMove\n    new: internal/foo#Moved\n    reason: WillMove collides with an existing symbol\n")
-		recovered, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
-		if err != nil {
-			t.Fatalf("RecoverBatch() second call error = %v; want nil", err)
-		}
-		if recovered.Digest == nil || recovered.Digest.Status != websterengine.DigestStatusDone {
-			t.Fatalf("recovered Digest = %+v; want a terminal done digest", recovered.Digest)
-		}
+// recoverRemovedLaterTarget drives one recovery whose delta deletes a glyph a pending card uses, with renames as the report's renames block.
+// It checks the batch recorded done with the pending card naming wantPending, warned about when it still names the removed glyph.
+func recoverRemovedLaterTarget(t *testing.T, renames, wantPending string) {
+	t.Helper()
+	fx := newRecoverFixture(t)
+	clk := &recoverFakeClock{now: time.Unix(0, 0)}
+	writeWorktreeFile(t, fx.Worktree, "internal/foo/impl.go", "package foo\n\nfunc Moved() int { return 1 }\n")
+	fx.Index.delta = quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{Deleted: []quarry.Symbol{{ID: "internal/foo#WillMove"}}}}
 
-		pending, readErr := os.ReadFile(filepath.Join(planDir, "02-pending.md"))
-		if readErr != nil {
-			t.Fatalf("read 02-pending.md: %v", readErr)
-		}
-		if !strings.Contains(string(pending), "internal/foo#Moved") || strings.Contains(string(pending), "internal/foo#WillMove") {
-			t.Errorf("02-pending.md = %q; want the reported new glyph in place of the old one", pending)
-		}
+	planDir := t.TempDir()
+	base := []plankit.Group{{Label: "Prosa", Targets: []string{"//base.txt"}}}
+	plankit.Write(t, planDir, plankit.Plan{
+		Approved: true,
+		Language: "go",
+		Framing:  "A two-card fixture whose second card names a glyph the first card's batch renamed.",
+		Cards: []plankit.Card{
+			{Number: 1, Slug: "json-flag", Summary: "the recovered card", Groups: base, Intent: "The recovered card."},
+			{Number: 2, Slug: "pending", Summary: "the not-yet-built card", Groups: base, Uses: []string{"internal/foo#WillMove"}, Intent: "The pending card."},
+		},
 	})
+	plan, err := planparser.ParsePlan(planDir)
+	if err != nil {
+		t.Fatalf("ParsePlan(%q) returned error: %v", planDir, err)
+	}
+	fx.Deps.Geom.PlanDir = planDir
+	fx.Deps.Plan = plan
+	fx.Deps.Batches = []batcher.Batch{{Cards: plan.Cards[:1]}, {Cards: plan.Cards[1:]}}
+	if err := websterengine.RestampPlanBaseline(fx.Deps.State, planDir, fx.Deps.Geom.WebsterDir); err != nil {
+		t.Fatalf("RestampPlanBaseline() error = %v", err)
+	}
+
+	if first, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk); err != nil || !first.Spawned || !first.Running {
+		t.Fatalf("RecoverBatch() first call = %+v, %v; want a running spawned recovery", first, err)
+	}
+	writeRecoverReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+fx.Git.head+"\n"+renames)
+	recovered, err := driveRecoverBatch(fx.Deps, 1, 2*time.Second, clk)
+	if err != nil {
+		t.Fatalf("RecoverBatch() second call error = %v; want nil", err)
+	}
+	if recovered.Digest == nil || recovered.Digest.Status != websterengine.DigestStatusDone {
+		t.Fatalf("recovered Digest = %+v; want a terminal done digest", recovered.Digest)
+	}
+
+	pending, readErr := os.ReadFile(filepath.Join(planDir, "02-pending.md"))
+	if readErr != nil {
+		t.Fatalf("read 02-pending.md: %v", readErr)
+	}
+	removedKept := wantPending == "internal/foo#WillMove"
+	if !strings.Contains(string(pending), wantPending) || (!removedKept && strings.Contains(string(pending), "internal/foo#WillMove")) {
+		t.Errorf("02-pending.md = %q; want it naming %s alone", pending, wantPending)
+	}
+	warned := slices.ContainsFunc(recovered.Warnings, func(w string) bool { return strings.Contains(w, "later card:") })
+	if warned != removedKept {
+		t.Errorf("recovered Warnings = %v; want a later card: warning %v", recovered.Warnings, removedKept)
+	}
 }
 
 // TestRecoverBatch_AmendedCards walks one batch's amendment through its recoveries.

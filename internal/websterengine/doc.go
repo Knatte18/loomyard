@@ -312,6 +312,13 @@
 // begin-batch and recover-batch open an empty bracket list, so a transcript of an earlier bracket never counts.
 // A report that cannot be attributed to a begun batch, or to any counted fork transcript, is archived and returned as *ReportArchivedError naming `lyx webster begin-batch`, which re-drives the batch.
 // The post-batch done-checks fail the batch the same way when a card's own declared work is missing, while drift that concerns only a later card is recorded as a warning rather than blocking this batch.
+// One kind of later-card drift is first handed back to the fork, while the fork still holds the batch's context.
+// It is a symbol the delta deleted that a later card targets or uses, with no exact rename, no rename in the report, and no Delete target or Rename old side on the batch's own cards declaring it (planindex.Delta.RemovedTargets).
+// On an OK report, record-batch checks it right after the shared delta and before handle binding, so the only plan rewrite it can follow is the re-sign rebind.
+// It returns *LaterTargetRemovedError, the CLI's `later_target_removed` flag, leaving the batch open with its report in place and BatchState.LaterTargetsReturned set.
+// Master sends the refusal to the fork, which restores the name or reports the rename and rewrites its report, and calls record-batch again.
+// The hand-back comes once per bracket: the next record-batch records the batch with the later-card warning even when the fork could not be reached.
+// recover-batch never hands back, since a recovery strand has ended when its report is read.
 // A delete-not-done finding gets one more check, planindex.Index.LaterDeleteReferences over the batch's own cards and the cards of every batch with no record:
 // when an unbegun later card's Edit code still references the target, the failure's reasons name that card and the reference,
 // and the BatchFailedError's way forward is the plan edit (move the delete after that card, rebaseline, then recover-batch), or the reset-to-start steps when the record also lists uncheckable entries, since recover-batch would repeat the same failure.

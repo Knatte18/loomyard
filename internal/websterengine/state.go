@@ -300,6 +300,9 @@ type BatchState struct {
 	// the path, or "<class>: <detail>" for a finding with no path.
 	// recover-batch refuses a failed batch carrying any, toward the reset-to-start route.
 	Uncheckable []string `json:"uncheckable,omitempty"`
+	// LaterTargetsReturned is set once record-batch has handed the batch back to its fork over a symbol the batch removed that a later card names,
+	// so a later record-batch of the same bracket records the batch without handing it back again.
+	LaterTargetsReturned bool `json:"laterTargetsReturned,omitempty"`
 
 	// The following three fields are populated only for a recovery batch
 	// (Kind == "recovery"); a fork batch carries no strand fields, since

@@ -180,10 +180,11 @@
 //
 // Plan.GlyphLanguage answers only whether the plan is glyph-enabled.
 // Plan.GoToolchain is true under go or an absent language and is the one test for the checks that read Go source or Go toolchain semantics:
-// the verify-chain checks verify-nested-module, verify-module-wide and verify-package-missing, the Go package-directory mapping of a unit in CardTargetDirs and RefScope, the external-test pseudo-unit reading in CheckFabricVocabularyName, and the delete-order and caller-coverage checks in internal/planglyph.
+// the verify-chain checks verify-nested-module, verify-module-wide and verify-package-missing, rename-leaves-test, the Go package-directory mapping of a unit in CardTargetDirs and RefScope, the external-test pseudo-unit reading in CheckFabricVocabularyName, and the delete-order and caller-coverage checks in internal/planglyph.
 // Each of them leaves a csharp or none plan alone.
 //
 // plan-language-mismatch refuses a plan whose Targets name only the other language's files, a `.cs` file under go or a `.go` file under csharp, unless a member glyph, a `plan:` handle or an extensionless self glyph shows the plan may name code of its own language.
 // Its resolve-backed half, in internal/planglyph, judges a go plan whose targets resolve only into `.cs` files.
 // rename-namespace-pair refuses, under csharp, a Rename pair of two self glyphs whose old side is slash-free and names nothing on disk, since such a pair is a file pair that runs `git mv` and a namespace is no path.
+// rename-leaves-test refuses a symbol Rename pair while a card lists a test named after the symbol under Edit with no Rename pair of its own, since an implementer renames the test with its symbol.
 package planparser

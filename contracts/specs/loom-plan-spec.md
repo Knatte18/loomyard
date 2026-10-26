@@ -615,11 +615,16 @@ The rows below stay in one fixed order regardless of which entry point runs them
     An `Extends` ref that is also under `Uses:` is `card-field-overlap`, since the card's flat targets hold it.
 52. `extends-resign` — an arrow sub-bullet in an `Extends` group.
     One blocking finding per arrow, naming the card and the member; its way forward is to move that ref under `**Edit:**`, since a re-sign changes what is already there.
+53. `rename-leaves-test` — under `language: go`, a symbol `Rename` pair renaming `unit#Name`, or the method `unit#T.M`, while a card lists a test named after it under `Edit` in the same unit and no `Rename` pair renames that test.
+    A test is named after the symbol when it is `Test<base>` or `Test<base>_<case>`, with base `Name`, or `T_M` for a method; `TestNameX` is not.
+    An implementer renames such a test with its symbol, so a later card still naming the old test refuses at its `begin-batch`.
+    One blocking finding per test ref, attributed to the renaming card and naming the card that edits the test; its way forward is to add the test's rename as a `Rename` pair on the renaming card.
 
 `plan-language-mismatch` and `rename-namespace-pair` run in the position of their own place in the order, not of their numbers: the first right after `plan-language-unrecognized`, the second right after `path-missing`.
 `extends-overlap` and `extends-resign` run right after `card-field-overlap`, in that order.
+`rename-leaves-test` runs right after `rename-mechanic-missing`.
 
-A plan under `language: csharp` skips the checks that read Go source or Go toolchain semantics: `verify-nested-module`, `verify-module-wide`, `verify-package-missing`, the `.go` file-unit half of `handle-malformed`, `delete-before-reference`, `caller-uncovered`, and the Go package-directory mapping of a unit.
+A plan under `language: csharp` skips the checks that read Go source or Go toolchain semantics: `verify-nested-module`, `verify-module-wide`, `verify-package-missing`, the `.go` file-unit half of `handle-malformed`, `delete-before-reference`, `caller-uncovered`, `rename-leaves-test`, and the Go package-directory mapping of a unit.
 The remaining checks run under it as they do under `go`.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
