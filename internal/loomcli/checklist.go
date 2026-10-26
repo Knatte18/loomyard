@@ -36,7 +36,8 @@ const (
 	checklistBoxDone       = "[x]"
 	checklistBoxRunning    = "[>]"
 	checklistBoxFailed     = "[!]"
-	checklistBoxHalted     = "[-]"
+	checklistBoxHalted     = "[=]"
+	checklistBoxSkipped    = "[-]"
 	checklistBoxNotReached = "[ ]"
 	checklistWaitNothing   = "waiting on nothing"
 	checklistOpenOutcome   = "running"
@@ -256,6 +257,7 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 		perched[row.Name] = reviewSegment[row.Segment]
 	}
 	rework := checklistRework(history, perched)
+	skipped := checklistSkippedRows(status)
 
 	var lines []string
 	drawnSegment := map[string]bool{}
@@ -263,11 +265,11 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 		if row, ok := recipeRow[name]; ok && reviewSegment[row.Segment] {
 			if !drawnSegment[row.Segment] {
 				drawnSegment[row.Segment] = true
-				lines = append(lines, checklistReviewBlock(row.Segment, numbers[name], in.rows, history, status, arbiters)...)
+				lines = append(lines, checklistReviewBlock(row.Segment, numbers[name], in.rows, history, skipped, status, arbiters)...)
 			}
 			continue
 		}
-		line := checklistBox(name, visits[name], status) + " " + checklistEntryName(numbers[name], name)
+		line := checklistBox(name, visits[name], skipped[name], status) + " " + checklistEntryName(numbers[name], name)
 		if v := visits[name]; v.visits > 0 {
 			line += " " + checklistTime(v.spent, slices.ContainsFunc(v.log, checklistVisitIsOpen))
 			if v.visits > 1 {
@@ -373,7 +375,7 @@ func checklistTime(spent time.Duration, includesOpen bool) string {
 }
 
 // checklistReviewBlock renders a review segment, a recipe segment holding a Bouncer row, as one block from the history-order visits.
-// The heading reads "<box> <number>. <segment> <time> rounds <n>"; an unvisited segment is the single line "[ ] <number>. <segment>".
+// The heading reads "<box> <number>. <segment> <time> rounds <n>"; an unvisited segment is the single line "<box> <number>. <segment>", boxed skipped when skipped holds one of its rows and not reached otherwise.
 // number is the segment's entry number, which its rounds and their lines do not carry.
 // Under it come the lines placed before any round opened, then each opened round in the order opened as "  round <n> <time>", the sum of its lines' time, with its lines, and last a Bouncer done that ends the segment.
 // A time that includes the open visit is drawn in whole minutes and every other time to the second.
@@ -382,7 +384,7 @@ func checklistTime(spent time.Duration, includesOpen bool) string {
 // A fix-row entry, a goto into the segment, a reroute into the segment and a Bouncer entry that routes nowhere stand as the last line of the round in progress, or before round 1.
 // The open visit of a segment row opens the round after the last when a bounced Bouncer line waits, and otherwise joins the round in progress.
 // Each line is followed by its gate lines and then the arbiter lines placed after its history entry.
-func checklistReviewBlock(segment string, number int, rows []loomrecipe.RecipeRow, visits []checklistVisit, status shedengine.Status, arbiters *checklistArbiterPlacement) []string {
+func checklistReviewBlock(segment string, number int, rows []loomrecipe.RecipeRow, visits []checklistVisit, skipped map[string]bool, status shedengine.Status, arbiters *checklistArbiterPlacement) []string {
 	inSegment := map[string]bool{}
 	bouncers := map[string]bool{}
 	reviewRows := map[string]bool{}
@@ -408,14 +410,22 @@ func checklistReviewBlock(segment string, number int, rows []loomrecipe.RecipeRo
 		}
 	}
 	if len(visitCount) == 0 {
-		return []string{checklistBoxNotReached + " " + checklistEntryName(number, segment)}
+		box := checklistBoxNotReached
+		for _, row := range rows {
+			if row.Segment == segment && skipped[row.Name] {
+				box = checklistBoxSkipped
+				break
+			}
+		}
+		return []string{box + " " + checklistEntryName(number, segment)}
 	}
 	box := checklistBoxDone
 	for _, row := range rows {
 		if row.Segment != segment {
 			continue
 		}
-		if current := checklistBox(row.Name, checklistVisits{visits: visitCount[row.Name]}, status); current != checklistBoxDone && current != checklistBoxNotReached {
+		// A visited segment takes only a current producer's state box, so a skipped row of it never boxes the heading.
+		if current := checklistBox(row.Name, checklistVisits{visits: visitCount[row.Name]}, false, status); current != checklistBoxDone && current != checklistBoxNotReached {
 			box = current
 			break
 		}
@@ -853,8 +863,8 @@ func parseChecklistTime(value string) (time.Time, bool) {
 	return parsed, err == nil
 }
 
-// checklistBox is the box of the row name: the current producer's by the run's state, otherwise done when the row has a visit and not reached when it has none.
-func checklistBox(name string, v checklistVisits, status shedengine.Status) string {
+// checklistBox is the box of the row name: the current producer's by the run's state, otherwise done when the row has a visit, skipped when it has none and skipped is true, and not reached otherwise.
+func checklistBox(name string, v checklistVisits, skipped bool, status shedengine.Status) string {
 	if name == status.CurrentProducer {
 		switch status.State {
 		case shedengine.StateRunning:
@@ -868,5 +878,19 @@ func checklistBox(name string, v checklistVisits, status shedengine.Status) stri
 	if v.visits > 0 {
 		return checklistBoxDone
 	}
+	if skipped {
+		return checklistBoxSkipped
+	}
 	return checklistBoxNotReached
+}
+
+// checklistSkippedRows returns the rows the status history records as skipped by their entry gate.
+func checklistSkippedRows(status shedengine.Status) map[string]bool {
+	skipped := map[string]bool{}
+	for _, entry := range status.History {
+		if entry.Outcome == shedengine.OutcomeSkipped {
+			skipped[entry.Producer] = true
+		}
+	}
+	return skipped
 }
