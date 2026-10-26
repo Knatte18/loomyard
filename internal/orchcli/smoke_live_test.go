@@ -1,6 +1,6 @@
 //go:build tier3
 
-// smoke_live_test.go extends the orch smoke suite to what the live-ready task changed: the bypass permission mode with the Agent tool and the idle probe, the soft cycle trigger, the compact cycle, and adopting a running session.
+// smoke_live_test.go extends the orch smoke suite to what the live-ready task changed: the bypass permission mode with the Agent tool and the idle probe, the soft cycle trigger and the compact cycle.
 // Every test follows TestSmokeOrch_OneFullCycle's shape: it builds cmd/lyx and drives it as a subprocess, skips without tmux or `claude`, and stops orch and takes reed down in cleanup.
 // A test's own plain shuttle runs go through an in-process shuttleengine.Runner, since the CLI exposes neither the permission mode nor a run handle.
 
@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -22,12 +21,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
-	"github.com/Knatte18/loomyard/internal/loomengine"
-	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
-	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
@@ -35,7 +30,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/lyxbin"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
-	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // liveFixture is one hub with its seeded configs, a built lyx binary, and in-process reed and shuttle handles onto the prime.
@@ -131,13 +125,10 @@ func newLiveFixture(t *testing.T, orchCfg string, extraCfg map[string]string) *l
 	return f
 }
 
-// startOrch runs `orch start --no-attach` with extra args, failing unless it succeeds, then waits for the strand to be live and returns its guid and run.
-func (f *liveFixture) startOrch(t *testing.T, extra ...string) (string, shuttleengine.RunState) {
+// startOrch brings the prime's orch up through BeamUp, failing unless it succeeds, then waits for the strand to be live and returns its guid and run.
+func (f *liveFixture) startOrch(t *testing.T) (string, shuttleengine.RunState) {
 	t.Helper()
-	args := append([]string{"orch", "start", "--no-attach"}, extra...)
-	if out, code := smokeRun(t, f.exe, f.prime, 120*time.Second, args...); code != 0 {
-		t.Fatalf("orch start exited %d: %s", code, out)
-	}
+	smokeBeamUp(t, f.exe, f.hub.Location)
 	return f.orchRun(t)
 }
 
@@ -165,33 +156,6 @@ func (f *liveFixture) stopOrch(t *testing.T) {
 	if out, code := smokeRun(t, f.exe, f.prime, 30*time.Second, "orch", "stop"); code != 0 {
 		t.Errorf("orch stop exited %d: %s", code, out)
 	}
-}
-
-// startPlainRun starts an interactive bypass-mode shuttle run in the prime that is never finished by an output file, and returns its run record.
-func (f *liveFixture) startPlainRun(t *testing.T, role, prompt string) shuttleengine.RunState {
-	t.Helper()
-	if _, err := f.reed.Up(); err != nil {
-		t.Fatalf("reed up: %v", err)
-	}
-	if err := os.MkdirAll(f.paths.Dir, 0o755); err != nil {
-		t.Fatalf("create %s: %v", f.paths.Dir, err)
-	}
-	run, err := f.runner.Start(shuttleengine.Spec{
-		Prompt:         prompt,
-		OutputFiles:    []string{filepath.Join(f.paths.Dir, role+".never")},
-		Interactive:    true,
-		PermissionMode: "bypass",
-		Role:           role,
-		Display:        render.Display{},
-	})
-	if err != nil {
-		t.Fatalf("start plain run %q: %v", role, err)
-	}
-	state, _, err := shuttleengine.FindRun(f.shuttleCfg, f.prime, run.StrandGUID())
-	if err != nil {
-		t.Fatalf("FindRun(%s): %v", run.StrandGUID(), err)
-	}
-	return state
 }
 
 // sendTurn sends text to guid and waits for the turn it starts to end.
@@ -445,137 +409,6 @@ func TestSmokeOrch_CompactCycle(t *testing.T) {
 	f.stopOrch(t)
 }
 
-// killTreeProcs kills every process whose command line names dir or whose working directory is under it, so a detached loom run and its agents, which a test provoked, never outlive it.
-func killTreeProcs(dir string) {
-	for _, pid := range tmuxkit.Pids() {
-		if pid == os.Getpid() {
-			continue
-		}
-		argv, _ := tmuxkit.ProcArgv(pid)
-		cwd, _ := tmuxkit.ProcCwd(pid)
-		if slices.ContainsFunc(argv, func(arg string) bool { return strings.Contains(arg, dir) }) || cwd == dir || strings.HasPrefix(cwd, dir+string(filepath.Separator)) {
-			_ = proc.KillPID(pid)
-		}
-	}
-}
-
-// TestSmokeOrch_Adopt proves a plain interactive run is adopted as the orch strand with its context, that the adopted session's name is addressable and parents a loom run, and that it cycles.
-func TestSmokeOrch_Adopt(t *testing.T) {
-	f := newLiveFixture(t, smokeOrchConfig("clear", "bypass", 200000000, 100000000, 300), map[string]string{
-		"loom":    loomengine.ConfigTemplate(),
-		"webster": websterengine.ConfigTemplate(),
-	})
-	const slug = "orch-adopt-task"
-	hubforge.AddPair(t, f.hub, slug)
-	worktree := f.hub.PairCodeWorktree(slug)
-	t.Cleanup(func() { killTreeProcs(f.hub.Location.HubPath) })
-
-	codeword := fmt.Sprintf("kestrel-%d", time.Now().UnixNano()%100000)
-	plain := f.startPlainRun(t, "plain", fmt.Sprintf("The codeword is %s. Remember it. Reply with the single word noted and end your turn.", codeword))
-	waitFor(t, 120, "the plain run's first turn to end", func() bool { return turnEnds(plain.EventsPath) > 0 })
-
-	// Adoption is refused while the plain run holds the session.
-	out, code := smokeRun(t, f.exe, f.prime, 120*time.Second, "orch", "start", "--adopt", plain.SessionID, "--no-attach")
-	if code == 0 {
-		t.Fatalf("orch start --adopt succeeded while the session was live: %s", out)
-	}
-	if !strings.Contains(out, "live process") {
-		t.Errorf("refusal does not name the live holder: %s", out)
-	}
-	t.Logf("live-holder refusal: %s", strings.TrimSpace(out))
-
-	// Remove the plain strand and wait for its process to exit.
-	if _, err := f.reed.RemoveStrand(plain.StrandGUID, false); err != nil {
-		t.Fatalf("remove plain strand: %v", err)
-	}
-	var startOut string
-	waitFor(t, 60, "the adopt to be accepted once the holder exited", func() bool {
-		var c int
-		startOut, c = smokeRun(t, f.exe, f.prime, 120*time.Second, "orch", "start", "--adopt", plain.SessionID, "--no-attach")
-		return c == 0
-	})
-	var startEnv map[string]any
-	if err := json.Unmarshal(bytes.TrimSpace([]byte(startOut)), &startEnv); err != nil {
-		t.Fatalf("decode adopt envelope %q: %v", startOut, err)
-	}
-	if source, _ := startEnv["prompt_source"].(string); source != orchengine.SourceAdopt {
-		t.Errorf("prompt_source = %q, want %q", source, orchengine.SourceAdopt)
-	}
-	guid, run := f.orchRun(t)
-	waitFor(t, 120, "the adopt prompt's turn to end", func() bool { return turnEnds(run.EventsPath) > 0 })
-
-	// The adopted session kept its context.
-	f.sendTurn(t, guid, run.EventsPath, "What is the codeword? Reply with exactly one line `CODEWORD: <word>` and end your turn.", 180)
-	if answer := lastTurnEnd(run.EventsPath); !strings.Contains(answer, codeword) {
-		t.Errorf("the adopted session did not answer the codeword %q: %q", codeword, answer)
-	}
-
-	// The session's name is <shortname>:orch and it parents a loom run it starts.
-	orchName := hubforge.TestShortname + ":orch"
-	status, err := f.reed.Status()
-	if err != nil {
-		t.Fatalf("reed status: %v", err)
-	}
-	if strand, found := trackedStrand(status.Strands, guid); !found || strand.Name != orchName {
-		t.Errorf("orch strand name = %q (found %v), want %q", strand.Name, found, orchName)
-	}
-	f.sendTurn(t, guid, run.EventsPath, fmt.Sprintf("Run the Bash command `cd %s && lyx loom start --no-attach`, then end your turn.", worktree), 300)
-	loc, err := lyxcwd.Resolve(worktree)
-	if err != nil {
-		t.Fatalf("resolve %s: %v", worktree, err)
-	}
-	parent, err := hubgeom.ResolveParent(loc)
-	if err != nil {
-		t.Fatalf("resolve the loom run's parent: %v", err)
-	}
-	if parent.Name != orchName {
-		t.Errorf("run parent = %q, want %q", parent.Name, orchName)
-	}
-	// The detached loom run would start real agents of its own; its parent is all this test needs from it.
-	killTreeProcs(worktree)
-
-	// A second run in the prime reaches the orch session through SendMessage, as a driver's escalation notice does.
-	marker := fmt.Sprintf("ESCALATION-%d", time.Now().UnixNano()%100000)
-	sender := f.startPlainRun(t, "sender", fmt.Sprintf("Use the SendMessage tool to send the exact text %s to %s, then end your turn.", marker, orchName))
-	waitForDiag(t, 180, "the sender run's turn to end", func() bool { return turnEnds(sender.EventsPath) > 0 }, func() string {
-		pane, _ := f.reed.CapturePane(sender.StrandGUID)
-		return pane
-	})
-	waitFor(t, 180, "the marker to reach the orch transcript", func() bool {
-		body, _ := os.ReadFile(latestTranscript(t, run.EventsPath))
-		return bytes.Contains(body, []byte(marker))
-	})
-	// The sender's pane shares the window and leaves the orch pane too short to draw its input box, which the idle probe needs for the cycle.
-	if _, err := f.reed.RemoveStrand(sender.StrandGUID, false); err != nil {
-		t.Fatalf("remove sender strand: %v", err)
-	}
-
-	// A manual cycle completes on the adopted session.
-	if out, code := smokeRun(t, f.exe, f.prime, 30*time.Second, "orch", "refresh"); code != 0 {
-		t.Fatalf("orch refresh exited %d: %s", code, out)
-	}
-	waitForDiag(t, 600, "cycle_count 1 in phase idle", func() bool {
-		env := smokeStatus(t, f.exe, f.prime)
-		count, _ := env["cycle_count"].(float64)
-		return count == 1 && env["phase"] == string(orchengine.PhaseIdle)
-	}, func() string {
-		status, _ := json.Marshal(smokeStatus(t, f.exe, f.prime))
-		pane, _ := f.reed.CapturePane(guid)
-		watchLog, _ := os.ReadFile(f.paths.WatchLogPath)
-		events, _ := os.ReadFile(run.EventsPath)
-		raw := ""
-		if st, err := f.reed.Status(); err == nil {
-			if strand, ok := trackedStrand(st.Strands, guid); ok {
-				out, _ := exec.Command("tmux", "-L", st.Socket, "capture-pane", "-p", "-S", "-60", "-t", strand.PaneID).CombinedOutput()
-				raw = string(out)
-			}
-		}
-		return string(status) + "\n" + pane + "\nraw pane with scrollback:\n" + raw + "\nwatch.log:\n" + string(watchLog) + "\nevents tail:\n" + tailString(string(events), 3000)
-	})
-
-	f.stopOrch(t)
-}
-
 // waitForDiag is waitFor, logging diag's text before it fails the test.
 func waitForDiag(t *testing.T, attempts int, what string, cond func() bool, diag func() string) {
 	t.Helper()
@@ -587,12 +420,4 @@ func waitForDiag(t *testing.T, attempts int, what string, cond func() bool, diag
 	}
 	t.Logf("%s; diagnostics:\n%s", what, diag())
 	t.Fatalf("timed out waiting for %s", what)
-}
-
-// tailString returns the last n bytes of s.
-func tailString(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[len(s)-n:]
 }

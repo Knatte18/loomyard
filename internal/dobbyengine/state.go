@@ -31,6 +31,13 @@ type State struct {
 	LandedSinceTidy []string `json:"landed_since_tidy,omitempty"`
 	// Tidy is the board-tidy agent in flight, nil when none is.
 	Tidy *TidyState `json:"tidy,omitempty"`
+	// LandNotice is the "can land" notice sent in the episode now standing, nil when none was sent or the beam can no longer land.
+	LandNotice *LandNoticeState `json:"land_notice,omitempty"`
+}
+
+// LandNoticeState is the "can land" notice a beam's dobby sent, which a restarted dobby reads so it sends no second one.
+type LandNoticeState struct {
+	SentAt time.Time `json:"sent_at"`
 }
 
 // RunState is dobby's record of one run it drives.

@@ -132,6 +132,13 @@ func hubDobbyDeps(prime *lyxcwd.Location, geom dobbyengine.Geometry, logOut io.W
 			return battencli.ReleaseRunParentLock(prime, slug)
 		},
 		SlugOwner: slugOwner,
+		AdoptSubject: func(slug string) (string, error) {
+			read, err := owners()
+			if err != nil {
+				return "", err
+			}
+			return read.AdoptSubject(slug, parents.Of)
+		},
 		LiftOwnerPause: func(_ context.Context, slug string) error {
 			return liftOwnerPause(prime, pause.RecordPath, slug)
 		},
@@ -152,6 +159,9 @@ func hubDobbyDeps(prime *lyxcwd.Location, geom dobbyengine.Geometry, logOut io.W
 			return parent.Name, err
 		},
 	}
+	if geom.Slug != "" {
+		deps.CanLand = func() (dobbyengine.LandReading, error) { return beamLandReading(prime, geom.Slug) }
+	}
 	if choice, err := resolveTidyModel(dirs); err != nil {
 		logger.Warn("beamcli: the board-tidy model does not resolve; the board tidy is off", "spec", tidyModelSpec, "error", err)
 	} else {
@@ -159,6 +169,44 @@ func hubDobbyDeps(prime *lyxcwd.Location, geom dobbyengine.Geometry, logOut io.W
 		deps.TidyShuttle = &runnerTidyShuttle{worktree: worktree}
 	}
 	return deps, nil
+}
+
+// beamLandReading reads whether the beam slug can land, which it can once nothing works under it, and, for a beam that can, which other machine owns its parent and what `lyx adopt` takes to move it.
+func beamLandReading(prime *lyxcwd.Location, slug string) (dobbyengine.LandReading, error) {
+	blockers, err := battencli.ReadBeamLandBlockers(prime, slug)
+	if err != nil {
+		return dobbyengine.LandReading{}, err
+	}
+	if !blockers.Empty() {
+		return dobbyengine.LandReading{}, nil
+	}
+	here, err := machinename.Name()
+	if err != nil {
+		return dobbyengine.LandReading{}, err
+	}
+	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
+	if err != nil {
+		return dobbyengine.LandReading{}, err
+	}
+	parentOf := func(entry string) (string, error) { return hubgeom.ParentOf(prime, entry) }
+	parent, err := parentOf(slug)
+	if err != nil {
+		return dobbyengine.LandReading{}, err
+	}
+	owner, subject := owners.Prime, boardengine.RootSubject
+	if parent != "" {
+		if owner, err = owners.Effective(parent, parentOf); err != nil {
+			return dobbyengine.LandReading{}, err
+		}
+		if subject, err = owners.AdoptSubject(parent, parentOf); err != nil {
+			return dobbyengine.LandReading{}, err
+		}
+	}
+	reading := dobbyengine.LandReading{Passes: true}
+	if boardengine.OwnedElsewhere(owner, here) {
+		reading.ParentOwner, reading.ParentSubject = owner, subject
+	}
+	return reading, nil
 }
 
 // noticeProbeInterval reads notice_probe_s from the batten recipe's Run-Shed row, the cadence the run's own wait probes at.

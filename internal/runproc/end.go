@@ -1,4 +1,4 @@
-// end.go implements the one end sequence of a run's processes: End for an owner's registered processes and EndProcess for one unregistered pid.
+// end.go implements the one end sequence of a run's processes: End, EndSparing and EndRole for an owner's registered processes and EndProcess for one unregistered pid.
 
 package runproc
 
@@ -54,13 +54,33 @@ func (e *SurvivorsError) Error() string {
 // It returns each process it ended and, when some survive SIGKILL, a *SurvivorsError.
 // On Windows, where no process or group can be told apart or signalled, it signals nothing.
 func End(dir, owner string, callerPID int) ([]Ended, error) {
-	return productionEnder().end(dir, owner, callerPID)
+	return productionEnder().end(dir, owner, callerPID, endsEveryRole)
 }
 
 // EndSparing ends like End, leaving alone every live process registered under owner with a role in spare, and the processes below it.
 // It serves an end of a session that is not a teardown of the owner's run.
 func EndSparing(dir, owner string, callerPID int, spare ...string) ([]Ended, error) {
-	return productionEnder().end(dir, owner, callerPID, spare...)
+	return productionEnder().end(dir, owner, callerPID, endsEveryRoleBut(spare))
+}
+
+// EndRole ends like End, but only the live processes registered under owner with the given role, and the processes below them.
+// Every record of another role, and every process below such a record, is left alone.
+// It serves the end of one part of a run, such as a beam's dobby, while the rest of the owner's processes go on.
+func EndRole(dir, owner, role string, callerPID int) ([]Ended, error) {
+	return productionEnder().end(dir, owner, callerPID, endsOnlyRole(role))
+}
+
+// endsEveryRole selects every role for an end.
+func endsEveryRole(string) bool { return true }
+
+// endsEveryRoleBut selects every role not in spare for an end.
+func endsEveryRoleBut(spare []string) func(role string) bool {
+	return func(role string) bool { return !slices.Contains(spare, role) }
+}
+
+// endsOnlyRole selects the one role for an end.
+func endsOnlyRole(role string) func(string) bool {
+	return func(candidate string) bool { return candidate == role }
 }
 
 // EndProcess ends one process that is registered nowhere, by the same SIGTERM, grace, SIGKILL and bound as End, once its start time still matches startTime.
@@ -112,8 +132,8 @@ type unit struct {
 	members   []watched
 }
 
-// end is the sequence behind End and EndSparing: a live record whose role is in spare is treated like the caller, left out of every signalled set with the processes below it.
-func (e ender) end(dir, owner string, callerPID int, spare ...string) ([]Ended, error) {
+// end is the sequence behind End, EndSparing and EndRole: a live record whose role the ends predicate rejects is treated like the caller, left out of every signalled set with the processes below it.
+func (e ender) end(dir, owner string, callerPID int, ends func(role string) bool) ([]Ended, error) {
 	if e.goos == "windows" {
 		return nil, nil
 	}
@@ -128,7 +148,7 @@ func (e ender) end(dir, owner string, callerPID int, spare ...string) ([]Ended, 
 		var todo []Record
 		spared := map[int]bool{}
 		for _, record := range records {
-			if slices.Contains(spare, record.Role) {
+			if !ends(record.Role) {
 				spared[record.PID] = true
 			}
 		}

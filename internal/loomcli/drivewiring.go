@@ -97,11 +97,11 @@ func driveEnvelopePath(l *lyxcwd.Location, runID string, now func() time.Time, r
 const (
 	loomTacklerRecipe = "loom: a phased task run (discussion, plan, webster's coded batches, reviews, landing)"
 	darnTacklerRecipe = "darn: a one-writer task run (one darn writer session, its review, verify and landing)"
-	beamTacklerRecipe = "beam: a beam's landing run (its description, then Finalize into its parent)"
+	pawlTacklerRecipe = "pawl: a beam's life (its orch and dobby, the wait for its landing, its merge, review, description and Finalize into its parent)"
 )
 
 // tacklerFor resolves the tackler settings of a run of recipe from the config layers under dirs, and the one-line recipe description its prompt names:
-// shed.yaml's defaults under the recipe's own module overrides, so a darn run takes darn.yaml's keys and a loom or beam run loom.yaml's.
+// shed.yaml's defaults under the recipe's own module overrides, so a darn run takes darn.yaml's keys and a loom or pawl run loom.yaml's.
 func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (sheddriver.TacklerSettings, string, error) {
 	shed, err := sheddriver.LoadConfig(dirs)
 	if err != nil {
@@ -118,8 +118,8 @@ func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (
 	switch recipe {
 	case shedrun.RecipeDarn:
 		return settings, darnTacklerRecipe, nil
-	case shedrun.RecipeBeam:
-		return settings, beamTacklerRecipe, nil
+	case shedrun.RecipePawl:
+		return settings, pawlTacklerRecipe, nil
 	}
 	return settings, loomTacklerRecipe, nil
 }

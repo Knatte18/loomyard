@@ -106,6 +106,8 @@ func newMembershipBoard(t *testing.T) *boardengine.Board {
 		`{"id":5,"slug":"b","title":"B","kind":"task","labels":["bug"]}`,
 		`{"id":6,"slug":"m","title":"M","kind":"task","labels":["bug"],"project":"p1"}`,
 		`{"id":7,"slug":"paired","title":"Paired","kind":"task","labels":["bug"],"project":"p1"}`,
+		`{"id":8,"slug":"pa","title":"Pa","kind":"project","labels":["bug"],"beam":true,"status":"running · Beam-Await"}`,
+		`{"id":9,"slug":"pp","title":"Pp","kind":"project","labels":["bug"],"beam":true,"status":"running · Parent-Align"}`,
 	)
 	return b
 }
@@ -124,6 +126,7 @@ func TestProjectRules_Membership(t *testing.T) {
 		{"ProjectNamingItself", map[string]any{"slug": "p1", "project": "p1"}, []string{`"p1"`, "project", "is the entry itself"}},
 		{"ProjectNamingADoneProject", map[string]any{"slug": "a", "project": "pd"}, []string{`"a"`, "project", `"pd"`, "is done"}},
 		{"ProjectNamingARunHeldProject", map[string]any{"slug": "a", "project": "ph"}, []string{`"a"`, "project", `"ph"`, "held by a run"}},
+		{"ProjectNamingABeamHeldFromParentAlign", map[string]any{"slug": "a", "project": "pp"}, []string{`"a"`, "project", `"pp"`, "held by a run"}},
 		{"ProjectChainWithACycle", map[string]any{"slug": "p1", "project": "p2"}, []string{`"p1"`, "project", `"p2"`, "loops back"}},
 		{"OrderNamingAnotherProjectsEntry", map[string]any{"slug": "p1", "order": []string{"m", "a"}}, []string{`"p1"`, "order", `"a"`, "no entry of this project"}},
 		{"OrderNamingAnEntryTwice", map[string]any{"slug": "p1", "order": []string{"m", "m"}}, []string{`"p1"`, "order", `"m"`, "named twice"}},
@@ -160,6 +163,14 @@ func TestProjectRules_Membership(t *testing.T) {
 			{"slug": "p1", "order": []string{"b", "m", "a"}},
 		}); err != nil {
 			t.Errorf("UpsertTasksBatch(b into p1, then p1 order) error = %v; want nil, since the batch is judged as one write", err)
+		}
+	})
+
+	t.Run("TaskJoiningABeamAtBeamAwaitPasses", func(t *testing.T) {
+		t.Parallel()
+		b := newMembershipBoard(t)
+		if _, err := b.UpsertTask(map[string]any{"slug": "b", "project": "pa"}); err != nil {
+			t.Errorf("UpsertTask(b project pa) error = %v; want nil, since a beam at Beam-Await holds no member out", err)
 		}
 	})
 

@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -49,6 +50,7 @@ var nilLegal = map[string]bool{
 	"VerifyTreeScope":                  true,
 	"DiscussionHistory":                true,
 	"WebsterRecord":                    true,
+	"Pawl.Watch":                       true,
 	"NotifyParent":                     true,
 	"Landing.CommitStatus":             true,
 	"Landing.CommitParentRecords":      true,
@@ -61,6 +63,8 @@ var nilLegal = map[string]bool{
 	"Landing.Reconcile":                true,
 	"Landing.ParentHoldsTaskWork":      true,
 	"Landing.ParentOwner":              true,
+	"Landing.AdoptSubject":             true,
+	"Landing.LandBlockers":             true,
 	"Landing.OriginParentHoldsWork":    true,
 	"Landing.ParentCommitsOriginLacks": true,
 	"InnerRun.OwnerCheck":              true,
@@ -312,6 +316,31 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			Entry:           func() (string, string, error) { return "Title", "Brief", nil },
 			CommitSubjects:  func() ([]string, error) { return nil, nil },
 			Commit:          func() error { return nil },
+		},
+		Pawl: pawlengine.Deps{
+			Slug:  "demo",
+			RunID: "run-1",
+			Paths: pawlengine.Paths{
+				LandRequest:     filepath.Join(dir, "land-request.json"),
+				DobbyStopMarker: filepath.Join(dir, "dobby-stop"),
+				AwaitMarker:     filepath.Join(dir, "await-entered"),
+			},
+			SetStatus:           func(string) error { return nil },
+			EntryProducer:       func() (string, error) { return "", nil },
+			OwnedElsewhere:      func() (bool, error) { return false, nil },
+			MarkBeam:            func() error { return nil },
+			SpawnPush:           func() error { return nil },
+			RegenerateWorkspace: func() error { return nil },
+			Steps:               []pawlengine.Step{{Name: "noop", Run: func() error { return nil }}},
+			StopDobby:           func() error { return nil },
+			StartDobby:          func() error { return nil },
+			DobbyLive:           func() (bool, error) { return false, nil },
+			Recheck:             func() ([]string, error) { return nil, nil },
+			WriteSnapshot:       func() error { return nil },
+			Notify:              func(string) error { return nil },
+			Down:                func() error { return nil },
+			Now:                 time.Now,
+			Sleep:               func(context.Context, time.Duration) error { return nil },
 		},
 		PlanTable: func() (seatengine.Table, error) {
 			return seatengine.Table{

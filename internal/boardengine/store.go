@@ -653,6 +653,7 @@ func (s *Store) anyEntryCarries(label string) bool {
 }
 
 // ListTasksBrief returns the tasks carrying every label in labels (all tasks when empty), enriched with computed Layer and HasProposal fields.
+// A task and a project carry their effective owner, a beam's or the root's for a task, and a note carries none.
 func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 	layerMap, err := ComputeLayers(s.tasks)
 	if err != nil {
@@ -679,8 +680,8 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 		if !hasAllLabels(t, labels) {
 			continue
 		}
-		owner := t.OwnerMachine
-		if owner == "" && (t.Kind == KindTask || t.Kind == KindProject) {
+		owner := ""
+		if t.Kind == KindTask || t.Kind == KindProject {
 			// A resolver error leaves the cell empty: a list never fails on a parent it cannot read.
 			owner, _ = owners.Effective(t.Slug, parentOf)
 		}

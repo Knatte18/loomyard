@@ -45,7 +45,7 @@ An interrupt key reaches an agent pane only through shuttle's two pane guards, a
 
 ## A pause holds prompts
 
-Typing a line into a session a pause covers: shuttle's send refuses with `ErrPaused` by the target's own slug, read after the idle wait, and a conditioned send's caller reads coverage itself; of the production runners that type a line, only the orch runner is told no pause geometry and reads uncovered, so `lyx orch start`'s start lines are never held; the caller holds it until the resume or claims the session.
+Typing a line into a session a pause covers: shuttle's send refuses with `ErrPaused` by the target's own slug, read after the idle wait, and a conditioned send's caller reads coverage itself; of the production runners that type a line, only the orch runner is told no pause geometry and reads uncovered, so `BeamUp`'s start lines are never held; the caller holds it until the resume or claims the session.
 
 - The refusal is a `*PausedError` wrapping `ErrPaused`, a sentinel of its own that never wraps `ErrSessionBusy`; it carries the judged slug and the covering entry, so a caller waits on the slug the refusal judged.
 - A refused send types nothing, records nothing and never waits.

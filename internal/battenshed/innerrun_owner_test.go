@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,15 @@ func (h *lockHarness) ownerNotices() int {
 		}
 	}
 	return count
+}
+
+// requireAdoptNotice fails the test unless exactly one owner notice was sent and it names the adopt command want.
+func (h *lockHarness) requireAdoptNotice(want string) {
+	h.t.Helper()
+	quoted := want + `"`
+	if h.ownerNotices() != 1 || !slices.ContainsFunc(h.notices, func(line string) bool { return strings.Contains(line, quoted) }) {
+		h.t.Errorf("notices = %q; want one owner notice naming %q", h.notices, want)
+	}
 }
 
 // seedOwnerDue writes a memory record whose owner check is due, the state a full pass leaves for the next check.
@@ -190,6 +200,49 @@ func TestInnerRun_OwnerCheck(t *testing.T) {
 			}
 		})
 	}
+
+	adoptTests := []struct {
+		name    string
+		subject string
+		// wantAdopt is the adopt command the hold reason and the notice name.
+		wantAdopt string
+	}{
+		{"a beam member names its beam", "beam", "lyx adopt beam"},
+		{"a root task names root", "root", "lyx adopt root"},
+		{"a verdict with no subject names the slug", "", "lyx adopt myslug"},
+	}
+	for _, tt := range adoptTests {
+		t.Run("the notice and the hold reason name the adopt subject: "+tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newLockHarness(t, running)
+			h.record = loopRecord()
+			recordSpawnConfirmed("innerrun", "myslug", h.scratchDir, SpawnConfirmedFile(h.scratchDir, "innerrun"))
+			h.verdict = func(int) (OwnerVerdict, error) {
+				return OwnerVerdict{Owner: "m2", AdoptSubject: tt.subject, Elsewhere: true}, nil
+			}
+			h.seedOwnerDue()
+
+			h.runChecks(6)
+
+			h.requireAdoptNotice(tt.wantAdopt)
+			held := &innerRunProducer{slug: "myslug", ownedBy: "m2", ownedSubject: tt.subject}
+			if reason := held.ownerHoldReason(); !strings.Contains(reason, `"`+tt.wantAdopt+`"`) {
+				t.Errorf("ownerHoldReason() = %q; want it to name %q", reason, tt.wantAdopt)
+			}
+		})
+	}
+
+	t.Run("a spawn refused as owned elsewhere brings no subject, so its notice names the slug", func(t *testing.T) {
+		t.Parallel()
+		h := newLockHarness(t, awaitingAt("Plan-Bouncer"))
+		h.decision = &ChildDecision{Kind: DecisionApprove, At: "2026-01-01T10:00:00Z", HeadSHA: "abc"}
+		h.spawnErr = &ChildOwnedElsewhereError{Owner: "m2"}
+		h.verdict = elsewhereVerdict
+
+		h.runChecks(6)
+
+		h.requireAdoptNotice("lyx adopt myslug")
+	})
 
 	t.Run("a running child with no driver is noticed once the owner pause lifts and an owned-here verdict follows, and not while the pause covers it", func(t *testing.T) {
 		t.Parallel()

@@ -90,14 +90,15 @@ func ResolveBattenPrime(location *lyxcwd.Location) (*lyxcwd.Location, error) {
 	return lyxcwd.ResolveWorktree(fabricengine.WorktreePath(location, primeName))
 }
 
-// beamLanding returns the run status of the board entry named after the beam at location; empty when the entry is absent or holds no run status.
+// beamLanding returns the run status of the board entry named after the beam at location; empty when the entry is absent or its run does not hold it.
+// A pawl run from Worktree-Create through Beam-Await holds nothing, so a verb runs inside the beam then.
 func beamLanding(location *lyxcwd.Location) (string, error) {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
 	if err != nil {
 		return "", fmt.Errorf("battencli: read the board to tell whether the beam %q is being landed: %w", location.WorktreeName, err)
 	}
 	for _, task := range tasks {
-		if task.Slug == location.WorktreeName && boardengine.IsRunStatus(task.Status) {
+		if task.Slug == location.WorktreeName && boardengine.RunHolds(task) {
 			return *task.Status, nil
 		}
 	}

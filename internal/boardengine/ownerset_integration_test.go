@@ -26,9 +26,8 @@ const unreachableOrigin = "http://127.0.0.1:1/board.git"
 
 // ownerFixture is a board seeded with a few entries and pushed to a bare origin, beside a second clone of that origin.
 // The board is the hub's _board worktree of a weft repository, the shape a rejected push's replay requires.
-// The seed holds alpha and beta, unowned; away, owned by box; and held, run-held and owned by box.
-// It also holds promotable, a draft task carrying every field that turning it into a project clears.
-// x-weft is a task whose slug ends in the records suffix, grouping a project, and beamer a project that is a beam.
+// The seed holds alpha and beta, root tasks; boxed, a beam project owned by box, with away and held, run-held, as its members.
+// It also holds grouping, a project, and beamer, an unowned beam project.
 type ownerFixture struct {
 	bare     string
 	boardDir string
@@ -51,23 +50,24 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 		{"slug": "beta", "title": "Beta", "kind": "task", "labels": []string{"bug"}},
 		{"slug": "away", "title": "Away", "kind": "task", "labels": []string{"bug"}},
 		{"slug": "held", "title": "Held", "kind": "task", "labels": []string{"bug"}, "status": RunStatus("running", "Webster")},
-		{"slug": "promotable", "title": "Promotable", "kind": "task", "labels": []string{"bug"}, "depends_on": []string{"alpha"}, "recipe": "darn", "profile": "light", "status": StatusDraft,
-			"run_settings": map[string]any{"darn": map[string]any{"review_max_bounces": 1}}},
-		{"slug": "x-weft", "title": "Ends in the records suffix", "kind": "task", "labels": []string{"bug"}},
 		{"slug": "grouping", "title": "Grouping", "kind": "project", "labels": []string{"bug"}},
 		{"slug": "beamer", "title": "Beamer", "kind": "project", "labels": []string{"bug"}},
+		{"slug": "boxed", "title": "Boxed", "kind": "project", "labels": []string{"bug"}},
 	} {
 		if _, err := store.UpsertTask(fields); err != nil {
 			t.Fatalf("seed %v: %v", fields["slug"], err)
 		}
 	}
 	for i := range store.tasks {
-		if store.tasks[i].Slug == "away" || store.tasks[i].Slug == "held" {
-			store.tasks[i].OwnerMachine = "box"
-		}
-		// The beam flag is written by no upsert key, so the seed sets it on the entry directly.
-		if store.tasks[i].Slug == "beamer" {
+		// The beam flag is written by no upsert key, so the seed sets it, and the membership and the owner it carries, on the entries directly.
+		switch store.tasks[i].Slug {
+		case "away", "held":
+			store.tasks[i].Project = "boxed"
+		case "beamer":
 			store.tasks[i].Beam = true
+		case "boxed":
+			store.tasks[i].Beam = true
+			store.tasks[i].OwnerMachine = "box"
 		}
 	}
 	store.primeOwner = primeOwner
@@ -126,7 +126,15 @@ func (f *ownerFixture) pushFromOther(t *testing.T, mutate func(store *Store)) {
 	gitkit.Git(t, f.otherDir, "push", "origin", "main")
 }
 
-// setOwnerOnOther returns a mutation of the second clone's store that records owner as slug's owner.
+// parentOfBoxed answers the beam project boxed for its two members and the root for every other entry.
+func parentOfBoxed(slug string) (string, error) {
+	if slug == "away" || slug == "held" {
+		return "boxed", nil
+	}
+	return "", nil
+}
+
+// setOwnerOnOther returns a mutation of the second clone's store that records owner as the owner of the beam project slug.
 func setOwnerOnOther(slug, owner string) func(store *Store) {
 	return func(store *Store) {
 		for i := range store.tasks {
@@ -165,21 +173,26 @@ func TestSetOwners(t *testing.T) {
 	}{
 		{
 			name: "RecordedAndPushed", primeOwner: "neve",
-			req:          OwnerRequest{Machine: "neve", Slugs: []string{"alpha"}},
-			wantRecorded: []string{"alpha"}, wantOwners: map[string]string{"alpha": "neve"}, wantPrime: "neve",
-			wantSubject: "board: owner neve for alpha",
+			req:          OwnerRequest{Machine: "neve", Slugs: []string{"beamer"}},
+			wantRecorded: []string{"beamer"}, wantOwners: map[string]string{"beamer": "neve"}, wantPrime: "neve",
+			wantSubject: "board: owner neve for beamer",
+		},
+		{
+			name: "AWriteNamingATaskRecordsNoOwner", primeOwner: "neve",
+			req:       OwnerRequest{Machine: "neve", Slugs: []string{"alpha"}},
+			wantPrime: "neve",
 		},
 		{
 			name: "TakeoverChangesTheOwnerOfARunHeldEntry", primeOwner: "neve",
-			req:          OwnerRequest{Machine: "neve", Slugs: []string{"held"}, Takeover: true},
-			wantRecorded: []string{"held"}, wantOwners: map[string]string{"held": "neve"}, wantPrime: "neve",
-			wantSubject: "board: owner neve for held",
+			req:          OwnerRequest{Machine: "neve", Slugs: []string{"boxed"}, Takeover: true},
+			wantRecorded: []string{"boxed"}, wantOwners: map[string]string{"boxed": "neve"}, wantPrime: "neve",
+			wantSubject: "board: owner neve for boxed",
 		},
 		{
 			name: "OwnedElsewhereIsSkippedWithoutTakeover", primeOwner: "neve",
-			req:          OwnerRequest{Machine: "neve", Slugs: []string{"away", "alpha"}},
-			wantRecorded: []string{"alpha"}, wantLost: map[string]string{"away": "box"}, wantOwners: map[string]string{"away": "box", "alpha": "neve"}, wantPrime: "neve",
-			wantSubject: "board: owner neve for away, alpha",
+			req:          OwnerRequest{Machine: "neve", Slugs: []string{"boxed", "beamer"}},
+			wantRecorded: []string{"beamer"}, wantLost: map[string]string{"boxed": "box"}, wantOwners: map[string]string{"boxed": "box", "beamer": "neve"}, wantPrime: "neve",
+			wantSubject: "board: owner neve for boxed, beamer",
 		},
 		{
 			name: "AbsentEntryWritesNothing", primeOwner: "neve",
@@ -198,21 +211,25 @@ func TestSetOwners(t *testing.T) {
 			wantLost: map[string]string{OwnerWritePrime: "box"}, wantPrime: "box",
 		},
 		{
-			name: "ClaimStatusLandsInTheSameCommit", primeOwner: "neve",
+			name: "ClaimOnATaskWritesTheStatusAlone", primeOwner: "neve",
 			req:          OwnerRequest{Machine: "neve", Slugs: []string{"alpha"}, Claim: RunStatus("running", "Worktree-Create")},
-			wantRecorded: []string{"alpha"}, wantOwners: map[string]string{"alpha": "neve"}, wantPrime: "neve", wantStatus: map[string]string{"alpha": RunStatus("running", "Worktree-Create")},
+			wantRecorded: []string{"alpha"}, wantOwners: map[string]string{"alpha": ""}, wantPrime: "neve", wantStatus: map[string]string{"alpha": RunStatus("running", "Worktree-Create")},
 			wantSubject: "board: owner neve for alpha",
 		},
 		{
-			name: "ClaimOnAProjectThatIsNotABeamRecordsTheOwnerAndNoStatus", primeOwner: "neve",
-			req:          OwnerRequest{Machine: "neve", Slugs: []string{"grouping"}, Claim: RunStatus("running", "Worktree-Create")},
-			wantRecorded: []string{"grouping"}, wantOwners: map[string]string{"grouping": "neve"}, wantPrime: "neve", wantStatus: map[string]string{"grouping": ""},
-			wantSubject: "board: owner neve for grouping",
+			name: "ClaimOnATaskWhoseBeamAnotherMachineOwnsIsLostWithNoStatus", primeOwner: "neve",
+			req:      OwnerRequest{Machine: "neve", Slugs: []string{"away"}, Claim: RunStatus("running", "Worktree-Create"), ParentOf: parentOfBoxed},
+			wantLost: map[string]string{"away": "box"}, wantPrime: "neve", wantStatus: map[string]string{"away": ""},
+		},
+		{
+			name: "ClaimOnAGroupingProjectWritesNeitherOwnerNorStatus", primeOwner: "neve",
+			req:        OwnerRequest{Machine: "neve", Slugs: []string{"grouping"}, Claim: RunStatus("running", "Worktree-Create")},
+			wantOwners: map[string]string{"grouping": ""}, wantPrime: "neve", wantStatus: map[string]string{"grouping": ""},
 		},
 		{
 			name: "ClaimOnABeamProjectLands", primeOwner: "neve",
 			req:          OwnerRequest{Machine: "neve", Slugs: []string{"beamer"}, Claim: RunStatus("running", "Worktree-Create")},
-			wantRecorded: []string{"beamer"}, wantOwners: map[string]string{"beamer": "neve"}, wantPrime: "neve", wantStatus: map[string]string{"beamer": RunStatus("running", "Worktree-Create")},
+			wantRecorded: []string{"beamer"}, wantOwners: map[string]string{"beamer": ""}, wantPrime: "neve", wantStatus: map[string]string{"beamer": RunStatus("running", "Worktree-Create")},
 			wantSubject: "board: owner neve for beamer",
 		},
 	}
@@ -347,7 +364,7 @@ func TestSetOwners(t *testing.T) {
 				t.Fatalf("read board.json: %v", err)
 			}
 
-			got, err := SetOwners(f.boardDir, OwnerRequest{Machine: tt.machine, Slugs: []string{"alpha"}, BeforePush: beforePush, Sleep: failOnSleep(t)})
+			got, err := SetOwners(f.boardDir, OwnerRequest{Machine: tt.machine, Slugs: []string{"beamer"}, BeforePush: beforePush, Sleep: failOnSleep(t)})
 			if err == nil {
 				t.Fatalf("SetOwners() error = nil; want a refusal")
 			}
@@ -403,47 +420,11 @@ func TestSetOwners(t *testing.T) {
 			t.Fatalf("SetOwners() = %+v, %v; want grouping recorded", got, err)
 		}
 		grouping := originTasks(t, f)["grouping"]
-		if !grouping.Beam || grouping.OwnerMachine != "neve" {
-			t.Errorf("origin grouping = beam %v, owner %q; want the beam flag and neve written together", grouping.Beam, grouping.OwnerMachine)
+		if !grouping.Beam || grouping.OwnerMachine != "neve" || grouping.Recipe != ProjectRecipe {
+			t.Errorf("origin grouping = beam %v, owner %q, recipe %q; want the beam flag, neve and recipe %s written together", grouping.Beam, grouping.OwnerMachine, grouping.Recipe, ProjectRecipe)
 		}
 		if count := gitkit.Git(t, f.bare, "rev-list", "--count", f.seedHead+"..main"); count != "1" {
 			t.Errorf("commits on origin since the seed = %s; want 1, the flag and the owner in one commit", count)
-		}
-	})
-
-	t.Run("ToProjectTurnsATaskIntoABeamProject", func(t *testing.T) {
-		t.Parallel()
-		f := newOwnerFixture(t, "neve")
-
-		got, err := SetOwners(f.boardDir, OwnerRequest{Machine: "neve", Slugs: []string{"promotable", "x-weft"}, Beam: true, ToProject: true, Sleep: failOnSleep(t)})
-		if err != nil || !slices.Equal(got.Recorded, []string{"promotable", "x-weft"}) {
-			t.Fatalf("SetOwners() = %+v, %v; want both recorded, the owner setter making no slug so a records-suffix slug passes", got, err)
-		}
-		tasks := originTasks(t, f)
-		handles := map[string]bool{}
-		for _, slug := range []string{"promotable", "x-weft"} {
-			task := tasks[slug]
-			if task.Kind != KindProject || !task.Beam || task.OwnerMachine != "neve" {
-				t.Errorf("origin %s = kind %q, beam %v, owner %q; want a beam project owned by neve", slug, task.Kind, task.Beam, task.OwnerMachine)
-			}
-			if len(task.DependsOn) != 0 || task.Recipe != "" || task.Profile != "" || len(task.RunSettings) != 0 || task.Priority != "" || task.Status != nil {
-				t.Errorf("origin %s = %+v; want depends_on, recipe, profile, run_settings, priority and the draft status cleared", slug, task)
-			}
-			if !strings.HasPrefix(task.Handle, projectHandleLetter) || handles[task.Handle] {
-				t.Errorf("origin %s handle = %q; want a P handle no other entry holds", slug, task.Handle)
-			}
-			handles[task.Handle] = true
-		}
-		if alpha := tasks["alpha"]; alpha.Kind != KindTask || alpha.Beam {
-			t.Errorf("origin alpha = %+v; want an entry the request did not name left a task", alpha)
-		}
-	})
-
-	t.Run("ToProjectWithoutBeamIsRefused", func(t *testing.T) {
-		t.Parallel()
-		_, err := SetOwners(t.TempDir(), OwnerRequest{Machine: "neve", Slugs: []string{"alpha"}, ToProject: true, Sleep: failOnSleep(t)})
-		if err == nil || !strings.Contains(err.Error(), "lyx beam promote") {
-			t.Errorf("SetOwners() with ToProject and no Beam error = %v; want a refusal naming lyx beam promote", err)
 		}
 	})
 
@@ -452,17 +433,17 @@ func TestSetOwners(t *testing.T) {
 		f := newOwnerFixture(t, "neve")
 
 		got, err := SetOwners(f.boardDir, OwnerRequest{
-			Machine: "neve", Slugs: []string{"alpha"}, Sleep: failOnSleep(t),
-			BeforePush: func() { f.pushFromOther(t, setOwnerOnOther("alpha", "box")) },
+			Machine: "neve", Slugs: []string{"beamer"}, Sleep: failOnSleep(t),
+			BeforePush: func() { f.pushFromOther(t, setOwnerOnOther("beamer", "box")) },
 		})
 		if err != nil {
 			t.Fatalf("SetOwners() error = %v; want nil", err)
 		}
-		if len(got.Recorded) != 0 || !maps.Equal(got.Lost, map[string]string{"alpha": "box"}) {
-			t.Errorf("SetOwners() = Recorded %v, Lost %v; want none recorded and alpha lost to box", got.Recorded, got.Lost)
+		if len(got.Recorded) != 0 || !maps.Equal(got.Lost, map[string]string{"beamer": "box"}) {
+			t.Errorf("SetOwners() = Recorded %v, Lost %v; want none recorded and beamer lost to box", got.Recorded, got.Lost)
 		}
-		if owner := f.originOwners(t).Entries["alpha"].Owner; owner != "box" {
-			t.Errorf("origin owner of alpha = %q; want origin's own value box to stand", owner)
+		if owner := f.originOwners(t).Entries["beamer"].Owner; owner != "box" {
+			t.Errorf("origin owner of beamer = %q; want origin's own value box to stand", owner)
 		}
 	})
 
@@ -489,7 +470,7 @@ func TestSetOwners(t *testing.T) {
 			t.Cleanup(release)
 			var waits []time.Duration
 			req := OwnerRequest{
-				Machine: "neve", Slugs: []string{"alpha"},
+				Machine: "neve", Slugs: []string{"beamer"},
 				// The other clone moves origin by a change to another entry, so the first push is rejected, and the held board lock defers the replay that would retry it.
 				BeforePush: func() {
 					f.pushFromOther(t, func(store *Store) {
@@ -526,11 +507,11 @@ func TestSetOwners(t *testing.T) {
 			if err != nil {
 				t.Fatalf("SetOwners() error = %v; want nil", err)
 			}
-			if !slices.Equal(got.Recorded, []string{"alpha"}) {
-				t.Errorf("SetOwners() Recorded = %v; want [alpha]", got.Recorded)
+			if !slices.Equal(got.Recorded, []string{"beamer"}) {
+				t.Errorf("SetOwners() Recorded = %v; want [beamer]", got.Recorded)
 			}
-			if owner := f.originOwners(t).Entries["alpha"].Owner; owner != "neve" {
-				t.Errorf("origin owner of alpha = %q; want neve", owner)
+			if owner := f.originOwners(t).Entries["beamer"].Owner; owner != "neve" {
+				t.Errorf("origin owner of beamer = %q; want neve", owner)
 			}
 		})
 	}
@@ -539,19 +520,19 @@ func TestSetOwners(t *testing.T) {
 		t.Setenv("BOARD_SKIP_GIT", "1")
 		f := newOwnerFixture(t, "neve")
 
-		got, err := SetOwners(f.boardDir, OwnerRequest{Machine: "neve", Slugs: []string{"alpha"}, Sleep: failOnSleep(t)})
+		got, err := SetOwners(f.boardDir, OwnerRequest{Machine: "neve", Slugs: []string{"beamer"}, Sleep: failOnSleep(t)})
 		if err != nil {
 			t.Fatalf("SetOwners() error = %v; want nil", err)
 		}
-		if !slices.Equal(got.Recorded, []string{"alpha"}) {
-			t.Errorf("SetOwners() Recorded = %v; want [alpha]", got.Recorded)
+		if !slices.Equal(got.Recorded, []string{"beamer"}) {
+			t.Errorf("SetOwners() Recorded = %v; want [beamer]", got.Recorded)
 		}
 		owners, err := ReadOwners(f.boardDir)
 		if err != nil {
 			t.Fatalf("ReadOwners() error = %v", err)
 		}
-		if owners.Entries["alpha"].Owner != "neve" {
-			t.Errorf("local owner of alpha = %q; want neve", owners.Entries["alpha"].Owner)
+		if owners.Entries["beamer"].Owner != "neve" {
+			t.Errorf("local owner of beamer = %q; want neve", owners.Entries["beamer"].Owner)
 		}
 		if head := gitkit.RevParse(t, f.boardDir, "HEAD"); head != f.seedHead {
 			t.Errorf("local head = %s; want the seed %s, since BOARD_SKIP_GIT commits nothing", head, f.seedHead)

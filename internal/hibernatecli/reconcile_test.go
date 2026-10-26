@@ -89,11 +89,11 @@ func TestWakeReconcileFromReport(t *testing.T) {
 			}},
 		},
 		{
-			"An owned_elsewhere entry is a run with its owner",
+			"An owned_elsewhere entry is a run with its owner and adopt subject",
 			fabricengine.OriginReport{
-				Entries: []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop", WayForward: "`lyx adopt p1` takes it over"}},
+				Entries: []fabricengine.EntryOutcome{{Slug: "p1", State: fabricengine.EntryOwnedElsewhere, Local: true, Owner: "laptop", AdoptSubject: "beam", WayForward: "`lyx adopt beam` takes it over"}},
 			},
-			hibernateengine.WakeReconcile{Runs: []hibernateengine.WakeRun{{Slug: "p1", WayForward: "`lyx adopt p1` takes it over", Owner: "laptop"}}},
+			hibernateengine.WakeReconcile{Runs: []hibernateengine.WakeRun{{Slug: "p1", WayForward: "`lyx adopt beam` takes it over", Owner: "laptop", AdoptSubject: "beam"}}},
 		},
 		{
 			"An unreachable report is carried over",

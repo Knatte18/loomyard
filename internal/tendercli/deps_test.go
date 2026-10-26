@@ -140,12 +140,20 @@ func TestPairOwners(t *testing.T) {
 	t.Parallel()
 	const here = "desktop"
 	noParent := func(string) (string, error) { return "", nil }
+	// "here" and "mine" are members of the beam this machine owns; every other entry reads the prime's owner through root.
+	beamParent := func(slug string) (string, error) {
+		if slug == "here" || slug == "mine" {
+			return "desk", nil
+		}
+		return "", nil
+	}
 	owners := boardengine.Owners{Prime: "laptop", Entries: map[string]boardengine.OwnerEntry{
-		"here":    {Owner: here, IsTask: true, RunHeld: true},
-		"away":    {Owner: "laptop", IsTask: true, RunHeld: true},
-		"remote":  {Owner: "laptop", IsTask: true, RunHeld: true},
-		"mine":    {Owner: here, IsTask: true, RunHeld: true},
-		"waiting": {Owner: "laptop", IsTask: true},
+		"desk":    {Owner: here, IsProject: true, Beam: true},
+		"here":    {IsTask: true, RunHeld: true},
+		"away":    {IsTask: true, RunHeld: true},
+		"remote":  {IsTask: true, RunHeld: true},
+		"mine":    {IsTask: true, RunHeld: true},
+		"waiting": {IsTask: true},
 	}}
 	tests := []struct {
 		name     string
@@ -159,7 +167,7 @@ func TestPairOwners(t *testing.T) {
 			name:     "LocalPairsAndRunHeldEntriesOwnedElsewhere",
 			owners:   owners,
 			slugs:    []string{"here", "away"},
-			parentOf: noParent,
+			parentOf: beamParent,
 			want: []tenderengine.PairOwner{
 				{Slug: "here", Owner: here, Local: true, OwnedHere: true},
 				{Slug: "away", Owner: "laptop", Local: true},

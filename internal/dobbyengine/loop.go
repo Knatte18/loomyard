@@ -75,6 +75,8 @@ type Deps struct {
 	ReleaseParentLock func(ctx context.Context, slug string) error
 	// SlugOwner returns the effective owner of slug on the local Bolt, with no pull; empty means no other machine owns it.
 	SlugOwner func(slug string) (string, error)
+	// AdoptSubject returns the beam or `root` that `lyx adopt` takes to move slug on the local Bolt; nil, or an error, names the slug.
+	AdoptSubject func(slug string) (string, error)
 	// LiftOwnerPause lifts the pause entry of the slug's own scope that carries the owner caller.
 	LiftOwnerPause func(ctx context.Context, slug string) error
 	// Tasks reads the local board, each entry as a TaskView, with its parent worktree through `hubgeom.ParentOf` and its effective owner.
@@ -96,6 +98,9 @@ type Deps struct {
 	StencilsDir string
 	// NearestOrch returns the name of the nearest live orch the tidy agent's parent directive names; empty means there is none.
 	NearestOrch func() (string, error)
+	// CanLand reads whether the beam of this dobby can land, and who owns its parent.
+	// A nil CanLand posts no "can land" notice; the prime's dobby posts none whatever it returns.
+	CanLand func() (LandReading, error)
 	// Log writes one line to the dobby's log: one for each task start and each pass spawned.
 	// A nil Log logs nothing.
 	Log func(line string)
@@ -160,6 +165,8 @@ type daemon struct {
 	failures   logger.Episode
 	ownerRead  logger.Episode
 	moveStands logger.Episode
+	landRead   logger.Episode
+	landPost   logger.Episode
 
 	// tickCtx is the context of the tick in flight, for the seams a pass exit reaches.
 	tickCtx context.Context
@@ -258,7 +265,7 @@ func (d *daemon) standingMove() string {
 	return ""
 }
 
-// tick folds one awake reading into the sleep watch, keeps the state record's pid and sleeps, and runs the per-tick work.
+// tick folds one awake reading into the sleep watch, keeps the state record's pid and sleeps, and runs the per-tick work, ending with the beam's "can land" notice.
 // A sleep the watch sees, and a record found without a pid, owe every run a full pass until a tick returns nil.
 // While an anchor-move record of the geometry exists, a tick spawns no pass, starts no task and runs no tidy step, and owes what it owed before.
 // That is logged once per episode, and the state record's upkeep and the landing count go on.
@@ -307,6 +314,9 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 		if err := d.tidyStep(ctx, now); err != nil {
 			return err
 		}
+	}
+	if err := d.landNotice(ctx); err != nil {
+		return err
 	}
 	d.inFlight = d.busy
 	if d.deps.Tick != nil {

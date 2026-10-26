@@ -73,10 +73,21 @@ func landingDeps(
 	if recipe == shedrun.RecipeLoom {
 		traceFailure = failuretrace.NewTracer(l.WorktreePath(), l.AnchorPath())
 	}
-	// A beam run has no review segment, so it has no review to follow a reroute and a nil seam halts a spent or over-cap fixer for the orch.
+	// A pawl run has no reroute edge, so it has no review to follow one and a nil seam halts a spent or over-cap fixer for the orch.
 	var reviewFollowsReroute func() (bool, error)
-	if recipe != shedrun.RecipeBeam {
+	if recipe != shedrun.RecipePawl {
 		reviewFollowsReroute = rerouteReviewed(l)
+	}
+	// Only a pawl run lands a beam, so only its Finalize backstops the landing re-check with a land check over the members and pairs still working under it.
+	var landBlockers func() ([]landingshed.LandBlocker, error)
+	if recipe == shedrun.RecipePawl {
+		landBlockers = func() ([]landingshed.LandBlocker, error) {
+			prime, err := primeOfHub(l)
+			if err != nil {
+				return nil, err
+			}
+			return pawlLandBlockers(prime, seedSlug(l.WorktreeName))()
+		}
 	}
 	return landingshed.Deps{
 		ParentName:      parentName,
@@ -85,7 +96,7 @@ func landingDeps(
 		TaskBranch:      taskBranch,
 		ParentBranch:    parentBranch,
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(l)),
-		// Only a loom run has Parent-Align to leave a conflict to; a darn run resolves it under the lock.
+		// Only a loom run's Finalize reroutes a conflict to Parent-Align; a darn or pawl run resolves it under the lock, since neither declares the reroute.
 		ConflictReroutes: recipe == shedrun.RecipeLoom,
 		StencilsDir:      geom.StencilsDir,
 		ScratchDir:       loomengine.LoomScratchDir(l),
@@ -117,6 +128,11 @@ func landingDeps(
 		CommitParentRecords: parentRecordsCommitter(l, seedSlug(l.WorktreeName)),
 		Reconcile:           runReconciler(l, seedSlug(l.WorktreeName)),
 		Slug:                seedSlug(l.WorktreeName),
+		// AdoptSubject is the beam's own slug for a pawl run, and the task's beam or `root` for any other.
+		AdoptSubject: func() (string, error) {
+			_, subject, err := ownerOfSubject(l, seedSlug(l.WorktreeName))
+			return subject, err
+		},
 		// ParentHoldsTaskWork marks a Finalize past its parent-side merge, read over the prime and this pair.
 		ParentHoldsTaskWork: func() (bool, error) {
 			prime, err := primeOfHub(l)
@@ -245,8 +261,9 @@ func landingDeps(
 		},
 		CodeReviewOff:   codeReviewOff(l, recipe),
 		RerouteReviewed: reviewFollowsReroute,
-		// A beam run has no reroute edge: a large merge runs the gate, and a spent or over-cap fixer halts for the orch.
-		LargeMergeLands: recipe == shedrun.RecipeBeam,
+		LandBlockers:    landBlockers,
+		// A pawl run has no reroute edge: a large merge runs the gate, and a spent or over-cap fixer halts for the orch.
+		LargeMergeLands: recipe == shedrun.RecipePawl,
 		// The task branch's remote-tracking ref is read without a fetch, so an absent one is no tip.
 		TaskRemoteTip: func() (string, error) {
 			tip, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/remotes/origin/" + taskBranch)
@@ -259,9 +276,9 @@ func landingDeps(
 }
 
 // codeReviewOff returns the seam Parent-Align reads: whether the Code-Perch's effective review budget is 0.
-// A darn or beam run has no Parent-Align, and its seam reads false.
+// A darn run has no Parent-Align, and its seam reads false; a pawl run has one, and reads the perch's budget as a loom run does.
 func codeReviewOff(l *lyxcwd.Location, recipe string) func() (bool, error) {
-	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipeBeam {
+	if recipe == shedrun.RecipeDarn {
 		return func() (bool, error) { return false, nil }
 	}
 	return codeBudgetZero(l)
@@ -288,19 +305,19 @@ func codeBudgetZero(l *lyxcwd.Location) func() (bool, error) {
 	}
 }
 
-// fixerPlanDir returns the plan directory the merge fixer reads: the run's plan directory on a loom run, and "" on a darn or beam run, which has none.
+// fixerPlanDir returns the plan directory the merge fixer reads: the run's plan directory on a loom run, and "" on a darn or pawl run, which has none.
 func fixerPlanDir(l *lyxcwd.Location, recipe string) string {
-	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipeBeam {
+	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl {
 		return ""
 	}
 	return planparser.PlanDir(l.AnchorPath())
 }
 
 // fixerTestFileMatcher returns the test-file predicate the fixer's kind cap judges a path by.
-// A darn or beam run has no plan and so no language, and matches a test file of any language.
+// A darn or pawl run has no plan and so no language, and matches a test file of any language.
 // A loom run parses the live plan at call time, reading an absent `language:` as go and a plan that does not parse as none, whose matcher counts every file a test file and so over-covers.
 func fixerTestFileMatcher(recipe, planDir string) func(path string) bool {
-	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipeBeam {
+	if recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl {
 		return planparser.IsAnyLanguageTestFile
 	}
 	return func(path string) bool {

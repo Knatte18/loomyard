@@ -195,7 +195,6 @@ func TestRenderPointers_OneLineNamingTheirPaths(t *testing.T) {
 		want   []string
 	}{
 		{"start", func() (string, error) { return RenderStartPrompt(dir, testRolePath) }, []string{testRolePath}},
-		{"adopt", func() (string, error) { return RenderAdoptPrompt(dir, testRolePath) }, []string{testRolePath}},
 		{"resume", func() (string, error) { return RenderResumePrompt(dir, testRolePath, "/tmp/h/one.md") }, []string{testRolePath, "/tmp/h/one.md"}},
 		{"reload", func() (string, error) { return RenderReloadPrompt(dir, testRolePath) }, []string{testRolePath}},
 		{"compact focus", func() (string, error) { return RenderCompactFocus(dir) }, nil},
@@ -224,7 +223,6 @@ func TestRenderPointers_MultiLineOverrideFails(t *testing.T) {
 	}{
 		{compactStencilName, RenderCompactFocus},
 		{startStencilName, func(dir string) (string, error) { return RenderStartPrompt(dir, testRolePath) }},
-		{adoptStencilName, func(dir string) (string, error) { return RenderAdoptPrompt(dir, testRolePath) }},
 		{resumeStencilName, func(dir string) (string, error) { return RenderResumePrompt(dir, testRolePath, "/tmp/h/one.md") }},
 		{reloadStencilName, func(dir string) (string, error) { return RenderReloadPrompt(dir, testRolePath) }},
 	}

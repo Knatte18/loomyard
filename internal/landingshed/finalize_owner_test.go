@@ -28,35 +28,49 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 	pairElsewhere := &ParentOwnership{Slug: "base", Owner: "laptop"}
 
 	tests := []struct {
-		name        string
-		report      *fabricengine.OriginReport
-		holds       bool
-		holdsErr    error
-		parent      *ParentOwnership
-		parentErr   error
+		name      string
+		report    *fabricengine.OriginReport
+		holds     bool
+		holdsErr  error
+		parent    *ParentOwnership
+		parentErr error
+		// subject is the run's own adopt subject, empty reading as its slug.
+		subject     string
 		wantOutcome shedengine.Outcome
 		// wantInReason names what a halting reason must carry, behind OwnerHaltPrefix.
 		wantInReason []string
 	}{
 		{name: "run and parent owned here lands", report: active, parent: here, wantOutcome: shedengine.Done},
 		{
-			name: "run owned elsewhere halts naming the owner and keep-local", report: ownedElsewhere("desk"), parent: here, wantOutcome: shedengine.Stuck,
+			name: "run owned elsewhere halts naming the owner and keep-local with the run's beam", report: ownedElsewhere("desk"), parent: here, subject: "beam", wantOutcome: shedengine.Stuck,
+			wantInReason: []string{`machine "desk"`, `"lyx adopt beam --keep-local"`},
+		},
+		{
+			name: "run with no adopt subject names its slug", report: ownedElsewhere("desk"), parent: here, wantOutcome: shedengine.Stuck,
 			wantInReason: []string{`machine "desk"`, `"lyx adopt me --keep-local"`},
 		},
 		{
-			name: "prime owned elsewhere halts naming its owner and both adopt forms", report: active, parent: primeElsewhere, wantOutcome: shedengine.Stuck,
-			wantInReason: []string{"the prime", `machine "laptop"`, `"lyx adopt --prime"`, `"lyx adopt me" on machine "laptop"`, `"--keep-local" and "--drop-local"`},
+			name: "prime owned elsewhere halts naming its owner and both adopt forms with root", report: active, parent: primeElsewhere, subject: "root", wantOutcome: shedengine.Stuck,
+			wantInReason: []string{"the prime", `machine "laptop"`, `"lyx adopt root"`, `"lyx adopt root" on machine "laptop"`, `"--keep-local" and "--drop-local"`},
 		},
 		{
-			name: "parent pair owned elsewhere halts naming its slug in the adopt form", report: active, parent: pairElsewhere, wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`the parent pair "base"`, `machine "laptop"`, `"lyx adopt base"`, `"lyx adopt me" on machine "laptop"`},
+			name: "parent pair owned elsewhere halts naming its slug in the adopt form", report: active, parent: pairElsewhere, subject: "base", wantOutcome: shedengine.Stuck,
+			wantInReason: []string{`the parent pair "base"`, `machine "laptop"`, `"lyx adopt base"`, `"lyx adopt base" on machine "laptop"`},
 		},
 		{
-			name: "run and prime both elsewhere name both owners and both forms", report: ownedElsewhere("desk"), parent: primeElsewhere, wantOutcome: shedengine.Stuck,
-			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lyx adopt me" on machine "laptop"`, `"lyx adopt --prime me --keep-local"`},
+			name: "root run and prime both elsewhere name both owners and the one adopt of root", report: ownedElsewhere("desk"), parent: primeElsewhere, subject: "root", wantOutcome: shedengine.Stuck,
+			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lyx adopt root" on machine "laptop"`, `"lyx adopt root --keep-local"`},
 		},
 		{
-			name: "run and parent pair both elsewhere name the parent slug in the run's form", report: ownedElsewhere("desk"), parent: pairElsewhere, wantOutcome: shedengine.Stuck,
+			name: "beam run and prime both elsewhere name root and the beam in the run's form", report: ownedElsewhere("desk"), parent: primeElsewhere, subject: "me", wantOutcome: shedengine.Stuck,
+			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lyx adopt me" on machine "laptop"`, `"lyx adopt root me --keep-local"`},
+		},
+		{
+			name: "member run and its beam both elsewhere name the beam once", report: ownedElsewhere("desk"), parent: pairElsewhere, subject: "base", wantOutcome: shedengine.Stuck,
+			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lyx adopt base --keep-local"`},
+		},
+		{
+			name: "beam run and parent pair both elsewhere name the parent slug in the run's form", report: ownedElsewhere("desk"), parent: pairElsewhere, subject: "me", wantOutcome: shedengine.Stuck,
 			wantInReason: []string{`machine "desk"`, `machine "laptop"`, `"lyx adopt base me --keep-local"`},
 		},
 		{
@@ -78,6 +92,9 @@ func TestFinalize_OwnerChecks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.Slug = "me"
+			if tt.subject != "" {
+				deps.AdoptSubject = func() (string, error) { return tt.subject, nil }
+			}
 			deps.Reconcile = func() (fabricengine.OriginReport, error) { return *tt.report, nil }
 			deps.ParentHoldsTaskWork = func() (bool, error) { return tt.holds, tt.holdsErr }
 			deps.ParentOwner = func() (ParentOwnership, error) {

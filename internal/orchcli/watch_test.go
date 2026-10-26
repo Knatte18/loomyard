@@ -80,8 +80,8 @@ func TestWatcherIndexSource(t *testing.T) {
 			}
 			got, err := c.watcherIndexSource()()
 			if tc.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || !strings.Contains(err.Error(), "lyx orch start") {
-					t.Fatalf("source() = %q, %v; want an error naming %q and `lyx orch start`", got, err, tc.wantErr)
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || !strings.Contains(err.Error(), "lyx beam start") {
+					t.Fatalf("source() = %q, %v; want an error naming %q and `lyx beam start`", got, err, tc.wantErr)
 				}
 			} else if err != nil || got != fakeRunnerIndex {
 				t.Fatalf("source() = %q, %v; want the runner's output", got, err)

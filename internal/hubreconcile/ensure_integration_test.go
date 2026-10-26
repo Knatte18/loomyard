@@ -1065,7 +1065,7 @@ func TestEnsureOrWarn_WarnsWithTheWayForward(t *testing.T) {
 
 			hubreconcile.EnsureOrWarn(geom, opts)
 
-			for _, want := range []string{wantNamed, wayForwardText} {
+			for _, want := range []string{wantNamed, wayForwardText, "`lyx beam start`"} {
 				if !strings.Contains(logs.String(), want) {
 					t.Errorf("EnsureOrWarn log lacks %q:\n%s", want, logs.String())
 				}

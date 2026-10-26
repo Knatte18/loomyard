@@ -11,7 +11,7 @@
 // Where no start time can be read, as on Windows, a record with an empty start time lives while its pid does.
 // Owners lists every owner directory the same way.
 //
-// End is the only way a run's processes are ended.
+// End, EndSparing and EndRole are the only ways an owner's registered processes are ended, and End is the base sequence.
 // For an owner's live records, leaving out the caller and its ancestors, it reads every process once, then sends SIGTERM to each recorded leader's group, to each recorded non-leader by pid, and to every process below a record: through its own group when it leads one, by pid otherwise, and not at all when a group already signalled holds it.
 // A signalled group's other live processes are watched like its leader, so each is awaited, sent SIGKILL and reported; a signal call that fails still counts as sent, so its processes are reported while they live.
 // It waits up to `endGrace` for the signalled processes to disappear, then sends SIGKILL to what is left, and waits `killBound`.
@@ -20,9 +20,10 @@
 // End re-lists the owner up to `endPasses` times, so a process registered during the end is reached.
 // It returns each process it ended and, for processes that survive SIGKILL, a SurvivorsError that names them.
 // EndSparing is End with named roles left alone, the processes below them included; its one caller is the session end that is not a teardown, which spares `RoleDobby`.
+// EndRole is End for one role: it ends only the live records of that role under the owner, and the processes below them, with End's signals, grace, kill bound and passes, and leaves every other record and the processes below it alone.
 // EndProcess runs the same sequence on one unregistered pid, for the orphans `lyx tender reap` ends.
 //
-// On Windows no start time can be read and no group can be signalled, so End and EndProcess signal nothing.
+// On Windows no start time can be read and no group can be signalled, so End, EndSparing, EndRole and EndProcess signal nothing.
 //
 // The package imports the standard library, `internal/proc`, `internal/state` and `internal/logger` only.
 package runproc

@@ -1,6 +1,6 @@
 //go:build tier0
 
-// adopt_test.go drives the takeover sequence over fake deps: the refusals before anything runs, the reconcile stops, the per-entry stops and their two ways forward, the pair add, the owner write, the pause lift, the run resume, the halted-child resume, the dobby start and the test suite start.
+// adopt_test.go drives the takeover sequence over fake deps: the refusals before anything runs, the reconcile stops, the per-entry stops and their two ways forward, the pair add, the owner write, the pause lift, the run resume, the halted-child resume, the beam steps and the test suite start.
 
 package adoptcli
 
@@ -14,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
@@ -48,23 +49,28 @@ type world struct {
 	childResumed []string
 	// moving is the target anchor of the move record standing in each worktree, "" keying the prime.
 	moving map[string]string
-	// order is the run resumes, child resumes, dobby starts and suite starts in the order they came, and dobbyErr and suiteErr what the dobby and suite starts answer.
+	// order is the run resumes, child resumes, beam steps and suite starts in the order they came, and suiteErr what the suite start answers.
 	order    []string
-	dobbyErr error
 	suiteErr error
+	// beamUps are the worktrees the beam steps were run for, and beamUpErr what the steps of each worktree answer.
+	beamUps   []string
+	beamUpErr map[string]error
+	// held names the beams whose pawl run holds the landing hold, and heldErr the beams whose hold reads fail.
+	held    map[string]bool
+	heldErr map[string]error
 	// race, when set, runs on the owners right after the owner write lands, as another machine's write does.
 	race func(*boardengine.Owners)
 }
 
-// newWorld returns a hub this machine owns the prime of, with two tasks owned by another machine, each with a pair and a running batten run, an idle task, a done task and a note.
+// newWorld returns a hub this machine owns the prime of, with two beam projects owned by another machine, each with a pair and a running pawl run, an idle task, a done task and a note.
 func newWorld() *world {
 	running := shedengine.Status{State: shedengine.StateRunning}
 	return &world{
 		owners: boardengine.Owners{Prime: here, Entries: map[string]boardengine.OwnerEntry{
-			"alpha": {Owner: there, IsTask: true, RunHeld: true},
-			"beta":  {Owner: there, IsTask: true, RunHeld: true},
+			"alpha": {Owner: there, IsProject: true, Beam: true, RunHeld: true},
+			"beta":  {Owner: there, IsProject: true, Beam: true, RunHeld: true},
 			"idle":  {IsTask: true},
-			"done1": {Owner: there, IsTask: true, Done: true},
+			"done1": {IsTask: true, Done: true},
 			"note1": {},
 		}},
 		report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{
@@ -79,6 +85,9 @@ func newWorld() *world {
 		runs:      map[string]shedengine.Status{"alpha": running, "beta": running},
 		children:  map[string]shedengine.Status{},
 		moving:    map[string]string{},
+		beamUpErr: map[string]error{},
+		held:      map[string]bool{},
+		heldErr:   map[string]error{},
 	}
 }
 
@@ -173,10 +182,13 @@ func (w *world) deps() adoptDeps {
 			}
 			return "a change of the anchor of " + name + " was interrupted; run `lyx fabric anchor " + name + " --set " + target + "` to finish it", true, nil
 		},
-		StartDobbies: func() error {
-			w.order = append(w.order, "dobbies")
-			return w.dobbyErr
+		BeamUp: func(worktree string) (orchcli.BeamUpReport, error) {
+			w.order = append(w.order, "beamup:"+worktree)
+			w.beamUps = append(w.beamUps, worktree)
+			return orchcli.BeamUpReport{Worktree: worktree, Dobby: "started", Action: "relaunched"}, w.beamUpErr[worktree]
 		},
+		LandingHeld: func(slug string) (bool, error) { return w.held[slug], w.heldErr[slug] },
+		PrimeName:   "prime",
 		StartSuite: func() (suiteStart, error) {
 			w.order = append(w.order, "suite")
 			if w.suiteErr != nil {
@@ -202,38 +214,34 @@ func slugOf(t *testing.T, got outcome, slug string) slugOutcome {
 	return slugOutcome{}
 }
 
-// requireNamedCallPasses runs the call a refusal named over the world the refusal left, and requires that it meets no refusal and records an owner for each slug.
-func requireNamedCallPasses(t *testing.T, w *world, req request, recorded ...string) {
-	t.Helper()
-	got, err := adopt(w.deps(), req)
-	if err != nil {
-		t.Fatalf("the named call %+v = %v; want it to meet no refusal", req, err)
-	}
-	for _, slug := range recorded {
-		if !slugOf(t, got, slug).OwnerRecorded {
-			t.Errorf("the named call recorded no owner for %s: %+v", slug, got.Slugs)
-		}
-	}
-}
-
 func TestAdopt(t *testing.T) {
 	t.Parallel()
 
 	ownerHalted := shedengine.Status{State: shedengine.StateBlocked, Error: landingshed.OwnerHaltPrefix + "the parent is owned by there"}
+	running := shedengine.Status{State: shedengine.StateRunning}
 	withKid := func(w *world, parent string, status shedengine.Status) {
 		w.owners.Entries["kid"] = boardengine.OwnerEntry{IsTask: true, RunHeld: true}
 		w.parents["kid"] = parent
 		w.children["kid"] = status
 	}
 
-	// withBeam adds a beam project and a task of it, both owned by another machine and read so by the reconcile.
+	// withBeam adds a beam project owned by another machine and a task of it with a running batten run, both read as owned elsewhere by the reconcile.
 	withBeam := func(w *world) {
 		w.owners.Entries["payments"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there}
-		w.owners.Entries["t1"] = boardengine.OwnerEntry{Owner: there, IsTask: true, RunHeld: true}
+		w.owners.Entries["t1"] = boardengine.OwnerEntry{IsTask: true, RunHeld: true}
 		w.parents["t1"] = "payments"
+		w.runs["t1"] = running
 		w.report.Entries = append(w.report.Entries,
 			fabricengine.EntryOutcome{Slug: "payments", State: fabricengine.EntryOwnedElsewhere, Owner: there},
 			fabricengine.EntryOutcome{Slug: "t1", State: fabricengine.EntryOwnedElsewhere, Owner: there})
+	}
+
+	// withoutAlphaAndBeta leaves a board without the two default beams.
+	withoutAlphaAndBeta := func(w *world) {
+		delete(w.owners.Entries, "alpha")
+		delete(w.owners.Entries, "beta")
+		delete(w.runs, "alpha")
+		delete(w.runs, "beta")
 	}
 
 	// requireNothingRan fails the test when a step ran, which a refusal ahead of the origin reconcile leaves undone.
@@ -276,7 +284,26 @@ func TestAdopt(t *testing.T) {
 		{name: "RefusesNote", req: request{Slugs: []string{"note1"}}, wantErr: "lyx board promote"},
 		{name: "RefusesDoneTaskNamingResume", req: request{Slugs: []string{"done1"}}, wantErr: "lyx tender resume done1"},
 		{name: "RefusesKeepWithDrop", req: request{Slugs: []string{"alpha"}, KeepLocal: true, DropLocal: true}, wantErr: "pass one of them"},
-		{name: "RefusesNoSlugWithoutPrimeOrAll", req: request{}, wantErr: "--prime or --all"},
+		{name: "RefusesNoSlugWithoutRootOrAll", req: request{}, wantErr: "or pass --all"},
+		{name: "RefusesATaskNamingItsBeam", req: request{Slugs: []string{"t1"}}, setup: withBeam, wantErr: "`lyx adopt payments`", check: func(t *testing.T, w *world, _ outcome) {
+			requireNothingRan(t, w)
+		}},
+		{name: "RefusesARootTaskNamingRoot", req: request{Slugs: []string{"idle"}}, wantErr: "`lyx adopt root`", check: func(t *testing.T, w *world, _ outcome) {
+			requireNothingRan(t, w)
+		}},
+		{name: "RefusesAGroupingProjectBelowRootNamingRootAndBeamCreate", req: request{Slugs: []string{"grp"}}, setup: func(w *world) {
+			w.owners.Entries["grp"] = boardengine.OwnerEntry{IsProject: true}
+		}, wantErr: "`lyx adopt root` moves its tasks, and `lyx beam create grp` makes it a beam"},
+		{name: "RefusesAGroupingProjectBelowABeamNamingTheBeamAndBeamCreate", req: request{Slugs: []string{"grp"}}, setup: func(w *world) {
+			withBeam(w)
+			w.owners.Entries["grp"] = boardengine.OwnerEntry{IsProject: true}
+			w.parents["grp"] = "payments"
+		}, wantErr: "`lyx adopt payments` moves its tasks, and `lyx beam create grp` makes it a beam"},
+		{name: "TheRootWordNamesRoot", req: request{Slugs: []string{"root"}}, check: func(t *testing.T, w *world, got outcome) {
+			if !w.ownerReq.Prime || !got.PrimeRecorded || len(w.ownerReq.Slugs) != 0 {
+				t.Errorf("owner request = %+v, prime recorded = %v; want the prime's owner alone", w.ownerReq, got.PrimeRecorded)
+			}
+		}},
 		{name: "UnreachableOriginRefusesNamingTheRerun", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.report.Unreachable = true }, wantErr: "once origin answers", check: func(t *testing.T, w *world, _ outcome) {
 			if w.ownerReq.Machine != "" {
 				t.Errorf("an owner was written after an unreachable origin")
@@ -436,24 +463,14 @@ func TestAdopt(t *testing.T) {
 				t.Errorf("beta = %+v, want its run resumed", beta)
 			}
 		}},
-		{name: "TaskWithNoRunRecordGetsItsOwnerAndNoRun", req: request{Slugs: []string{"beta"}}, setup: func(w *world) { delete(w.runs, "beta") }, check: func(t *testing.T, w *world, got outcome) {
+		{name: "BeamWithNoRunRecordGetsItsOwnerAndNoRun", req: request{Slugs: []string{"beta"}}, setup: func(w *world) { delete(w.runs, "beta") }, check: func(t *testing.T, w *world, got outcome) {
 			if beta := slugOf(t, got, "beta"); !beta.OwnerRecorded || beta.Run != "none" || len(w.resumed) != 0 {
 				t.Errorf("beta = %+v, resumed = %v, want the owner and no run", beta, w.resumed)
 			}
 		}},
-		{name: "OwnerHaltedChildResumesWhenItsOwnSlugIsAdopted", req: request{Slugs: []string{"kid"}}, setup: func(w *world) {
+		{name: "OwnerHaltedChildResumesWhenRootIsAdopted", req: request{Root: true}, setup: func(w *world) {
 			withKid(w, "", ownerHalted)
-			w.owners.Entries["kid"] = boardengine.OwnerEntry{Owner: there, IsTask: true, RunHeld: true}
-			w.pairs["kid"] = true
-		}, check: func(t *testing.T, w *world, _ outcome) {
-			if !slices.Equal(w.childResumed, []string{"kid"}) {
-				t.Errorf("children resumed %v, want kid", w.childResumed)
-			}
-		}},
-		{name: "OwnerHaltedChildResumesWhenThePrimeIsAdopted", req: request{Prime: true}, setup: func(w *world) {
-			withKid(w, "", ownerHalted)
-			delete(w.owners.Entries, "alpha")
-			delete(w.owners.Entries, "beta")
+			withoutAlphaAndBeta(w)
 		}, check: func(t *testing.T, w *world, got outcome) {
 			if !slices.Equal(w.childResumed, []string{"kid"}) || !slugOf(t, got, "kid").ChildResumed {
 				t.Errorf("children resumed %v, want kid", w.childResumed)
@@ -462,7 +479,7 @@ func TestAdopt(t *testing.T) {
 				t.Errorf("owner request = %+v, want the prime's owner alone", w.ownerReq)
 			}
 		}},
-		{name: "OwnerHaltedChildResumesWhenItsPairParentIsAdopted", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { withKid(w, "alpha", ownerHalted) }, check: func(t *testing.T, w *world, _ outcome) {
+		{name: "OwnerHaltedChildResumesWhenItsBeamIsAdopted", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { withKid(w, "alpha", ownerHalted) }, check: func(t *testing.T, w *world, _ outcome) {
 			if !slices.Equal(w.childResumed, []string{"kid"}) {
 				t.Errorf("children resumed %v, want kid", w.childResumed)
 			}
@@ -475,30 +492,28 @@ func TestAdopt(t *testing.T) {
 			}
 		}},
 		{name: "ParentTakenByARaceCarriesTheFinalizeWarning", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
-			w.owners.Entries["gamma"] = boardengine.OwnerEntry{IsTask: true}
+			w.owners.Entries["gamma"] = boardengine.OwnerEntry{IsProject: true, Beam: true}
 			w.parents["alpha"] = "gamma"
 			w.race = func(owners *boardengine.Owners) {
-				owners.Entries["gamma"] = boardengine.OwnerEntry{Owner: "third", IsTask: true}
+				owners.Entries["gamma"] = boardengine.OwnerEntry{Owner: "third", IsProject: true, Beam: true}
 			}
 		}, check: func(t *testing.T, _ *world, got outcome) {
-			warning := slugOf(t, got, "alpha").Warning
-			if !strings.Contains(warning, "third") || !strings.Contains(warning, "Finalize") || !strings.Contains(warning, "lyx adopt gamma") {
-				t.Errorf("warning = %q, want the parent's owner, Finalize and the adopt of the parent", warning)
+			alpha := slugOf(t, got, "alpha")
+			if !strings.Contains(alpha.Warning, "third") || !strings.Contains(alpha.Warning, "Finalize") || !strings.Contains(alpha.Warning, "lyx adopt gamma") {
+				t.Errorf("warning = %q, want the parent's owner, Finalize and the adopt of the parent", alpha.Warning)
+			}
+			if alpha.Run != ownedElsewhereRun || alpha.OwnedBy != "third" || alpha.Error != "" {
+				t.Errorf("alpha = %+v, want its pawl run left, reported owned elsewhere by the parent's owner, with no error", alpha)
 			}
 		}},
-		{name: "AllChoosesThePrimeAndOwnedOrRunningTasks", req: request{All: true}, check: func(t *testing.T, w *world, _ outcome) {
-			if !slices.Equal(w.ownerReq.Slugs, []string{"alpha", "beta"}) || !w.ownerReq.Prime || !w.ownerReq.Takeover {
-				t.Errorf("owner request = %+v, want the prime and alpha, beta with takeover, passing over the idle and the done task", w.ownerReq)
-			}
-		}},
-		{name: "AllIncludesAnOwnedOpenBeamAndPassesOverTheOthers", req: request{All: true}, setup: func(w *world) {
+		{name: "AllNamesRootAndEveryOpenBeamProjectAndNoTaskOrGroupingProject", req: request{All: true}, setup: func(w *world) {
 			w.owners.Entries["base"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there}
 			w.owners.Entries["ownerless"] = boardengine.OwnerEntry{IsProject: true, Beam: true}
 			w.owners.Entries["landed"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there, Done: true}
 			w.owners.Entries["grp"] = boardengine.OwnerEntry{IsProject: true}
 		}, check: func(t *testing.T, w *world, _ outcome) {
-			if !slices.Equal(w.ownerReq.Slugs, []string{"alpha", "base", "beta"}) {
-				t.Errorf("owner request slugs = %v, want alpha, base, beta: the owned open beam beside the tasks, passing over the ownerless, the done and the grouping project", w.ownerReq.Slugs)
+			if !slices.Equal(w.ownerReq.Slugs, []string{"alpha", "base", "beta", "ownerless"}) || !w.ownerReq.Prime || !w.ownerReq.Takeover {
+				t.Errorf("owner request = %+v, want root and the open beams alpha, base, beta, ownerless with takeover, passing over the idle and done tasks, the done beam and the grouping project", w.ownerReq)
 			}
 		}},
 		{name: "NamedBeamIsAdoptedWithItsPairAdded", req: request{Slugs: []string{"base"}}, setup: func(w *world) {
@@ -511,68 +526,145 @@ func TestAdopt(t *testing.T) {
 				t.Errorf("owner request slugs = %v, want the beam alone, its members keeping their own owners", w.ownerReq.Slugs)
 			}
 		}},
-		{name: "GroupingProjectRefusedNamingBeamCreate", req: request{Slugs: []string{"grp"}}, setup: func(w *world) {
-			w.owners.Entries["grp"] = boardengine.OwnerEntry{IsProject: true}
-		}, wantErr: "lyx beam create grp"},
-		{name: "TaskOfABeamAnotherMachineOwnsIsRefusedNamingTheBeamFirstAndTouchesNothing", req: request{Slugs: []string{"t1"}}, setup: withBeam, wantErr: "`lyx adopt payments t1`", check: func(t *testing.T, w *world, _ outcome) {
-			if w.ownerReq.Machine != "" || w.pairs["t1"] || w.pairs["payments"] || len(w.dropped) != 0 || len(w.order) != 0 {
-				t.Errorf("a refused call wrote: owner request %+v, pairs %v, dropped %v, steps %v; want nothing", w.ownerReq, w.pairs, w.dropped, w.order)
+		{name: "BeamMovesItsMembersRunAndRecordsItsOwnOwnerAlone", req: request{Slugs: []string{"payments"}}, setup: withBeam, check: func(t *testing.T, w *world, got outcome) {
+			t1 := slugOf(t, got, "t1")
+			if t1.Run != "resumed" || t1.OwnerRecorded || !slices.Equal(w.resumed, []string{"t1"}) {
+				t.Errorf("t1 = %+v, resumed = %v, want its run resumed with no owner of its own", t1, w.resumed)
 			}
-			requireNamedCallPasses(t, w, request{Slugs: []string{"payments", "t1"}}, "payments", "t1")
+			if !slices.Equal(w.ownerReq.Slugs, []string{"payments"}) || w.ownerReq.Prime {
+				t.Errorf("owner request = %+v, want the beam alone", w.ownerReq)
+			}
 		}},
-		{name: "TaskOfThePrimeAnotherMachineOwnsIsRefusedNamingThePrime", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
+		{name: "RootMovesARootTasksRunAndLeavesANestedBeamsMemberAlone", req: request{Root: true}, setup: func(w *world) {
+			withoutAlphaAndBeta(w)
 			w.owners.Prime = there
-			delete(w.owners.Entries, "beta")
-		}, wantErr: "`lyx adopt --prime alpha`", check: func(t *testing.T, w *world, _ outcome) {
-			requireNamedCallPasses(t, w, request{Prime: true, Slugs: []string{"alpha"}}, "alpha")
-		}},
-		{name: "SameCallNamingTheParentPasses", req: request{Slugs: []string{"payments", "t1"}}, setup: withBeam, check: func(t *testing.T, w *world, got outcome) {
-			if !slugOf(t, got, "payments").OwnerRecorded || !slugOf(t, got, "t1").OwnerRecorded {
-				t.Errorf("outcome = %+v, want both owners recorded", got.Slugs)
+			w.owners.Entries["kid1"] = boardengine.OwnerEntry{IsTask: true, RunHeld: true}
+			w.runs["kid1"] = running
+			w.pairs["kid1"] = true
+			w.report.Entries = append(w.report.Entries, fabricengine.EntryOutcome{Slug: "kid1", State: fabricengine.EntryOwnedElsewhere, Owner: there})
+			withBeam(w)
+			w.owners.Entries["payments"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: here}
+		}, check: func(t *testing.T, w *world, _ outcome) {
+			if !slices.Equal(w.resumed, []string{"kid1"}) || !w.ownerReq.Prime || len(w.ownerReq.Slugs) != 0 {
+				t.Errorf("resumed = %v, owner request = %+v, want the root task's run resumed and the prime's owner alone, the beam's member t1 left", w.resumed, w.ownerReq)
 			}
 		}},
-		{name: "ParentStoppedOnLocalCommitsIsRefusedNamingKeepLocal", req: request{Slugs: []string{"payments", "t1"}}, setup: func(w *world) {
-			withBeam(w)
-			w.pairs["payments"] = true
-			w.stopBranch("payments", fabricengine.BranchDiverged)
-		}, wantErr: "`lyx adopt --keep-local payments t1`", check: func(t *testing.T, w *world, _ outcome) {
-			requireNamedCallPasses(t, w, request{Slugs: []string{"payments", "t1"}, KeepLocal: true}, "payments", "t1")
-		}},
-		{name: "ParentStoppedAsALivePairIsRefusedNamingKeepLocalAndThePairStaysLive", req: request{Slugs: []string{"payments", "t1"}}, setup: func(w *world) {
-			withBeam(w)
-			w.pairs["payments"] = true
-			w.live["payments"] = true
-		}, wantErr: "`lyx adopt --keep-local payments t1`", check: func(t *testing.T, w *world, _ outcome) {
-			requireNamedCallPasses(t, w, request{Slugs: []string{"payments", "t1"}, KeepLocal: true}, "payments", "t1")
-			if !w.live["payments"] {
-				t.Errorf("the live pair of payments was ended; want it left live")
+		{name: "BeamPawlRunIsResumedWhenRootIsAdoptedWithTheBeamAlreadyOwnedHere", req: request{Root: true}, setup: func(w *world) {
+			w.owners.Prime = there
+			w.owners.Entries["alpha"] = boardengine.OwnerEntry{Owner: here, IsProject: true, Beam: true, RunHeld: true}
+			delete(w.owners.Entries, "beta")
+			delete(w.runs, "beta")
+		}, check: func(t *testing.T, w *world, got outcome) {
+			if alpha := slugOf(t, got, "alpha"); alpha.Run != "resumed" || !slices.Equal(w.resumed, []string{"alpha"}) {
+				t.Errorf("alpha = %+v, resumed = %v, want its pawl run resumed once root is this machine's", alpha, w.resumed)
 			}
 		}},
-		{name: "BeamWithAMemberOwnedElsewhereIsRefusedNamingTheMember", req: request{Slugs: []string{"payments"}}, setup: withBeam, wantErr: "`lyx adopt t1 payments`", check: func(t *testing.T, w *world, _ outcome) {
-			requireNamedCallPasses(t, w, request{Slugs: []string{"t1", "payments"}}, "payments", "t1")
+		{name: "BeamPawlRunIsLeftWhileAnotherMachineOwnsItsParent", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.owners.Prime = there }, check: func(t *testing.T, w *world, got outcome) {
+			alpha := slugOf(t, got, "alpha")
+			if !alpha.OwnerRecorded || alpha.Run != ownedElsewhereRun || alpha.OwnedBy != there || alpha.Error != "" || len(w.resumed) != 0 {
+				t.Errorf("alpha = %+v, resumed = %v, want the beam adopted and its pawl run reported owned elsewhere by the prime's owner, with no error", alpha, w.resumed)
+			}
 		}},
-		{name: "PrimeWithAMemberOwnedElsewhereIsRefusedNamingTheMember", req: request{Prime: true}, setup: func(w *world) {
-			delete(w.owners.Entries, "beta")
-		}, wantErr: "`lyx adopt --prime alpha`", check: func(t *testing.T, w *world, _ outcome) {
-			requireNamedCallPasses(t, w, request{Prime: true, Slugs: []string{"alpha"}}, "alpha")
+		{name: "NestedBeamOwnedElsewhereUnderAdoptedRootIsReportedOwnedElsewhere", req: request{Root: true}, setup: func(w *world) {
+			withoutAlphaAndBeta(w)
+			w.owners.Prime = there
+			w.owners.Entries["nested"] = boardengine.OwnerEntry{Owner: "third", IsProject: true, Beam: true, RunHeld: true}
+			w.runs["nested"] = running
+		}, check: func(t *testing.T, w *world, got outcome) {
+			nested := slugOf(t, got, "nested")
+			if nested.Run != ownedElsewhereRun || nested.OwnedBy != "third" || nested.Error != "" || nested.PairAdded || len(w.resumed) != 0 {
+				t.Errorf("nested = %+v, resumed = %v, want its run reported owned elsewhere by third, with no error, pair or resume", nested, w.resumed)
+			}
 		}},
-		{name: "DobbiesThenOneSuiteStartAfterTheResumes", req: request{Slugs: []string{"alpha", "beta"}, Prime: true}, check: func(t *testing.T, w *world, got outcome) {
-			if !slices.Equal(w.order, []string{"resume:alpha", "resume:beta", "dobbies", "suite"}) || got.DobbyWarning != "" {
-				t.Errorf("steps = %v, warning = %q; want the resumes, then the dobby start, then one suite start and no warning", w.order, got.DobbyWarning)
+		{name: "MovedTaskWithLocalCommitsStopsNamingItsBeamAndHoldsTheBeamBack", req: request{Slugs: []string{"payments"}}, setup: func(w *world) {
+			withBeam(w)
+			w.pairs["t1"] = true
+			w.stopBranch("t1", fabricengine.BranchDiverged)
+		}, check: func(t *testing.T, w *world, got outcome) {
+			t1 := slugOf(t, got, "t1")
+			if !t1.Stopped {
+				t.Fatalf("t1 = %+v, want it stopped on its diverged branch", t1)
+			}
+			for _, way := range []string{"`lyx adopt payments --keep-local`", "`lyx adopt payments --drop-local`"} {
+				if !strings.Contains(t1.WayForward, way) {
+					t.Errorf("t1 way forward %q lacks %q", t1.WayForward, way)
+				}
+			}
+			if strings.Contains(t1.WayForward, "lyx adopt t1") || w.ownerReq.Machine != "" || len(w.resumed) != 0 {
+				t.Errorf("way forward = %q, owner request = %+v, resumed = %v; want no adopt of the task and nothing written or resumed", t1.WayForward, w.ownerReq, w.resumed)
+			}
+		}},
+		{name: "BeamStepsRunAfterTheResumesForThePrimeAndEachAdoptedBeamThenOneSuiteStart", req: request{Slugs: []string{"alpha", "beta"}, Root: true}, check: func(t *testing.T, w *world, got outcome) {
+			if want := []string{"resume:alpha", "resume:beta", "beamup:prime", "beamup:alpha", "beamup:beta", "suite"}; !slices.Equal(w.order, want) || got.PrimeBeamWarning != "" {
+				t.Errorf("steps = %v, prime warning = %q; want %v and no warning", w.order, got.PrimeBeamWarning, want)
+			}
+			if got.PrimeBeamSteps == nil || got.PrimeBeamSteps.Dobby != "started" {
+				t.Errorf("prime beam steps = %+v; want the prime's report", got.PrimeBeamSteps)
+			}
+			for _, slug := range []string{"alpha", "beta"} {
+				if steps := slugOf(t, got, slug).BeamSteps; steps == nil || steps.Dobby != "started" || steps.Action != "relaunched" {
+					t.Errorf("%s beam steps = %+v; want the beam's report", slug, steps)
+				}
 			}
 			if got.Suite == nil || *got.Suite != testSuite || got.SuiteWarning != "" {
 				t.Errorf("suite = %+v, warning = %q; want %+v and no warning", got.Suite, got.SuiteWarning, testSuite)
 			}
 		}},
-		{name: "PrimeOwnerRecordedAloneStartsTheSuiteLast", req: request{Prime: true}, setup: func(w *world) {
-			delete(w.owners.Entries, "alpha")
-			delete(w.owners.Entries, "beta")
-		}, check: func(t *testing.T, w *world, got outcome) {
+		{name: "PrimeOwnerRecordedAloneRunsThePrimesBeamStepsAndStartsTheSuiteLast", req: request{Root: true}, setup: withoutAlphaAndBeta, check: func(t *testing.T, w *world, got outcome) {
 			if !w.ownerReq.Prime || len(w.ownerReq.Slugs) != 0 {
 				t.Fatalf("owner request = %+v, want the prime's owner alone", w.ownerReq)
 			}
+			if !slices.Equal(w.beamUps, []string{"prime"}) || got.PrimeBeamSteps == nil {
+				t.Errorf("beam steps run for %v, prime steps %+v; want the prime alone", w.beamUps, got.PrimeBeamSteps)
+			}
 			if got.Suite == nil || len(w.order) == 0 || w.order[len(w.order)-1] != "suite" {
 				t.Errorf("suite = %+v, steps = %v; want one suite start as the last step", got.Suite, w.order)
+			}
+		}},
+		{name: "HeldBeamHasItsOwnerWrittenNoBeamStepsAndNamesTheBattenStatus", req: request{Slugs: []string{"alpha", "beta"}}, setup: func(w *world) { w.held["alpha"] = true }, check: func(t *testing.T, w *world, got outcome) {
+			alpha := slugOf(t, got, "alpha")
+			if !alpha.OwnerRecorded || alpha.BeamSteps != nil || !strings.Contains(alpha.WayForward, "lyx batten status alpha") || strings.Contains(alpha.WayForward, "lyx adopt") {
+				t.Errorf("alpha = %+v; want its owner written, no beam steps and `lyx batten status alpha` alone", alpha)
+			}
+			if !slices.Equal(w.beamUps, []string{"beta"}) {
+				t.Errorf("beam steps run for %v; want beta alone", w.beamUps)
+			}
+		}},
+		{name: "HeldBeamWhoseParentAnotherMachineOwnsAlsoNamesTheParentsAdopt", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) {
+			w.held["alpha"] = true
+			w.owners.Prime = there
+		}, check: func(t *testing.T, w *world, got outcome) {
+			alpha := slugOf(t, got, "alpha")
+			for _, want := range []string{"lyx batten status alpha", "`lyx adopt root`"} {
+				if !strings.Contains(alpha.WayForward, want) {
+					t.Errorf("alpha way forward = %q; want it to name %q", alpha.WayForward, want)
+				}
+			}
+			if len(w.beamUps) != 0 {
+				t.Errorf("beam steps run for %v; want none for a held beam", w.beamUps)
+			}
+		}},
+		{name: "UnreadableLandingHoldWarnsNamingBeamStartAndRunsNoStepsForThatBeam", req: request{Slugs: []string{"alpha", "beta"}}, setup: func(w *world) { w.heldErr["alpha"] = errors.New("board unreadable") }, check: func(t *testing.T, w *world, got outcome) {
+			alpha := slugOf(t, got, "alpha")
+			if !strings.Contains(alpha.Warning, "board unreadable") || !strings.Contains(alpha.Warning, "lyx beam start alpha") || !slices.Equal(w.beamUps, []string{"beta"}) {
+				t.Errorf("alpha warning = %q, beam steps run for %v; want the cause and `lyx beam start alpha`, and beta's steps alone", alpha.Warning, w.beamUps)
+			}
+		}},
+		{name: "FailingBeamStepWarnsNamingBeamStartWhileTheOtherSlugsStepsRun", req: request{Slugs: []string{"alpha", "beta"}}, setup: func(w *world) { w.beamUpErr["alpha"] = errors.New("alpha: spawn failed") }, check: func(t *testing.T, w *world, got outcome) {
+			alpha, beta := slugOf(t, got, "alpha"), slugOf(t, got, "beta")
+			if !strings.Contains(alpha.Warning, "spawn failed") || !strings.Contains(alpha.Warning, "lyx beam start alpha") || !alpha.OwnerRecorded {
+				t.Errorf("alpha = %+v; want the cause and `lyx beam start alpha` beside an adopted alpha", alpha)
+			}
+			if beta.Warning != "" || beta.BeamSteps == nil || !slices.Equal(w.beamUps, []string{"alpha", "beta"}) {
+				t.Errorf("beta = %+v, beam steps run for %v; want beta's steps to run after alpha's failure with no warning", beta, w.beamUps)
+			}
+		}},
+		{name: "FailingPrimeBeamStepWarnsNamingBeamStartRoot", req: request{Root: true}, setup: func(w *world) {
+			withoutAlphaAndBeta(w)
+			w.beamUpErr["prime"] = errors.New("prime: spawn failed")
+		}, check: func(t *testing.T, _ *world, got outcome) {
+			if !strings.Contains(got.PrimeBeamWarning, "spawn failed") || !strings.Contains(got.PrimeBeamWarning, "lyx beam start root") || !got.PrimeRecorded {
+				t.Errorf("prime warning = %q, recorded = %v; want the cause and `lyx beam start root` beside the recorded prime", got.PrimeBeamWarning, got.PrimeRecorded)
 			}
 		}},
 		{name: "CallThatRecordsNoOwnerStartsNoSuite", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.stopBranch("alpha", fabricengine.BranchDiverged) }, check: func(t *testing.T, w *world, got outcome) {
@@ -580,7 +672,7 @@ func TestAdopt(t *testing.T) {
 				t.Errorf("steps = %v, suite = %+v, warning = %q; want no suite start", w.order, got.Suite, got.SuiteWarning)
 			}
 		}},
-		{name: "FailedSuiteStartIsTheWarningNamingTheGate", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.suiteErr = errors.New("exec failed") }, check: func(t *testing.T, _ *world, got outcome) {
+		{name: "FailedSuiteStartIsTheWarningNamingTheGate", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.suiteErr = errors.New("exec failed") }, check: func(t *testing.T, w *world, got outcome) {
 			want := "the test suite was not started (exec failed); way forward: run `lyx gate test --gate finalize` in the prime"
 			if got.SuiteWarning != want || got.Suite != nil {
 				t.Errorf("suite = %+v, warning = %q; want no suite and %q", got.Suite, got.SuiteWarning, want)
@@ -588,10 +680,8 @@ func TestAdopt(t *testing.T) {
 			if alpha := slugOf(t, got, "alpha"); !alpha.OwnerRecorded || alpha.Run != "resumed" || alpha.Error != "" {
 				t.Errorf("alpha = %+v, want it adopted and resumed beside the failed suite start", alpha)
 			}
-		}},
-		{name: "FailedDobbyStartIsTheWarningNamingBeamStart", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.dobbyErr = errors.New("prime: spawn failed") }, check: func(t *testing.T, _ *world, got outcome) {
-			if !strings.Contains(got.DobbyWarning, "spawn failed") || !strings.Contains(got.DobbyWarning, "lyx beam start") || !slugOf(t, got, "alpha").OwnerRecorded {
-				t.Errorf("warning = %q, outcome = %+v; want the cause and `lyx beam start` beside an adopted alpha", got.DobbyWarning, got.Slugs)
+			if !slices.Equal(w.beamUps, []string{"alpha"}) {
+				t.Errorf("beam steps run for %v; want the adopted beam alone, the prime not being adopted", w.beamUps)
 			}
 		}},
 	}

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -98,6 +99,8 @@ type anchorDeps struct {
 	LocalBeams func() ([]string, error)
 	// ForeignOwner returns the machine other than this one that the board names as the worktree's effective owner, empty when none does.
 	ForeignOwner func(slug string) (string, error)
+	// AdoptSubject returns the beam or `root` that `lyx adopt` takes to move the worktree called slug, read from the local board.
+	AdoptSubject func(slug string) (string, error)
 	// UpstreamAnchor returns the anchor the worktree's weft records at its fetched upstream tip, and found false when it has no upstream.
 	UpstreamAnchor func(location *lyxcwd.Location) (anchor string, found bool, err error)
 	// MoveRecord reads the move record of the worktree's weft.
@@ -116,8 +119,6 @@ type anchorDeps struct {
 	PrimeRunUnfinished func(slug string) (bool, error)
 	// DobbyPID returns the pid of the live dobby of the worktree, and live false when it runs none.
 	DobbyPID func(worktree string) (pid int, live bool, err error)
-	// DobbyLive reports whether the worktree's dobby lock is held.
-	DobbyLive func(worktree string) (bool, error)
 	// HubReedHeld lists the worktrees of the hub whose reed state holds a session or a strand.
 	HubReedHeld func() ([]string, error)
 	// HubBattenLive lists the runs of the hub that have a live batten.
@@ -136,10 +137,8 @@ type anchorDeps struct {
 	AcquireParentLock func(ctx context.Context, location *lyxcwd.Location) (release func(), err error)
 	// EndDobbies ends the dobbies of the worktrees, leaving alone the processes registered with a role in spare, and returns the ones it ended.
 	EndDobbies func(worktrees []string, spare ...string) (ended []string, err error)
-	// StartDobby starts the dobby of the beam called slug.
-	StartDobby func(slug string) error
-	// EnsureDobbies starts the dobby of the prime and of every beam this machine owns that is not live.
-	EnsureDobbies func() error
+	// EnsureDobbies starts the dobby of each worktree named that is not live, refusing one this machine does not own or whose landing hold stands.
+	EnsureDobbies func(worktrees []string) error
 	// Begin begins the change of the worktree's anchor in the engine.
 	Begin func(location *lyxcwd.Location, target string) (anchorChange, error)
 	// ReopenLog moves the process's trace sink to dir.
@@ -229,9 +228,15 @@ func refuseForeignOwner(deps anchorDeps, location *lyxcwd.Location, owner, targe
 	if hasUpstream && filepath.Clean(upstream) == filepath.Clean(target) {
 		return nil
 	}
-	adopt := fmt.Sprintf("`lyx adopt %s` here, which records this machine as the owner, or `lyx adopt %s --keep-local` over a weft stopped by an anchor change, which records the owner over the stopped weft", slug, slug)
+	subject := boardengine.RootSubject
+	if slug != deps.Prime {
+		if subject, err = deps.AdoptSubject(slug); err != nil {
+			return err
+		}
+	}
+	adopt := fmt.Sprintf("`lyx adopt %s` here, which records this machine as the owner, or `lyx adopt %s --keep-local` over a weft stopped by an anchor change, which records the owner over the stopped weft", subject, subject)
 	if slug == deps.Prime {
-		adopt = "`lyx adopt --prime` here, which records this machine as the owner, and whose refusal over a prime weft stopped by an anchor change names the `--set` to its upstream tip's marker"
+		adopt = "`lyx adopt root` here, which records this machine as the owner, and whose refusal over a prime weft stopped by an anchor change names the `--set` to its upstream tip's marker"
 	}
 	message := fmt.Sprintf("the board names %s as the owner of %s, so this machine does not change its anchor; run %s; or run `lyx fabric anchor %s --set %s` on %s", owner, slug, adopt, slug, target, owner)
 	if hasUpstream && filepath.Clean(upstream) != filepath.Clean(location.AnchorRel) {
@@ -378,10 +383,8 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lyxcwd.Location,
 		case standing:
 			return result, fmt.Errorf("%w; the change record stands, so no dobby is started: run %s again, which recovers it and starts the dobby", cause, rerun)
 		}
-		if len(ended) > 0 {
-			if startErr := startDobby(deps, slug); startErr != nil {
-				return result, errors.Join(cause, fmt.Errorf("start the dobby again: %w; run `%s`", startErr, beamStartWayForward))
-			}
+		if startErr := startDobbies(deps, ended); startErr != nil {
+			return result, errors.Join(cause, fmt.Errorf("start the dobby again: %w; run `%s`", startErr, beamStartWayForward))
 		}
 		return result, cause
 	}
@@ -438,7 +441,7 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lyxcwd.Location,
 		result.PushError = finishErr.Error()
 	}
 	result.From, result.Anchor, result.Changed = change.From(), change.To(), true
-	if startErr := startDobby(deps, slug); startErr != nil {
+	if startErr := startDobbies(deps, dobbies); startErr != nil {
 		result.DobbyStartError = startErr.Error()
 	}
 	releaseParentLock()
@@ -463,25 +466,14 @@ func passesInFlight(deps anchorDeps, worktrees []string) ([]string, error) {
 	return busy, nil
 }
 
-// startDobby starts the dobby of the worktree slug and reports a start that failed.
-// The prime starts every dobby of the machine that is not live; a beam starts its own when this machine owns it and its lock reads free; any other pair has none.
-func startDobby(deps anchorDeps, slug string) error {
-	if slug == deps.Prime {
-		return deps.EnsureDobbies()
+// startDobbies starts the dobbies of worktrees and reports a start that failed.
+// A move that finished names every dobby it was to end, and a move that failed names the ones it ended.
+// It starts nothing when none are named.
+func startDobbies(deps anchorDeps, ended []string) error {
+	if len(ended) == 0 {
+		return nil
 	}
-	beam, err := deps.IsBeam(slug)
-	if err != nil || !beam {
-		return err
-	}
-	owner, err := deps.ForeignOwner(slug)
-	if err != nil || owner != "" {
-		return err
-	}
-	live, err := deps.DobbyLive(slug)
-	if err != nil || live {
-		return err
-	}
-	return deps.StartDobby(slug)
+	return deps.EnsureDobbies(ended)
 }
 
 // runAnchor executes `lyx fabric anchor [<slug>] [--set <dir>]`.

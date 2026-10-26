@@ -244,9 +244,11 @@ func readmeFixture() []boardengine.Task {
 // every table pins the one column before Labels holding the age above the time since revision, as of that time and blank for unknown dates.
 // A second row pins that Ready renders _None._ when empty, and that the Done section and every empty Notes subsection are omitted when no entry is done and no note exists for them.
 // Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
-// A third row pins that a task with a run status renders under Running, before Ready and in no layer, ordered by handle over ID, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the recorded owner machine and blank when none is recorded.
+// A third row pins that a task with a run status renders under Running, before Ready and in no layer, ordered by handle over ID, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the prime owner for a task outside every beam.
 // The same row pins that a task waiting on a running one lands in Layer A, not Ready, still naming it under After, and that a task after that one lands in Layer B.
 // A fourth row pins the Projects section before Tasks: a beam project with its recorded owner and a grouping project, each member table listing the ordered members first and then the unordered ones by handle, a running, a note, a done and a Layer A member among them, and a done project listed in Done only.
+// The running member of the beam shows the beam's recorded owner in the Owner column.
+// A fifth row pins that a beam with a recorded owner on a board with no prime owner shows that owner in its project section.
 func TestRenderReadmeGolden(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -361,7 +363,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 			name: "running task under Running before Ready and in no layer",
 			tasks: []boardengine.Task{
 				{ID: 1, Handle: "T1", Slug: "base", Title: "Base work", Kind: boardengine.KindTask, Labels: []string{"enhancement"}},
-				{ID: 2, Handle: "T5", Slug: "held", Title: "Held work", Kind: boardengine.KindTask, Labels: []string{"bug", "area"}, Status: stringPtr(boardengine.RunStatus("running", "Webster")), DependsOn: []string{"base"}, OwnerMachine: "box"},
+				{ID: 2, Handle: "T5", Slug: "held", Title: "Held work", Kind: boardengine.KindTask, Labels: []string{"bug", "area"}, Status: stringPtr(boardengine.RunStatus("running", "Webster")), DependsOn: []string{"base"}},
 				{ID: 3, Handle: "T3", Slug: "next", Title: "Next work", Kind: boardengine.KindTask, DependsOn: []string{"held"}},
 				{ID: 4, Handle: "T4", Slug: "last", Title: "Last work", Kind: boardengine.KindTask, DependsOn: []string{"next"}},
 				{ID: 5, Handle: "T2", Slug: "halted", Title: "Halted work", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.RunStatus("paused", "Plan-Write")), Recipe: "darn"},
@@ -385,8 +387,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | At | Owner | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T2 | **Halted work** | `halted` | darn | paused · Plan-Write |  |  |  |\n" +
-				"| T5 | **Held work** | `held` | loom | Webster | box |  | area |\n" +
+				"| T2 | **Halted work** | `halted` | darn | paused · Plan-Write | neve |  |  |\n" +
+				"| T5 | **Held work** | `held` | loom | Webster | neve |  | area |\n" +
 				"\n" +
 				"### Ready (1)\n" +
 				"\n" +
@@ -478,7 +480,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"| # | Task | Slug | Recipe | At | Owner | Age<br>Revised | Labels |\n" +
 				"| --- | --- | --- | --- | --- | --- | --- | --- |\n" +
-				"| T2 | **Second step** | `second` | loom | Webster |  |  |  |\n" +
+				"| T2 | **Second step** | `second` | loom | Webster | box |  |  |\n" +
 				"\n" +
 				"### Ready (2)\n" +
 				"\n" +
@@ -515,6 +517,45 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"| --- | --- | --- | --- | --- |\n" +
 				"| T4 | **Shipped step** | `shipped` |  |  |\n" +
 				"| P3 | **Old project** | `old` |  |  |\n",
+		},
+		{
+			name: "a beam with a recorded owner on a board with no prime owner shows that owner",
+			tasks: []boardengine.Task{
+				{ID: 1, Handle: "P1", Slug: "lone", Title: "Lone beam", Kind: boardengine.KindProject, Beam: true, OwnerMachine: "box"},
+			},
+			want: "# Board\n" +
+				"\n" +
+				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
+				"Prime owner: none recorded.\n" +
+				"\n" +
+				"Tasks are grouped by dependency layer and notes by type.\n" +
+				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
+				"\n" +
+				"## Projects (1)\n" +
+				"\n" +
+				"Groups of entries; a beam spawns its members from its own worktree.\n" +
+				"\n" +
+				"### P1 Lone beam\n" +
+				"\n" +
+				"beam\n" +
+				"\n" +
+				"Owner: `box`.\n" +
+				"\n" +
+				"_None._\n" +
+				"\n" +
+				"## Tasks (0)\n" +
+				"\n" +
+				"Concrete and claimable; only a task can run.\n" +
+				"\n" +
+				"### Ready (0)\n" +
+				"\n" +
+				"Waits on nothing open; can start now.\n" +
+				"\n" +
+				"_None._\n" +
+				"\n" +
+				"## Notes (0)\n" +
+				"\n" +
+				"Not tasks: ideas and observations, merged into a task when one is promoted.\n",
 		},
 	}
 	for _, tt := range tests {

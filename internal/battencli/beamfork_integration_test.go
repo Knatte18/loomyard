@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -19,7 +20,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 )
 
-// seedBeamBoard seeds h's board with a beam project b holding tasks m and armed, a grouping project g holding task grouped, and a task left, whose local branch the caller leaves behind.
+// seedBeamBoard seeds h's board with a beam project b holding tasks m, armed, late and crashed and the beam project inner, a grouping project g holding task grouped, and a task left, whose local branch the caller leaves behind.
+// The beam project orphan sits under the beam far, which has no pair here.
 func seedBeamBoard(t *testing.T, h *hubforge.Hub) {
 	t.Helper()
 	cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: h.BoardDir()}, "board")
@@ -34,6 +36,11 @@ func seedBeamBoard(t *testing.T, h *hubforge.Hub) {
 		{"slug": "m", "kind": "task", "project": "b"},
 		{"slug": "armed", "kind": "task", "project": "b"},
 		{"slug": "left", "kind": "task", "project": "b"},
+		{"slug": "late", "kind": "task", "project": "b"},
+		{"slug": "crashed", "kind": "task", "project": "b"},
+		{"slug": "inner", "kind": "project", "project": "b"},
+		{"slug": "far", "kind": "project"},
+		{"slug": "orphan", "kind": "project", "project": "far"},
 		{"slug": "grouped", "kind": "task", "project": "g"},
 	}
 	for _, entry := range entries {
@@ -53,13 +60,15 @@ func seedBeamBoard(t *testing.T, h *hubforge.Hub) {
 	if err != nil {
 		t.Fatalf("machine name: %v", err)
 	}
-	if _, err := boardengine.SetOwners(h.BoardDir(), boardengine.OwnerRequest{Machine: machine, Slugs: []string{"b"}, Beam: true}); err != nil {
-		t.Fatalf("flag b as a beam: %v", err)
+	if _, err := boardengine.SetOwners(h.BoardDir(), boardengine.OwnerRequest{Machine: machine, Slugs: []string{"b", "inner", "far", "orphan"}, Beam: true}); err != nil {
+		t.Fatalf("flag the beam projects: %v", err)
 	}
 }
 
 // TestWorktreeCreate_ForksFromTheBeam asserts the create row forks a beam member's pair from the beam while the prime holds tracked dirt, and a task of a grouping project from the prime.
 // A run armed from the beam's own location forks the member from the beam, and a local branch left from a removed pair is refused with ErrBranchExists, since batten never adopts one.
+// A beam project forks from its parent beam unmarked, or is refused naming its parent's create when that beam's pair is absent here.
+// A member whose beam holds once its pair is made, or while the member resumes over a complete pair, loses the pair and is refused naming the two steps that progress.
 func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 	t.Parallel()
 
@@ -129,6 +138,59 @@ func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 		if !errors.As(err, &exists) {
 			t.Fatalf("CreateWorktree(left) = %v; want ErrBranchExists", err)
 		}
+	})
+
+	t.Run("BeamProjectForksFromItsParentBeamUnmarked", func(t *testing.T) {
+		c := wireForHub(t, h, "inner", nil)
+		if err := c.env.CreateWorktree(context.Background()); err != nil {
+			t.Fatalf("CreateWorktree(inner): %v", err)
+		}
+		origin, found, err := fabricengine.ReadOriginFor(h.Location, "inner")
+		if err != nil || !found {
+			t.Fatalf("read the origin record of inner: found=%v err=%v", found, err)
+		}
+		if origin.ParentWorktree != "b" || origin.Beam {
+			t.Errorf("origin of inner = parent %q, beam %v; want parent b and no beam mark, since Beam-Up marks it", origin.ParentWorktree, origin.Beam)
+		}
+	})
+
+	t.Run("BeamProjectWhoseParentBeamHasNoPairHereIsRefusedNamingItsCreate", func(t *testing.T) {
+		c := wireForHub(t, h, "orphan", nil)
+		err := c.env.CreateWorktree(context.Background())
+		if err == nil || !strings.Contains(err.Error(), "lyx beam create far") {
+			t.Fatalf("CreateWorktree(orphan) = %v; want a refusal naming `lyx beam create far`", err)
+		}
+	})
+
+	heldAtParentAlign := func(string) (string, bool, error) { return "running · Parent-Align", true, nil }
+	wantHeldRefusal := func(t *testing.T, member string, err error) {
+		t.Helper()
+		if err == nil {
+			t.Fatalf("CreateWorktree(%s) = nil; want the member-hold refusal", member)
+		}
+		for _, want := range []string{"lyx batten cancel " + member, "lyx batten run " + member, "lyx batten status b", "lyx board upsert"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("CreateWorktree(%s) = %q; want it to carry %q", member, err.Error(), want)
+			}
+		}
+		if _, statErr := os.Stat(fabricengine.WorktreePath(h.Location, member)); !os.IsNotExist(statErr) {
+			t.Errorf("the pair of %s is still there after the refusal (stat error %v); want it removed", member, statErr)
+		}
+	}
+
+	t.Run("MemberWhoseBeamHoldsAfterItsPairIsMadeLosesThePair", func(t *testing.T) {
+		c := wireForHub(t, h, "late", nil)
+		c.beamHold = heldAtParentAlign
+		wantHeldRefusal(t, "late", c.env.CreateWorktree(context.Background()))
+	})
+
+	t.Run("MemberResumedOverACompletePairWhileItsBeamHoldsLosesThePair", func(t *testing.T) {
+		c := wireForHub(t, h, "crashed", nil)
+		if err := c.env.CreateWorktree(context.Background()); err != nil {
+			t.Fatalf("CreateWorktree(crashed): %v", err)
+		}
+		c.beamHold = heldAtParentAlign
+		wantHeldRefusal(t, "crashed", c.env.CreateWorktree(context.Background()))
 	})
 
 	t.Run("TaskOfAGroupingProjectForksFromThePrime", func(t *testing.T) {

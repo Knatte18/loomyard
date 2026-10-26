@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
@@ -27,6 +28,36 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// validPawlDeps returns a pawlengine.Deps with every seam the pawl producers use filled with a no-op, its paths under dir.
+func validPawlDeps(dir string) pawlengine.Deps {
+	noop := func() error { return nil }
+	return pawlengine.Deps{
+		Slug:  "demo",
+		RunID: "run-1",
+		Paths: pawlengine.Paths{
+			LandRequest:     filepath.Join(dir, "land-request.json"),
+			DobbyStopMarker: filepath.Join(dir, "dobby-stop"),
+			AwaitMarker:     filepath.Join(dir, "await-entered"),
+		},
+		SetStatus:           func(string) error { return nil },
+		EntryProducer:       func() (string, error) { return "", nil },
+		OwnedElsewhere:      func() (bool, error) { return false, nil },
+		MarkBeam:            noop,
+		SpawnPush:           noop,
+		RegenerateWorkspace: noop,
+		Steps:               []pawlengine.Step{{Name: "noop", Run: noop}},
+		StopDobby:           noop,
+		StartDobby:          noop,
+		DobbyLive:           func() (bool, error) { return false, nil },
+		Recheck:             func() ([]string, error) { return nil, nil },
+		WriteSnapshot:       noop,
+		Notify:              func(string) error { return nil },
+		Down:                noop,
+		Now:                 time.Now,
+		Sleep:               func(context.Context, time.Duration) error { return nil },
+	}
+}
 
 // fakeWebsterRun is a shedadapters.WebsterRunner func value returning a zero
 // websterengine.RunResult and a nil error.
@@ -146,6 +177,7 @@ func newTestEnv(t *testing.T) Env {
 		ReflectFriction:    func() string { return "skipped" },
 		WebsterDeps:        shedfake.WebsterSeams(),
 		PlanIndex:          placeholderIndex{},
+		Pawl:               validPawlDeps(dir),
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",

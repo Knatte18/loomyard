@@ -24,7 +24,7 @@ func TestArmAt_RunOwnedElsewhereWritesNoSeed(t *testing.T) {
 
 	const slug = "owned-elsewhere"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	owners := boardengine.Owners{Prime: "here", Entries: map[string]boardengine.OwnerEntry{slug: {Owner: "there", IsTask: true}}}
+	owners := boardengine.Owners{Prime: "there", Entries: map[string]boardengine.OwnerEntry{slug: {IsTask: true}}}
 	fake := &fakeOwners{machine: "here", owners: owners}
 	c := &battenCLI{owner: fake.seams()}
 	run := &cobra.Command{Use: "run", PersistentPreRunE: c.resolvePersistentPreRun, RunE: func(*cobra.Command, []string) error { return nil }}
@@ -35,7 +35,7 @@ func TestArmAt_RunOwnedElsewhereWritesNoSeed(t *testing.T) {
 	if exitCode != dobbyengine.PassExitOwnedElsewhere {
 		t.Errorf("run exit code = %d; want %d", exitCode, dobbyengine.PassExitOwnedElsewhere)
 	}
-	for _, want := range []string{"there", "lyx adopt " + slug} {
+	for _, want := range []string{"there", "`lyx adopt root`"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("run output = %q; want it to carry %q", out.String(), want)
 		}

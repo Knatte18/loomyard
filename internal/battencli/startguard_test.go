@@ -44,10 +44,9 @@ func TestStartGuard_Refuse(t *testing.T) {
 		// promoted is what the Promoted seam reads: a task whose pair carries the beam mark.
 		promoted    bool
 		promotedErr error
-		// project and beam are what the Project seam reads; marked and unreadable describe the PairMark seam, and landRefusal is what LandRefusal answers.
+		// project and beam are what the Project seam reads; marked and unreadable describe the PairMark seam.
 		project, beam, marked, unreadable bool
 		projectErr                        error
-		landRefusal                       error
 		// draft is what the Draft seam reads: a task whose board status is draft.
 		draft    bool
 		draftErr error
@@ -218,7 +217,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			name:       "MarkedPairTaskRefusesNamingThePromoteWithNoStatusFile",
 			verbs:      []string{"run", "step"},
 			promoted:   true,
-			wantErrors: []string{"carries the beam mark", `run "lyx beam promote some-slug" to finish the promote`},
+			wantErrors: []string{"carries the beam mark", `run "lyx batten cancel some-slug --remove" from the prime`},
 		},
 		{
 			name:       "MarkedPairTaskRefusesNamingThePromoteWithAStatusFileFound",
@@ -226,7 +225,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 			promoted:   true,
 			found:      true,
 			producer:   battenrecipe.NameRunShed,
-			wantErrors: []string{"carries the beam mark", `run "lyx beam promote some-slug" to finish the promote`},
+			wantErrors: []string{"carries the beam mark", `run "lyx batten cancel some-slug --remove" from the prime`},
 		},
 		{
 			name:     "MarkedPairPassesTheVerbsThatDoNotStartARun",
@@ -246,19 +245,49 @@ func TestStartGuard_Refuse(t *testing.T) {
 			wantErrors: []string{"grouping project", `run "lyx beam create some-slug"`},
 		},
 		{
-			name:       "BeamProjectWithNoLocalPairNamesTheCreateAndTheAdopt",
+			name:    "FreshBeamProjectWithNoPairPassesOverACleanPrime",
+			verbs:   []string{"run", "step"},
+			project: true,
+			beam:    true,
+		},
+		{
+			name:       "FreshBeamProjectWithNoPairIsRefusedOverADirtyPrimeWhenItForksFromThePrime",
 			verbs:      []string{"run", "step"},
 			project:    true,
 			beam:       true,
-			wantErrors: []string{"no pair on this machine", `"lyx beam create some-slug"`, `"lyx adopt some-slug"`},
+			dirty:      []string{"a.txt"},
+			wantErrors: []string{"a.txt", "commit or revert"},
 		},
 		{
-			name:       "UnmarkedBeamPairRefusedNamingTheCreate",
+			name:       "FreshBeamProjectForkedFromAParentBeamPassesOverADirtyPrime",
+			verbs:      []string{"run", "step"},
+			project:    true,
+			beam:       true,
+			dirty:      []string{"a.txt"},
+			parentBeam: "outer",
+		},
+		{
+			name:       "FreshBeamProjectWithLeftRecordPartsIsRefused",
+			verbs:      []string{"run", "step"},
+			project:    true,
+			beam:       true,
+			parts:      fabricengine.PairParts{RecordsWorktree: true},
+			wantErrors: []string{"some-slug left a pair from an earlier run (records worktree)"},
+		},
+		{
+			name:    "BeamProjectWhoseStatusIsDraftPassesWhereADraftTaskIsRefused",
+			verbs:   []string{"run", "step"},
+			project: true,
+			beam:    true,
+			draft:   true,
+		},
+		{
+			name:       "UnmarkedBeamPairIsJudgedAsAFreshStart",
 			verbs:      []string{"run", "step"},
 			project:    true,
 			beam:       true,
 			parts:      fabricengine.PairParts{TaskWorktree: true},
-			wantErrors: []string{"does not carry the beam mark", `"lyx beam create some-slug"`},
+			wantErrors: []string{"some-slug left a pair from an earlier run (task worktree)"},
 		},
 		{
 			name:       "UnreadableBeamPairRefusedNamingReconcileAndNotTheCancel",
@@ -279,36 +308,13 @@ func TestStartGuard_Refuse(t *testing.T) {
 			dirty:   []string{"a.txt"},
 		},
 		{
-			name:        "BeamWithWorkRemainingRefusedByTheLandRefusal",
-			verbs:       []string{"run", "step"},
-			project:     true,
-			beam:        true,
-			marked:      true,
-			parts:       fabricengine.PairParts{TaskWorktree: true},
-			landRefusal: errors.New("the open entry m is a member of the beam"),
-			wantErrors:  []string{"the open entry m is a member of the beam"},
-		},
-		{
-			name:        "BeamResumePastWorktreeCreateJudgesNothing",
-			verbs:       []string{"run", "step"},
-			project:     true,
-			beam:        true,
-			found:       true,
-			producer:    battenrecipe.NameLand,
-			landRefusal: errors.New("work remains"),
-		},
-		{
-			name:        "BeamResumeAtWorktreeCreateAppliesTheLandRefusal",
-			verbs:       []string{"run", "step"},
-			project:     true,
-			beam:        true,
-			marked:      true,
-			found:       true,
-			producer:    battenrecipe.NameWorktreeCreate,
-			taskPresent: true,
-			parts:       fabricengine.PairParts{TaskWorktree: true},
-			landRefusal: errors.New("work remains"),
-			wantErrors:  []string{"work remains"},
+			name:     "BeamResumePastWorktreeCreateJudgesNothing",
+			verbs:    []string{"run", "step"},
+			project:  true,
+			beam:     true,
+			found:    true,
+			producer: battenrecipe.NameLand,
+			dirty:    []string{"a.txt"},
 		},
 		{
 			name:       "ProjectProbeErrorRefusesNamingTheProbeAndTheRerun",
@@ -342,7 +348,6 @@ func TestStartGuard_Refuse(t *testing.T) {
 						Promoted:    func() (bool, error) { return tt.promoted, tt.promotedErr },
 						Project:     func() (bool, bool, error) { return tt.project, tt.beam, tt.projectErr },
 						PairMark:    func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
-						LandRefusal: func() error { return tt.landRefusal },
 						Draft:       func() (bool, error) { return tt.draft, tt.draftErr },
 					}
 				}

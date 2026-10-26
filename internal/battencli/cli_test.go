@@ -167,8 +167,9 @@ func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
 // TestStartFirstPass covers the detached first pass over a hand-populated receiver with fake pass, dobby-liveness, dobby-spawn and parent-owner seams:
 // a done slug and a slug a pause covers return an envelope whose ok is false naming their way forward and start nothing;
 // a startable slug starts one pass with the prime's anchor as its working directory and starts its parent's dobby once when that reads not live and never when it reads live;
-// a failed dobby spawn still returns the started pass's envelope with a warning naming `lyx beam start`;
-// a parent another machine owns starts no dobby and warns naming `lyx adopt` for the parent, or `lyx adopt --prime` for the prime.
+// a failed dobby spawn still returns the started pass's envelope with a warning naming `lyx beam start` for the parent;
+// a parent another machine owns starts no dobby and warns naming `lyx adopt` for the parent, or `lyx adopt root` for the prime;
+// a parent beam whose landing hold stands starts no dobby and warns naming `lyx batten status`.
 func TestStartFirstPass(t *testing.T) {
 	t.Parallel()
 
@@ -177,15 +178,18 @@ func TestStartFirstPass(t *testing.T) {
 		otherHost = "elsewhere"
 	)
 	tests := []struct {
-		name           string
-		status         shedengine.State
-		pauseCovers    bool
-		driverSet      bool
-		childSet       bool
-		beamParent     bool
-		dobbyLive      bool
-		dobbySpawnErr  error
-		parentOwner    string
+		name          string
+		status        shedengine.State
+		pauseCovers   bool
+		driverSet     bool
+		childSet      bool
+		beamParent    bool
+		dobbyLive     bool
+		dobbySpawnErr error
+		parentOwner   string
+		landingHeld   bool
+		// anchor is the first pass's anchor option, which the seed the pass arms records as its anchor param.
+		anchor         string
 		wantRefusal    []string
 		wantPassArgs   []string
 		wantDobbySpawn int
@@ -213,6 +217,13 @@ func TestStartFirstPass(t *testing.T) {
 			wantParent:     "hub-repo",
 		},
 		{
+			name:           "AnchorOptionIsRecordedAsTheSeedsAnchorParam",
+			anchor:         "sub/dir",
+			wantPassArgs:   []string{"batten", "run", "some-slug"},
+			wantDobbySpawn: 1,
+			wantParent:     "hub-repo",
+		},
+		{
 			name:           "BlockedStatusResumesAsAPass",
 			status:         shedengine.StateBlocked,
 			wantPassArgs:   []string{"batten", "run", "some-slug"},
@@ -231,15 +242,23 @@ func TestStartFirstPass(t *testing.T) {
 			dobbySpawnErr:  errors.New("exec failed"),
 			wantPassArgs:   []string{"batten", "run", "some-slug"},
 			wantDobbySpawn: 1,
-			wantWarning:    []string{"exec failed", "lyx beam start"},
+			wantWarning:    []string{"exec failed", "lyx beam start root"},
 			wantParent:     "hub-repo",
 		},
 		{
 			name:         "PrimeOwnedElsewhereStartsNoDobby",
 			parentOwner:  otherHost,
 			wantPassArgs: []string{"batten", "run", "some-slug"},
-			wantWarning:  []string{otherHost, "lyx adopt --prime"},
+			wantWarning:  []string{otherHost, "lyx adopt root"},
 			wantParent:   "hub-repo",
+		},
+		{
+			name:         "BeamParentWhoseLandingHoldStandsStartsNoDobby",
+			beamParent:   true,
+			landingHeld:  true,
+			wantPassArgs: []string{"batten", "run", "some-slug"},
+			wantWarning:  []string{"lyx batten status " + beam},
+			wantParent:   beam,
 		},
 		{
 			name:         "BeamOwnedElsewhereStartsNoDobby",
@@ -301,6 +320,13 @@ func TestStartFirstPass(t *testing.T) {
 			}
 			c.driverFlag, c.childDriverFlag = "go", "go"
 			c.driverFlagSet, c.childDriverFlagSet = tt.driverSet, tt.childSet
+			if tt.anchor != "" {
+				// StartFirstPass arms the run, which writes the seed, before the pass starts.
+				c.firstPassAnchor = tt.anchor
+				if err := c.armSeed(c.location, c.slug, "run"); err != nil {
+					t.Fatalf("armSeed(run) = %v; want nil", err)
+				}
+			}
 
 			var passDir string
 			var passArgs []string
@@ -310,6 +336,7 @@ func TestStartFirstPass(t *testing.T) {
 				return 4242, nil
 			}
 			c.parentOwner = func(string) (string, error) { return tt.parentOwner, nil }
+			c.landingHeld = func(string) (bool, error) { return tt.landingHeld, nil }
 			c.dobbyLive = func(dobbyengine.Geometry) (bool, error) { return tt.dobbyLive, nil }
 			c.dobbySpawn = func(dobbyengine.Geometry) error {
 				dobbySpawns++
@@ -349,6 +376,13 @@ func TestStartFirstPass(t *testing.T) {
 			}
 			if dobbySpawns != tt.wantDobbySpawn {
 				t.Errorf("dobby spawns = %d; want %d", dobbySpawns, tt.wantDobbySpawn)
+			}
+			seed, seeded, err := shedrun.ReadSeed(c.location, c.slug)
+			if err != nil {
+				t.Fatalf("ReadSeed = %v; want nil", err)
+			}
+			if seeded && seed.Params[anchorParam] != tt.anchor {
+				t.Errorf("seed anchor param = %q; want %q", seed.Params[anchorParam], tt.anchor)
 			}
 			warning, hasWarning := envelope["warning"].(string)
 			if hasWarning != (tt.wantWarning != nil) {

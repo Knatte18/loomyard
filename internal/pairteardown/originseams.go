@@ -76,24 +76,29 @@ func HubSeamOptions(prime *lyxcwd.Location) SeamOptions {
 	}
 }
 
-// OwnerReader builds the owner question the origin reconcile asks over one `board.json`: the effective owner of a slug and whether that owner is another machine.
+// OwnerReader builds the owner question the origin reconcile asks over one `board.json`: the effective owner of a slug, the subject `lyx adopt` takes to move it, and whether that owner is another machine.
 // A machine error, an empty hostname included, a parentOf error and undecodable board bytes are returned, so no owner is ever compared with an empty name.
 // parentOf names the slug of a pair's parent in the hub at hubPath, or "" for the prime.
 func OwnerReader(machine func() (string, error), parentOf func(hubPath, slug string) (string, error)) fabricengine.OwnerReader {
-	return func(hubPath string, boardJSON []byte, slug string) (string, bool, error) {
+	return func(hubPath string, boardJSON []byte, slug string) (string, string, bool, error) {
 		here, err := machine()
 		if err != nil {
-			return "", false, fmt.Errorf("read this machine's name: %w", err)
+			return "", "", false, fmt.Errorf("read this machine's name: %w", err)
 		}
 		owners, err := boardengine.ParseOwners(boardJSON)
 		if err != nil {
-			return "", false, fmt.Errorf("read the board's owners: %w", err)
+			return "", "", false, fmt.Errorf("read the board's owners: %w", err)
 		}
-		owner, err := owners.Effective(slug, func(entry string) (string, error) { return parentOf(hubPath, entry) })
+		resolve := func(entry string) (string, error) { return parentOf(hubPath, entry) }
+		owner, err := owners.Effective(slug, resolve)
 		if err != nil {
-			return "", false, fmt.Errorf("read the owner of %s: %w", slug, err)
+			return "", "", false, fmt.Errorf("read the owner of %s: %w", slug, err)
 		}
-		return owner, boardengine.OwnedElsewhere(owner, here), nil
+		subject, err := owners.AdoptSubject(slug, resolve)
+		if err != nil {
+			return "", "", false, fmt.Errorf("read what adopt takes for %s: %w", slug, err)
+		}
+		return owner, subject, boardengine.OwnedElsewhere(owner, here), nil
 	}
 }
 

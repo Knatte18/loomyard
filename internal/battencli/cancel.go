@@ -24,7 +24,7 @@ import (
 // windowsGOOS is the GOOS value whose process table cannot tell a recycled pid from the registered process.
 const windowsGOOS = "windows"
 
-// cancelDeps carries every substrate cancelRun touches, as function values; none is nil.
+// cancelDeps carries every substrate cancelRun touches, as function values; none is nil, bar BeamProject and LandingHeld.
 // The production builder fills each one over the hub, and the test fills each one with a fake.
 type cancelDeps struct {
 	// HubPaused reports whether a live hub-scope pause entry covers the prime.
@@ -37,8 +37,8 @@ type cancelDeps struct {
 	Reconcile func() (fabricengine.OriginReport, error)
 	// PullBolt brings the hub's Bolt level with origin; an unreachable origin wraps boardengine.ErrOwnerOriginUnreachable.
 	PullBolt func() error
-	// Owner returns this machine's name and the slug's effective owner on the local Bolt, empty when none is recorded.
-	Owner func() (machine, owner string, err error)
+	// Owner returns this machine's name, the slug's effective owner on the local Bolt, empty when none is recorded, and the subject `lyx adopt` takes to move it.
+	Owner func() (machine, owner, subject string, err error)
 	// ReadStatus reads batten's status file for the slug.
 	ReadStatus func() (status shedengine.Status, found bool, err error)
 	// BoardStatus reads the status of the slug's entry on the local board.
@@ -86,6 +86,18 @@ type cancelDeps struct {
 	SpawnPush func() error
 	// Notify posts line to the orch.
 	Notify func(line string) error
+	// BeamProject reports whether the slug's board entry is a beam project; nil reads as no beam, and a beam's cancel judges the seams below.
+	BeamProject func() (bool, error)
+	// ReconcileHub runs the hub-scope origin reconcile from the prime, which brings the Bolt level with origin.
+	ReconcileHub func() (fabricengine.OriginReport, error)
+	// LandRefusal refuses while work remains under the beam, read over the Bolt the reconcile left.
+	LandRefusal func() error
+	// LandingHeld reports whether the beam's pawl run holds its entry, read over the Bolt the reconcile left; nil reads as no hold.
+	LandingHeld func() (bool, error)
+	// LandBlockers reads what still works under the beam, over the Bolt the reconcile left.
+	LandBlockers func() (BeamLandBlockers, error)
+	// StopBeam stops the beam's orch and watcher when its pair is here.
+	StopBeam func() error
 }
 
 // cancelReport is what one cancel did, or with EndOnly what it ended before stopping.
@@ -120,6 +132,8 @@ type cancelReport struct {
 	EndOnly bool
 	// WayForward names the step that follows the cancel, empty when none does.
 	WayForward string
+	// Warnings lists what failed after the run was ended and so did not stop the cancel.
+	Warnings []string
 
 	// hold is what endRunPhase leaves held for the rest of the cancel; nil once the phase refused.
 	hold *cancelHold
@@ -223,6 +237,9 @@ func endRunPhase(ctx context.Context, slug string, remove bool, rerun string, de
 	if err != nil {
 		return report, probeRefusal("the pause gate", slug, rerun, err)
 	}
+	if err := refuseBeamCancel(slug, rerun, deps); err != nil {
+		return report, err
+	}
 
 	endOnly, err := judgeOrigin(slug, rerun, deps)
 	if err != nil {
@@ -310,8 +327,92 @@ func endRunPhase(ctx context.Context, slug string, remove bool, rerun string, de
 		logger.Warn("battencli: origin was unreachable, so the cancel only ended the run's processes", "slug", slug)
 		return report, nil
 	}
+	stopBeamOrch(&report, deps)
 	report.pairKept = parts.Any() && !remove
 	return report, nil
+}
+
+// stopBeamOrch stops the orch and watcher of a beam project once its run is ended, which a task has none of.
+// The run is already ended, so a failure only warns on the report.
+func stopBeamOrch(report *cancelReport, deps cancelDeps) {
+	beam, err := isBeamProject(deps)
+	if err == nil && beam {
+		err = deps.StopBeam()
+	}
+	if err != nil {
+		logger.Warn("battencli: could not stop the beam's orch after the cancel ended its run", "slug", report.Slug, "cause", err)
+		report.Warnings = append(report.Warnings, fmt.Sprintf("the beam's orch was not stopped: %v", err))
+	}
+}
+
+// isBeamProject reports whether the slug's board entry is a beam project; a receiver with no BeamProject seam reads as none.
+func isBeamProject(deps cancelDeps) (bool, error) {
+	if deps.BeamProject == nil {
+		return false, nil
+	}
+	return deps.BeamProject()
+}
+
+// refuseBeamCancel refuses the cancel of a beam project while work remains under it, before the cancel marker is taken or anything is ended.
+// It runs the hub-scope origin reconcile first, so the members are read over the Bolt origin holds; an error or an unreachable origin refuses with the reconcile's way forward.
+// While the beam's pawl run does not hold its entry the refusal is the landing refusal's, which names each member to land or cancel;
+// once it holds, a member's landing is refused, so each blocker is worded as a land halt words it: the cancel in the beam's parent worktree, then the move off the beam, and never `lyx batten run`.
+// A task never reaches the reconcile or the beam seams.
+func refuseBeamCancel(slug, rerun string, deps cancelDeps) error {
+	beam, err := isBeamProject(deps)
+	if err != nil {
+		return probeRefusal("the board entry", slug, rerun, err)
+	}
+	if !beam {
+		return nil
+	}
+	report, err := deps.ReconcileHub()
+	if err != nil {
+		return fmt.Errorf("battencli: the origin reconcile of the hub failed: %w; way forward: fix the cause it names, then run %s again", err, rerun)
+	}
+	if report.Unreachable {
+		return fmt.Errorf("origin was unreachable, so the members of the beam %s could not be read against it; way forward: run %s once origin answers", slug, rerun)
+	}
+
+	refusal := deps.LandRefusal()
+	if refusal == nil {
+		return nil
+	}
+	held := false
+	if deps.LandingHeld != nil {
+		if held, err = deps.LandingHeld(); err != nil {
+			return probeRefusal("the beam's landing hold", slug, rerun, err)
+		}
+	}
+	if !held {
+		return fmt.Errorf("%w; then run %s again", refusal, rerun)
+	}
+	blockers, err := deps.LandBlockers()
+	if err != nil {
+		return probeRefusal("the members of the beam", slug, rerun, err)
+	}
+	if blockers.Empty() {
+		return nil
+	}
+	return heldBeamCancelRefusal(slug, rerun, blockers)
+}
+
+// heldBeamCancelRefusal words the refusal of a beam's cancel while its pawl run holds its entry: every blocker with the step that ends it, then the cancel's re-run.
+// A member with a pair or a run in flight is cancelled in the beam's parent worktree and then moved off the beam, since the cancel leaves a draft member, which still blocks the landing; a member with no run status is moved alone.
+func heldBeamCancelRefusal(slug, rerun string, blockers BeamLandBlockers) error {
+	moveOff := "move its `project` off the beam with `lyx board upsert`"
+	var ways []string
+	for _, member := range blockers.Members {
+		if member.HasPair || member.Running {
+			ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam: end it with `lyx batten cancel %s --remove`, run in the beam's parent worktree, then %s, since the cancel leaves a `draft` member, which still blocks the landing", member.Slug, member.Slug, moveOff))
+			continue
+		}
+		ways = append(ways, fmt.Sprintf("the open entry %s is a member of the beam with no run status: %s", member.Slug, moveOff))
+	}
+	for _, pair := range blockers.ChildPairs {
+		ways = append(ways, fmt.Sprintf("the pair %s was forked from the beam: end it with `lyx batten cancel %s --remove`, run in the beam's parent worktree", pair, pair))
+	}
+	return fmt.Errorf("battencli: the beam %s cannot be cancelled while work remains under it; way forward: %s; then run %s again", slug, strings.Join(ways, "; "), rerun)
 }
 
 // clearRunPhase is the second half of a cancel: it removes the pair and its task branch when remove is set, removes the run's records, clears the board claim, lifts the slug's own pauses and spawns the records push.
@@ -382,12 +483,12 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 	}
 
 	if endOnly || !present {
-		machine, owner, err := deps.Owner()
+		machine, owner, subject, err := deps.Owner()
 		if err != nil {
 			return false, probeRefusal("the slug's owner", slug, rerun, err)
 		}
 		if owner != "" && owner != machine {
-			return false, cancelOwnedElsewhere(slug, owner)
+			return false, cancelOwnedElsewhere(slug, owner, subject)
 		}
 	}
 	if endOnly {
@@ -400,7 +501,7 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 		}
 		switch entry.State {
 		case fabricengine.EntryOwnedElsewhere:
-			return false, cancelOwnedElsewhere(slug, entry.Owner)
+			return false, cancelOwnedElsewhere(slug, entry.Owner, entry.AdoptSubject)
 		case fabricengine.EntryStopped:
 			if stoppedOnlyByAnchor(slug, report.Branches) {
 				break
@@ -445,8 +546,9 @@ func stoppedOnlyByAnchor(slug string, branches []fabricengine.BranchOutcome) boo
 }
 
 // cancelOwnedElsewhere words the refusal of a cancel on a machine that does not own the slug.
-func cancelOwnedElsewhere(slug, owner string) error {
-	return fmt.Errorf("%s is owned by machine %s; way forward: run \"lyx adopt %s\" on this machine first, or \"lyx batten cancel %s\" on %s", slug, owner, slug, slug, owner)
+// The way forward names the adopt of subject, the beam or `root` that takes the slug over, the slug when subject is empty.
+func cancelOwnedElsewhere(slug, owner, subject string) error {
+	return fmt.Errorf("%s is owned by machine %s; way forward: run \"lyx adopt %s\" on this machine first, or \"lyx batten cancel %s\" on %s", slug, owner, subjectOrSlug(subject, slug), slug, owner)
 }
 
 // refuseNothingLeft refuses a cancel when no record, claim, pair part, session, process or marker of the slug is left, and for a task branch left alone when remove is not set.

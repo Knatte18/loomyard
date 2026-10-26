@@ -50,7 +50,7 @@ func readyToStart(task TaskView, here string, covered bool) bool {
 
 // startReady starts each ready task of the local board while fewer than max_runs runs it drives are in flight.
 // Starting is the run's first pass, a full pass, which claims the task as batten does; a slug with a pass in flight is never started twice.
-// The runs counted are the ones listed for this tick, halted ones included and done ones and ones recorded owned elsewhere not, plus first passes that have not yet left a status file.
+// The runs counted are the ones listed for this tick, halted ones included and done ones, ones recorded owned elsewhere and pawl runs without their landing hold not, plus first passes that have not yet left a status file.
 // A task whose backoff has not run out waits, unless its entry changed since the refusal.
 func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 	cfg, err := d.deps.LoadConfig()
@@ -118,11 +118,11 @@ func (d *daemon) runsInFlight(current State) int {
 	return count
 }
 
-// slotsTaken counts the runs of runs that take a slot under max_runs: every one the record does not mark owned elsewhere.
+// slotsTaken counts the runs of runs that take a slot under max_runs: every one the record does not mark owned elsewhere and that is not a pawl run without its landing hold.
 func slotsTaken(runs []RunView, record State) int {
 	count := 0
 	for _, run := range runs {
-		if !record.Runs[run.Slug].OwnedElsewhere {
+		if !record.Runs[run.Slug].OwnedElsewhere && !run.NoSlot {
 			count++
 		}
 	}

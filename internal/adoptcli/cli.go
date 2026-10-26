@@ -16,40 +16,40 @@ import (
 func Command() *cobra.Command {
 	var req request
 	cmd := &cobra.Command{
-		Use:         "adopt [<slug>...]",
-		Short:       "take over tasks, beams or the prime from another machine",
+		Use:         "adopt [<subject>...]",
+		Short:       "take over beam projects, or root, and the runs under them from another machine",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Records this machine as the owner of the named tasks and beams, and of the prime with
---prime, and carries on their runs here. A beam is a project entry whose beam flag is set;
-adopting it moves the beam only, its members keeping their own owners. --all names the
-prime, every task that is not done and has an owner or a run status, and every open beam
-with an owner. It runs from the hub's prime worktree and from any beam.
+		Long: `Records this machine as the owner of each subject named, a beam or the word root, and
+carries on the runs under it here. A beam is a project entry whose beam flag is set: it
+moves with its pair and the runs whose parent is its worktree, and a beam nested in it
+keeps its own owner. root moves the prime and the runs whose parent is the prime. A task
+is never named: it moves with its beam or with root. --all names root and every open
+beam. It runs from the prime and from any beam.
 
 Steps, in order:
-  1. a moving origin reconcile of the hub; a stop on Bolt or the prime's records branch,
-     an unreachable origin or a reconcile error refuses the verb and runs nothing
-  2. an entry whose pair holds local commits origin lacks, or whose pair is live, stops
-     with its branches and both ways forward; --keep-local records the owner over them,
-     --drop-local keeps each local tip under an archive/<slug>/<tip> tag and moves the
-     branches to origin's (refused for a live pair)
-  3. a refusal, before any step writes, of an entry whose parent another machine owns,
-     and of a beam or the prime while a member another machine owns is left out; each
-     names the call that adopts them together
-  4. the pair of a task this machine lacks is added from the prime
-  5. one owner write for every entry not stopped, pushed to origin
-  6. each owner pause of an adopted task is lifted
-  7. each adopted task whose batten run is not done is resumed as a detached first pass;
-     a child halted at Finalize's owner check is resumed in its worktree
-  8. the dobby of the prime and of every beam this machine owns is started when it is not live
-  9. once an owner is recorded, the finalize gate starts detached in the prime; red only reports
+  1. a moving origin reconcile; a stop on Bolt or the prime's records branch, an
+     unreachable origin or a reconcile error refuses the verb and runs nothing
+  2. a beam or run whose pair holds local commits origin lacks, or is live, stops with its
+     branches and both ways forward; --keep-local records the owner over them, --drop-local
+     archives each local tip as archive/<slug>/<tip> and moves the branches to origin's
+     (refused for a live pair); a project one of whose runs stops is held back whole
+  3. the pair of a beam or run this machine lacks is added
+  4. one owner write for every beam not stopped, and for the prime with root
+  5. each owner pause of an adopted beam and of a moved run is lifted
+  6. each moved run not done that this machine now owns is resumed as a detached first
+     pass, a beam's pawl run only when this machine also owns its parent; a child halted
+     at Finalize's owner check is resumed
+  7. the beam steps of the prime with root and of each adopted beam, as "lyx beam start"
+     runs them: its dobby and orch; a beam whose landing holds it gets none
+  8. the finalize gate starts detached in the prime; red only reports
 
-The envelope carries reconcile, mutations and partial, and per slug what happened,
-dobby_warning when a dobby did not start, and suite or suite_warning. A slug's error never
-stops the other slugs.
+The envelope carries reconcile, mutations and partial, per slug what happened and its
+beam_steps, prime_beam_steps, and suite or suite_warning. A slug's error never stops
+the others.
 
 Example:
-  lyx adopt fix-parser
-  lyx adopt --prime
+  lyx adopt payments
+  lyx adopt root
   lyx adopt --all --keep-local`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -91,8 +91,11 @@ Example:
 			if result.PrimeLost != "" {
 				fields["prime_lost_to"] = result.PrimeLost
 			}
-			if result.DobbyWarning != "" {
-				fields["dobby_warning"] = result.DobbyWarning
+			if result.PrimeBeamSteps != nil {
+				fields["prime_beam_steps"] = result.PrimeBeamSteps
+			}
+			if result.PrimeBeamWarning != "" {
+				fields["prime_beam_warning"] = result.PrimeBeamWarning
 			}
 			if result.Suite != nil {
 				fields["suite"] = result.Suite
@@ -108,8 +111,7 @@ Example:
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&req.Prime, "prime", false, "record this machine as the prime's owner")
-	cmd.Flags().BoolVar(&req.All, "all", false, "adopt the prime, every task that is not done and has an owner or a run status, and every open owned beam")
+	cmd.Flags().BoolVar(&req.All, "all", false, "adopt root and every open beam project")
 	cmd.Flags().BoolVar(&req.KeepLocal, "keep-local", false, "record the owner over local commits origin lacks and over a live pair")
 	cmd.Flags().BoolVar(&req.DropLocal, "drop-local", false, "keep each local tip origin lacks under an archive tag and move the branches to origin's")
 	return cmd

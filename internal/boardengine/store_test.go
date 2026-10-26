@@ -344,13 +344,15 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 			name    string
 			fields  map[string]any
 			wantHas []string
+			// wantNot lists the substrings the refusal must not carry.
+			wantNot []string
 		}{
-			{"true on a project", map[string]any{"slug": "grouper", "beam": true}, []string{`"grouper"`, "lyx beam create grouper"}},
-			{"true on a task", map[string]any{"slug": "work", "beam": true}, []string{`"work"`, "lyx beam promote work"}},
-			{"true on a new project", map[string]any{"slug": "fresh", "kind": "project", "beam": true}, []string{`"fresh"`, "lyx beam create fresh"}},
-			{"true on a new task", map[string]any{"slug": "fresh", "kind": "task", "beam": true}, []string{`"fresh"`, "lyx beam promote fresh"}},
-			{"false on a beam", map[string]any{"slug": "beamer", "beam": false}, []string{`"beamer"`, "stays set for the beam's life", "lyx beam land beamer"}},
-			{"not a boolean", map[string]any{"slug": "work", "beam": "yes"}, []string{`"work"`, "true or false"}},
+			{"true on a project", map[string]any{"slug": "grouper", "beam": true}, []string{`"grouper"`, "lyx beam create grouper"}, nil},
+			{"true on a task", map[string]any{"slug": "work", "beam": true}, []string{`"work"`, "lyx board upsert", "lyx beam create <that slug>"}, []string{"lyx beam promote", "lyx beam create work"}},
+			{"true on a new project", map[string]any{"slug": "fresh", "kind": "project", "beam": true}, []string{`"fresh"`, "lyx beam create fresh"}, nil},
+			{"true on a new task", map[string]any{"slug": "fresh", "kind": "task", "beam": true}, []string{`"fresh"`, "lyx board upsert", "lyx beam create <that slug>"}, []string{"lyx beam promote", "lyx beam create fresh"}},
+			{"false on a beam", map[string]any{"slug": "beamer", "beam": false}, []string{`"beamer"`, "stays set for the beam's life", "lyx beam land beamer"}, nil},
+			{"not a boolean", map[string]any{"slug": "work", "beam": "yes"}, []string{`"work"`, "true or false"}, nil},
 		}
 		for _, tt := range refused {
 			_, err := s.UpsertTask(tt.fields)
@@ -361,6 +363,11 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 			for _, want := range tt.wantHas {
 				if !stringContains(err.Error(), want) {
 					t.Errorf("%s: error = %q; want it to contain %q", tt.name, err, want)
+				}
+			}
+			for _, unwanted := range tt.wantNot {
+				if stringContains(err.Error(), unwanted) {
+					t.Errorf("%s: error = %q; want it not to contain %q", tt.name, err, unwanted)
 				}
 			}
 		}
@@ -998,12 +1005,19 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 		t.Errorf("listed parent beams = %v; want %v", parentBeams, want)
 	}
 
-	// The owner a task lists is its recorded one, else the prime's; a note lists none, and a parent resolver that fails empties the cell without failing the list.
+	// The owner a task lists is its beam's, else the prime's, whatever owner the task itself carries; a note lists none, and a parent resolver that fails empties the cell of an entry that reads its parent's without failing the list.
 	dir := t.TempDir()
 	owned := `{"version":1,"prime_owner":"neve","entries":[` +
-		`{"id":0,"slug":"owned","title":"O","kind":"task","labels":["bug"],"owner_machine":"box"},` +
+		`{"id":0,"slug":"owned","title":"O","kind":"task","labels":["bug"],"owner_machine":"stray","project":"beamer"},` +
 		`{"id":1,"slug":"plain","title":"P","kind":"task","labels":["bug"]},` +
-		`{"id":2,"slug":"idea","title":"I","kind":"note","labels":["bug"]}]}`
+		`{"id":2,"slug":"idea","title":"I","kind":"note","labels":["bug"]},` +
+		`{"id":3,"slug":"beamer","title":"B","kind":"project","labels":["bug"],"beam":true,"owner_machine":"box"}]}`
+	parentOfBeam := func(slug string) (string, error) {
+		if slug == "owned" {
+			return "beamer", nil
+		}
+		return "", nil
+	}
 	if err := os.WriteFile(filepath.Join(dir, "board.json"), []byte(owned), 0o644); err != nil {
 		t.Fatalf("write board.json: %v", err)
 	}
@@ -1014,11 +1028,12 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 		}
 		return owners
 	}
-	withPrime := boardengine.NewStore(dir)
-	if err := withPrime.Load(); err != nil {
-		t.Fatalf("Load() error = %v", err)
+	withPrime := boardengine.New(boardengine.Config{Path: dir, ParentOf: parentOfBeam})
+	listedWithPrime, err := withPrime.ListTasksBrief(nil)
+	if err != nil {
+		t.Fatalf("ListTasksBrief() error = %v; want nil", err)
 	}
-	if got, want := ownersOf(withPrime.ListTasksBrief(nil)), map[string]string{"owned": "box", "plain": "neve", "idea": ""}; !maps.Equal(got, want) {
+	if got, want := ownersOf(listedWithPrime), map[string]string{"owned": "box", "plain": "neve", "idea": "", "beamer": "box"}; !maps.Equal(got, want) {
 		t.Errorf("listed owners = %v; want %v", got, want)
 	}
 	failing := boardengine.New(boardengine.Config{Path: dir, ParentOf: func(string) (string, error) { return "", errors.New("origin record unreadable") }})
@@ -1026,7 +1041,7 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTasksBrief() with a failing parent resolver error = %v; want nil", err)
 	}
-	if got, want := ownersOf(listed), map[string]string{"owned": "box", "plain": "", "idea": ""}; !maps.Equal(got, want) {
+	if got, want := ownersOf(listed), map[string]string{"owned": "", "plain": "", "idea": "", "beamer": "box"}; !maps.Equal(got, want) {
 		t.Errorf("listed owners with a failing parent resolver = %v; want %v", got, want)
 	}
 }
@@ -1414,6 +1429,20 @@ func TestLoad(t *testing.T) {
 			},
 			save:     true,
 			wantKeys: [][3]string{{"t", "priority", ""}, {"n", "priority", `"low"`}},
+		},
+		{
+			name: "a task's and a grouping project's recorded owner is dropped and a beam project's kept",
+			body: `{"version":1,"entries":[` +
+				`{"id":0,"slug":"t","kind":"task","owner_machine":"box"},` +
+				`{"id":1,"slug":"g","kind":"project","owner_machine":"box"},` +
+				`{"id":2,"slug":"b","kind":"project","beam":true,"owner_machine":"box"}]}`,
+			check: func(t *testing.T, tasks []boardengine.Task) {
+				if len(tasks) != 3 || tasks[0].OwnerMachine != "" || tasks[1].OwnerMachine != "" || tasks[2].OwnerMachine != "box" {
+					t.Errorf("loaded %+v; want no owner on the task and the grouping project and box on the beam", tasks)
+				}
+			},
+			save:     true,
+			wantKeys: [][3]string{{"t", "owner_machine", ""}, {"g", "owner_machine", ""}, {"b", "owner_machine", `"box"`}},
 		},
 		{
 			name: "a kind with no labels key becomes an empty labels list",

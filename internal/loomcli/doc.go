@@ -5,10 +5,17 @@
 // A `blocked` or `failed` halt, and an interrupted stop, write their Go halt note and spawn no reflection, so no stop holds the driver lock for a friction session and `lyx loom resume` never waits on one; the note waits for the run's Friction-Reflect row, which reflects every note in the friction directory.
 // An interrupted stop's note carries the `interrupted-stop` anomaly kind, never `producer-hard-failure`, with the stop's cause as its reason and the in-flight step's trace file where the stop knows it.
 //
-// A run seeded with the recipe `beam` is a beam's landing run, batten's Seed-Child seeds it in the beam's pair.
-// Its shed has two rows, Beam-Describe and Finalize, and no reroute edge, no plan and no review segment.
+// A run seeded with the recipe `pawl` is a beam's life, batten's Seed-Child seeds it in the beam's pair.
+// Its shed reads Beam-Up, Beam-Await, Parent-Align, the Code-Review perch, Beam-Describe, Finalize and Beam-Down, with no plan and no reroute edge.
+// wire fills `Env.Pawl` for it through `pawlDeps`: the run's seed id is the seed's start time, the status is written on the beam's project entry through the board, and Beam-Up's one step is `orchcli.BeamUp` with no prepare, since the run already judged origin.
+// The beam's dobby is stopped through `runproc.EndRole` by its `RoleDobby` record, and restarted through `dobbyengine.EnsureLive` naming the beam alone.
+// Beam-Await's re-check reads `battencli.ReadBeamLandBlockers` and `battencli.BeamLandRefusal` with the beam's owner and its parent's owner, and words each failure as `pawlRecheckLines` does, naming `lyx adopt <beam>` or the parent's adopt subject, `root` for the prime.
+// Its snapshot is the beam project entry's, written and committed because the Code-Review perch reads its answer key from the committed tree.
+// A running shed also watches the land request's directory, so a request wakes Beam-Await at once.
 // Beam-Describe writes the change description from the beam's board entry and the commits the beam adds over the parent branch its pair records.
+// The perch's budget is `loom.yaml`'s Code-Review one, and a budget of 0 turns Parent-Align's review off as for a loom run.
 // Its Finalize reads the hub's `finalize` gate key over the whole merged tree, lets a large merge go on to the gate in place of a reroute, and halts for the orch on a fixer that is spent or over its caps.
+// A land check backstops the re-check: Finalize halts, behind its own prefix, while an open member or a pair forked from the beam still works, reading `pawlLandBlockers` and naming the beam's parent worktree as where a cancel runs.
 //
 // # Start
 //
@@ -33,7 +40,7 @@
 // a landed resume or a fresh spawn removes the file.
 // A live loom driver over a run halted at a hand-back (awaiting, blocked, paused or failed) that has not yet written its park marker is still writing its stop report, so start refuses with the kind `driver_not_parked`;
 // a live driver over a running run is left working.
-// Before anything else, start and resume refuse a run whose status file exists and that another machine owns, with the kind `owned_elsewhere` and the owner's name, naming `lyx adopt <slug>`;
+// Before anything else, start and resume refuse a run whose status file exists and that another machine owns, with the kind `owned_elsewhere` and the owner's name, naming `lyx adopt <subject>`, the beam or `root` the owner verdict carries;
 // the owner is judged by a judge-only run-scope origin reconcile from the hub's prime, or from the local board when origin is unreachable, and nothing is written.
 // Before spawning or resuming a driver, start refuses with the kind `merge_in_progress` over an unfinished merge, naming the conflicted paths and the remedy, the fabric verbs for a fabric merge and git for one fabric did not start.
 // The exception is a run whose current producer is Parent-Align or Finalize, which goes through over a parked fabric merge-in of its own parent branch, since that row aborts and redoes it.

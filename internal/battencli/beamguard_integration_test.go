@@ -112,6 +112,41 @@ func TestResolveBattenPrime(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("BeamAtBeamAwaitIsAdmittedAndFromParentAlignItsLandingHoldsIt", func(t *testing.T) {
+		board, err := boardengine.OpenHub(h.Path)
+		if err != nil {
+			t.Fatalf("open the hub board: %v", err)
+		}
+		if err := board.SetStatus("b", nil); err != nil {
+			t.Fatalf("release the beam's entry: %v", err)
+		}
+		if _, err := board.UpsertTask(map[string]any{"slug": "b", "kind": "project", "recipe": boardengine.ProjectRecipe}); err != nil {
+			t.Fatalf("make the beam's entry a project: %v", err)
+		}
+		// Only the owner setter makes a project a beam.
+		if _, err := boardengine.SetOwners(h.BoardDir(), boardengine.OwnerRequest{Machine: "box", Slugs: []string{"b"}, Beam: true}); err != nil {
+			t.Fatalf("make the beam's project a beam: %v", err)
+		}
+		awaiting := boardengine.RunStatus("running", "Beam-Await")
+		if err := board.SetStatus("b", &awaiting); err != nil {
+			t.Fatalf("stand the beam's run at Beam-Await: %v", err)
+		}
+
+		got, err := ResolveBattenPrime(resolvePair(t, h, "b"))
+		if err != nil || got.WorktreeName != primeName {
+			t.Fatalf("ResolveBattenPrime at Beam-Await = %v, %v; want the prime %q admitted", got, err, primeName)
+		}
+
+		aligning := boardengine.RunStatus("running", "Parent-Align")
+		if err := board.SetStatus("b", &aligning); err != nil {
+			t.Fatalf("stand the beam's run at Parent-Align: %v", err)
+		}
+		_, err = ResolveBattenPrime(resolvePair(t, h, "b"))
+		if err == nil || !strings.Contains(err.Error(), "being landed") || !strings.Contains(err.Error(), aligning) {
+			t.Errorf("ResolveBattenPrime at Parent-Align = %v; want the landing refusal naming %q", err, aligning)
+		}
+	})
 }
 
 func TestVerbs_RunFromABeam(t *testing.T) {

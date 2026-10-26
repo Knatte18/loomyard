@@ -31,21 +31,12 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 	}
 
 	// made stands for a beam made by create's steps.
-	// prom stands for a task made a beam by promote's steps.
 	// gone stands for a beam whose origin record is lost.
 	// c stands for a sub-beam of the beam outer, which holds the grouping project g and its task t.
 	for _, slug := range []string{"made", "outer", "gone"} {
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true, Beam: true})
 	}
 	hubforge.AddPairWith(t, h, "c", fabricengine.AddOptions{SkipPush: true, Beam: true, Parent: "outer"})
-	hubforge.AddPairWith(t, h, "prom", fabricengine.AddOptions{SkipPush: true})
-	rec := fabricengine.NewMutations(h.Path)
-	if _, err := fabricengine.MarkBeam(rec, h.Location, "prom"); err != nil {
-		t.Fatalf("mark prom: %v", err)
-	}
-	if _, err := fabricengine.ResetRecordsToParent(rec, h.Location, "prom"); err != nil {
-		t.Fatalf("reset the records of prom: %v", err)
-	}
 	if err := os.Remove(fabricengine.OriginRecordPathFor(h.Location, "gone")); err != nil {
 		t.Fatalf("lose the origin record of gone: %v", err)
 	}
@@ -63,7 +54,6 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 		{"slug": "c", "kind": "project", "project": "outer"},
 		{"slug": "g", "kind": "project", "project": "outer"},
 		{"slug": "t", "kind": "task", "project": "g"},
-		{"slug": "prom", "kind": "task"},
 	}
 	for _, entry := range entries {
 		entry["title"] = entry["slug"]
@@ -78,13 +68,9 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 			}
 		}
 	}
-	for _, request := range []boardengine.OwnerRequest{
-		{Machine: machine, Slugs: []string{"made", "outer", "gone", "c"}, Beam: true},
-		{Machine: machine, Slugs: []string{"prom"}, Beam: true, ToProject: true},
-	} {
-		if _, err := boardengine.SetOwners(h.BoardDir(), request); err != nil {
-			t.Fatalf("record the beams %v: %v", request.Slugs, err)
-		}
+	beams := boardengine.OwnerRequest{Machine: machine, Slugs: []string{"made", "outer", "gone", "c"}, Beam: true}
+	if _, err := boardengine.SetOwners(h.BoardDir(), beams); err != nil {
+		t.Fatalf("record the beams %v: %v", beams.Slugs, err)
 	}
 
 	readme := filepath.Join(h.PrimeWorktree(), "README")
@@ -96,7 +82,7 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, slug := range []string{"made", "prom", "c"} {
+	for _, slug := range []string{"made", "c"} {
 		t.Run(slug+"PassesTheGuardWithThePrimeDirtyAndReachesTheSkip", func(t *testing.T) {
 			if err := hubStartGuard(h.Location, slug).refuse(slug, "run", shedengine.Status{}, false, false); err != nil {
 				t.Fatalf("start guard for %s = %v; want it passed", slug, err)

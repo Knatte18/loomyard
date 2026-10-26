@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
@@ -40,6 +41,21 @@ var intentionallyNil = map[string]string{
 	"BeamDescribe.Entry":          "loom-only seam, batten runs no beam description row",
 	"BeamDescribe.CommitSubjects": "loom-only seam, batten runs no beam description row",
 	"BeamDescribe.Commit":         "loom-only seam, batten runs no beam description row",
+	"Pawl.SetStatus":              "loom-only seam, batten runs no pawl row",
+	"Pawl.EntryProducer":          "loom-only seam, batten runs no pawl row",
+	"Pawl.OwnedElsewhere":         "loom-only seam, batten runs no pawl row",
+	"Pawl.MarkBeam":               "loom-only seam, batten runs no pawl row",
+	"Pawl.SpawnPush":              "loom-only seam, batten runs no pawl row",
+	"Pawl.RegenerateWorkspace":    "loom-only seam, batten runs no pawl row",
+	"Pawl.StopDobby":              "loom-only seam, batten runs no pawl row",
+	"Pawl.StartDobby":             "loom-only seam, batten runs no pawl row",
+	"Pawl.DobbyLive":              "loom-only seam, batten runs no pawl row",
+	"Pawl.Recheck":                "loom-only seam, batten runs no pawl row",
+	"Pawl.WriteSnapshot":          "loom-only seam, batten runs no pawl row",
+	"Pawl.Notify":                 "loom-only seam, batten runs no pawl row",
+	"Pawl.Down":                   "loom-only seam, batten runs no pawl row",
+	"Pawl.Now":                    "loom-only seam, batten runs no pawl row",
+	"Pawl.Sleep":                  "loom-only seam, batten runs no pawl row",
 	"Seats":                       "loom-only seam, batten runs no seat table",
 	"Models":                      "loom-only seam, batten resolves no seat model",
 	"WebsterRun":                  "loom-only seam, batten runs no webster",
@@ -271,7 +287,7 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	}
 }
 
-// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, with the session state of its stamped turn end, skips a run whose process has ended, and reports a live wait marker or a live parent lock wait record, ignoring one whose writer is dead.
+// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto battenshed's type, with the session state of its stamped turn end, skips a run whose process has ended, and reports a live wait marker, a live parent lock wait record or a child running at Beam-Await, ignoring a lock wait record whose writer is dead.
 // It points HOME at a session registry through t.Setenv, so it does not run in parallel.
 func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	home := t.TempDir()
@@ -390,10 +406,35 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || !waitLive {
 		t.Errorf("readAgentActivity() waitLive = %v, error = %v with a live lock wait record; want true, nil", waitLive, err)
 	}
+
+	if err := os.Remove(lockWaitPath); err != nil {
+		t.Fatal(err)
+	}
+	childStatusPath := shedrun.StatusFile(taskLocation, shedrun.SelfRunID)
+	if err := os.MkdirAll(filepath.Dir(childStatusPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		name     string
+		status   string
+		wantLive bool
+	}{
+		{"RunningAtBeamAwaitWithNoAgentIsAWait", `{"current_producer":"Beam-Await","state":"running"}`, true},
+		{"RunningAtParentAlignIsNoWait", `{"current_producer":"Parent-Align","state":"running"}`, false},
+		{"BlockedAtBeamAwaitIsNoWait", `{"current_producer":"Beam-Await","state":"blocked"}`, false},
+		{"UnreadableStatusIsNoWait", `{"current_producer":`, false},
+	} {
+		if err := os.WriteFile(childStatusPath, []byte(step.status), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, waitLive, err := readAgentActivity(taskLocation); err != nil || waitLive != step.wantLive {
+			t.Errorf("readAgentActivity() waitLive = %v, error = %v for %s; want %v, nil", waitLive, err, step.name, step.wantLive)
+		}
+	}
 }
 
-// TestWire_CreateWorktreeClaimsTheBoardEntry asserts the Worktree-Create closure claims the board entry with this machine as its owner before it touches the pair:
-// a setter error and an entry another machine owns each fail the row naming their cause, an absent entry passes the claim with nothing written, and the real setter records the owner beside the claim status.
+// TestWire_CreateWorktreeClaimsTheBoardEntry asserts the Worktree-Create closure claims the board entry for this machine before it touches the pair:
+// a setter error and an entry another machine owns each fail the row naming their cause, an absent entry passes the claim with nothing written, and the real setter records the claim status and no owner.
 // Every row that passes the claim fails the closure on the absent fabric config, so no pair is created.
 // It sets BOARD_SKIP_GIT and BOARD_SKIP_PUSH, process-global, so it does not call t.Parallel.
 func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
@@ -415,15 +456,16 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 	}
 	tests := []struct {
 		name string
+		// beam is the beam project the task is a member of on the owner seams, which a board write cannot seed; empty reads a root task.
+		beam string
 		// set replaces the owner setter; nil keeps the real one over the hub's board.
 		set func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error)
 		// landing replaces the beam landing seams; nil keeps the real ones, which read the seeded task.
 		landing *landingSeams
 		// wantErr lists substrings the row's error carries; an empty list wants the absent fabric config, the row's own failure.
 		wantErr []string
-		// wantStatus and wantOwner are the seeded entry's status and owner after the call; empty skips the read.
+		// wantStatus is the seeded entry's status after the call, whose recorded owner stays empty; empty skips the read.
 		wantStatus string
-		wantOwner  string
 	}{
 		{
 			name: "SetterErrorFailsTheRow",
@@ -437,7 +479,15 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 			set: func(boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
 				return boardengine.OwnerWrite{Lost: map[string]string{slug: "there"}}, nil
 			},
-			wantErr: []string{`"there"`, "lyx adopt " + slug},
+			wantErr: []string{`"there"`, "`lyx adopt root`"},
+		},
+		{
+			name: "EntryOwnedElsewhereInABeamNamesTheBeam",
+			beam: "some-beam",
+			set: func(boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
+				return boardengine.OwnerWrite{Lost: map[string]string{slug: "there"}}, nil
+			},
+			wantErr: []string{`"there"`, "`lyx adopt some-beam`"},
 		},
 		{
 			name: "AbsentEntryPassesTheClaimWithNothingWritten",
@@ -449,36 +499,17 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 			},
 		},
 		{
-			name: "BeamProjectWithAMemberAddedAfterTheGuardIsRefusedAfterTheClaim",
-			set: func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
-				if req.Claim == "" {
-					return boardengine.OwnerWrite{}, errors.New("the refusal ran before the claim")
-				}
-				return boardengine.OwnerWrite{}, nil
-			},
-			landing: &landingSeams{
-				Project: func() (bool, error) { return true, nil },
-				Refusal: func() error {
-					return errors.New("the open entry late-member is a member of the beam: end it with `lyx batten cancel late-member --remove`")
-				},
-			},
-			wantErr: []string{"late-member", "lyx batten cancel late-member"},
-		},
-		{
-			name: "BeamProjectWithNoPairStopsWithThePreconditionAndAddsNothing",
+			name: "BeamProjectWithNoPairReachesTheCreateAndNotAPrecondition",
 			set: func(boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {
 				return boardengine.OwnerWrite{}, nil
 			},
 			landing: &landingSeams{
 				Project: func() (bool, error) { return true, nil },
-				Refusal: func() error { return nil },
 			},
-			wantErr: []string{"the beam " + slug + " has no pair on this machine", "lyx beam create " + slug, "lyx adopt " + slug},
 		},
 		{
-			name:       "RealSetterRecordsTheOwnerBesideTheClaim",
+			name:       "RealSetterRecordsTheClaimStatusAlone",
 			wantStatus: "running · Worktree-Create",
-			wantOwner:  machine,
 		},
 	}
 	for _, tt := range tests {
@@ -491,6 +522,15 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 			}
 			c.owner = hubOwnerSeams(location)
 			c.owner.Machine = func() (string, error) { return machine, nil }
+			if tt.beam != "" {
+				c.owner.Read = func() (boardengine.Owners, error) {
+					return boardengine.Owners{Entries: map[string]boardengine.OwnerEntry{
+						tt.beam: {IsProject: true, Beam: true},
+						slug:    {IsTask: true},
+					}}, nil
+				}
+				c.owner.ParentOf = func(string) (string, error) { return tt.beam, nil }
+			}
 			if tt.set != nil {
 				c.owner.Set = tt.set
 			}
@@ -520,8 +560,8 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 				t.Fatalf("OpenHub: %v", openErr)
 			}
 			task, found, getErr := board.GetTask(slug)
-			if getErr != nil || !found || task.Status == nil || *task.Status != tt.wantStatus || task.OwnerMachine != tt.wantOwner {
-				t.Errorf("entry = %+v, found %v, err %v; want status %q owned by %q", task, found, getErr, tt.wantStatus, tt.wantOwner)
+			if getErr != nil || !found || task.Status == nil || *task.Status != tt.wantStatus || task.OwnerMachine != "" {
+				t.Errorf("entry = %+v, found %v, err %v; want status %q and no recorded owner", task, found, getErr, tt.wantStatus)
 			}
 		})
 	}

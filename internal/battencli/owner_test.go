@@ -44,7 +44,14 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 				},
 			}},
 			parent:     "b",
-			wantErrors: []string{`"there"`, "lyx adopt " + slug},
+			wantErrors: []string{`"there"`, "`lyx adopt b`"},
+			wantOwner:  "there",
+			wantPulls:  1,
+		},
+		{
+			name:       "RootTaskOwnedElsewhereNamesRoot",
+			fake:       fakeOwners{machine: "here", owners: boardengine.Owners{Prime: "there", Entries: map[string]boardengine.OwnerEntry{slug: {IsTask: true}}}},
+			wantErrors: []string{`"there"`, "`lyx adopt root`"},
 			wantOwner:  "there",
 			wantPulls:  1,
 		},
@@ -58,7 +65,7 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 		{
 			name:       "EntryOwnedElsewhereRefuses",
 			fake:       fakeOwners{machine: "here", owners: ownedBy("here", "there", false)},
-			wantErrors: []string{`"there"`, "lyx adopt " + slug},
+			wantErrors: []string{`"there"`, "`lyx adopt some-beam`"},
 			wantOwner:  "there",
 			wantPulls:  1,
 		},
@@ -98,7 +105,7 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 		{
 			name:       "LostPrimeClaimReadsTheOtherMachinesClaim",
 			fake:       fakeOwners{machine: "here", owners: ownedBy("", "", false), primeLostTo: "there"},
-			wantErrors: []string{`"there"`, "lyx adopt " + slug},
+			wantErrors: []string{`"there"`, "`lyx adopt some-beam`"},
 			wantOwner:  "there",
 			wantPulls:  1,
 			wantSets:   []string{"prime"},
@@ -168,10 +175,6 @@ func TestPassExitCode(t *testing.T) {
 		want int
 	}{
 		{"ResumeVerdictOwnedElsewhere", func() error { return resumeRefusal(slug, elsewhereReport) }, dobbyengine.PassExitOwnedElsewhere},
-		{"LostResumeOwnerClaim", func() error {
-			fake := fakeOwners{machine: "here", owners: ownedBy("here", "", true), lost: map[string]string{slug: "there"}}
-			return (&battenCLI{slug: slug, owner: fake.seams()}).resumeOwnerClaim()
-		}, dobbyengine.PassExitOwnedElsewhere},
 		{"StartOwnedElsewhere", func() error {
 			fake := fakeOwners{machine: "here", owners: ownedBy("here", "there", false)}
 			return (&battenCLI{slug: slug, owner: fake.seams()}).refuseStartOwnedElsewhere()
@@ -180,7 +183,7 @@ func TestPassExitCode(t *testing.T) {
 			fake := fakeOwners{machine: "here", owners: ownedBy("here", "there", true)}
 			return (&battenCLI{slug: slug, owner: fake.seams()}).refuseResumeUnreachable()
 		}, dobbyengine.PassExitOwnedElsewhere},
-		{"WrappedOwnedElsewhere", func() error { return fmt.Errorf("outer: %w", ownedElsewhereRefusal(slug, "there")) }, dobbyengine.PassExitOwnedElsewhere},
+		{"WrappedOwnedElsewhere", func() error { return fmt.Errorf("outer: %w", ownedElsewhereFor(slug, "there", "some-beam")) }, dobbyengine.PassExitOwnedElsewhere},
 		{"Covered", func() error { return &coveredRefusal{err: errors.New("pause: held")} }, dobbyengine.PassExitCovered},
 		{"ContinueRefused", func() error { return fmt.Errorf("outer: %w", &continueRefusal{reason: "no state", slug: slug}) }, dobbyengine.PassExitContinueRefused},
 		{"PlainError", func() error { return errors.New("boom") }, 1},

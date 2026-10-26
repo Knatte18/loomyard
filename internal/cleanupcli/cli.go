@@ -39,7 +39,7 @@ Segments, in order, each calling its owner's own cleanup in-process:
   batten   done runs' records and scratch, and aged orphan scratch (lyx batten cleanup);
            push_spawned says its records push was started, not that origin took it
   board    done board entries (lyx board prune)
-  orch     every handoff but the last one the orchestrator cycled from (lyx orch cleanup)
+  orch     every handoff but the last one the orchestrator cycled from
   scratch  old children of the prime's .scratch/ that no open board entry cites
   logs     trace files past the retention bounds, in the prime and the board
   temp     temp directories left by dead lyx processes

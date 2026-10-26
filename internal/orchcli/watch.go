@@ -4,14 +4,18 @@ package orchcli
 
 import (
 	"errors"
+	"fmt"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/lyxcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -43,6 +47,36 @@ func (c *orchCLI) orchAgentName() (string, error) {
 	return agentname.Format(shortname, slug, agentname.RoleOrch)
 }
 
+// beamOwnerElsewhere reads the owner of the worktree location on the hub's local board, the prime's owner for the prime and a beam's effective owner through hubgeom.ParentOf for a beam.
+// elsewhere is true when that owner names a machine other than this one; a worktree with no owner recorded is owned by no other machine.
+func beamOwnerElsewhere(location *lyxcwd.Location) (owner string, elsewhere bool, err error) {
+	here, err := machinename.Name()
+	if err != nil {
+		return "", false, fmt.Errorf("orch: read this machine's name: %w", err)
+	}
+	owners, err := boardengine.ReadOwners(fabricengine.BoardDir(location.HubPath))
+	if err != nil {
+		return "", false, fmt.Errorf("orch: read the board's owners: %w", err)
+	}
+	primeName, err := fabricengine.PrimeName(location)
+	if err != nil {
+		return "", false, err
+	}
+	if location.WorktreeName == primeName {
+		owner = owners.Prime
+	} else {
+		prime, err := resolvePrime(location)
+		if err != nil {
+			return "", false, err
+		}
+		owner, err = owners.Effective(location.WorktreeName, func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) })
+		if err != nil {
+			return "", false, fmt.Errorf("orch: resolve the owner of %q: %w", location.WorktreeName, err)
+		}
+	}
+	return owner, boardengine.OwnedElsewhere(owner, here), nil
+}
+
 // watchCmd builds the `watch` subcommand, hidden because start launches it and an operator never needs to.
 func (c *orchCLI) watchCmd() *cobra.Command {
 	return &cobra.Command{
@@ -66,7 +100,7 @@ A second watcher finding the first alive reports already_running and exits.`,
 				return nil
 			}
 			if st.Strand == "" {
-				clihelp.SetExit(cmd.Context(), output.Err(out, "orch: no orchestrator strand is recorded; nothing to watch -- run `lyx orch start` first"))
+				clihelp.SetExit(cmd.Context(), output.Err(out, "orch: no orchestrator strand is recorded; nothing to watch -- run `lyx beam start` first"))
 				return nil
 			}
 
@@ -90,6 +124,10 @@ A second watcher finding the first alive reports already_running and exits.`,
 				return nil
 			}
 			watcher.SetOrchName(orchName)
+			watcher.WatchOwner(orchengine.OwnerWatch{
+				Read: func() (string, bool, error) { return beamOwnerElsewhere(c.location) },
+				Stop: c.strands.RemoveStrand,
+			})
 			watcher.WatchBinary(selfexec.New().Check)
 			runErr := watcher.Run(ctx, time.Sleep)
 

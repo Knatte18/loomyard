@@ -26,6 +26,15 @@
 // the reason names the owners and the `lyx adopt` commands that move them.
 // Parent-Align proceeds on an owned_elsewhere verdict, since the owner check belongs to the landing.
 // A nil seam reads as not past the merge and as the parent owned here, so a Finalize built with no owner seams lands as before.
+//
+// The land check follows the owner checks under the same lock, and a Finalize built with Deps.LandBlockers, a pawl run's, runs it: it reads the open members and the local pairs forked from the beam, and a read error or any blocker halts behind LandHaltPrefix.
+// It is a backstop for an open member the run's earlier re-check missed, such as one a stale board on another machine added.
+// Each way forward is Finalize's own and never the land-it wording of the beam's landing refusal, which the standing landing hold refuses:
+// a forked pair, and a member with a pair or a run in flight, name `lyx batten cancel <slug> --remove` run in Deps.ParentWorktree, or on the machine holding the pair when the run is in flight and its pair is not here, which `lyx batten status <slug>` there shows;
+// a member then names moving its `project` off the beam with `lyx board upsert`, since the cancel leaves it a `draft` member, which still blocks the landing, and a member with no run status names that move alone;
+// every halt ends in `lyx loom resume` in the beam's worktree.
+// A Finalize already past its parent-side merge, an empty list and a nil seam land as before.
+// Bound: a member that lands into the beam between this check and the parent-side merge is not caught here, and the Worktree-Create hold read keeps any member from forking once the landing hold stands.
 // A parent that already holds the task's work, after a GitHub merge or an earlier landing, lands through the already-landed path.
 // Finalize then merges the parent branch into the task worktree under the lock and judges the merge.
 // It reads the merge record's merged tip, clears a parked merge-in, checks the tree clean and merges.

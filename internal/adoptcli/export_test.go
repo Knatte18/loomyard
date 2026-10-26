@@ -10,11 +10,11 @@ type (
 	SlugOutcome = slugOutcome
 )
 
-// AdoptAs runs the takeover of slugs, and of the prime when adoptPrime is set, over the hub prime belongs to, reading this machine's name as machine, so two clones of one host stand for two machines.
-func AdoptAs(prime *lyxcwd.Location, machine string, slugs []string, adoptPrime, keepLocal, dropLocal bool) (Outcome, error) {
+// AdoptAs runs the takeover of the beam projects slugs name, and of root when the word `root` is among them, over the hub prime belongs to, reading this machine's name as machine, so two clones of one host stand for two machines.
+func AdoptAs(prime *lyxcwd.Location, machine string, slugs []string, keepLocal, dropLocal bool) (Outcome, error) {
 	deps, err := hubDepsAs(prime, func() (string, error) { return machine, nil })
 	if err != nil {
 		return Outcome{}, err
 	}
-	return adopt(deps, request{Slugs: slugs, Prime: adoptPrime, KeepLocal: keepLocal, DropLocal: dropLocal})
+	return adopt(deps, request{Slugs: slugs, KeepLocal: keepLocal, DropLocal: dropLocal})
 }

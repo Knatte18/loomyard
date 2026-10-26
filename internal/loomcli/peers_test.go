@@ -43,6 +43,8 @@ func peersFakeTasks() []boardengine.Task {
 		{Slug: "darn-peer", Title: "Darn peer", Status: status("blocked · Darn-Write")},
 		{Slug: "finalize-peer", Title: "Finalize peer", Status: status("awaiting · Finalize")},
 		{Slug: "retired-row-peer", Title: "Retired row peer", Status: status("blocked · Merge-In")},
+		// A beam whose pawl run stands at Beam-Await holds nothing, so it is no in-flight peer.
+		{Slug: "awaiting-beam", Title: "Awaiting beam", Kind: boardengine.KindProject, Beam: true, Status: status("running · Beam-Await")},
 		{Slug: "idle", Title: "Idle", Status: nil},
 		{Slug: "finished", Title: "Finished", Status: status("done")},
 		{Slug: "hand-set", Title: "Hand set", Status: status("someday")},

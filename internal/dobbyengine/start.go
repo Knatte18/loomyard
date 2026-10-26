@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -58,6 +59,9 @@ type StartDeps struct {
 	// MoveInProgress reports whether an anchor change stands on the worktree named worktree or on the prime, with the way forward that settles it.
 	// A nil MoveInProgress reads as no change standing.
 	MoveInProgress func(worktree string) (wayForward string, standing bool, err error)
+	// LandingHeld reports whether the landing hold of the worktree named worktree stands, which keeps its dobby unstarted.
+	// A nil LandingHeld reads as no hold standing.
+	LandingHeld func(worktree string) (held bool, err error)
 	// Live reports whether the dobby described by geom is running.
 	Live func(geom Geometry) (bool, error)
 	// Spawn starts the dobby described by geom as a detached process.
@@ -79,19 +83,50 @@ type StartReport struct {
 	Entries []StartEntry
 }
 
-// EnsureLive starts the dobby of the prime and of every local beam pair this machine owns, each only when it is not live already.
-// A prime with no recorded owner is claimed for this machine first; a claim that fails is reported for the prime with its cause and the `lyx beam start` re-run, the prime's dobby is not started, and the beams go on.
-// A prime another machine owns is reported with its owner and starts no prime dobby, and a beam another machine owns is left out of the report.
+// OwnedWorktrees lists the worktrees this machine may start a dobby for: the prime's name when this machine owns the prime or none is recorded, then every local beam pair not owned by another machine.
+func OwnedWorktrees(deps StartDeps) ([]string, error) {
+	machine, err := deps.Machine()
+	if err != nil {
+		return nil, fmt.Errorf("dobbyengine: this machine's name is unknown: %w", err)
+	}
+	primeOwner, err := deps.PrimeOwner()
+	if err != nil {
+		return nil, fmt.Errorf("dobbyengine: read the prime owner: %w", err)
+	}
+	beams, err := deps.Beams()
+	if err != nil {
+		return nil, fmt.Errorf("dobbyengine: list the local beams: %w", err)
+	}
+	var worktrees []string
+	if primeOwner == "" || primeOwner == machine {
+		worktrees = append(worktrees, deps.PrimeName)
+	}
+	for _, beam := range beams {
+		if beam.Owner == "" || beam.Owner == machine {
+			worktrees = append(worktrees, beam.Slug)
+		}
+	}
+	return worktrees, nil
+}
+
+// EnsureLive starts the dobby of each named worktree, the prime's name or a beam's slug, each only when it is not live already.
+// The prime is handled first when named; a prime with no recorded owner is claimed for this machine first, and a claim that fails is reported for the prime with its cause and the `lyx beam start` re-run, the prime's dobby is not started, and the beams go on.
+// A named prime another machine owns is reported with its owner and `lyx adopt root`, and a named beam another machine owns is reported with its owner and `lyx adopt <slug>`; neither starts a dobby.
+// A named beam whose landing hold stands is reported naming `lyx batten status <slug>` and starts no dobby.
 // A failed spawn is reported for its worktree and the others still start; the returned error lists every failure.
 // A second call reports every dobby live and changes nothing.
-func EnsureLive(deps StartDeps) (StartReport, error) {
+func EnsureLive(deps StartDeps, worktrees []string) (StartReport, error) {
 	machine, err := deps.Machine()
 	if err != nil {
 		return StartReport{}, fmt.Errorf("dobbyengine: this machine's name is unknown: %w", err)
 	}
-	primeOwner, err := deps.PrimeOwner()
-	if err != nil {
-		return StartReport{}, fmt.Errorf("dobbyengine: read the prime owner: %w", err)
+	primeNamed := slices.Contains(worktrees, deps.PrimeName)
+	var primeOwner string
+	if primeNamed {
+		primeOwner, err = deps.PrimeOwner()
+		if err != nil {
+			return StartReport{}, fmt.Errorf("dobbyengine: read the prime owner: %w", err)
+		}
 	}
 	beams, err := deps.Beams()
 	if err != nil {
@@ -109,46 +144,63 @@ func EnsureLive(deps StartDeps) (StartReport, error) {
 		}
 	}
 
-	primeClaimFailed := false
-	if primeOwner == "" {
-		lostTo, claimErr := deps.ClaimPrime(machine)
+	if primeNamed {
+		primeClaimFailed := false
+		if primeOwner == "" {
+			lostTo, claimErr := deps.ClaimPrime(machine)
+			switch {
+			case claimErr != nil:
+				primeClaimFailed = true
+				report.Entries = append(report.Entries, StartEntry{
+					Worktree: PrimeLabel,
+					Outcome:  OutcomeFailed,
+					Detail:   fmt.Sprintf("this machine was not recorded as the prime owner: %v; re-run `lyx beam start root` once that works", claimErr),
+				})
+			case lostTo != "":
+				primeOwner = lostTo
+			default:
+				primeOwner = machine
+			}
+		}
 		switch {
-		case claimErr != nil:
-			primeClaimFailed = true
+		case primeClaimFailed:
+		case primeOwner == machine:
+			startOne(PrimeLabel, deps.PrimeName)
+		default:
 			report.Entries = append(report.Entries, StartEntry{
 				Worktree: PrimeLabel,
-				Outcome:  OutcomeFailed,
-				Detail:   fmt.Sprintf("this machine was not recorded as the prime owner: %v; re-run `lyx beam start` once that works", claimErr),
+				Outcome:  OutcomeRefused,
+				Detail:   fmt.Sprintf("owned by %s; lyx adopt root takes it over here", primeOwner),
 			})
-		case lostTo != "":
-			primeOwner = lostTo
-		default:
-			primeOwner = machine
 		}
-	}
-	switch {
-	case primeClaimFailed:
-	case primeOwner == machine:
-		startOne(PrimeLabel, deps.PrimeName)
-	default:
-		report.Entries = append(report.Entries, StartEntry{
-			Worktree: PrimeLabel,
-			Outcome:  OutcomeRefused,
-			Detail:   fmt.Sprintf("owned by %s; lyx adopt --prime takes it over here", primeOwner),
-		})
 	}
 
-	for _, beam := range beams {
-		if beam.Owner != "" && beam.Owner != machine {
+	for _, slug := range worktrees {
+		if slug == deps.PrimeName {
 			continue
 		}
-		startOne(beam.Slug, beam.Slug)
+		owner := ""
+		for _, beam := range beams {
+			if beam.Slug == slug {
+				owner = beam.Owner
+				break
+			}
+		}
+		if owner != "" && owner != machine {
+			report.Entries = append(report.Entries, StartEntry{
+				Worktree: slug,
+				Outcome:  OutcomeRefused,
+				Detail:   fmt.Sprintf("owned by %s; lyx adopt %s takes it over here", owner, slug),
+			})
+			continue
+		}
+		startOne(slug, slug)
 	}
 	return report, errors.Join(failures...)
 }
 
 // ensureOne starts the dobby of the worktree named worktree unless it is live, and reports it under label.
-// A worktree with an anchor change standing is refused with the change's way forward as the detail and starts nothing, and an unreadable record is a failure.
+// A worktree with an anchor change standing is refused with the change's way forward as the detail and starts nothing, a worktree whose landing hold stands is refused naming `lyx batten status`, and an unreadable record is a failure.
 func ensureOne(deps StartDeps, label, worktree string) StartEntry {
 	geom, err := deps.Geometry(worktree)
 	if err != nil {
@@ -161,6 +213,15 @@ func ensureOne(deps StartDeps, label, worktree string) StartEntry {
 		}
 		if standing {
 			return StartEntry{Worktree: label, Outcome: OutcomeRefused, Detail: wayForward}
+		}
+	}
+	if deps.LandingHeld != nil {
+		held, err := deps.LandingHeld(worktree)
+		if err != nil {
+			return StartEntry{Worktree: label, Outcome: OutcomeFailed, Detail: fmt.Sprintf("read whether the landing hold stands: %v", err)}
+		}
+		if held {
+			return StartEntry{Worktree: label, Outcome: OutcomeRefused, Detail: fmt.Sprintf("the landing hold stands; see `lyx batten status %s`", worktree)}
 		}
 	}
 	live, err := deps.Live(geom)

@@ -50,7 +50,7 @@ func (r *fakeRecorder) record(run fakeRun) {
 	r.runs = append(r.runs, run)
 }
 
-// fakeRootFactory returns a factory building a root of newRoot's shape: the global flags, groups `orch` and `reed`, and the leaves `orch start` and `reed attach`.
+// fakeRootFactory returns a factory building a root of newRoot's shape: the global flags, groups `beam` and `reed`, and the leaves `beam start` and `reed attach`.
 func fakeRootFactory(rec *fakeRecorder) func() *cobra.Command {
 	return func() *cobra.Command {
 		var verbosity int
@@ -100,23 +100,23 @@ func fakeRootFactory(rec *fakeRecorder) func() *cobra.Command {
 		attach := leaf("attach", "reed attach", &attachName)
 		attach.Flags().StringVar(&attachName, "name", "", "strand name")
 
-		orch := &cobra.Command{Use: "orch", Short: "fake orch", RunE: clihelp.GroupRunE}
-		orch.AddCommand(leaf("start", "orch start", nil))
+		beam := &cobra.Command{Use: "beam", Short: "fake beam", RunE: clihelp.GroupRunE}
+		beam.AddCommand(leaf("start", "beam start", nil))
 		reed := &cobra.Command{Use: "reed", Short: "fake reed", RunE: clihelp.GroupRunE}
 		reed.AddCommand(attach)
-		root.AddGroup(&cobra.Group{ID: "orch", Title: "Orch:"}, &cobra.Group{ID: "reed", Title: "Reed:"})
-		orch.GroupID, reed.GroupID = "orch", "reed"
-		root.AddCommand(orch, reed)
+		root.AddGroup(&cobra.Group{ID: "beam", Title: "Beam:"}, &cobra.Group{ID: "reed", Title: "Reed:"})
+		beam.GroupID, reed.GroupID = "beam", "reed"
+		root.AddCommand(beam, reed)
 		return root
 	}
 }
 
-const testShortcuts = "attach: [reed, attach]\nprime: [[orch, start], [reed, attach]]\n"
+const testShortcuts = "attach: [reed, attach]\ns: [[beam, start], [reed, attach]]\n"
 
 func TestShortcut_Run(t *testing.T) {
 	t.Parallel()
 
-	orchStart := func(verbosity int) fakeRun { return fakeRun{Path: "orch start", Verbosity: verbosity} }
+	beamStart := func(verbosity int) fakeRun { return fakeRun{Path: "beam start", Verbosity: verbosity} }
 	reedAttach := func(verbosity int, name string, args ...string) fakeRun {
 		return fakeRun{Path: "reed attach", Verbosity: verbosity, Name: name, Args: args}
 	}
@@ -134,35 +134,35 @@ func TestShortcut_Run(t *testing.T) {
 		wantErrEnvelopes int
 	}{
 		{name: "attach runs reed attach once", args: []string{"attach"}, wantRuns: []fakeRun{reedAttach(0, "")}, wantOut: []string{`"ran":"reed attach"`}},
-		{name: "prime runs orch start then reed attach", args: []string{"prime"}, wantRuns: []fakeRun{orchStart(0), reedAttach(0, "")}},
+		{name: "s runs beam start then reed attach", args: []string{"s"}, wantRuns: []fakeRun{beamStart(0), reedAttach(0, "")}},
 		{
-			name: "prime runs reed attach after an already-running orch start", args: []string{"prime"},
-			scripts:  map[string]fakeScript{"orch start": {fields: map[string]any{"already_running": true}}},
-			wantRuns: []fakeRun{orchStart(0), reedAttach(0, "")}, wantOut: []string{`"already_running":true`},
+			name: "s runs reed attach after a beam start that found everything live", args: []string{"s"},
+			scripts:  map[string]fakeScript{"beam start": {fields: map[string]any{"already_running": true}}},
+			wantRuns: []fakeRun{beamStart(0), reedAttach(0, "")}, wantOut: []string{`"already_running":true`},
 		},
 		{
-			name: "a failing orch start stops the sequence with its exit code", args: []string{"prime"},
-			scripts:  map[string]fakeScript{"orch start": {exit: 2}},
-			wantRuns: []fakeRun{orchStart(0)}, wantCode: 2, wantErrEnvelopes: 1,
+			name: "a failing beam start stops the sequence with its exit code and attaches nothing", args: []string{"s"},
+			scripts:  map[string]fakeScript{"beam start": {exit: 2}},
+			wantRuns: []fakeRun{beamStart(0)}, wantCode: 2, wantErrEnvelopes: 1,
 		},
 		{
-			name: "trailing words go to the last argv only", args: []string{"prime", "--name", "x", "extra"},
-			wantRuns: []fakeRun{orchStart(0), reedAttach(0, "x", "extra")},
+			name: "trailing words go to the last argv only", args: []string{"s", "--name", "x", "extra"},
+			wantRuns: []fakeRun{beamStart(0), reedAttach(0, "x", "extra")},
 		},
-		{name: "a leading verbosity word reaches every argv", args: []string{"-v", "prime"}, wantRuns: []fakeRun{orchStart(1), reedAttach(1, "")}},
-		{name: "a doubled verbosity word counts twice", args: []string{"-vv", "prime"}, wantRuns: []fakeRun{orchStart(2), reedAttach(2, "")}},
-		{name: "a verbosity word after the shortcut reaches every argv", args: []string{"prime", "-v"}, wantRuns: []fakeRun{orchStart(1), reedAttach(1, "")}},
-		{name: "a verbosity word with a value reaches every argv", args: []string{"prime", "--verbose=2"}, wantRuns: []fakeRun{orchStart(2), reedAttach(2, "")}},
-		{name: "json prints the shortcut's help as JSON and runs nothing", args: []string{"prime", "--json"}, wantOut: []string{`"name": "lyx prime"`}},
-		{name: "json with a value prints the JSON help", args: []string{"prime", "--json=true"}, wantOut: []string{`"name": "lyx prime"`}},
-		{name: "a false-valued json word is dropped and the argvs run", args: []string{"prime", "--json=false"}, wantRuns: []fakeRun{orchStart(0), reedAttach(0, "")}},
-		{name: "help prints the shortcut's text help and runs nothing", args: []string{"prime", "--help"}, wantOut: []string{"shortcut: lyx orch start, then lyx reed attach"}},
-		{name: "a short help word prints the text help", args: []string{"prime", "-h"}, wantOut: []string{"shortcut: lyx orch start, then lyx reed attach"}},
-		{name: "a shorthand run holding help prints the text help", args: []string{"prime", "-vh"}, wantOut: []string{"shortcut: lyx orch start, then lyx reed attach"}},
-		{name: "words after the double dash are trailing, help included", args: []string{"prime", "--", "-h"}, wantRuns: []fakeRun{orchStart(0), reedAttach(0, "", "-h")}},
+		{name: "a leading verbosity word reaches every argv", args: []string{"-v", "s"}, wantRuns: []fakeRun{beamStart(1), reedAttach(1, "")}},
+		{name: "a doubled verbosity word counts twice", args: []string{"-vv", "s"}, wantRuns: []fakeRun{beamStart(2), reedAttach(2, "")}},
+		{name: "a verbosity word after the shortcut reaches every argv", args: []string{"s", "-v"}, wantRuns: []fakeRun{beamStart(1), reedAttach(1, "")}},
+		{name: "a verbosity word with a value reaches every argv", args: []string{"s", "--verbose=2"}, wantRuns: []fakeRun{beamStart(2), reedAttach(2, "")}},
+		{name: "json prints the shortcut's help as JSON and runs nothing", args: []string{"s", "--json"}, wantOut: []string{`"name": "lyx s"`}},
+		{name: "json with a value prints the JSON help", args: []string{"s", "--json=true"}, wantOut: []string{`"name": "lyx s"`}},
+		{name: "a false-valued json word is dropped and the argvs run", args: []string{"s", "--json=false"}, wantRuns: []fakeRun{beamStart(0), reedAttach(0, "")}},
+		{name: "help prints the shortcut's text help and runs nothing", args: []string{"s", "--help"}, wantOut: []string{"shortcut: lyx beam start, then lyx reed attach"}},
+		{name: "a short help word prints the text help", args: []string{"s", "-h"}, wantOut: []string{"shortcut: lyx beam start, then lyx reed attach"}},
+		{name: "a shorthand run holding help prints the text help", args: []string{"s", "-vh"}, wantOut: []string{"shortcut: lyx beam start, then lyx reed attach"}},
+		{name: "words after the double dash are trailing, help included", args: []string{"s", "--", "-h"}, wantRuns: []fakeRun{beamStart(0), reedAttach(0, "", "-h")}},
 		{
-			name: "a global flag with a bad value fails in the last argv's root after the earlier argvs ran", args: []string{"prime", "--json=bogus"},
-			wantRuns: []fakeRun{orchStart(0)}, wantCode: 1, wantErrEnvelopes: 1,
+			name: "a global flag with a bad value fails in the last argv's root after the earlier argvs ran", args: []string{"s", "--json=bogus"},
+			wantRuns: []fakeRun{beamStart(0)}, wantCode: 1, wantErrEnvelopes: 1,
 		},
 		{name: "the outer root's input reaches the argv", args: []string{"attach"}, input: "typed", wantRuns: []fakeRun{{Path: "reed attach", Stdin: "typed"}}},
 	}
@@ -212,12 +212,12 @@ func TestMount_File(t *testing.T) {
 		wantMounted map[string]string
 	}{
 		{
-			name: "the shipped file mounts exactly a, prime, p and r", data: shortcutFile,
+			name: "the shipped file mounts exactly a, s, p and r", data: shortcutFile,
 			wantMounted: map[string]string{
-				"a":     "shortcut: lyx reed attach",
-				"prime": "shortcut: lyx orch start, then lyx reed attach",
-				"p":     "shortcut: lyx tender pause",
-				"r":     "shortcut: lyx tender resume",
+				"a": "shortcut: lyx reed attach",
+				"s": "shortcut: lyx beam start, then lyx reed attach",
+				"p": "shortcut: lyx tender pause",
+				"r": "shortcut: lyx tender resume",
 			},
 		},
 		{name: "malformed YAML mounts nothing", data: []byte("attach: [reed, attach")},

@@ -1,4 +1,4 @@
-// ownerpause.go holds what `start` does about machine ownership: the process's owner pause seam, the claim of the hub's prime for this machine and the owner check of a beam.
+// ownerpause.go holds what the bring-up does about machine ownership: the process's owner pause seam, the claim of the hub's prime for this machine and the read of the facts its refusals judge.
 
 package orchcli
 
@@ -19,7 +19,7 @@ var (
 	ownerPause   func(location *lyxcwd.Location, slug string) error
 )
 
-// InstallOwnerPause stores the process's pause of a run owned by another machine, which `start` calls for each such entry of its reconcile.
+// InstallOwnerPause stores the process's pause of a run owned by another machine, which a bring-up calls for each such entry of its reconcile.
 // The root pre-run installs it, since the pause lives in a package that imports this one.
 func InstallOwnerPause(pause func(location *lyxcwd.Location, slug string) error) {
 	ownerPauseMu.Lock()
@@ -34,39 +34,54 @@ func installedOwnerPause() func(location *lyxcwd.Location, slug string) error {
 	return ownerPause
 }
 
-// checkBeamStart judges whether an orch may start in the beam at location: the beam's owner by the board's owners and its entry's status.
-// The owner is the one hubgeom.ParentOf's chain gives the beam's entry, read from the prime the beam belongs to.
-func checkBeamStart(location *lyxcwd.Location) error {
+// readBeamFacts reads what the bring-up's refusals judge for the worktree at location, from the local Bolt and the move records.
+// The owner of a beam is the one hubgeom.ParentOf's chain gives its entry, read from the prime the beam belongs to, and the prime's owner is the board's prime owner.
+// A standing anchor change reads as the dobby start reads it, on the worktree or on the prime, and only a beam's entry is held by a run.
+func readBeamFacts(location *lyxcwd.Location, beam bool) (beamFacts, error) {
 	prime, err := resolvePrime(location)
 	if err != nil {
-		return err
+		return beamFacts{}, err
 	}
 	boardDir := fabricengine.BoardDir(location.HubPath)
 	owners, err := boardengine.ReadOwners(boardDir)
 	if err != nil {
-		return err
-	}
-	tasks, err := boardengine.ReadTasks(boardDir)
-	if err != nil {
-		return err
+		return beamFacts{}, err
 	}
 	here, err := machinename.Name()
 	if err != nil {
-		return err
+		return beamFacts{}, err
 	}
-	slug := location.WorktreeName
-	owner, err := owners.Effective(slug, func(entry string) (string, error) { return hubgeom.ParentOf(prime, entry) })
-	if err != nil {
-		return err
-	}
-	var status *string
-	for _, task := range tasks {
-		if task.Slug == slug {
-			status = task.Status
+	facts := beamFacts{here: here, owner: owners.Prime}
+	if beam {
+		slug := location.WorktreeName
+		facts.slug = slug
+		facts.owner, err = owners.Effective(slug, func(entry string) (string, error) { return hubgeom.ParentOf(prime, entry) })
+		if err != nil {
+			return beamFacts{}, err
+		}
+		tasks, err := boardengine.ReadTasks(boardDir)
+		if err != nil {
+			return beamFacts{}, err
+		}
+		for _, task := range tasks {
+			if task.Slug != slug {
+				continue
+			}
+			facts.held = boardengine.RunHolds(task)
+			if task.Status != nil {
+				facts.status = *task.Status
+			}
 			break
 		}
 	}
-	return refuseBeamStart(slug, here, owner, status)
+	wayForward, standing, err := hubgeom.DobbyStart(prime).MoveInProgress(location.WorktreeName)
+	if err != nil {
+		return beamFacts{}, fmt.Errorf("read whether an anchor change stands: %w", err)
+	}
+	if standing {
+		facts.moveWayForward = wayForward
+	}
+	return facts, nil
 }
 
 // claimPrimeFor records this machine as the owner of the hub's prime, writing only when the hub's board records no prime owner.

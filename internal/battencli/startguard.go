@@ -37,8 +37,6 @@ type startGuard struct {
 	Project func() (project, beam bool, err error)
 	// PairMark reads the origin record of the slug's local pair: found is false when the pair has no readable record, and marked says whether it carries the beam mark.
 	PairMark func() (marked, found bool, err error)
-	// LandRefusal refuses the landing of the slug as a beam while work remains under it.
-	LandRefusal func() error
 	// Draft reports whether the slug is a task whose board status is draft.
 	Draft func() (bool, error)
 }
@@ -84,7 +82,6 @@ func hubStartGuard(location *lyxcwd.Location, slug string) startGuard {
 			}
 			return origin.Beam, found, nil
 		},
-		LandRefusal: func() error { return BeamLandRefusal(location, slug) },
 		Draft: func() (bool, error) {
 			tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
@@ -111,8 +108,8 @@ func hubStartGuard(location *lyxcwd.Location, slug string) startGuard {
 // A present cancel marker refuses run, step and goto.
 // A run or step of a task whose pair carries the beam mark refuses, with or without a status file, since only a stopped promote leaves one.
 // A run or step with no status file, or one whose status is at Worktree-Create while the task worktree is absent, refuses on tracked dirty paths of the source worktree, unless the task forks from a beam, whose pair forks from the beam's last commit and not from the source worktree.
-// A run or step of a project entry is judged by refuseProject alone, which refuses a grouping project and a beam that cannot be landed, and passes a marked beam pair over the next two checks.
-// A run or step with no status file of a task whose board status is draft refuses, naming the release that makes it startable.
+// A run or step of a project entry is judged by refuseProject, which refuses a grouping project, passes a marked beam pair over the dirty-source and left-pair checks and a resume past Worktree-Create over all of them, and leaves a beam project with no marked pair here to the checks of a task.
+// A run or step with no status file of a task whose board status is draft refuses, naming the release that makes it startable; a beam project skips that check, since a beam's cancel leaves its entry draft and `lyx beam create` starts its run again from there.
 // A run or step with no status file refuses when a task worktree, records worktree or local records branch is left from an earlier run.
 // A probe error refuses naming the probe and the verb's re-run.
 // found and status describe the run's status file, and taskWorktreePresent whether the task worktree is there, which only a status at Worktree-Create reads.
@@ -138,18 +135,21 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 			return probeRefusal("the pair's origin record", slug, rerun, err)
 		}
 		if promoted {
-			return fmt.Errorf("the pair of %s carries the beam mark, so a promote of it stopped before it finished and a run would restart the ended run inside a beam; way forward: run \"lyx beam promote %s\" to finish the promote", slug, slug)
+			return fmt.Errorf("the pair of %s carries the beam mark, so an interrupted promote of an older build left it and a run would restart the ended run inside a beam; way forward: run \"lyx batten cancel %s --remove\" from the prime, then the release and the run again", slug, slug)
 		}
 	}
 
+	beamProject := false
 	if g.Project != nil {
-		judged, err := g.refuseProject(slug, rerun, status, found)
+		var judged bool
+		var err error
+		beamProject, judged, err = g.refuseProject(slug, rerun, status, found)
 		if judged || err != nil {
 			return err
 		}
 	}
 
-	if !found && g.Draft != nil {
+	if !found && !beamProject && g.Draft != nil {
 		draft, err := g.Draft()
 		if err != nil {
 			return probeRefusal("the board entry's status", slug, rerun, err)
@@ -189,52 +189,44 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 	return nil
 }
 
-// refuseProject judges a run or step of a project entry, which only a beam's landing makes claimable.
-// judged is false for an entry that is not a project, which the task checks then judge.
+// refuseProject judges a run or step of a project entry, which only a beam project's pawl run makes claimable.
+// beam reports whether the entry is a beam project; judged is false for an entry that is not a project, which the task checks then judge, and for a beam project with no marked pair here, which they judge as a fresh start.
 // A grouping project is refused naming the create that makes it a beam.
-// A beam's start, or its resume at Worktree-Create, is refused when the beam has no local pair, when the pair has no readable origin record or lacks the beam mark, and while work remains under the beam.
-// A marked beam pair passes the dirty-source and left-pair checks, since a landing forks no pair and Finalize guards the worktree it merges into.
-// A resume past Worktree-Create passes, since the landing's own rows judge it.
-func (g startGuard) refuseProject(slug, rerun string, status shedengine.Status, found bool) (judged bool, err error) {
-	project, beam, err := g.Project()
+// A resume past Worktree-Create passes.
+// A beam pair here with no readable origin record is refused; a marked one passes the dirty-source and left-pair checks, since it is the legacy beam's or the resumed run's own pair.
+func (g startGuard) refuseProject(slug, rerun string, status shedengine.Status, found bool) (beam, judged bool, err error) {
+	project, beamFlag, err := g.Project()
 	if err != nil {
-		return true, probeRefusal("the board entry", slug, rerun, err)
+		return false, true, probeRefusal("the board entry", slug, rerun, err)
 	}
 	if !project {
-		return false, nil
+		return false, false, nil
 	}
-	if !beam {
-		return true, fmt.Errorf("%s is a grouping project, and only a beam's landing runs a project; way forward: run \"lyx beam create %s\" to make it a beam, then %s", slug, slug, rerun)
+	if !beamFlag {
+		return false, true, fmt.Errorf("%s is a grouping project, and only a beam project runs; way forward: run \"lyx beam create %s\" to make it a beam, then %s", slug, slug, rerun)
 	}
 	if found && status.CurrentProducer != battenrecipe.NameWorktreeCreate {
-		return true, nil
+		return true, true, nil
+	}
+	if g.PairParts == nil || g.PairMark == nil {
+		return true, false, nil
 	}
 
-	if g.PairParts != nil {
-		parts, err := g.PairParts()
-		if err != nil {
-			return true, probeRefusal("the pair's parts", slug, rerun, err)
-		}
-		if !parts.TaskWorktree {
-			return true, fmt.Errorf("the beam %s has no pair on this machine; way forward: run \"lyx beam create %s\" to finish the create, or \"lyx adopt %s\" when the beam's branch is on origin, then %s", slug, slug, slug, rerun)
-		}
+	parts, err := g.PairParts()
+	if err != nil {
+		return true, true, probeRefusal("the pair's parts", slug, rerun, err)
 	}
-	if g.PairMark != nil {
-		marked, readable, err := g.PairMark()
-		if err != nil {
-			return true, probeRefusal("the beam pair's origin record", slug, rerun, err)
-		}
-		if !readable {
-			return true, fmt.Errorf("the pair of the beam %s has no readable origin record; way forward: run \"lyx fabric reconcile\" to restore its records worktree, then %s", slug, rerun)
-		}
-		if !marked {
-			return true, fmt.Errorf("the pair of the beam %s does not carry the beam mark; way forward: run \"lyx beam create %s\", which marks it, then %s", slug, slug, rerun)
-		}
+	if !parts.TaskWorktree {
+		return true, false, nil
 	}
-	if g.LandRefusal != nil {
-		return true, g.LandRefusal()
+	marked, readable, err := g.PairMark()
+	if err != nil {
+		return true, true, probeRefusal("the beam pair's origin record", slug, rerun, err)
 	}
-	return true, nil
+	if !readable {
+		return true, true, fmt.Errorf("the pair of the beam %s has no readable origin record; way forward: run \"lyx fabric reconcile\" to restore its records worktree, then %s", slug, rerun)
+	}
+	return true, marked, nil
 }
 
 // forksFromPrime reports whether the slug's pair forks from the prime, which a nil ParentBeam seam reads every task as.

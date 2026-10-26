@@ -79,7 +79,7 @@ func checkBeamPayload(s *Store, fields map[string]any) error {
 	if kind == KindProject {
 		return fmt.Errorf("entry %q cannot be made a beam by a board write: run `lyx beam create %s` to make the project a beam, and drop the beam key from the payload", slug, slug)
 	}
-	return fmt.Errorf("entry %q cannot be made a beam by a board write: run `lyx beam promote %s` to turn the task into a beam, and drop the beam key from the payload", slug, slug)
+	return fmt.Errorf("entry %q cannot be made a beam by a board write: a beam is made from a project entry: make one with `lyx board upsert` under a slug of its own, then run `lyx beam create <that slug>`, and drop the beam key from the payload", slug)
 }
 
 // membershipError is the refusal of an entry's project or order field at slug, naming the way forward of correcting that slug or dropping it from the field.
@@ -87,7 +87,7 @@ func membershipError(entry, field, slug, reason string) error {
 	return fmt.Errorf("entry %q has %s %q, which %s: correct the slug, or drop it from %s", entry, field, slug, reason, field)
 }
 
-// checkProjectField refuses task's project when it names an absent entry, a non-project, the entry itself, a done project, a run-held project or a chain of projects with a cycle.
+// checkProjectField refuses task's project when it names an absent entry, a non-project, the entry itself, a done project, a project a run holds (RunHolds) or a chain of projects with a cycle.
 func checkProjectField(task Task, afterBySlug map[string]Task) error {
 	project, found := afterBySlug[task.Project]
 	switch {
@@ -99,7 +99,7 @@ func checkProjectField(task Task, afterBySlug map[string]Task) error {
 		return membershipError(task.Slug, "project", task.Project, "is not a project")
 	case isDone(project):
 		return membershipError(task.Slug, "project", task.Project, "is done")
-	case IsRunStatus(project.Status):
+	case RunHolds(project):
 		return membershipError(task.Slug, "project", task.Project, "is held by a run")
 	}
 	visited := map[string]bool{task.Slug: true}

@@ -193,6 +193,9 @@ func childDriverKind(dirs configengine.Dirs, recipe string) (string, error) {
 	return sheddriver.ResolveDriverKind(shed, override), nil
 }
 
+// anchorParam is the seed param that carries a beam project's anchor from its first pass to Worktree-Create.
+const anchorParam = "anchor"
+
 // armSeed gates batten's auto-seed: it reads the seed at runID, refuses a found seed that disagrees
 // with this invocation (refuseAdoptedSeed) and otherwise leaves it untouched, writes a fresh one for
 // "run" and "step" when absent, and refuses every other verb with shedrun.MissingSeedMessage naming
@@ -220,6 +223,8 @@ func childDriverKind(dirs configengine.Dirs, recipe string) (string, error) {
 // batten can never honour. The auto-seed path below still validates in its own right: it validates
 // the value about to be written, which for an untyped flag is cobra's default rather than anything
 // the operator said.
+//
+// A first pass that names an anchor (StartFirstPass) records it as the seed's anchor param, on the seed it writes only; a found seed keeps the params it was written with.
 //
 // The refusal carries no "kind" field, keeping the five-value step refusal-kind vocabulary closed:
 // a missing run is not a sixth kind.
@@ -270,9 +275,16 @@ func (c *battenCLI) armSeed(location *lyxcwd.Location, runID, verb string) error
 
 	// The run-id is the slug; no param repeats it.
 	// child_driver is recorded only when the operator typed it; Seed-Child resolves the rest from the child recipe's driver_kind, then shed.yaml's.
+	// anchor is recorded only by a first pass that names one, and Worktree-Create reads it back.
 	var params map[string]string
 	if c.childDriverFlagSet {
 		params = map[string]string{"child_driver": c.childDriverFlag}
+	}
+	if c.firstPassAnchor != "" {
+		if params == nil {
+			params = map[string]string{}
+		}
+		params[anchorParam] = c.firstPassAnchor
 	}
 	// A cancel that began while the start was pulling the board writes no seed.
 	if err := c.refuseCancelMarker(); err != nil {

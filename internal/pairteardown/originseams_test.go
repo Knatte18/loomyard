@@ -84,8 +84,8 @@ func TestTeardown_OriginSeams(t *testing.T) {
 	t.Run("The owner seam reads an entry's effective owner against this machine's name and returns every seam error", func(t *testing.T) {
 		t.Parallel()
 		const board = `{"version":1,"prime_owner":"other","entries":[` +
-			`{"slug":"mine","kind":"task","owner_machine":"here"},` +
-			`{"slug":"theirs","kind":"task","owner_machine":"other"},` +
+			`{"slug":"mine","kind":"project","beam":true,"owner_machine":"here"},` +
+			`{"slug":"theirs","kind":"project","beam":true,"owner_machine":"other"},` +
 			`{"slug":"unowned","kind":"task"},` +
 			`{"slug":"child","kind":"task"},` +
 			`{"slug":"held","kind":"task","status":"running · Implementer"}]}`
@@ -106,20 +106,21 @@ func TestTeardown_OriginSeams(t *testing.T) {
 			board         string
 			slug          string
 			wantOwner     string
+			wantSubject   string
 			wantElsewhere bool
 			wantErr       error
 		}{
-			{"recorded for this machine", machine, parentOf, board, "mine", "here", false, nil},
-			{"recorded for another machine", machine, parentOf, board, "theirs", "other", true, nil},
-			{"unowned under another machine's prime owner", machine, parentOf, board, "unowned", "other", true, nil},
-			{"unowned under a parent owned elsewhere", machine, parentOf, board, "child", "other", true, nil},
-			{"held by a run with no owner", machine, parentOf, board, "held", "", false, nil},
-			{"a hub with no prime owner", machine, parentOf, noPrimeOwner, "unowned", "", false, nil},
-			{"a machine error", func() (string, error) { return "", boom }, parentOf, board, "mine", "", false, boom},
-			{"a parent resolver error", machine, func(_, _ string) (string, error) { return "", boom }, board, "unowned", "", false, boom},
-			{"undecodable bytes", machine, parentOf, "{", "mine", "", false, errAny},
+			{"recorded for this machine", machine, parentOf, board, "mine", "here", "mine", false, nil},
+			{"recorded for another machine", machine, parentOf, board, "theirs", "other", "theirs", true, nil},
+			{"unowned under another machine's prime owner", machine, parentOf, board, "unowned", "other", "root", true, nil},
+			{"unowned under a parent owned elsewhere", machine, parentOf, board, "child", "other", "theirs", true, nil},
+			{"held by a run with no owner reads its parent's owner", machine, parentOf, board, "held", "other", "root", true, nil},
+			{"a hub with no prime owner", machine, parentOf, noPrimeOwner, "unowned", "", "root", false, nil},
+			{"a machine error", func() (string, error) { return "", boom }, parentOf, board, "mine", "", "", false, boom},
+			{"a parent resolver error", machine, func(_, _ string) (string, error) { return "", boom }, board, "unowned", "", "", false, boom},
+			{"undecodable bytes", machine, parentOf, "{", "mine", "", "", false, errAny},
 		} {
-			owner, elsewhere, err := OwnerReader(row.machine, row.parentOf)("/hub", []byte(row.board), row.slug)
+			owner, subject, elsewhere, err := OwnerReader(row.machine, row.parentOf)("/hub", []byte(row.board), row.slug)
 			switch {
 			case row.wantErr == errAny:
 				if err == nil {
@@ -127,8 +128,8 @@ func TestTeardown_OriginSeams(t *testing.T) {
 				}
 			case !errors.Is(err, row.wantErr):
 				t.Errorf("%s: OwnerReader error = %v; want %v", row.name, err, row.wantErr)
-			case owner != row.wantOwner || elsewhere != row.wantElsewhere:
-				t.Errorf("%s: OwnerReader = %q, %v; want %q, %v", row.name, owner, elsewhere, row.wantOwner, row.wantElsewhere)
+			case owner != row.wantOwner || subject != row.wantSubject || elsewhere != row.wantElsewhere:
+				t.Errorf("%s: OwnerReader = %q, %q, %v; want %q, %q, %v", row.name, owner, subject, elsewhere, row.wantOwner, row.wantSubject, row.wantElsewhere)
 			}
 		}
 
@@ -137,8 +138,8 @@ func TestTeardown_OriginSeams(t *testing.T) {
 			t.Error("OriginSeams(SeamOptions{}).OwnerOf != nil; want no owner seam without a Machine")
 		}
 		seams := f.teardown().OriginSeams(SeamOptions{Machine: machine, ParentOf: func(slug string) (string, error) { return parentOf("", slug) }})
-		if owner, elsewhere, err := seams.OwnerOf("/hub", []byte(board), "child"); err != nil || owner != "other" || !elsewhere {
-			t.Errorf("OwnerOf over the options = %q, %v, %v; want other, owned elsewhere", owner, elsewhere, err)
+		if owner, subject, elsewhere, err := seams.OwnerOf("/hub", []byte(board), "child"); err != nil || owner != "other" || subject != "theirs" || !elsewhere {
+			t.Errorf("OwnerOf over the options = %q, %q, %v, %v; want other, adopt subject theirs, owned elsewhere", owner, subject, elsewhere, err)
 		}
 	})
 

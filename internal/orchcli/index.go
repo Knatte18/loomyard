@@ -13,7 +13,7 @@ import (
 )
 
 // indexWayForward is the way forward every unusable-binary refusal names.
-const indexWayForward = "run `lyx orch stop`, then `lyx orch start`"
+const indexWayForward = "run `lyx orch stop`, then `lyx beam start`"
 
 // watcherIndexSource returns the index source the watch verb hands its watcher.
 // The watcher outlives a deploy and may run from another binary than the pane's, so it renders the index from the binary the orch strand recorded, never in-process.

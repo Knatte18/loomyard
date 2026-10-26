@@ -1,27 +1,28 @@
 // Package orchcli is the CLI for the hub orchestrator: the long-lived session in the hub's prime worktree, or in any beam, that runs the task loop for the operator.
-// Its verbs (`start`, `status`, `refresh`, `distill`, `withdraw`, `stop`, `cleanup`, `rules` and the watcher behind them) host that session as an interactive agent in a reed strand and cycle its context before it fills; this comment records the loop the session runs, which the verbs exist to serve.
+// `BeamUp` and `BeamDown` bring that session up and take it down, and its verbs (`status`, `refresh`, `distill`, `withdraw`, `stop`, `rules` and the watcher behind them) host it as an interactive agent in a reed strand and cycle its context before it fills; this comment records the loop the session runs, which the verbs exist to serve.
 //
 // # The orch in a beam
 //
 // Every verb runs in the hub's prime worktree and in a beam, a pair whose own origin record carries the beam mark, and is refused in every other worktree with the beam verbs that make a pair one.
 // There is one orch per worktree: a beam's orch keeps its files under that worktree's own `.lyx/orch/` and `_lyx/orch/`, its strand is `<shortname>:<slug>:orch`, and its watcher is its own.
-// `start` in a beam claims no prime.
-// It refuses a beam another machine owns, naming the owner and `lyx adopt <slug>`, and a beam whose board entry its landing holds, naming `lyx batten status <slug>`, before it creates anything.
-// The hub-scope origin reconcile runs from the prime whichever orch starts it.
-// `start`, with or without `--continue`, first starts the dobby of the prime and of every beam this machine owns through `dobbyengine.EnsureLive`, each only when it is not live, so one start after a machine restart brings every run back.
-// It does so before the beam refusal and the start lock, and a failure never stops the start: it becomes a `warning` on the envelope naming the failed worktrees and `lyx beam start`.
+// `BeamUp` refuses a worktree another machine owns, naming the owner and `lyx adopt <slug>` (`lyx adopt root` for the prime), a worktree with an anchor change standing on it or on the prime, naming the change's way forward, and a beam whose board entry its landing holds, naming `lyx batten status <slug>`.
+// It judges them from the local Bolt, after the reconcile when `Prepare` ran and before it starts any dobby, window or orch, and `beamUpRefusal` is the pure judgment over the facts `readBeamFacts` reads.
+// The hub-scope origin reconcile runs from the prime whichever orch is brought up.
+// After the refusals `BeamUp` starts this worktree's dobby alone through `dobbyengine.EnsureLive`, only when it is not live, then ensures the runs strand and starts the orch and its watcher.
+// A dobby that does not start never stops the bring-up: it becomes a warning naming the cause and `lyx beam start`.
+// `BeamDown` removes the orch strand, after which the watcher exits on its own, and ends the worktree's dobby through `runproc.EndRole`, so no other process of the beam is signalled; each part stops only when live.
 // `OrchLive` is the liveness predicate other modules call: the worktree's orch state records a strand that reed tracks and reports live.
 //
 // # The role file and the note
 //
 // The procedure below lives in the role stencil, not in the launch prompt.
-// `start` renders it to `.lyx/orch/role.md` and launches the session with a one-line pointer at it; skills (`scribe:prose`, `scribe:conversation`, `ly:board`) are loaded by shuttle before that pointer on every launch path, `--adopt` and `--continue` included.
-// `start` records the orch session's id in orch's state, which `lyx orch start --continue` resumes after a reboot or a dead strand; see the internal/orchengine package documentation's `Continuing after a reboot` section.
+// `BeamUp` renders it to `.lyx/orch/role.md` and launches the session with a one-line pointer at it; skills (`scribe:prose`, `scribe:conversation`, `ly:board`) are loaded by shuttle before that pointer on every launch path, a resume included.
+// `BeamUp` records the orch session's id in orch's state and resumes it after a reboot, a `stop` or a dead strand, falling back to the last note, else the start stencil, when the resume fails; see the internal/orchengine package documentation's `Continuing after a reboot` section.
 // A context cycle asks the session for an orch note at the path it names, following `.lyx/orch/note-template.md`, in place of a general handoff skill.
 // `lyx orch refresh` requests a clear cycle and `lyx orch distill` a compact cycle, whatever `cycle_mode` says; both write the note first.
 // The role file's `## Commands` section holds the operator command index.
 // Its `## Hub-wide rules` and `## This orch's rules` sections hold the hub-wide rules file on Bolt and this orch thread's own rules file under its worktree's `_lyx/orch/`, re-read at every delivery.
-// `start` and `resume-context` render it in-process from the binary they run as, which the pane names;
+// `BeamUp` renders it from the `help index` of the binary it runs as, and `resume-context` in-process from the binary it runs as, which the pane names;
 // the watcher outlives a deploy, so it runs `help index` from the `lyx` path the orch strand recorded and goes idle with a reason naming `lyx orch stop` when that path is missing or gone.
 //
 // # The cycle request
@@ -37,15 +38,21 @@
 // With none pending it answers `withdrawn: false` with `phase`, and with `cycle_trigger` only when the phase is neither idle nor resuming, since `toIdle` does not reset the trigger and a reload start does not set it.
 // It never refuses: it removes only the marker, never a started cycle's state, and a marker present during a cycle has not started, because a cycle start consumes the marker it starts from under the orch state lock.
 //
+// # The watcher leaves a beam it no longer owns
+//
+// `watch` tells its watcher the owner read `beamOwnerElsewhere` and the strand removal, so a beam another machine owns loses its orch strand with its dobby.
+// The read takes the prime's owner for the prime and a beam's effective owner through `hubgeom.ParentOf`, from the hub's local Bolt, and compares it with this machine's name from `machinename`.
+// The verdict is as fresh as that Bolt, and a watcher started by an older build reaches the check only once it restarts, `lyx beam status` showing the orch up meanwhile.
+//
 // # Status restarts a dead watcher
 //
 // `status` is what the orch and the operator run when the orch goes quiet, so a live strand with no watcher holding `watch.lock` gets a new watcher from it.
 // A strand counts as live by the engine liveness predicate, which a shell-only pane past the grace fails.
 // The restart takes `start.lock` with a try-lock and restarts nothing, adding a `hint` to rerun, when a `start` or `stop` holds it.
 // Holding the lock it reads the state, the strands and the watch lock again and spawns only when the recorded strand is still tracked and live with no watcher, then logs `orch: restarted a dead watcher` with the previous watcher's recorded exit.
-// A spawn failure is the error envelope with the way forward `lyx orch start`.
+// A spawn failure is the error envelope with the way forward `lyx beam start`.
 // The envelope's `watcher_restarted` is true only when this call spawned one, `watcher_live` keeps what the probe found, and `strand_elsewhere` names the placement of a pane sitting in another session of reed's server.
-// A dead strand gets no watcher from `status`: `start` relaunches strand and watcher together, and a shell-only orch reads dead, so `start --continue` resumes its recorded session in one step.
+// A dead strand gets no watcher from `status`: `BeamUp` relaunches strand and watcher together, and a shell-only orch reads dead, so it resumes its recorded session in one step.
 // Bound: `status` writes only this one spawn, and two calls in sequence, the second before the first one's watcher takes `watch.lock`, may spawn two watchers, of which `watch.lock` keeps one.
 // `stop` takes `start.lock` around its strand read and removal, waiting up to a minute for a running `start` and then refusing with a way forward, so a restart never binds a watcher to a strand `stop` removes.
 //
@@ -88,37 +95,37 @@
 //
 // # Config after a binary change
 //
-// `start` reconciles the hub's config after a binary change, once per build, before it loads any module config or launches anything; a failure stops it with the reconcile's own message and way forward.
-// No other orch verb reconciles.
+// No orch verb reconciles the hub's config after a binary change; `lyx beam start` does, through `hubreconcile.Ensure`, before it calls `BeamUp`.
 //
-// # The origin reconcile at start
+// # The origin reconcile at bring-up
 //
-// Once `start` holds the start lock, and before it decides anything about the strand, it runs the hub-scope origin reconcile from the prime, so the orch never acts on a stale view of origin.
-// The reconcile never refuses the start: a stop, an unreachable origin and a reconcile error are reported for the orch to act on, and a run already driving is reported live or stopped when origin moved its branch.
-// The envelope gains `reconcile` (the report), `failed_pushes` (the hub's outstanding failed pushes), and the `mutations` and `partial` pair of a mutating verb, since the reconcile can remove pairs, write snapshot tags and move branches.
-// An unreachable origin or a reconcile error is a `warning`.
-// A failure after the reconcile ran carries the report's `mutations`, with `partial` true when the record is non-empty.
+// With `BeamUpOptions.Prepare`, once `BeamUp` holds the start lock, and before it decides anything about the strand, it runs the hub-scope origin reconcile from the prime, so the orch never acts on a stale view of origin.
+// A caller that already judged origin, adopt after its own reconcile and the pawl run's Beam-Up, leaves `Prepare` false, and the refusals still run.
+// The reconcile never refuses the bring-up: a stop, an unreachable origin and a reconcile error are reported for the orch to act on, and a run already driving is reported live or stopped when origin moved its branch.
+// The `BeamUpReport` gains `Reconcile`, `FailedPushes` (the hub's outstanding failed pushes), and the `Mutations` and `Partial` pair of a mutating step, since the reconcile can remove pairs, write snapshot tags and move branches.
+// An unreachable origin or a reconcile error is a warning.
+// A failure after the reconcile ran carries the report's mutations, with `Partial` true when the record is non-empty.
 // A fresh launch's prompt gains a line summarising the report and the outstanding failed pushes, the owned-elsewhere lines of the summary included.
 // Under an operator's live hub pause the reconcile's network calls wait at the network gate until the lift.
 //
-// # The prime claim and the owner pause at start
+// # The prime claim and the owner pause at bring-up
 //
-// After the reconcile, `start` first claims the prime for this machine through `claimPrime`, writing only when the board records no prime owner.
-// A claim, a claim lost to another machine and a failure are reported under the reconcile warnings, and none refuses the start.
-// Before it touches any strand, `start` then pauses each owned_elsewhere entry of the report through `pauseOwned`, which `InstallOwnerPause` stores for the process; the root pre-run installs `tendercli.PauseOwnedElsewhere`, since `tendercli` imports this package and the reverse import would cycle.
-// The paused slugs with their owners are the `owner_pauses` envelope key, and a failed or unwired pause is a warning naming that `lyx orch start` pauses it again.
+// After the reconcile, `Prepare` claims the prime for this machine through `claimPrime` in the prime and in a beam alike, writing only when the board records no prime owner.
+// A claim, a claim lost to another machine and a failure are reported under the warnings, and none refuses the bring-up.
+// Before it touches any strand, `Prepare` then pauses each owned_elsewhere entry of the report through `pauseOwned`, which `InstallOwnerPause` stores for the process; the root pre-run installs `tendercli.PauseOwnedElsewhere`, since `tendercli` imports this package and the reverse import would cycle.
+// The paused slugs with their owners are the report's `OwnerPauses`, and a failed or unwired pause is a warning naming that `lyx beam start` pauses it again.
 // A nil `claimPrime` or `pauseOwned`, as a hand-built start harness has, is skipped.
 //
 // # Withdrawing around a fresh launch
 //
-// Wherever `start` resets the orch state onto a session, a relaunch, `--continue`, `--adopt` and an adopted live strand alike, it signs creel calls as the watcher's program and runs two rounds on the orch strand's name, the listed strand's name or else the fixed `<shortname>:orch`.
-// A hub with no shortname record fails `start` before any round when no orch strand is listed.
-// The first round runs before `start` starts or binds a session and before it removes the old strand: a withdraw of the old cycle's queued steps, and a release only when an orch strand is listed.
-// A failed withdraw, a refusal or an unreachable daemon alike, fails `start` with creel's error and a way forward, and nothing is started, bound or removed.
+// Wherever a bring-up resets the orch state onto a session, a relaunch, a resume and an adopted live strand alike, it signs creel calls as the watcher's program and runs two rounds on the orch strand's name, the listed strand's name or else the fixed `<shortname>:orch`.
+// A hub with no shortname record fails the bring-up before any round when no orch strand is listed.
+// The first round runs before the bring-up starts or binds a session and before it removes the old strand: a withdraw of the old cycle's queued steps, and a release only when an orch strand is listed.
+// A failed withdraw, a refusal or an unreachable daemon alike, fails the bring-up with creel's error and a way forward, and nothing is started, bound or removed.
 // Creel's refusals for a program claim from a non-orch pane or for an unknown pane process carry no code, so that way forward is one fixed text naming both causes.
 // The second round runs after the reset state is saved, a withdraw and a release that catch a step an old watcher still running queued in between.
-// A failed first release or a failure in the second round does not fail `start`; the error text is recorded in the orch state's `fresh_launch_failure`, which the watcher retries on every tick.
-// A resume line a withdraw removed is handed to `orchengine.ClearResumeNoticed` with the orch GUID the state records at that call, so a continued or adopted session gets the line posted again.
+// A failed first release or a failure in the second round does not fail the bring-up; the error text is recorded in the orch state's `fresh_launch_failure`, which the watcher retries on every tick.
+// A resume line a withdraw removed is handed to `orchengine.ClearResumeNoticed` with the orch GUID the state records at that call, so a resumed session gets the line posted again.
 //
 // # The session-start hook
 //

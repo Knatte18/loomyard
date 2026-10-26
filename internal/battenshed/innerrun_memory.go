@@ -36,8 +36,9 @@ type innerRunMemory struct {
 	Episode memoryEpisode `json:"episode"`
 	// DriverBusyNoticed is whether the orch was noticed of the current stall on a busy driver pane.
 	DriverBusyNoticed bool `json:"driver_busy_noticed"`
-	// OwnedBy, OwnerNoticed, OwnerDue and OwnerCovered are the owner trigger's state.
+	// OwnedBy, OwnedSubject, OwnerNoticed, OwnerDue and OwnerCovered are the owner trigger's state.
 	OwnedBy      string `json:"owned_by"`
+	OwnedSubject string `json:"owned_subject"`
 	OwnerNoticed bool   `json:"owner_noticed"`
 	OwnerDue     bool   `json:"owner_due"`
 	OwnerCovered bool   `json:"owner_covered"`
@@ -133,7 +134,7 @@ func (p *innerRunProducer) applyMemory(memory innerRunMemory) {
 	}
 	p.episode = noticeEpisode{known: memory.Episode.Known, state: memory.Episode.State, since: memory.Episode.Since, arbiterOffAt: memory.Episode.ArbiterOffAt, deliveries: deliveries}
 	p.driverBusyNoticed = memory.DriverBusyNoticed
-	p.ownedBy, p.ownerNoticed, p.ownerDue, p.ownerCovered = memory.OwnedBy, memory.OwnerNoticed, memory.OwnerDue, memory.OwnerCovered
+	p.ownedBy, p.ownedSubject, p.ownerNoticed, p.ownerDue, p.ownerCovered = memory.OwnedBy, memory.OwnedSubject, memory.OwnerNoticed, memory.OwnerDue, memory.OwnerCovered
 	p.failures.Restore(memory.Failures)
 	p.restep = restepWatch{stop: memory.Restep.Stop, build: memory.Restep.Build, interval: memory.Restep.Interval, nextAt: memory.Restep.NextAt, attempts: memory.Restep.Attempts, dirtyLogged: memory.Restep.DirtyLogged}
 	p.watchedAnswer = watchedAnswer(memory.WatchedAnswer)
@@ -161,6 +162,7 @@ func (p *innerRunProducer) saveMemory() {
 
 		DriverBusyNoticed: p.driverBusyNoticed,
 		OwnedBy:           p.ownedBy,
+		OwnedSubject:      p.ownedSubject,
 		OwnerNoticed:      p.ownerNoticed,
 		OwnerDue:          p.ownerDue,
 		OwnerCovered:      p.ownerCovered,

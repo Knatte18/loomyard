@@ -38,6 +38,7 @@ type cancelFake struct {
 	reconcileErr    error
 	pullErr         error
 	machine, owner  string
+	subject         string
 	status          shedengine.Status
 	statusFound     bool
 	boardStatus     *string
@@ -68,6 +69,15 @@ type cancelFake struct {
 	claimErr        error
 	lifted          []string
 	notifyErr       error
+
+	// beamProject, hubReport, hubReconcileErr, landRefusal, landingHeld, landBlockers and stopBeamErr answer the beam seams; the zero value is a task.
+	beamProject     bool
+	hubReport       fabricengine.OriginReport
+	hubReconcileErr error
+	landRefusal     error
+	landingHeld     bool
+	landBlockers    BeamLandBlockers
+	stopBeamErr     error
 
 	endRequest      pairteardown.CancelRequest
 	removeRequest   pairteardown.Request
@@ -115,7 +125,7 @@ func (f *cancelFake) deps() cancelDeps {
 			return f.report, f.reconcileErr
 		},
 		PullBolt: func() error { f.call("PullBolt"); return f.pullErr },
-		Owner:    func() (string, string, error) { f.call("Owner"); return f.machine, f.owner, nil },
+		Owner:    func() (string, string, string, error) { f.call("Owner"); return f.machine, f.owner, f.subject, nil },
 		ReadStatus: func() (shedengine.Status, bool, error) {
 			f.call("ReadStatus")
 			return f.status, f.statusFound, nil
@@ -200,6 +210,15 @@ func (f *cancelFake) deps() cancelDeps {
 			f.notices = append(f.notices, line)
 			return f.notifyErr
 		},
+		BeamProject: func() (bool, error) { f.call("BeamProject"); return f.beamProject, nil },
+		ReconcileHub: func() (fabricengine.OriginReport, error) {
+			f.call("ReconcileHub")
+			return f.hubReport, f.hubReconcileErr
+		},
+		LandRefusal:  func() error { f.call("LandRefusal"); return f.landRefusal },
+		LandingHeld:  func() (bool, error) { f.call("LandingHeld"); return f.landingHeld, nil },
+		LandBlockers: func() (BeamLandBlockers, error) { f.call("LandBlockers"); return f.landBlockers, nil },
+		StopBeam:     func() error { f.call("StopBeam"); return f.stopBeamErr },
 	}
 }
 
@@ -224,7 +243,7 @@ func TestCancelRun(t *testing.T) {
 
 	liveRecord := runproc.Record{PID: 4242, Role: "batten", RegisteredAt: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}
 	entry := func(state fabricengine.EntryState) fabricengine.OriginReport {
-		return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: cancelSlug, State: state, Owner: "other-machine", How: "done", WayForward: "fix it"}}}
+		return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: cancelSlug, State: state, Owner: "other-machine", AdoptSubject: "some-beam", How: "done", WayForward: "fix it"}}}
 	}
 	pullUnreachable := fmt.Errorf("pull: %w", boardengine.ErrOwnerOriginUnreachable)
 
@@ -235,15 +254,16 @@ func TestCancelRun(t *testing.T) {
 		remove bool
 		// wantErr is a substring of the refusal, empty for none.
 		wantErr string
+		// wantErrAlso lists further substrings the refusal carries, and errAbsent substrings it never carries.
+		wantErrAlso []string
+		errAbsent   []string
 		// wantCalls is an ordered subsequence of the calls made.
 		wantCalls []string
 		// noCalls are seams that must not have been called.
 		noCalls []string
 		// marker is "none" when no marker was taken, "left" when its lock was released and the file kept, and "removed" when removed.
 		marker string
-		// rerun, when set, drives endRunPhase then clearRunPhase with this quoted re-run text in place of cancelRun, which is cancelRun minus its notice and its marker removal.
-		rerun string
-		check func(*testing.T, cancelReport, *cancelFake)
+		check  func(*testing.T, cancelReport, *cancelFake)
 	}
 
 	rows := []row{
@@ -424,14 +444,31 @@ func TestCancelRun(t *testing.T) {
 		{
 			name:    "OwnedElsewherePresentRefuses",
 			setup:   func(f *cancelFake) { f.worktreePresent = true; f.report = entry(fabricengine.EntryOwnedElsewhere) },
-			wantErr: `some-slug is owned by machine other-machine; way forward: run "lyx adopt some-slug" on this machine first, or "lyx batten cancel some-slug" on other-machine`,
+			wantErr: `some-slug is owned by machine other-machine; way forward: run "lyx adopt some-beam" on this machine first, or "lyx batten cancel some-slug" on other-machine`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
 		{
 			name:    "OwnedElsewhereAbsentRefuses",
-			setup:   func(f *cancelFake) { f.owner = "other-machine" },
-			wantErr: `some-slug is owned by machine other-machine; way forward: run "lyx adopt some-slug" on this machine first`,
+			setup:   func(f *cancelFake) { f.owner, f.subject = "other-machine", "some-beam" },
+			wantErr: `some-slug is owned by machine other-machine; way forward: run "lyx adopt some-beam" on this machine first`,
+			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
+			marker:  "none",
+		},
+		{
+			name:    "OwnedElsewhereAbsentRootTaskNamesRoot",
+			setup:   func(f *cancelFake) { f.owner, f.subject = "other-machine", "root" },
+			wantErr: `some-slug is owned by machine other-machine; way forward: run "lyx adopt root" on this machine first`,
+			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
+			marker:  "none",
+		},
+		{
+			name: "OwnedElsewhereWithOriginUnreachableNamesTheBeam",
+			setup: func(f *cancelFake) {
+				f.worktreePresent, f.report = true, fabricengine.OriginReport{Unreachable: true}
+				f.owner, f.subject = "other-machine", "some-beam"
+			},
+			wantErr: `some-slug is owned by machine other-machine; way forward: run "lyx adopt some-beam" on this machine first`,
 			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
 			marker:  "none",
 		},
@@ -661,6 +698,87 @@ func TestCancelRun(t *testing.T) {
 			noCalls: []string{"ClearClaim", "LiftPauses"},
 			marker:  "left",
 		},
+		{
+			name:      "TaskNeverReachesTheBeamSeams",
+			wantCalls: []string{"BeamProject", "EndForCancel", "RemoveRecords"},
+			noCalls:   []string{"ReconcileHub", "LandRefusal", "LandingHeld", "LandBlockers", "StopBeam"},
+			marker:    "removed",
+		},
+		{
+			name: "BeamWithMembersRefusesNamingThemWithNothingTakenOrEnded",
+			setup: func(f *cancelFake) {
+				f.beamProject = true
+				f.landRefusal = errors.New("battencli: the beam some-slug cannot land while work remains under it; way forward: the open entry m is a member of the beam: land it with `lyx batten run m`, or end it with `lyx batten cancel m --remove`")
+			},
+			wantErr:     "the open entry m is a member of the beam",
+			wantErrAlso: []string{"lyx batten run m", `then run "lyx batten cancel some-slug" again`},
+			wantCalls:   []string{"BeamProject", "ReconcileHub", "LandRefusal", "LandingHeld"},
+			noCalls:     append([]string{"TakeMarker", "LandBlockers", "StopBeam"}, destructiveCancelCalls...),
+			marker:      "none",
+		},
+		{
+			name: "BeamHeldByItsPawlRunNamesTheMembersCancelAndTheBoardMoveNeverItsRun",
+			setup: func(f *cancelFake) {
+				f.beamProject = true
+				f.landingHeld = true
+				f.landRefusal = errors.New("battencli: the beam some-slug cannot land while work remains under it; way forward: land it with `lyx batten run m`")
+				f.landBlockers = BeamLandBlockers{
+					Members: []BeamLandMember{
+						{Slug: "m", HasPair: true},
+						{Slug: "k", Running: true},
+						{Slug: "n"},
+					},
+					ChildPairs: []string{"p"},
+				}
+			},
+			wantErr: "the open entry m is a member of the beam: end it with `lyx batten cancel m --remove`, run in the beam's parent worktree, then move its `project` off the beam with `lyx board upsert`",
+			wantErrAlso: []string{
+				"the open entry k is a member of the beam: end it with `lyx batten cancel k --remove`",
+				"the open entry n is a member of the beam with no run status: move its `project` off the beam with `lyx board upsert`",
+				"the pair p was forked from the beam: end it with `lyx batten cancel p --remove`",
+				`then run "lyx batten cancel some-slug" again`,
+			},
+			errAbsent: []string{"lyx batten run"},
+			wantCalls: []string{"BeamProject", "ReconcileHub", "LandRefusal", "LandingHeld", "LandBlockers"},
+			noCalls:   append([]string{"TakeMarker", "StopBeam"}, destructiveCancelCalls...),
+			marker:    "none",
+		},
+		{
+			name:        "BeamWithOriginUnreachableRefusesNamingTheReRun",
+			setup:       func(f *cancelFake) { f.beamProject = true; f.hubReport = fabricengine.OriginReport{Unreachable: true} },
+			wantErr:     "the members of the beam some-slug could not be read against it",
+			wantErrAlso: []string{`run "lyx batten cancel some-slug" once origin answers`},
+			noCalls:     append([]string{"TakeMarker", "LandRefusal", "StopBeam"}, destructiveCancelCalls...),
+			marker:      "none",
+		},
+		{
+			name:        "BeamWhoseHubReconcileFailsRefusesNamingTheReRun",
+			setup:       func(f *cancelFake) { f.beamProject = true; f.hubReconcileErr = errors.New("git failed") },
+			wantErr:     "the origin reconcile of the hub failed: git failed",
+			wantErrAlso: []string{`then run "lyx batten cancel some-slug" again`},
+			noCalls:     append([]string{"TakeMarker", "LandRefusal", "StopBeam"}, destructiveCancelCalls...),
+			marker:      "none",
+		},
+		{
+			name:      "BeamWithNoMembersEndsAndStopsItsOrchAfterTheEnd",
+			setup:     func(f *cancelFake) { f.beamProject = true },
+			wantCalls: []string{"BeamProject", "ReconcileHub", "LandRefusal", "TakeMarker", "EndForCancel", "StopTackler", "StopBeam", "RemoveRecords", "ClearClaim"},
+			noCalls:   []string{"LandBlockers"},
+			marker:    "removed",
+		},
+		{
+			name: "FailingStopBeamWarnsAndTheCancelSucceeds",
+			setup: func(f *cancelFake) {
+				f.beamProject = true
+				f.stopBeamErr = errors.New("orch is busy")
+			},
+			marker: "removed",
+			check: func(t *testing.T, r cancelReport, _ *cancelFake) {
+				if len(r.Warnings) != 1 || !strings.Contains(r.Warnings[0], "orch is busy") || !r.RecordsRemoved || !r.ClaimCleared {
+					t.Errorf("report = %+v; want the cancel done with one warning naming the stop failure", r)
+				}
+			},
+		},
 	}
 
 	for _, unreachable := range []struct {
@@ -701,48 +819,6 @@ func TestCancelRun(t *testing.T) {
 		})
 	}
 
-	promoteRerun := `"lyx beam promote some-slug"`
-	rows = append(rows,
-		row{
-			name:      "PhasesTogetherDoWhatACancelWithoutRemoveDoes",
-			rerun:     promoteRerun,
-			wantCalls: []string{"HubPaused", "ExemptGate", "TakeMarker", "EndForCancel", "StopTackler", "RemoveRecords", "ClearClaim", "SpawnPush"},
-			noCalls:   []string{"RemovePair", "DiscardTaskBranch", "Notify"},
-			marker:    "removed",
-			setup: func(f *cancelFake) {
-				f.worktreePresent = true
-				f.parts = fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true}
-			},
-			check: func(t *testing.T, r cancelReport, f *cancelFake) {
-				if !r.RecordsRemoved || !r.ClaimCleared || !r.PushSpawned || r.PairRemoved || r.EndOnly {
-					t.Errorf("report = %+v; want the records removed, the claim cleared, the push spawned and the pair kept", r)
-				}
-				if !f.endRequest.Keep {
-					t.Error("EndForCancel request released the pair; want it kept")
-				}
-				if f.locksHeld != 0 || !f.gateRestored {
-					t.Errorf("locks held, gate restored = %d, %v; want 0, true", f.locksHeld, f.gateRestored)
-				}
-			},
-		},
-		row{
-			name:    "EndPhaseRefusalNamesTheRerunItWasGiven",
-			rerun:   promoteRerun,
-			setup:   func(f *cancelFake) { f.hubPaused = true },
-			wantErr: `then "lyx beam promote some-slug" again`,
-			noCalls: append([]string{"ExemptGate", "TakeMarker"}, destructiveCancelCalls...),
-			marker:  "none",
-		},
-		row{
-			name:    "EndPhaseProbeRefusalNamesTheRerunItWasGiven",
-			rerun:   promoteRerun,
-			setup:   func(f *cancelFake) { f.reconcileErr = errors.New("git is gone"); f.worktreePresent = true },
-			wantErr: `git is gone; way forward: fix the cause it names, then run "lyx beam promote some-slug" again`,
-			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
-			marker:  "none",
-		},
-	)
-
 	for _, tt := range rows {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
@@ -751,19 +827,23 @@ func TestCancelRun(t *testing.T) {
 				tt.setup(fake)
 			}
 
-			var report cancelReport
-			var err error
-			if tt.rerun == "" {
-				report, err = cancelRun(context.Background(), cancelSlug, tt.remove, fake.deps())
-			} else {
-				report, err = runPhases(context.Background(), tt.remove, tt.rerun, fake.deps())
-			}
+			report, err := cancelRun(context.Background(), cancelSlug, tt.remove, fake.deps())
 
 			switch {
 			case tt.wantErr == "" && err != nil:
 				t.Fatalf("cancelRun() error = %v; want nil", err)
 			case tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)):
 				t.Fatalf("cancelRun() error = %v; want it to contain %q", err, tt.wantErr)
+			}
+			for _, want := range tt.wantErrAlso {
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Errorf("cancelRun() error = %v; want it to contain %q", err, want)
+				}
+			}
+			for _, absent := range tt.errAbsent {
+				if err != nil && strings.Contains(err.Error(), absent) {
+					t.Errorf("cancelRun() error = %q; want it to never carry %q", err.Error(), absent)
+				}
 			}
 			if !callsInOrder(fake.calls, tt.wantCalls) {
 				t.Errorf("calls = %v; want %v in order", fake.calls, tt.wantCalls)
@@ -792,22 +872,6 @@ func TestCancelRun(t *testing.T) {
 			}
 		})
 	}
-}
-
-// runPhases drives endRunPhase and clearRunPhase in turn with rerun as the re-run text, which together do what cancelRun does bar its notice and its marker removal, and removes the marker when both ended.
-func runPhases(ctx context.Context, remove bool, rerun string, deps cancelDeps) (cancelReport, error) {
-	report, err := endRunPhase(ctx, cancelSlug, remove, rerun, deps)
-	if err != nil {
-		return report, err
-	}
-	defer report.hold.end(cancelSlug)
-	if report.EndOnly {
-		return report, nil
-	}
-	if err := clearRunPhase(cancelSlug, remove, rerun, &report, deps); err != nil {
-		return report, err
-	}
-	return report, report.hold.finishMarker(true)
 }
 
 // TestChildReachedParent pins which readings of batten's and the child's status say the work reached the parent.

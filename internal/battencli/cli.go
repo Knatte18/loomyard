@@ -16,8 +16,10 @@
 // The order is: end the registered processes, take batten's locks, stop the pair's strands and the tackler, remove the pair and its task branches with --remove, remove the records, leave the claim draft, lift the slug's own pauses, push and notify, and remove the marker last.
 // Without --remove the pair is kept and the cancel names "lyx batten cancel <slug> --remove" as the step before the slug runs again.
 // An unreachable origin ends only the processes and strands, leaves the marker and posts a notice naming the cancel to run once origin answers.
+// The cancel of a beam project first runs the hub's origin reconcile and refuses while the beam has members, naming each to land or cancel first, or, once the beam's pawl run holds its entry, to cancel and move off the beam; with origin unreachable it refuses naming the reconcile's way forward.
+// A beam with no members is ended like a task, its dobby with its run, and its orch and watcher are then stopped, a failure there only a warning on the report; `lyx beam create <slug>` starts the run again.
 //
-// "lyx batten overview" (overview.go) is the hidden pane verb the orch start runs in the runs strand of the prime and of each beam, whose window reed names `beam: prime` or `beam: <slug>`.
+// "lyx batten overview" (overview.go) is the hidden pane verb `lyx beam start` runs in the runs strand of the prime and of each beam, whose window reed names `beam: prime` or `beam: <slug>`.
 // It draws the window's dobby section, then a blank line and its orch section; each run shows once, in the dobby section.
 // The dobby section is the lines of the dobby of the worktree the pane runs in (overviewdobby.go), rendered by `DobbyLines` from the `dobbyengine.View` a `DobbyViewReader` reads:
 // a header saying whether the dobby is alive, with its `max_runs`, or not running with `lyx beam start` as the way forward;
@@ -39,14 +41,21 @@
 //
 // "lyx batten run <slug>" is one pass: it runs the run to its next halt or yield and exits, started by its parent worktree's dobby or by hand.
 // After the pass it makes sure the parent worktree's dobby is live.
-// `StartFirstPass` is the in-process start of a first pass for the verbs that take a run over, `lyx adopt` and `lyx beam land`:
+// `StartFirstPass` is the in-process start of a first pass for the verbs that take a run over or start a beam project's:
 // it runs the status check, the pause refusal and the owner pre-flight of a plain run, refuses a done slug, a covered one or one another machine owns before starting anything, then starts the pass detached.
+// Its `FirstPassOptions.Anchor` is recorded as the seed's `anchor` param on the first pass only, so it rides in the run record and a resume keeps it.
+//
+// A beam project runs as a task does, with the pawl recipe's own rows past Worktree-Create.
+// The start guard lets a beam project start or resume: a fresh start with no marked pair here gets a task's dirty-source and left-parts checks, the dirty-source check only when it forks from the prime;
+// a marked beam pair, a legacy beam's or a resumed run's, passes them, and a beam project skips the draft check, since a beam's cancel leaves its entry draft and `lyx beam create` starts its run again.
 //
 // The Worktree-Create row opens by claiming the slug's board entry with "running · Worktree-Create", before the pair exists, so the board's run lock starts at the claim.
 // The claim is one Bolt commit that also records this machine as the entry's owner, and an absent or done entry is skipped.
 // A failed owner write or push refuses the row, and so does an entry another machine owns, which the claim never takes.
 // The claim stays when the row then fails, and the stopped run resumes with the same verb.
 // No other row writes a board status; loom's transitions are the only later writer.
+// A pair is forked from the entry's parent beam, or from the prime outside a beam; a beam project's pair is forked unmarked at the anchor the seed records, since the pawl run's Beam-Up marks it.
+// A member's pair is judged against its beam's hold again once it is made, and when the row finds it already complete: a beam whose run holds its entry reads as held, so the row removes the member's pair and refuses, the member keeping its claim.
 //
 // A machine starts, resumes and claims only what it owns.
 // A start (no status file, or one still at Worktree-Create whose pair this machine does not hold) pulls the board, which needs origin, claims the hub's prime when none is recorded, and refuses a task another machine owns.
@@ -132,6 +141,9 @@ type battenCLI struct {
 	// parentOwner names the machine, other than this one, that owns the worktree parent on the board's owners, where the empty parent is the prime; it is empty when no other machine owns it.
 	// Nil selects the board's owners through the owner seams.
 	parentOwner func(parent string) (string, error)
+	// landingHeld reports whether the landing hold of the worktree parent stands, the prime never being held.
+	// Nil reads the local board's entry of parent through boardengine.RunHolds.
+	landingHeld func(parent string) (bool, error)
 	// passSpawn starts `<lyx> <args>` detached in its own process group with dir as its working directory, and returns the started process's pid.
 	// Nil selects spawnDetachedPass.
 	passSpawn func(dir string, args []string) (int, error)
@@ -151,8 +163,13 @@ type battenCLI struct {
 	owner ownerSeams
 	// guard carries the pre-run's refusals of a cancel under way, a dirty source and a left pair; armAt fills it with hubStartGuard when its Marker is nil, and a hand-populated receiver leaves it zero, which checks nothing.
 	guard startGuard
-	// beam carries the reads Worktree-Create makes for a beam's landing; wire fills it with hubLandingSeams, and a receiver that calls no wire leaves it zero, which reads every entry as a task.
+	// beam carries the reads Worktree-Create makes for a beam project's run; wire fills it with hubLandingSeams, and a receiver that calls no wire leaves it zero, which reads every entry as a task.
 	beam landingSeams
+	// beamHold reads the board entry of a beam that a member's pair was just made under: its status, and whether its run holds the entry, which keeps the member from joining.
+	// Nil reads the local board through boardengine.RunHolds.
+	beamHold func(beam string) (status string, held bool, err error)
+	// firstPassAnchor is the anchor StartFirstPass records as the seed's anchor param when armSeed writes the seed; empty records none.
+	firstPassAnchor string
 	// preDrive re-reads the cancel marker and the seed at the seeding of an absent status and under the shed's run lock; armAt sets it to preDriveCheck, and nil checks nothing, which only a hand-populated receiver has.
 	preDrive func() error
 	// clientAttached reports whether any client is attached to the task worktree's reed session; wire fills it, and nil reads as no reopening, which only a hand-populated receiver has.
@@ -500,14 +517,19 @@ func parentWorktree(prime *lyxcwd.Location, slug string) (string, error) {
 
 // ensureParentDobby makes sure the dobby of slug's parent worktree is running, so a run started by hand or in a first pass is driven on.
 // ownerElsewhere names the other machine that owns the parent worktree on the board's owners, or is empty;
-// when another machine owns it, nothing is spawned and the error names `lyx adopt <parent>`, or `lyx adopt --prime` for the prime, since that dobby would exit at once on its owner read and leave the run undriven.
+// when another machine owns it, nothing is spawned and the error names `lyx adopt <parent>`, or `lyx adopt root` for the prime, since that dobby would exit at once on its owner read and leave the run undriven.
+// landingHeld reports whether the parent beam's landing hold stands;
+// when it does, nothing is spawned and the error names `lyx batten status <parent>`.
 // Otherwise live reads whether the dobby runs and spawn starts it when it does not;
-// a failed geometry, read or spawn is returned naming `lyx beam start`.
-func ensureParentDobby(prime *lyxcwd.Location, slug string, ownerElsewhere func(parent string) (string, error), live func(dobbyengine.Geometry) (bool, error), spawn func(dobbyengine.Geometry) error) error {
-	startWay := "run `lyx beam start` to start every dobby this machine owns"
+// a failed geometry, read or spawn is returned naming `lyx beam start <parent>`, or `lyx beam start root` for the prime.
+func ensureParentDobby(prime *lyxcwd.Location, slug string, ownerElsewhere func(parent string) (string, error), landingHeld func(parent string) (bool, error), live func(dobbyengine.Geometry) (bool, error), spawn func(dobbyengine.Geometry) error) error {
 	parent, err := parentWorktree(prime, slug)
 	if err != nil {
-		return fmt.Errorf("battencli: resolve the parent worktree of %q: %w; way forward: %s", slug, err, startWay)
+		return fmt.Errorf("battencli: resolve the parent worktree of %q: %w; way forward: fix the cause, then run `lyx batten run %s` again", slug, err, slug)
+	}
+	startWay := "run `lyx beam start " + parent + "` to start it"
+	if parent == prime.WorktreeName {
+		startWay = "run `lyx beam start root` to start it"
 	}
 	owner, err := ownerElsewhere(parent)
 	if err != nil {
@@ -516,9 +538,16 @@ func ensureParentDobby(prime *lyxcwd.Location, slug string, ownerElsewhere func(
 	if owner != "" {
 		adopt := "lyx adopt " + parent
 		if parent == prime.WorktreeName {
-			adopt = "lyx adopt --prime"
+			adopt = "lyx adopt root"
 		}
 		return fmt.Errorf("battencli: machine %q owns the worktree %q whose dobby drives %q, so no dobby is started here and the run stays undriven; way forward: run `%s` from this machine's prime", owner, parent, slug, adopt)
+	}
+	held, err := landingHeld(parent)
+	if err != nil {
+		return fmt.Errorf("battencli: read whether the landing hold of %q stands: %w; way forward: %s", parent, err, startWay)
+	}
+	if held {
+		return fmt.Errorf("battencli: the landing hold of %q stands, so no dobby is started and the run stays undriven; way forward: read the landing with `lyx batten status %s`", parent, parent)
 	}
 	geometry, err := hubgeom.DobbyGeometry(prime, parent)
 	if err != nil {
@@ -537,11 +566,15 @@ func ensureParentDobby(prime *lyxcwd.Location, slug string, ownerElsewhere func(
 	return nil
 }
 
-// ensureDobby is ensureParentDobby over this receiver's seams, the board's owners and dobbyengine's liveness read and detached spawn where a seam is nil.
+// ensureDobby is ensureParentDobby over this receiver's seams, the board's owners and landing hold and dobbyengine's liveness read and detached spawn where a seam is nil.
 func (c *battenCLI) ensureDobby() error {
 	ownerElsewhere := c.parentOwner
 	if ownerElsewhere == nil {
 		ownerElsewhere = c.otherMachineOwning
+	}
+	landingHeld := c.landingHeld
+	if landingHeld == nil {
+		landingHeld = func(parent string) (bool, error) { return hubgeom.LandingHeld(c.location, parent) }
 	}
 	live := c.dobbyLive
 	if live == nil {
@@ -551,7 +584,7 @@ func (c *battenCLI) ensureDobby() error {
 	if spawn == nil {
 		spawn = dobbyengine.SpawnDetached
 	}
-	return ensureParentDobby(c.location, c.slug, ownerElsewhere, live, spawn)
+	return ensureParentDobby(c.location, c.slug, ownerElsewhere, landingHeld, live, spawn)
 }
 
 // otherMachineOwning names the machine other than this one that owns the worktree parent on the local board, the prime's name reading the prime owner.
@@ -581,13 +614,20 @@ func (c *battenCLI) otherMachineOwning(parent string) (string, error) {
 	return owner, nil
 }
 
+// FirstPassOptions carries what a first pass records into the run it starts.
+type FirstPassOptions struct {
+	// Anchor is the directory the run's pair takes as its anchor, relative to the repository root.
+	// A first pass records it as the seed's anchor param, so it rides in the run record and a resume keeps it; empty records none.
+	Anchor string
+}
+
 // StartFirstPass starts `lyx batten run <slug>` as a detached first pass against the hub's prime worktree at location, and returns the envelope that start prints.
-// It is the in-process start an adopting verb runs for each slug it takes over and `lyx beam land` runs for a landing; the pass is then driven on by its parent worktree's dobby.
+// It is the in-process start an adopting verb runs for each slug it takes over and `lyx beam create` runs for a beam's pawl run; the pass is then driven on by its parent worktree's dobby.
 // A refusal, such as a done slug, a covered one or one another machine owns, returns an envelope whose ok is false and whose error names the way forward;
 // the error result is reserved for a failure to arm the run or to read the envelope back.
 // The run's own driver lock, inside the pass, refuses a second driver.
-func StartFirstPass(location *lyxcwd.Location, slug string) (map[string]any, error) {
-	c := &battenCLI{spec: &shedverbs.Spec{}}
+func StartFirstPass(location *lyxcwd.Location, slug string, opts FirstPassOptions) (map[string]any, error) {
+	c := &battenCLI{spec: &shedverbs.Spec{}, firstPassAnchor: opts.Anchor}
 	c.reconcile = func(slug string) (fabricengine.OriginReport, error) { return reconcileRun(c.location, slug, false) }
 	armed, err := c.armAt(location, slug, true, "run")
 	if err != nil {

@@ -6,6 +6,7 @@ package dobbyengine
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -26,6 +27,39 @@ func TestOwnedElsewhere(t *testing.T) {
 		}
 		if rs := h.state(); !rs.OwnedElsewhere || !rs.OwnerNoticeSent || rs.FailingPassCount != 0 {
 			t.Errorf("state = %+v; want it marked owned elsewhere, noticed, and no failing pass", rs)
+		}
+	})
+
+	t.Run("the notice names the adopt subject, and the slug when the seam is nil, fails or answers nothing", func(t *testing.T) {
+		t.Parallel()
+		for _, row := range []struct {
+			name       string
+			subject    string
+			subjectErr error
+			nilSeam    bool
+			wantAdopt  string
+		}{
+			{"a beam", "beam", nil, false, "lyx adopt beam on this machine"},
+			{"root", "root", nil, false, "lyx adopt root on this machine"},
+			{"a nil seam", "", nil, true, "lyx adopt task on this machine"},
+			{"a failing seam", "beam", errors.New("board unreadable"), false, "lyx adopt task on this machine"},
+			{"an empty answer", "", nil, false, "lyx adopt task on this machine"},
+		} {
+			t.Run(row.name, func(t *testing.T) {
+				t.Parallel()
+				h := newPassHarness(t, runningRun("task"))
+				h.fake.exits = []PassExit{owned}
+				h.fake.subject, h.fake.subjectErr = row.subject, row.subjectErr
+				if row.nilSeam {
+					h.d.deps.AdoptSubject = nil
+				}
+				for range 3 {
+					h.tick(true)
+				}
+				if len(h.fake.notices) != 1 || !strings.Contains(h.fake.notices[0], row.wantAdopt) {
+					t.Errorf("notices = %q; want one naming %q", h.fake.notices, row.wantAdopt)
+				}
+			})
 		}
 	})
 

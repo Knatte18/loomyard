@@ -445,7 +445,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	if !errors.Is(err, battenshed.ErrUnsupportedChildRecipe) {
 		t.Fatalf("WriteSeed(batten) error = %v; want it to wrap ErrUnsupportedChildRecipe", err)
 	}
-	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipeBeam} {
+	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipePawl} {
 		if !strings.Contains(err.Error(), admitted) {
 			t.Errorf("WriteSeed(batten) error = %q; want it to name the admitted recipe %q", err, admitted)
 		}
@@ -456,7 +456,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 		t.Errorf("WriteSeed(unknown) error = %v; want it to wrap ErrUnknownRecipe", err)
 	}
 
-	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipeBeam} {
+	for _, admitted := range []string{shedrun.RecipeLoom, shedrun.RecipeDarn, shedrun.RecipePawl} {
 		err = c.env.SeedChild.WriteSeed(context.Background(), admitted, shedrun.DriverGo)
 		if errors.Is(err, battenshed.ErrUnsupportedChildRecipe) || errors.Is(err, battenshed.ErrUnknownRecipe) {
 			t.Fatalf("WriteSeed(%s) error = %v; want the child admitted past the recipe checks", admitted, err)
@@ -467,17 +467,21 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	}
 }
 
-// TestBoardRecipe asserts the recipe Seed-Child seeds: beam for a project entry, the entry's own recipe field otherwise.
+// TestBoardRecipe asserts the recipe Seed-Child seeds: pawl for a project entry, the entry's own recipe field otherwise, and that boardengine's project recipe is the shedrun one.
 func TestBoardRecipe(t *testing.T) {
 	t.Parallel()
+
+	if boardengine.ProjectRecipe != shedrun.RecipePawl {
+		t.Errorf("boardengine.ProjectRecipe = %q; want %q", boardengine.ProjectRecipe, shedrun.RecipePawl)
+	}
 
 	tests := []struct {
 		name string
 		task boardengine.Task
 		want string
 	}{
-		{"ProjectSeedsBeam", boardengine.Task{Kind: boardengine.KindProject}, shedrun.RecipeBeam},
-		{"ProjectIgnoresItsRecipeField", boardengine.Task{Kind: boardengine.KindProject, Recipe: shedrun.RecipeDarn}, shedrun.RecipeBeam},
+		{"ProjectSeedsPawl", boardengine.Task{Kind: boardengine.KindProject}, shedrun.RecipePawl},
+		{"ProjectIgnoresItsRecipeField", boardengine.Task{Kind: boardengine.KindProject, Recipe: shedrun.RecipeDarn}, shedrun.RecipePawl},
 		{"TaskWithDarnRecipe", boardengine.Task{Kind: boardengine.KindTask, Recipe: shedrun.RecipeDarn}, shedrun.RecipeDarn},
 		{"TaskWithNoRecipe", boardengine.Task{Kind: boardengine.KindTask}, ""},
 	}
@@ -872,9 +876,9 @@ func TestOwnerVerdictOf(t *testing.T) {
 		want   battenshed.OwnerVerdict
 	}{
 		{
-			name:   "owned_elsewhere_entry_names_its_owner",
-			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "other", State: fabricengine.EntryActive}, {Slug: "task", State: fabricengine.EntryOwnedElsewhere, Owner: "laptop"}}},
-			want:   battenshed.OwnerVerdict{Owner: "laptop", Elsewhere: true},
+			name:   "owned_elsewhere_entry_names_its_owner_and_adopt_subject",
+			report: fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "other", State: fabricengine.EntryActive}, {Slug: "task", State: fabricengine.EntryOwnedElsewhere, Owner: "laptop", AdoptSubject: "beam"}}},
+			want:   battenshed.OwnerVerdict{Owner: "laptop", AdoptSubject: "beam", Elsewhere: true},
 		},
 		{
 			name:   "active_entry_is_owned_here",

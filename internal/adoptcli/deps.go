@@ -1,4 +1,4 @@
-// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift, the run resume, the child resume, the dobby start and the test suite start.
+// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift, the run resume, the child resume, the beam steps, the landing-hold read and the test suite start.
 
 package adoptcli
 
@@ -13,12 +13,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lyxcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -92,7 +92,7 @@ func hubDepsAs(prime *lyxcwd.Location, machine func() (string, error)) (adoptDep
 			return readStatus(shedrun.StatusFile(prime, slug))
 		},
 		ResumeRun: func(slug string) (map[string]any, error) {
-			return battencli.StartFirstPass(prime, slug)
+			return battencli.StartFirstPass(prime, slug, battencli.FirstPassOptions{})
 		},
 		ChildStatus: func(slug string) (shedengine.Status, bool, error) {
 			pairPath := fabricengine.WorktreePath(prime, slug)
@@ -118,10 +118,34 @@ func hubDepsAs(prime *lyxcwd.Location, machine func() (string, error)) (adoptDep
 			}
 			return fabricengine.MoveInProgress(worktree, fabricengine.RecordsWorktreePath(pair, worktree))
 		},
-		StartDobbies: func() error {
-			_, err := dobbyengine.EnsureLive(hubgeom.DobbyStart(prime))
-			return err
+		BeamUp: func(worktree string) (orchcli.BeamUpReport, error) {
+			if testing.Testing() {
+				return orchcli.BeamUpReport{}, errors.New("the beam steps start a tmux session and detached processes, which a test binary must not")
+			}
+			location, err := lyxcwd.ResolveWorktree(fabricengine.WorktreePath(prime, worktree))
+			if err != nil {
+				return orchcli.BeamUpReport{}, err
+			}
+			here, err := machine()
+			if err != nil {
+				return orchcli.BeamUpReport{}, err
+			}
+			return orchcli.BeamUp(location, orchcli.BeamUpOptions{Here: here})
 		},
+		LandingHeld: func(slug string) (bool, error) {
+			// ReadOwners carries no run status, so the entry is read whole and judged by RunHolds.
+			tasks, err := boardengine.ReadTasks(boardDir)
+			if err != nil {
+				return false, err
+			}
+			for _, task := range tasks {
+				if task.Slug == slug {
+					return boardengine.RunHolds(task), nil
+				}
+			}
+			return false, nil
+		},
+		PrimeName: prime.WorktreeName,
 		StartSuite: func() (suiteStart, error) {
 			return startSuite(prime.AnchorPath(), filepath.Join(fabricengine.AdoptScratchDir(prime.HubPath), suiteLogName))
 		},

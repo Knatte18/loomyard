@@ -156,20 +156,49 @@ func TestNewTask(t *testing.T) {
 		}
 	})
 
-	t.Run("a note payload carrying owner_machine stores none and a task keeps it", func(t *testing.T) {
-		note, err := boardengine.NewTask(map[string]any{"slug": "n", "owner_machine": "neve"}, 1)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+	t.Run("a payload carrying owner_machine stores none on a note, a task or a grouping project, and a beam project keeps it", func(t *testing.T) {
+		for _, tt := range []struct {
+			name   string
+			fields map[string]any
+			want   string
+		}{
+			{"note", map[string]any{"slug": "n", "owner_machine": "neve"}, ""},
+			{"task", map[string]any{"slug": "t", "kind": boardengine.KindTask, "labels": []string{"bug"}, "owner_machine": "neve"}, ""},
+			{"grouping project", map[string]any{"slug": "g", "kind": boardengine.KindProject, "labels": []string{"bug"}, "owner_machine": "neve"}, ""},
+			{"beam project", map[string]any{"slug": "b", "kind": boardengine.KindProject, "labels": []string{"bug"}, "beam": true, "owner_machine": "neve"}, "neve"},
+		} {
+			entry, err := boardengine.NewTask(tt.fields, 1)
+			if err != nil {
+				t.Fatalf("%s: unexpected error: %v", tt.name, err)
+			}
+			if entry.OwnerMachine != tt.want {
+				t.Errorf("%s OwnerMachine = %q; want %q", tt.name, entry.OwnerMachine, tt.want)
+			}
 		}
-		if note.OwnerMachine != "" {
-			t.Errorf("note OwnerMachine = %q; want none", note.OwnerMachine)
-		}
-		task, err := boardengine.NewTask(map[string]any{"slug": "t", "kind": boardengine.KindTask, "labels": []string{"bug"}, "owner_machine": "neve"}, 2)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if task.OwnerMachine != "neve" {
-			t.Errorf("task OwnerMachine = %q; want neve", task.OwnerMachine)
+	})
+
+	t.Run("recipe pawl is accepted on a project, and another project recipe or pawl on a task is refused naming the fix", func(t *testing.T) {
+		for _, tt := range []struct {
+			name    string
+			fields  map[string]any
+			wantErr []string
+		}{
+			{"project pawl", map[string]any{"slug": "p", "kind": boardengine.KindProject, "labels": []string{"bug"}, "recipe": "pawl"}, nil},
+			{"project loom", map[string]any{"slug": "p", "kind": boardengine.KindProject, "labels": []string{"bug"}, "recipe": "loom"}, []string{`project "p"`, `recipe "loom"`, "pawl"}},
+			{"task pawl", map[string]any{"slug": "t", "kind": boardengine.KindTask, "labels": []string{"bug"}, "recipe": "pawl"}, []string{`task "t"`, "loom or darn", "beam project"}},
+		} {
+			_, err := boardengine.NewTask(tt.fields, 1)
+			if len(tt.wantErr) == 0 {
+				if err != nil {
+					t.Errorf("%s: NewTask error = %v; want none", tt.name, err)
+				}
+				continue
+			}
+			for _, want := range tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Errorf("%s: NewTask error = %v; want it to carry %q", tt.name, err, want)
+				}
+			}
 		}
 	})
 

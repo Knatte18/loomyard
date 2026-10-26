@@ -62,8 +62,9 @@ func TestComputeLayers(t *testing.T) {
 				{ID: 2, Slug: "held", Title: "Held", Kind: boardengine.KindProject, Beam: true, Status: stringPtr(boardengine.RunStatus("running", "Webster"))},
 				{ID: 3, Slug: "finished", Title: "Finished", Kind: boardengine.KindProject, Status: stringPtr("done")},
 				{ID: 4, Slug: "task", Title: "Task", Kind: boardengine.KindTask, DependsOn: []string{"open"}},
+				{ID: 5, Slug: "awaiting", Title: "Awaiting", Kind: boardengine.KindProject, Beam: true, Status: stringPtr(boardengine.RunStatus("running", "Beam-Await"))},
 			},
-			want: map[string]string{"open": "Project", "held": "Running", "finished": "__done__", "task": "Ready"},
+			want: map[string]string{"open": "Project", "held": "Running", "finished": "__done__", "task": "Ready", "awaiting": "Project"},
 		},
 		{
 			name: "isolated task",

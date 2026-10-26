@@ -40,6 +40,8 @@ type RunView struct {
 	OriginOwed bool
 	// Covered reports whether a pause entry covers the hub or the slug.
 	Covered bool
+	// NoSlot reports whether the run takes no slot under max_runs: a pawl run whose landing hold does not stand.
+	NoSlot bool
 }
 
 // PassExit is how a `lyx batten run` pass ended: its exit code and its last error text.

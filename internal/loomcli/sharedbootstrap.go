@@ -334,6 +334,18 @@ func (c *loomCLI) wireLanding() error {
 	)
 	// The fixer runs on the seat engine wire already built, so no second engine is constructed.
 	c.env.Landing.FixerSeats = c.env.Seats
+	// A pawl run's land check names the beam's parent worktree as where a cancel runs, read from the beam's origin record.
+	if c.recipe == shedrun.RecipePawl {
+		prime, err := primeOfHub(c.location)
+		if err != nil {
+			return err
+		}
+		parentWorktree, err := beamParentWorktree(prime, seedSlug(c.location.WorktreeName))
+		if err != nil {
+			return err
+		}
+		c.env.Landing.ParentWorktree = parentWorktree
+	}
 	return nil
 }
 
@@ -349,5 +361,9 @@ func (c *loomCLI) buildLoomShed() (*shedengine.Shed, error) {
 
 	// A loop's step child adopts its trace id from LYX_TRACE_ID, so this tie names the step the loop runs and the watchdog can stop that step's runs.
 	c.runner.SetStepTie(shuttleengine.StepTie{StepsDir: shedrun.StepsDir(c.location, c.runID), TraceID: logger.TraceID()})
+	// Beam-Await wakes on a land request's file event, which only a running shed needs a watch for; wire also runs for status and pause.
+	if c.recipe == shedrun.RecipePawl {
+		c.env.Pawl.Watch = openLandRequestWatch(c.env.Pawl.Paths)
+	}
 	return c.newShed()
 }

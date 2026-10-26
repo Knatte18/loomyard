@@ -164,6 +164,8 @@ type innerRunProducer struct {
 	restep restepWatch
 	// ownedBy is the machine the owner check last read as owning the run, empty while it reads as owned here, across Calls.
 	ownedBy string
+	// ownedSubject is what `lyx adopt` takes to move the run the owner check last read as owned elsewhere, empty when the verdict brought none, across Calls.
+	ownedSubject string
 	// ownerNoticed is whether the orch was noticed of the current owner episode.
 	ownerNoticed bool
 	// ownerDue is whether the owner check is due at the next check that has a status.
@@ -467,7 +469,7 @@ func (p *innerRunProducer) Call(ctx context.Context) (shedengine.Outcome, sheden
 			if owner, owned := spawnOwnedElsewhere(spawnErr); owned {
 				w := p.cur
 				w.status = status
-				p.ownedElsewhere(ctx, w, owner)
+				p.ownedElsewhere(ctx, w, owner, "")
 				return p.exemptEnd(fmt.Sprintf("the run is owned by machine %s: not spawning its inner shed run", owner)).results()
 			}
 			return "", shedengine.OutputPointer{}, fmt.Errorf("battenshed: %s: spawn inner shed run (resuming this run retries the spawn): %w", p.name, spawnErr)
@@ -991,7 +993,7 @@ func (p *innerRunProducer) resumeAwaitingChild(ctx context.Context, w *childWait
 			return false, hardEnd(cerr)
 		}
 		if owner, owned := spawnOwnedElsewhere(spawnErr); owned {
-			p.ownedElsewhere(ctx, w, owner)
+			p.ownedElsewhere(ctx, w, owner, "")
 			return false, nil
 		}
 		if errors.Is(spawnErr, ErrChildNotParked) {

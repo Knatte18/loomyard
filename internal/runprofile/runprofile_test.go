@@ -43,7 +43,7 @@ func TestLoad(t *testing.T) {
 		{
 			name:         "no file reads the template's ladder, docs and defaults",
 			wantNames:    []string{"docs", "light", "solid", "speed", "wide"},
-			wantDefaults: map[string]string{"loom": "solid", "darn": "light"},
+			wantDefaults: map[string]string{"loom": "solid", "darn": "light", "pawl": "light"},
 		},
 		{
 			name:         "a removed starting profile stays removed",
@@ -102,6 +102,9 @@ func TestTemplateLadder(t *testing.T) {
 	perch := func(rounds int) map[string]int {
 		return map[string]int{"max": rounds, "hard": rounds + 1}
 	}
+	if got := profiles.Default("pawl"); got != "light" {
+		t.Errorf("Default(pawl) = %q; want light", got)
+	}
 	tests := []struct {
 		profile                string
 		discussion, plan, code int
@@ -131,6 +134,13 @@ func TestTemplateLadder(t *testing.T) {
 			}
 			darnKeys := darn["loom"].(map[string]any)
 			got["darn code"] = map[string]int{"max": darnKeys["code_max_bounces"].(int), "hard": darnKeys["code_hard_max_bounces"].(int)}
+			pawl, err := profiles.Settings(tt.profile, "pawl")
+			if err != nil {
+				t.Fatal(err)
+			}
+			pawlKeys := pawl["loom"].(map[string]any)
+			got["pawl code"] = map[string]int{"max": pawlKeys["code_max_bounces"].(int), "hard": pawlKeys["code_hard_max_bounces"].(int)}
+			want["pawl code"] = perch(tt.darnCode)
 			if !reflect.DeepEqual(got, want) {
 				t.Errorf("Settings(%s) rounds = %v; want %v", tt.profile, got, want)
 			}

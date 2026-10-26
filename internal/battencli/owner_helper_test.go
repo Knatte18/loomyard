@@ -31,14 +31,19 @@ type fakeOwners struct {
 	requests []boardengine.OwnerRequest
 }
 
-// seams returns the owner seams over the fake; its ParentOf reads every parent as the prime.
+// seams returns the owner seams over the fake; its ParentOf answers some-beam for some-slug when the owners hold that beam, and the prime for every other entry.
 func (f *fakeOwners) seams() ownerSeams {
 	return ownerSeams{
-		Machine:  func() (string, error) { return f.machine, f.machineErr },
-		Pull:     func() error { f.pulls++; return f.pullErr },
-		Read:     func() (boardengine.Owners, error) { return f.owners, f.readErr },
-		ParentOf: func(string) (string, error) { return "", nil },
-		Set:      f.set,
+		Machine: func() (string, error) { return f.machine, f.machineErr },
+		Pull:    func() error { f.pulls++; return f.pullErr },
+		Read:    func() (boardengine.Owners, error) { return f.owners, f.readErr },
+		ParentOf: func(slug string) (string, error) {
+			if _, held := f.owners.Entries["some-beam"]; held && slug == "some-slug" {
+				return "some-beam", nil
+			}
+			return "", nil
+		},
+		Set: f.set,
 	}
 }
 
@@ -64,10 +69,13 @@ func (f *fakeOwners) set(req boardengine.OwnerRequest) (boardengine.OwnerWrite, 
 	return boardengine.OwnerWrite{Lost: f.lost}, nil
 }
 
-// ownedBy returns the owners of a hub whose prime this machine owns and that holds one task, some-slug, with the given owner and run state.
+// ownedBy returns the owners of a hub with the given prime owner that holds one task, some-slug, in the given run state, inside the beam project some-beam recording owner.
 func ownedBy(prime, owner string, runHeld bool) boardengine.Owners {
 	return boardengine.Owners{
-		Prime:   prime,
-		Entries: map[string]boardengine.OwnerEntry{"some-slug": {Owner: owner, IsTask: true, RunHeld: runHeld}},
+		Prime: prime,
+		Entries: map[string]boardengine.OwnerEntry{
+			"some-beam": {Owner: owner, IsProject: true, Beam: true},
+			"some-slug": {IsTask: true, RunHeld: runHeld},
+		},
 	}
 }

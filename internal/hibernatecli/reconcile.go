@@ -83,7 +83,7 @@ func wakeReconcileFromReport(report fabricengine.OriginReport) hibernateengine.W
 				}
 			}
 		case fabricengine.EntryOwnedElsewhere:
-			run.Owner = entry.Owner
+			run.Owner, run.AdoptSubject = entry.Owner, entry.AdoptSubject
 		default:
 			continue
 		}

@@ -483,9 +483,9 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 	if err != nil {
 		return err
 	}
-	// A darn run takes no PATTERN declaration, so its review rows are told no record.
+	// A darn or pawl run takes no PATTERN declaration, so its review rows are told no record.
 	patternRecordPath := ""
-	if c.recipe != shedrun.RecipeDarn {
+	if c.recipe != shedrun.RecipeDarn && c.recipe != shedrun.RecipePawl {
 		patternRecordPath = loomengine.DiscussionDecisionRecord(location)
 	}
 	burlerGeom.PatternRecordPath = patternRecordPath
@@ -823,13 +823,23 @@ func (c *loomCLI) wire(location *lyxcwd.Location, cwd string) error {
 		}
 	}
 
-	// A beam run's description row reads the beam's board entry and its commits over the parent, with no agent.
-	if c.recipe == shedrun.RecipeBeam {
+	// A pawl run's description row reads the beam's board entry and its commits over the parent, with no agent, and its Go rows are told the hub seams of the beam's life.
+	if c.recipe == shedrun.RecipePawl {
 		parentBranch, err := beamParentBranch(location)
 		if err != nil {
 			return err
 		}
-		c.env.BeamDescribe = beamDescribeDeps(location, seedSlug(location.WorktreeName), parentBranch)
+		slug := seedSlug(location.WorktreeName)
+		c.env.BeamDescribe = beamDescribeDeps(location, slug, parentBranch)
+		pawl, err := pawlDeps(location, slug)
+		if err != nil {
+			return err
+		}
+		c.env.Pawl = pawl
+		// The perch's CIRCLING Reason names the budget the pawl routing applies.
+		c.env.SegmentBounces = segmentBounces(statusPath, statusLockPath, func() (shedengine.Routing, error) {
+			return loomrecipe.PawlRouting(loomSegmentBudgets(loomCfg))
+		})
 	}
 
 	c.location = location

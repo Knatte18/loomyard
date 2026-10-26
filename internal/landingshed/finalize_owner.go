@@ -71,7 +71,20 @@ func (fz *Finalize) ownerChecks(ctx context.Context) (shedengine.Outcome, sheden
 	if runOwner == "" && parent.Here {
 		return "", shedengine.OutputPointer{}, nil, false
 	}
-	return fz.ownerHalt(ctx, ownerHaltReason(fz.deps.Slug, runOwner, parent))
+	return fz.ownerHalt(ctx, ownerHaltReason(fz.deps.Slug, fz.adoptSubject(), runOwner, parent))
+}
+
+// adoptSubject reads what `lyx adopt` takes to move the run, "" when no seam is wired or the read fails, which ownerHaltReason reads as the slug.
+func (fz *Finalize) adoptSubject() string {
+	if fz.deps.AdoptSubject == nil {
+		return ""
+	}
+	subject, err := fz.deps.AdoptSubject()
+	if err != nil {
+		logger.Warn("landingshed: read what adopt takes for the run failed; the halt names the slug", "producer", finalizeName, "cause", err)
+		return ""
+	}
+	return subject
 }
 
 // ownerHalt returns the halting Stuck of an owner check with reason behind OwnerHaltPrefix, which writes the loom halt note.
@@ -81,25 +94,30 @@ func (fz *Finalize) ownerHalt(ctx context.Context, reason string) (shedengine.Ou
 }
 
 // ownerHaltReason words the reason of an owner halt for the run slug.
+// subject is what `lyx adopt` takes to move the run, the beam or `root`, and reads as slug when empty.
 // runOwner is the machine owning the run, empty when this machine does; the parent is judged by parent.Here.
-// Each wording names the owners at fault and the adopt commands that move them.
-func ownerHaltReason(slug, runOwner string, parent ParentOwnership) string {
-	adoptParentHere, parentName := "lyx adopt --prime", "the prime"
-	if parent.Slug != "" {
-		adoptParentHere, parentName = "lyx adopt "+parent.Slug, fmt.Sprintf("the parent pair %q", parent.Slug)
+// Each wording names the owners at fault and the adopt commands that move them, with `root` for the prime.
+func ownerHaltReason(slug, subject, runOwner string, parent ParentOwnership) string {
+	if subject == "" {
+		subject = slug
 	}
-	adoptRunWithParent := fmt.Sprintf("lyx adopt --prime %s --keep-local", slug)
+	parentSubject, parentName := "root", "the prime"
 	if parent.Slug != "" {
-		adoptRunWithParent = fmt.Sprintf("lyx adopt %s %s --keep-local", parent.Slug, slug)
+		parentSubject, parentName = parent.Slug, fmt.Sprintf("the parent pair %q", parent.Slug)
 	}
-	adoptOnParentOwner := fmt.Sprintf(`run "lyx adopt %s" on machine %q`, slug, parent.Owner)
+	adoptParentHere := "lyx adopt " + parentSubject
+	adoptRunWithParent := fmt.Sprintf("lyx adopt %s %s --keep-local", parentSubject, subject)
+	if parentSubject == subject {
+		adoptRunWithParent = fmt.Sprintf("lyx adopt %s --keep-local", subject)
+	}
+	adoptOnParentOwner := fmt.Sprintf(`run "lyx adopt %s" on machine %q`, subject, parent.Owner)
 
 	switch {
 	case runOwner == "":
 		return fmt.Sprintf(`%s is owned by machine %q, so this machine does not land on it; way forward: adopt it here with "%s", which resumes the halted run, or %s, which stops at its first step and names "--keep-local" and "--drop-local" when that machine drove the run before and holds local commits or a live pair for it`,
 			parentName, parent.Owner, adoptParentHere, adoptOnParentOwner)
 	case parent.Here:
-		return fmt.Sprintf(`this run is owned by machine %q, so this machine does not land it; way forward: run "lyx adopt %s --keep-local" here`, runOwner, slug)
+		return fmt.Sprintf(`this run is owned by machine %q, so this machine does not land it; way forward: run "lyx adopt %s --keep-local" here`, runOwner, subject)
 	default:
 		return fmt.Sprintf(`this run is owned by machine %q and %s by machine %q, so this machine lands neither; way forward: %s, or run "%s" here`,
 			runOwner, parentName, parent.Owner, adoptOnParentOwner, adoptRunWithParent)

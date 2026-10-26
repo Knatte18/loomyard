@@ -331,10 +331,10 @@ func TestFabricReplay(t *testing.T) {
 		},
 		{
 			name:        "OwnerChangedOnBothSidesKeepsOriginsAndReportsTheLocalOneLost",
-			base:        []Task{replayEntry("a")},
-			origin:      []Task{replayEntry("a", withOwner("box"))},
-			parent:      []Task{replayEntry("a")},
-			commit:      []Task{replayEntry("a", withOwner("neve"))},
+			base:        []Task{replayEntry("a", asProject, asBeam)},
+			origin:      []Task{replayEntry("a", asProject, asBeam, withOwner("box"))},
+			parent:      []Task{replayEntry("a", asProject, asBeam)},
+			commit:      []Task{replayEntry("a", asProject, asBeam, withOwner("neve"))},
 			wantEmpty:   true,
 			wantLost:    []fabricengine.BoardReplayFinding{{Entry: "a", Field: "owner_machine", Reason: "origin changed the field too", Local: `"neve"`}},
 			wantEntries: map[string]string{"a": "a"},
@@ -346,10 +346,10 @@ func TestFabricReplay(t *testing.T) {
 		},
 		{
 			name:        "OwnerOnlyTheCommitChangedLandsOnARunHeldEntry",
-			base:        []Task{replayEntry("a", withStatus(runLocked))},
-			origin:      []Task{replayEntry("a", withStatus(runLocked))},
-			parent:      []Task{replayEntry("a", withStatus(runLocked))},
-			commit:      []Task{replayEntry("a", withStatus(runLocked), withOwner("neve"))},
+			base:        []Task{replayEntry("a", asProject, asBeam, withStatus(runLocked))},
+			origin:      []Task{replayEntry("a", asProject, asBeam, withStatus(runLocked))},
+			parent:      []Task{replayEntry("a", asProject, asBeam, withStatus(runLocked))},
+			commit:      []Task{replayEntry("a", asProject, asBeam, withStatus(runLocked), withOwner("neve"))},
 			wantEntries: map[string]string{"a": "a"},
 			check: func(t *testing.T, _ string, got map[string]Task) {
 				if got["a"].OwnerMachine != "neve" {

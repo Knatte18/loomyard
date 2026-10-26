@@ -77,7 +77,7 @@
 // A weft records branch that is not Bolt and needs a move, hub-wide or run-scoped, first refuses an empty own marker and then runs `weftAnchorStop` on its tip and origin's head, falling back to the `NamedWorktree` anchor of its pair or the prime.
 // Either stop leaves the weft unmoved and reports anchor_stopped, with `BranchOutcome.Anchor` the anchor the way forward sets, empty for an empty marker, and the reconcile goes on with the other branches and returns no error.
 // The pair's code branch still moves, since it changes no marker.
-// The way forward of a pair is `lyx fabric anchor <slug> --set <anchor>` in its code worktree; the prime's first names ending every reed session of the hub and waiting out every live batten run, then the `--set`, then `lyx orch start`.
+// The way forward of a pair is `lyx fabric anchor <slug> --set <anchor>` in its code worktree; the prime's first names ending every reed session of the hub and waiting out every live batten run, then the `--set`, then `lyx beam start`.
 // An anchor_stopped branch stops its entry, and one on the prime's records branch stops every entry.
 // `classifyEntry` turns the verdicts on an entry's branches into active, ended, owned_elsewhere or stopped, in that precedence.
 //
@@ -85,7 +85,7 @@
 // A judge-only scope reads owners too, since the tip's objects are fetched by SHA, and moves nothing.
 // A hub with no Bolt target or no origin head asks nothing, and a nil `OwnerOf` reads every entry as owned here.
 // A seam error, an empty machine name included, is the reconcile's error, so no verdict is compared with an empty name.
-// An owned_elsewhere entry carries its `Owner` and a way forward naming `lyx adopt <slug>`, and the report's `Summary` has a line for it.
+// An owned_elsewhere entry carries its `Owner`, its `AdoptSubject` (the beam or `root` that `lyx adopt` takes to move it, which the `OwnerReader` answers beside the owner) and a way forward naming `lyx adopt <subject>`, the slug when the reader left the subject empty, and the report's `Summary` has a line for it.
 // An ended entry stays ended whoever owns it, and an owned_elsewhere entry's pair is never handed to the teardown seam.
 // The move is fast-forward only for such an entry: its code and records fast-forwards move, but a records branch both sides moved stays needs_replay and is not replayed, so no commit made after the handover lands on the new owner's tip.
 // The rule holds in the reconcile only; the weft push retry still replays a rejected push.
@@ -927,14 +927,6 @@
 // The one exception is `removeWorktreeLeftover`: it keeps containment through `os.Root`, and takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
 // See `PATTERN-fabric-git` for the rules;
 // this section is the rationale the invariant deliberately omits.
-//
-// **The records reset.** `ResetRecordsToParent(rec, l, slug)` resets the records content of slug's pair to what a fresh fork from its parent's records branch leaves, in one commit on the pair's records branch, never rewriting history.
-// It reads the origin record, refusing a missing record or records worktree (`lyx fabric reconcile`, or restoring the record from the records history in that worktree) and a root pair with no parent (a project entry through `lyx board upsert` and `lyx beam create`);
-// commits the records worktree's uncommitted record content under the record pathspec (`commitPendingRecords`), so the history keeps it;
-// runs the shared pipeline over the records worktree, with the hub as container, ownership as the pair's registered linked worktree of the weft repo and dirtiness `dirtyScopeAll`, so content outside the record pathspec refuses naming its paths and `lyx beam promote`;
-// and replaces the tracked content with the parent tip's tree minus the run-records root, removing the tracked files the parent lacks and restoring the origin record, under the subject `fabric: reset records of <slug> to its parent`.
-// A pair whose content already equals that tree commits nothing and reports `Committed: false`, so a re-run after a stop finishes the reset.
-// `ResetRecordsResult` carries the pre-commit's SHA when one was made, the reset commit's SHA and `Committed`; the caller pushes through the pair's detached push.
 //
 // **The pair-scoped reset.** `ResetPairCode(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`, which refuses on any tracked dirt and accepts the prime checkout.
 // Its request declares the hub as container and the warp worktree as target;

@@ -1,38 +1,43 @@
-// land.go is the "lyx beam land" sequence: it judges the named beam, applies the refusal that stops a landing while work remains under it, and starts the landing run as a detached first pass.
+// land.go is the "lyx beam land" sequence: it judges the named beam, applies the refusal that stops a landing while work remains under it, and writes the land request the beam's pawl run consumes at Beam-Await.
 
 package beamcli
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
 // landDeps holds the seam of every land step, which hubLandDeps fills over the hub and TestLand fakes.
-// ParentWorktree names the worktree the beam's pair was forked from, the prime's name when its record names none.
+// ParentOf names the slug of the pair a slug was forked from, "" for the prime.
+// ChildStatus reads the status of the beam pair's own pawl run, found false when it has none.
+// RunID returns the seed id of that pawl run, which a land request names.
 // Refusal is the landing's refusal of a beam with work remaining under it.
-// StartLanding starts the landing run as a detached first pass, driven on by the parent worktree's dobby, and returns the envelope of that start.
+// WriteRequest writes the land request into the beam worktree and returns its path.
 type landDeps struct {
-	ReadOwners     func() (boardengine.Owners, error)
-	PairPresent    func(slug string) bool
-	OriginRecord   func(slug string) (fabricengine.Origin, bool, error)
-	ParentWorktree func(slug string) (string, error)
-	Refusal        func(slug string) error
-	StartLanding   func(slug string) (map[string]any, error)
+	Machine      func() (string, error)
+	ReadOwners   func() (boardengine.Owners, error)
+	ParentOf     func(slug string) (string, error)
+	PairPresent  func(slug string) bool
+	OriginRecord func(slug string) (fabricengine.Origin, bool, error)
+	ChildStatus  func(slug string) (status shedengine.Status, found bool, err error)
+	RunID        func(slug string) (string, error)
+	Refusal      func(slug string) error
+	WriteRequest func(slug string, req pawlengine.LandRequest) (string, error)
+	Now          func() time.Time
 }
 
-// land starts the landing of the beam slug from the worktree named acting, and returns the envelope of the landing run's start.
-// The beam's pair is removed by the landing, so the verb refuses to run from inside the beam itself.
-func land(deps landDeps, acting, slug string) (map[string]any, error) {
-	if acting == slug {
-		parent, err := deps.ParentWorktree(slug)
-		if err != nil {
-			return nil, fmt.Errorf("lyx beam land: read the parent worktree of %s: %w", slug, err)
-		}
-		return nil, fmt.Errorf("lyx beam land: %s is the beam itself, and its landing removes the pair this verb runs in; way forward: run `lyx beam land %s` from its parent worktree %s", slug, slug, parent)
+// land asks the pawl run of the beam slug to land the beam, and returns the request's path and the command that follows the landing.
+// The request is only a file: Beam-Await consumes it, and the beam's pair is removed at the run's teardown, so the verb runs from any worktree, the beam itself included.
+func land(deps landDeps, slug string) (map[string]any, error) {
+	here, err := deps.Machine()
+	if err != nil {
+		return nil, fmt.Errorf("lyx beam land: read this machine's name: %w", err)
 	}
-
 	owners, err := deps.ReadOwners()
 	if err != nil {
 		return nil, fmt.Errorf("lyx beam land: read the board's owners: %w", err)
@@ -40,18 +45,30 @@ func land(deps landDeps, acting, slug string) (map[string]any, error) {
 	if err := judgeLandEntry(deps, owners, slug); err != nil {
 		return nil, err
 	}
+	if err := judgeLandRun(deps, slug); err != nil {
+		return nil, err
+	}
+	if err := judgeLandOwners(deps, owners, here, slug); err != nil {
+		return nil, err
+	}
 	if err := deps.Refusal(slug); err != nil {
 		return nil, err
 	}
 
-	envelope, err := deps.StartLanding(slug)
+	runID, err := deps.RunID(slug)
 	if err != nil {
-		return nil, fmt.Errorf("lyx beam land: start the landing run of %s: %w; way forward: fix the cause it names, then run `lyx beam land %s` again", slug, err, slug)
+		return nil, fmt.Errorf("lyx beam land: read the pawl run id of %s: %w; way forward: fix the cause it names, then run `lyx beam land %s` again", slug, err, slug)
 	}
-	if ok, _ := envelope["ok"].(bool); !ok {
-		return envelope, fmt.Errorf("lyx beam land: the landing run of %s did not start: %v; way forward: fix the cause it names, then run `lyx beam land %s` again", slug, envelope["error"], slug)
+	path, err := deps.WriteRequest(slug, pawlengine.LandRequest{RunID: runID, RequestedAt: deps.Now().UTC()})
+	if err != nil {
+		return nil, fmt.Errorf("lyx beam land: write the land request of %s: %w; way forward: fix the cause it names, then run `lyx beam land %s` again", slug, err, slug)
 	}
-	return envelope, nil
+	return map[string]any{
+		"slug":        slug,
+		"request":     path,
+		"run_id":      runID,
+		"way_forward": fmt.Sprintf("run `lyx batten status %s` to follow the landing", slug),
+	}, nil
 }
 
 // judgeLandEntry refuses the entry slug unless it is a beam project that is not done and whose pair is here, marked.
@@ -61,7 +78,7 @@ func judgeLandEntry(deps landDeps, owners boardengine.Owners, slug string) error
 	case !held || (!entry.IsTask && !entry.IsProject):
 		return fmt.Errorf("lyx beam land: %q is not a beam, as an absent entry or a note is not; way forward: `lyx board list` shows the entries", slug)
 	case entry.IsTask:
-		return fmt.Errorf("lyx beam land: %q is a task, not a beam; way forward: land a task with `lyx batten run %s`, or make it a beam with `lyx beam promote %s`", slug, slug, slug)
+		return fmt.Errorf("lyx beam land: %q is a task, not a beam; way forward: land a task with `lyx batten run %s`, or make a project entry with `lyx board upsert` under a slug of its own, then run `lyx beam create <that slug>`", slug, slug)
 	case entry.Done:
 		return fmt.Errorf("lyx beam land: the beam %q is done and already landed", slug)
 	case !entry.Beam:
@@ -78,6 +95,46 @@ func judgeLandEntry(deps landDeps, owners boardengine.Owners, slug string) error
 	}
 	if !origin.Beam {
 		return fmt.Errorf("lyx beam land: the pair of %s does not carry the beam mark; way forward: run `lyx beam create %s`, which marks it", slug, slug)
+	}
+	return nil
+}
+
+// judgeLandRun refuses a beam whose pawl run is absent, as a beam made before the pawl recipe is, or is not running at Beam-Await, the one row that reads a land request.
+func judgeLandRun(deps landDeps, slug string) error {
+	status, found, err := deps.ChildStatus(slug)
+	if err != nil {
+		return fmt.Errorf("lyx beam land: read the pawl run of %s: %w; way forward: fix the cause it names, then run `lyx beam land %s` again", slug, err, slug)
+	}
+	if !found {
+		return fmt.Errorf("lyx beam land: the beam %s has no pawl run on this machine; way forward: run `lyx beam create %s`, which starts it", slug, slug)
+	}
+	if status.State != shedengine.StateRunning || status.CurrentProducer != pawlengine.NameBeamAwait {
+		return fmt.Errorf("lyx beam land: the pawl run of %s is %s at %s, and only a run waiting at %s reads a land request; way forward: run `lyx batten status %s`, then `lyx beam land %s` once the run waits", slug, status.State, status.CurrentProducer, pawlengine.NameBeamAwait, slug, slug)
+	}
+	return nil
+}
+
+// judgeLandOwners refuses a beam another machine owns and a beam whose parent another machine owns, each naming the adopt that takes it.
+// A beam with no owner recorded reads its parent's, so only the parent check judges it.
+func judgeLandOwners(deps landDeps, owners boardengine.Owners, here, slug string) error {
+	if owner := owners.Entries[slug].Owner; boardengine.OwnedElsewhere(owner, here) {
+		return fmt.Errorf("lyx beam land: the beam %s is owned by machine %s; way forward: run `lyx beam land %s` on %s, or run `lyx adopt %s` here to take the beam over", slug, owner, slug, owner, slug)
+	}
+	parent, err := deps.ParentOf(slug)
+	if err != nil {
+		return fmt.Errorf("lyx beam land: read the parent of %s: %w", slug, err)
+	}
+	owner, subject := owners.Prime, boardengine.RootSubject
+	if parent != "" {
+		if owner, err = owners.Effective(parent, deps.ParentOf); err != nil {
+			return fmt.Errorf("lyx beam land: read the owner of %s: %w", parent, err)
+		}
+		if subject, err = owners.AdoptSubject(parent, deps.ParentOf); err != nil {
+			return fmt.Errorf("lyx beam land: read what adopting %s takes: %w", parent, err)
+		}
+	}
+	if boardengine.OwnedElsewhere(owner, here) {
+		return fmt.Errorf("lyx beam land: the parent of %s is owned by machine %s, and a landing merges into it; way forward: run `lyx adopt %s` here to take it over, then `lyx beam land %s`", slug, owner, subject, slug)
 	}
 	return nil
 }

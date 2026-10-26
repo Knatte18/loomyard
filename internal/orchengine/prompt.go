@@ -1,4 +1,4 @@
-// prompt.go renders the orch stencils (orch-template-role, orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-adopt, orch-template-handoff-soft, orch-template-compact, orch-template-reload).
+// prompt.go renders the orch stencils (orch-template-role, orch-template-note, orch-template-start, orch-template-handoff, orch-template-resume, orch-template-handoff-soft, orch-template-compact, orch-template-reload).
 // Each is read from a told stencils directory at call time via stencilstore.Read, per the Stencil Ownership Invariant, and filled with stencil.Fill, which drops the leading comment.
 // The role and note stencils render to files the session reads, and the two note requests render to the mail body creel posts.
 // Every other render is injected as one creel text line or handed to shuttle as its launch pointer, and a creel text inject is one line,
@@ -29,7 +29,6 @@ const (
 	handoffStencilName = "orch-template-handoff"
 	resumeStencilName  = "orch-template-resume"
 
-	adoptStencilName       = "orch-template-adopt"
 	softHandoffStencilName = "orch-template-handoff-soft"
 	compactStencilName     = "orch-template-compact"
 	reloadStencilName      = "orch-template-reload"
@@ -124,11 +123,6 @@ func RenderHandoffInstruction(stencilsDir, handoffPath, noteTemplatePath string)
 // RenderResumePrompt renders the one-line resume pointer, with rolePath and handoffPath filled in.
 func RenderResumePrompt(stencilsDir, rolePath, handoffPath string) (string, error) {
 	return render(stencilsDir, resumeStencilName, map[string]string{"role_path": rolePath, "handoff_path": handoffPath}, true)
-}
-
-// RenderAdoptPrompt renders the one-line launch pointer for an adopted session, with rolePath filled in.
-func RenderAdoptPrompt(stencilsDir, rolePath string) (string, error) {
-	return render(stencilsDir, adoptStencilName, map[string]string{"role_path": rolePath}, true)
 }
 
 // RenderSoftHandoffInstruction renders the soft-trigger note request mail body, with handoffPath and noteTemplatePath filled in.
