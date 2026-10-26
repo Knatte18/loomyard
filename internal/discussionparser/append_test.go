@@ -225,7 +225,7 @@ func TestAppendDecision_FindingRestoresRecord(t *testing.T) {
 	}{
 		{"MissingSection", strings.Replace(allSectionsContent(), "## Goal", "## Aim", 1), nil, checkSectionMissing},
 		{"UnknownPatternAction", allSectionsContent(), &PatternChange{ID: "PATTERN-new", Action: "renames", Text: "x"}, checkPatternChangeMalformed},
-		{"PatternTextOverCap", allSectionsContent(), &PatternChange{ID: "PATTERN-new", Action: "changes", Text: strings.Repeat("x", patternEntryLineCap)}, checkPatternChangeOverCap},
+		{"PatternTextOverCap", allSectionsContent(), &PatternChange{ID: "PATTERN-new", Action: "changes", Text: strings.Repeat("x", patternEntryTextCap+1)}, checkPatternChangeOverCap},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

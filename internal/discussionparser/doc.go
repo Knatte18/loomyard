@@ -8,7 +8,8 @@
 // IdentityText returns the record without the carry-over blocks and added-decision entries those two paths write, so a review segment's re-entry tells a changed record from one that only gained them.
 // CheckAddedDecisionsKept reports the added-decision entries and appended PATTERN change bullets a record dropped that any earlier version of it held, read from told bytes.
 // The record may carry an optional `## PATTERN changes` section listing the PATTERN entries the task adds, changes or removes.
-// Validate checks its bullets through ParsePatternChanges and refuses an `adds` or `changes` bullet whose PATTERN.md entry line would run past the PATTERN format checker's line cap, so the overrun fails at Discussion and at `lyx loom decision add` rather than first at the plan gate.
+// Validate checks its bullets through ParsePatternChanges and refuses an `adds` or `changes` bullet whose rule text, the entry text without a trailing `(test)` or background link, would run past the PATTERN format checker's rule-text cap,
+// so the overrun fails at Discussion and at `lyx loom decision add` rather than first at the plan gate.
 // DeclaredPatternChanges returns them rendered for the directives that show them to an agent.
 // It takes told absolute paths and declares no on-disk location of its own.
 // loomengine's DiscussionDecisionRecord, DiscussionSupportLog and DiscussionRelevant accessors remain the sole declarers of where `_lyx/discussion/` is.

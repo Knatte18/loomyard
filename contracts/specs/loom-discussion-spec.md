@@ -35,7 +35,8 @@ Each entry is one bullet, with `<id>` matching `[a-z0-9-]+`:
 
 An entry ID is listed at most once.
 An `adds` or `changes` bullet prescribes the overview line `` - `PATTERN-<id>` — <new entry text> ``.
-The discussion check refuses that line, as a `pattern-change-over-cap` finding, when it is longer, in characters, than the PATTERN entry line cap the plan gate's `pattern-entry-line-cap` applies;
+The discussion check refuses that line, as a `pattern-change-over-cap` finding, when its rule text, the new entry text without a trailing `(test)` or background link, is longer, in characters, than the PATTERN rule-text cap the plan gate's `pattern-entry-line-cap` applies;
+the cap is the same number whatever the entry's name, and `lyx loom decision add --pattern-text` applies it when the decision is recorded;
 detail that does not fit belongs in the entry's background file.
 `lyx loom decision add` appends a bullet with the suffix ` — added after Discussion (<by>, <date>)`.
 A record without the section is valid.

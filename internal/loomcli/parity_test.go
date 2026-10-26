@@ -412,7 +412,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 				if err != nil {
 					t.Fatalf("read card file: %v", err)
 				}
-				overCap := "- `PATTERN-x` — " + strings.Repeat("x", pattern.MaxEntryLineChars)
+				overCap := "- `PATTERN-x` — " + strings.Repeat("x", pattern.MaxEntryTextChars+1)
 				if err := os.WriteFile(cardFile, append(data, []byte("\n```\n"+overCap+"\n```\n")...), 0o644); err != nil {
 					t.Fatalf("write card file: %v", err)
 				}

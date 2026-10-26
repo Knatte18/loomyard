@@ -58,7 +58,7 @@ var requiredDiscussionSections = []string{
 // supportLogPath -- a not-exist yields exactly one Finding and a nil error, any other stat error
 // returns immediately as a returned error with a nil findings slice.
 // Then os.ReadFile decisionRecordPath, with the identical two-way split.
-// Only then do the checks that accumulate findings run: the heading check, one Finding per missing heading, and then the optional `## PATTERN changes` section's shape check, one Finding per malformed bullet, and its length check, one Finding per `adds` or `changes` bullet whose overview line is longer than a PATTERN.md entry line may be.
+// Only then do the checks that accumulate findings run: the heading check, one Finding per missing heading, and then the optional `## PATTERN changes` section's shape check, one Finding per malformed bullet, and its length check, one Finding per `adds` or `changes` bullet whose rule text is longer than a PATTERN.md entry's rule text may be.
 // A record without that section passes it.
 //
 // A clean run returns a nil (or empty) slice and a nil error. Validate never returns a non-empty

@@ -1,5 +1,5 @@
 // patternchanges.go implements the decision record's optional `## PATTERN changes` section:
-// ParsePatternChanges reads and checks its bullets, patternOverCapFindings measures the entry lines they prescribe, and DeclaredPatternChanges hands the rendered bullets to the callers that put them in front of an agent.
+// ParsePatternChanges reads and checks its bullets, patternOverCapFindings measures the rule texts they prescribe, and DeclaredPatternChanges hands the rendered bullets to the callers that put them in front of an agent.
 
 package discussionparser
 
@@ -146,15 +146,23 @@ func parsePatternBullet(line string) (PatternChange, string) {
 	return change, ""
 }
 
-// checkPatternChangeOverCap names a Finding produced when an `adds` or `changes` bullet prescribes an overview line longer than a PATTERN.md entry line may be.
+// checkPatternChangeOverCap names a Finding produced when an `adds` or `changes` bullet prescribes a rule text longer than a PATTERN.md entry's rule text may be.
 const checkPatternChangeOverCap = "pattern-change-over-cap"
 
-// patternEntryLineCap is the longest a PATTERN.md entry line may be, in runes.
+// patternEntryTextCap is the longest a PATTERN.md entry's rule text may be, in runes.
 // It equals the PATTERN format checker's cap, which this stdlib-only package may not import.
-const patternEntryLineCap = 360
+const patternEntryTextCap = 280
 
-// patternOverCapFindings returns one pattern-change-over-cap finding per `adds` or `changes` change in changes whose overview line, "- `<ID>` — <text>", runs past patternEntryLineCap runes, in order.
-// A bullet `lyx loom decision add` appended is measured like any other, since the overview line it prescribes is the same.
+// patternLinkTailRe matches the background link that may close a prescribed entry text, with its separator.
+var patternLinkTailRe = regexp.MustCompile(` — \[background\]\([^)]*\)$`)
+
+// patternRuleText returns text without a trailing background link and then a trailing " (test)" marker, the part of an entry line the cap measures.
+func patternRuleText(text string) string {
+	return strings.TrimSuffix(patternLinkTailRe.ReplaceAllString(text, ""), " (test)")
+}
+
+// patternOverCapFindings returns one pattern-change-over-cap finding per `adds` or `changes` change in changes whose rule text runs past patternEntryTextCap runes, in order.
+// A bullet `lyx loom decision add` appended is measured like any other, since the entry text it prescribes is the same.
 // A finding's Path is left empty for the caller to set.
 func patternOverCapFindings(changes []PatternChange) []Finding {
 	var findings []Finding
@@ -162,8 +170,8 @@ func patternOverCapFindings(changes []PatternChange) []Finding {
 		if c.Action == patternActionRemoves {
 			continue
 		}
-		length := len([]rune("- `" + c.ID + "` — " + c.Text))
-		if length <= patternEntryLineCap {
+		length := len([]rune(patternRuleText(c.Text)))
+		if length <= patternEntryTextCap {
 			continue
 		}
 		wayForward := "shorten the text or move its detail to the entry's background file"
@@ -172,7 +180,7 @@ func patternOverCapFindings(changes []PatternChange) []Finding {
 		}
 		findings = append(findings, Finding{
 			Check:  checkPatternChangeOverCap,
-			Detail: fmt.Sprintf("`%s` %s an overview line of %d characters, over the %d cap of a PATTERN.md entry line; way forward: %s", c.ID, c.Action, length, patternEntryLineCap, wayForward),
+			Detail: fmt.Sprintf("`%s` %s a rule text of %d characters, over the %d cap of a PATTERN.md entry's rule text; way forward: %s", c.ID, c.Action, length, patternEntryTextCap, wayForward),
 		})
 	}
 	return findings

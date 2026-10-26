@@ -23,8 +23,9 @@ const (
 	// HeadroomBytes is the line a branch's own growth of the overview must not cross, 5% below the cap.
 	HeadroomBytes = MaxOverviewBytes * 95 / 100
 
-	// MaxEntryLineChars caps one entry line's length in characters.
-	MaxEntryLineChars = 360
+	// MaxEntryTextChars caps the length in characters of one entry line's rule text, the part EntryRuleText returns.
+	// The room a writer has for the wording is then the same whatever the entry's name and tail.
+	MaxEntryTextChars = 280
 
 	// entryBulletPrefix opens every entry line.
 	entryBulletPrefix = "- "
@@ -57,7 +58,12 @@ var (
 	entryHeadRe = regexp.MustCompile("^- `([^`]*)`")
 	// backgroundLinkRe matches the `[background](target)` link of an entry line.
 	backgroundLinkRe = regexp.MustCompile(`\[background\]\(([^)]*)\)`)
+	// entryLinkTailRe matches the background link closing an entry line, with its separator.
+	entryLinkTailRe = regexp.MustCompile(` — \[background\]\([^)]*\)$`)
 )
+
+// entryTestMarker closes the rule text of an entry a test enforces.
+const entryTestMarker = " (test)"
 
 // Finding is one format violation.
 // Subject is the entry name or file it concerns; Line is the overview line number, or 0 where none applies.
@@ -114,8 +120,8 @@ func Check(root fs.FS) []Finding {
 		}
 		seen[name] = true
 
-		if n := len([]rune(line)); n > MaxEntryLineChars {
-			add(KindLongLine, subject, lineNo, "entry line is %d characters, over the %d cap", n, MaxEntryLineChars)
+		if n := len([]rune(EntryRuleText(line))); n > MaxEntryTextChars {
+			add(KindLongLine, subject, lineNo, "entry rule text is %d characters, over the %d cap", n, MaxEntryTextChars)
 		}
 		if i+1 < len(lines) && continues(lines[i+1]) {
 			add(KindContinuedEntry, subject, lineNo, "entry continues onto the next line")
@@ -136,6 +142,18 @@ func Check(root fs.FS) []Finding {
 		add(KindNoEntries, overviewFileName, 0, "overview has no entry bullet")
 	}
 	return append(findings, orphans(root, named)...)
+}
+
+// EntryRuleText returns the rule text of the entry line line: what follows the backticked name and its " — " separator.
+// A trailing " — [background](...)" link and then a trailing " (test)" marker are cut off.
+// A line that does not open with a backticked name keeps everything after its bullet.
+func EntryRuleText(line string) string {
+	text := strings.TrimPrefix(line, entryBulletPrefix)
+	if m := entryHeadRe.FindString(line); m != "" {
+		text = strings.TrimPrefix(strings.TrimPrefix(line, m), " — ")
+	}
+	text = entryLinkTailRe.ReplaceAllString(text, "")
+	return strings.TrimSuffix(text, entryTestMarker)
 }
 
 // continues reports whether line continues the entry bullet above it:
