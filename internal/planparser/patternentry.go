@@ -1,4 +1,4 @@
-// patternentry.go implements the pattern-entry-line-cap check: a card that prescribes a verbatim PATTERN.md entry line over the cap fails the plan gate, before an implementer writes a line the pattern check would refuse.
+// patternentry.go implements the pattern-entry-line-cap check: a card that prescribes a verbatim PATTERN.md entry line whose rule text is over the cap fails the plan gate, before an implementer writes a line the pattern check would refuse.
 // It scans only the raw text the parse step recorded, so planparser stays the sole parser of the plan files.
 
 package planparser
@@ -15,7 +15,7 @@ const patternEntryLineCapCheck = "pattern-entry-line-cap"
 // patternEntryLinePrefix opens a PATTERN.md entry line.
 const patternEntryLinePrefix = "- `PATTERN-"
 
-// checkPatternEntryLineCap implements pattern-entry-line-cap: every line inside a card's fenced code block that opens like a PATTERN.md entry line must stay within pattern.MaxEntryLineChars characters.
+// checkPatternEntryLineCap implements pattern-entry-line-cap: every line inside a card's fenced code block that opens like a PATTERN.md entry line must keep its rule text, the part between the name and a trailing "(test)" or background link, within pattern.MaxEntryTextChars characters.
 // Inline code spans are never scanned, since an entry line carries backticks of its own and no span can hold one whole.
 // It measures verbatim lines only; a prose instruction to append a sentence to an entry is outside it.
 func checkPatternEntryLineCap(plan *Plan) []ValidationError {
@@ -23,16 +23,16 @@ func checkPatternEntryLineCap(plan *Plan) []ValidationError {
 
 	for _, c := range plan.Cards {
 		for _, entry := range CardPatternEntries(c) {
-			length := len([]rune(entry.Line))
-			if length <= pattern.MaxEntryLineChars {
+			length := len([]rune(pattern.EntryRuleText(entry.Line)))
+			if length <= pattern.MaxEntryTextChars {
 				continue
 			}
 			findings = append(findings, ValidationError{
 				Check: patternEntryLineCapCheck,
 				Card:  cardID(c),
 				Detail: fmt.Sprintf(
-					"card %d prescribes the entry line for `%s` at %d characters, over the %d cap; shorten the line or move the detail to the entry's background file",
-					c.Number, entry.ID, length, pattern.MaxEntryLineChars,
+					"card %d prescribes the entry line for `%s` with a rule text at %d characters, over the %d cap; shorten the text or move the detail to the entry's background file",
+					c.Number, entry.ID, length, pattern.MaxEntryTextChars,
 				),
 			})
 		}

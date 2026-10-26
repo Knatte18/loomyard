@@ -26,7 +26,10 @@ func overview(lines ...string) *fstest.MapFile {
 func TestCheck(t *testing.T) {
 	t.Parallel()
 	bg := &fstest.MapFile{Data: []byte("background\n")}
-	longLine := entryLine("PATTERN-long", "") + strings.Repeat("x", MaxEntryLineChars)
+	// A long name, "(test)" and a link put this line past the old 360-character whole-line cap while its rule text sits at the cap.
+	longName := "PATTERN-" + strings.Repeat("n", 60)
+	textAtCap := "- `" + longName + "` — " + strings.Repeat("x", MaxEntryTextChars) + " (test) — [background](pattern/" + longName + ".md)"
+	textOverCap := "- `PATTERN-long` — " + strings.Repeat("x", MaxEntryTextChars+1)
 
 	tests := []struct {
 		name string
@@ -54,9 +57,17 @@ func TestCheck(t *testing.T) {
 			want: []string{KindContinuedEntry + ":PATTERN-a"},
 		},
 		{
-			name: "over-long line",
-			fsys: fstest.MapFS{"PATTERN.md": overview(longLine)},
-			want: []string{KindLongLine + ":PATTERN-long"},
+			name:        "rule text over the cap",
+			fsys:        fstest.MapFS{"PATTERN.md": overview(textOverCap)},
+			want:        []string{KindLongLine + ":PATTERN-long"},
+			wantMessage: fmt.Sprintf("entry rule text is %d characters, over the %d cap", MaxEntryTextChars+1, MaxEntryTextChars),
+		},
+		{
+			name: "rule text at the cap behind a long name, marker and link",
+			fsys: fstest.MapFS{
+				"PATTERN.md":                  overview(textAtCap),
+				"pattern/" + longName + ".md": bg,
+			},
 		},
 		{
 			name: "oversize overview",
@@ -129,6 +140,30 @@ func TestCheck(t *testing.T) {
 			}
 			if tt.wantMessage != "" && findings[0].Message != tt.wantMessage {
 				t.Errorf("finding message = %q, want %q", findings[0].Message, tt.wantMessage)
+			}
+		})
+	}
+}
+
+func TestEntryRuleText(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		line string
+		want string
+	}{
+		{"BareText", "- `PATTERN-a` — When: the rule.", "When: the rule."},
+		{"TestMarker", "- `PATTERN-a` — When: the rule. (test)", "When: the rule."},
+		{"Link", "- `PATTERN-a` — When: the rule. — [background](pattern/PATTERN-a.md)", "When: the rule."},
+		{"TestMarkerAndLink", "- `PATTERN-a` — When: the rule. (test) — [background](pattern/PATTERN-a.md)", "When: the rule."},
+		{"MarkerInsideTextKept", "- `PATTERN-a` — A (test) mid-text stays.", "A (test) mid-text stays."},
+		{"NoBacktickedName", "- loose text (test)", "loose text"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := EntryRuleText(tt.line); got != tt.want {
+				t.Errorf("EntryRuleText(%q) = %q; want %q", tt.line, got, tt.want)
 			}
 		})
 	}

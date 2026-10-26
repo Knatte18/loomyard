@@ -4,6 +4,7 @@ package discussionparser
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -87,30 +88,35 @@ func TestValidate_PatternChanges(t *testing.T) {
 	}
 }
 
-// TestValidate_PatternChangeOverCap asserts an `adds` or `changes` bullet whose overview line runs past the PATTERN entry line cap in runes yields one pattern-change-over-cap finding with its way forward, and a line at the cap yields none.
+// TestValidate_PatternChangeOverCap asserts an `adds` or `changes` bullet whose rule text runs past the PATTERN entry text cap in runes yields one pattern-change-over-cap finding with its way forward.
+// A text at the cap yields none whatever the entry's name length and a trailing "(test)" or background link.
 func TestValidate_PatternChangeOverCap(t *testing.T) {
 	t.Parallel()
 
-	// textFor returns a text of filler runes that makes id's overview line extra runes longer than the cap.
-	textFor := func(id, filler string, extra int) string {
-		head := len([]rune("- `" + id + "` — "))
-		return strings.Repeat(filler, patternEntryLineCap-head+extra)
+	// textFor returns a rule text of filler runes extra runes longer than the cap.
+	textFor := func(filler string, extra int) string {
+		return strings.Repeat(filler, patternEntryTextCap+extra)
 	}
 	const appended = " — added after Discussion (parent, 2026-10-24)"
+	const tail = " (test) — [background](pattern/PATTERN-a.md)"
+	over := fmt.Sprintf("%d characters", patternEntryTextCap+1)
+	longID := "PATTERN-" + strings.Repeat("n", 60)
 
 	tests := []struct {
 		name       string
 		bullet     string
 		wantDetail []string
 	}{
-		{"AddsOverCap", "- `PATTERN-a` — adds: " + textFor("PATTERN-a", "x", 1), []string{"`PATTERN-a` adds", "361 characters", "360 cap", "background file"}},
-		{"ChangesOverCap", "- `PATTERN-a` — changes: " + textFor("PATTERN-a", "x", 1), []string{"`PATTERN-a` changes", "361 characters"}},
-		{"AppendedOverCap", "- `PATTERN-a` — changes: " + textFor("PATTERN-a", "x", 1) + appended, []string{"361 characters", "`lyx loom decision add`"}},
-		{"MultiByteOverCap", "- `PATTERN-a` — adds: " + textFor("PATTERN-a", "é", 1), []string{"361 characters"}},
-		{"AtCap", "- `PATTERN-a` — adds: " + textFor("PATTERN-a", "x", 0), nil},
-		{"MultiByteAtCap", "- `PATTERN-a` — adds: " + textFor("PATTERN-a", "é", 0), nil},
-		{"AppendedAtCap", "- `PATTERN-a` — adds: " + textFor("PATTERN-a", "x", 0) + appended, nil},
-		{"RemovesNeverMeasured", "- `PATTERN-" + strings.Repeat("a", patternEntryLineCap) + "` — removes", nil},
+		{"AddsOverCap", "- `PATTERN-a` — adds: " + textFor("x", 1), []string{"`PATTERN-a` adds", over, fmt.Sprintf("%d cap", patternEntryTextCap), "background file"}},
+		{"ChangesOverCap", "- `PATTERN-a` — changes: " + textFor("x", 1), []string{"`PATTERN-a` changes", over}},
+		{"AppendedOverCap", "- `PATTERN-a` — changes: " + textFor("x", 1) + appended, []string{over, "`lyx loom decision add`"}},
+		{"MultiByteOverCap", "- `PATTERN-a` — adds: " + textFor("é", 1), []string{over}},
+		{"OverCapBeforeTail", "- `PATTERN-a` — adds: " + textFor("x", 1) + tail, []string{over}},
+		{"AtCap", "- `PATTERN-a` — adds: " + textFor("x", 0), nil},
+		{"MultiByteAtCap", "- `PATTERN-a` — adds: " + textFor("é", 0), nil},
+		{"AppendedAtCap", "- `PATTERN-a` — adds: " + textFor("x", 0) + appended, nil},
+		{"AtCapWithLongNameAndTail", "- `" + longID + "` — adds: " + textFor("x", 0) + tail, nil},
+		{"RemovesNeverMeasured", "- `PATTERN-" + strings.Repeat("a", patternEntryTextCap) + "` — removes", nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -143,11 +149,22 @@ func TestValidate_PatternChangeOverCap(t *testing.T) {
 	}
 }
 
-// TestPatternEntryLineCap_EqualsThePatternCap asserts the package's cap is the PATTERN format checker's, so the discussion check and the plan gate refuse the same lines.
-func TestPatternEntryLineCap_EqualsThePatternCap(t *testing.T) {
+// TestPatternEntryTextCap_EqualsThePatternCap asserts the package's cap and rule-text cut are the PATTERN format checker's, so the discussion check and the plan gate refuse the same texts.
+func TestPatternEntryTextCap_EqualsThePatternCap(t *testing.T) {
 	t.Parallel()
-	if patternEntryLineCap != pattern.MaxEntryLineChars {
-		t.Errorf("patternEntryLineCap = %d; want pattern.MaxEntryLineChars = %d", patternEntryLineCap, pattern.MaxEntryLineChars)
+	if patternEntryTextCap != pattern.MaxEntryTextChars {
+		t.Errorf("patternEntryTextCap = %d; want pattern.MaxEntryTextChars = %d", patternEntryTextCap, pattern.MaxEntryTextChars)
+	}
+	for _, text := range []string{
+		"When: the rule.",
+		"When: the rule. (test)",
+		"When: the rule. — [background](pattern/PATTERN-a.md)",
+		"When: the rule. (test) — [background](pattern/PATTERN-a.md)",
+		"A (test) mid-text stays.",
+	} {
+		if got, want := patternRuleText(text), pattern.EntryRuleText("- `PATTERN-a` — "+text); got != want {
+			t.Errorf("patternRuleText(%q) = %q; want pattern.EntryRuleText's %q", text, got, want)
+		}
 	}
 }
 

@@ -543,7 +543,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Its way forward is `lyx gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in the agent's system prompt.
     Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.
     It only refuses: it misses a command built from a variable or behind `bash -c`.
-39. `pattern-entry-line-cap` — a card that prescribes a verbatim `PATTERN.md` entry line over the cap: a line inside a fenced code block of the card file that opens with ``- `PATTERN-`` and exceeds `pattern.MaxEntryLineChars` runes.
+39. `pattern-entry-line-cap` — a card that prescribes a verbatim `PATTERN.md` entry line whose rule text is over the cap: a line inside a fenced code block of the card file that opens with ``- `PATTERN-`` and whose rule text, the part between the name and a trailing `(test)` or background link, exceeds `pattern.MaxEntryTextChars` runes.
     It scans fenced blocks only, whatever the fence's info string and including an unclosed fence; inline spans and prose are never scanned, since an entry line carries backticks of its own.
     One finding per line, attributed to the card, naming the entry, the length and the cap; its way forward is to shorten the line or move the detail to the entry's background file.
     Runs under any `language:` and is reported by both plan gates, `lyx loom validate-plan` and dispatch through `ValidateFormat`.

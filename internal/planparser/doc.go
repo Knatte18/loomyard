@@ -148,7 +148,7 @@
 //
 // # Entry-line cap
 //
-// pattern-entry-line-cap fails a card whose fenced code block holds a line opening like a PATTERN.md entry line, "- `PATTERN-", longer than pattern.MaxEntryLineChars runes.
+// pattern-entry-line-cap fails a card whose fenced code block holds a line opening like a PATTERN.md entry line, "- `PATTERN-", whose rule text, as pattern.EntryRuleText cuts it, is longer than pattern.MaxEntryTextChars runes.
 // It reads Card.Text alone and scans fenced blocks only, never inline spans or prose.
 //
 // # Verify chains

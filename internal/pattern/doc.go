@@ -74,8 +74,9 @@
 // Every file under `pattern/` is named by exactly one entry.
 //
 // Check enforces the shape on an fs.FS holding the root, and the real file is checked under `go test`.
-// It caps the overview at MaxOverviewBytes and an entry line at MaxEntryLineChars,
-// and reports an entry that continues onto a second line, an empty overview and an overview with no entry.
+// It caps the overview at MaxOverviewBytes and an entry's rule text at MaxEntryTextChars.
+// The rule text, as EntryRuleText cuts it, is the line without its bullet, name, `(test)` and background link, so the room for the wording does not depend on the entry's name or tail.
+// Check also reports an entry that continues onto a second line, an empty overview and an overview with no entry.
 // MaxOverviewBytes is a hard cap that Check enforces on any tree, and its finding names the bytes over it.
 // HeadroomBytes is a line 5% below the cap, and Headroom binds growth to it:
 // Given the overview at a base and at the head, it fails when the head is longer than both the base and the line.

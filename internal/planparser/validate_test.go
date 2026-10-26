@@ -2410,16 +2410,17 @@ func TestValidate_IndexFileMismatch_FirstCard(t *testing.T) {
 	}
 }
 
-// TestValidate_PatternEntryLineCap covers pattern-entry-line-cap: a PATTERN.md entry line a card prescribes in a fenced code block must stay within the cap in runes, whatever the fence's info string, and prose or an unfenced line is never scanned.
+// TestValidate_PatternEntryLineCap covers pattern-entry-line-cap: the rule text of a PATTERN.md entry line a card prescribes in a fenced code block must stay within the cap in runes, whatever the fence's info string, the entry's name or its tail, and prose or an unfenced line is never scanned.
 func TestValidate_PatternEntryLineCap(t *testing.T) {
 	t.Parallel()
 
-	// entryLine returns an entry line of exactly length runes, padded with filler.
+	// entryLine returns an entry line whose rule text is exactly length runes of filler.
 	entryLine := func(length int, filler string) string {
-		line := "- `PATTERN-x` — "
-		return line + strings.Repeat(filler, length-len([]rune(line)))
+		return "- `PATTERN-x` — " + strings.Repeat(filler, length)
 	}
-	limit := pattern.MaxEntryLineChars
+	limit := pattern.MaxEntryTextChars
+	longName := "PATTERN-x" + strings.Repeat("n", 60)
+	longTail := " (test) — [background](pattern/" + longName + ".md)"
 
 	tests := []struct {
 		name string
@@ -2429,6 +2430,15 @@ func TestValidate_PatternEntryLineCap(t *testing.T) {
 	}{
 		{name: "one rune over the cap fails", text: "```\n" + entryLine(limit+1, "x") + "\n```\n", want: []int{limit + 1}},
 		{name: "exactly the cap passes", text: "```\n" + entryLine(limit, "x") + "\n```\n"},
+		{
+			name: "text at the cap behind a long name, marker and link passes",
+			text: "```\n- `" + longName + "` — " + strings.Repeat("x", limit) + longTail + "\n```\n",
+		},
+		{
+			name: "text over the cap behind a marker and link fails",
+			text: "```\n" + entryLine(limit+1, "x") + " (test) — [background](pattern/PATTERN-x.md)\n```\n",
+			want: []int{limit + 1},
+		},
 		{name: "multibyte runes under the rune cap pass", text: "```\n" + entryLine(limit, "é") + "\n```\n"},
 		{name: "over-cap line outside a fence passes", text: entryLine(limit+1, "x") + "\n"},
 		{name: "over-cap line in an inline span passes", text: "`" + entryLine(limit+1, "x") + "`\n"},
@@ -2453,7 +2463,7 @@ func TestValidate_PatternEntryLineCap(t *testing.T) {
 					continue
 				}
 				var length int
-				if _, err := fmt.Sscanf(f.Detail[strings.Index(f.Detail, "` at ")+len("` at "):], "%d", &length); err != nil {
+				if _, err := fmt.Sscanf(f.Detail[strings.Index(f.Detail, "rule text at ")+len("rule text at "):], "%d", &length); err != nil {
 					t.Fatalf("finding %q does not name its length: %v", f.Detail, err)
 				}
 				for _, want := range []string{"`PATTERN-x`", fmt.Sprintf("over the %d cap", limit), "1-a"} {
