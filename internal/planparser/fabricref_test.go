@@ -16,11 +16,13 @@ import (
 )
 
 // TestCheckCardFabricReference covers the spans scanned and the ones that are not: each span kind carrying a sibling path or a spelling fails naming its place and the matched text, while inline code and prose carrying a spelling, a quoted search pattern and a plan without either pass.
+// A card slug ending in the fabric suffix fails naming the card and the rename, while one holding the suffix mid-name passes.
 func TestCheckCardFabricReference(t *testing.T) {
 	t.Parallel()
 
 	siblingPath := fabricengine.RecordsWorktree(&lyxcwd.Location{HubPath: "/hub", WorktreeName: "task"})
 	siblingName := "/" + filepath.Base(siblingPath)
+	fabricSuffix := strings.TrimPrefix(filepath.Base(siblingPath), "task")
 	pathCommand := "cat " + siblingPath + "/_lyx/plan.md"
 	spellingCommand := "lyx fabric sync"
 
@@ -49,6 +51,11 @@ func TestCheckCardFabricReference(t *testing.T) {
 	cardVerify.Cards[0].Verify = pathCommand
 	cardVerifySpelling := parsed("", "alpha", "")
 	cardVerifySpelling.Cards[0].Verify = spellingCommand
+	withSlug := func(slug string) *planparser.Plan {
+		plan := parsed("", "alpha", "")
+		plan.Cards[0].Slug = slug
+		return plan
+	}
 
 	tests := []struct {
 		name string
@@ -69,6 +76,8 @@ func TestCheckCardFabricReference(t *testing.T) {
 		{"exempt spelling in a fenced block fails", parsed("", fenced("lyx.exe fabric push"), ""), []string{"lyx.exe"}},
 		{"quoted search pattern in a fenced block passes", parsed("", fenced(`grep -n "lyx fabric" docs/overview.md`), ""), nil},
 		{"plan without either passes", parsed("", fenced("go test ./..."), "go build ./..."), nil},
+		{"card slug ending in the fabric suffix fails", withSlug("prime" + fabricSuffix), []string{"card 1-prime" + fabricSuffix, "rename the card"}},
+		{"card slug holding the fabric suffix mid-name passes", withSlug("prime" + fabricSuffix + "-marker"), nil},
 	}
 
 	matcher := fabricengine.NewReferenceRule()
