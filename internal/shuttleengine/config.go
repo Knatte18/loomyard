@@ -29,6 +29,9 @@ type Config struct {
 
 	StartupTimeoutS int `yaml:"startup_timeout_s"` // Startup probe timeout; 0 fast-fails as died and zeroes orphan sweep's protection window.
 
+	// StartRetries is how many extra launches a start gets after an attempt whose provider died before it took its first input and whose strand was removed; 0 turns the retry off, and LoadConfig refuses negative.
+	StartRetries int `yaml:"start_retries"`
+
 	BackgroundShellWaitMin int `yaml:"background_shell_wait_min"` // Minutes an outstanding background shell of either signal may run before the wait logs it and shows it in the wait marker; it also expires an ungated waiting turn end whose every outstanding task is a non-awaited shell into a held turn end. LoadConfig refuses non-positive.
 
 	SubmitSettleMS int `yaml:"submit_settle_ms"` // Interval between the two input-box reads that must agree before a verified send's Enter; 0 reads back to back, LoadConfig refuses negative.
@@ -63,6 +66,7 @@ func ConfigSpec() configengine.Spec {
 			"liveness_every_n_polls":    configengine.CategoryNone,
 			"run_timeout_min":           configengine.CategoryNone,
 			"startup_timeout_s":         configengine.CategoryNone,
+			"start_retries":             configengine.CategoryNone,
 			"background_shell_wait_min": configengine.CategoryNone,
 			"send_ready_timeout_s":      configengine.CategoryNone,
 			"submit_confirm_timeout_s":  configengine.CategoryNone,
@@ -105,6 +109,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if cfg.Engine == "" {
 		return Config{}, fmt.Errorf("shuttle config: engine must name a registered engine, got an empty value")
+	}
+
+	if cfg.StartRetries < 0 {
+		return Config{}, fmt.Errorf("shuttle config: start_retries must not be negative, got %d", cfg.StartRetries)
 	}
 
 	if cfg.BackgroundShellWaitMin <= 0 {

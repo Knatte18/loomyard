@@ -39,6 +39,8 @@ type fakeReed struct {
 		Recursive bool
 	}
 	RemoveStrandErr error
+	// RemoveStrandErrQueue is consumed FIFO by RemoveStrand, one entry per call, ahead of RemoveStrandErr; a nil entry succeeds.
+	RemoveStrandErrQueue []error
 
 	StatusQueue []reedengine.StatusResult // Consumed FIFO by Status; last value sticks once drained.
 	StatusErr   error
@@ -139,6 +141,11 @@ func (m *fakeReed) RemoveStrand(guid string, recursive bool) (reedengine.Removed
 		GUID      string
 		Recursive bool
 	}{guid, recursive})
+	if len(m.RemoveStrandErrQueue) > 0 {
+		err := m.RemoveStrandErrQueue[0]
+		m.RemoveStrandErrQueue = m.RemoveStrandErrQueue[1:]
+		return reedengine.Removed{}, err
+	}
 	if m.RemoveStrandErr != nil {
 		return reedengine.Removed{}, m.RemoveStrandErr
 	}

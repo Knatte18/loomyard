@@ -51,6 +51,11 @@ func (r *echoReed) SendText(guid, text string, submit bool) error {
 	return nil
 }
 
+// backgroundWakeEngine is Engine meeting RequirementBackgroundWake and no other requirement.
+type backgroundWakeEngine struct{ Engine }
+
+func (backgroundWakeEngine) Supports(req Requirement) bool { return req == RequirementBackgroundWake }
+
 // apiErrorAfterSleep is a script: the machine sleeps for three hours while an API-error turn end lands.
 func apiErrorAfterSleep(appendLine func(string), asleep func(time.Duration)) []func() {
 	return []func(){func() {
@@ -90,7 +95,10 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		coveredSleeps int
 		// deferral builds the run's Spec.HoldDeferral from the time elapsed since Wait began, nil for a run that notifies at once.
 		deferral func(t *testing.T, elapsed func() time.Duration) func() bool
-		check    func(t *testing.T, got heldRun)
+		// backgroundWake makes the engine meet RequirementBackgroundWake, and gated gives the run a gate entry that always passes.
+		backgroundWake bool
+		gated          bool
+		check          func(t *testing.T, got heldRun)
 	}{
 		{
 			name: "a stop with outputs missing notifies once with prefix, strand, tail and message start", events: "STOP:which approach?\n", strand: strandName,
@@ -264,6 +272,45 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			},
 		},
 		{
+			name: "a shell outstanding past the bound on an engine that wakes on background work holds without a notice", events: "WAIT:background work\n", strand: strandName,
+			outstand:  []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999", Signal: SignalPayload}},
+			sleepJump: 6 * time.Minute, timeout: time.Hour, backgroundWake: true,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 0 || got.notifiedOffset != 0 || got.result.Outcome != OutcomeTimeout {
+					t.Errorf("notices = %q, NotifiedOffset = %d, outcome = %q; want none, 0 and a wait to the run's deadline", got.notices, got.notifiedOffset, got.result.Outcome)
+				}
+			},
+		},
+		{
+			name: "a gated turn end on an unawaited shell on an engine that wakes on background work holds without a notice", events: "WAIT:answered the operator\n", strand: strandName,
+			outstand:       []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "go test ./...", Signal: SignalPayload}},
+			backgroundWake: true, gated: true,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 0 || got.result.Outcome != OutcomeTimeout {
+					t.Errorf("notices = %q, outcome = %q; want none and a hold to the deadline", got.notices, got.result.Outcome)
+				}
+			},
+		},
+		{
+			name: "a gated turn end on an unawaited shell on an engine that does not wake on background work is notified", events: "WAIT:answered the operator\n", strand: strandName,
+			outstand: []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "go test ./...", Signal: SignalPayload}},
+			gated:    true,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 1 || !strings.HasSuffix(got.notices[0], "«answered the operator»") {
+					t.Errorf("notices = %q; want one for the held turn end", got.notices)
+				}
+			},
+		},
+		{
+			name: "a plain stop on an engine that wakes on background work is notified", events: "STOP:which approach?\n", strand: strandName,
+			backgroundWake: true,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.notices) != 1 || !strings.HasSuffix(got.notices[0], "«which approach?»") {
+					t.Errorf("notices = %q; want one for the held turn end", got.notices)
+				}
+			},
+		},
+		{
 			name: "a stray stop before the prompt's turn start sends no notice, and the stop after it sends one", events: skillLoadEvents + "STOP:stray\n",
 			session: true, promptOffset: skillLoadOffset,
 			script: func(appendLine func(string), _ func(time.Duration)) []func() {
@@ -384,6 +431,9 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				}
 				reed = paneReed
 			}
+			if tt.backgroundWake {
+				engine = backgroundWakeEngine{Engine: engine}
+			}
 			fx := newFixture(t, reed, engine, withConfig(gateConfig))
 			timeout := cmp.Or(tt.timeout, heldTestTimeout)
 			fc := newFakeClock(time.Now())
@@ -410,11 +460,16 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			if tt.deferral != nil {
 				holdDeferral = tt.deferral(t, elapsed)
 			}
-			run := fx.newRun(Spec{OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: timeout, Interactive: tt.interact, QuietHold: tt.quiet, HoldDeferral: holdDeferral},
+			runOpts := []runOpt{
 				withRunState(RunState{StrandGUID: "strand-1", StrandName: tt.strand, SessionID: "session-1", PromptOffset: tt.promptOffset}),
 				withRunEvents(tt.events),
 				withRunOffset(tt.promptOffset),
-				withRunClock(clk, fc.Now().Add(timeout)))
+				withRunClock(clk, fc.Now().Add(timeout)),
+			}
+			if tt.gated {
+				runOpts = append(runOpts, withRunGate(GateSpec{{Name: "check", Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }}}))
+			}
+			run := fx.newRun(Spec{OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: timeout, Interactive: tt.interact, QuietHold: tt.quiet, HoldDeferral: holdDeferral}, runOpts...)
 			if setSteps != nil {
 				setSteps(tt.script(func(line string) { appendEventsLine(t, run.state.EventsPath, line) }, fc.asleep))
 			}

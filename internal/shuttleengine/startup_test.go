@@ -341,7 +341,8 @@ func TestStartup_ReadyProbeTiming(t *testing.T) {
 // torn down as ErrNotStarted, the strand is removed, run.json's Outcome is died, the run directory is
 // kept, and startup-capture.txt holds the last successful capture.
 //
-// Two variants share that teardown. A teardown whose own strand removal fails still reports
+// Further variants share that teardown. A removal that fails is tried again on the run clock, and one that succeeds on a later try reports the strand removed.
+// A teardown whose every removal try fails still reports
 // ErrNotStarted, says the strand could not be removed and carries reed's own error text, with the
 // Outcome still persisted. Spec.KeepPane is irrelevant to the not-ready teardown: the strand is
 // removed whatever KeepPane says, since KeepPane governs a COMPLETED run's pane retention, not a
@@ -352,15 +353,23 @@ func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 	tests := []struct {
 		name            string
 		removeStrandErr error
-		keepPane        bool
+		// removeStrandErrs are the errors the first removal tries return, ahead of removeStrandErr.
+		removeStrandErrs []error
+		keepPane         bool
+		wantRemoveCalls  int
+		// wantSleeps is every sleep of the run clock: the one poll before the pane is seen dead, then the waits between removal tries.
+		wantSleeps []time.Duration
 		// wantCapture asserts startup-capture.txt holds the last successful capture.
 		wantCapture bool
 		// wantTail asserts the error ends with the last capture's lines.
 		wantTail bool
 	}{
-		{name: "pane goes not-live", wantCapture: true, wantTail: true},
-		{name: "a failing strand removal is reported", removeStrandErr: removeErr},
-		{name: "KeepPane does not apply", keepPane: true},
+		{name: "pane goes not-live", wantRemoveCalls: 1, wantCapture: true, wantTail: true},
+		{name: "a failing strand removal is retried and then reported", removeStrandErr: removeErr, wantRemoveCalls: startupRemoveAttempts,
+			wantSleeps: []time.Duration{time.Second, startupRemoveFirstDelay, 2 * startupRemoveFirstDelay}},
+		{name: "a strand removal that succeeds on a retry reports the strand removed", removeStrandErrs: []error{removeErr}, wantRemoveCalls: 2,
+			wantSleeps: []time.Duration{time.Second, startupRemoveFirstDelay}},
+		{name: "KeepPane does not apply", keepPane: true, wantRemoveCalls: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -369,11 +378,12 @@ func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 					{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}},
 					{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}},
 				},
-				CaptureQueue:    []string{lastCapture},
-				RemoveStrandErr: tt.removeStrandErr,
+				CaptureQueue:         []string{lastCapture},
+				RemoveStrandErr:      tt.removeStrandErr,
+				RemoveStrandErrQueue: tt.removeStrandErrs,
 			}
 			engine := &fakeEngine{StartupScript: []StartupState{StartupPending}}
-			fc := newFakeClock(time.Now())
+			fc := &awaitClock{fakeClock: newFakeClock(time.Now())}
 			cfg := fastConfig
 			seedStartupFakes(reed, engine)
 			fx := newFixture(t, reed, engine, withConfig(cfg), withClock(fc))
@@ -390,9 +400,20 @@ func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 			if tt.removeStrandErr != nil && (!strings.Contains(err.Error(), "could NOT be removed") || !strings.Contains(err.Error(), removeErr.Error())) {
 				t.Errorf("StartGated() error = %v; want it to say the strand could not be removed and carry %q", err, removeErr.Error())
 			}
+			if tt.removeStrandErr == nil && !strings.Contains(err.Error(), "the strand was removed") {
+				t.Errorf("StartGated() error = %v; want it to say the strand was removed", err)
+			}
 
-			if len(reed.RemoveStrandCalls) != 1 || reed.RemoveStrandCalls[0].GUID != "strand-1" {
-				t.Errorf("RemoveStrandCalls = %+v; want exactly one for strand-1", reed.RemoveStrandCalls)
+			if len(reed.RemoveStrandCalls) != tt.wantRemoveCalls {
+				t.Errorf("RemoveStrand calls = %d; want %d", len(reed.RemoveStrandCalls), tt.wantRemoveCalls)
+			}
+			for _, call := range reed.RemoveStrandCalls {
+				if call.GUID != "strand-1" {
+					t.Errorf("RemoveStrandCalls = %+v; want every call for strand-1", reed.RemoveStrandCalls)
+				}
+			}
+			if tt.wantSleeps != nil && !reflect.DeepEqual(fc.sleeps, tt.wantSleeps) {
+				t.Errorf("run clock sleeps = %v; want %v", fc.sleeps, tt.wantSleeps)
 			}
 
 			runDir := soleStartupRunDir(t, cfg, anchorPath)
@@ -417,6 +438,150 @@ func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 				if string(capture) != lastCapture {
 					t.Errorf("%s = %q; want %q", startupCaptureFileName, capture, lastCapture)
 				}
+			}
+		})
+	}
+}
+
+// TestStartup_DiedStartLaunchesAgain covers Config.StartRetries: a start whose provider died before it was ready, and whose strand the teardown removed, is launched again in a fresh run directory;
+// with the retry off, a timed-out start, or a strand the teardown could not remove, the start fails after one launch.
+// When every launch fails, the returned error is the last attempt's.
+// The waits run on the run clock: startRetryDelay between launches, and 1 s then 2 s between the removal tries of a strand that will not go.
+func TestStartup_DiedStartLaunchesAgain(t *testing.T) {
+	t.Parallel()
+	removeErr := errors.New("tmux: kill-pane failed")
+	live := reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}
+	dead := reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}}
+	tests := []struct {
+		name            string
+		retries         int
+		startupTimeoutS int
+		statusQueue     []reedengine.StatusResult
+		script          []StartupState
+		removeStrandErr error
+		wantErr         bool
+		wantLaunches    int
+		wantDied        int
+		// wantRetryWaits is how many startRetryDelay sleeps the run clock sees.
+		wantRetryWaits int
+		// wantRemoveWaits is the end of the run clock's sleeps, the waits between removal tries.
+		wantRemoveWaits []time.Duration
+	}{
+		{name: "a died start launches again and returns the ready run", retries: 1, statusQueue: []reedengine.StatusResult{live, dead, live},
+			script: []StartupState{StartupPending, StartupReady}, wantLaunches: 2, wantDied: 1, wantRetryWaits: 1},
+		{name: "with the retry off a died start fails after one launch", retries: 0, statusQueue: []reedengine.StatusResult{live, dead, live},
+			script: []StartupState{StartupPending, StartupReady}, wantErr: true, wantLaunches: 1, wantDied: 1},
+		{name: "a died start whose strand was not removed is not launched again", retries: 1, statusQueue: []reedengine.StatusResult{live, dead, live},
+			script: []StartupState{StartupPending, StartupReady}, removeStrandErr: removeErr, wantErr: true, wantLaunches: 1, wantDied: 1,
+			wantRemoveWaits: []time.Duration{startupRemoveFirstDelay, 2 * startupRemoveFirstDelay}},
+		// The run's own deadline, five minutes, expires inside the hour-long startup window.
+		{name: "a start that timed out is not launched again", retries: 1, startupTimeoutS: 3600, statusQueue: []reedengine.StatusResult{live},
+			script: []StartupState{StartupPending}, wantErr: true, wantLaunches: 1},
+		{name: "a start that dies on every launch fails with the last attempt's error", retries: 1, statusQueue: []reedengine.StatusResult{live, dead, live, dead},
+			script: []StartupState{StartupPending}, wantErr: true, wantLaunches: 2, wantDied: 2, wantRetryWaits: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reed := &fakeReed{
+				StatusQueue:     tt.statusQueue,
+				CaptureQueue:    []string{"$ claude ...", "❯ "},
+				RemoveStrandErr: tt.removeStrandErr,
+			}
+			engine := &fakeEngine{StartupScript: tt.script}
+			seedStartupFakes(reed, engine)
+			cfg := fastConfig
+			cfg.StartRetries = tt.retries
+			if tt.startupTimeoutS > 0 {
+				cfg.StartupTimeoutS = tt.startupTimeoutS
+			}
+			clock := &awaitClock{fakeClock: newFakeClock(time.Now())}
+			fx := newFixture(t, reed, engine, withConfig(cfg), withClock(clock))
+
+			run, err := fx.Runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}}, GateSpec{})
+			if tt.wantErr {
+				if run != nil || !errors.Is(err, ErrNotStarted) {
+					t.Errorf("StartGated() = %v, %v; want a nil run and an error wrapping ErrNotStarted", run, err)
+				}
+			} else if err != nil || run == nil {
+				t.Fatalf("StartGated() = %v, %v; want the ready run", run, err)
+			}
+			if got := len(reed.AddStrandCalls); got != tt.wantLaunches {
+				t.Errorf("AddStrand calls = %d; want %d", got, tt.wantLaunches)
+			}
+			dirs := runDirsUnder(t, runDirRoot(cfg, fx.Anchor))
+			if len(dirs) != tt.wantLaunches {
+				t.Fatalf("run directories = %d; want one per launch, %d", len(dirs), tt.wantLaunches)
+			}
+			outcomes := map[string]int{}
+			for _, dir := range dirs {
+				state, found, err := loadRunState(dir)
+				if err != nil || !found {
+					t.Fatalf("loadRunState(%s): found=%v err=%v", dir, found, err)
+				}
+				outcomes[state.Outcome]++
+			}
+			if outcomes[string(OutcomeDied)] != tt.wantDied {
+				t.Errorf("run outcomes = %v; want %d died attempts", outcomes, tt.wantDied)
+			}
+			if tt.wantErr {
+				named := 0
+				for _, dir := range dirs {
+					if strings.Contains(err.Error(), dir) {
+						named++
+					}
+				}
+				if named != 1 {
+					t.Errorf("StartGated() error = %v; want it to name exactly one run directory, the last attempt's", err)
+				}
+			}
+			retryWaits := 0
+			for _, d := range clock.sleeps {
+				if d == startRetryDelay {
+					retryWaits++
+				}
+			}
+			if retryWaits != tt.wantRetryWaits {
+				t.Errorf("run clock sleeps of %s = %d; want %d (all sleeps %v)", startRetryDelay, retryWaits, tt.wantRetryWaits, clock.sleeps)
+			}
+			if wait := len(tt.wantRemoveWaits); wait > 0 {
+				if len(clock.sleeps) < wait || !reflect.DeepEqual(clock.sleeps[len(clock.sleeps)-wait:], tt.wantRemoveWaits) {
+					t.Errorf("run clock sleeps = %v; want them to end with the removal waits %v", clock.sleeps, tt.wantRemoveWaits)
+				}
+			}
+		})
+	}
+}
+
+// TestStartupCaptureExcerpt pins the pane lines a not-ready error ends with: a capture that fits one tail is shown whole as the last lines.
+// A longer one shows its first lines, never one the tail repeats, before its last paneTailLines lines.
+func TestStartupCaptureExcerpt(t *testing.T) {
+	t.Parallel()
+	numbered := func(from, to int) []string {
+		var lines []string
+		for i := from; i <= to; i++ {
+			lines = append(lines, fmt.Sprintf("line %d", i))
+		}
+		return lines
+	}
+	capture := func(count int) string { return strings.Join(numbered(1, count), "\n  \n") + "\n" }
+	tests := []struct {
+		name  string
+		lines int
+		want  string
+	}{
+		{"a short capture shows once", 3, "The pane's last lines:\n" + strings.Join(numbered(1, 3), "\n")},
+		{"a capture of one tail shows once", paneTailLines, "The pane's last lines:\n" + strings.Join(numbered(1, paneTailLines), "\n")},
+		{"a capture a little past one tail shows only the lines the tail leaves out first", paneTailLines + 4,
+			"The pane's first lines:\n" + strings.Join(numbered(1, 4), "\n") + "\nThe pane's last lines:\n" + strings.Join(numbered(5, paneTailLines+4), "\n")},
+		{"a long capture shows its head and its tail", 3 * paneTailLines,
+			"The pane's first lines:\n" + strings.Join(numbered(1, paneTailLines), "\n") + "\nThe pane's last lines:\n" + strings.Join(numbered(2*paneTailLines+1, 3*paneTailLines), "\n")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := startupCaptureExcerpt(capture(tt.lines)); got != tt.want {
+				t.Errorf("startupCaptureExcerpt(%d lines) = %q; want %q", tt.lines, got, tt.want)
 			}
 		})
 	}

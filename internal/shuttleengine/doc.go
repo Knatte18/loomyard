@@ -104,6 +104,9 @@
 // A held turn end the engine's optional UsageLimitReader reads as stopped by the provider's usage limit, at the turn end or in a fork during its turn, sends no notice, defers none and leaves RunState.NotifiedOffset alone.
 // The parent cannot act while the account is limited, and a notice would reach it only as stale clutter after the reset.
 // The hold, the wait mark and the deadline are unchanged, and the next held turn end it does not read limited is notified as any other.
+// A held turn end built from a waiting turn end, one the gated run judged plain on un-awaited shells or one the ungated shell wait expired, sends no notice, defers none and leaves RunState.NotifiedOffset alone when the engine meets RequirementBackgroundWake.
+// The session wakes when its own background work completes, so the parent has nothing to answer; the hold, the wait mark and the deadline are unchanged, and an Info line records the skip.
+// A held turn end with nothing outstanding is notified as before, whoever typed the prompt that began its turn, since shuttle cannot tell an operator's typed text from a parent's answer.
 // A held turn end that is an API error across a detected sleep of at least pauserecord.SleepTolerance is first given one automatic continue line, typed through the guarded paste-submit, and sends no notice and defers none:
 // no pause covers the run, the session state names the newest turn end an API error, and the sleep lies after the latest turn start Wait read.
 // RunState.APIContinued is persisted before typing and cleared by the next held turn end that is not an API error, so a turn gets at most one continue.
@@ -482,6 +485,11 @@
 // startup gate, through the Engine seam's startup classification and trust-dismiss sequence) before
 // issuing a handle, so no caller outside this package probes readiness or plays gate keys.
 // A not-ready provider is torn down (strand removed, run dir and startup-capture.txt kept, Outcome persisted) and reported as ErrNotStarted from StartGated and as OutcomeDied/OutcomeTimeout from RunGated.
+// The teardown tries the strand removal three times, waiting one and then two seconds on the run clock, before its error tells the operator to remove the strand by hand.
+// Its error ends with the capture's last lines, and with its first lines before them when the capture is longer than one tail, so the first error line of a launch that scrolled away stays visible.
+// A start whose teardown ended died with the strand removed, a provider that exited or a start-time send that failed before the first input, is launched again after five seconds in a fresh run directory, up to shuttle.yaml's start_retries extra times.
+// A timed-out start, one whose strand could not be removed, so two agents never run for one start, and any failure before the strand registered are never launched again;
+// the error a start returns is the last attempt's, and every failed attempt keeps its run directory and capture.
 // RunGated's not-ready result carries the start error's text in Result.StartError.
 // The startup probe starts at the poll interval and backs off to the dismissal gap (the poll interval times liveness_every_n_polls) while the pane does not change.
 // Startup-gate dismissals are at least one dismissal gap apart.
