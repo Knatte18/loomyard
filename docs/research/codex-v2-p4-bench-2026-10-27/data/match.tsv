@@ -1,0 +1,27 @@
+input	setting	finding	own_severity	label	claude_finding	claude_severity	note
+P4	astra-v2-high-handler	F1	BLOCKING	shared	F8	LOW	fork guard-reach: recordedPairs classifies only pairs with a batten run record, so a direct loom or darn run never reads owned_elsewhere; the fan's F8 is the same defect rated LOW, Astra rates BLOCKING
+P4	astra-v2-high-handler	F2	BLOCKING	unique-real			handler's own: Arm and ArmAt build fresh receivers with no reconcile seam and reconcileResume returns nil on a nil seam (resumereconcile.go:39), so the generic shed entry resumes unchecked; holds on reading
+P4	astra-v2-high-handler	F3	BLOCKING	unique-real			fork guard-reach: card 3's SetOwners loads its own store and OwnerRequest carries no ParentOf; arguable, as in the tuned-prompt bench
+P4	astra-v2-high-handler	F4	BLOCKING	shared	F3	BLOCKING	handler's own: TestSetOwners holds the push lock across a retry that waits a production second, against PATTERN-test-speed
+P4	astra-v2-high-handler	F5	MEDIUM	unique-real			fork guard-reach: Fabric.settleUnmovedWeft replays a diverged weft after a pull, and the next push fast-forwards past the guarded retry; a distinct route to the guarded push, not the fan's F1
+P4	astra-v2-high-handler	F6	MEDIUM	unique-real			fork guard-reach: card 10 sets ownerDue when coverage clears and restores the pause on the unchanged foreign owner, so D6's completion to Land is unreachable; the fan's F4 is a different defect on the same card
+P4	astra-v2-high-handler	F7	MEDIUM	unique-real			fork guard-reach: Finalize's holdParent fetch fails offline before card 12's policy runs; same as the tuned-prompt bench's F6
+P4	astra-v2-high-handler	F8	MEDIUM	unique-real			fork guard-reach: card 3's no-takeover guard names slugs and not the prime, so a stale first-act prime claim overwrites a pulled owner; the fan's F5 is card 8's claim ordering, a different defect
+P4	astra-v2-high-handler	F9	MEDIUM	unique-real			fork way-forward: Finalize.pushParent appends the squash-drop repair to a PushFailedError text that already advises the merge D6 forbids
+P4	astra-v2-high-handler	F10	MEDIUM	unique-real			fork way-forward: the root's network gate holds adopt under a hub pause before the owner transaction; SetGateExempt is the existing mechanism
+P4	astra-v2-high-handler	F11	MEDIUM	unique-real			fork affected-set: the new optional InnerRun and Landing function fields are absent from envkit's nilLegal list, which the reflective seam tests read
+P4	astra-v2-high-handler	F12	MEDIUM	unique-real			fork affected-set: card 9's external-package test cannot call the private runOwnerVerdict; also found by the medium runs
+P4	astra-v2-high-handler	F13	MEDIUM	unique-real			fork affected-set: RenderCompact builds explicit columns and shows no owner, against D9's status views; arguable, since D9 names owner_machine on list and the card covers the JSON field
+P4	astra-v2-high-handler	F14	MEDIUM	shared	F9	LOW	handler's own: public surfaces bundled into consumer cards (ParentSlug, LocalOnlyCommits, ResumeInWindow, DropLocal, CloneSecond); rated MEDIUM against the fan's LOW
+P4	astra-v2-med1-handler	F1	BLOCKING	unique-real			fork guard-reach and affected-set: card 13 has Command copy the owner pause the root pre-run installs, but newRoot builds Command first; same defect as the earlier forked fans' card 13 finding
+P4	astra-v2-med1-handler	F2	BLOCKING	shared	F3	BLOCKING	handler's own: the owner-setter retry test waits through a production duration with no injectable wait
+P4	astra-v2-med1-handler	F3	MEDIUM	shared	F5	MEDIUM	fork guard-reach: card 8's missing-prime claim precedes the offline legacy-run resume and defeats it; the fan's F5 names the same ordering
+P4	astra-v2-med1-handler	F4	MEDIUM	unique-real			fork way-forward: lifting the completed old owner's pause schedules the owner check that reinstalls it; the same defect as the high run's F6
+P4	astra-v2-med1-handler	F5	MEDIUM	unique-real			fork way-forward: card 16's owner-halt recovery resumes an LLM child by lyx loom resume on a clone with no driver strand; holds on card 16 line 64, and the fan's F10 is a different step of the card
+P4	astra-v2-med2-handler	F1	BLOCKING	shared	F8	LOW	fork guard-reach: ownership is checked only for batten-recorded pairs; the fan's F8 rated LOW, Astra rates BLOCKING
+P4	astra-v2-med2-handler	F2	BLOCKING	shared	F2	BLOCKING	fork affected-set: adoptcli, an engine-less module cli, is missing from PATTERN-cli-cobra's exceptions
+P4	astra-v2-med2-handler	F3	MEDIUM	unique-real			fork affected-set: new optional seams omit the reflective fixture readers and direct wiring callers; the high run's F11
+P4	astra-v2-med2-handler	F4	MEDIUM	unique-real			fork affected-set: card 9's external integration test cannot reach its private subject; the high run's F12
+P4	astra-v2-med2-handler	F5	MEDIUM	unique-real			fork guard-reach: the non-takeover guard names slugs and not the prime; the high run's F8
+P4	astra-v2-med2-handler	F6	MEDIUM	shared	F5	MEDIUM	fork guard-reach: card 8's prime claim before reconciliation defeats the offline legacy-run resume
+P4	astra-v2-med2-handler	F7	MEDIUM	unique-real			fork way-forward: appending the adopter-first repair keeps the forbidden merge-and-push remedy; the high run's F9

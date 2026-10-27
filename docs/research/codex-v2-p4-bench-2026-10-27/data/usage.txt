@@ -1,0 +1,19 @@
+P4 high rc=0 wall_seconds=1209 turn_completed_input=6130104
+P4 high handler start=13:25:50 end=13:45:58 wall=1208 tokens[in,cached,out,reason]=[6130104,5813888,22302,7970] fresh=316216 weekly_used_percent_first=28.0 last=55.0
+P4 high affected-set start=13:28:21 end=13:33:54 wall=333 tokens[in,cached,out,reason]=[2034676,1961472,4906,1400] fresh=73204 weekly_used_percent_first=38.0 last=52.0
+P4 high guard-reach start=13:28:32 end=13:38:01 wall=569 tokens[in,cached,out,reason]=[2418105,2335872,8658,3849] fresh=82233 weekly_used_percent_first=39.0 last=53.0
+P4 high way-forward start=13:28:44 end=13:33:00 wall=256 tokens[in,cached,out,reason]=[1684372,1644928,4916,2500] fresh=39444 weekly_used_percent_first=40.0 last=50.0
+P4 med1 rc=0 wall_seconds=427 turn_completed_input=3468347
+P4 med1 handler start=13:46:14 end=13:53:18 wall=424 tokens[in,cached,out,reason]=[3468347,3326208,9252,2083] fresh=142139 weekly_used_percent_first=55.0 last=58.0
+P4 med1 affected-set start=13:47:26 end=13:51:18 wall=232 tokens[in,cached,out,reason]=[1629513,1567488,4314,1478] fresh=62025 weekly_used_percent_first=55.0 last=58.0
+P4 med1 guard-reach start=13:47:36 end=13:49:38 wall=122 tokens[in,cached,out,reason]=[707280,679808,2558,743] fresh=27472 weekly_used_percent_first=56.0 last=56.0
+P4 med1 way-forward start=13:47:48 end=13:50:46 wall=178 tokens[in,cached,out,reason]=[1298610,1252864,3602,973] fresh=45746 weekly_used_percent_first=56.0 last=57.0
+P4 med2 rc=0 wall_seconds=631 turn_completed_input=3649902
+P4 med2 handler start=13:53:29 end=14:03:58 wall=629 tokens[in,cached,out,reason]=[3649902,3482368,12610,4991] fresh=167534 weekly_used_percent_first=58.0 last=62.0
+P4 med2 affected-set start=13:54:53 end=13:59:00 wall=247 tokens[in,cached,out,reason]=[1924596,1851648,5237,1793] fresh=72948 weekly_used_percent_first=59.0 last=61.0
+P4 med2 guard-reach start=13:55:04 end=13:58:05 wall=181 tokens[in,cached,out,reason]=[1059677,1019648,3490,1112] fresh=40029 weekly_used_percent_first=59.0 last=60.0
+P4 med2 way-forward start=13:55:16 end=13:58:44 wall=208 tokens[in,cached,out,reason]=[1532065,1478144,3960,1616] fresh=53921 weekly_used_percent_first=59.0 last=61.0
+fork commands (own, handler's pre-spawn commands subtracted; pre-spawn: high 22, med1 10, med2 11): high 12 16 7; med1 11 5 9; med2 12 7 10
+handler commands (whole rollout): high 42, med1 23, med2 23
+verdicts: high BLOCKING n=14 (3 handler, 11 from forks); med1 BLOCKING n=5 (1 handler, 4 from forks); med2 BLOCKING n=7 (0 handler, 7 from forks)
+weekly window (10080 minutes, primary): high 28 to 55, med1 55 to 58, med2 58 to 62; sibling benches codex-v2-p1-bench and codex-v2-p2-bench drew on the same account at the same time
