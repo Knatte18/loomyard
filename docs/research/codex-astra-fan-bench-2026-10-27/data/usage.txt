@@ -1,0 +1,5 @@
+P4 lens-affected-set rc=0 wall=263 in=1487146 cached=1359360 fresh=127786 out=5985 reason=1680 weekly_used_percent=1.0
+P4 lens-guard-reach rc=0 wall=220 in=1665830 cached=1527168 fresh=138662 out=5197 reason=1436 weekly_used_percent=2.0
+P4 lens-way-forward rc=0 wall=187 in=1247776 cached=1144448 fresh=103328 out=4128 reason=1235 weekly_used_percent=3.0
+P4 handler rc=0 wall=237 in=1003593 cached=907520 fresh=96073 out=5466 reason=975 weekly_used_percent=3.0
+P4 handler verdict=BLOCKING n=8 (2 handler, 6 from lenses)
