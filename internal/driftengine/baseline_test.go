@@ -84,7 +84,6 @@ func newBaselineFixture(t *testing.T) *baselineFixture {
 		Status: func() (shedengine.Status, error) {
 			return shedengine.Status{CurrentProducer: "Drift-Baseline", State: shedengine.StateRunning}, nil
 		},
-		AwaitRow:    true,
 		Head:        func() (string, error) { return f.head, nil },
 		BranchPoint: func() (string, error) { return f.branchPoint, nil },
 		DirtyPaths:  func() ([]string, error) { return f.dirty, nil },
@@ -158,7 +157,7 @@ func (f *baselineFixture) holdCaptureLock() (release func()) {
 	return release
 }
 
-// TestDriftBaseline covers the producer's way through each scope, capture mode and refusal, and the paths it commits on every way out.
+// TestDriftBaseline covers the producer's way through each scope, capture start and refusal, and the paths it commits on every way out.
 func TestDriftBaseline(t *testing.T) {
 	t.Parallel()
 
@@ -168,7 +167,6 @@ func TestDriftBaseline(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		row        Row
 		setup      func(f *baselineFixture)
 		want       shedengine.Outcome
 		wantErr    string
@@ -193,26 +191,6 @@ func TestDriftBaseline(t *testing.T) {
 			wantAgents: 1,
 			wantStarts: 1,
 			wantCommit: scopeAndReport,
-		},
-		{
-			name:       "a waited capture that passes is Done",
-			row:        Row{WaitCapture: true},
-			want:       shedengine.Done,
-			wantAgents: 1,
-			wantRuns:   1,
-			wantCommit: whole,
-		},
-		{
-			name: "a waited capture that fails is Stuck naming capture and defer",
-			row:  Row{WaitCapture: true},
-			setup: func(f *baselineFixture) {
-				f.runRecord = CaptureRecord{State: CaptureFailed, Reason: "exit 1", Log: "capture.log"}
-			},
-			want:       shedengine.Stuck,
-			wantReason: append([]string{"capture.log"}, haltWays...),
-			wantAgents: 1,
-			wantRuns:   1,
-			wantCommit: whole,
 		},
 		{
 			name: "a scope record without baseline.md spawns the agent with the scope note",
@@ -247,30 +225,7 @@ func TestDriftBaseline(t *testing.T) {
 			wantCommit: scopeAndReport,
 		},
 		{
-			name: "a held lock is waited on under WaitCapture until released, then the passed record is left alone",
-			row:  Row{WaitCapture: true},
-			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, true)
-				release := f.holdCaptureLock()
-				f.onSleep = func(call int) {
-					if call == 3 {
-						if err := WriteCapture(f.paths, CaptureRecord{State: CapturePassed}); err != nil {
-							f.t.Fatal(err)
-						}
-						release()
-					}
-				}
-			},
-			want:       shedengine.Done,
-			wantCommit: whole,
-			check: func(t *testing.T, f *baselineFixture) {
-				if want := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}; !slices.Equal(f.sleeps, want) {
-					t.Errorf("sleeps = %v; want %v, doubling from one second", f.sleeps, want)
-				}
-			},
-		},
-		{
-			name: "a held lock is left running without WaitCapture",
+			name: "a held lock is left running",
 			setup: func(f *baselineFixture) {
 				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, true)
 				f.holdCaptureLock()
@@ -389,7 +344,7 @@ func TestDriftBaseline(t *testing.T) {
 				tt.setup(f)
 			}
 
-			outcome, pointer, err := NewDriftBaseline("Drift-Baseline", tt.row, f.deps).Call(context.Background())
+			outcome, pointer, err := NewDriftBaseline("Drift-Baseline", Row{}, f.deps).Call(context.Background())
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Call() error = %v; want one naming %q", err, tt.wantErr)

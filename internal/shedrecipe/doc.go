@@ -72,10 +72,10 @@
 // Each reads Env.Drift, a whole-struct passthrough to the producers, and fills its Seats and Now from Env.Seats and Env.Now, and DriftVerify its GateFindingsFile from Env.GateFindingsFile for the row, so a caller leaves those three unset.
 // Each checks the Env.Drift seams its producer reads, and Env.Seats for the two agent rows, and refuses a nil one naming the field.
 // None has a switch of its own: the recipe leaves a row out through its `entry_gate: drift.enabled`.
-// DriftBaseline takes a required "subject", `decision-record` or `board-entry`, and an optional "capture", `detach` (the default) or `wait`.
+// DriftBaseline takes a required "subject", `decision-record` or `board-entry`.
 // DriftAwait takes no key.
 // DriftVerify takes a required "subject", the optional "gate_key" and a "gates" list of exactly one entry, named `verify`, which the agent's table runs once the session committed code.
-// An unknown key, a missing or unknown subject, a capture outside the two and a gates list of another shape are refused naming the way forward.
+// An unknown key, a missing or unknown subject and a gates list of another shape are refused naming the way forward.
 //
 // # Segment settings and row settings
 //

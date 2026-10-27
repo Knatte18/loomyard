@@ -22,6 +22,7 @@ import (
 var wantDarnProducerTable = []wantProducerRow{
 	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflight("", ""))},
 	{loomshed.NameDriftBaseline, "DriftBaseline", driftBaselineType},
+	{loomshed.NameDriftAwait, "DriftAwait", driftAwaitType},
 	{loomshed.NameDarnWrite, "DarnWrite", reflect.TypeOf(loomshed.NewDarnWrite("", nil, loomshed.DarnDeps{}))},
 	{loomshed.NameDriftVerify, "DriftVerify", driftVerifyType},
 	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},
@@ -143,13 +144,16 @@ func TestNewDarn_Routing(t *testing.T) {
 		return rows
 	}
 
-	t.Run("Drift-Baseline follows Preflight, Drift-Verify and the perch follow Darn-Write, and Finalize reroutes to the perch", func(t *testing.T) {
+	t.Run("Drift-Baseline follows Preflight and Drift-Await follows it, Darn-Write follows Drift-Await, Drift-Verify and the perch follow Darn-Write, and Finalize reroutes to the perch", func(t *testing.T) {
 		rows := build(t, 4)
 		if preflight := rows[loomshed.NamePreflight]; preflight.OnDone != loomshed.NameDriftBaseline {
 			t.Errorf("Preflight OnDone = %q; want %q", preflight.OnDone, loomshed.NameDriftBaseline)
 		}
-		if baseline := rows[loomshed.NameDriftBaseline]; baseline.OnDone != loomshed.NameDarnWrite || baseline.OnStuck != "" || baseline.Segment != "" {
-			t.Errorf("Drift-Baseline OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", baseline.OnDone, baseline.OnStuck, baseline.Segment, loomshed.NameDarnWrite)
+		if baseline := rows[loomshed.NameDriftBaseline]; baseline.OnDone != loomshed.NameDriftAwait || baseline.OnStuck != "" || baseline.Segment != "" {
+			t.Errorf("Drift-Baseline OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", baseline.OnDone, baseline.OnStuck, baseline.Segment, loomshed.NameDriftAwait)
+		}
+		if await := rows[loomshed.NameDriftAwait]; await.OnDone != loomshed.NameDarnWrite || await.OnStuck != "" || await.Segment != "" {
+			t.Errorf("Drift-Await OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", await.OnDone, await.OnStuck, await.Segment, loomshed.NameDarnWrite)
 		}
 		darn := rows[loomshed.NameDarnWrite]
 		if darn.OnDone != loomshed.NameDriftVerify || darn.OnStuck != "" || darn.OnReroute != "" || darn.Segment != "" {

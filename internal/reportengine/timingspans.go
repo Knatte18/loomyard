@@ -103,6 +103,7 @@ func darnPhases() map[string]string {
 	phases := map[string]string{
 		loomshed.NamePreflight:        PhaseSetup,
 		loomshed.NameDriftBaseline:    PhaseSetup,
+		loomshed.NameDriftAwait:       PhaseSetup,
 		loomshed.NameDarnWrite:        PhaseWrite,
 		loomshed.NameDriftVerify:      PhaseReview,
 		loomshed.NameDescribe:         PhaseWrite,

@@ -115,7 +115,7 @@ var (
 	failingCompare = CompareResult{ExitCode: 1, Log: "compare-1.log", Reason: "exit 1; log compare-1.log"}
 )
 
-// newVerifyFixture returns a fixture in a loom run with a counted capture at HEAD, a declared compare and a scope record of scope.
+// newVerifyFixture returns a fixture with a counted capture at HEAD, a declared compare and a scope record of scope.
 func newVerifyFixture(t *testing.T, scope ScopeRecord, actions []func()) *verifyFixture {
 	t.Helper()
 	f := &verifyFixture{baselineFixture: newBaselineFixture(t), compares: []CompareResult{passingCompare}}
@@ -262,25 +262,23 @@ func TestDriftVerify(t *testing.T) {
 		}
 	})
 
-	t.Run("no counted capture is a decision halt naming the waiver under every scope, in loom and darn", func(t *testing.T) {
+	t.Run("no counted capture is a decision halt naming the waiver under every scope", func(t *testing.T) {
 		t.Parallel()
 		rows := []struct {
 			name    string
 			scope   ScopeRecord
 			arrange func(f *verifyFixture)
 		}{
-			{"partial in loom, passed but not awaited", partial, func(f *verifyFixture) {
+			{"partial, passed but not awaited", partial, func(f *verifyFixture) {
 				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}}, false)
 			}},
-			{"full in loom, passed but not awaited", full, func(f *verifyFixture) { f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false) }},
-			{"partial in darn, no record", partial, func(f *verifyFixture) {
-				f.deps.AwaitRow = false
+			{"full, passed but not awaited", full, func(f *verifyFixture) { f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false) }},
+			{"partial, no record", partial, func(f *verifyFixture) {
 				if err := os.Remove(f.paths.Capture); err != nil {
 					f.t.Fatal(err)
 				}
 			}},
-			{"full in darn, no record", full, func(f *verifyFixture) {
-				f.deps.AwaitRow = false
+			{"full, no record", full, func(f *verifyFixture) {
 				if err := os.Remove(f.paths.Capture); err != nil {
 					f.t.Fatal(err)
 				}
@@ -576,7 +574,6 @@ func TestDriftVerify(t *testing.T) {
 			f := newVerifyFixture(t, ScopeRecord{}, nil)
 			seed(f, "aaa", "bbb")
 			f.history = []shedengine.HistoryEntry{{Producer: "Plan-Write", Outcome: shedengine.Stuck, At: markedAt}}
-			f.deps.AwaitRow = true
 			f.writeCapture(CaptureRecord{State: CaptureRunning})
 			outcome, pointer, err := f.call()
 			requireStuck(t, outcome, pointer, err, true, "lym drift waive")

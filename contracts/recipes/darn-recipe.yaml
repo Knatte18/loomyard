@@ -1,8 +1,9 @@
-# darn-recipe.yaml is the darn task recipe: Drift-Baseline records the regression scope and captures
-# the baseline, one gated writer reads the board entry, edits, tests and commits, Drift-Verify
+# darn-recipe.yaml is the darn task recipe: Drift-Baseline records the regression scope and starts
+# the baseline capture, Drift-Await holds the run until the capture passed or the parent deferred it,
+# one gated writer reads the board entry, edits, tests and commits, Drift-Verify
 # compares the writer's code with the baseline, the Code-Review perch reviews the committed diff,
 # Describe rewrites the change description from the final diff, then PR-Review and Finalize land it.
-# The two Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
+# The three Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
 # each of them Skipped and spawns or runs nothing for them. It is
 # embedded into the binary by the sibling recipes.go rather than read from disk. The row names below are the
 # durable on-disk identities pinned against internal/loomshed's Name* constants -- a rename here
@@ -17,7 +18,7 @@
 # gates, so a human is the only thing that can fix them.
 # Finalize fixes its own merge and test failures in its merge fixer, and a failure the fixer cannot
 # fix halts the run for the orch.
-# Drift-Baseline, Darn-Write, Drift-Verify and Describe carry none either:
+# Drift-Baseline, Drift-Await, Darn-Write, Drift-Verify and Describe carry none either:
 # an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget,
 # and a Stuck of a Drift row halts it with the ways forward in its reason.
 # Drift-Verify compares the code the writer committed, and the Code-Review perch reviews its fixes.
@@ -47,6 +48,8 @@
 # An in-flight run parked on a row this recipe removed -- Merge-In, Publish, PR-Align, PR-Gate -- or
 # on a row whose edges changed with them, or on the retired Darn-Burler, Darn-Bouncer,
 # Darn-Burler-Review or Darn-Burler-Fix row, is restarted, not migrated.
+# A run that passed Drift-Baseline before Drift-Await joined the recipe has no awaited_at, halts at
+# Drift-Verify with no counted baseline, and is settled by hand with lym drift waive.
 #
 # Describe follows the perch because Code-Burler-Fix can change the code after the writer described it.
 # Its entry gate budget.Code-Review skips it when the perch is off.
@@ -61,15 +64,21 @@ producers:
     engine: Preflight
     on_done: Drift-Baseline
 
-  # Drift-Baseline has an agent record the task's regression scope, then takes the baseline capture
-  # in its own process and waits for it, since the writer starts at once and edits the code.
+  # Drift-Baseline has an agent record the task's regression scope and starts the baseline capture.
+  # Its Stuck halts the run, with the ways forward in its reason.
   - name: Drift-Baseline
     engine: DriftBaseline
     entry_gate: drift.enabled
-    on_done: Darn-Write
+    on_done: Drift-Await
     config:
       subject: board-entry
-      capture: wait
+
+  # Drift-Await is mechanical and spawns nothing: it holds the run until the baseline capture passed
+  # on the branch point, or the parent deferred it, since the writer edits the code the capture reads.
+  - name: Drift-Await
+    engine: DriftAwait
+    entry_gate: drift.enabled
+    on_done: Darn-Write
 
   - name: Darn-Write
     engine: DarnWrite

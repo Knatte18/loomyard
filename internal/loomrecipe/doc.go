@@ -14,7 +14,7 @@
 // The loom recipe's tail after Webster reads `Parent-Align → Code-Review → Drift-Verify → Describe → PR-Review → Finalize → Friction-Reflect`.
 // Drift-Baseline sits between the Discussion-Review ring and Plan-Write, and Drift-Await between the Plan-Review ring and Webster.
 // PR-Review always ends Done, so it carries no on_stuck, and Finalize's reroute names Parent-Align.
-// The darn recipe reads `Preflight → Drift-Baseline → Darn-Write → Drift-Verify → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`, with no Parent-Align, and Finalize's reroute names Code-Bouncer.
+// The darn recipe reads `Preflight → Drift-Baseline → Drift-Await → Darn-Write → Drift-Verify → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`, with no Parent-Align, and Finalize's reroute names Code-Bouncer.
 // Every Drift row carries the entry gate `drift.enabled`, so a hub that leaves regression off records each of them skipped.
 // Its Code-Review rows are loom's, with the same names, segment, rubric and `loom.yaml` keys; only their answer key differs, the board entry snapshot and the decision record in place of the record and the plan.
 //

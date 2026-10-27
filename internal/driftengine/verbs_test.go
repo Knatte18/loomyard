@@ -18,7 +18,6 @@ import (
 func statusAt(row string, state shedengine.State, errText string, agentSession bool) VerbStatus {
 	return VerbStatus{
 		Status:       shedengine.Status{CurrentProducer: row, State: state, Error: errText},
-		AwaitRow:     true,
 		AgentSession: agentSession,
 	}
 }

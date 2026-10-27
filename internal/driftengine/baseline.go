@@ -31,9 +31,9 @@ func NewDriftBaseline(name string, row Row, deps Deps) *DriftBaseline {
 
 // Call runs one Drift-Baseline pass and commits the drift records on every way out.
 // It has the baseline agent record the scope and write baseline.md when either is missing, then, by the recorded scope, takes the baseline capture:
-// scope off, a set awaited_at and a passed capture take none, and a capture that holds the lock is waited on under WaitCapture and left running otherwise.
-// Without WaitCapture the capture is a detached child and the pass returns once the child's record exists;
-// with WaitCapture, and when a detached start is refused breakaway, the capture runs in this process.
+// scope off, a set awaited_at and a passed capture take none, and a capture that holds the lock is left running.
+// Otherwise the capture is a detached child and the pass returns once the child's record exists;
+// when a detached start is refused breakaway, the capture runs in this process.
 // A failed or refused capture is a Stuck whose reason opens with CaptureHaltPrefix and names its ways forward.
 // Only the scope record and baseline.md are committed while a detached capture may still write its logs; all of the durable drift directory is committed once a capture has ended in this process.
 func (p *DriftBaseline) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -49,13 +49,12 @@ func (p *DriftBaseline) Call(ctx context.Context) (shedengine.Outcome, shedengin
 		seam{"BaselineTable", d.BaselineTable != nil},
 		seam{"StartCapture", d.StartCapture != nil},
 		seam{"RunCapture", d.RunCapture != nil},
-		seam{"Sleep", d.Sleep != nil || !p.row.WaitCapture},
 	)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	commitAll := p.row.WaitCapture
+	var commitAll bool
 	outcome, pointer, err := p.drive(ctx, &commitAll)
 
 	paths := []string{
@@ -104,13 +103,8 @@ func (p *DriftBaseline) drive(ctx context.Context, commitAll *bool) (shedengine.
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	if held && !p.row.WaitCapture {
-		return shedengine.Done, done, nil
-	}
 	if held {
-		if err := awaitCaptureEnd(ctx, d.Paths, d.Sleep); err != nil {
-			return "", shedengine.OutputPointer{}, err
-		}
+		return shedengine.Done, done, nil
 	}
 	capture, captureFound, err := ReadCapture(d.Paths)
 	if err != nil {
@@ -142,14 +136,12 @@ func (p *DriftBaseline) captureAgain(ctx context.Context, commitAll *bool) (shed
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: CaptureHaltPrefix + refusal.Error()}, nil
 	}
 
-	if !p.row.WaitCapture {
-		startErr := d.StartCapture()
-		switch {
-		case startErr == nil:
-			return shedengine.Done, done, nil
-		case !errors.Is(startErr, ErrBreakawayRefused):
-			return "", shedengine.OutputPointer{}, fmt.Errorf("drift: %s: start the baseline capture: %w", p.name, startErr)
-		}
+	startErr := d.StartCapture()
+	switch {
+	case startErr == nil:
+		return shedengine.Done, done, nil
+	case !errors.Is(startErr, ErrBreakawayRefused):
+		return "", shedengine.OutputPointer{}, fmt.Errorf("drift: %s: start the baseline capture: %w", p.name, startErr)
 	}
 
 	*commitAll = true

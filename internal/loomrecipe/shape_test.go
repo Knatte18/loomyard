@@ -52,6 +52,7 @@ var (
 	burlerFixType    = reflect.TypeOf(&shedadapters.BurlerFixProducer{})
 
 	driftBaselineType = reflect.TypeOf(&driftengine.DriftBaseline{})
+	driftAwaitType    = reflect.TypeOf(&driftengine.DriftAwait{})
 	driftVerifyType   = reflect.TypeOf(&driftengine.DriftVerify{})
 )
 
@@ -77,7 +78,7 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePlanBouncer, "Bouncer", bouncerType},
 	{loomshed.NamePlanBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NamePlanBurlerFix, "BurlerFix", burlerFixType},
-	{loomshed.NameDriftAwait, "DriftAwait", reflect.TypeOf(&driftengine.DriftAwait{})},
+	{loomshed.NameDriftAwait, "DriftAwait", driftAwaitType},
 	{loomshed.NameWebster, "Implementer", reflect.TypeOf(loomshed.NewWebsterProducer("", configengine.Dirs{}, nil, websterengine.RunDeps{}, nil))},
 	{loomshed.NameParentAlign, "ParentAlign", reflect.TypeOf(&landingshed.ParentAlign{})},
 	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},

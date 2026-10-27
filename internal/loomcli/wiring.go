@@ -777,7 +777,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	if c.recipe == shedrun.RecipeDarn {
 		driftSubject = driftengine.SubjectBoardEntry
 	}
-	c.env.Drift = driftDeps(location, statusPath, statusLockPath, c.recipe == shedrun.RecipeLoom, driftTables{
+	c.env.Drift = driftDeps(location, statusPath, statusLockPath, driftTables{
 		stencilsDir:        websterGeom.StencilsDir,
 		registry:           registry,
 		subject:            driftSubject,

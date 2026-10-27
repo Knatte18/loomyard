@@ -42,7 +42,7 @@ func driftTestEnv(t *testing.T) Env {
 	return env
 }
 
-// TestDriftEntries asserts each Drift entry builds its producer with the kit's Env, and refuses an unknown key, a bad subject or capture, a wrong gates list and a nil seam, each naming the way forward.
+// TestDriftEntries asserts each Drift entry builds its producer with the kit's Env, and refuses an unknown key, a bad subject, a wrong gates list and a nil seam, each naming the way forward.
 func TestDriftEntries(t *testing.T) {
 	t.Parallel()
 
@@ -60,12 +60,10 @@ func TestDriftEntries(t *testing.T) {
 		wantErr  string
 	}{
 		{"BaselineDecisionRecord", driftBaselineEntry, Config{"subject": "decision-record"}, nil, reflect.TypeOf(&driftengine.DriftBaseline{}), ""},
-		{"BaselineBoardEntryWait", driftBaselineEntry, Config{"subject": "board-entry", "capture": "wait"}, nil, reflect.TypeOf(&driftengine.DriftBaseline{}), ""},
-		{"BaselineDetach", driftBaselineEntry, Config{"subject": "board-entry", "capture": "detach"}, nil, reflect.TypeOf(&driftengine.DriftBaseline{}), ""},
-		{"BaselineUnknownKey", driftBaselineEntry, Config{"subject": "decision-record", "enabled": true}, nil, nil, "entry_gate"},
+		{"BaselineBoardEntry", driftBaselineEntry, Config{"subject": "board-entry"}, nil, reflect.TypeOf(&driftengine.DriftBaseline{}), ""},
+		{"BaselineCaptureKey", driftBaselineEntry, Config{"subject": "board-entry", "capture": "wait"}, nil, nil, "entry_gate"},
 		{"BaselineMissingSubject", driftBaselineEntry, Config{}, nil, nil, "way forward: set subject"},
 		{"BaselineUnknownSubject", driftBaselineEntry, Config{"subject": "issue"}, nil, nil, "way forward: set subject"},
-		{"BaselineUnknownCapture", driftBaselineEntry, Config{"subject": "decision-record", "capture": "sometimes"}, nil, nil, "way forward: set capture"},
 		{"BaselineNilSeats", driftBaselineEntry, Config{"subject": "decision-record"}, func(e *Env) { e.Seats = nil }, nil, "Seats"},
 		{"BaselineNilStartCapture", driftBaselineEntry, Config{"subject": "decision-record"}, func(e *Env) { e.Drift.StartCapture = nil }, nil, "Drift.StartCapture"},
 		{"AwaitBuilds", driftAwaitEntry, Config{}, nil, reflect.TypeOf(&driftengine.DriftAwait{}), ""},

@@ -13,9 +13,6 @@ import (
 const (
 	driftSubjectWayForward = "way forward: set subject to decision-record or board-entry in the row's config"
 	driftKeyWayForward     = "way forward: remove the key; the on and off switch of a Drift row is its entry_gate"
-
-	driftCaptureDetach = "detach"
-	driftCaptureWait   = "wait"
 )
 
 // driftSeams are the Env.Drift seams a Drift entry checks before it builds its producer.
@@ -55,23 +52,16 @@ func driftSubject(entry string, row RowIdentity, cfg Config) (string, error) {
 }
 
 // driftBaselineEntry is the Constructor for the "DriftBaseline" registry row.
-// The row's required "subject" is decision-record or board-entry, and its optional "capture" is detach (the default) or wait.
+// The row's required "subject" is decision-record or board-entry.
 // It checks Env.Seats and the Env.Drift seams the producer reads, and fills the producer's seat runner and clock from Env.
 func driftBaselineEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	const entry = "DriftBaseline"
-	if err := configRejectUnknown(cfg, "subject", "capture"); err != nil {
+	if err := configRejectUnknown(cfg, "subject"); err != nil {
 		return nil, fmt.Errorf("%w; row %q: %s", err, row.Name, driftKeyWayForward)
 	}
 	subject, err := driftSubject(entry, row, cfg)
 	if err != nil {
 		return nil, err
-	}
-	capture, err := configString(cfg, "capture", false)
-	if err != nil {
-		return nil, fmt.Errorf("shedrecipe: %s: row %q: %w; way forward: set capture to %s or %s", entry, row.Name, err, driftCaptureDetach, driftCaptureWait)
-	}
-	if capture != "" && capture != driftCaptureDetach && capture != driftCaptureWait {
-		return nil, fmt.Errorf("shedrecipe: %s: row %q: config key %q must be %q or %q, got %q; way forward: set capture to %s or %s", entry, row.Name, "capture", driftCaptureDetach, driftCaptureWait, capture, driftCaptureDetach, driftCaptureWait)
 	}
 	if err := requireSeam(entry, "Seats", env.Seats); err != nil {
 		return nil, err
@@ -87,12 +77,11 @@ func driftBaselineEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPr
 		{"Drift.BaselineTable", d.BaselineTable},
 		{"Drift.StartCapture", d.StartCapture},
 		{"Drift.RunCapture", d.RunCapture},
-		{"Drift.Sleep", d.Sleep},
 	})
 	if err != nil {
 		return nil, err
 	}
-	return driftengine.NewDriftBaseline(row.Name, driftengine.Row{Subject: subject, WaitCapture: capture == driftCaptureWait}, driftDepsFrom(env)), nil
+	return driftengine.NewDriftBaseline(row.Name, driftengine.Row{Subject: subject}, driftDepsFrom(env)), nil
 }
 
 // driftAwaitEntry is the Constructor for the "DriftAwait" registry row.

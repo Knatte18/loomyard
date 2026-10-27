@@ -185,13 +185,9 @@ func WriteCapture(p Paths, rec CaptureRecord) error {
 }
 
 // CountedCapture reports whether the capture record counts as the baseline the compare reads.
-// It counts when found and passed and, with awaitRow set, when the scope record also holds awaited_at;
-// without an await row a passed record alone counts.
-func CountedCapture(scope ScopeRecord, capture CaptureRecord, found bool, awaitRow bool) bool {
-	if !found || capture.State != CapturePassed {
-		return false
-	}
-	return !awaitRow || scope.AwaitedAt != ""
+// It counts when found and passed and the scope record holds awaited_at, which Drift-Await sets once it saw the capture pass.
+func CountedCapture(scope ScopeRecord, capture CaptureRecord, found bool) bool {
+	return found && capture.State == CapturePassed && scope.AwaitedAt != ""
 }
 
 // updateRuns applies mutate to the run counter under its lock.
