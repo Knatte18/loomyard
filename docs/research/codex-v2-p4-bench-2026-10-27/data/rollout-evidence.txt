@@ -1,0 +1,57 @@
+## run high
+rc=0 wall_seconds=1209
+# One line per rollout: id, parent, start, end, commands, first model request, last total, window after
+id=01a17d89-df4f-7df3-80c0-47b361bce38b forked_from=- start=2026-10-27T13:25:50.420Z end=2026-10-27T13:45:58.359Z commands_including_inherited=42 first_request={"input_tokens":16404,"cached_input_tokens":12160} total={"input_tokens":6130104,"cached_input_tokens":5813888,"output_tokens":22302,"reasoning_output_tokens":7970} weekly_used_percent_end=55.0
+id=01a17d8c-2e30-7e21-b862-46abc84c773c forked_from=01a17d89-df4f-7df3-80c0-47b361bce38b start=2026-10-27T13:28:21.304Z end=2026-10-27T13:33:54.584Z commands_including_inherited=34 first_request={"input_tokens":190466,"cached_input_tokens":187520} total={"input_tokens":2034676,"cached_input_tokens":1961472,"output_tokens":4906,"reasoning_output_tokens":1400} weekly_used_percent_end=52.0
+id=01a17d8c-58ee-7d62-857d-74f43ea02f61 forked_from=01a17d89-df4f-7df3-80c0-47b361bce38b start=2026-10-27T13:28:32.245Z end=2026-10-27T13:38:01.371Z commands_including_inherited=38 first_request={"input_tokens":191075,"cached_input_tokens":188160} total={"input_tokens":2418105,"cached_input_tokens":2335872,"output_tokens":8658,"reasoning_output_tokens":3849} weekly_used_percent_end=53.0
+id=01a17d8c-882a-7210-ae12-3961223ad77b forked_from=01a17d89-df4f-7df3-80c0-47b361bce38b start=2026-10-27T13:28:44.338Z end=2026-10-27T13:33:00.889Z commands_including_inherited=29 first_request={"input_tokens":191669,"cached_input_tokens":188800} total={"input_tokens":1684372,"cached_input_tokens":1644928,"output_tokens":4916,"reasoning_output_tokens":2500} weekly_used_percent_end=50.0
+
+# spawn_agent calls in the handler's rollout (message bodies are encrypted)
+2026-10-27T13:28:21.279Z	{"task_name":"affected_set","fork_turns":"all"}
+2026-10-27T13:28:32.223Z	{"task_name":"guard_reach","fork_turns":"all"}
+2026-10-27T13:28:44.319Z	{"task_name":"way_forward","fork_turns":"all"}
+
+# AGENTS.md load notices (project instructions in the first model input), per rollout
+2026-10-27T14-25-50-01a17d89-df4f-7df3-80c0-47b361bc 2
+2026-10-27T14-28-21-01a17d8c-2e30-7e21-b862-46abc84c 2
+2026-10-27T14-28-32-01a17d8c-58ee-7d62-857d-74f43ea0 2
+2026-10-27T14-28-44-01a17d8c-882a-7210-ae12-3961223a 1
+
+## run med1
+rc=0 wall_seconds=427
+# One line per rollout: id, parent, start, end, commands, first model request, last total, window after
+id=01a17d9c-88d3-70c1-8fae-cc1f7edb83e7 forked_from=- start=2026-10-27T13:46:14.210Z end=2026-10-27T13:53:18.677Z commands_including_inherited=23 first_request={"input_tokens":16433,"cached_input_tokens":12160} total={"input_tokens":3468347,"cached_input_tokens":3326208,"output_tokens":9252,"reasoning_output_tokens":2083} weekly_used_percent_end=58.0
+id=01a17d9d-a759-73d3-95dd-9d02ed5dd01c forked_from=01a17d9c-88d3-70c1-8fae-cc1f7edb83e7 start=2026-10-27T13:47:26.432Z end=2026-10-27T13:51:18.230Z commands_including_inherited=21 first_request={"input_tokens":104517,"cached_input_tokens":101632} total={"input_tokens":1629513,"cached_input_tokens":1567488,"output_tokens":4314,"reasoning_output_tokens":1478} weekly_used_percent_end=58.0
+id=01a17d9d-cef2-79c3-9f7d-f13ae84dab24 forked_from=01a17d9c-88d3-70c1-8fae-cc1f7edb83e7 start=2026-10-27T13:47:36.568Z end=2026-10-27T13:49:38.211Z commands_including_inherited=15 first_request={"input_tokens":105121,"cached_input_tokens":102144} total={"input_tokens":707280,"cached_input_tokens":679808,"output_tokens":2558,"reasoning_output_tokens":743} weekly_used_percent_end=56.0
+id=01a17d9d-fef1-7860-8f45-4f8da052d858 forked_from=01a17d9c-88d3-70c1-8fae-cc1f7edb83e7 start=2026-10-27T13:47:48.857Z end=2026-10-27T13:50:46.613Z commands_including_inherited=19 first_request={"input_tokens":105688,"cached_input_tokens":102784} total={"input_tokens":1298610,"cached_input_tokens":1252864,"output_tokens":3602,"reasoning_output_tokens":973} weekly_used_percent_end=57.0
+
+# spawn_agent calls in the handler's rollout (message bodies are encrypted)
+2026-10-27T13:47:26.416Z	{"task_name":"affected_set","fork_turns":"all"}
+2026-10-27T13:47:36.553Z	{"task_name":"guard_reach","fork_turns":"all"}
+2026-10-27T13:47:48.840Z	{"task_name":"way_forward","fork_turns":"all"}
+
+# AGENTS.md load notices (project instructions in the first model input), per rollout
+2026-10-27T14-46-14-01a17d9c-88d3-70c1-8fae-cc1f7edb 1
+2026-10-27T14-47-26-01a17d9d-a759-73d3-95dd-9d02ed5d 1
+2026-10-27T14-47-36-01a17d9d-cef2-79c3-9f7d-f13ae84d 1
+2026-10-27T14-47-48-01a17d9d-fef1-7860-8f45-4f8da052 1
+
+## run med2
+rc=0 wall_seconds=631
+# One line per rollout: id, parent, start, end, commands, first model request, last total, window after
+id=01a17da3-2eed-7071-a09c-20d5e7b025a8 forked_from=- start=2026-10-27T13:53:29.274Z end=2026-10-27T14:03:58.615Z commands_including_inherited=23 first_request={"input_tokens":16433,"cached_input_tokens":12160} total={"input_tokens":3649902,"cached_input_tokens":3482368,"output_tokens":12610,"reasoning_output_tokens":4991} weekly_used_percent_end=62.0
+id=01a17da4-7b77-7433-9161-a69fc450a68b forked_from=01a17da3-2eed-7071-a09c-20d5e7b025a8 start=2026-10-27T13:54:53.950Z end=2026-10-27T13:59:00.284Z commands_including_inherited=23 first_request={"input_tokens":110692,"cached_input_tokens":107776} total={"input_tokens":1924596,"cached_input_tokens":1851648,"output_tokens":5237,"reasoning_output_tokens":1793} weekly_used_percent_end=61.0
+id=01a17da4-a599-7653-a1a8-e6299a302aea forked_from=01a17da3-2eed-7071-a09c-20d5e7b025a8 start=2026-10-27T13:55:04.736Z end=2026-10-27T13:58:05.703Z commands_including_inherited=18 first_request={"input_tokens":111301,"cached_input_tokens":108416} total={"input_tokens":1059677,"cached_input_tokens":1019648,"output_tokens":3490,"reasoning_output_tokens":1112} weekly_used_percent_end=60.0
+id=01a17da4-d1e6-7960-aa7a-90e04ad4945f forked_from=01a17da3-2eed-7071-a09c-20d5e7b025a8 start=2026-10-27T13:55:16.077Z end=2026-10-27T13:58:44.378Z commands_including_inherited=21 first_request={"input_tokens":111873,"cached_input_tokens":108928} total={"input_tokens":1532065,"cached_input_tokens":1478144,"output_tokens":3960,"reasoning_output_tokens":1616} weekly_used_percent_end=61.0
+
+# spawn_agent calls in the handler's rollout (message bodies are encrypted)
+2026-10-27T13:54:53.902Z	{"task_name":"affected_set","fork_turns":"all"}
+2026-10-27T13:55:04.721Z	{"task_name":"guard_reach","fork_turns":"all"}
+2026-10-27T13:55:16.063Z	{"task_name":"way_forward","fork_turns":"all"}
+
+# AGENTS.md load notices (project instructions in the first model input), per rollout
+2026-10-27T14-53-29-01a17da3-2eed-7071-a09c-20d5e7b0 1
+2026-10-27T14-54-53-01a17da4-7b77-7433-9161-a69fc450 1
+2026-10-27T14-55-04-01a17da4-a599-7653-a1a8-e6299a30 1
+2026-10-27T14-55-16-01a17da4-d1e6-7960-aa7a-90e04ad4 1
+
