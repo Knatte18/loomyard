@@ -1,0 +1,11 @@
+# One line per rollout of the run: start, end, parent, commands, first request, total tokens
+id=01a17d0e-10e5-7873-9df3-625848e53067 forked_from=- start=2026-10-27T11:10:36.622Z end=2026-10-27T11:22:53.059Z commands=34 first_request={"last_token_usage":{"input_tokens":15936,"cached_input_tokens":12160} total="total_token_usage":{"input_tokens":5587480,"cached_input_tokens":5374080,"cache_write_input_tokens":0,"output_tokens":17134,"reasoning_output_tokens":6429,"total_tokens":5604614}
+id=01a17d10-4e40-7230-b329-a124a4695cf7 forked_from=01a17d0e-10e5-7873-9df3-625848e53067 start=2026-10-27T11:13:03.047Z end=2026-10-27T11:15:59.571Z commands=6 first_request={"last_token_usage":{"input_tokens":146678,"cached_input_tokens":145408} total="total_token_usage":{"input_tokens":1126577,"cached_input_tokens":1093632,"cache_write_input_tokens":0,"output_tokens":3563,"reasoning_output_tokens":1434,"total_tokens":1130140}
+id=01a17d10-6bd4-7590-9810-dc0f8d8287b0 forked_from=01a17d0e-10e5-7873-9df3-625848e53067 start=2026-10-27T11:13:10.620Z end=2026-10-27T11:17:03.701Z commands=6 first_request={"last_token_usage":{"input_tokens":147063,"cached_input_tokens":145792} total="total_token_usage":{"input_tokens":1103230,"cached_input_tokens":1080576,"cache_write_input_tokens":0,"output_tokens":4871,"reasoning_output_tokens":2168,"total_tokens":1108101}
+id=01a17d10-8973-73e0-9635-348f826bc413 forked_from=01a17d0e-10e5-7873-9df3-625848e53067 start=2026-10-27T11:13:18.202Z end=2026-10-27T11:17:50.160Z commands=5 first_request={"last_token_usage":{"input_tokens":147411,"cached_input_tokens":146176} total="total_token_usage":{"input_tokens":972200,"cached_input_tokens":942080,"cache_write_input_tokens":0,"output_tokens":5555,"reasoning_output_tokens":3115,"total_tokens":977755}
+
+# spawn_agent calls in the handler's rollout (message bodies are encrypted in the rollout)
+"timestamp":"2026-10-27T11:10:37.516Z"	"name":"spawn_agent"	"timestamp":"2026-10-27T11:10:37.516Z"
+"timestamp":"2026-10-27T11:13:03.029Z"	"name":"spawn_agent"	"task_name":"affected_set","fork_turns":"all"
+"timestamp":"2026-10-27T11:13:10.603Z"	"name":"spawn_agent"	"task_name":"guard_reach","fork_turns":"all"
+"timestamp":"2026-10-27T11:13:18.185Z"	"name":"spawn_agent"	"task_name":"way_forward","fork_turns":"all"
